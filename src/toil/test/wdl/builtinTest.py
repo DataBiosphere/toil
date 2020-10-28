@@ -6,7 +6,7 @@ import shutil
 import uuid
 from typing import Optional, List
 
-from toil.wdl.wdl_functions import sub
+from toil.wdl.wdl_functions import sub, WDLPair
 from toil.wdl.wdl_functions import ceil
 from toil.wdl.wdl_functions import floor
 from toil.wdl.wdl_functions import read_lines
@@ -197,6 +197,9 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
         json_bool = False
         json_null = None
 
+        # Pair[Int, Pair[Int, Pair[Int, Pair[Int, Int]]]]
+        json_pairs = WDLPair(1, WDLPair(2, WDLPair(3, WDLPair(4, 5))))
+
         path = write_json(json_obj, temp_dir=self.output_dir)
         self._check_output(path, '{"str":"some string","num":3.14,"bool":true,"null":null,"arr":["test"]}')
 
@@ -214,6 +217,9 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
 
         path = write_json(json_null, temp_dir=self.output_dir)
         self._check_output(path, 'null')
+
+        path = write_json(json_pairs, temp_dir=self.output_dir)
+        self._check_output(path, '{"left":1,"right":{"left":2,"right":{"left":3,"right":{"left":4,"right":5}}}}')
 
     def testFn_WriteMap(self):
         """Test the wdl built-in functional equivalent of 'write_map()'."""

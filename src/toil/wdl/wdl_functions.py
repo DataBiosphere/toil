@@ -293,6 +293,11 @@ def parse_value_from_type(in_data: Any,
         return [parse_value_from_type(i, var_type.element, from_json, file_store) for i in in_data]
 
     elif isinstance(var_type, WDLPairType):
+
+        if isinstance(in_data, WDLPair):
+            # return if we already parsed it.
+            return in_data
+
         if from_json:
             # this should be a dictionary w/ format: {"left": left, "right": right}
             validate(isinstance(in_data, dict), f'Expected dict, but got {type(in_data)}')
