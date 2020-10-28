@@ -879,9 +879,8 @@ class AnalyzeWDL:
         """
         Parses out cromwell's built-in function calls.
 
-        Some of these are special
-        and need minor adjustments, for example length(), which is equivalent to
-        python's len() function.
+        Some of these are special and need minor adjustments,
+        for example size() requires a fileStore.
 
         :param name:
         :param params:
@@ -891,10 +890,7 @@ class AnalyzeWDL:
         # name of the function
         if isinstance(name, wdl_parser.Terminal):
             if name.str:
-                # use python's built-in for length()
-                if name.source_string == 'length':
-                    es = es + 'len('
-                elif name.source_string == 'stdout':
+                if name.source_string == 'stdout':
                     # let the stdout() function reference the generated stdout file path.
                     return es + '_toil_wdl_internal__stdout_file'
                 elif name.source_string == 'stderr':

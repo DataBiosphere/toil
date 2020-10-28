@@ -22,6 +22,7 @@ from toil.wdl.wdl_functions import write_tsv
 from toil.wdl.wdl_functions import write_json
 from toil.wdl.wdl_functions import write_map
 from toil.wdl.wdl_functions import transpose
+from toil.wdl.wdl_functions import length
 
 from toil.version import exactPython
 from toil.test import ToilTest
@@ -230,6 +231,12 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
         self.assertEqual([[0]], transpose([[0]]))
         self.assertRaises(AssertionError, transpose, [[0, 1, 2], [3, 4, 5, 6]])
 
+    def testFn_Length(self):
+        """Test the wdl built-in functional equivalent of 'length()'."""
+        self.assertEqual(3, length([1, 2, 3]))
+        self.assertEqual(3, length(['a', 'b', 'c']))
+        self.assertEqual(0, length([]))
+
 
 class WdlStandardLibraryWorkflowsTest(ToilTest):
     """
@@ -374,6 +381,13 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
 
         # this workflow writes a transposed 2-dimensional array as a TSV file.
         self.check_function('transpose', cases=['as_input'], expected_result='0\t3\n1\t4\n2\t5')
+
+    def test_length(self):
+        self.check_function('length', cases=['as_input'], expected_result='3')
+
+        self.check_function('length', cases=['as_input'],
+                            json_file_name='length_invalid',
+                            expected_exception='WDLRuntimeError')
 
 
 if __name__ == "__main__":
