@@ -91,7 +91,7 @@ class AccessReportingWrapper:
         Hook reads of streams so they log.
         """
         # Grab the stream
-        stream = self._wrappedfileStore.readGlobalFile(fileStoreID, *args, **kwargs)
+        stream = self._wrappedfileStore.readGlobalFileStream(fileStoreID, *args, **kwargs)
         # Log the access
         self.__dict__['_accessLog'].append((fileStoreID,))
         # Return the stream
