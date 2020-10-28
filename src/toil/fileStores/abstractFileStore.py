@@ -99,8 +99,9 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         # Defer these imports until runtime, since these classes depend on us
         from toil.fileStores.cachingFileStore import CachingFileStore
         from toil.fileStores.nonCachingFileStore import NonCachingFileStore
+        from toil.fileStores.accessReportingWrapper import AccessReportingWrapper
         fileStoreCls = CachingFileStore if caching else NonCachingFileStore
-        return fileStoreCls(jobStore, jobGraph, localTempDir, waitForPreviousCommit)
+        return AccessReportingWrapper(fileStoreCls(jobStore, jobGraph, localTempDir, waitForPreviousCommit))
 
     @staticmethod
     def shutdownFileStore(workflowDir, workflowID):
