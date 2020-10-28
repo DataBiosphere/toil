@@ -274,11 +274,11 @@ Autoscaling leverages Mesos containers to provide an execution environment for t
 
 #. Copy the ``sort.py`` script up to the leader node: ::
 
-    (venv) $ toil rsync-cluster <cluster-name> sort.py :/root
+    (venv) $ toil rsync-cluster -z us-west-2a <cluster-name> sort.py :/root
 
 #. Login to the leader node: ::
 
-    (venv) $ toil ssh-cluster <cluster-name>
+    (venv) $ toil ssh-cluster -z us-west-2a <cluster-name>
 
 #. Run the script as an autoscaling workflow: ::
 
