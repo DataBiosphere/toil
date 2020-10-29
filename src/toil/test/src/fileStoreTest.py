@@ -117,6 +117,53 @@ class hidden(object):
             C.addChild(D)
             Job.Runner.startToil(A, self.options)
 
+        @slow
+        def testFileStoreLogging(self):
+            """
+            Write a couple of files to the jobstore.  Delete a couple of them.  Read back written
+            and locally deleted files.
+            """
+            
+            class WatchingHandler(logging.Handler):
+                """
+                A logging handler that watches for a certain substring and
+                trips a flag if it appears.
+                """
+                def __init__(self, match: str):
+                    super().__init__()
+                    self.match = match
+                    self.seen = False
+                def emit(self, record):
+                    if self.match in record.getMessage():
+                        self.seen = True
+            
+            handler = WatchingHandler("cats.txt")
+            
+            logging.getLogger().addHandler(handler)
+            
+            F = Job.wrapJobFn(self._accessAndFail,
+                              disk='100M')
+            try:
+                Job.Runner.startToil(F, self.options)
+            except FailedJobsException:
+                # We expect this.
+                pass
+            
+            logging.getLogger().removeHandler(handler)
+            
+            assert handler.seen, "Downloaded file name not found in logs of failing Toil run"
+            
+        @staticmethod
+        def _accessAndFail(job):
+            with job.fileStore.writeGlobalFileStream() as (stream, fileID):
+                stream.write('Cats'.encode('utf-8'))
+            localPath = os.path.join(job.fileStore.getLocalTempDir(), 'cats.txt')
+            job.fileStore.readGlobalFile(fileID, localPath)
+            with job.fileStore.readGlobalFileStream(fileID) as stream2:
+                pass
+            raise RuntimeError("I do not like this file")
+            
+
         # Test filestore operations.  This is a slightly less intense version of the cache specific
         # test `testReturnFileSizes`
         @slow
