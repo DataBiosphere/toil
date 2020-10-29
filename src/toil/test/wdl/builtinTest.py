@@ -389,6 +389,10 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
                             json_file_name='length_invalid',
                             expected_exception='WDLRuntimeError')
 
+        # length() should not work with Map[X, Y].
+        self.check_function('length', cases=['as_input_with_map'],
+                            expected_exception='WDLRuntimeError')
+
 
 if __name__ == "__main__":
     unittest.main()
