@@ -64,7 +64,8 @@ class NonCachingFileStore(AbstractFileStore):
                            self.jobName)
         try:
             os.chdir(self.localTempDir)
-            yield
+            with super().open(job):
+                yield
         finally:
             diskUsed = getDirSizeRecursively(self.localTempDir)
             logString = ("Job {jobName} used {percent:.2f}% ({humanDisk}B [{disk}B] used, "
@@ -105,11 +106,13 @@ class NonCachingFileStore(AbstractFileStore):
 
         self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
         self.localFileMap[fileStoreID].append(localFilePath)
+        self.logAccess(fileStoreID, localFilePath)
         return localFilePath
 
     @contextmanager
     def readGlobalFileStream(self, fileStoreID):
         with self.jobStore.readFileStream(fileStoreID) as f:
+            self.logAccess(fileStoreID)
             yield f
 
     def exportFile(self, jobStoreFileID, dstUrl):

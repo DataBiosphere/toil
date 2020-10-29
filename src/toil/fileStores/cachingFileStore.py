@@ -992,7 +992,8 @@ class CachingFileStore(AbstractFileStore):
         self._allocateSpaceForJob(self.jobDiskBytes)
         try:
             os.chdir(self.localTempDir)
-            yield
+            with super().open(job):
+                yield
         finally:
             # See how much disk space is used at the end of the job.
             # Not a real peak disk usage, but close enough to be useful for warning the user.
@@ -1116,12 +1117,16 @@ class CachingFileStore(AbstractFileStore):
             # We want to use the cache
 
             if mutable:
-                return self._readGlobalFileMutablyWithCache(fileStoreID, localFilePath, readerID)
+                finalPath = self._readGlobalFileMutablyWithCache(fileStoreID, localFilePath, readerID)
             else:
-                return self._readGlobalFileWithCache(fileStoreID, localFilePath, symlink, readerID)
+                finalPath = self._readGlobalFileWithCache(fileStoreID, localFilePath, symlink, readerID)
         else:
             # We do not want to use the cache
-            return self._readGlobalFileWithoutCache(fileStoreID, localFilePath, mutable, symlink, readerID)
+            finalPath = self._readGlobalFileWithoutCache(fileStoreID, localFilePath, mutable, symlink, readerID)
+            
+        # Record access in case the job crashes and we have to log it
+        self.logAccess(fileStoreID, finalPath)
+        return finalPath
 
 
     def _readGlobalFileWithoutCache(self, fileStoreID, localFilePath, mutable, symlink, readerID):
@@ -1598,7 +1603,9 @@ class CachingFileStore(AbstractFileStore):
         if str(fileStoreID) in self.filesToDelete:
             # File has already been deleted
             raise FileNotFoundError('Attempted to read deleted file: {}'.format(fileStoreID))
-
+        
+        self.logAccess(fileStoreID)
+        
         # TODO: can we fulfil this from the cache if the file is in the cache?
         # I think we can because if a job is keeping the file data on disk due to having it open, it must be paying for it itself.
         return self.jobStore.readFileStream(fileStoreID)
