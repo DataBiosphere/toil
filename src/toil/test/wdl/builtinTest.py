@@ -232,7 +232,7 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
         self.assertRaises(AssertionError, transpose, [[0, 1, 2], [3, 4, 5, 6]])
 
     def testFn_Length(self):
-        """Test the wdl built-in functional equivalent of 'length()'."""
+        """Test the WDL 'length()' built-in."""
         self.assertEqual(3, length([1, 2, 3]))
         self.assertEqual(3, length(['a', 'b', 'c']))
         self.assertEqual(0, length([]))
