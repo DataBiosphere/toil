@@ -318,18 +318,18 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     def supportsAutoDeployment(cls):
         return False
 
-    def issueBatchJob(self, jobNode):
+    def issueBatchJob(self, jobDesc):
         # Avoid submitting internal jobs to the batch queue, handle locally
-        localID = self.handleLocalJob(jobNode)
+        localID = self.handleLocalJob(jobDesc)
         if localID:
             return localID
         else:
-            self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
+            self.checkResourceRequest(jobDesc.memory, jobDesc.cores, jobDesc.disk)
             jobID = self.getNextJobID()
             self.currentJobs.add(jobID)
-            self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.command, jobNode.jobName))
-            logger.debug("Issued the job command: %s with job id: %s and job name %s", jobNode.command, str(jobID),
-                         jobNode.jobName)
+            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, jobDesc.jobName))
+            logger.debug("Issued the job command: %s with job id: %s and job name %s", jobDesc.command, str(jobID),
+                         jobDesc.jobName)
         return jobID
 
     def killBatchJobs(self, jobIDs):

@@ -538,8 +538,6 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
                 dirPath = f.read()
         except IOError as e:
             if e.errno == errno.ENOENT:
-                if self._runningOnWorker():
-                    log.warning("Can't globalize module %r.", self)
                 return self
             else:
                 raise

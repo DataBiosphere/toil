@@ -118,11 +118,11 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
         raise NotImplementedError()
 
     @abstractmethod
-    def issueBatchJob(self, jobNode):
+    def issueBatchJob(self, jobDesc):
         """
         Issues a job with the specified command to the batch system and returns a unique jobID.
 
-        :param jobNode a toil.job.JobNode
+        :param jobDesc a toil.job.JobDescription
 
         :return: a unique jobID that can be used to reference the newly issued job
         :rtype: int
@@ -405,16 +405,16 @@ class BatchSystemLocalSupport(BatchSystemSupport):
             registry.defaultBatchSystem())()(
                 config, config.maxLocalJobs, maxMemory, maxDisk)
 
-    def handleLocalJob(self, jobNode):  # type: (JobNode) -> Optional[int]
+    def handleLocalJob(self, jobDesc):  # type: (JobDescription) -> Optional[int]
         """
         To be called by issueBatchJobs.
 
-        Returns the jobID if the jobNode has been submitted to the local queue,
+        Returns the jobID if the jobDesc has been submitted to the local queue,
         otherwise returns None
         """
         if (not self.config.runCwlInternalJobsOnWorkers
-                and jobNode.jobName.startswith(CWL_INTERNAL_JOBS)):
-            return self.localBatch.issueBatchJob(jobNode)
+                and jobDesc.jobName.startswith(CWL_INTERNAL_JOBS)):
+            return self.localBatch.issueBatchJob(jobDesc)
         else:
             return None
 

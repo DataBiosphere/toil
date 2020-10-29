@@ -33,7 +33,7 @@ from itertools import islice
 
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, NodeInfo
 from toil.provisioners.abstractProvisioner import Shape
-from toil.job import ServiceJobNode
+from toil.job import ServiceJobDescription
 from toil.common import defaultTargetTime
 
 logger = logging.getLogger(__name__)
@@ -423,7 +423,7 @@ class ClusterScaler(object):
         """
         Adds the shape of a completed job to the queue, allowing the scalar to use the last N
         completed jobs in factoring how many nodes are required in the cluster.
-        :param toil.job.JobNode job: The memory, core and disk requirements of the completed job
+        :param toil.job.JobDescription job: The description of the completed job
         :param int wallTime: The wall-time taken to complete the job in seconds.
         """
 
@@ -870,7 +870,7 @@ class ScalerThread(ExceptionalThread):
                     queuedJobShapes = [
                         Shape(wallTime=self.scaler.getAverageRuntime(
                             jobName=job.jobName,
-                            service=isinstance(job, ServiceJobNode)),
+                            service=isinstance(job, ServiceJobDescription)),
                             memory=job.memory,
                             cores=job.cores,
                             disk=job.disk,
