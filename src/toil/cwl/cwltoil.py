@@ -76,7 +76,7 @@ from cwltool.process import (shortname, fill_in_defaults, compute_checksums,
 from cwltool.secrets import SecretStore
 from cwltool.software_requirements import (
     DependenciesConfiguration, get_container_from_software_requirements)
-from cwltool.utils import aslist, convert_pathsep_to_unix, get_listing, normalizeFilesDirs, CWLObjectType
+from cwltool.utils import aslist, convert_pathsep_to_unix, get_listing, normalizeFilesDirs, CWLObjectType, CWLOutputAtomType
 from cwltool.mutation import MutationManager
 from cwltool.builder import content_limit_respected_read
 
@@ -861,12 +861,12 @@ def get_new_listings(fs_access, rec, recursive: bool = True) -> None:
     listing or seems to have been updated with more items.
     """
     if rec.get("class") != "Directory":
-        finddirs = []
+        finddirs = []  # type: List[CWLObjectType]
         visit_class(rec, ("Directory",), finddirs.append)
         for f in finddirs:
             get_new_listings(fs_access, f, recursive=recursive)
         return
-    listing = []
+    listing = []  # type: List[CWLOutputAtomType]
     loc = cast(str, rec["location"])
     for ld in fs_access.listdir(loc):
         parse = urllib.parse.urlparse(ld)
@@ -876,7 +876,7 @@ def get_new_listings(fs_access, rec, recursive: bool = True) -> None:
                 "class": "Directory",
                 "location": ld,
                 "basename": bn,
-            }
+            }  # type: MutableMapping[str, Any]
             if recursive:
                 get_new_listings(fs_access, ent, recursive)
             listing.append(ent)
