@@ -111,6 +111,7 @@ class SynthesizeWDL:
                     from toil.wdl.wdl_functions import ceil
                     from toil.wdl.wdl_functions import wdl_range
                     from toil.wdl.wdl_functions import transpose
+                    from toil.wdl.wdl_functions import length
                     import fnmatch
                     import textwrap
                     import subprocess

@@ -873,3 +873,15 @@ def transpose(in_array: List[List[Any]]) -> List[List[Any]]:
         assert len(arr) == len(in_array[0]), 'transpose() requires all collections have the same size!'
 
     return [list(i) for i in zip(*in_array)]
+
+
+def length(in_array: List[Any]) -> int:
+    """
+    Given an Array, the `length` function returns the number of elements in the Array
+    as an Int.
+    """
+    if not isinstance(in_array, list):
+        # Cromwell throws an exception for anything other than a WDL Array
+        raise WDLRuntimeError(f'length() requires ${in_array} to be a list!  Not: {type(in_array)}')
+
+    return len(in_array)
