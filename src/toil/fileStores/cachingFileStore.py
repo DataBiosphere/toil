@@ -170,8 +170,8 @@ class CachingFileStore(AbstractFileStore):
 
     """
 
-    def __init__(self, jobStore, jobGraph, localTempDir, waitForPreviousCommit):
-        super(CachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, waitForPreviousCommit)
+    def __init__(self, jobStore, jobDesc, localTempDir, waitForPreviousCommit):
+        super(CachingFileStore, self).__init__(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
 
         # For testing, we have the ability to force caching to be non-free, by never linking from the file store
         self.forceNonFreeCaching = False
@@ -197,8 +197,8 @@ class CachingFileStore(AbstractFileStore):
 
         # Since each worker has it's own unique CachingFileStore instance, and only one Job can run
         # at a time on a worker, we can track some stuff about the running job in ourselves.
-        self.jobName = str(self.jobGraph)
-        self.jobID = self.jobGraph.jobStoreID
+        self.jobName = str(self.jobDesc)
+        self.jobID = self.jobDesc.jobStoreID
         logger.debug('Starting job (%s) with ID (%s).', self.jobName, self.jobID)
 
         # When the job actually starts, we will fill this in with the job's disk requirement.
@@ -992,7 +992,8 @@ class CachingFileStore(AbstractFileStore):
         self._allocateSpaceForJob(self.jobDiskBytes)
         try:
             os.chdir(self.localTempDir)
-            yield
+            with super().open(job):
+                yield
         finally:
             # See how much disk space is used at the end of the job.
             # Not a real peak disk usage, but close enough to be useful for warning the user.
@@ -1031,7 +1032,7 @@ class CachingFileStore(AbstractFileStore):
         fileSize = os.stat(absLocalFileName).st_size
 
         # Work out who is making the file
-        creatorID = self.jobGraph.jobStoreID
+        creatorID = self.jobDesc.jobStoreID
 
         # Create an empty file to get an ID.
         # Make sure to pass along the file basename.
@@ -1110,18 +1111,22 @@ class CachingFileStore(AbstractFileStore):
             localFilePath = self.getLocalTempFileName()
 
         # Work out what job we are operating on behalf of
-        readerID = self.jobGraph.jobStoreID
+        readerID = self.jobDesc.jobStoreID
 
         if cache:
             # We want to use the cache
 
             if mutable:
-                return self._readGlobalFileMutablyWithCache(fileStoreID, localFilePath, readerID)
+                finalPath = self._readGlobalFileMutablyWithCache(fileStoreID, localFilePath, readerID)
             else:
-                return self._readGlobalFileWithCache(fileStoreID, localFilePath, symlink, readerID)
+                finalPath = self._readGlobalFileWithCache(fileStoreID, localFilePath, symlink, readerID)
         else:
             # We do not want to use the cache
-            return self._readGlobalFileWithoutCache(fileStoreID, localFilePath, mutable, symlink, readerID)
+            finalPath = self._readGlobalFileWithoutCache(fileStoreID, localFilePath, mutable, symlink, readerID)
+            
+        # Record access in case the job crashes and we have to log it
+        self.logAccess(fileStoreID, finalPath)
+        return finalPath
 
 
     def _readGlobalFileWithoutCache(self, fileStoreID, localFilePath, mutable, symlink, readerID):
@@ -1598,7 +1603,9 @@ class CachingFileStore(AbstractFileStore):
         if str(fileStoreID) in self.filesToDelete:
             # File has already been deleted
             raise FileNotFoundError('Attempted to read deleted file: {}'.format(fileStoreID))
-
+        
+        self.logAccess(fileStoreID)
+        
         # TODO: can we fulfil this from the cache if the file is in the cache?
         # I think we can because if a job is keeping the file data on disk due to having it open, it must be paying for it itself.
         return self.jobStore.readFileStream(fileStoreID)
@@ -1755,18 +1762,18 @@ class CachingFileStore(AbstractFileStore):
 
                 # Indicate any files that should be deleted once the update of
                 # the job wrapper is completed.
-                self.jobGraph.filesToDelete = list(self.filesToDelete)
+                self.jobDesc.filesToDelete = list(self.filesToDelete)
                 # Complete the job
-                self.jobStore.update(self.jobGraph)
+                self.jobStore.update(self.jobDesc)
                 # Delete any remnant jobs
                 list(map(self.jobStore.delete, self.jobsToDelete))
                 # Delete any remnant files
                 list(map(self.jobStore.deleteFile, self.filesToDelete))
                 # Remove the files to delete list, having successfully removed the files
                 if len(self.filesToDelete) > 0:
-                    self.jobGraph.filesToDelete = []
+                    self.jobDesc.filesToDelete = []
                     # Update, removing emptying files to delete
-                    self.jobStore.update(self.jobGraph)
+                    self.jobStore.update(self.jobDesc)
         except:
             self._terminateEvent.set()
             raise

@@ -806,12 +806,12 @@ def toilStageFiles(file_store: AbstractFileStore,
                 file_store.exportFile(FileID.unpack(local_file_path), destUrl)
             else:
                 if not os.path.exists(p.target) and p.type == "Directory":
-                    os.makedirs(p.target, 0o0755)
+                    os.makedirs(p.target)
                 if not os.path.exists(p.target) and p.type == "File":
-                    os.makedirs(os.path.dirname(p.target), 0o0755, exist_ok=True)
+                    os.makedirs(os.path.dirname(p.target), exist_ok=True)
                     file_store.exportFile(FileID.unpack(p.resolved[7:]), "file://" + p.target)
                 if not os.path.exists(p.target) and p.type == "CreateFile":
-                    os.makedirs(os.path.dirname(p.target), 0o0755, exist_ok=True)
+                    os.makedirs(os.path.dirname(p.target), exist_ok=True)
                     with open(p.target, "wb") as n:
                         n.write(p.resolved.encode("utf-8"))
 

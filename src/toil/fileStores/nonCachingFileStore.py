@@ -45,8 +45,8 @@ if sys.version_info[0] < 3:
     FileNotFoundError = OSError
 
 class NonCachingFileStore(AbstractFileStore):
-    def __init__(self, jobStore, jobGraph, localTempDir, waitForPreviousCommit):
-        super(NonCachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, waitForPreviousCommit)
+    def __init__(self, jobStore, jobDesc, localTempDir, waitForPreviousCommit):
+        super(NonCachingFileStore, self).__init__(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
         # This will be defined in the `open` method.
         self.jobStateFile = None
         self.localFileMap = defaultdict(list)
@@ -64,7 +64,8 @@ class NonCachingFileStore(AbstractFileStore):
                            self.jobName)
         try:
             os.chdir(self.localTempDir)
-            yield
+            with super().open(job):
+                yield
         finally:
             diskUsed = getDirSizeRecursively(self.localTempDir)
             logString = ("Job {jobName} used {percent:.2f}% ({humanDisk}B [{disk}B] used, "
@@ -87,7 +88,7 @@ class NonCachingFileStore(AbstractFileStore):
 
     def writeGlobalFile(self, localFileName, cleanup=False):
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
-        creatorID = self.jobGraph.jobStoreID
+        creatorID = self.jobDesc.jobStoreID
         fileStoreID = self.jobStore.writeFile(absLocalFileName, creatorID, cleanup)
         if absLocalFileName.startswith(self.localTempDir):
             # Only files in the appropriate directory should become local files
@@ -105,11 +106,13 @@ class NonCachingFileStore(AbstractFileStore):
 
         self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
         self.localFileMap[fileStoreID].append(localFilePath)
+        self.logAccess(fileStoreID, localFilePath)
         return localFilePath
 
     @contextmanager
     def readGlobalFileStream(self, fileStoreID):
         with self.jobStore.readFileStream(fileStoreID) as f:
+            self.logAccess(fileStoreID)
             yield f
 
     def exportFile(self, jobStoreFileID, dstUrl):
@@ -151,18 +154,18 @@ class NonCachingFileStore(AbstractFileStore):
         try:
             # Indicate any files that should be deleted once the update of
             # the job wrapper is completed.
-            self.jobGraph.filesToDelete = list(self.filesToDelete)
+            self.jobDesc.filesToDelete = list(self.filesToDelete)
             # Complete the job
-            self.jobStore.update(self.jobGraph)
+            self.jobStore.update(self.jobDesc)
             # Delete any remnant jobs
             list(map(self.jobStore.delete, self.jobsToDelete))
             # Delete any remnant files
             list(map(self.jobStore.deleteFile, self.filesToDelete))
             # Remove the files to delete list, having successfully removed the files
             if len(self.filesToDelete) > 0:
-                self.jobGraph.filesToDelete = []
+                self.jobDesc.filesToDelete = []
                 # Update, removing emptying files to delete
-                self.jobStore.update(self.jobGraph)
+                self.jobStore.update(self.jobDesc)
         except:
             self._terminateEvent.set()
             raise

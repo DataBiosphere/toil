@@ -18,6 +18,7 @@ from builtins import map
 from builtins import str
 from builtins import range
 from past.utils import old_div
+import collections
 import unittest
 import logging
 import os
@@ -31,6 +32,7 @@ from toil.leader import FailedJobsException
 from toil.lib.bioio import getTempFile
 from toil.job import Job, JobGraphDeadlockException, JobFunctionWrappingJob
 from toil.test import ToilTest, slow, travis_test
+import pytest
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +48,7 @@ class JobTest(ToilTest):
 
     @slow
     def testStatic(self):
-        """
+        r"""
         Create a DAG of jobs non-dynamically and run it. DAG is:
         
         A -> F
@@ -91,7 +93,7 @@ class JobTest(ToilTest):
     
     @travis_test
     def testStatic2(self):
-        """
+        r"""
         Create a DAG of jobs non-dynamically and run it. DAG is:
         
         A -> F
@@ -146,9 +148,11 @@ class JobTest(ToilTest):
                 self.fail()
     
     @travis_test
+    @pytest.mark.timeout(30)
     def testDAGConsistency(self):
         options = Job.Runner.getDefaultOptions(self._createTempDir() + '/jobStore')
         options.clean = 'always'
+        options.logLevel = 'debug'
         i = Job.wrapJobFn(parent)
         with Toil(options) as toil:
             try:
@@ -576,26 +580,31 @@ class JobTest(ToilTest):
         # Make the jobs
         jobs = [makeJob(str(i)) for i in range(nodeNumber)]
         
+        # Record predecessors for sampling
+        predecessors = collections.defaultdict(list)
+        
         # Make the edges
         for fNode, tNode in childEdges:
             jobs[fNode].addChild(jobs[tNode])
+            predecessors[jobs[tNode]].append(jobs[fNode])
         for fNode, tNode in followOnEdges:
             jobs[fNode].addFollowOn(jobs[tNode])
+            predecessors[jobs[tNode]].append(jobs[fNode])
             
         # Map of jobs to return values
         jobsToRvs = dict([(job, job.addService(TrivialService(job.rv())) if addServices else job.rv()) for job in jobs])
 
         def getRandomPredecessor(job):
-            predecessor = random.choice(list(job._directPredecessors))
-            while random.random() > 0.5 and len(predecessor._directPredecessors) > 0:
-                predecessor = random.choice(list(predecessor._directPredecessors))
+            predecessor = random.choice(list(predecessors[job]))
+            while random.random() > 0.5 and len(predecessors[predecessor]) > 0:
+                predecessor = random.choice(list(predecessors[predecessor]))
             return predecessor
 
         # Connect up set of random promises compatible with graph                                          
         while random.random() > 0.01:
             job = random.choice(list(jobsToPromisesMap.keys()))
             promises = jobsToPromisesMap[job]
-            if len(job._directPredecessors) > 0:
+            if len(predecessors[job]) > 0:
                 predecessor = getRandomPredecessor(job)
                 promises.append(jobsToRvs[predecessor])
 

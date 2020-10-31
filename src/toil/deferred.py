@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name module')):
     """
+    >>> from collections import defaultdict
     >>> df = DeferredFunction.create(defaultdict, None, {'x':1}, y=2)
     >>> df
     DeferredFunction(defaultdict, ...)

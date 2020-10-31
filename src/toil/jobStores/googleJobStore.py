@@ -32,7 +32,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobExceptio
                                              NoSuchFileException, NoSuchJobStoreException,
                                              JobStoreExistsException)
 from toil.jobStores.utils import WritablePipe, ReadablePipe
-from toil.jobGraph import JobGraph
+from toil.job import JobDescription
 log = logging.getLogger(__name__)
 
 GOOGLE_STORAGE = 'gs'
@@ -165,20 +165,20 @@ class GoogleJobStore(AbstractJobStore):
         # google freaks out if we call delete multiple times on the bucket obj, so after success
         # just set to None.
         self.bucket = None
-
-    def create(self, jobNode):
-        jobStoreID = self._newJobID()
-        log.debug("Creating job %s for '%s'",
-                  jobStoreID, '<no command>' if jobNode.command is None else jobNode.command)
-        job = JobGraph.fromJobNode(jobNode, jobStoreID=jobStoreID, tryCount=self._defaultTryCount())
-        if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
-            self._batchedJobGraphs.append(job)
-        else:
-            self._writeString(jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL))  # UPDATE: bz2.compress(
-        return job
-
+        
     def _newJobID(self):
         return "job"+str(uuid.uuid4())
+
+    def assignID(self, jobDescription):
+        jobStoreID = self._newJobID()
+        log.debug("Assigning ID to job %s for '%s'",
+                  jobStoreID, '<no command>' if jobDescription.command is None else jobDescription.command)
+        jobDescription.jobStoreID = jobStoreID
+
+    def create(self, jobDescription):
+        # TODO: we don't implement batching, but we probably should.
+        self._writeString(jobDescription.jobStoreID, pickle.dumps(jobDescription, protocol=pickle.HIGHEST_PROTOCOL))
+        return jobDescription
 
     @googleRetry
     def exists(self, jobStoreID):
@@ -199,7 +199,13 @@ class GoogleJobStore(AbstractJobStore):
             jobString = self._readContents(jobStoreID)
         except NoSuchFileException:
             raise NoSuchJobException(jobStoreID)
-        return pickle.loads(jobString)  # UPDATE bz2.decompress(
+        job = pickle.loads(jobString) 
+        # It is our responsibility to make sure that the JobDescription is
+        # connected to the current config on this machine, for filling in
+        # defaults. The leader and worker should never see config-less
+        # JobDescriptions.
+        job.assignConfig(self.config)
+        return job
 
     def update(self, job):
         self._writeString(job.jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL), update=True)
