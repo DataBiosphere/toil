@@ -689,11 +689,18 @@ class SynthesizeWDL:
                 var = i[0]
                 var_type = i[1]
                 docker_bool = str(self.needsdocker(job))
-                # [!!] TODO: the file needs to be read here, put this in `parse_value_from_type()`?
-                if var_type == 'File':
-                    fn_section += '        {} = process_and_read_file(abspath_file(self.id_{}, _toil_wdl_internal__current_working_dir), tempDir, fileStore, docker={})\n'.format(var, var, docker_bool)
-                else:
-                    fn_section += '        {} = self.id_{}\n'.format(var, var)
+
+                args = ', '.join([f'self.id_{var}',
+                                  f'var_type={repr(var_type)}',
+                                  'read_in_file=True',
+                                  'file_store=fileStore',
+                                  'cwd=_toil_wdl_internal__current_working_dir',
+                                  'temp_dir=tempDir',
+                                  f'docker={docker_bool}'])
+
+                # inputs may be parsed again if they are from the workflow, but this time we need
+                # to read the input files to our tempDir.
+                fn_section += '        {} = parse_value_from_type({})\n'.format(var, args)
 
         return fn_section
 
@@ -791,7 +798,7 @@ class SynthesizeWDL:
         if 'raw_commandline' in self.tasks_dictionary[job]:
             for cmd in self.tasks_dictionary[job]['raw_commandline']:
                 if not cmd.startswith("r'''"):
-                    # [!!] TODO: ?
+                    # [!!] TODO: remove?
                     cmd = 'str({i} if not isinstance({i}, tuple) else process_and_read_file({i}, tempDir, fileStore)).strip("{nl}")'.format(i=cmd, nl=r"\n")
                 fn_section = fn_section + heredoc_wdl('''
                         try:

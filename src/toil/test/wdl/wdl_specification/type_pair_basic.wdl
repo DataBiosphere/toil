@@ -29,10 +29,10 @@ task copy_output {
 
   command {
     cp ${write_json([
-                      test_pair_from_json,
-                      test_pair,
-                      test_pair_pair_from_json,
-                      test_pair_pair])} output.txt
+                      read_lines(test_pair_from_json.right),
+                      read_lines(test_pair.right),
+                      read_lines(test_pair_pair_from_json.right.right),
+                      read_lines(test_pair_pair.right.right)])} output.txt
   }
 
  output {

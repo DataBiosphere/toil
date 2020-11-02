@@ -310,8 +310,18 @@ class WdlLanguageSpecWorkflowsTest(WdlWorkflowsTest):
         cls.test_path = os.path.abspath("src/toil/test/wdl/wdl_specification")
 
     def test_type_pair(self):
+        # NOTE: these tests depend on read_lines() and write_json().
+
+        # the basic workflow tests the Pair type with file input from JSON and WDL.
+        # contents are read from 'src/toil/test/wdl/testfiles/test.json' and 'src/toil/test/wdl/test.csv'
+        expected_result = '[' + ','.join([
+            '["{","  \\"key1\\": \\"value1\\",","  \\"key2\\": \\"value2\\"","}"]',
+            '["{","  \\"key1\\": \\"value1\\",","  \\"key2\\": \\"value2\\"","}"]',
+            '["1,2,3","4,5,6","7,8,9"]',
+            '["1,2,3","4,5,6","7,8,9"]']) + ']'
+        self.check_function('type_pair', cases=['basic'], expected_result=expected_result)
+
         # TODO: make these tests pass.
-        # self.check_function('type_pair', cases=['basic'], expected_result='')
         # self.check_function('type_pair', cases=['complex'], expected_result='')
         pass
 

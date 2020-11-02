@@ -48,8 +48,6 @@ class WDLPair:
     https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#pair-literals
     """
 
-    # TODO: figure out placement for these classes.
-
     def __init__(self, left: Any, right: Any):
         self.left = left
         self.right = right
@@ -269,11 +267,16 @@ def process_infile(f, fileStore):
 
 def parse_value_from_type(in_data: Any,
                           var_type: str,
-                          from_json: bool = False,
+                          read_in_file: bool = False,
+                          file_store: Optional[AbstractFileStore] = None,
                           **kwargs):
     """
     Calls at runtime. This function parses and validates input (from JSON or WDL)
     from its type. File import is also handled.
+
+    For expressions defined in a task block, set `read_in_file` to True to process
+    and read all encountered files. This requires `cwd`, `temp_dir`, and `docker`
+    to be passed into this function.
     """
 
     def validate(val: bool, msg: str):
@@ -289,38 +292,41 @@ def parse_value_from_type(in_data: Any,
 
     if var_type == 'File':
         # in_data can be an array of files
-        return process_infile(in_data, kwargs.get('file_store', None))
+        if read_in_file:
+            return process_and_read_file(f=abspath_file(f=in_data, cwd=kwargs.get('cwd', None)),
+                                         tempDir=kwargs.get('temp_dir', None),
+                                         fileStore=file_store,
+                                         docker=kwargs.get('docker', False))
+
+        return process_infile(in_data, file_store)
 
     elif isinstance(var_type, WDLArrayType):
         validate(isinstance(in_data, list), f'Expected list, but got {type(in_data)}')
-        return [parse_value_from_type(i, var_type.element, from_json, **kwargs) for i in in_data]
+        return [parse_value_from_type(i, var_type.element, read_in_file, file_store, **kwargs) for i in in_data]
 
     elif isinstance(var_type, WDLPairType):
 
         if isinstance(in_data, WDLPair):
-            # return if we already parsed it.
-            return in_data
+            left = in_data.left
+            right = in_data.right
 
-        if from_json:
-            # this should be a dictionary w/ format: {"left": left, "right": right}
-            validate(isinstance(in_data, dict), f'Expected dict, but got {type(in_data)}')
+        elif isinstance(in_data, dict):
             validate('left' in in_data and 'right' in in_data, f'Pair needs \'left\' and \'right\' keys')
 
             left = in_data.get('left')
             right = in_data.get('right')
         else:
-            # tuple
             validate(isinstance(in_data, tuple) and len(in_data) == 2, 'Only support Pair len == 2')
             left, right = in_data
 
-        return WDLPair(parse_value_from_type(left, var_type.left, from_json, **kwargs),
-                       parse_value_from_type(right, var_type.right, from_json, **kwargs))
+        return WDLPair(parse_value_from_type(left, var_type.left, read_in_file, file_store, **kwargs),
+                       parse_value_from_type(right, var_type.right, read_in_file, file_store, **kwargs))
 
     elif isinstance(var_type, WDLMapType):
         validate(isinstance(in_data, dict), f'Expected dict, but got {type(in_data)}')
 
         return {k:
-                parse_value_from_type(v, var_type.value, from_json, **kwargs)
+                parse_value_from_type(v, var_type.value, read_in_file, file_store, **kwargs)
                 for k, v in in_data.items()}
 
     else:

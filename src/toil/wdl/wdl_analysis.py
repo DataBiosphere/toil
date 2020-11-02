@@ -842,7 +842,7 @@ class AnalyzeWDL:
         if isinstance(lhsAST, wdl_parser.Terminal):
             es = es + lhsAST.source_string
         elif isinstance(lhsAST, wdl_parser.Ast):
-            raise NotImplementedError
+            es = es + self.parse_declaration_expressn(lhsAST, es)
         elif isinstance(lhsAST, wdl_parser.AstList):
             raise NotImplementedError
 
@@ -856,7 +856,7 @@ class AnalyzeWDL:
         if isinstance(rhsAST, wdl_parser.Terminal):
             es = es + rhsAST.source_string
         elif isinstance(rhsAST, wdl_parser.Ast):
-            raise NotImplementedError
+            es = es + self.parse_declaration_expressn(rhsAST, es)
         elif isinstance(rhsAST, wdl_parser.AstList):
             raise NotImplementedError
 
