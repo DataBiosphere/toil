@@ -22,40 +22,51 @@ wdllogger = logging.getLogger(__name__)
 
 
 class WDLType(str):
-    """ A string representation of a WDL type."""
+    """
+    Represents a primitive or compound WDL type:
 
+    https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#types
+    """
     # TODO: figure out placement for these classes.
-    # extend str for now to maintain consistency
-    pass
 
 
 class WDLArrayType(WDLType):
     def __new__(cls, element: str):
-        return super(WDLArrayType, cls).__new__(cls, f'Array[{element}]')
+        # use the element type instead so that type of Array[Array[File]] == 'File'.
+        return super(WDLArrayType, cls).__new__(cls, element)
 
-    def __init__(self, element: str):
+    def __init__(self, element: WDLType):
         super(WDLArrayType, self).__init__()
         self.element = element
+
+    def __repr__(self):
+        return f'WDLArrayType({repr(self.element)})'
 
 
 class WDLPairType(WDLType):
     def __new__(cls, left: str, right: str):
-        return super(WDLPairType, cls).__new__(cls, f'Pair[{left}, {right}]')
+        return super(WDLPairType, cls).__new__(cls, 'Pair')
 
     def __init__(self, left: str, right: str):
         super(WDLPairType, self).__init__()
         self.left = left
         self.right = right
 
+    def __repr__(self):
+        return f'WDLPairType({repr(self.left)}, {repr(self.right)})'
+
 
 class WDLMapType(WDLType):
     def __new__(cls, key: str, value: str):
-        return super(WDLMapType, cls).__new__(cls, f'Map[{key}, {value}]')
+        return super(WDLMapType, cls).__new__(cls, 'Map')
 
     def __init__(self, key: str, value: str):
         super(WDLMapType, self).__init__()
         self.key = key
         self.value = value
+
+    def __repr__(self):
+        return f'WDLMapType({repr(self.key)}, {repr(self.value)})'
 
 
 class AnalyzeWDL:
@@ -660,23 +671,33 @@ class AnalyzeWDL:
         :param typeAST:
         :return:
         """
-        # TODO: figure out how to modify this without breaking everything
         # TODO: update docstring
-        # if Boolean, Float, Int, File, or String:
-        #   return as normal
-        #
-        # if Array, Pair, or Map:
-        #   return custom WDLType object
 
         if isinstance(typeAST, wdl_parser.Terminal):
             return typeAST.source_string
         elif isinstance(typeAST, wdl_parser.Ast):
             if typeAST.name == 'Type':
-                return self.parse_declaration_type(typeAST.attr('subtype'))
+                subtype = typeAST.attr('subtype')
             elif typeAST.name == 'OptionalType':
-                return self.parse_declaration_type(typeAST.attr('innerType'))
+                subtype = typeAST.attr('innerType')
             else:
                 raise NotImplementedError
+
+            if isinstance(subtype, wdl_parser.AstList):
+                # we're looking at a compound type
+                name = self.parse_declaration_type(typeAST.attr('name'))
+                elements = [self.parse_declaration_type(element) for element in subtype]
+
+                if name == 'Array':
+                    return WDLArrayType(*elements)
+                elif name == 'Pair':
+                    return WDLPairType(*elements)
+                elif name == 'Map':
+                    return WDLMapType(*elements)
+
+            return self.parse_declaration_type(subtype)
+
+        # this should be removed eventually
         elif isinstance(typeAST, wdl_parser.AstList):
             for ast in typeAST:
                 # TODO only ever seen one element lists.
@@ -825,7 +846,12 @@ class AnalyzeWDL:
         elif isinstance(lhsAST, wdl_parser.AstList):
             raise NotImplementedError
 
-        es = es + '_'
+        # hack-y way to make sure pair.left and pair.right are parsed correctly.
+        if isinstance(rhsAST, wdl_parser.Terminal) and (
+                rhsAST.source_string == 'left' or rhsAST.source_string == 'right'):
+            es = es + '.'
+        else:
+            es = es + '_'
 
         if isinstance(rhsAST, wdl_parser.Terminal):
             es = es + rhsAST.source_string

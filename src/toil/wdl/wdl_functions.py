@@ -269,8 +269,8 @@ def process_infile(f, fileStore):
 
 def parse_value_from_type(in_data: Any,
                           var_type: str,
-                          from_json: Optional[bool] = False,
-                          file_store: Optional[AbstractFileStore] = None):
+                          from_json: bool = False,
+                          **kwargs):
     """
     Calls at runtime. This function parses and validates input (from JSON or WDL)
     from its type. File import is also handled.
@@ -281,16 +281,19 @@ def parse_value_from_type(in_data: Any,
             raise WDLRuntimeError(f'Invalid input: {msg}')
 
     if not in_data:  # optional type?
+        if var_type == 'File':
+            # in the case of "optional" files (same treatment in 'process_and_read_file()')
+            # TODO: handle this at compile time, not here
+            return ''
         return in_data
 
     if var_type == 'File':
-        return process_single_infile(in_data, file_store)
+        # in_data can be an array of files
+        return process_infile(in_data, kwargs.get('file_store', None))
 
     elif isinstance(var_type, WDLArrayType):
         validate(isinstance(in_data, list), f'Expected list, but got {type(in_data)}')
-
-        # recursively parse the elements of the array
-        return [parse_value_from_type(i, var_type.element, from_json, file_store) for i in in_data]
+        return [parse_value_from_type(i, var_type.element, from_json, **kwargs) for i in in_data]
 
     elif isinstance(var_type, WDLPairType):
 
@@ -310,16 +313,14 @@ def parse_value_from_type(in_data: Any,
             validate(isinstance(in_data, tuple) and len(in_data) == 2, 'Only support Pair len == 2')
             left, right = in_data
 
-        return WDLPair(
-            parse_value_from_type(left, var_type.left, from_json, file_store),
-            parse_value_from_type(right, var_type.right, from_json, file_store))
+        return WDLPair(parse_value_from_type(left, var_type.left, from_json, **kwargs),
+                       parse_value_from_type(right, var_type.right, from_json, **kwargs))
 
     elif isinstance(var_type, WDLMapType):
         validate(isinstance(in_data, dict), f'Expected dict, but got {type(in_data)}')
 
-        # recursively parse the elements of the dict
-        return {parse_value_from_type(k, var_type.key, from_json, file_store):
-                parse_value_from_type(v, var_type.value, from_json, file_store)
+        return {k:
+                parse_value_from_type(v, var_type.value, from_json, **kwargs)
                 for k, v in in_data.items()}
 
     else:

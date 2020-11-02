@@ -78,7 +78,12 @@ class SynthesizeWDL:
                     from toil.job import Job
                     from toil.common import Toil
                     from toil.lib.docker import apiDockerCall
+                    from toil.wdl.wdl_analysis import WDLType
+                    from toil.wdl.wdl_analysis import WDLArrayType
+                    from toil.wdl.wdl_analysis import WDLPairType
+                    from toil.wdl.wdl_analysis import WDLMapType
                     from toil.wdl.wdl_functions import generate_docker_bashscript_file
+                    from toil.wdl.wdl_functions import parse_value_from_type
                     from toil.wdl.wdl_functions import generate_stdout_file
                     from toil.wdl.wdl_functions import select_first
                     from toil.wdl.wdl_functions import sub
@@ -187,6 +192,7 @@ class SynthesizeWDL:
         for wfname, wf in iteritems(self.workflows_dictionary):
             if 'wf_declarations' in wf:
                 for var, var_expressn in iteritems(wf['wf_declarations']):
+                    var_type = var_expressn['type']
 
                     # check the json file for the expression's value
                     # this is a higher priority and overrides anything written in the .wdl
@@ -195,18 +201,18 @@ class SynthesizeWDL:
                         var_expressn['value'] = json_expressn
 
                     # empty string
-                    if not var_expressn['value'] and (var_expressn['type'] in ['String', 'File']):
+                    if not var_expressn['value'] and (var_type in ['String', 'File']):
                         main_section += '        {} = ""\n'.format(var)
                     # None
-                    elif var_expressn['value'] is None and not (var_expressn['type'] in ['String', 'File']):
+                    elif var_expressn['value'] is None and not (var_type in ['String', 'File']):
                         main_section += '        {} = None\n'.format(var)
-                    # import filepath into jobstore
-                    # [!!] TODO: this only works for File, Array[File], etc. But not Pair[File, File], etc.
-                    elif var_expressn['value'] and (var_expressn['type'] == 'File'):
-                        main_section += '        {} = process_infile({}, fileStore)\n'.format(var, var_expressn['value'])
-                    # normal declaration
+                    # normal declaration: parse input and import filepath into jobstore
                     else:
-                        main_section += '        {} = {}\n'.format(var, var_expressn['value'])
+                        parsed_value = 'parse_value_from_type({}, var_type={}, from_json={}, file_store=fileStore)' \
+                            .format(var_expressn['value'], repr(var_type), json_expressn is not None)
+
+                        main_section += '        {} = {}\n'.format(var, parsed_value)
+
         return main_section
 
     def write_main_jobwrappers(self):
@@ -683,7 +689,7 @@ class SynthesizeWDL:
                 var = i[0]
                 var_type = i[1]
                 docker_bool = str(self.needsdocker(job))
-                # [!!] TODO: this only works for File, Array[File], etc. But not Pair[File, File], etc.
+                # [!!] TODO: the file needs to be read here, put this in `parse_value_from_type()`?
                 if var_type == 'File':
                     fn_section += '        {} = process_and_read_file(abspath_file(self.id_{}, _toil_wdl_internal__current_working_dir), tempDir, fileStore, docker={})\n'.format(var, var, docker_bool)
                 else:
