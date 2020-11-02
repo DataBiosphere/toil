@@ -69,8 +69,8 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       region_to_bucket_location, copyKeyMultipart,
                                       uploadFromPath, chunkedFileUpload, fileSizeAndTime)
 from toil.jobStores.utils import WritablePipe, ReadablePipe, ReadableTransformingPipe
-from toil.job import JobDescription
 import toil.lib.encryption as encryption
+from toil.lib.ec2nodes import EC2Regions
 
 # Make sure to use credential caching when talking to Amazon via boto3
 # See https://github.com/boto/botocore/pull/1338/
@@ -119,6 +119,9 @@ class AWSJobStore(AbstractJobStore):
         """
         super(AWSJobStore, self).__init__()
         region, namePrefix = locator.split(':')
+        regions = EC2Regions.keys()
+        if region not in regions:
+            raise ValueError(f'Region "{region}" is not one of: {regions}')
         if not self.bucketNameRe.match(namePrefix):
             raise ValueError("Invalid name prefix '%s'. Name prefixes must contain only digits, "
                              "hyphens or lower-case letters and must not start or end in a "

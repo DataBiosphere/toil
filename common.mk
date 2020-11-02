@@ -3,7 +3,6 @@
 # Configure how toil runs in different environments.  For more detailed descriptions, see:
 #     https://toil.readthedocs.io/en/latest/appendices/environment_vars.html
 SHELL=bash
-python=python
 
 ############
 ### MAIN ###
@@ -15,7 +14,7 @@ python=python
 # TODO: Add and link a better readthedocs for the toil appliance
 export TOIL_DOCKER_REGISTRY?=quay.io/ucsc_cgl
 export TOIL_DOCKER_NAME?=toil
-export TOIL_DOCKER_TAG?=$(shell $(python) version_template.py dockerTag)
+export TOIL_DOCKER_TAG?=$(shell python version_template.py dockerTag)
 export TOIL_APPLIANCE_SELF?=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(TOIL_DOCKER_TAG)
 
 # TOIL_CHECK_ENV=''  # Determines whether toil refers to the same virtualenv paths it spawned from (across machines)
