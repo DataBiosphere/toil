@@ -10,40 +10,48 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-#
+
 
 def _gridengineBatchSystemFactory():
     from toil.batchSystems.gridengine import GridEngineBatchSystem
     return GridEngineBatchSystem
 
+
 def _parasolBatchSystemFactory():
     from toil.batchSystems.parasol import ParasolBatchSystem
     return ParasolBatchSystem
+
 
 def _lsfBatchSystemFactory():
     from toil.batchSystems.lsf import LSFBatchSystem
     return LSFBatchSystem
 
+
 def _singleMachineBatchSystemFactory():
     from toil.batchSystems.singleMachine import SingleMachineBatchSystem
     return SingleMachineBatchSystem
+
 
 def _mesosBatchSystemFactory():
     from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
     return MesosBatchSystem
 
+
 def _slurmBatchSystemFactory():
     from toil.batchSystems.slurm import SlurmBatchSystem
     return SlurmBatchSystem
+
 
 def _torqueBatchSystemFactory():
     from toil.batchSystems.torque import TorqueBatchSystem
     return TorqueBatchSystem
 
+
 def _htcondorBatchSystemFactory():
     from toil.batchSystems.htcondor import HTCondorBatchSystem
     return HTCondorBatchSystem
-    
+
+
 def _kubernetesBatchSystemFactory():
     from toil.batchSystems.kubernetes import KubernetesBatchSystem
     return KubernetesBatchSystem
@@ -52,7 +60,7 @@ def _kubernetesBatchSystemFactory():
 _DEFAULT_REGISTRY = {
     'parasol'        : _parasolBatchSystemFactory,
     'single_machine' : _singleMachineBatchSystemFactory,
-    'grid_engine'     : _gridengineBatchSystemFactory,
+    'grid_engine'    : _gridengineBatchSystemFactory,
     'lsf'            : _lsfBatchSystemFactory,
     'mesos'          : _mesosBatchSystemFactory,
     'slurm'          : _slurmBatchSystemFactory,
@@ -76,18 +84,23 @@ _UNIQUE_NAME = {
 _batchSystemRegistry = _DEFAULT_REGISTRY.copy()
 _batchSystemNames = set(_UNIQUE_NAME)
 
+
 def addBatchSystemFactory(key, batchSystemFactory):
     _batchSystemNames.add(key)
     _batchSystemRegistry[key] = batchSystemFactory
 
+
 def batchSystemFactoryFor(batchSystem):
-    return _batchSystemRegistry[batchSystem ]
+    return _batchSystemRegistry[batchSystem]
+
 
 def defaultBatchSystem():
     return 'single_machine'
 
+
 def uniqueNames():
     return list(_batchSystemNames)
+
 
 def batchSystems():
     list(set(_batchSystemRegistry.values()))
