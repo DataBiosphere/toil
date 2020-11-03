@@ -87,10 +87,10 @@ red=\033[0;31m
 cyan=\033[0;36m
 
 develop: check_venv
-	$(pip) install -e .$(extras)
+	pip install -e .$(extras)
 
 clean_develop: check_venv
-	- $(pip) uninstall -y toil
+	- pip uninstall -y toil
 	- rm -rf src/*.egg-info
 	- rm src/toil/version.py
 
