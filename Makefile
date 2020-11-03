@@ -15,7 +15,7 @@ include common.mk
 
 define help
 
-Supported targets: prepare, develop, docs, sdist, clean, test, tests, docker and push_docker.
+Supported targets: prepare, develop, docs, sdist, clean, test, docker, and push_docker.
 
 Please note that all build targets require a virtualenv to be active.
 
@@ -47,16 +47,11 @@ set the 'tests' variable to run a particular test, e.g.
 
 	make test tests=src/toil/test/sort/sortTest.py::SortTest::testSort
     
-The 'test_offline' target is similar, but runs on;y tests that don't need
-Internet or Docker by default. You can configure the tests it runs with the
-'tests_local' variable:
+The 'test_offline' target is similar, but runs only tests that don't need
+Internet or Docker by default.  The 'test_offline' target takes the same tests
+argument as the 'test' target.
 
-    make test_offline tests_local=src/toil/test/src/threadingTest.py
-
-The 'integration_test' target runs toil's integration tests. These are more thorough but also
-more costly than the regular unit tests. For the AWS integration tests to run, the environment
-variable 'TOIL_AWS_KEYNAME' must be set. This user will be charged for expenses accrued during the
-test.
+    make test_offline tests=src/toil/test/src/threadingTest.py
 
 The 'docker' target builds the Docker images that make up the Toil appliance. You may set the
 TOIL_DOCKER_REGISTRY variable to override the default registry that the 'push_docker' target pushes
@@ -72,9 +67,7 @@ requires the TOIL_DOCKER_REGISTRY variable to be set to a value other than the d
 accidentally pushing to the official Docker registry for Toil.
 
 The TOIL_DOCKER_NAME environment variable can be set to customize the appliance image name that
-is created by the 'docker' target and pushed by the 'push_docker' target. The Toil team\'s
-continuous integration system overrides this variable to avoid conflicts between concurrently
-executing builds for the same revision, e.g. toil-pr and toil-it.
+is created by the 'docker' target and pushed by the 'push_docker' target.
 
 endef
 export help
