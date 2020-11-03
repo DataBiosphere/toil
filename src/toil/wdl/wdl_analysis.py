@@ -664,14 +664,12 @@ class AnalyzeWDL:
         Types are: Boolean, Float, Int, File, String, and Array[subtype].
         OptionalTypes are: Boolean?, Float?, Int?, File?, String?, and Array[subtype]?.
 
-        Python is not typed, so we don't need typing except to identify type: "File",
-        which Toil needs to import, so we recursively travel down to the innermost
-        type which will tell us if the variables are files that need importing.
+        A string is returned. For compound types, a `WDLType` str is returned instead,
+        with its subtype(s) stored as attributes.
 
         :param typeAST:
         :return:
         """
-        # TODO: update docstring
 
         if isinstance(typeAST, wdl_parser.Terminal):
             return typeAST.source_string
@@ -694,7 +692,9 @@ class AnalyzeWDL:
                     return WDLPairType(*elements)
                 elif name == 'Map':
                     return WDLMapType(*elements)
-
+                # # custom type?
+                # else:
+                #     pass
             return self.parse_declaration_type(subtype)
 
         # this should be removed eventually

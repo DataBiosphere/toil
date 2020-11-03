@@ -6,7 +6,7 @@ import shutil
 import uuid
 from typing import Optional, List
 
-from toil.wdl.wdl_functions import sub, WDLPair
+from toil.wdl.wdl_functions import sub
 from toil.wdl.wdl_functions import ceil
 from toil.wdl.wdl_functions import floor
 from toil.wdl.wdl_functions import read_lines
@@ -22,6 +22,8 @@ from toil.wdl.wdl_functions import write_tsv
 from toil.wdl.wdl_functions import write_json
 from toil.wdl.wdl_functions import write_map
 from toil.wdl.wdl_functions import transpose
+
+from toil.wdl.wdl_functions import WDLPair
 
 from toil.version import exactPython
 from toil.test import ToilTest
@@ -310,11 +312,16 @@ class WdlLanguageSpecWorkflowsTest(WdlWorkflowsTest):
         cls.test_path = os.path.abspath("src/toil/test/wdl/wdl_specification")
 
     def test_type_pair(self):
-        # NOTE: these tests depend on read_lines() and write_json().
+        # NOTE: these tests depend on read_lines(), write_json(), and select_first().
 
         expected_result = '[23,"twenty-three","a.bai",{"left":23,"right":"twenty-three"}]'
         self.check_function('type_pair', cases=['basic'], expected_result=expected_result)
 
+        # tests if files from the pair type are correctly imported.
+        # the array of three arrays consists content from:
+        # 1. src/toil/test/wdl/testfiles/test_string.txt        -> 'A whale of a Tale.'
+        # 2. src/toil/test/wdl/testfiles/test_boolean.txt       -> 'true'
+        # 3. src/toil/test/wdl/testfiles/test_int.txt           -> '11'
         expected_result = '[["A Whale of a Tale."],["true"],["11"]]'
         self.check_function('type_pair', cases=['with_files'], expected_result=expected_result)
 

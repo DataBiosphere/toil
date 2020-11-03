@@ -208,8 +208,8 @@ class SynthesizeWDL:
                         main_section += '        {} = None\n'.format(var)
                     # normal declaration: parse input and import filepath into jobstore
                     else:
-                        parsed_value = 'parse_value_from_type({}, var_type={}, from_json={}, file_store=fileStore)' \
-                            .format(var_expressn['value'], repr(var_type), json_expressn is not None)
+                        parsed_value = 'parse_value_from_type({}, var_type={}, file_store=fileStore)'.format(
+                            var_expressn['value'], repr(var_type))
 
                         main_section += '        {} = {}\n'.format(var, parsed_value)
 
@@ -798,7 +798,6 @@ class SynthesizeWDL:
         if 'raw_commandline' in self.tasks_dictionary[job]:
             for cmd in self.tasks_dictionary[job]['raw_commandline']:
                 if not cmd.startswith("r'''"):
-                    # [!!] TODO: remove?
                     cmd = 'str({i} if not isinstance({i}, tuple) else process_and_read_file({i}, tempDir, fileStore)).strip("{nl}")'.format(i=cmd, nl=r"\n")
                 fn_section = fn_section + heredoc_wdl('''
                         try:

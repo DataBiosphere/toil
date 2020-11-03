@@ -31,6 +31,6 @@ task copy_output {
   }
 
  output {
-    File out = 'output.txt'
+    File the_output = 'output.txt'
  }
 }

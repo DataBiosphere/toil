@@ -47,6 +47,7 @@ class WDLPair:
     Represent a WDL Pair literal defined at
     https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#pair-literals
     """
+    # TODO: figure out placement for these classes.
 
     def __init__(self, left: Any, right: Any):
         self.left = left
@@ -274,9 +275,9 @@ def parse_value_from_type(in_data: Any,
     Calls at runtime. This function parses and validates input (from JSON or WDL)
     from its type. File import is also handled.
 
-    For expressions defined in a task block, set `read_in_file` to True to process
-    and read all encountered files. This requires `cwd`, `temp_dir`, and `docker`
-    to be passed into this function.
+    For values set in a task block, set `read_in_file` to True to process and read
+    all encountered files. This requires `cwd`, `temp_dir`, and `docker` to be
+    passed into this function.
     """
 
     def validate(val: bool, msg: str):
@@ -304,7 +305,7 @@ def parse_value_from_type(in_data: Any,
         validate(isinstance(in_data, list), f'Expected list, but got {type(in_data)}')
         return [parse_value_from_type(i, var_type.element, read_in_file, file_store, **kwargs) for i in in_data]
 
-    elif isinstance(var_type, WDLPairType):
+    elif var_type == 'Pair':
 
         if isinstance(in_data, WDLPair):
             left = in_data.left
@@ -312,7 +313,6 @@ def parse_value_from_type(in_data: Any,
 
         elif isinstance(in_data, dict):
             validate('left' in in_data and 'right' in in_data, f'Pair needs \'left\' and \'right\' keys')
-
             left = in_data.get('left')
             right = in_data.get('right')
         else:
@@ -322,7 +322,7 @@ def parse_value_from_type(in_data: Any,
         return WDLPair(parse_value_from_type(left, var_type.left, read_in_file, file_store, **kwargs),
                        parse_value_from_type(right, var_type.right, read_in_file, file_store, **kwargs))
 
-    elif isinstance(var_type, WDLMapType):
+    elif var_type == 'Map':
         validate(isinstance(in_data, dict), f'Expected dict, but got {type(in_data)}')
 
         return {k:
