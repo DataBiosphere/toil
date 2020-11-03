@@ -1032,9 +1032,6 @@ class AnalyzeWDL:
         var_map['type'] = var_type
         var_map['value'] = var_expressn
 
-        # print(var_map)
-        print(var_type)
-
         return var_name, var_map
 
     def parse_workflow_call_taskname(self, i):

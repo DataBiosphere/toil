@@ -1,55 +1,23 @@
 {
-  "typePairWorkflow.test_pair_from_json": {
-    "left": "test_file",
-    "right": "src/toil/test/wdl/testfiles/test.json"
+  "typePairWorkflow.test_pair": {
+    "left": 23,
+    "right": "twenty-three"
   },
-  "typePairWorkflow.test_pair_pair_from_json": {
-    "left": "test_file",
+  "typePairWorkflow.test_pair_pair": {
+    "left": "a",
     "right": {
-      "left": "src/toil/test/wdl/test.tsv",
-      "right": "src/toil/test/wdl/test.csv"
+      "left": "a.bam",
+      "right": "a.bai"
     }
   },
-  "typePairWorkflow.test_array_pair_from_json": [
-    {
-      "left": "tsv_file",
-      "right": "src/toil/test/wdl/test.tsv"
-    },
-    {
-      "left": "csv_file",
-      "right": "src/toil/test/wdl/test.csv"
-    }
-  ],
-  "typePairWorkflow.test_array_pair_pair_from_json": [
+  "typePairWorkflow.test_pair_file": {
+    "left": "whale",
+    "right": "src/toil/test/wdl/testfiles/test_string.txt"
+  },
+  "typePairWorkflow.test_array_pair_file": [
     {
       "left": "test_A",
-      "right": {
-        "left": "src/toil/test/wdl/test.tsv",
-        "right": "src/toil/test/wdl/test.csv"
-      }
-    },
-    {
-      "left": "test_B",
-      "right": {
-        "left": "src/toil/test/wdl/testfiles/test_boolean.txt",
-        "right": "src/toil/test/wdl/testfiles/test.json"
-      }
-    }
-  ],
-  "typePairWorkflow.copy_output.test_array_pair_pair_from_json_in_task": [
-    {
-      "left": "test_A",
-      "right": {
-        "left": "src/toil/test/wdl/test.csv",
-        "right": "src/toil/test/wdl/test.tsv"
-      }
-    },
-    {
-      "left": "test_B",
-      "right": {
-        "left": "src/toil/test/wdl/testfiles/test.json",
-        "right": "src/toil/test/wdl/testfiles/test_boolean.txt"
-      }
+      "right": "src/toil/test/wdl/testfiles/test_boolean.txt"
     }
   ]
 }
