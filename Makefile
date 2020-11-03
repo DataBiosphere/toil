@@ -15,7 +15,7 @@ include common.mk
 
 define help
 
-Supported targets: prepare, develop, docs, sdist, clean, test, docker and push_docker.
+Supported targets: prepare, develop, docs, sdist, clean, test, tests, docker and push_docker.
 
 Please note that all build targets require a virtualenv to be active.
 
@@ -84,15 +84,9 @@ help:
 
 # This Makefile uses bash features like printf and <()
 SHELL=bash
-python=python
-pip=pip
-tests=src
-tests_local=src/toil/test
-# do slightly less than travis timeout of 10 min.
-pytest_args_local=-vv --timeout=530
+tests=src/toil/test
 extras=
-
-sdist_name:=toil-$(shell $(python) version_template.py distVersion).tar.gz
+sdist_name:=toil-$(shell python version_template.py distVersion).tar.gz
 
 green=\033[0;32m
 normal=\033[0m
@@ -111,7 +105,7 @@ sdist: dist/$(sdist_name)
 
 dist/$(sdist_name): check_venv
 	@test -f dist/$(sdist_name) && mv dist/$(sdist_name) dist/$(sdist_name).old || true
-	$(python) setup.py sdist
+	python setup.py sdist
 	@test -f dist/$(sdist_name).old \
 	    && ( cmp -s <(tar -xOzf dist/$(sdist_name)) <(tar -xOzf dist/$(sdist_name).old) \
 	         && mv dist/$(sdist_name).old dist/$(sdist_name) \
@@ -124,12 +118,9 @@ clean_sdist:
 	- rm src/toil/version.py
 
 # We always claim to be Travis, so that local test runs will not skip Travis tests.
-# Gitlab doesn't run tests via the Makefile.
-
-# The auto-deployment test needs the docker appliance
-test: check_venv check_build_reqs docker
+test: check_venv check_build_reqs
 	TRAVIS=true \
-	    $(python) -m pytest --cov=toil $(pytest_args_local) $(tests)
+	    python -m pytest --cov=toil --duration=0 -s -r s $(tests)
 
 
 # This target will skip building docker and all docker based tests
@@ -138,7 +129,7 @@ test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
 	TRAVIS=true \
-	    $(python) -m pytest $(pytest_args_local) $(tests_local)
+	    python -m pytest -vv --timeout=530 --cov=toil $(tests)
 
 ifdef TOIL_DOCKER_REGISTRY
 
@@ -183,7 +174,7 @@ docker/$(sdist_name): dist/$(sdist_name)
 	cp $< $@
 
 docker/Dockerfile: docker/Dockerfile.py docker/$(sdist_name)
-	_TOIL_SDIST_NAME=$(sdist_name) $(python) docker/Dockerfile.py > $@
+	_TOIL_SDIST_NAME=$(sdist_name) python docker/Dockerfile.py > $@
 
 clean_docker:
 	-rm docker/Dockerfile docker/$(sdist_name)
@@ -214,7 +205,7 @@ clean_docs: check_venv
 clean: clean_develop clean_sdist clean_docs
 
 check_build_reqs:
-	@($(python) -c 'import mock; import pytest' && which sphinx-build >/dev/null) \
+	@(python -c 'import mock; import pytest' && which sphinx-build >/dev/null) \
 		|| ( printf "$(red)Build requirements are missing. Run 'make prepare' to install them.$(normal)\n" ; false )
 
 prepare: check_venv
@@ -222,7 +213,7 @@ prepare: check_venv
 	setuptools==45.3.0 'sphinx>=2.4.4,<3' cwltest mypy
 
 check_venv:
-	@$(python) -c 'import sys, os; sys.exit( int( 0 if "VIRTUAL_ENV" in os.environ else 1 ) )' \
+	@python -c 'import sys, os; sys.exit( int( 0 if "VIRTUAL_ENV" in os.environ else 1 ) )' \
 		|| ( printf "$(red)A virtualenv must be active.$(normal)\n" ; false )
 
 check_clean_working_copy:
