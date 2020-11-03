@@ -242,7 +242,7 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
 
 class WdlWorkflowsTest(ToilTest):
     """
-    A set of test cases for toil's conformance with the WDL.
+    A set of test cases for toil's conformance with WDL.
 
     All tests should include a simple wdl and json file for toil to run that checks the output.
     """
@@ -319,7 +319,7 @@ class WdlLanguageSpecWorkflowsTest(WdlWorkflowsTest):
 
         # tests if files from the pair type are correctly imported.
         # the array of three arrays consists content from:
-        # 1. src/toil/test/wdl/testfiles/test_string.txt        -> 'A whale of a Tale.'
+        # 1. src/toil/test/wdl/testfiles/test_string.txt        -> 'A Whale of a Tale.'
         # 2. src/toil/test/wdl/testfiles/test_boolean.txt       -> 'true'
         # 3. src/toil/test/wdl/testfiles/test_int.txt           -> '11'
         expected_result = '[["A Whale of a Tale."],["true"],["11"]]'
