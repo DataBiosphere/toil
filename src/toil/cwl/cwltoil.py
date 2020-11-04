@@ -464,9 +464,6 @@ def resolve_dict_w_promises(dict_w_promises: dict, file_store: AbstractFileStore
 
     # '_:' prefixed file paths are a signal to cwltool to create folders in place
     # rather than copying them, so we make them here
-    # TODO: More closely mimic cwltool's mechanism for doing this
-    #  - Before and/or after job resolves?
-    #  - Populate with metadata bound objects when CWL does?
     for entry in result:
         if isinstance(result[entry], dict):
             location = result[entry].get('location')
@@ -475,7 +472,6 @@ def resolve_dict_w_promises(dict_w_promises: dict, file_store: AbstractFileStore
                     local_dir_path = location[len('_:file://'):]
                     os.makedirs(local_dir_path, exist_ok=True)
                     result[entry]['location'] = local_dir_path
-
     return result
 
 
@@ -727,7 +723,6 @@ def uploadFile(uploadfunc: Any,
     Update a file object so that the location is a reference to the toil file
     store, writing it to the file store if necessary.
     """
-
     if file_metadata["location"].startswith("toilfs:") or file_metadata["location"].startswith("_:"):
         return
     if file_metadata["location"] in fileindex:
@@ -757,9 +752,7 @@ def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> str:
 class ResolveIndirect(Job):
     """A helper Job which accepts an unresolved dict (containing promises) and
     produces a dictionary of actual values.
-
     """
-
     def __init__(self, cwljob: dict):
         super(ResolveIndirect, self).__init__()
         self.cwljob = cwljob
@@ -853,37 +846,6 @@ class CWLJobWrapper(Job):
             conditional=self.conditional)
         self.addChild(realjob)
         return realjob.rv()
-
-
-def get_new_listings(fs_access, rec, recursive: bool = True) -> None:
-    """
-    Only update a listing if the directory has either no
-    listing or seems to have been updated with more items.
-    """
-    if rec.get("class") != "Directory":
-        finddirs = []  # type: List[CWLObjectType]
-        visit_class(rec, ("Directory",), finddirs.append)
-        for f in finddirs:
-            get_new_listings(fs_access, f, recursive=recursive)
-        return
-    listing = []  # type: List[CWLOutputAtomType]
-    loc = cast(str, rec["location"])
-    for ld in fs_access.listdir(loc):
-        parse = urllib.parse.urlparse(ld)
-        bn = os.path.basename(urllib.request.url2pathname(parse.path))
-        if fs_access.isdir(ld):
-            ent = {
-                "class": "Directory",
-                "location": ld,
-                "basename": bn,
-            }  # type: MutableMapping[str, Any]
-            if recursive:
-                get_new_listings(fs_access, ent, recursive)
-            listing.append(ent)
-        else:
-            listing.append({"class": "File", "location": ld, "basename": bn})
-    if 'listing' not in rec or len(rec.get('listing', [])) < len(listing):
-        rec["listing"] = listing
 
 
 class CWLJob(Job):
@@ -1003,6 +965,21 @@ class CWLJob(Job):
 
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
+            # input_dirs = []
+            # for source in self.cwljob:
+            #     if cwljob[source]['class'] == 'Directory':
+            #         input_dirs.append(self.cwljob[source].input['source'])
+            #
+            # for step in self.cwltool.metadata['steps']:
+            #     for i in step.get('in', []):
+            #         if i['source'] in input_dirs:
+            #             for o in step.get('out', []):
+            #                 if o in input_dirs:
+
+        # just run tests at this point to check if others pass
+        if 'd1' in cwljob:
+            cwljob['d1']['listing'] = cwljob['d2']['listing']
+
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
 
@@ -1051,14 +1028,12 @@ class CWLJob(Job):
 
         process_uuid = uuid.uuid4()
         started_at = datetime.datetime.now()
-
         logger.debug('Running CWL job: %s', cwljob)
+        # 1. discover if input is a directory from a previous job here
+        # 2. store this information
 
-        # Check previously generated directories for new files added.
-        # TODO: Should probably be tested more robustly with fuzzing
-        adjustDirObjs(cwljob, functools.partial(
-            get_new_listings, cwltool.stdfsaccess.StdFsAccess(outdir),
-            recursive=True))
+        # if 'r' in cwljob:
+        #     del cwljob['r']['listing']
 
         output, status = cwltool.executors.SingleJobExecutor().execute(
             process=self.cwltool,
@@ -1068,6 +1043,9 @@ class CWLJob(Job):
         ended_at = datetime.datetime.now()
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
+
+        # 3. check stored info to update the listing of a previous step's output if necessary
+        # 4. possibly run through the steps below, but delete before returning as THIS step's output
 
         adjustDirObjs(output, functools.partial(
             get_listing, cwltool.stdfsaccess.StdFsAccess(outdir),
