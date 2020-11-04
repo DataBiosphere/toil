@@ -41,11 +41,8 @@ defaultTargetTime = 1800
 logger = logging.getLogger(__name__)
 
 
-class Config(object):
-    """
-    Class to represent configuration operations for a toil workflow run.
-    """
-
+class Config:
+    """Class to represent configuration operations for a toil workflow run."""
     def __init__(self):
         # Core options
         self.workflowID = None
@@ -136,11 +133,8 @@ class Config(object):
         self.cwl = False
 
     def setOptions(self, options):
-        """
-        Creates a config object from the options object.
-        """
-        from toil.lib.humanize import human2bytes  # This import is used to convert
-        # from human readable quantites to integers
+        """Creates a config object from the options object."""
+        from toil.lib.humanize import human2bytes
         def setOption(varName, parsingFn=None, checkFn=None, default=None):
             # If options object has the option "varName" specified
             # then set the "varName" attrib to this value in the config object
@@ -171,15 +165,11 @@ class Config(object):
             else:
                 return s
 
-        def parseStrList(s):
-            s = s.split(",")
-            s = [str(x) for x in s]
-            return s
+        def parseStrList(s: str):
+            return [str(x) for x in s.split(",")]
 
-        def parseIntList(s):
-            s = s.split(",")
-            s = [int(x) for x in s]
-            return s
+        def parseIntList(s: str):
+            return [int(x) for x in s.split(",")]
 
         # Core options
         setOption("jobStore", parsingFn=parseJobStore)
@@ -933,7 +923,7 @@ class Toil(object):
     @staticmethod
     def buildLocator(name, rest):
         assert ':' not in name
-        return name + ':' + rest
+        return f'{name}:{rest}'
 
     @classmethod
     def resumeJobStore(cls, locator):
