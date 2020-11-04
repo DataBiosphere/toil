@@ -318,7 +318,6 @@ def parse_value_from_type(in_data: Any,
 
     elif var_type == 'Map':
         validate(isinstance(in_data, dict), f'Expected dict, but got {type(in_data)}')
-
         return {k:
                 parse_value_from_type(v, var_type.value, read_in_file, file_store, **kwargs)
                 for k, v in in_data.items()}
