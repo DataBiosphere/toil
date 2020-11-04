@@ -94,11 +94,25 @@ class CWLv10Test(ToilTest):
                   'src/toil/test/cwl/revsort-job.json',
                   self._expected_revsort_output(self.outDir))
 
-    def download(self,inputs, tester_fn):
+    def download(self, inputs, tester_fn):
         input_location = os.path.join('src/toil/test/cwl', inputs)
         tester_fn('src/toil/test/cwl/download.cwl',
                   input_location,
                   self._expected_download_output(self.outDir))
+
+    def test_s3_as_secondary_file(self):
+        from toil.cwl import cwltoil
+        st = StringIO()
+        main_args = ['--jobStore', f'aws:us-west-2:deleteme-cwl-s3-secondary-file-test-{str(uuid.uuid4())[-12:]}',
+                     '--outdir', self.outDir,
+                     os.path.join(self.rootDir, 'src/toil/test/cwl/s3_secondary_file.cwl'),
+                     os.path.join(self.rootDir, 'src/toil/test/cwl/s3_secondary_file.json')]
+        cwltoil.main(main_args, stdout=st)
+        out = json.loads(st.getvalue())
+        self.assertEqual(out['output']['checksum'], 'sha1$d14dd02e354918b4776b941d154c18ebc15b9b38')
+        self.assertEqual(out['output']['size'], 24)
+        with open(out['output']['location'][len('file://'):], 'r') as f:
+            self.assertEqual(f.read().strip(), 'When is s4 coming out?')
 
     def test_run_revsort(self):
         self.revsort('revsort.cwl', self._tester)
