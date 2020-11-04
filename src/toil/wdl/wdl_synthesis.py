@@ -79,7 +79,6 @@ class SynthesizeWDL:
                     from toil.common import Toil
                     from toil.lib.docker import apiDockerCall
                     from toil.wdl.wdl_analysis import WDLType
-                    from toil.wdl.wdl_analysis import WDLArrayType
                     from toil.wdl.wdl_analysis import WDLPairType
                     from toil.wdl.wdl_analysis import WDLMapType
                     from toil.wdl.wdl_functions import generate_docker_bashscript_file
@@ -201,17 +200,19 @@ class SynthesizeWDL:
                         var_expressn['value'] = json_expressn
 
                     # empty string
-                    if not var_expressn['value'] and (var_type in ['String', 'File']):
+                    if not var_expressn['value'] and (var_type in ('String', 'File')):
                         main_section += '        {} = ""\n'.format(var)
                     # None
-                    elif var_expressn['value'] is None and not (var_type in ['String', 'File']):
+                    elif var_expressn['value'] is None and not (var_type in ('String', 'File')):
                         main_section += '        {} = None\n'.format(var)
-                    # normal declaration: parse input and import filepath into jobstore
-                    else:
+                    # file or compound types
+                    elif var_type in ('File', 'Pair', 'Map'):
                         parsed_value = 'parse_value_from_type({}, var_type={}, file_store=fileStore)'.format(
                             var_expressn['value'], repr(var_type))
-
                         main_section += '        {} = {}\n'.format(var, parsed_value)
+                    # normal declaration
+                    else:
+                        main_section += '        {} = {}\n'.format(var, var_expressn['value'])
 
         return main_section
 
@@ -689,18 +690,21 @@ class SynthesizeWDL:
                 var = i[0]
                 var_type = i[1]
                 docker_bool = str(self.needsdocker(job))
+                # file or compound types
+                if var_type in ('File', 'Pair', 'Map'):
+                    args = ', '.join([f'self.id_{var}',
+                                      f'var_type={repr(var_type)}',
+                                      'read_in_file=True',
+                                      'file_store=fileStore',
+                                      'cwd=_toil_wdl_internal__current_working_dir',
+                                      'temp_dir=tempDir',
+                                      f'docker={docker_bool}'])
 
-                args = ', '.join([f'self.id_{var}',
-                                  f'var_type={repr(var_type)}',
-                                  'read_in_file=True',
-                                  'file_store=fileStore',
-                                  'cwd=_toil_wdl_internal__current_working_dir',
-                                  'temp_dir=tempDir',
-                                  f'docker={docker_bool}'])
-
-                # inputs may be parsed again if they are from the workflow, but this time we need
-                # to read the input files to our tempDir.
-                fn_section += '        {} = parse_value_from_type({})\n'.format(var, args)
+                    # inputs may be parsed again if they are from the workflow, but this time we need
+                    # to read the input files to our tempDir.
+                    fn_section += '        {} = parse_value_from_type({})\n'.format(var, args)
+                else:
+                    fn_section += '        {} = self.id_{}\n'.format(var, var)
 
         return fn_section
 

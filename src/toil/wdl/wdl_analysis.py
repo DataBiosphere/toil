@@ -30,19 +30,6 @@ class WDLType(str):
     # TODO: figure out placement for these classes.
 
 
-class WDLArrayType(WDLType):
-    def __new__(cls, element: str):
-        # use the element type instead so that type of Array[Array[File]] == 'File'.
-        return super(WDLArrayType, cls).__new__(cls, element)
-
-    def __init__(self, element: WDLType):
-        super(WDLArrayType, self).__init__()
-        self.element = element
-
-    def __repr__(self):
-        return f'WDLArrayType({repr(self.element)})'
-
-
 class WDLPairType(WDLType):
     def __new__(cls, left: str, right: str):
         return super(WDLPairType, cls).__new__(cls, 'Pair')
@@ -664,8 +651,9 @@ class AnalyzeWDL:
         Types are: Boolean, Float, Int, File, String, and Array[subtype].
         OptionalTypes are: Boolean?, Float?, Int?, File?, String?, and Array[subtype]?.
 
-        A string is returned. For compound types, a `WDLType` str is returned instead,
-        with its subtype(s) stored as attributes.
+        A string is returned. For Array type, the subtype string is returned. For Pair
+        and Map compound types, a `WDLType` string (with its subtype(s) stored as
+        attributes) is returned.
 
         :param typeAST:
         :return:
@@ -686,9 +674,7 @@ class AnalyzeWDL:
                 name = self.parse_declaration_type(typeAST.attr('name'))
                 elements = [self.parse_declaration_type(element) for element in subtype]
 
-                if name == 'Array':
-                    return WDLArrayType(*elements)
-                elif name == 'Pair':
+                if name == 'Pair':
                     return WDLPairType(*elements)
                 elif name == 'Map':
                     return WDLMapType(*elements)
@@ -697,7 +683,6 @@ class AnalyzeWDL:
                 #     pass
             return self.parse_declaration_type(subtype)
 
-        # this should be removed eventually
         elif isinstance(typeAST, wdl_parser.AstList):
             for ast in typeAST:
                 # TODO only ever seen one element lists.

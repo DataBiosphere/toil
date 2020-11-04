@@ -30,7 +30,6 @@ from typing import (Optional,
                     Any)
 
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.wdl.wdl_analysis import WDLArrayType, WDLPairType, WDLMapType
 
 wdllogger = logging.getLogger(__name__)
 
@@ -272,8 +271,8 @@ def parse_value_from_type(in_data: Any,
                           file_store: Optional[AbstractFileStore] = None,
                           **kwargs):
     """
-    Calls at runtime. This function parses and validates input (from JSON or WDL)
-    from its type. File import is also handled.
+    Calls at runtime. This function parses and validates input from its type. File
+    import is also handled.
 
     For values set in a task block, set `read_in_file` to True to process and read
     all encountered files. This requires `cwd`, `temp_dir`, and `docker` to be
@@ -285,10 +284,6 @@ def parse_value_from_type(in_data: Any,
             raise WDLRuntimeError(f'Invalid input: {msg}')
 
     if not in_data:  # optional type?
-        if var_type == 'File':
-            # in the case of "optional" files (same treatment in 'process_and_read_file()')
-            # TODO: handle this at compile time, not here
-            return ''
         return in_data
 
     if var_type == 'File':
@@ -301,12 +296,11 @@ def parse_value_from_type(in_data: Any,
 
         return process_infile(in_data, file_store)
 
-    elif isinstance(var_type, WDLArrayType):
-        validate(isinstance(in_data, list), f'Expected list, but got {type(in_data)}')
-        return [parse_value_from_type(i, var_type.element, read_in_file, file_store, **kwargs) for i in in_data]
+    elif isinstance(in_data, list):
+        # if in_data is not an array of files, then handle elements one by one.
+        return [parse_value_from_type(i, var_type, read_in_file, file_store, **kwargs) for i in in_data]
 
     elif var_type == 'Pair':
-
         if isinstance(in_data, WDLPair):
             left = in_data.left
             right = in_data.right
