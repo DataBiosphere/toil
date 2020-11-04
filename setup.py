@@ -138,7 +138,7 @@ def runSetup():
         package_dir={'': 'src'},
         packages=find_packages(where='src',
                                # Note that we intentionally include the top-level `test` package for
-                               # functionality like the @experimental and @integrative decoratorss:
+                               # functionality like the @experimental and @integrative decorators:
                                exclude=['*.test.*']),
         package_data = {
             '': ['*.yml', 'cloud-config'],

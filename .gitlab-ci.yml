@@ -30,8 +30,8 @@ py36_main:
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest --duration=0 -s -r s src/toil/test/src
-    - python -m pytest --duration=0 -s -r s src/toil/test/utils
+    - make test tests=src/toil/test/src
+    - make test tests=src/toil/test/utils
 
 py36_appliance_build:
   stage: basic_tests
@@ -51,8 +51,8 @@ py37_batch_systems:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
-    - python -m pytest --duration=0 -s -r s src/toil/test/batchSystems/batchSystemTest.py
-    - python -m pytest --duration=0 -s -r s src/toil/test/mesos/MesosDataStructuresTest.py
+    - make test tests=src/toil/test/batchSystems/batchSystemTest.py
+    - make test tests=src/toil/test/mesos/MesosDataStructuresTest.py
 
 py37_cwl_v1.0:
   stage: main_tests
@@ -61,7 +61,7 @@ py37_cwl_v1.0:
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all]
     - mypy --ignore-missing-imports --no-strict-optional $(pwd)/src/toil/cwl/cwltoil.py  # make this a separate linting stage
-    - python -m pytest --duration=0 -s -r s src/toil/test/cwl/cwlTest.py::CWLv10Test
+    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test
 
 py37_cwl_v1.1:
   stage: main_tests
@@ -69,7 +69,7 @@ py37_cwl_v1.1:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all]
-    - python -m pytest --duration=0 -s -r s src/toil/test/cwl/cwlTest.py::CWLv11Test
+    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv11Test
 
 py37_cwl_v1.2:
   stage: main_tests
@@ -77,7 +77,7 @@ py37_cwl_v1.2:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all]
-    - python -m pytest --duration=0 -s -r s src/toil/test/cwl/cwlTest.py::CWLv12Test
+    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv12Test
 
 py37_wdl:
   stage: main_tests
@@ -85,8 +85,8 @@ py37_wdl:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all]
-    - python -m pytest --duration=0 -s -r s src/toil/test/wdl/toilwdlTest.py
-    - python -m pytest --duration=0 -s -r s src/toil/test/wdl/builtinTest.py
+    - make test tests=src/toil/test/wdl/toilwdlTest.py
+    - make test tests=src/toil/test/wdl/builtinTest.py
 
 py37_jobstore_and_provisioning:
   stage: main_tests
@@ -94,10 +94,10 @@ py37_jobstore_and_provisioning:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest --duration=0 -s -r s src/toil/test/jobStores/jobStoreTest.py
-    - python -m pytest --duration=0 -s -r s src/toil/test/sort/sortTest.py
-    - python -m pytest --duration=0 -s -r s src/toil/test/provisioners/aws/awsProvisionerTest.py
-    - python -m pytest --duration=0 -s -r s src/toil/test/provisioners/clusterScalerTest.py
+    - make test tests=src/toil/test/jobStores/jobStoreTest.py
+    - make test tests=src/toil/test/sort/sortTest.py
+    - make test tests=src/toil/test/provisioners/aws/awsProvisionerTest.py
+    - make test tests=src/toil/test/provisioners/clusterScalerTest.py
 #    - python -m pytest --duration=0 -s -r s src/toil/test/provisioners/gceProvisionerTest.py
 # https://ucsc-ci.com/databiosphere/toil/-/jobs/38672
 # guessing decorators are masking class as function?  ^  also, abstract class is run as normal test?  should hide.
@@ -108,8 +108,8 @@ py37_main:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest --duration=0 -s -r s src/toil/test/src
-    - python -m pytest --duration=0 -s -r s src/toil/test/utils
+    - make test tests=src/toil/test/src
+    - make test tests=src/toil/test/utils
 
 py37_appliance_build:
   stage: basic_tests
@@ -133,7 +133,7 @@ py37_integration:
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
     - chmod 400 /root/.ssh/id_rsa
-    - python -m pytest --duration=0 -s -r s src/toil/test/jobStores/jobStoreTest.py
+    - make test tests=src/toil/test/jobStores/jobStoreTest.py
 
 py37_provisioner_integration:
   stage: integration
@@ -149,8 +149,8 @@ py37_provisioner_integration:
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
     - make push_docker
-    - python -m pytest --duration=0 -s -r s src/toil/test/sort/sortTest.py
-    - python -m pytest --duration=0 -s -r s src/toil/test/provisioners/clusterScalerTest.py
+    - make test tests=src/toil/test/sort/sortTest.py
+    - make test tests=src/toil/test/provisioners/clusterScalerTest.py
     # - python -m pytest --duration=0 -s -r s src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSRestartTest::testAutoScaledCluster
     # - python -m pytest -s src/toil/test/provisioners/aws/awsProvisionerTest.py
     # - python -m pytest -s src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
@@ -162,8 +162,8 @@ py38_main:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.8 python3.8-dev
     - virtualenv -p python3.8 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest --duration=0 -s -r s src/toil/test/src
-    - python -m pytest --duration=0 -s -r s src/toil/test/utils
+    - make test tests=src/toil/test/src
+    - make test tests=src/toil/test/utils
 
 py38_appliance_build:
   stage: basic_tests
