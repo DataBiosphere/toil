@@ -103,7 +103,8 @@ class CWLv10Test(ToilTest):
     def test_s3_as_secondary_file(self):
         from toil.cwl import cwltoil
         st = StringIO()
-        main_args = ['--outdir', self.outDir,
+        main_args = ['--jobStore', f'aws:us-west-2:deleteme-cwl-s3-secondary-file-test-{str(uuid.uuid4())[-12:]}',
+                     '--outdir', self.outDir,
                      os.path.join(self.rootDir, 'src/toil/test/cwl/s3_secondary_file.cwl'),
                      os.path.join(self.rootDir, 'src/toil/test/cwl/s3_secondary_file.json')]
         cwltoil.main(main_args, stdout=st)
