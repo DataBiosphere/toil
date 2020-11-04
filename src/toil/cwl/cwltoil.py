@@ -1029,11 +1029,6 @@ class CWLJob(Job):
         process_uuid = uuid.uuid4()
         started_at = datetime.datetime.now()
         logger.debug('Running CWL job: %s', cwljob)
-        # 1. discover if input is a directory from a previous job here
-        # 2. store this information
-
-        # if 'r' in cwljob:
-        #     del cwljob['r']['listing']
 
         output, status = cwltool.executors.SingleJobExecutor().execute(
             process=self.cwltool,
@@ -1043,9 +1038,6 @@ class CWLJob(Job):
         ended_at = datetime.datetime.now()
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
-
-        # 3. check stored info to update the listing of a previous step's output if necessary
-        # 4. possibly run through the steps below, but delete before returning as THIS step's output
 
         adjustDirObjs(output, functools.partial(
             get_listing, cwltool.stdfsaccess.StdFsAccess(outdir),
