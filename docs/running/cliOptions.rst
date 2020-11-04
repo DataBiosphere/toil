@@ -224,6 +224,11 @@ the logging module:
   --retryCount RETRYCOUNT
                         Number of times to retry a failing job before giving
                         up and labeling job failed. default=1
+  --doubleMem           If set, batch jobs which die due to reaching memory
+                        limit on batch schedulers will have their memory
+			doubled and they will be retried. The remaining
+			retry count will be reduced by 1. Currently only
+			supported by LSF. default=False.
   --maxJobDuration MAXJOBDURATION
                         Maximum runtime of a job (in seconds) before we kill
                         it (this is a lower bound, and the actual time before
