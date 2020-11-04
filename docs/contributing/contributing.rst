@@ -364,6 +364,13 @@ Pull Requests
 * Modified pull requests must be re-reviewed before merging. **Note that Github
   does not enforce this!**
 
+* When merging a pull request, make sure to update the `Draft Changelog`_ on
+  the Github wiki, which we will use to produce the changelog for the next
+  release. The PR template tells you to do this, so don't forget. New entries
+  should go at the bottom.
+
+  .. _Draft Changelog: https://github.com/DataBiosphere/toil/wiki/Draft-Changelog
+
 * Pull requests will not be merged unless Travis and Gitlab CI tests pass.
   Gitlab tests are only run on code in the main Toil repository on some branch,
   so it is the responsibility of the approving reviewer to make sure that pull
