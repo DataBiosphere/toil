@@ -957,23 +957,21 @@ class Toil(object):
                       maxMemory=config.maxMemory,
                       maxDisk=config.maxDisk)
 
-        from toil.batchSystems.registry import batchSystemFactoryFor
+        from toil.batchSystems.registry import BATCH_SYSTEM_FACTORY_REGISTRY
 
         try:
-            factory = batchSystemFactoryFor(config.batchSystem)
-            batchSystemClass = factory()
+            batch_system = BATCH_SYSTEM_FACTORY_REGISTRY[config.batchSystem]()
         except:
-            raise RuntimeError('Unrecognised batch system: %s' % config.batchSystem)
+            raise RuntimeError(f'Unrecognized batch system: {config.batchSystem}')
 
-        if not config.disableCaching and not batchSystemClass.supportsWorkerCleanup():
-            raise RuntimeError('%s currently does not support shared caching, because it '
+        if not config.disableCaching and not batch_system.supportsWorkerCleanup():
+            raise RuntimeError(f'{config.batchSystem} currently does not support shared caching, because it '
                                'does not support cleaning up a worker after the last job '
                                'finishes. Set the --disableCaching flag if you want to '
-                               'use this batch system.' % config.batchSystem)
-        logger.debug('Using the %s' %
-                    re.sub("([a-z])([A-Z])", r'\g<1> \g<2>', batchSystemClass.__name__).lower())
+                               'use this batch system.')
+        logger.debug('Using the %s' % re.sub("([a-z])([A-Z])", r"\g<1> \g<2>", batch_system.__name__).lower())
 
-        return batchSystemClass(**kwargs)
+        return batch_system(**kwargs)
 
     def _setupAutoDeployment(self, userScript=None):
         """
