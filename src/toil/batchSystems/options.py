@@ -151,7 +151,7 @@ def setDefaultOptions(config):
     config.batchSystem = "single_machine"
     config.disableAutoDeployment = False
     config.environment = {}
-    config.statePollingWait = None  # if not set, will default to seconds in getWaitDuration()
+    config.statePollingWait = None
     config.maxLocalJobs = cpu_count()
     config.manualMemArgs = False
 
