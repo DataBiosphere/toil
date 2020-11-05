@@ -402,7 +402,7 @@ class CWLv12Test(ToilTest):
         unittest.TestCase.tearDown(self)
 
     def refresh_deleted_fixtures(self):
-        # TODO: Prevent Toil from deleting these?
+        # TODO: Prevent Toil from deleting these?  See: https://github.com/DataBiosphere/toil/issues/3318
         for fixture in ['tests/testdir/a', 'tests/testdir/b', 'tests/testdir/c/d']:
             if not os.path.exists(os.path.join(self.cwlSpec, os.path.dirname(fixture))):
                 os.makedirs(os.path.join(self.cwlSpec, os.path.dirname(fixture)), exist_ok=True)
@@ -419,6 +419,9 @@ class CWLv12Test(ToilTest):
     def test_run_conformance(self, batchSystem=None, caching=False):
         # TODO: we do not currently pass tests: 237 (offset from other versions), 307, 309, 310, 311, 332
         for selected_tests in ['1-236,238-306,308,312-329,333-336', '330', '331']:
+            # 330 and #331 are run separately in order to ensure that the potentially deleted
+            # test fixtures: ['tests/testdir/a', 'tests/testdir/b', 'tests/testdir/c/d'] exist prior
+            # to running.  See: https://github.com/DataBiosphere/toil/issues/3318
             run_conformance_tests(workDir=self.cwlSpec,
                                   yml=self.test_yaml,
                                   caching=caching,
