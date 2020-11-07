@@ -17,43 +17,9 @@ import logging
 from collections import OrderedDict
 
 import toil.wdl.wdl_parser as wdl_parser
+from toil.wdl.wdl_types import WDLPairType, WDLMapType
 
 wdllogger = logging.getLogger(__name__)
-
-
-class WDLType(str):
-    """
-    Represents a primitive or compound WDL type:
-
-    https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#types
-    """
-    # TODO: figure out placement for these classes.
-
-
-class WDLPairType(WDLType):
-    def __new__(cls, left: str, right: str):
-        return super(WDLPairType, cls).__new__(cls, 'Pair')
-
-    def __init__(self, left: str, right: str):
-        super(WDLPairType, self).__init__()
-        self.left = left
-        self.right = right
-
-    def __repr__(self):
-        return f'WDLPairType({repr(self.left)}, {repr(self.right)})'
-
-
-class WDLMapType(WDLType):
-    def __new__(cls, key: str, value: str):
-        return super(WDLMapType, cls).__new__(cls, 'Map')
-
-    def __init__(self, key: str, value: str):
-        super(WDLMapType, self).__init__()
-        self.key = key
-        self.value = value
-
-    def __repr__(self):
-        return f'WDLMapType({repr(self.key)}, {repr(self.value)})'
 
 
 class AnalyzeWDL:

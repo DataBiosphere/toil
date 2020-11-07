@@ -30,6 +30,7 @@ from typing import (Optional,
                     Any)
 
 from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.wdl.wdl_types import WDLPair
 
 wdllogger = logging.getLogger(__name__)
 
@@ -39,24 +40,6 @@ class WDLRuntimeError(Exception):
 
     def __init__(self, message):
         super(WDLRuntimeError, self).__init__(message)
-
-
-class WDLPair:
-    """
-    Represent a WDL Pair literal defined at
-    https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#pair-literals
-    """
-    # TODO: figure out placement for these classes.
-
-    def __init__(self, left: Any, right: Any):
-        self.left = left
-        self.right = right
-
-    def to_dict(self):
-        return {'left': self.left, 'right': self.right}
-
-    def __repr__(self):
-        return str(self.to_dict())
 
 
 class WDLJSONEncoder(json.JSONEncoder):

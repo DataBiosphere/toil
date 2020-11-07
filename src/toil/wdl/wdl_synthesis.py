@@ -78,9 +78,9 @@ class SynthesizeWDL:
                     from toil.job import Job
                     from toil.common import Toil
                     from toil.lib.docker import apiDockerCall
-                    from toil.wdl.wdl_analysis import WDLType
-                    from toil.wdl.wdl_analysis import WDLPairType
-                    from toil.wdl.wdl_analysis import WDLMapType
+                    from toil.wdl.wdl_types import WDLType
+                    from toil.wdl.wdl_types import WDLPairType
+                    from toil.wdl.wdl_types import WDLMapType
                     from toil.wdl.wdl_functions import generate_docker_bashscript_file
                     from toil.wdl.wdl_functions import parse_value_from_type
                     from toil.wdl.wdl_functions import generate_stdout_file
