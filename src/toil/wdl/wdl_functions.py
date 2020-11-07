@@ -269,7 +269,10 @@ def parse_value_from_type(in_data: Any,
                           var_type: str,
                           read_in_file: bool = False,
                           file_store: Optional[AbstractFileStore] = None,
-                          **kwargs):
+                          cwd: Optional[str] = None,
+                          temp_dir: Optional[str] = None,
+                          docker: Optional[bool] = None
+                          ):
     """
     Calls at runtime. This function parses and validates input from its type. File
     import is also handled.
@@ -289,16 +292,16 @@ def parse_value_from_type(in_data: Any,
     if var_type == 'File':
         # in_data can be an array of files
         if read_in_file:
-            return process_and_read_file(f=abspath_file(f=in_data, cwd=kwargs.get('cwd', None)),
-                                         tempDir=kwargs.get('temp_dir', None),
+            return process_and_read_file(f=abspath_file(f=in_data, cwd=cwd),
+                                         tempDir=temp_dir,
                                          fileStore=file_store,
-                                         docker=kwargs.get('docker', False))
+                                         docker=docker)
 
         return process_infile(in_data, file_store)
 
     elif isinstance(in_data, list):
         # if in_data is not an array of files, then handle elements one by one.
-        return [parse_value_from_type(i, var_type, read_in_file, file_store, **kwargs) for i in in_data]
+        return [parse_value_from_type(i, var_type, read_in_file, file_store, cwd, temp_dir, docker) for i in in_data]
 
     elif var_type == 'Pair':
         if isinstance(in_data, WDLPair):
@@ -313,13 +316,13 @@ def parse_value_from_type(in_data: Any,
             validate(isinstance(in_data, tuple) and len(in_data) == 2, 'Only support Pair len == 2')
             left, right = in_data
 
-        return WDLPair(parse_value_from_type(left, var_type.left, read_in_file, file_store, **kwargs),
-                       parse_value_from_type(right, var_type.right, read_in_file, file_store, **kwargs))
+        return WDLPair(parse_value_from_type(left, var_type.left, read_in_file, file_store, cwd, temp_dir, docker),
+                       parse_value_from_type(right, var_type.right, read_in_file, file_store, cwd, temp_dir, docker))
 
     elif var_type == 'Map':
         validate(isinstance(in_data, dict), f'Expected dict, but got {type(in_data)}')
         return {k:
-                parse_value_from_type(v, var_type.value, read_in_file, file_store, **kwargs)
+                parse_value_from_type(v, var_type.value, read_in_file, file_store, cwd, temp_dir, docker)
                 for k, v in in_data.items()}
 
     else:
