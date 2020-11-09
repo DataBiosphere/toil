@@ -31,7 +31,7 @@ from toil.lib.retry import retry, ErrorCondition
 
 from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
-from toil.job import JobException, CheckpointJobDescription, ServiceJobDescription
+from toil.job import JobException
 from toil.lib.memoize import memoize
 from toil.lib.misc import WriteWatchingStream
 from toil.lib.objects import abstractclassmethod
@@ -108,17 +108,6 @@ class JobStoreExistsException(Exception):
 class AbstractJobStore(with_metaclass(ABCMeta, object)):
     """
     Represents the physical storage for the jobs and files in a Toil workflow.
-    
-    JobStores are responsible for storing :class:`toil.job.JobDescription`s
-    (which relate jobs to each other) and files.
-    
-    Actual :class:`toil.job.Job` objects are stored in files, referenced by
-    JobDescriptions. All the non-file CRUD methods the JobStore provides deal
-    in JobDescriptions and not full, executable Jobs.
-    
-    To actually get ahold of a :class:`toil.job.Job`, use
-    :meth:`toil.job.Job.loadJob` with a JobStore and the relevant
-    JobDescription.
     """
 
     def __init__(self):
@@ -188,12 +177,12 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
     def loadRootJob(self):
         """
-        Loads the JobDescription for the root job in the current job store.
+        Loads the root job in the current job store.
 
         :raises toil.job.JobException: If no root job is set or if the root job doesn't exist in
                 this job store
         :return: The root job.
-        :rtype: toil.job.JobDescription
+        :rtype: toil.jobGraph.JobGraph
         """
         try:
             with self.readSharedFileStream(self.rootJobStoreIDFileName) as f:
@@ -207,16 +196,15 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
     # FIXME: This is only used in tests, why do we have it?
 
-    def createRootJob(self, desc):
+    def createRootJob(self, *args, **kwargs):
         """
-        Create the given JobDescription and set it as the root job in this job store
+        Create a new job and set it as the root job in this job store
 
-        :param toil.job.JobDescription desc: JobDescription to save and make the root job.
-        :rtype: toil.job.JobDescription
+        :rtype: toil.jobGraph.JobGraph
         """
-        self.create(desc)
-        self.setRootJob(desc.jobStoreID)
-        return desc
+        rootJob = self.create(*args, **kwargs)
+        self.setRootJob(rootJob.jobStoreID)
+        return rootJob
 
     def getRootJobReturnValue(self):
         """
@@ -273,7 +261,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         Imports the file at the given URL into job store. The ID of the newly imported file is
         returned. If the name of a shared file name is provided, the file will be imported as
-        such and None is returned.
+        such and None is returned. If an executable file on the local filesystem is uploaded,
+        its executability will be preserved when it is downloaded.
 
         Currently supported schemes are:
 
@@ -334,13 +323,14 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
     def exportFile(self, jobStoreFileID, dstUrl):
         """
-        Exports file to destination pointed at by the destination URL.
+        Exports file to destination pointed at by the destination URL. The exported file will
+        be executable if it was originally uploaded from an executable file on the local filesystem.
 
         Refer to :meth:`.AbstractJobStore.importFile` documentation for currently supported URL schemes.
 
         Note that the helper method _exportFile is used to read from the source and write to
         destination. To implement any optimizations that circumvent this, the _exportFile method
-        should be overridden by subclasses of AbstractJobStore.
+        should be overridden by subclasses of AbstractJobStore. 
 
         :param str jobStoreFileID: The id of the file in the job store that should be exported.
         :param str dstUrl: URL that points to a file or object in the storage mechanism of a
@@ -468,8 +458,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         Fixes jobs that might have been partially updated. Resets the try counts and removes jobs
         that are not successors of the current root job.
 
-        :param dict[str,toil.job.JobDescription] jobCache: if a value it must be a dict
-               from job ID keys to JobDescription object values. Jobs will be loaded from the cache
+        :param dict[str,toil.jobGraph.JobGraph] jobCache: if a value it must be a dict
+               from job ID keys to JobGraph object values. Jobs will be loaded from the cache
                (which can be downloaded from the job store in a batch) instead of piecemeal when
                recursed into.
         """
@@ -478,7 +468,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
         # Functions to get and check the existence of jobs, using the jobCache
         # if present
-        def getJobDescription(jobId):
+        def getJob(jobId):
             if jobCache is not None:
                 try:
                     return jobCache[jobId]
@@ -488,7 +478,6 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                 return self.load(jobId)
 
         def haveJob(jobId):
-            assert len(jobId) > 1, "Job ID {} too short; is a string being used as a list?".format(jobId)
             if jobCache is not None:
                 if jobId in jobCache:
                     return True
@@ -496,105 +485,95 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                     return self.exists(jobId)
             else:
                 return self.exists(jobId)
-                
-        def deleteJob(jobId):
-            if jobCache is not None:
-                if jobId in jobCache:
-                    del jobCache[jobId]
-            self.delete(jobId)
-            
-        def updateJobDescription(jobDescription):
-            jobCache[jobDescription.jobStoreID] = jobDescription
-            self.update(jobDescription)
 
-        def getJobDescriptions():
+        def getJobs():
             if jobCache is not None:
                 return itervalues(jobCache)
             else:
                 return self.jobs()
 
-        # Iterate from the root JobDescription and collate all jobs that are reachable from it
+        # Iterate from the root jobGraph and collate all jobs that are reachable from it
         # All other jobs returned by self.jobs() are orphaned and can be removed
         reachableFromRoot = set()
 
-        def getConnectedJobs(jobDescription):
-            if jobDescription.jobStoreID in reachableFromRoot:
+        def getConnectedJobs(jobGraph):
+            if jobGraph.jobStoreID in reachableFromRoot:
                 return
-            reachableFromRoot.add(jobDescription.jobStoreID)
+            reachableFromRoot.add(jobGraph.jobStoreID)
             # Traverse jobs in stack
-            for jobs in jobDescription.stack:
-                for successorJobStoreID in jobs:
+            for jobs in jobGraph.stack:
+                for successorJobStoreID in [x.jobStoreID for x in jobs]:
                     if (successorJobStoreID not in reachableFromRoot
                         and haveJob(successorJobStoreID)):
-                        getConnectedJobs(getJobDescription(successorJobStoreID))
+                        getConnectedJobs(getJob(successorJobStoreID))
             # Traverse service jobs
-            for serviceJobStoreID in jobDescription.services:
-                if haveJob(serviceJobStoreID):
-                    assert serviceJobStoreID not in reachableFromRoot
-                    reachableFromRoot.add(serviceJobStoreID)
+            for jobs in jobGraph.services:
+                for serviceJobStoreID in [x.jobStoreID for x in jobs]:
+                    if haveJob(serviceJobStoreID):
+                        assert serviceJobStoreID not in reachableFromRoot
+                        reachableFromRoot.add(serviceJobStoreID)
 
         logger.debug("Checking job graph connectivity...")
         getConnectedJobs(self.loadRootJob())
         logger.debug("%d jobs reachable from root." % len(reachableFromRoot))
 
         # Cleanup jobs that are not reachable from the root, and therefore orphaned
-        jobsToDelete = [x for x in getJobDescriptions() if x.jobStoreID not in reachableFromRoot]
-        for jobDescription in jobsToDelete:
+        jobsToDelete = [x for x in getJobs() if x.jobStoreID not in reachableFromRoot]
+        for jobGraph in jobsToDelete:
             # clean up any associated files before deletion
-            for fileID in jobDescription.filesToDelete:
+            for fileID in jobGraph.filesToDelete:
                 # Delete any files that should already be deleted
                 logger.warning("Deleting file '%s'. It is marked for deletion but has not yet been "
                             "removed.", fileID)
                 self.deleteFile(fileID)
-            # Delete the job from us and the cache
-            deleteJob(jobDescription.jobStoreID)
+            # Delete the job
+            self.delete(jobGraph.jobStoreID)
 
-        jobDescriptionsReachableFromRoot = {id: getJobDescription(id) for id in reachableFromRoot}
+        jobGraphsReachableFromRoot = {id: getJob(id) for id in reachableFromRoot}
 
         # Clean up any checkpoint jobs -- delete any successors it
         # may have launched, and restore the job to a pristine
         # state
         jobsDeletedByCheckpoints = set()
-        for jobDescription in [desc for desc in jobDescriptionsReachableFromRoot.values() if isinstance(desc, CheckpointJobDescription)]:
-            if jobDescription.jobStoreID in jobsDeletedByCheckpoints:
+        for jobGraph in [jG for jG in jobGraphsReachableFromRoot.values() if jG.checkpoint is not None]:
+            if jobGraph.jobStoreID in jobsDeletedByCheckpoints:
                 # This is a checkpoint that was nested within an
                 # earlier checkpoint, so it and all its successors are
                 # already gone.
                 continue
-            if jobDescription.checkpoint is not None:
-                # The checkpoint actually started and needs to be restarted
-                logger.debug("Restarting checkpointed job %s" % jobDescription)
-                deletedThisRound = jobDescription.restartCheckpoint(self)
-                jobsDeletedByCheckpoints |= set(deletedThisRound)
-                updateJobDescription(jobDescription)
+            logger.debug("Restarting checkpointed job %s" % jobGraph)
+            deletedThisRound = jobGraph.restartCheckpoint(self)
+            jobsDeletedByCheckpoints |= set(deletedThisRound)
         for jobID in jobsDeletedByCheckpoints:
-            del jobDescriptionsReachableFromRoot[jobID]
+            del jobGraphsReachableFromRoot[jobID]
 
         # Clean up jobs that are in reachable from the root
-        for jobDescription in jobDescriptionsReachableFromRoot.values():
-            # jobDescription here are necessarily in reachable from root.
+        for jobGraph in jobGraphsReachableFromRoot.values():
+            # jobGraphs here are necessarily in reachable from root.
 
-            changed = [False]  # This is a flag to indicate the jobDescription state has
+            changed = [False]  # This is a flag to indicate the jobGraph state has
             # changed
 
             # If the job has files to delete delete them.
-            if len(jobDescription.filesToDelete) != 0:
+            if len(jobGraph.filesToDelete) != 0:
                 # Delete any files that should already be deleted
-                for fileID in jobDescription.filesToDelete:
+                for fileID in jobGraph.filesToDelete:
                     logger.critical("Removing file in job store: %s that was "
                                     "marked for deletion but not previously removed" % fileID)
                     self.deleteFile(fileID)
-                jobDescription.filesToDelete = []
+                jobGraph.filesToDelete = []
                 changed[0] = True
 
             # For a job whose command is already executed, remove jobs from the stack that are
-            # already deleted. This cleans up the case that the jobDescription had successors to run,
+            # already deleted. This cleans up the case that the jobGraph had successors to run,
             # but had not been updated to reflect this.
-            if jobDescription.command is None:
-                stackSizeFn = lambda: sum(map(len, jobDescription.stack))
+            if jobGraph.command is None:
+                stackSizeFn = lambda: sum(map(len, jobGraph.stack))
                 startStackSize = stackSizeFn()
                 # Remove deleted jobs
-                jobDescription.filterSuccessors(haveJob)
+                jobGraph.stack = [[y for y in x if self.exists(y.jobStoreID)] for x in jobGraph.stack]
+                # Remove empty stuff from the stack
+                jobGraph.stack = [x for x in jobGraph.stack if len(x) > 0]
                 # Check if anything got removed
                 if stackSizeFn() != startStackSize:
                     changed[0] = True
@@ -610,65 +589,67 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                 # Make a new flag
                 newFlag = self.getEmptyFileStoreID(jobStoreID, cleanup=False)
 
-                # Load the jobDescription for the service and initialise the link
-                serviceJobDescription = getJobDescription(jobStoreID)
-                
-                # Make sure it really is a service
-                assert isinstance(serviceJobDescription, ServiceJobDescription)
+                # Load the jobGraph for the service and initialise the link
+                serviceJobGraph = getJob(jobStoreID)
 
                 if flag == 1:
                     logger.debug("Recreating a start service flag for job: %s, flag: %s",
                                  jobStoreID, newFlag)
-                    serviceJobDescription.startJobStoreID = newFlag
+                    serviceJobGraph.startJobStoreID = newFlag
                 elif flag == 2:
                     logger.debug("Recreating a terminate service flag for job: %s, flag: %s",
                                  jobStoreID, newFlag)
-                    serviceJobDescription.terminateJobStoreID = newFlag
+                    serviceJobGraph.terminateJobStoreID = newFlag
                 else:
                     logger.debug("Recreating a error service flag for job: %s, flag: %s",
                                  jobStoreID, newFlag)
                     assert flag == 3
-                    serviceJobDescription.errorJobStoreID = newFlag
+                    serviceJobGraph.errorJobStoreID = newFlag
 
                 # Update the service job on disk
-                updateJobDescription(serviceJobDescription)
+                self.update(serviceJobGraph)
 
                 changed[0] = True
 
                 return newFlag
 
-            servicesSizeFn = lambda: len(jobDescription.services)
+            servicesSizeFn = lambda: sum(map(len, jobGraph.services))
             startServicesSize = servicesSizeFn()
 
-            def replaceFlagsIfNeeded(serviceJobDescription):
-                # Make sure it really is a service
-                assert isinstance(serviceJobDescription, ServiceJobDescription)
-                serviceJobDescription.startJobStoreID = subFlagFile(serviceJobDescription.jobStoreID, serviceJobDescription.startJobStoreID, 1)
-                serviceJobDescription.terminateJobStoreID = subFlagFile(serviceJobDescription.jobStoreID, serviceJobDescription.terminateJobStoreID, 2)
-                serviceJobDescription.errorJobStoreID = subFlagFile(serviceJobDescription.jobStoreID, serviceJobDescription.errorJobStoreID, 3)
+            def replaceFlagsIfNeeded(serviceJobNode):
+                serviceJobNode.startJobStoreID = subFlagFile(serviceJobNode.jobStoreID, serviceJobNode.startJobStoreID, 1)
+                serviceJobNode.terminateJobStoreID = subFlagFile(serviceJobNode.jobStoreID, serviceJobNode.terminateJobStoreID, 2)
+                serviceJobNode.errorJobStoreID = subFlagFile(serviceJobNode.jobStoreID, serviceJobNode.errorJobStoreID, 3)
 
+            # jobGraph.services is a list of lists containing serviceNodes
             # remove all services that no longer exist
-            jobDescription.filterServiceHosts(haveJob)
+            services = jobGraph.services
+            jobGraph.services = []
+            for serviceList in services:
+                existingServices = [service for service in serviceList if self.exists(service.jobStoreID)]
+                if existingServices:
+                    jobGraph.services.append(existingServices)
 
-            for serviceID in jobDescription.services:
-                replaceFlagsIfNeeded(getJobDescription(serviceID)) 
+            list(map(lambda serviceList: list(map(replaceFlagsIfNeeded, serviceList)), jobGraph.services))
 
             if servicesSizeFn() != startServicesSize:
                 changed[0] = True
 
-            # Reset the try count of the JobDescription so it will use the default.
-            changed[0] |= jobDescription.clearRemainingTryCount()
+            # Reset the retry count of the jobGraph
+            if jobGraph.remainingRetryCount != self._defaultTryCount():
+                jobGraph.remainingRetryCount = self._defaultTryCount()
+                changed[0] = True
 
             # This cleans the old log file which may
-            # have been left if the job is being retried after a failure.
-            if jobDescription.logJobStoreFileID != None:
-                self.deleteFile(jobDescription.logJobStoreFileID)
-                jobDescription.logJobStoreFileID = None
+            # have been left if the jobGraph is being retried after a jobGraph failure.
+            if jobGraph.logJobStoreFileID != None:
+                self.deleteFile(jobGraph.logJobStoreFileID)
+                jobGraph.logJobStoreFileID = None
                 changed[0] = True
 
             if changed[0]:  # Update, but only if a change has occurred
-                logger.critical("Repairing job: %s" % jobDescription.jobStoreID)
-                updateJobDescription(jobDescription)
+                logger.critical("Repairing job: %s" % jobGraph.jobStoreID)
+                self.update(jobGraph)
 
         # Remove any crufty stats/logging files from the previous run
         logger.debug("Discarding old statistics and logs...")
@@ -688,42 +669,30 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     # The following methods deal with creating/loading/updating/writing/checking for the
     # existence of jobs
     ##########################################
-    
-    @abstractmethod
-    def assignID(self, jobDescription):
-        """
-        Get a new jobStoreID to be used by the described job, and assigns it to the JobDescription.
-        
-        Files associated with the assigned ID will be accepted even if the JobDescription has never been created or updated.
-        
-        :param toil.job.JobDescription jobDescription: The JobDescription to give an ID to
-        """
-        raise NotImplementedError()
 
     @contextmanager
     def batch(self):
         """
-        If supported by the batch system, calls to create() with this context
-        manager active will be performed in a batch after the context manager
-        is released.
+        All calls to create() with this context manager active will be performed in a batch
+        after the context manager is released.
+
         :rtype: None
         """
         yield
 
     @abstractmethod
-    def create(self, jobDescription):
+    def create(self, jobNode):
         """
-        Writes the given JobDescription to the job store. The job must have an ID assigned already.
-       
-        :return: The JobDescription passed.
-        :rtype: toil.job.JobDescription
+        Creates a job graph from the given job node & writes it to the job store.
+
+        :rtype: toil.jobGraph.JobGraph
         """
         raise NotImplementedError()
-        
+
     @abstractmethod
     def exists(self, jobStoreID):
         """
-        Indicates whether a description of the job with the specified jobStoreID exists in the job store
+        Indicates whether the job with the specified jobStoreID exists in the job store
 
         :rtype: bool
         """
@@ -768,36 +737,30 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     @abstractmethod
     def load(self, jobStoreID):
         """
-        Loads the description of the job referenced by the given ID, assigns it
-        the job store's config, and returns it.
-        
-        May declare the job to have failed (see
-        :meth:`toil.job.JobDescription.setupJobAfterFailure`) if there is
-        evidence of a failed update attempt. 
+        Loads the job referenced by the given ID and returns it.
 
         :param str jobStoreID: the ID of the job to load
 
         :raise NoSuchJobException: if there is no job with the given ID
 
-        :rtype: toil.job.JobDescription
+        :rtype: toil.jobGraph.JobGraph
         """
         raise NotImplementedError()
 
     @abstractmethod
-    def update(self, jobDescription):
+    def update(self, job):
         """
-        Persists changes to the state of the given JobDescription in this store atomically.
+        Persists the job in this store atomically.
 
-        :param toil.job.JobDescription job: the job to write to this job store
+        :param toil.jobGraph.JobGraph job: the job to write to this job store
         """
         raise NotImplementedError()
 
     @abstractmethod
     def delete(self, jobStoreID):
         """
-        Removes the JobDescription from the store atomically. You may not then
-        subsequently call load(), write(), update(), etc. with the same
-        jobStoreID or any JobDescription bearing it.
+        Removes from store atomically, can not then subsequently call load(), write(), update(),
+        etc. with the job.
 
         This operation is idempotent, i.e. deleting a job twice or deleting a non-existent job
         will succeed silently.
@@ -808,15 +771,14 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
     def jobs(self):
         """
-        Best effort attempt to return iterator on JobDescriptions for all jobs
-        in the store. The iterator may not return all jobs and may also contain
-        orphaned jobs that have already finished successfully and should not be
-        rerun. To guarantee you get any and all jobs that can be run instead
+        Best effort attempt to return iterator on all jobs in the store. The iterator may not
+        return all jobs and may also contain orphaned jobs that have already finished successfully
+        and should not be rerun. To guarantee you get any and all jobs that can be run instead
         construct a more expensive ToilState object
 
         :return: Returns iterator on jobs in the store. The iterator may or may not contain all jobs and may contain
                  invalid jobs
-        :rtype: Iterator[toil.job.jobDescription]
+        :rtype: Iterator[toil.jobGraph.JobGraph]
         """
         raise NotImplementedError()
 
