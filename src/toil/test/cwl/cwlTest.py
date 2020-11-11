@@ -22,6 +22,7 @@ import shutil
 import zipfile
 import pytest
 import uuid
+import subprocess
 from urllib.request import urlretrieve
 from io import StringIO
 
@@ -29,13 +30,54 @@ pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noq
 sys.path.insert(0, pkg_root)  # noqa
 
 logger = logging.getLogger(__name__)
-import subprocess
 from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
                        needs_mesos, needs_parasol, needs_gridengine, needs_slurm,
-                       needs_torque)
+                       needs_torque, needs_kubernetes)
 
 
 CONFORMANCE_TEST_TIMEOUT = 3600
+
+
+def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selected_tests=None):
+    try:
+        cmd = ['cwltest',
+               '--tool=toil-cwl-runner',
+               f'--test={yml}',
+               '--timeout=2400',
+               f'--basedir={workDir}']
+        if selected_tests:
+            cmd.append(f'-n={selected_tests}')
+
+        args_passed_directly_to_toil = [f'--disableCaching={not caching}', '--clean=always']
+
+        if batchSystem == 'kubernetes' and "CWL_K8_TEST_BUCKET" in os.environ:
+            args_passed_directly_to_toil.append(f'aws:us-west-2:${os.environ["CWL_K8_TEST_BUCKET"]}')
+
+        if yml != 'conformance_test_v1.0.yaml':
+            # only enable dev if we're on version 1.1+
+            args_passed_directly_to_toil.append('--enable-dev')
+
+        if batchSystem:
+            args_passed_directly_to_toil.append(f"--batchSystem={batchSystem}")
+
+        cmd.extend(['--'] + args_passed_directly_to_toil)
+        logger.info("Running: '%s'", "' '".join(cmd))
+        subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as e:
+        only_unsupported = False
+        # check output -- if we failed but only have unsupported features, we're okay
+        p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
+
+        error_log = e.output.decode('utf-8')
+        for line in error_log.split('\n'):
+            m = p.search(line)
+            if m:
+                if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
+                    only_unsupported = True
+                    break
+        if not only_unsupported:
+            print(error_log)
+            raise e
 
 
 @needs_cwl
@@ -194,29 +236,10 @@ class CWLv10Test(ToilTest):
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance(self, batchSystem=None, caching=False):
-        try:
-            cmd = ['cwltest', '--tool', 'toil-cwl-runner', '--test=conformance_test_v1.0.yaml',
-                   '--timeout=2400', '--basedir=' + self.workDir]
-            if batchSystem:
-                cmd.extend(["--batchSystem", batchSystem])
-            cmd.extend(['--', '--disableCaching={}'.format(not caching)])
-            logger.info("Running: '%s'", "' '".join(cmd))
-            subprocess.check_output(cmd, cwd=self.workDir, stderr=subprocess.STDOUT)
-        except subprocess.CalledProcessError as e:
-            only_unsupported = False
-            # check output -- if we failed but only have unsupported features, we're okay
-            p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
-
-            error_log = e.output.decode('utf-8')
-            for line in error_log.split('\n'):
-                m = p.search(line)
-                if m:
-                    if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
-                        only_unsupported = True
-                        break
-            if not only_unsupported:
-                print(error_log)
-                raise e
+        run_conformance_tests(workDir=self.workDir,
+                              yml='conformance_test_v1.0.yaml',
+                              caching=caching,
+                              batchSystem=batchSystem)
 
     @slow
     @needs_lsf
@@ -255,6 +278,11 @@ class CWLv10Test(ToilTest):
         return self.test_run_conformance(batchSystem="parasol", caching=True)
 
     @slow
+    @needs_kubernetes
+    def test_kubernetes_cwl_conformance_caching(self):
+        return self.test_run_conformance(batchSystem="kubernetes", caching=True)
+
+    @slow
     @needs_lsf
     @unittest.skip
     def test_lsf_cwl_conformance(self):
@@ -289,6 +317,11 @@ class CWLv10Test(ToilTest):
     @unittest.skip
     def test_parasol_cwl_conformance(self):
         return self.test_run_conformance(batchSystem="parasol")
+
+    @slow
+    @needs_kubernetes
+    def test_kubernetes_cwl_conformance(self):
+        return self.test_run_conformance(batchSystem="kubernetes")
 
     @staticmethod
     def _expected_seqtk_output(outDir):
@@ -354,43 +387,18 @@ class CWLv11Test(ToilTest):
 
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
-    # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
-    @pytest.mark.xfail
     def test_run_conformance_with_caching(self):
         self.test_run_conformance(caching=True)
 
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance(self, batchSystem=None, caching=False):
-        try:
-            # TODO: we do not currently pass test: 236
-            selected_tests = '1-235,237-253'
-            cmd = [f'cwltest',
-                   f'--tool=toil-cwl-runner',
-                   f'--test={self.test_yaml}',
-                   f'--timeout=2400',
-                   f'--basedir={self.cwlSpec}',
-                   f'-n={selected_tests}']
-            if batchSystem:
-                cmd.extend(["--batchSystem", batchSystem])
-            cmd.extend(['--', '--disableCaching={}'.format(not caching)])
-            logger.info("Running: '%s'", "' '".join(cmd))
-            subprocess.check_output(cmd, cwd=self.cwlSpec, stderr=subprocess.STDOUT)
-        except subprocess.CalledProcessError as e:
-            only_unsupported = False
-            # check output -- if we failed but only have unsupported features, we're okay
-            p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
-
-            error_log = e.output.decode('utf-8')
-            for line in error_log.split('\n'):
-                m = p.search(line)
-                if m:
-                    if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
-                        only_unsupported = True
-                        break
-            if not only_unsupported:
-                print(error_log)
-                raise e
+        run_conformance_tests(workDir=self.cwlSpec,
+                              yml=self.test_yaml,
+                              caching=caching,
+                              batchSystem=batchSystem,
+                              # TODO: we do not currently pass test: 236
+                              selected_tests='1-235,237-253')
 
 @needs_cwl
 class CWLv12Test(ToilTest):
@@ -416,44 +424,15 @@ class CWLv12Test(ToilTest):
 
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
-    # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
-    @pytest.mark.xfail
     def test_run_conformance_with_caching(self):
         self.test_run_conformance(caching=True)
 
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance(self, batchSystem=None, caching=False):
-        try:
-            # TODO: we do not currently pass tests: 237 (offset from other versions), 307, 309, 310, 311, 330, 331, 332
-            selected_tests = '1-236,238-306,308,312-329,333-336'
-            cmd = [f'cwltest',
-                   f'--tool=toil-cwl-runner',
-                   f'--test={self.test_yaml}',
-                   f'--timeout=2400',
-                   f'--basedir={self.cwlSpec}',
-                   f'-n={selected_tests}']
-            if batchSystem:
-                cmd.extend(["--batchSystem", batchSystem])
-
-            args_passed_directly_to_toil = ['--enable-dev']
-            args_passed_directly_to_toil.extend(['--disableCaching={}'.format(not caching)])
-            cmd.extend(['--'] + args_passed_directly_to_toil)
-            
-            logger.info("Running: '%s'", "' '".join(cmd))
-            subprocess.check_output(cmd, cwd=self.cwlSpec, stderr=subprocess.STDOUT)
-        except subprocess.CalledProcessError as e:
-            only_unsupported = False
-            # check output -- if we failed but only have unsupported features, we're okay
-            p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
-
-            error_log = e.output.decode('utf-8')
-            for line in error_log.split('\n'):
-                m = p.search(line)
-                if m:
-                    if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
-                        only_unsupported = True
-                        break
-            if not only_unsupported:
-                print(error_log)
-                raise e
+        # TODO: we do not currently pass tests: 237 (offset from other versions), 307, 309, 310, 311, 330, 331, 332
+        run_conformance_tests(workDir=self.cwlSpec,
+                              yml=self.test_yaml,
+                              caching=caching,
+                              batchSystem=batchSystem,
+                              selected_tests='1-236,238-306,308,312-329,333-336')
