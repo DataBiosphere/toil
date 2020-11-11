@@ -59,7 +59,7 @@ py37_cwl_v1.0:
   script:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata jq python3.7 python3.7-dev
-    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all]
+    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[cwl,aws]
     - mypy --ignore-missing-imports --no-strict-optional $(pwd)/src/toil/cwl/cwltoil.py  # make this a separate linting stage
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test
 
@@ -87,7 +87,7 @@ py37_cwl_v1.1:
   script:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata jq python3.7 python3.7-dev
-    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all]
+    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[cwl,aws]
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv11Test
 
 py37_cwl_v1.2:
@@ -95,7 +95,7 @@ py37_cwl_v1.2:
   script:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata jq python3.7 python3.7-dev
-    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all]
+    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[cwl,aws]
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv12Test
 
 py37_wdl:
