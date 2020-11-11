@@ -273,7 +273,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         Imports the file at the given URL into job store. The ID of the newly imported file is
         returned. If the name of a shared file name is provided, the file will be imported as
-        such and None is returned.
+        such and None is returned. If an executable file on the local filesystem is uploaded, its
+        executability will be preserved when it is downloaded.
 
         Currently supported schemes are:
 
@@ -334,7 +335,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
     def exportFile(self, jobStoreFileID, dstUrl):
         """
-        Exports file to destination pointed at by the destination URL.
+        Exports file to destination pointed at by the destination URL. The exported file will be
+        executable if it was originally uploaded from an executable file on the local filesystem.
 
         Refer to :meth:`.AbstractJobStore.importFile` documentation for currently supported URL schemes.
 
