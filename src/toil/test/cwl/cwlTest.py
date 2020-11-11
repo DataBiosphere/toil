@@ -29,12 +29,12 @@ from io import StringIO
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
-logger = logging.getLogger(__name__)
 from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
                        needs_mesos, needs_parasol, needs_gridengine, needs_slurm,
                        needs_torque, needs_kubernetes)
 
 
+log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 3600
 
 
@@ -50,8 +50,8 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
 
         args_passed_directly_to_toil = [f'--disableCaching={not caching}', '--clean=always']
 
-        if batchSystem == 'kubernetes' and "CWL_K8_TEST_BUCKET" in os.environ:
-            args_passed_directly_to_toil.append(f'aws:us-west-2:{os.environ["CWL_K8_TEST_BUCKET"]}')
+        if batchSystem == 'kubernetes' and 'CWL_K8_TEST_BUCKET' in os.environ:
+            args_passed_directly_to_toil.append(f'--jobStore=aws:us-west-2:{os.environ["CWL_K8_TEST_BUCKET"]}')
 
         if yml != 'conformance_test_v1.0.yaml':
             # only enable dev if we're on version 1.1+
@@ -61,7 +61,7 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
             args_passed_directly_to_toil.append(f"--batchSystem={batchSystem}")
 
         cmd.extend(['--'] + args_passed_directly_to_toil)
-        logger.info("Running: '%s'", "' '".join(cmd))
+        log.info("Running: '%s'", "' '".join(cmd))
         subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as e:
         only_unsupported = False
@@ -193,7 +193,7 @@ class CWLv10Test(ToilTest):
     @slow
     def test_restart(self):
         """Enable restarts with toil-cwl-runner -- run failing test, re-run correct test."""
-        logger.info('Running CWL Test Restart.  Expecting failure, then success.')
+        log.info('Running CWL Test Restart.  Expecting failure, then success.')
         from toil.cwl import cwltoil
         from toil.jobStores.abstractJobStore import NoSuchJobStoreException
         from toil.leader import FailedJobsException
@@ -245,25 +245,25 @@ class CWLv10Test(ToilTest):
     @needs_lsf
     @unittest.skip
     def test_lsf_cwl_conformance_with_caching(self):
-        return self.test_run_conformance(batchSystem="LSF", caching=True)
+        return self.test_run_conformance(batchSystem="lsf", caching=True)
 
     @slow
     @needs_slurm
     @unittest.skip
     def test_slurm_cwl_conformance_with_caching(self):
-        return self.test_run_conformance(batchSystem="Slurm", caching=True)
+        return self.test_run_conformance(batchSystem="slurm", caching=True)
 
     @slow
     @needs_torque
     @unittest.skip
     def test_torque_cwl_conformance_with_caching(self):
-        return self.test_run_conformance(batchSystem="Torque", caching=True)
+        return self.test_run_conformance(batchSystem="torque", caching=True)
 
     @slow
     @needs_gridengine
     @unittest.skip
     def test_gridengine_cwl_conformance_with_caching(self):
-        return self.test_run_conformance(batchSystem="gridEngine", caching=True)
+        return self.test_run_conformance(batchSystem="grid_engine", caching=True)
 
     @slow
     @needs_mesos
@@ -286,25 +286,25 @@ class CWLv10Test(ToilTest):
     @needs_lsf
     @unittest.skip
     def test_lsf_cwl_conformance(self):
-        return self.test_run_conformance(batchSystem="LSF")
+        return self.test_run_conformance(batchSystem="lsf")
 
     @slow
     @needs_slurm
     @unittest.skip
     def test_slurm_cwl_conformance(self):
-        return self.test_run_conformance(batchSystem="Slurm")
+        return self.test_run_conformance(batchSystem="slurm")
 
     @slow
     @needs_torque
     @unittest.skip
     def test_torque_cwl_conformance(self):
-        return self.test_run_conformance(batchSystem="Torque")
+        return self.test_run_conformance(batchSystem="torque")
 
     @slow
     @needs_gridengine
     @unittest.skip
     def test_gridengine_cwl_conformance(self):
-        return self.test_run_conformance(batchSystem="gridEngine")
+        return self.test_run_conformance(batchSystem="grid_engine")
 
     @slow
     @needs_mesos
