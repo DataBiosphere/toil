@@ -134,8 +134,10 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         Create the physical storage for this job store, allocate a workflow ID and persist the
         given Toil configuration to the store.
+
         :param toil.common.Config config: the Toil configuration to initialize this job store
                with. The given configuration will be updated with the newly allocated workflow ID.
+
         :raises JobStoreExistsException: if the physical storage for this job store already exists
         """
         assert config.workflowID is None
@@ -156,6 +158,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         Connect this instance to the physical storage it represents and load the Toil configuration
         into the :attr:`AbstractJobStore.config` attribute.
+
         :raises NoSuchJobStoreException: if the physical storage for this job store doesn't exist
         """
         with self.readSharedFileStream('config.pickle') as fileHandle:
@@ -167,6 +170,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def config(self):
         """
         The Toil configuration associated with this job store.
+
         :rtype: toil.common.Config
         """
         return self.__config
@@ -176,6 +180,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def setRootJob(self, rootJobStoreID):
         """
         Set the root job of the workflow backed by this job store
+
         :param str rootJobStoreID: The ID of the job to set as root
         """
         with self.writeSharedFileStream(self.rootJobStoreIDFileName) as f:
@@ -184,6 +189,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def loadRootJob(self):
         """
         Loads the JobDescription for the root job in the current job store.
+
         :raises toil.job.JobException: If no root job is set or if the root job doesn't exist in
                 this job store
         :return: The root job.
@@ -204,6 +210,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def createRootJob(self, desc):
         """
         Create the given JobDescription and set it as the root job in this job store
+
         :param toil.job.JobDescription desc: JobDescription to save and make the root job.
         :rtype: toil.job.JobDescription
         """
@@ -214,6 +221,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def getRootJobReturnValue(self):
         """
         Parse the return value from the root job.
+
         Raises an exception if the root job hasn't fulfilled its promise yet.
         """
         # Parse out the return value from the root job
@@ -225,6 +233,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def _jobStoreClasses(self):
         """
         A list of concrete AbstractJobStore implementations whose dependencies are installed.
+
         :rtype: list[AbstractJobStore]
         """
         jobStoreClassNames = (
@@ -249,6 +258,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def _findJobStoreForUrl(self, url, export=False):
         """
         Returns the AbstractJobStore subclass that supports the given URL.
+
         :param urlparse.ParseResult url: The given URL
         :param bool export: The URL for
         :rtype: toil.jobStore.AbstractJobStore
@@ -264,18 +274,26 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         Imports the file at the given URL into job store. The ID of the newly imported file is
         returned. If the name of a shared file name is provided, the file will be imported as
         such and None is returned.
+
         Currently supported schemes are:
+
             - 's3' for objects in Amazon S3
                 e.g. s3://bucket/key
+
             - 'file' for local files
                 e.g. file:///local/file/path
+
             - 'http'
                 e.g. http://someurl.com/path
+
             - 'gs'
                 e.g. gs://bucket/file
+
         :param str srcUrl: URL that points to a file or object in the storage mechanism of a
                 supported URL scheme e.g. a blob in an AWS s3 bucket.
+
         :param str sharedFileName: Optional name to assign to the imported file within the job store
+
         :return: The jobStoreFileId of the imported file or None if sharedFileName was given
         :rtype: toil.fileStores.FileID or None
         """
@@ -293,10 +311,14 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         See also :meth:`.importFile`. This method applies a generic approach to importing: it
         asks the other job store class for a stream and writes that stream as either a regular or
         a shared file.
+
         :param AbstractJobStore otherCls: The concrete subclass of AbstractJobStore that supports
                reading from the given URL and getting the file size from the URL.
+
         :param urlparse.ParseResult url: The location of the file to import.
+
         :param str sharedFileName: Optional name to assign to the imported file within the job store
+
         :return The jobStoreFileId of imported file or None if sharedFileName was given
         :rtype: toil.fileStores.FileID or None
         """
@@ -313,10 +335,13 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def exportFile(self, jobStoreFileID, dstUrl):
         """
         Exports file to destination pointed at by the destination URL.
+
         Refer to :meth:`.AbstractJobStore.importFile` documentation for currently supported URL schemes.
+
         Note that the helper method _exportFile is used to read from the source and write to
         destination. To implement any optimizations that circumvent this, the _exportFile method
         should be overridden by subclasses of AbstractJobStore.
+
         :param str jobStoreFileID: The id of the file in the job store that should be exported.
         :param str dstUrl: URL that points to a file or object in the storage mechanism of a
                 supported URL scheme e.g. a blob in an AWS s3 bucket.
@@ -328,11 +353,14 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def _exportFile(self, otherCls, jobStoreFileID, url):
         """
         Refer to exportFile docstring for information about this method.
+
         :param AbstractJobStore otherCls: The concrete subclass of AbstractJobStore that supports
                exporting to the given URL. Note that the type annotation here is not completely
                accurate. This is not an instance, it's a class, but there is no way to reflect
                that in :pep:`484` type hints.
+
         :param str jobStoreFileID: The id of the file that will be exported.
+
         :param urlparse.ParseResult url: The parsed URL of the file to export to.
         """
         self._defaultExportFile(otherCls, jobStoreFileID, url)
@@ -340,11 +368,14 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def _defaultExportFile(self, otherCls, jobStoreFileID, url):
         """
         Refer to exportFile docstring for information about this method.
+
         :param AbstractJobStore otherCls: The concrete subclass of AbstractJobStore that supports
                exporting to the given URL. Note that the type annotation here is not completely
                accurate. This is not an instance, it's a class, but there is no way to reflect
                that in :pep:`484` type hints.
+
         :param str jobStoreFileID: The id of the file that will be exported.
+
         :param urlparse.ParseResult url: The parsed URL of the file to export to.
         """
         with self.readFileStream(jobStoreFileID) as readable:
@@ -354,6 +385,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def getSize(cls, url):
         """
         Get the size in bytes of the file at the given URL, or None if it cannot be obtained.
+
         :param urlparse.ParseResult url: URL that points to a file or object in the storage
                mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
         """
@@ -364,10 +396,14 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         Reads the contents of the object at the specified location and writes it to the given
         writable stream.
+
         Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
+
         :param urlparse.ParseResult url: URL that points to a file or object in the storage
                mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
+
         :param writable: a writable stream
+
         :return int: returns the size of the file in bytes
         """
         raise NotImplementedError()
@@ -377,9 +413,12 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         Reads the contents of the given readable stream and writes it to the object at the
         specified location.
+
         Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
+
         :param urlparse.ParseResult url: URL that points to a file or object in the storage
                mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
+
         :param readable: a readable stream
         """
         raise NotImplementedError()
@@ -388,7 +427,9 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def _supportsUrl(cls, url, export=False):
         """
         Returns True if the job store supports the URL's scheme.
+
         Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
+
         :param bool export: Determines if the url is supported for exported
         :param urlparse.ParseResult url: a parsed URL that may be supported
         :return bool: returns true if the cls supports the URL
@@ -414,6 +455,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         Returns a dictionary of environment variables that this job store requires to be set in
         order to function properly on a worker.
+
         :rtype: dict[str,str]
         """
         return {}
@@ -425,6 +467,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         Function to cleanup the state of a job store after a restart.
         Fixes jobs that might have been partially updated. Resets the try counts and removes jobs
         that are not successors of the current root job.
+
         :param dict[str,toil.job.JobDescription] jobCache: if a value it must be a dict
                from job ID keys to JobDescription object values. Jobs will be loaded from the cache
                (which can be downloaded from the job store in a batch) instead of piecemeal when
@@ -650,9 +693,9 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def assignID(self, jobDescription):
         """
         Get a new jobStoreID to be used by the described job, and assigns it to the JobDescription.
-        
+
         Files associated with the assigned ID will be accepted even if the JobDescription has never been created or updated.
-        
+
         :param toil.job.JobDescription jobDescription: The JobDescription to give an ID to
         """
         raise NotImplementedError()
@@ -671,7 +714,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def create(self, jobDescription):
         """
         Writes the given JobDescription to the job store. The job must have an ID assigned already.
-       
+
         :return: The JobDescription passed.
         :rtype: toil.job.JobDescription
         """
@@ -681,6 +724,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def exists(self, jobStoreID):
         """
         Indicates whether a description of the job with the specified jobStoreID exists in the job store
+
         :rtype: bool
         """
         raise NotImplementedError()
@@ -694,8 +738,11 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         Returns a publicly accessible URL to the given file in the job store. The returned URL may
         expire as early as 1h after its been returned. Throw an exception if the file does not
         exist.
+
         :param str fileName: the jobStoreFileID of the file to generate a URL for
+
         :raise NoSuchFileException: if the specified file does not exist in this job store
+
         :rtype: str
         """
         raise NotImplementedError()
@@ -705,11 +752,15 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         Differs from :meth:`getPublicUrl` in that this method is for generating URLs for shared
         files written by :meth:`writeSharedFileStream`.
+
         Returns a publicly accessible URL to the given file in the job store. The returned URL
         starts with 'http:',  'https:' or 'file:'. The returned URL may expire as early as 1h
         after its been returned. Throw an exception if the file does not exist.
+
         :param str sharedFileName: The name of the shared file to generate a publically accessible url for.
+
         :raise NoSuchFileException: raised if the specified file does not exist in the store
+
         :rtype: str
         """
         raise NotImplementedError()
@@ -719,12 +770,15 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         Loads the description of the job referenced by the given ID, assigns it
         the job store's config, and returns it.
-        
+
         May declare the job to have failed (see
         :meth:`toil.job.JobDescription.setupJobAfterFailure`) if there is
         evidence of a failed update attempt. 
+
         :param str jobStoreID: the ID of the job to load
+
         :raise NoSuchJobException: if there is no job with the given ID
+
         :rtype: toil.job.JobDescription
         """
         raise NotImplementedError()
@@ -733,6 +787,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def update(self, jobDescription):
         """
         Persists changes to the state of the given JobDescription in this store atomically.
+
         :param toil.job.JobDescription job: the job to write to this job store
         """
         raise NotImplementedError()
@@ -743,8 +798,10 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         Removes the JobDescription from the store atomically. You may not then
         subsequently call load(), write(), update(), etc. with the same
         jobStoreID or any JobDescription bearing it.
+
         This operation is idempotent, i.e. deleting a job twice or deleting a non-existent job
         will succeed silently.
+
         :param str jobStoreID: the ID of the job to delete from this job store
         """
         raise NotImplementedError()
@@ -756,6 +813,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         orphaned jobs that have already finished successfully and should not be
         rerun. To guarantee you get any and all jobs that can be run instead
         construct a more expensive ToilState object
+
         :return: Returns iterator on jobs in the store. The iterator may or may not contain all jobs and may contain
                  invalid jobs
         :rtype: Iterator[toil.job.jobDescription]
@@ -773,19 +831,26 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         Takes a file (as a path) and places it in this job store. Returns an ID that can be used
         to retrieve the file at a later time.  The file is written in a atomic manner.  It will
         not appear in the jobStore until the write has successfully completed.
+
         :param str localFilePath: the path to the local file that will be uploaded to the job store.
                The last path component (basename of the file) will remain
                associated with the file in the file store, if supported, so
                that the file can be searched for by name or name glob. 
+
         :param str jobStoreID: the id of a job, or None. If specified, the may be associated
                with that job in a job-store-specific way. This may influence the returned ID.
+
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
+
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
+
         :raise NoSuchJobException: if the job specified via jobStoreID does not exist
+
         FIXME: some implementations may not raise this
+
         :return: an ID referencing the newly created file and can be used to read the
                  file in the future.
         :rtype: str
@@ -802,19 +867,25 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         should not be closed explicitly.  The file is written in a atomic manner.
         It will not appear in the jobStore until the write has successfully
         completed.
+
         :param str jobStoreID: the id of a job, or None. If specified, the may be associated
                with that job in a job-store-specific way. This may influence the returned ID.
+
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
-               
+
         :param str basename: If supported by the implementation, use the given
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
+
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
+
         :raise NoSuchJobException: if the job specified via jobStoreID does not exist
+
         FIXME: some implementations may not raise this
+
         :return: an ID that references the newly created file and can be used to read the
                  file in the future.
         :rtype: str
@@ -826,15 +897,18 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         Creates an empty file in the job store and returns its ID.
         Call to fileExists(getEmptyFileStoreID(jobStoreID)) will return True.
+
         :param str jobStoreID: the id of a job, or None. If specified, the may be associated
                with that job in a job-store-specific way. This may influence the returned ID.
+
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
-               
+
         :param str basename: If supported by the implementation, use the given
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
+
         :return: a jobStoreFileID that references the newly created file and can be used to reference the
                  file in the future.
         :rtype: str
@@ -851,10 +925,14 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         implementation-defined whether those writes will be visible at
         localFilePath.  The file is copied in an atomic manner.  It will not
         appear in the local file system until the copy has completed.
+
         The file at the given local path may not be modified after this method returns!
+
         :param str jobStoreFileID: ID of the file to be copied
+
         :param str localFilePath: the local path indicating where to place the contents of the
                given file in the job store
+
         :param bool symlink: whether the reader can tolerate a symlink. If set to true, the job
                store may create a symlink instead of a full copy of the file or a hard link.
         """
@@ -866,6 +944,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         Similar to readFile, but returns a context manager yielding a file handle which can be
         read from. The yielded file handle does not need to and should not be closed explicitly.
+
         :param str jobStoreFileID: ID of the file to get a readable file handle for
         """
         raise NotImplementedError()
@@ -875,6 +954,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         Deletes the file with the given ID from this job store. This operation is idempotent, i.e.
         deleting a file twice or deleting a non-existent file will succeed silently.
+
         :param str jobStoreFileID: ID of the file to delete
         """
         raise NotImplementedError()
@@ -883,7 +963,9 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def fileExists(self, jobStoreFileID):
         """
         Determine whether a file exists in this job store.
+
         :param str jobStoreFileID: an ID referencing the file to be checked
+
         :rtype: bool
         """
         raise NotImplementedError()
@@ -892,10 +974,13 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def getFileSize(self, jobStoreFileID):
         """
         Get the size of the given file in bytes, or 0 if it does not exist when queried.
+
         Note that job stores which encrypt files might return overestimates of
         file sizes, since the encrypted file may have been padded to the
         nearest block, augmented with an initialization vector, etc.
+
         :param str jobStoreFileID: an ID referencing the file to be checked
+
         :rtype: int
         """
         raise NotImplementedError()
@@ -906,9 +991,12 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         Replaces the existing version of a file in the job store. Throws an exception if the file
         does not exist.
+
         :param str jobStoreFileID: the ID of the file in the job store to be updated
+
         :param str localFilePath: the local path to a file that will overwrite the current version
           in the job store
+
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
         :raise NoSuchFileException: if the specified file does not exist
@@ -921,9 +1009,12 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         Replaces the existing version of a file in the job store. Similar to writeFile, but
         returns a context manager yielding a file handle which can be written to. The
         yielded file handle does not need to and should not be closed explicitly.
+
         :param str jobStoreFileID: the ID of the file in the job store to be updated
+
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
+
         :raise NoSuchFileException: if the specified file does not exist
         """
         raise NotImplementedError()
@@ -943,10 +1034,13 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         Returns a context manager yielding a writable file handle to the global file referenced
         by the given name.  File will be created in an atomic manner.
+
         :param str sharedFileName: A file name matching AbstractJobStore.fileNameRegex, unique within
                this job store
+
         :param bool isProtected: True if the file must be encrypted, None if it may be encrypted or
                False if it must be stored in the clear.
+
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
         """
@@ -958,6 +1052,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         Returns a context manager yielding a readable file handle to the global file referenced
         by the given name.
+
         :param str sharedFileName: A file name matching AbstractJobStore.fileNameRegex, unique within
                this job store
         """
@@ -967,7 +1062,9 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def writeStatsAndLogging(self, statsAndLoggingString):
         """
         Adds the given statistics/logging string to the store of statistics info.
+
         :param str statsAndLoggingString: the string to be written to the stats file
+
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
         """
@@ -983,11 +1080,15 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         the readAll parameter is set, in which case the given callback will be invoked for all
         existing stats/logging strings, including the ones from a previous invocation of this
         method.
+
         :param Callable callback: a function to be applied to each of the stats file handles found
+
         :param bool readAll: a boolean indicating whether to read the already processed stats files
                in addition to the unread stats files
+
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
+
         :return: the number of stats files processed
         :rtype: int
         """
