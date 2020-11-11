@@ -51,7 +51,7 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
         args_passed_directly_to_toil = [f'--disableCaching={not caching}', '--clean=always']
 
         if batchSystem == 'kubernetes' and "CWL_K8_TEST_BUCKET" in os.environ:
-            args_passed_directly_to_toil.append(f'aws:us-west-2:${os.environ["CWL_K8_TEST_BUCKET"]}')
+            args_passed_directly_to_toil.append(f'aws:us-west-2:{os.environ["CWL_K8_TEST_BUCKET"]}')
 
         if yml != 'conformance_test_v1.0.yaml':
             # only enable dev if we're on version 1.1+
