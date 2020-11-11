@@ -270,6 +270,7 @@ def parse_value_from_type(in_data: Any,
             raise WDLRuntimeError(f'Invalid input: {msg}')
 
     if not in_data:  # optional type?
+        # TODO: check if type is in fact an optional.
         return in_data
 
     if var_type == 'File':

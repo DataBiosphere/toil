@@ -614,8 +614,10 @@ class AnalyzeWDL:
         Required.
 
         Currently supported:
-        Types are: Boolean, Float, Int, File, String, and Array[subtype].
-        OptionalTypes are: Boolean?, Float?, Int?, File?, String?, and Array[subtype]?.
+        Types are: Boolean, Float, Int, File, String, Array[subtype],
+                    Pair[subtype, subtype], and Map[subtype, subtype].
+        OptionalTypes are: Boolean?, Float?, Int?, File?, String?, Array[subtype]?,
+                            Pair[subtype, subtype]?, and Map[subtype, subtype].
 
         Python is not typed, so we don't need typing except to identify type: "File",
         which Toil needs to import, so we recursively travel down to the innermost
@@ -628,6 +630,8 @@ class AnalyzeWDL:
         :param typeAST:
         :return:
         """
+        # TODO: represent all WDL types as WDLType subclasses, even terminal ones.
+
         if isinstance(typeAST, wdl_parser.Terminal):
             return typeAST.source_string
         elif isinstance(typeAST, wdl_parser.Ast):
@@ -643,10 +647,15 @@ class AnalyzeWDL:
                 name = self.parse_declaration_type(typeAST.attr('name'))
                 elements = [self.parse_declaration_type(element) for element in subtype]
 
+                if name == 'Array':
+                    # for arrays, recursively travel down to the innermost type
+                    return self.parse_declaration_type(subtype)
                 if name == 'Pair':
                     return WDLPairType(*elements)
                 elif name == 'Map':
                     return WDLMapType(*elements)
+                else:
+                    raise NotImplementedError
 
             return self.parse_declaration_type(subtype)
 
