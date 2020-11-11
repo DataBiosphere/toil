@@ -714,7 +714,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def create(self, jobDescription):
         """
         Writes the given JobDescription to the job store. The job must have an ID assigned already.
-        
+       
         :return: The JobDescription passed.
         :rtype: toil.job.JobDescription
         """
@@ -874,7 +874,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
-        
+               
         :param str basename: If supported by the implementation, use the given
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
@@ -904,7 +904,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
-        
+               
         :param str basename: If supported by the implementation, use the given
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
