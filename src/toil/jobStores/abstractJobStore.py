@@ -693,9 +693,9 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def assignID(self, jobDescription):
         """
         Get a new jobStoreID to be used by the described job, and assigns it to the JobDescription.
-
+        
         Files associated with the assigned ID will be accepted even if the JobDescription has never been created or updated.
-
+        
         :param toil.job.JobDescription jobDescription: The JobDescription to give an ID to
         """
         raise NotImplementedError()
@@ -714,7 +714,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def create(self, jobDescription):
         """
         Writes the given JobDescription to the job store. The job must have an ID assigned already.
-
+        
         :return: The JobDescription passed.
         :rtype: toil.job.JobDescription
         """
@@ -770,7 +770,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         Loads the description of the job referenced by the given ID, assigns it
         the job store's config, and returns it.
-
+        
         May declare the job to have failed (see
         :meth:`toil.job.JobDescription.setupJobAfterFailure`) if there is
         evidence of a failed update attempt. 
@@ -874,7 +874,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
-
+        
         :param str basename: If supported by the implementation, use the given
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
