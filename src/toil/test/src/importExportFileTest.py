@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from builtins import str
 import uuid
 import os
+import stat
 
 from toil.common import Toil
 from toil.job import Job
@@ -98,6 +99,27 @@ class ImportExportFileTest(ToilTest):
             with toil._jobStore.readSharedFileStream(sharedFileName) as f:
                 self.assertEqual(f.read().decode('utf-8'), 'some data')
 
+    def testImportExportFilePermissions(self):
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options.logLevel = "INFO"
+
+        with Toil(options) as toil:
+            srcFile = '%s/%s%s' % (self._tempDir, 'in', str(uuid.uuid4()))
+            with open(srcFile, 'w') as f:
+                f.write('Hello')
+
+            # Current file permission bits
+            permissionBits = os.stat(srcFile).st_mode
+
+            # Add file owner's execute permissions
+            os.chmod(srcFile, permissionBits | stat.S_IXUSR)
+
+            fileID = toil.importFile('file://' + srcFile)
+            toil.exportFile(fileID, 'file://' + self.dstFile)
+
+            permissionBits = os.stat(self.dstFile).st_mode
+            # Nonzero value indicates executable flag is preserved
+            assert permissionBits & stat.S_IXUSR != 0
 
 class RestartingJob(Job):
     def __init__(self, inputFileID, failFileID):
