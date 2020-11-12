@@ -100,6 +100,11 @@ class ImportExportFileTest(ToilTest):
                 self.assertEqual(f.read().decode('utf-8'), 'some data')
 
     def testImportExportFilePermissions(self):
+        """
+        Ensures that uploaded files preserve their file permissions when they
+        are downloaded again. This function checks that an imported executable file
+        maintains its executability after being exported.
+        """
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = "INFO"
 
@@ -120,6 +125,7 @@ class ImportExportFileTest(ToilTest):
             permissionBits = os.stat(self.dstFile).st_mode
             # Nonzero value indicates executable flag is preserved
             assert permissionBits & stat.S_IXUSR != 0
+
 
 class RestartingJob(Job):
     def __init__(self, inputFileID, failFileID):
