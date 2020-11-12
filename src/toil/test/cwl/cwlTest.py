@@ -394,7 +394,7 @@ class CWLv12Test(ToilTest):
         cls.test_yaml = os.path.join(cls.cwlSpec, 'conformance_tests.yaml')
         # TODO: Use a commit zip in case someone decides to rewrite master's history?
         url = 'https://github.com/common-workflow-language/cwl-v1.2.git'
-        commit = 'b6ae88d63ff0b8dfc7ff5deed20f8f42bcb1cc9e'
+        commit = '9c6898993d13c644034535555c1da8ff98b10968'
         p = subprocess.Popen(f'git clone {url} {cls.cwlSpec} && cd {cls.cwlSpec} && git checkout {commit}', shell=True)
         p.communicate()
 
