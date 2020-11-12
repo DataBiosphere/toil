@@ -49,15 +49,10 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
             cmd.append(f'-n={selected_tests}')
 
         args_passed_directly_to_toil = [f'--disableCaching={not caching}', '--clean=always']
-
-        if yml != 'conformance_test_v1.0.yaml':
-            # only enable dev if we're on version 1.1+
-            args_passed_directly_to_toil.append('--enable-dev')
-
         if batchSystem:
             args_passed_directly_to_toil.append(f"--batchSystem={batchSystem}")
-
         cmd.extend(['--'] + args_passed_directly_to_toil)
+
         log.info("Running: '%s'", "' '".join(cmd))
         subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as e:
