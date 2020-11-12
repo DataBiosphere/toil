@@ -63,25 +63,6 @@ py37_cwl_v1.0:
     - mypy --ignore-missing-imports --no-strict-optional $(pwd)/src/toil/cwl/cwltoil.py  # make this a separate linting stage
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test
 
-py37_cwl_v1.0_kubernetes:
-  stage: main_tests
-  script:
-    - pwd
-    - set -e
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata awscli jq python3.7 python3.7-dev
-    - virtualenv --system-site-packages -p python3.7 venv && . venv/bin/activate
-    - make prepare && make develop extras=[cwl,aws,kubernetes]
-    - export TOIL_KUBERNETES_OWNER=toiltest
-    - export TOIL_AWS_SECRET_NAME=shared-s3-credentials
-    - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
-    - export TOIL_WORKDIR=/var/lib/toil
-    - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
-    - mkdir -p ${TOIL_WORKDIR}
-    - export CWL_K8_TEST_BUCKET=toil-test-$RANDOM-$RANDOM-$RANDOM
-    - mypy --ignore-missing-imports --no-strict-optional $(pwd)/src/toil/cwl/cwltoil.py  # make this a separate linting stage
-    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance
-    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance_with_caching
-
 py37_cwl_v1.1:
   stage: main_tests
   script:
