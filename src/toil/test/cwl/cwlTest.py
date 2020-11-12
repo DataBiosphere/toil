@@ -31,7 +31,7 @@ sys.path.insert(0, pkg_root)  # noqa
 
 from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
                        needs_mesos, needs_parasol, needs_gridengine, needs_slurm,
-                       needs_torque, needs_kubernetes)
+                       needs_torque)
 
 
 log = logging.getLogger(__name__)
@@ -278,11 +278,6 @@ class CWLv10Test(ToilTest):
         return self.test_run_conformance(batchSystem="parasol", caching=True)
 
     @slow
-    @needs_kubernetes
-    def test_kubernetes_cwl_conformance_caching(self):
-        return self.test_run_conformance(batchSystem="kubernetes", caching=True)
-
-    @slow
     @needs_lsf
     @unittest.skip
     def test_lsf_cwl_conformance(self):
@@ -317,11 +312,6 @@ class CWLv10Test(ToilTest):
     @unittest.skip
     def test_parasol_cwl_conformance(self):
         return self.test_run_conformance(batchSystem="parasol")
-
-    @slow
-    @needs_kubernetes
-    def test_kubernetes_cwl_conformance(self):
-        return self.test_run_conformance(batchSystem="kubernetes")
 
     @staticmethod
     def _expected_seqtk_output(outDir):
