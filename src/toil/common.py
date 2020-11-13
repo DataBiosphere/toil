@@ -28,6 +28,7 @@ from toil import pickle
 from toil import logProcessContext
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
 from toil.realtimeLogger import RealtimeLogger
+from toil.jobStores.utils import parse_jobstore_location, create_jobstore
 from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
 from toil.batchSystems.options import setOptions as setBatchOptions
@@ -95,8 +96,12 @@ class Config:
         self.defaultMemory = 2147483648
         self.defaultCores = 1
         self.defaultDisk = 2147483648
-        self.readGlobalFileMutableByDefault = False
         self.defaultPreemptable = False
+        self.default_requirements = {'cores': self.defaultCores,
+                                     'memory': self.defaultMemory,
+                                     'disk': self.defaultDisk,
+                                     'preemptable': self.defaultPreemptable}
+        self.readGlobalFileMutableByDefault = False
         self.maxCores = sys.maxsize
         self.maxMemory = sys.maxsize
         self.maxDisk = sys.maxsize
@@ -158,11 +163,12 @@ class Config:
         h2b = lambda x: human2bytes(str(x))
 
         def parseJobStore(s):
-            name, rest = Toil.parseLocator(s)
-            if name == 'file':
+            jobstore_type, jobstore_location = parse_jobstore_location(s)
+            if jobstore_type == 'file':
                 # We need to resolve relative paths early, on the leader, because the worker process
                 # may have a different working directory than the leader, e.g. under Mesos.
-                return Toil.buildLocator(name, os.path.abspath(rest))
+                assert ':' not in jobstore_type
+                return f'{jobstore_type}:{os.path.realpath(jobstore_location)}'
             else:
                 return s
 
@@ -762,7 +768,7 @@ class Toil(object):
         setLoggingFromOptions(self.options)
         config = Config()
         config.setOptions(self.options)
-        jobStore = self.getJobStore(config.jobStore)
+        jobStore = create_jobstore(config.jobStore)
         if not config.restart:
             config.workflowAttemptNumber = 0
             jobStore.initialize(config)
@@ -784,20 +790,19 @@ class Toil(object):
         Clean up after a workflow invocation. Depending on the configuration, delete the job store.
         """
         try:
-            if (exc_type is not None and self.config.clean == "onError" or
-                            exc_type is None and self.config.clean == "onSuccess" or
-                        self.config.clean == "always"):
-    
+            if (exc_type is not None and self.config.clean == "onError"
+                    or exc_type is None and self.config.clean == "onSuccess"
+                    or self.config.clean == "always"):
                 try:           
                     if self.config.restart and not self._inRestart:
                         pass
                     else:      
                         self._jobStore.destroy()
                         logger.info("Successfully deleted the job store: %s" % str(self._jobStore))
-                except:
+                except:  # noqa
                     logger.info("Failed to delete the job store: %s" % str(self._jobStore))
                     raise
-        except Exception as e:
+        except Exception as e:  # noqa
             if exc_type is None:
                 raise
             else:
@@ -892,48 +897,8 @@ class Toil(object):
             self._provisioner.setAutoscaledNodeTypes(self.config.nodeTypes)
 
     @classmethod
-    def getJobStore(cls, locator):
-        """
-        Create an instance of the concrete job store implementation that matches the given locator.
-
-        :param str locator: The location of the job store to be represent by the instance
-
-        :return: an instance of a concrete subclass of AbstractJobStore
-        :rtype: toil.jobStores.abstractJobStore.AbstractJobStore
-        """
-        name, rest = cls.parseLocator(locator)
-        if name == 'file':
-            from toil.jobStores.fileJobStore import FileJobStore
-            return FileJobStore(rest)
-        elif name == 'aws':
-            from toil.jobStores.aws.jobStore import AWSJobStore
-            return AWSJobStore(rest)
-        elif name == 'google':
-            from toil.jobStores.googleJobStore import GoogleJobStore
-            return GoogleJobStore(rest)
-        else:
-            raise RuntimeError("Unknown job store implementation '%s'" % name)
-
-    @staticmethod
-    def parseLocator(locator):
-        if locator[0] in '/.' or ':' not in locator:
-            return 'file', locator
-        else:
-            try:
-                name, rest = locator.split(':', 1)
-            except ValueError:
-                raise RuntimeError('Invalid job store locator syntax.')
-            else:
-                return name, rest
-
-    @staticmethod
-    def buildLocator(name, rest):
-        assert ':' not in name
-        return f'{name}:{rest}'
-
-    @classmethod
-    def resumeJobStore(cls, locator):
-        jobStore = cls.getJobStore(locator)
+    def resumeJobStore(cls, location):
+        jobStore = create_jobstore(location)
         jobStore.resume()
         return jobStore
 

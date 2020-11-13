@@ -33,7 +33,7 @@ from mock import MagicMock
 from six.moves.queue import Empty, Queue
 from six import iteritems
 
-from toil.job import Job, JobDescription
+from toil.job import JobDescription
 from toil.lib.humanize import human2bytes as h2b
 from toil.test import ToilTest, slow, travis_test
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,

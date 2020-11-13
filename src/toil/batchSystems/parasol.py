@@ -11,11 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
 from __future__ import division
-from builtins import next
-from builtins import str
 from past.utils import old_div
 from future.utils import listitems
 import logging
@@ -25,27 +21,23 @@ import sys
 import subprocess
 import tempfile
 import time
+
 from threading import Thread
+from shutil import which
 
 # Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
-from six import itervalues
 
 from toil.lib.iterables import concat
-from shutil import which
-
+from toil.jobStores.utils import parse_jobstore_location
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, UpdatedBatchJobInfo
 from toil.lib.bioio import getTempFile
-from toil.common import Toil
 
 logger = logging.getLogger(__name__)
 
 
 class ParasolBatchSystem(BatchSystemSupport):
-    """
-    The interface for Parasol.
-    """
-
+    """The interface for Parasol."""
     @classmethod
     def supportsWorkerCleanup(cls):
         return False
@@ -67,8 +59,8 @@ class ParasolBatchSystem(BatchSystemSupport):
                 raise RuntimeError("Can't find %s on PATH." % command)
         logger.debug('Using Parasol at %s', command)
         self.parasolCommand = command
-        jobStoreType, path = Toil.parseLocator(config.jobStore)
-        if jobStoreType != 'file':
+        jobstore_type, path = parse_jobstore_location(config.jobStore)
+        if jobstore_type != 'file':
             raise RuntimeError("The parasol batch system doesn't currently work with any "
                                "jobStore type except file jobStores.")
         self.parasolResultsDir = tempfile.mkdtemp(dir=os.path.abspath(path))
@@ -242,7 +234,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         created by other users.
         """
         issuedJobs = set()
-        for resultsFile in itervalues(self.resultsFiles):
+        for resultsFile in self.resultsFiles.values():
             issuedJobs.update(self.getJobIDsForResultsFile(resultsFile))
 
         return list(issuedJobs)
@@ -352,7 +344,7 @@ class ParasolBatchSystem(BatchSystemSupport):
 
     def shutdown(self):
         self.killBatchJobs(self.getIssuedBatchJobIDs())  # cleanup jobs
-        for results in itervalues(self.resultsFiles):
+        for results in self.resultsFiles.values():
             exitValue = self._runParasol(['-results=' + results, 'clear', 'sick'],
                                          autoRetry=False)[0]
             if exitValue is not None:

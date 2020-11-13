@@ -11,12 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, print_function
-from future import standard_library
-standard_library.install_aliases()
-from builtins import str
-from builtins import map
-from builtins import filter
 import argparse
 import base64
 from contextlib import contextmanager
@@ -34,10 +28,11 @@ import socket
 import logging
 import shutil
 
-from toil.lib.compatibility import USING_PYTHON2
+from typing import Optional
+
 from toil.lib.expando import MagicExpando
 from toil.common import Toil, safeUnpickleFromStream
-from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.fileStores.abstractFileStore import AbstractFileStore, create_filestore
 from toil import logProcessContext
 from toil.job import Job, CheckpointJobDescription
 from toil.lib.bioio import configureRootLogger
@@ -52,6 +47,51 @@ except ImportError:
     CWL_INTERNAL_JOBS = ()
 
 logger = logging.getLogger(__name__)
+
+
+def set_workflow_directories(workflow_id: str, work_dir: Optional[str] = None):
+    workflow_dir = Toil.getLocalWorkflowDir(workflow_id, configWorkDir=work_dir)
+    # Dir to put all this worker's temp files in.
+    local_worker_tmp_dir = tempfile.mkdtemp(dir=workflow_dir)
+    os.chmod(local_worker_tmp_dir, 0o755)
+    return workflow_dir, local_worker_tmp_dir
+
+
+def kill_if_bad_worker_set(bad_worker: float, bad_worker_fail_interval: float):
+    """Create the worker killer, if requested."""
+    if bad_worker > 0 and random.random() < bad_worker:
+        # We need to kill the process we are currently in, to simulate worker
+        # failure. We don't want to just send SIGKILL, because we can't tell
+        # that from a legitimate OOM on our CI runner. We're going to send
+        # SIGUSR1 so our terminations are distinctive, and then SIGKILL if that
+        # didn't stick. We definitely don't want to do this from *within* the
+        # process we are trying to kill, so we fork off. TODO: We can still
+        # leave the killing code running after the main Toil flow is done, but
+        # since it's now in a process instead of a thread, the main Python
+        # process won't wait around for its timeout to expire. I think this is
+        # better than the old thread-based way where all of Toil would wait
+        # around to be killed.
+        killTarget = os.getpid()
+        sleepTime = bad_worker_fail_interval * random.random()
+        if os.fork() == 0:
+            # We are the child
+            # Let the parent run some amount of time
+            time.sleep(sleepTime)
+            # Kill it gently
+            os.kill(killTarget, signal.SIGUSR1)
+            # Wait for that to stick
+            time.sleep(0.01)
+            try:
+                # Kill it harder. Hope the PID hasn't already been reused.
+                # If we succeeded the first time, this will OSError
+                os.kill(killTarget, signal.SIGKILL)
+            except OSError:
+                pass
+            # Exit without doing any of Toil's cleanup
+            os._exit(0)
+        # We don't need to reap the child. Either it kills us, or we finish
+        # before it does. Either way, init will have to clean it up for us.
+
 
 def nextChainable(predecessor, jobStore, config):
     """
@@ -127,6 +167,7 @@ def nextChainable(predecessor, jobStore, config):
     # Made it through! This job is chainable.
     return successor
 
+
 def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=True):
     """
     Worker process script, runs a job. 
@@ -141,46 +182,10 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     configureRootLogger()
     setLogLevel(config.logLevel)
 
-    ##########################################
-    #Create the worker killer, if requested
-    ##########################################
-
     logFileByteReportLimit = config.maxLogFileSize
-    
-    if config.badWorker > 0 and random.random() < config.badWorker:
-        # We need to kill the process we are currently in, to simulate worker
-        # failure. We don't want to just send SIGKILL, because we can't tell
-        # that from a legitimate OOM on our CI runner. We're going to send
-        # SIGUSR1 so our terminations are distinctive, and then SIGKILL if that
-        # didn't stick. We definitely don't want to do this from *within* the
-        # process we are trying to kill, so we fork off. TODO: We can still
-        # leave the killing code running after the main Toil flow is done, but
-        # since it's now in a process instead of a thread, the main Python
-        # process won't wait around for its timeout to expire. I think this is
-        # better than the old thread-based way where all of Toil would wait
-        # around to be killed.
-        
-        killTarget = os.getpid()
-        sleepTime = config.badWorkerFailInterval * random.random()
-        if os.fork() == 0:
-            # We are the child
-            # Let the parent run some amount of time
-            time.sleep(sleepTime)
-            # Kill it gently
-            os.kill(killTarget, signal.SIGUSR1)
-            # Wait for that to stick
-            time.sleep(0.01)
-            try:
-                # Kill it harder. Hope the PID hasn't already been reused.
-                # If we succeeded the first time, this will OSError
-                os.kill(killTarget, signal.SIGKILL)
-            except OSError:
-                pass
-            # Exit without doing any of Toil's cleanup
-            os._exit(0)
-            
-        # We don't need to reap the child. Either it kills us, or we finish
-        # before it does. Either way, init will have to clean it up for us.
+
+    # used by testing, or chaotic users
+    kill_if_bad_worker_set(bad_worker=config.badWorker, bad_worker_fail_interval=config.badWorkerFailInterval)
 
     ##########################################
     #Load the environment for the job
@@ -217,16 +222,9 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         for e in environment["PYTHONPATH"].split(':'):
             if e != '':
                 sys.path.append(e)
-                
-    toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
 
-    ##########################################
-    #Setup the temporary directories.
-    ##########################################
-        
-    # Dir to put all this worker's temp files in.
-    localWorkerTempDir = tempfile.mkdtemp(dir=toilWorkflowDir)
-    os.chmod(localWorkerTempDir, 0o755)
+    workflowDir, localWorkerTempDir = set_workflow_directories(workflow_id=config.workflowID,
+                                                               work_dir=config.workDir)
 
     ##########################################
     #Setup the logging
@@ -300,7 +298,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         ##########################################
         #Connect to the deferred function system
         ##########################################
-        deferredFunctionManager = DeferredFunctionManager(toilWorkflowDir)
+        deferredFunctionManager = DeferredFunctionManager(workflowDir)
 
         ##########################################
         #Load the JobDescription
@@ -380,7 +378,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                 logger.info("Loaded body %s from description %s", job, jobDesc)
 
                 # Create a fileStore object for the job
-                fileStore = AbstractFileStore.createFileStore(jobStore, jobDesc, localWorkerTempDir, blockFn,
+                fileStore = create_filestore(jobStore, jobDesc, localWorkerTempDir, blockFn,
                                                               caching=not config.disableCaching)
                 with job._executor(stats=statsDict if config.stats else None,
                                    fileStore=fileStore):
@@ -465,7 +463,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             
             # Build a fileStore to update the job and commit the replacement.
             # TODO: can we have a commit operation without an entire FileStore???
-            fileStore = AbstractFileStore.createFileStore(jobStore, jobDesc, localWorkerTempDir, blockFn,
+            fileStore = create_filestore(jobStore, jobDesc, localWorkerTempDir, blockFn,
                                                           caching=not config.disableCaching)
                                                           
             # Update blockFn to wait for that commit operation.
@@ -608,7 +606,8 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         return 1
     else:
         return 0
-        
+
+
 def parse_args(args):
     """
     Parse command-line arguments to the worker.

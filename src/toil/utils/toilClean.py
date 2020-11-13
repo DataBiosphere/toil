@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,33 +12,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-Delete the job store used by a previous Toil workflow invocation
+Delete a job store used by a previous Toil workflow invocation.
 """
-from __future__ import absolute_import
 import logging
 
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
-from toil.common import Toil, jobStoreLocatorHelp, Config
-from toil.jobStores.abstractJobStore import NoSuchJobStoreException
+from toil.common import jobStoreLocatorHelp, Config
+from toil.jobStores.utils import create_jobstore
+from toil.jobStores.errors import NoSuchJobStoreException
 from toil.version import version
 
-logger = logging.getLogger( __name__ )
+log = logging.getLogger(__name__)
+
 
 def main():
     parser = getBasicOptionParser()
     parser.add_argument("jobStore", type=str,
-                        help="The location of the job store to delete. " + jobStoreLocatorHelp)
+                        help=f"The location of the job store to delete.  {jobStoreLocatorHelp}")
     parser.add_argument("--version", action='version', version=version)
     config = Config()
     config.setOptions(parseBasicOptions(parser))
     try:
-        jobStore = Toil.getJobStore(config.jobStore)
+        jobStore = create_jobstore(config.jobStore)
         jobStore.resume()
         jobStore.destroy()
-        logger.info("Successfully deleted the job store: %s" % config.jobStore)
+        log.info(f"Successfully deleted the job store: {config.jobStore}")
     except NoSuchJobStoreException:
-        logger.info("Failed to delete the job store: %s is non-existent" % config.jobStore)
-    except:
-        logger.info("Failed to delete the job store: %s" % config.jobStore)
+        log.info(f"Failed to delete the job store: {config.jobStore} is non-existent.")
+    except:  # noqa
+        log.info(f"Failed to delete the job store: {config.jobStore}")
         raise

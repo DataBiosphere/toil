@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,14 +15,6 @@
 """
 The leader script (of the leader/worker pair) for running jobs.
 """
-from __future__ import absolute_import
-from __future__ import division
-
-from future import standard_library
-standard_library.install_aliases()
-from builtins import str
-from builtins import object
-from builtins import super
 import base64
 import logging
 import time
@@ -30,28 +22,28 @@ import os
 import pickle
 import sys
 import glob
+import enlighten
 
 from toil.lib.humanize import bytes2human
 from toil import resolveEntryPoint
-try:
-    from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
-except ImportError:
-    # CWL extra not installed
-    CWL_INTERNAL_JOBS = ()
 from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
-from toil.jobStores.abstractJobStore import NoSuchJobException
+from toil.jobStores.errors import NoSuchJobException
 from toil.batchSystems import DeadlockException
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.clusterScaler import ScalerThread
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
-from toil.job import Job, JobDescription, ServiceJobDescription, CheckpointJobDescription
+from toil.job import ServiceJobDescription, CheckpointJobDescription
 from toil.toilState import ToilState
 from toil.common import Toil, ToilMetrics
 
-import enlighten
+try:
+    from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
+except ImportError:
+    # CWL extra not installed
+    CWL_INTERNAL_JOBS = ()
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
 ###############################################################################
 # Implementation Notes
@@ -382,9 +374,9 @@ class Leader(object):
         
         :param toil.job.JobDescription predecessor: The job which the successors come after.
         """
-    
+
         # TODO: rewrite!
-    
+
         assert len(predecessor.stack[-1]) > 0
         logger.debug("Job: %s has %i successors to schedule",
                      predecessor.jobStoreID, len(predecessor.stack[-1]))

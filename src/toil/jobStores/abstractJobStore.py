@@ -15,7 +15,7 @@ import shutil
 import re
 import pickle
 import logging
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 from contextlib import contextmanager, closing
 from datetime import timedelta
 from uuid import uuid4
@@ -23,89 +23,23 @@ from requests.exceptions import HTTPError
 from http.client import BadStatusLine
 
 # Python 3 compatibility imports
-from six import itervalues
 from six.moves.urllib.request import urlopen
 import six.moves.urllib.parse as urlparse
 
 from toil.lib.retry import retry, ErrorCondition
-
 from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
+from toil.jobStores.errors import NoSuchFileException
 from toil.job import JobException, CheckpointJobDescription, ServiceJobDescription
 from toil.lib.memoize import memoize
 from toil.lib.misc import WriteWatchingStream
 from toil.lib.objects import abstractclassmethod
-from future.utils import with_metaclass
 
 
 logger = logging.getLogger(__name__)
 
 
-class InvalidImportExportUrlException(Exception):
-    def __init__(self, url):
-        """
-        :param urlparse.ParseResult url:
-        """
-        super().__init__("The URL '%s' is invalid." % url.geturl())
-
-
-class NoSuchJobException(Exception):
-    """Indicates that the specified job does not exist."""
-    def __init__(self, jobStoreID):
-        """
-        :param str jobStoreID: the jobStoreID that was mistakenly assumed to exist
-        """
-        super().__init__("The job '%s' does not exist." % jobStoreID)
-
-
-class ConcurrentFileModificationException(Exception):
-    """Indicates that the file was attempted to be modified by multiple processes at once."""
-    def __init__(self, jobStoreFileID):
-        """
-        :param str jobStoreFileID: the ID of the file that was modified by multiple workers
-               or processes concurrently
-        """
-        super().__init__('Concurrent update to file %s detected.' % jobStoreFileID)
-
-
-class NoSuchFileException(Exception):
-    """Indicates that the specified file does not exist."""
-    def __init__(self, jobStoreFileID, customName=None, *extra):
-        """
-        :param str jobStoreFileID: the ID of the file that was mistakenly assumed to exist
-        :param str customName: optionally, an alternate name for the nonexistent file
-        :param list extra: optional extra information to add to the error message
-        """
-        # Having the extra argument may help resolve the __init__() takes at
-        # most three arguments error reported in
-        # https://github.com/DataBiosphere/toil/issues/2589#issuecomment-481912211
-        if customName is None:
-            message = "File '%s' does not exist." % jobStoreFileID
-        else:
-            message = "File '%s' (%s) does not exist." % (customName, jobStoreFileID)
-
-        if extra:
-            # Append extra data.
-            message += " Extra info: " + " ".join((str(x) for x in extra))
-
-        super().__init__(message)
-
-
-class NoSuchJobStoreException(Exception):
-    """Indicates that the specified job store does not exist."""
-    def __init__(self, locator):
-        super().__init__("The job store '%s' does not exist, so there is nothing to restart." % locator)
-
-
-class JobStoreExistsException(Exception):
-    """Indicates that the specified job store already exists."""
-    def __init__(self, locator):
-        super().__init__(
-            "The job store '%s' already exists. Use --restart to resume the workflow, or remove "
-            "the job store with 'toil clean' to start the workflow from scratch." % locator)
-
-
-class AbstractJobStore(with_metaclass(ABCMeta, object)):
+class AbstractJobStore(ABC):
     """
     Represents the physical storage for the jobs and files in a Toil workflow.
     
@@ -509,7 +443,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
         def getJobDescriptions():
             if jobCache is not None:
-                return itervalues(jobCache)
+                return jobCache.values()
             else:
                 return self.jobs()
 
@@ -1109,18 +1043,14 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
             raise ValueError("Not a valid shared file name: '%s'." % sharedFileName)
 
 
-class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
+class JobStoreSupport(ABC):
     @classmethod
     def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() in ('http', 'https', 'ftp') and not export
 
     @classmethod
-    @retry(errors=[BadStatusLine] + [
-                         ErrorCondition(
-                             error=HTTPError,
-                             error_codes=[408, 500, 503]
-                         )
-                     ])
+    @retry(errors=[BadStatusLine,
+                   ErrorCondition(error=HTTPError, error_codes=[408, 500, 503])])
     def getSize(cls, url):
         if url.scheme.lower() == 'ftp':
             return None
@@ -1130,12 +1060,8 @@ class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
             return int(size) if size is not None else None
 
     @classmethod
-    @retry(errors=[BadStatusLine] + [
-                         ErrorCondition(
-                             error=HTTPError,
-                             error_codes=[408, 500, 503]
-                         )
-                     ])
+    @retry(errors=[BadStatusLine,
+                   ErrorCondition(error=HTTPError, error_codes=[408, 500, 503])])
     def _readFromUrl(cls, url, writable):
         # We can only retry on errors that happen as responses to the request.
         # If we start getting file data, and the connection drops, we fail.

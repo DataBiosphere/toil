@@ -28,11 +28,14 @@ from toil.lib.misc import truncExpBackoff
 # Python 3 compatibility imports
 from six.moves import StringIO
 
-from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
-                                             NoSuchFileException, NoSuchJobStoreException,
-                                             JobStoreExistsException)
+from toil.jobStores.errors import (NoSuchJobException,
+                                   NoSuchFileException,
+                                   JobStoreExistsException,
+                                   NoSuchJobStoreException)
+from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.jobStores.utils import WritablePipe, ReadablePipe
-from toil.job import JobDescription
+
+
 log = logging.getLogger(__name__)
 
 GOOGLE_STORAGE = 'gs'

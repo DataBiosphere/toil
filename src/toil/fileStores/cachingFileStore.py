@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from contextlib import contextmanager
 import errno
 import hashlib
 import logging
@@ -19,12 +18,16 @@ import os
 import re
 import shutil
 import sqlite3
-import sys
 import tempfile
 import threading
 import time
 import uuid
 
+from typing import Callable
+from contextlib import contextmanager
+
+import toil.jobStores.abstractJobStore
+import toil.job
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.lib.humanize import bytes2human
@@ -75,9 +78,8 @@ class IllegalDeletionCacheError(CacheError):
     """
 
     def __init__(self, deletedFile):
-        message = 'Cache tracked file (%s) has been deleted or moved by user ' \
-                  ' without updating cache database. Use deleteLocalFile to ' \
-                  'delete such files.' % deletedFile
+        message = f'Cache tracked file ({deletedFile}) has been deleted or moved by user ' \
+                  f'without updating cache database. Use deleteLocalFile to delete such files.'
         super(IllegalDeletionCacheError, self).__init__(message)
 
 
@@ -170,7 +172,11 @@ class CachingFileStore(AbstractFileStore):
 
     """
 
-    def __init__(self, jobStore, jobDesc, localTempDir, waitForPreviousCommit):
+    def __init__(self,
+                 jobStore: toil.jobStores.abstractJobStore.AbstractJobStore,
+                 jobDesc: toil.job.JobDescription,
+                 localTempDir: str,
+                 waitForPreviousCommit: Callable):
         super(CachingFileStore, self).__init__(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
 
         # For testing, we have the ability to force caching to be non-free, by never linking from the file store

@@ -11,21 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-
-from future import standard_library
-
-standard_library.install_aliases()
-from builtins import str
-from builtins import range
 from contextlib import contextmanager, closing
 import logging
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
+import pickle
 
 import re
 import time
@@ -52,12 +40,14 @@ import botocore.credentials
 from toil.lib.compatibility import compat_bytes, compat_plain
 from toil.lib.misc import AtomicFileCreate
 from toil.fileStores import FileID
-from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             NoSuchJobException,
-                                             ConcurrentFileModificationException,
-                                             NoSuchFileException,
-                                             NoSuchJobStoreException,
-                                             JobStoreExistsException)
+from toil.jobStores.abstractJobStore import AbstractJobStore
+from toil.jobStores.errors import (
+    NoSuchJobException,
+    ConcurrentFileModificationException,
+    NoSuchFileException,
+    NoSuchJobStoreException,
+    JobStoreExistsException,
+    ChecksumError)
 from toil.jobStores.aws.utils import (SDBHelper,
                                       retry_sdb,
                                       no_such_sdb_domain,
@@ -81,11 +71,6 @@ s3_boto3_resource = boto3_session.resource('s3')
 s3_boto3_client = boto3_session.client('s3')
 log = logging.getLogger(__name__)
 
-class ChecksumError(Exception):
-    """
-    Raised when a download from AWS does not contain the correct data.
-    """
-    pass
 
 class AWSJobStore(AbstractJobStore):
     """

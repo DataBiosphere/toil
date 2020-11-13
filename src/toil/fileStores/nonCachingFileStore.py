@@ -11,24 +11,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import, print_function
-
-from future import standard_library
-
-standard_library.install_aliases()
-from builtins import map
-from builtins import str
-from collections import defaultdict
-from contextlib import contextmanager
 import dill
 import errno
 import fcntl
 import logging
 import os
-import sys
 import uuid
 
+from typing import Callable
+from collections import defaultdict
+from contextlib import contextmanager
+
+import toil.jobStores.abstractJobStore
+import toil.job
 from toil.lib.misc import robust_rmtree
 from toil.lib.threading import get_process_name, process_name_exists
 from toil.lib.humanize import bytes2human
@@ -39,13 +34,13 @@ from toil.fileStores import FileID
 
 logger = logging.getLogger(__name__)
 
-if sys.version_info[0] < 3:
-    # Define a usable FileNotFoundError as will be raised by os.oprn on a
-    # nonexistent parent directory.
-    FileNotFoundError = OSError
 
 class NonCachingFileStore(AbstractFileStore):
-    def __init__(self, jobStore, jobDesc, localTempDir, waitForPreviousCommit):
+    def __init__(self,
+                 jobStore: toil.jobStores.abstractJobStore.AbstractJobStore,
+                 jobDesc: toil.job.JobDescription,
+                 localTempDir: str,
+                 waitForPreviousCommit: Callable):
         super(NonCachingFileStore, self).__init__(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
         # This will be defined in the `open` method.
         self.jobStateFile = None
@@ -60,8 +55,7 @@ class NonCachingFileStore(AbstractFileStore):
         self.jobStateFile = self._createJobStateFile()
         freeSpace, diskSize = getFileSystemSize(self.localTempDir)
         if freeSpace <= 0.1 * diskSize:
-            logger.warning('Starting job %s with less than 10%% of disk space remaining.',
-                           self.jobName)
+            logger.warning(f'Starting job {self.jobName} with less than 10%% of disk space remaining.')
         try:
             os.chdir(self.localTempDir)
             with super().open(job):

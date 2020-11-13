@@ -11,17 +11,17 @@ Toil specific exceptions.
 .. autoexception:: toil.job::JobGraphDeadlockException
    :members:
 
-.. autoexception:: toil.jobStores.abstractJobStore::ConcurrentFileModificationException
+.. autoexception:: toil.jobStores.errors::ConcurrentFileModificationException
    :members:
 
-.. autoexception:: toil.jobStores.abstractJobStore::JobStoreExistsException
+.. autoexception:: toil.jobStores.errors::JobStoreExistsException
    :members:
 
-.. autoexception:: toil.jobStores.abstractJobStore::NoSuchFileException
+.. autoexception:: toil.jobStores.errors::NoSuchFileException
    :members:
 
-.. autoexception:: toil.jobStores.abstractJobStore::NoSuchJobException
+.. autoexception:: toil.jobStores.errors::NoSuchJobException
    :members:
 
-.. autoexception:: toil.jobStores.abstractJobStore::NoSuchJobStoreException
+.. autoexception:: toil.jobStores.errors::NoSuchJobStoreException
    :members:

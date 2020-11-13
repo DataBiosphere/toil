@@ -63,9 +63,12 @@ import cwltool.stdfsaccess
 import cwltool.command_line_tool
 import cwltool.provenance
 
-from toil.jobStores.abstractJobStore import NoSuchJobStoreException, NoSuchFileException
+from toil.jobStores.errors import NoSuchJobStoreException, NoSuchFileException
 from toil.fileStores import FileID
-from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.fileStores.abstractFileStore import AbstractFileStore, create_filestore
+from toil.jobStores.utils import create_jobstore
+from toil.job import JobDescription
+from toil.worker import set_workflow_directories
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.pathmapper import (PathMapper, adjustDirObjs, adjustFileObjs,
@@ -80,7 +83,7 @@ from cwltool.utils import aslist, convert_pathsep_to_unix, get_listing, normaliz
 from cwltool.mutation import MutationManager
 from cwltool.builder import content_limit_respected_read
 
-from toil.job import Job, Promise
+from toil.job import Job
 from toil.common import Config, Toil, addOptions
 from toil.version import baseVersion
 
@@ -593,9 +596,27 @@ def toil_make_tool(toolpath_object: MutableMapping[str, Any],
     return cwltool.workflow.default_make_tool(toolpath_object, loading_context)
 
 
+class ToilFsAccessFileStore:
+    """A file_store that can provide access to 'toilfs:' URIs while still being picklable."""
+    def __init__(self, jobstore_uri, localTempDir=None):
+        self.jobStore = create_jobstore(jobstore_uri)
+        self.localTempDir = localTempDir or f'/tmp/{uuid.uuid4()}'  # this is probably wrong
+
+    def getLocalTempFileName(self):
+        handle, tmpFile = tempfile.mkstemp(prefix="tmp", suffix=".tmp", dir=self.localTempDir)
+        os.close(handle)
+        os.remove(tmpFile)
+        return os.path.abspath(tmpFile)
+
+    def readGlobalFile(self, fileStoreID):
+        localFilePath = self.getLocalTempFileName()
+        self.jobStore.readFile(fileStoreID, localFilePath)
+        return localFilePath
+
+
 class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
     """Custom filesystem access class which handles toil filestore references."""
-    def __init__(self, basedir: str, file_store: AbstractFileStore = None):
+    def __init__(self, basedir: str, file_store: AbstractFileStore):
         self.file_store = file_store
         super(ToilFsAccess, self).__init__(basedir)
 
@@ -612,7 +633,6 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
         Overwrites cwltool.stdfsaccess.StdFsAccess._abs() to account for toil specific schema.
         """
-
         # Used to fetch a path to determine if a file exists in the inherited cwltool.stdfsaccess.StdFsAccess,
         # (among other things) so this should not error on missing files.
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43
@@ -1641,8 +1661,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     if options.provisioner and not options.jobStore:
         raise NoSuchJobStoreException(
-            'Please specify a jobstore with the --jobStore option when '
-            'specifying a provisioner.')
+            'Please specify a jobstore with the --jobStore option when specifying a provisioner.')
 
     if options.batchSystem == 'kubernetes':
         options.singularity = True
@@ -1781,6 +1800,9 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             runtime_context.no_match_user = options.no_match_user
             runtime_context.no_read_only = options.no_read_only
             runtime_context.basedir = options.basedir
+
+            picklable_file_store = ToilFsAccessFileStore(jobstore_uri=options.jobStore, localTempDir=options.basedir)
+            runtime_context.make_fs_access = functools.partial(ToilFsAccess, picklable_file_store)
 
             # We instantiate an early builder object here to populate indirect secondaryFile references
             # using cwltool's library because we need to resolve them before toil imports them into the filestore.

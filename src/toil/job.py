@@ -118,6 +118,7 @@ class TemporaryID:
     def __ne__(self, other):
         return not isinstance(other, TemporaryID) or self._value != other._value
 
+
 class Requirer:
     """
     Base class implementing the storage and presentation of requirements for

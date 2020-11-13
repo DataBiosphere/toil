@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,16 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from abc import abstractmethod, ABCMeta
+from abc import abstractmethod, ABC
 from contextlib import contextmanager
 from threading import Semaphore, Event
-from future.utils import with_metaclass
 import dill
 import logging
 import os
 import tempfile
-from typing import Union
+from typing import Union, Callable
 
+import toil.jobStores.abstractJobStore
+import toil.job
 from toil.lib.objects import abstractclassmethod
 from toil.lib.misc import WriteWatchingStream
 from toil.common import cacheDirName
@@ -29,7 +30,21 @@ from toil.fileStores import FileID
 
 logger = logging.getLogger(__name__)
 
-class AbstractFileStore(with_metaclass(ABCMeta, object)):
+
+def create_filestore(
+        jobStore: toil.jobStores.abstractJobStore.AbstractJobStore,
+        jobDesc: toil.job.JobDescription,
+        localTempDir: str,
+        waitForPreviousCommit: Callable,
+        caching: bool):
+    # Defer these imports until runtime, since these classes depend on us
+    from toil.fileStores.cachingFileStore import CachingFileStore
+    from toil.fileStores.nonCachingFileStore import NonCachingFileStore
+    fileStoreCls = CachingFileStore if caching else NonCachingFileStore
+    return fileStoreCls(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
+
+
+class AbstractFileStore(ABC):
     """
     Interface used to allow user code run by Toil to read and write files.
     
@@ -58,7 +73,11 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
     _pendingFileWrites = set()
     _terminateEvent = Event()  # Used to signify crashes in threads
 
-    def __init__(self, jobStore, jobDesc, localTempDir, waitForPreviousCommit):
+    def __init__(self,
+                 jobStore: toil.jobStores.abstractJobStore.AbstractJobStore,
+                 jobDesc: toil.job.JobDescription,
+                 localTempDir: str,
+                 waitForPreviousCommit: Callable):
         """
         Create a new file store object.
 
@@ -97,14 +116,6 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         # Holds records of file ID, or file ID and local path, for reporting
         # the accessed files of failed jobs.
         self._accessLog = []
-
-    @staticmethod
-    def createFileStore(jobStore, jobDesc, localTempDir, waitForPreviousCommit, caching):
-        # Defer these imports until runtime, since these classes depend on us
-        from toil.fileStores.cachingFileStore import CachingFileStore
-        from toil.fileStores.nonCachingFileStore import NonCachingFileStore
-        fileStoreCls = CachingFileStore if caching else NonCachingFileStore
-        return fileStoreCls(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
 
     @staticmethod
     def shutdownFileStore(workflowDir, workflowID):

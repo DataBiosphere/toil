@@ -1,17 +1,43 @@
-from builtins import object
 import codecs
 import logging
 import os
 import errno
-from abc import ABCMeta
-from abc import abstractmethod
+
+from abc import ABC, abstractmethod
 
 from toil.lib.threading import ExceptionalThread
-from future.utils import with_metaclass
 
 log = logging.getLogger(__name__)
 
-class WritablePipe(with_metaclass(ABCMeta, object)):
+
+def create_jobstore(location: str):
+    """
+    Create an instance of the concrete job store implementation that matches the given location.
+
+    :param str location: The location of the job store to be represent by the instance
+
+    :return: an instance of a concrete subclass of AbstractJobStore
+    :rtype: toil.jobStores.abstractJobStore.AbstractJobStore
+    """
+    jobstore_type, jobstore_location = parse_jobstore_location(location)
+    if jobstore_type == 'file':
+        from toil.jobStores.fileJobStore import FileJobStore
+        return FileJobStore(jobstore_location)
+    elif jobstore_type == 'aws':
+        from toil.jobStores.aws.jobStore import AWSJobStore
+        return AWSJobStore(jobstore_location)
+    elif jobstore_type == 'google':
+        from toil.jobStores.googleJobStore import GoogleJobStore
+        return GoogleJobStore(jobstore_location)
+    else:
+        raise RuntimeError(f"Unknown job store implementation: '{jobstore_type}'")
+
+
+def parse_jobstore_location(location: str):
+    return location.split(':', 1) if ':' in location else ('file', os.path.realpath(location))
+
+
+class WritablePipe(ABC):
     """
     An object-oriented wrapper for os.pipe. Clients should subclass it, implement
     :meth:`.readFrom` to consume the readable end of the pipe, then instantiate the class as a
@@ -131,7 +157,7 @@ class WritablePipe(with_metaclass(ABCMeta, object)):
                 os.close(readable_fh)
 
 
-class ReadablePipe(with_metaclass(ABCMeta, object)):
+class ReadablePipe(ABC):
     """
     An object-oriented wrapper for os.pipe. Clients should subclass it, implement
     :meth:`.writeTo` to place data into the writable end of the pipe, then instantiate the class
@@ -240,7 +266,8 @@ class ReadablePipe(with_metaclass(ABCMeta, object)):
                 # Only raise the child exception if there wasn't
                 # already an exception in the main thread
                 raise
-                
+
+
 class ReadableTransformingPipe(ReadablePipe):
     """
     A pipe which is constructed around a readable stream, and which provides a
@@ -291,6 +318,3 @@ class ReadableTransformingPipe(ReadablePipe):
     
     def writeTo(self, writable):
         self.transform(self.source, writable)
-    
-    
-

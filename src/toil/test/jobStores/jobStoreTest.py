@@ -51,8 +51,7 @@ from toil.lib.exceptions import panic
 from toil.common import Config, Toil
 from toil.fileStores import FileID
 from toil.job import Job, JobDescription, TemporaryID
-from toil.jobStores.abstractJobStore import (NoSuchJobException,
-                                             NoSuchFileException)
+from toil.jobStores.errors import NoSuchJobException, NoSuchFileException
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,

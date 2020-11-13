@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,12 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-# python 2/3 compatibility
-from __future__ import absolute_import
-from builtins import range
-
-# standard library
 from contextlib import contextmanager
 import logging
 import random
@@ -28,23 +22,18 @@ import stat
 import errno
 import time
 import uuid
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
+import pickle
 
-# toil dependencies
 from toil.fileStores import FileID
-from toil.lib.bioio import absSymPath
 from toil.lib.misc import robust_rmtree, AtomicFileCreate, atomic_copy, atomic_copyobj
-from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             NoSuchJobException,
-                                             NoSuchFileException,
-                                             JobStoreExistsException,
-                                             NoSuchJobStoreException)
-from toil.job import JobDescription, TemporaryID
+from toil.jobStores.errors import (NoSuchJobException,
+                                   NoSuchFileException,
+                                   JobStoreExistsException,
+                                   NoSuchJobStoreException)
+from toil.jobStores.abstractJobStore import AbstractJobStore
+from toil.job import TemporaryID
 
-logger = logging.getLogger( __name__ )
+log = logging.getLogger(__name__)
 
 
 class FileJobStore(AbstractJobStore):
@@ -67,7 +56,7 @@ class FileJobStore(AbstractJobStore):
     JOB_NAME_DIR_PREFIX = 'kind-'
 
     # 10Mb RAM chunks when reading/writing files
-    BUFFER_SIZE = 10485760 # 10Mb
+    BUFFER_SIZE = 10485760  # 10Mb
 
     def __init__(self, path, fanOut=1000):
         """
@@ -76,8 +65,8 @@ class FileJobStore(AbstractJobStore):
                            subdirectories
         """
         super(FileJobStore, self).__init__()
-        self.jobStoreDir = absSymPath(path)
-        logger.debug("Path to job store directory is '%s'.", self.jobStoreDir)
+        self.jobStoreDir = os.path.realpath(path)  # resolves symlinks (abspath does not)
+        log.debug("Path to job store directory is '%s'.", self.jobStoreDir)
 
         # Directory where actual job files go, and their job-associated temp files
         self.jobsDir = os.path.join(self.jobStoreDir, 'jobs')
@@ -98,7 +87,7 @@ class FileJobStore(AbstractJobStore):
         self.moveExports = None
 
     def __repr__(self):
-        return 'FileJobStore({})'.format(self.jobStoreDir)
+        return f'FileJobStore({self.jobStoreDir})'
 
     def initialize(self, config):
         try:
@@ -190,7 +179,7 @@ class FileJobStore(AbstractJobStore):
             if iTry >= maxTries:
                 return False
             elif iTry == 1:
-                logger.warning(("Path `{}` does not exist (yet). We will try #{} more times with {}s "
+                log.warning(("Path `{}` does not exist (yet). We will try #{} more times with {}s "
                         "intervals.").format(fileName, maxTries - iTry, sleepTime))
             time.sleep(sleepTime)
         return False
@@ -226,7 +215,7 @@ class FileJobStore(AbstractJobStore):
         # The following cleans up any issues resulting from the failure of the
         # job during writing by the batch system.
         if os.path.isfile(jobFile + ".new"):
-            logger.warning("There was a .new file for the job: %s", jobStoreID)
+            log.warning("There was a .new file for the job: %s", jobStoreID)
             os.remove(jobFile + ".new")
             job.setupJobAfterFailure()
         return job
@@ -323,7 +312,7 @@ class FileJobStore(AbstractJobStore):
             super(FileJobStore, self)._defaultExportFile(otherCls, jobStoreFileID, url)
 
     def _move_and_linkback(self, srcPath, destPath):
-        logger.debug("moveExports option, Moving src=%s to dest=%s ; then symlinking dest to src", srcPath, destPath)
+        log.debug("moveExports option, Moving src=%s to dest=%s ; then symlinking dest to src", srcPath, destPath)
         shutil.move(srcPath, destPath)
         os.symlink(destPath, srcPath)
 
@@ -494,9 +483,9 @@ class FileJobStore(AbstractJobStore):
                     # Just keep going and hit the file copy case.
                     pass
                 else:
-                    logger.critical('Unexpected OSError when reading file from job store')
-                    logger.critical('jobStoreFilePath: ' + jobStoreFilePath + ' ' + str(os.path.exists(jobStoreFilePath)))
-                    logger.critical('localFilePath: ' + localFilePath + ' ' + str(os.path.exists(localFilePath)))
+                    log.critical('Unexpected OSError when reading file from job store')
+                    log.critical('jobStoreFilePath: ' + jobStoreFilePath + ' ' + str(os.path.exists(jobStoreFilePath)))
+                    log.critical('localFilePath: ' + localFilePath + ' ' + str(os.path.exists(localFilePath)))
                     raise
 
         # If we get here, neither a symlink nor a hardlink will work.
