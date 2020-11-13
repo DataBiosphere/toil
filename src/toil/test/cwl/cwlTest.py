@@ -50,17 +50,10 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
 
         args_passed_directly_to_toil = [f'--disableCaching={not caching}', '--clean=always']
 
-        if batchSystem == 'kubernetes' and 'CWL_K8_TEST_BUCKET' in os.environ:
-            args_passed_directly_to_toil.append(f'--jobStore=aws:us-west-2:{os.environ["CWL_K8_TEST_BUCKET"]}')
-
-        if yml != 'conformance_test_v1.0.yaml':
-            # only enable dev if we're on version 1.1+
-            args_passed_directly_to_toil.append('--enable-dev')
-
         if batchSystem:
             args_passed_directly_to_toil.append(f"--batchSystem={batchSystem}")
-
         cmd.extend(['--'] + args_passed_directly_to_toil)
+
         log.info("Running: '%s'", "' '".join(cmd))
         subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as e:
@@ -412,7 +405,7 @@ class CWLv12Test(ToilTest):
         cls.test_yaml = os.path.join(cls.cwlSpec, 'conformance_tests.yaml')
         # TODO: Use a commit zip in case someone decides to rewrite master's history?
         url = 'https://github.com/common-workflow-language/cwl-v1.2.git'
-        commit = 'b6ae88d63ff0b8dfc7ff5deed20f8f42bcb1cc9e'
+        commit = '9c6898993d13c644034535555c1da8ff98b10968'
         p = subprocess.Popen(f'git clone {url} {cls.cwlSpec} && cd {cls.cwlSpec} && git checkout {commit}', shell=True)
         p.communicate()
 
