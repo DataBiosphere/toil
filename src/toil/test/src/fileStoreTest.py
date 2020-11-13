@@ -23,10 +23,11 @@ from abc import abstractmethod, ABCMeta
 from struct import pack, unpack
 from uuid import uuid4
 
+from toil.common import Toil
 from toil.job import Job
 from toil.fileStores import FileID
 from toil.fileStores.cachingFileStore import IllegalDeletionCacheError, CacheUnbalancedError, CachingFileStore
-from toil.test import ToilTest, needs_aws_ec2, needs_google, slow, travis_test
+from toil.test import ToilTest, needs_aws_ec2, needs_google, slow, travis_test, src
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.realtimeLogger import RealtimeLogger
@@ -37,6 +38,7 @@ import errno
 import inspect
 import logging
 import os
+import stat
 import random
 import signal
 import sys
@@ -189,7 +191,7 @@ class hidden(object):
             # Add one file for the sake of having something in the job store
             writeFileSize = random.randint(0, 30)
             cls = hidden.AbstractNonCachingFileStoreTest
-            fsId, _ = cls._writeFileToJobStore(job, isLocalFile=True, nonLocalDir=nonLocalDir,
+            fsId = cls._writeFileToJobStore(job, isLocalFile=True, nonLocalDir=nonLocalDir,
                                                fileMB=writeFileSize)
 
             # Fill in the size of the local file we just made
@@ -204,7 +206,7 @@ class hidden(object):
                 if randVal < 0.33:  # Write
                     writeFileSize = random.randint(0, 30)
                     isLocalFile = True if random.random() <= 0.5 else False
-                    fsID, _ = cls._writeFileToJobStore(job, isLocalFile=isLocalFile,
+                    fsID = cls._writeFileToJobStore(job, isLocalFile=isLocalFile,
                                                        nonLocalDir=nonLocalDir,
                                                        fileMB=writeFileSize)
                     writtenFiles[fsID] = writeFileSize
@@ -250,6 +252,40 @@ class hidden(object):
                             logger.info('No longer have file: %s', fsID)
                 i += 1
 
+        def testWriteReadGlobalFile(self):
+            workdir = self._createTempDir(purpose='nonLocalDir')
+            for i in True,False:
+                A = Job.wrapJobFn(self._testWriteReadGlobalFilePermissions,
+                                isLocalFile=False, executable=i, nonLocalDir=workdir)
+                Job.Runner.startToil(A, self.options)
+
+        @staticmethod
+        def _testWriteReadGlobalFilePermissions(job, isLocalFile, executable, nonLocalDir=None):
+            """
+            Ensures that uploaded files preserve their file permissions when they
+            are downloaded again. This function checks that a written executable file
+            maintains its executability after being read.
+            """
+            if isLocalFile:
+                workDir = job.fileStore.getLocalTempDir()
+            else:
+                assert nonLocalDir is not None
+                workDir = nonLocalDir
+            srcFile = '%s/%s%s' % (workDir, 'in', str(uuid4()))
+            with open(srcFile, 'w') as f:
+                f.write('Hello')
+
+            if executable:
+                os.chmod(srcFile, os.stat(srcFile).st_mode | stat.S_IXUSR)
+
+            initialPermissions = os.stat(srcFile).st_mode
+            fileID = job.fileStore.writeGlobalFile(srcFile)
+            dstFile = job.fileStore.getLocalTempFile() + str(uuid4())
+            dstFile = job.fileStore.readGlobalFile(fileID, userPath=dstFile, mutable=True)
+            currentPermissions = os.stat(dstFile).st_mode
+
+            assert initialPermissions == currentPermissions
+
         @staticmethod
         def _writeFileToJobStore(job, isLocalFile, nonLocalDir=None, fileMB=1):
             """
@@ -268,7 +304,7 @@ class hidden(object):
             with open(os.path.join(work_dir, str(uuid4())), 'wb') as testFile:
                 testFile.write(os.urandom(fileMB * 1024 * 1024))
 
-            return job.fileStore.writeGlobalFile(testFile.name), testFile
+            return job.fileStore.writeGlobalFile(testFile.name)
 
     class AbstractNonCachingFileStoreTest(with_metaclass(ABCMeta, AbstractFileStoreTest)):
         """
