@@ -23,7 +23,6 @@ from abc import abstractmethod, ABCMeta
 from struct import pack, unpack
 from uuid import uuid4
 
-from toil.common import Toil
 from toil.job import Job
 from toil.fileStores import FileID
 from toil.fileStores.cachingFileStore import IllegalDeletionCacheError, CacheUnbalancedError, CachingFileStore
