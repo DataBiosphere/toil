@@ -65,10 +65,8 @@ import cwltool.provenance
 
 from toil.jobStores.errors import NoSuchJobStoreException, NoSuchFileException
 from toil.fileStores import FileID
-from toil.fileStores.abstractFileStore import AbstractFileStore, create_filestore
+from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.jobStores.utils import create_jobstore
-from toil.job import JobDescription
-from toil.worker import set_workflow_directories
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.pathmapper import (PathMapper, adjustDirObjs, adjustFileObjs,

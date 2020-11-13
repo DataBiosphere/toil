@@ -32,7 +32,8 @@ from typing import Optional
 
 from toil.lib.expando import MagicExpando
 from toil.common import Toil, safeUnpickleFromStream
-from toil.fileStores.abstractFileStore import AbstractFileStore, create_filestore
+from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.fileStores.utils import create_filestore
 from toil import logProcessContext
 from toil.job import Job, CheckpointJobDescription
 from toil.lib.bioio import configureRootLogger

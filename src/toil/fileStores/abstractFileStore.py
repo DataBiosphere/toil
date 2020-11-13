@@ -11,37 +11,25 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from abc import abstractmethod, ABC
-from contextlib import contextmanager
-from threading import Semaphore, Event
 import dill
 import logging
 import os
 import tempfile
+
+from abc import abstractmethod, ABC
+from contextlib import contextmanager
+from threading import Semaphore, Event
 from typing import Union, Callable
 
 import toil.jobStores.abstractJobStore
 import toil.job
+
 from toil.lib.objects import abstractclassmethod
 from toil.lib.misc import WriteWatchingStream
 from toil.common import cacheDirName
-
 from toil.fileStores import FileID
 
 logger = logging.getLogger(__name__)
-
-
-def create_filestore(
-        jobStore: toil.jobStores.abstractJobStore.AbstractJobStore,
-        jobDesc: toil.job.JobDescription,
-        localTempDir: str,
-        waitForPreviousCommit: Callable,
-        caching: bool):
-    # Defer these imports until runtime, since these classes depend on us
-    from toil.fileStores.cachingFileStore import CachingFileStore
-    from toil.fileStores.nonCachingFileStore import NonCachingFileStore
-    fileStoreCls = CachingFileStore if caching else NonCachingFileStore
-    return fileStoreCls(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
 
 
 class AbstractFileStore(ABC):
