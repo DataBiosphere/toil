@@ -416,7 +416,7 @@ These are the steps to take to publish a Toil release:
   should be incremented, and **Y** and **Z** should be zero. If non-breaking
   changes are made but new functionality is added, **X** should remain the same
   as the last release, **Y** should be incremented, and **Z** should be zero.
-  If only bugfixes are released, **X** and **Y** should be the same as the last
+  If only patches are released, **X** and **Y** should be the same as the last
   release and **Z** should be incremented.
 
   .. _semantic versioning: https://semver.org/
