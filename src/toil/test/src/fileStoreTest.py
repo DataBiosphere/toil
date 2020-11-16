@@ -275,14 +275,14 @@ class hidden(object):
             initialPermissions = os.stat(srcFile).st_mode & stat.S_IXUSR
             fileID = job.fileStore.writeGlobalFile(srcFile)
 
-            # Make sure file maintains correct execute permissions with either symlink or hard link
-            for symlink in True,False:
-                dstFile = job.fileStore.getLocalTempFile() + str(uuid4())
-                dstFile = job.fileStore.readGlobalFile(fileID, userPath=dstFile, mutable=symlink, symlink=symlink)
-                # Current file owner execute permissions
-                currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
+            for mutable in True,False:
+                for symlink in True,False:
+                    dstFile = job.fileStore.getLocalTempFile() + str(uuid4())
+                    dstFile = job.fileStore.readGlobalFile(fileID, userPath=dstFile, mutable=mutable, symlink=symlink)
+                    # Current file owner execute permissions
+                    currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
 
-                assert initialPermissions == currentPermissions
+                    assert initialPermissions == currentPermissions
 
         @staticmethod
         def _writeFileToJobStore(job, isLocalFile, nonLocalDir=None, fileMB=1):
