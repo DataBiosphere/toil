@@ -43,9 +43,7 @@ from typing import (Text,
                     Tuple,
                     cast)
 
-# Python 3 compatibility imports
-from six import iteritems, string_types
-from six.moves.urllib import parse as urlparse
+from urllib import parse as urlparse
 
 from schema_salad import validate
 from schema_salad.schema import Names
@@ -68,19 +66,32 @@ from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
-from cwltool.pathmapper import (PathMapper, adjustDirObjs, adjustFileObjs,
-                                MapperEnt, visit_class,
-                                downloadHttpFile)
-from cwltool.process import (shortname, fill_in_defaults, compute_checksums,
-                             add_sizes, Process)
+from cwltool.mutation import MutationManager
+from cwltool.pathmapper import MapperEnt, PathMapper, downloadHttpFile
+from cwltool.process import (
+    Process,
+    add_sizes,
+    compute_checksums,
+    fill_in_defaults,
+    shortname,
+)
 from cwltool.secrets import SecretStore
 from cwltool.software_requirements import (
-    DependenciesConfiguration, get_container_from_software_requirements)
-from cwltool.utils import aslist, convert_pathsep_to_unix, get_listing, normalizeFilesDirs, CWLObjectType
-from cwltool.mutation import MutationManager
-from cwltool.builder import content_limit_respected_read
+    DependenciesConfiguration,
+    get_container_from_software_requirements,
+)
+from cwltool.utils import (
+    CWLObjectType,
+    adjustDirObjs,
+    adjustFileObjs,
+    aslist,
+    convert_pathsep_to_unix,
+    get_listing,
+    normalizeFilesDirs,
+    visit_class,
+)
 
-from toil.job import Job, Promise
+from toil.job import Job
 from toil.common import Config, Toil, addOptions
 from toil.version import baseVersion
 
@@ -196,8 +207,7 @@ class Conditional:
 
         expr_is_true = cwltool.expression.do_eval(
             self.expression,
-            {shortname(k): v for k, v in iteritems(
-                resolve_dict_w_promises(job))},
+            {shortname(k): v for k, v in resolve_dict_w_promises(job).items()},
             self.requirements,
             None,
             None,
@@ -221,7 +231,7 @@ class Conditional:
         def sn(n):
             if isinstance(n, Mapping):
                 return shortname(n["id"])
-            if isinstance(n, string_types):
+            if isinstance(n, str):
                 return shortname(n)
 
         for k in [sn(o) for o in self.outputs]:
@@ -372,14 +382,14 @@ class StepValueFrom:
         :param step_inputs: Workflow step inputs.
         :param file_store: A toil file store, needed to resolve toil fs:// paths.
         """
-        for k, v in step_inputs.items():
+        for v in step_inputs.values():
             val = cast(CWLObjectType, v)
             source_input = getattr(self.source, 'input', {})
             if isinstance(val, dict) and isinstance(source_input, dict):
                 if val.get("contents") is None and source_input.get('loadContents') is True:
                     fs_access = functools.partial(ToilFsAccess, file_store=file_store)
                     with fs_access('').open(cast(str, val["location"]), "rb") as f:
-                        val["contents"] = content_limit_respected_read(f)
+                        val["contents"] = cwltool.builder.content_limit_respected_read(f)
 
     def resolve(self) -> Any:
         """
@@ -914,7 +924,7 @@ class CWLJob(Job):
             if cwljob.get("class") == 'EnvVarRequirement':
                 for t in cwljob.get("envDef", {}):
                     yield t["envName"], self.builder.do_eval(t["envValue"])
-            for k, v in cwljob.items():
+            for v in cwljob.values():
                 for env_name, env_value in self.required_env_vars(v):
                     yield env_name, env_value
         if isinstance(cwljob, list):
@@ -1059,7 +1069,7 @@ def makeJob(tool: Process,
             for req in ("coresMin", "coresMax", "ramMin", "ramMax",
                         "tmpdirMin", "tmpdirMax", "outdirMin", "outdirMax"):
                 r = resourceReq.get(req)
-                if isinstance(r, string_types) and ("$(" in r or "${" in r):
+                if isinstance(r, str) and ("$(" in r or "${" in r):
                     # Found a dynamic resource requirement so use a job wrapper
                     job = CWLJobWrapper(tool, jobobj, runtime_context, conditional=conditional)
                     return job, job
@@ -1131,7 +1141,7 @@ class CWLScatter(Job):
     def run(self, file_store: AbstractFileStore) -> list:
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
-        if isinstance(self.step.tool["scatter"], string_types):
+        if isinstance(self.step.tool["scatter"], str):
             scatter = [self.step.tool["scatter"]]
         else:
             scatter = self.step.tool["scatter"]
@@ -1145,7 +1155,7 @@ class CWLScatter(Job):
                      for i in self.step.tool["inputs"] if "valueFrom" in i}
 
         def postScatterEval(job_dict: dict) -> Any:
-            shortio = {shortname(k): v for k, v in iteritems(job_dict)}
+            shortio = {shortname(k): v for k, v in job_dict.items()}
             for k in valueFrom:
                 job_dict.setdefault(k, None)
 
@@ -1203,19 +1213,19 @@ class CWLGather(Job):
 
     def allkeys(self, obj: Union[Mapping, MutableSequence], keys: Set) -> None:
         if isinstance(obj, Mapping):
-            for k in list(obj.keys()):
-                keys.add(k)
+            for key in list(obj.keys()):
+                keys.add(key)
         elif isinstance(obj, MutableSequence):
-            for l in obj:
-                self.allkeys(l, keys)
+            for item in obj:
+                self.allkeys(item, keys)
 
     def extract(self, obj: Union[Mapping, MutableSequence], k: str) -> list:
         if isinstance(obj, Mapping):
             return obj.get(k)
         elif isinstance(obj, MutableSequence):
             cp = []
-            for l in obj:
-                cp.append(self.extract(l, k))
+            for item in obj:
+                cp.append(self.extract(item, k))
             return cp
         else:
             return []
@@ -1226,7 +1236,7 @@ class CWLGather(Job):
         def sn(n):
             if isinstance(n, Mapping):
                 return shortname(n["id"])
-            if isinstance(n, string_types):
+            if isinstance(n, str):
                 return shortname(n)
 
         for k in [sn(i) for i in self.step.tool["out"]]:
@@ -1625,8 +1635,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     # if tmpdir_prefix is not the default value, set workDir if unset, and move
     # workdir and the job store under it
-    if options.tmpdir_prefix != 'tmp':
-        workdir = tempfile.mkdtemp(dir=options.tmpdir_prefix)
+    if options.tmpdir_prefix != "tmp":
+        workdir = cwltool.utils.create_tmp_dir(options.tmpdir_prefix)
         os.rmdir(workdir)
         # Re-parse arguments with the new default jobstore under the temp dir.
         # It still might be overridden by a --jobStore option
@@ -1637,7 +1647,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             # --tmpdir-prefix.
             #
             # If set, workDir needs to exist, so we directly use the prefix
-            options.workDir = options.tmpdir_prefix
+            options.workDir = cwltool.utils.create_tmp_dir(options.tmpdir_prefix)
 
     if options.provisioner and not options.jobStore:
         raise NoSuchJobStoreException(
