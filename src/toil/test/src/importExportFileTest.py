@@ -109,22 +109,22 @@ class ImportExportFileTest(ToilTest):
         options.logLevel = "INFO"
 
         with Toil(options) as toil:
-            srcFile = '%s/%s%s' % (self._tempDir, 'in', str(uuid.uuid4()))
-            with open(srcFile, 'w') as f:
-                f.write('Hello')
+            for executable in True,False:
+                srcFile = '%s/%s%s' % (self._tempDir, 'in', str(uuid.uuid4()))
+                with open(srcFile, 'w') as f:
+                    f.write('Hello')
 
-            # Current file permission bits
-            permissionBits = os.stat(srcFile).st_mode
+                if executable:
+                    # Add file owner execute permissions
+                    os.chmod(srcFile, os.stat(srcFile).st_mode | stat.S_IXUSR)
 
-            # Add file owner's execute permissions
-            os.chmod(srcFile, permissionBits | stat.S_IXUSR)
+                # Current file owner execute permissions
+                initialPermissions = os.stat(srcFile).st_mode & stat.S_IXUSR
+                fileID = toil.importFile('file://' + srcFile)
+                toil.exportFile(fileID, 'file://' + self.dstFile)
+                currentPermissions = os.stat(self.dstFile).st_mode & stat.S_IXUSR
 
-            fileID = toil.importFile('file://' + srcFile)
-            toil.exportFile(fileID, 'file://' + self.dstFile)
-
-            permissionBits = os.stat(self.dstFile).st_mode
-            # Nonzero value indicates executable flag is preserved
-            assert permissionBits & stat.S_IXUSR != 0
+                assert initialPermissions == currentPermissions
 
 
 class RestartingJob(Job):
