@@ -26,7 +26,7 @@ from uuid import uuid4
 from toil.job import Job
 from toil.fileStores import FileID
 from toil.fileStores.cachingFileStore import IllegalDeletionCacheError, CacheUnbalancedError, CachingFileStore
-from toil.test import ToilTest, needs_aws_ec2, needs_google, slow, travis_test, src
+from toil.test import ToilTest, needs_aws_ec2, needs_google, slow, travis_test
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.realtimeLogger import RealtimeLogger
@@ -252,24 +252,18 @@ class hidden(object):
                 i += 1
 
         def testWriteReadGlobalFile(self):
-            workdir = self._createTempDir(purpose='nonLocalDir')
-            for i in True,False:
-                A = Job.wrapJobFn(self._testWriteReadGlobalFilePermissions,
-                                isLocalFile=False, executable=i, nonLocalDir=workdir)
+            for executable in True,False:
+                A = Job.wrapJobFn(self._testWriteReadGlobalFilePermissions, executable=executable)
                 Job.Runner.startToil(A, self.options)
 
         @staticmethod
-        def _testWriteReadGlobalFilePermissions(job, isLocalFile, executable, nonLocalDir=None):
+        def _testWriteReadGlobalFilePermissions(job, executable):
             """
             Ensures that uploaded files preserve their file permissions when they
             are downloaded again. This function checks that a written executable file
             maintains its executability after being read.
             """
-            if isLocalFile:
-                workDir = job.fileStore.getLocalTempDir()
-            else:
-                assert nonLocalDir is not None
-                workDir = nonLocalDir
+            workDir = job.fileStore.getLocalTempDir()
             srcFile = '%s/%s%s' % (workDir, 'in', str(uuid4()))
             with open(srcFile, 'w') as f:
                 f.write('Hello')
@@ -277,13 +271,18 @@ class hidden(object):
             if executable:
                 os.chmod(srcFile, os.stat(srcFile).st_mode | stat.S_IXUSR)
 
-            initialPermissions = os.stat(srcFile).st_mode
+            # Initial file owner execute permissions
+            initialPermissions = os.stat(srcFile).st_mode & stat.S_IXUSR
             fileID = job.fileStore.writeGlobalFile(srcFile)
-            dstFile = job.fileStore.getLocalTempFile() + str(uuid4())
-            dstFile = job.fileStore.readGlobalFile(fileID, userPath=dstFile, mutable=True)
-            currentPermissions = os.stat(dstFile).st_mode
 
-            assert initialPermissions == currentPermissions
+            # Make sure file maintains correct execute permissions with either symlink or hard link
+            for symlink in True,False:
+                dstFile = job.fileStore.getLocalTempFile() + str(uuid4())
+                dstFile = job.fileStore.readGlobalFile(fileID, userPath=dstFile, mutable=symlink, symlink=symlink)
+                # Current file owner execute permissions
+                currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
+
+                assert initialPermissions == currentPermissions
 
         @staticmethod
         def _writeFileToJobStore(job, isLocalFile, nonLocalDir=None, fileMB=1):
