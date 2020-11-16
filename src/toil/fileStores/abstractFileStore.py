@@ -300,7 +300,8 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         then a copy of the file will be created locally so that the original is not modified
         and does not change the file for other jobs. If mutable is False, then a link can
         be created to the file, saving disk resources. The file that is downloaded will be 
-        executable if it was originally uploaded from an executable file on the local filesystem.
+        executable if and only if it was originally uploaded from an executable file on the
+        local filesystem.
 
         If a user path is specified, it is used as the destination. If a user path isn't
         specified, the file is stored in the local temp directory with an encoded name.

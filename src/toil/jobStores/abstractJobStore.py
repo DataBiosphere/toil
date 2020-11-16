@@ -336,7 +336,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def exportFile(self, jobStoreFileID, dstUrl):
         """
         Exports file to destination pointed at by the destination URL. The exported file will be
-        executable if it was originally uploaded from an executable file on the local filesystem.
+        executable if and only if it was originally uploaded from an executable file on the
+        local filesystem.
 
         Refer to :meth:`.AbstractJobStore.importFile` documentation for currently supported URL schemes.
 
