@@ -226,6 +226,9 @@ check_cpickle:
 	# https://github.com/BD2KGenomics/toil/issues/1503
 	! find src -iname '*.py' | xargs grep 'cPickle.dump' | grep --invert-match HIGHEST_PROTOCOL
 
+format: $(wildcard src/toil/cwl/*.py)
+	black $^
+
 .PHONY: help \
 		prepare \
 		check_cpickle \
