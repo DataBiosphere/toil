@@ -1,5 +1,6 @@
-from toil.job import Job
 from toil.common import Toil
+from toil.job import Job
+
 
 class HelloWorld(Job):
     def __init__(self, message):

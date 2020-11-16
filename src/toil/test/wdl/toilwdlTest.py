@@ -1,33 +1,18 @@
-from __future__ import absolute_import
-from six import iteritems
-import unittest
 import os
-import subprocess
-from toil.version import exactPython
-import toil.wdl.wdl_parser as wdl_parser
-from toil.wdl.wdl_analysis import AnalyzeWDL
-from toil.wdl.wdl_synthesis import SynthesizeWDL
-from toil.wdl.wdl_functions import generate_docker_bashscript_file
-from toil.wdl.wdl_functions import select_first
-from toil.wdl.wdl_functions import size
-from toil.wdl.wdl_functions import glob
-from toil.wdl.wdl_functions import process_and_read_file
-from toil.wdl.wdl_functions import process_infile
-from toil.wdl.wdl_functions import process_outfile
-from toil.wdl.wdl_functions import abspath_file
-from toil.wdl.wdl_functions import combine_dicts
-from toil.wdl.wdl_functions import parse_memory
-from toil.wdl.wdl_functions import parse_cores
-from toil.wdl.wdl_functions import parse_disk
-from toil.wdl.wdl_functions import defined
-from toil.wdl.wdl_functions import read_tsv
-from toil.wdl.wdl_functions import read_csv
-from toil.wdl.wdl_functions import basename
-from toil.test import ToilTest, slow, needs_docker
-from toil import urlretrieve
-import zipfile
 import shutil
+import subprocess
+import unittest
 import uuid
+import zipfile
+from urllib.request import urlretrieve
+
+import toil.wdl.wdl_parser as wdl_parser
+from toil.test import ToilTest, needs_docker, slow
+from toil.version import exactPython
+from toil.wdl.wdl_analysis import AnalyzeWDL
+from toil.wdl.wdl_functions import (basename, glob, parse_cores, parse_disk,
+                                    parse_memory, process_infile, read_csv,
+                                    read_tsv, select_first, size)
 
 
 class ToilWdlIntegrationTest(ToilTest):
@@ -136,8 +121,8 @@ class ToilWdlIntegrationTest(ToilTest):
     def testFn_Size(self):
         """Test the wdl built-in functional equivalent of 'size()',
         which returns a file's size based on the path."""
-        from toil.job import Job
         from toil.common import Toil
+        from toil.job import Job
         options = Job.Runner.getDefaultOptions('./toilWorkflowRun')
         options.clean = 'always'
         with Toil(options) as toil:
@@ -233,7 +218,7 @@ class ToilWdlIntegrationTest(ToilTest):
 
         no_declaration = ['bool1', 'int1', 'float1', 'file1', 'string1']
         collection_counter = []
-        for name, declaration in iteritems(aWDL.workflows_dictionary['vocabulary']['wf_declarations']):
+        for name, declaration in aWDL.workflows_dictionary['vocabulary']['wf_declarations'].items():
 
             if name in no_declaration:
                 collection_counter.append(name)

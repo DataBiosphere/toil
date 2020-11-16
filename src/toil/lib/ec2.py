@@ -1,16 +1,13 @@
 import logging
 import time
-
-from typing import Optional, List, Dict
-from collections import Iterator
 from operator import attrgetter
-from past.builtins import map
+from typing import Dict, List, Optional
+
+from boto3.resources.base import ServiceResource
+from boto.exception import EC2ResponseError
+
 from toil.lib.exceptions import panic
 from toil.lib.retry import old_retry
-from boto.ec2.instance import Instance
-from boto.ec2.spotinstancerequest import SpotInstanceRequest
-from boto.exception import EC2ResponseError
-from boto3.resources.base import ServiceResource
 
 a_short_time = 5
 a_long_time = 60 * 60
@@ -91,7 +88,7 @@ def wait_instances_running(ec2, instances):
                 other_ids.add(i.id)
                 yield i
         log.info('%i instance(s) pending, %i running, %i other.',
-                 *map(len, (pending_ids, running_ids, other_ids)))
+                 *list(map(len, (pending_ids, running_ids, other_ids))))
         if not pending_ids:
             break
         seconds = max(a_short_time, min(len(pending_ids), 10 * a_short_time))
@@ -159,7 +156,7 @@ def wait_spot_requests_active(ec2, requests, timeout=None, tentative=False):
                 yield batch
             log.info('%i spot requests(s) are open (%i of which are pending evaluation and %i '
                      'are pending fulfillment), %i are active and %i are in another state.',
-                     *map(len, (open_ids, eval_ids, fulfill_ids, active_ids, other_ids)))
+                     *list(map(len, (open_ids, eval_ids, fulfill_ids, active_ids, other_ids))))
             if not open_ids or tentative and not eval_ids and not fulfill_ids:
                 break
             sleep_time = 2 * a_short_time

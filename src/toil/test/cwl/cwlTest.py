@@ -13,27 +13,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
+import logging
 import os
+import re
+import shutil
+import subprocess
 import sys
 import unittest
-import re
-import logging
-import shutil
-import zipfile
-import pytest
 import uuid
-import psutil
-import subprocess
-from urllib.request import urlretrieve
+import zipfile
 from io import StringIO
+from urllib.request import urlretrieve
+
+import psutil
+import pytest
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
-from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
-                       needs_mesos, needs_parasol, needs_gridengine, needs_slurm,
-                       needs_torque)
-
+from toil.test import (ToilTest, needs_cwl, needs_docker, needs_gridengine,
+                       needs_lsf, needs_mesos, needs_parasol, needs_slurm,
+                       needs_torque, slow)
 
 log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 3600

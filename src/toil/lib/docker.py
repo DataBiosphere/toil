@@ -1,19 +1,18 @@
-from __future__ import absolute_import
 
 
-import docker
 import base64
-import requests
 import logging
 import os
 import re
 import struct
 from shlex import quote
+
+import requests
+
+import docker
+from docker.errors import (ContainerError, ImageNotFound, NotFound,
+                           create_api_error_from_http_exception)
 from docker.utils.socket import consume_socket_output, demux_adaptor
-from docker.errors import create_api_error_from_http_exception
-from docker.errors import ContainerError
-from docker.errors import ImageNotFound
-from docker.errors import NotFound
 
 logger = logging.getLogger(__name__)
 

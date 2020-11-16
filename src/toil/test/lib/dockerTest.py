@@ -12,21 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import os
 import signal
 import time
-import os
-import sys
 import uuid
-import docker
 from threading import Thread
-from docker.errors import ContainerError
 
+import docker
+from docker.errors import ContainerError
 from toil.job import Job
 from toil.leader import FailedJobsException
-from toil.test import ToilTest, slow, needs_docker
-from toil.lib.docker import apiDockerCall, containerIsRunning, dockerKill
-from toil.lib.docker import FORGO, STOP, RM
-
+from toil.lib.docker import (FORGO, RM, STOP, apiDockerCall,
+                             containerIsRunning, dockerKill)
+from toil.test import ToilTest, needs_docker, slow
 
 logger = logging.getLogger(__name__)
 
@@ -258,8 +256,7 @@ class DockerTest(ToilTest):
         A = Job.wrapJobFn(_testDockerPipeChainFn)
         rv = Job.Runner.startToil(A, options)
         logger.info('Container pipeline result: %s', repr(rv))
-        if sys.version_info >= (3, 0):
-            rv = rv.decode('utf-8')
+        rv = rv.decode('utf-8')
         assert rv.strip() == '2'
 
     def testDockerPipeChainErrorDetection(self, disableCaching=True):

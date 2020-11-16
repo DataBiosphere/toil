@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import argparse
-import os
 import logging
+import os
+import subprocess
 import sys
 
-import subprocess
+import toil.wdl.wdl_parser as wdl_parser
 from toil.wdl.wdl_analysis import AnalyzeWDL
 from toil.wdl.wdl_synthesis import SynthesizeWDL, write_AST
-import toil.wdl.wdl_parser as wdl_parser
 
 wdllogger = logging.getLogger(__name__)
 

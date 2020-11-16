@@ -1,5 +1,6 @@
 import argparse
 
+
 def main():
     parser = argparse.ArgumentParser(description='Creates a file and writes into it.')
     parser.add_argument('file_name', help='File name to be written to.')

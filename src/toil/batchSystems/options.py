@@ -10,11 +10,12 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-from toil.lib.threading import cpu_count
-from toil.batchSystems.registry import BATCH_SYSTEM_FACTORY_REGISTRY, DEFAULT_BATCH_SYSTEM, BATCH_SYSTEMS
-
 import socket
 from contextlib import closing
+
+from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
+                                        BATCH_SYSTEMS, DEFAULT_BATCH_SYSTEM)
+from toil.lib.threading import cpu_count
 
 
 def getPublicIP():

@@ -11,23 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import csv
 import fnmatch
 import json
-import os
 import logging
-import re
-import textwrap
-import csv
 import math
-
+import os
+import re
 import subprocess
+import textwrap
 import uuid
-from typing import (Optional,
-                    List,
-                    Tuple,
-                    Dict,
-                    Union,
-                    Any)
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.wdl.wdl_types import WDLPair
@@ -615,16 +609,15 @@ def select_first(values):
 
 
 def combine_dicts(dict1, dict2):
-    from six import iteritems
     combineddict= {}
-    for k, v in iteritems(dict1):
+    for k, v in dict1.items():
         counter1 = 0
         while isinstance(v, list):
             counter1 += 1
             v = v[0]
         break
 
-    for k, v in iteritems(dict2):
+    for k, v in dict2.items():
         counter2 = 0
         while isinstance(v, list):
             counter2 += 1

@@ -11,28 +11,30 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from functools import wraps
-from contextlib import contextmanager
-import uuid
 import logging
-import time
 import os
-from toil import pickle
-from toil.lib.misc import AtomicFileCreate
-from toil.lib.retry import old_retry
+import pickle
+import time
+import uuid
+from contextlib import contextmanager
+from functools import wraps
+from io import StringIO
+
+from google.api_core.exceptions import (GoogleAPICallError,
+                                        InternalServerError,
+                                        ServiceUnavailable)
+from google.cloud import exceptions, storage
+
+from toil.jobStores.abstractJobStore import (AbstractJobStore,
+                                             JobStoreExistsException,
+                                             NoSuchFileException,
+                                             NoSuchJobException,
+                                             NoSuchJobStoreException)
+from toil.jobStores.utils import ReadablePipe, WritablePipe
 from toil.lib.compatibility import compat_bytes
-from google.cloud import storage, exceptions
-from google.api_core.exceptions import GoogleAPICallError, InternalServerError, ServiceUnavailable
-from toil.lib.misc import truncExpBackoff
+from toil.lib.misc import AtomicFileCreate, truncExpBackoff
+from toil.lib.retry import old_retry
 
-# Python 3 compatibility imports
-from six.moves import StringIO
-
-from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
-                                             NoSuchFileException, NoSuchJobStoreException,
-                                             JobStoreExistsException)
-from toil.jobStores.utils import WritablePipe, ReadablePipe
-from toil.job import JobDescription
 log = logging.getLogger(__name__)
 
 GOOGLE_STORAGE = 'gs'

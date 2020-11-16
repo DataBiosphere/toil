@@ -11,11 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
 import os
 
-from toil.lib.bioio import getTempFile
 from toil.job import Job
+from toil.lib.bioio import getTempFile
 from toil.test import ToilTest, travis_test
 from toil.test.src.jobTest import fn1Test
 

@@ -12,21 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from builtins import object
+import errno
 import logging
+import os
+import signal
+import subprocess
 import tempfile
 import threading
 import time
 
-import subprocess
-import signal
-import os
-import errno
+from toil import physicalMemory
 from toil.lib.objects import InnerClass
 from toil.lib.threading import cpu_count
-
-from toil import physicalMemory
 
 log = logging.getLogger(__name__)
 

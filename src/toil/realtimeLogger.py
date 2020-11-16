@@ -16,19 +16,13 @@
 Implements a real-time UDP-based logging system that user scripts can use for debugging.
 """
 
-from __future__ import absolute_import
-from future import standard_library
-standard_library.install_aliases()
-from builtins import object
-from builtins import super
-import os
-import os.path
 import json
 import logging
 import logging.handlers
+import os
+import os.path
+import socketserver as SocketServer
 import threading
-from six.moves import socketserver as SocketServer
-from future.utils import with_metaclass
 
 import toil.lib.bioio
 from toil.batchSystems.options import getPublicIP
@@ -103,7 +97,7 @@ class RealtimeLoggerMetaclass(type):
         return getattr(self.getLogger(), name)
 
 
-class RealtimeLogger(with_metaclass(RealtimeLoggerMetaclass, object)):
+class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
     """
     Provides a logger that logs over UDP to the leader. To use in a Toil job, do:
 

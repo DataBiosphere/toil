@@ -12,39 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
 
 import errno
 import logging
 import os
 import re
-import requests
 import socket
+import subprocess
 import sys
 import time
 from datetime import datetime
+
+import requests
 from pytz import timezone
+
 from docker.errors import ImageNotFound
 from toil.lib.memoize import memoize
 from toil.lib.retry import retry
 from toil.version import currentCommit
-
-# subprocess32 is a backport of python3's subprocess module for use on Python2,
-# and includes many reliability bug fixes relevant on POSIX platforms.
-if os.name == 'posix' and sys.version_info[0] < 3:
-    import subprocess32 as subprocess
-else:
-    import subprocess
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-try:
-    from urllib import urlretrieve
-except ImportError:
-    from urllib.request import urlretrieve
 
 log = logging.getLogger(__name__)
 
@@ -448,8 +433,9 @@ def logProcessContext(config):
 
 try:
     from boto import provider
+    from botocore.credentials import (JSONFileCache, RefreshableCredentials,
+                                      create_credential_resolver)
     from botocore.session import Session
-    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache
 
     cache_path = '~/.cache/aws/cached_temporary_credentials'
     datetime_format = "%Y-%m-%dT%H:%M:%SZ"  # incidentally the same as the format used by AWS

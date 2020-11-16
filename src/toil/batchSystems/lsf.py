@@ -17,31 +17,26 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
-from __future__ import absolute_import
-from __future__ import division
-from builtins import str
-from builtins import range
-from past.utils import old_div
+import json
 import logging
 import math
-from toil.lib.misc import call_command
 import os
-import json
 import re
+from datetime import datetime
 from random import randint
 
 from dateutil.parser import parse
 from dateutil.tz import tzlocal
-from datetime import datetime
 
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 from toil.batchSystems.abstractGridEngineBatchSystem import \
-        AbstractGridEngineBatchSystem
-from toil.batchSystems.lsfHelper import (parse_memory_resource,
+    AbstractGridEngineBatchSystem
+from toil.batchSystems.lsfHelper import (check_lsf_json_output_supported,
                                          parse_memory_limit,
-                                         per_core_reservation,
-                                         check_lsf_json_output_supported)
+                                         parse_memory_resource,
+                                         per_core_reservation)
+from toil.lib.misc import call_command
 
 logger = logging.getLogger(__name__)
 
@@ -252,7 +247,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     mem_resource = parse_memory_resource(mem)
                     mem_limit = parse_memory_limit(mem)
                 else:
-                    mem = old_div(float(mem), 1024**3)
+                    mem = float(mem) // 1024**3
                     mem_resource = parse_memory_resource(mem)
                     mem_limit = parse_memory_limit(mem)
 
@@ -334,7 +329,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 MemoryString(items[mem_index]) > maxMEM):
                 maxMEM = MemoryString(items[mem_index])
 
-        if maxCPU is 0 or maxMEM is 0:
+        if maxCPU == 0 or maxMEM == 0:
                 raise RuntimeError("lshosts returns null ncpus or maxmem info")
         logger.debug("Got the maxMEM: {}".format(maxMEM))
         logger.debug("Got the maxCPU: {}".format(maxCPU))

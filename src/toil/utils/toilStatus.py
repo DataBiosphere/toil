@@ -15,24 +15,18 @@
 """Tool for reporting on job status.
 """
 
-# python 2/3 compatibility imports
-from __future__ import absolute_import
-from __future__ import print_function
-from six.moves import xrange
-from past.builtins import map
-from functools import reduce
-
 # standard library
 import logging
-import sys
 import os
+import sys
+from functools import reduce
 
 # toil imports
-from toil.lib.bioio import getBasicOptionParser
-from toil.lib.bioio import parseBasicOptions
-from toil.common import Toil, jobStoreLocatorHelp, Config
-from toil.jobStores.abstractJobStore import NoSuchJobStoreException, NoSuchFileException
+from toil.common import Config, Toil, jobStoreLocatorHelp
 from toil.job import JobException, ServiceJobDescription
+from toil.jobStores.abstractJobStore import (NoSuchFileException,
+                                             NoSuchJobStoreException)
+from toil.lib.bioio import getBasicOptionParser, parseBasicOptions
 from toil.statsAndLogging import StatsAndLogging
 from toil.version import version
 
@@ -127,7 +121,7 @@ class ToilStatus():
             if job.logJobStoreFileID is not None:
                 hasLogFile.append(job)
 
-            childNumber = reduce(lambda x, y: x + y, map(len, job.stack) + [0])
+            childNumber = reduce(lambda x, y: x + y, list(map(len, job.stack)) + [0])
             if childNumber > 0:  # Total number of successors > 0
                 hasChildren.append(job)
                 properties.add("HAS_CHILDREN")

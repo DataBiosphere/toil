@@ -1,12 +1,12 @@
-import random
-from math import sqrt
 import logging
 import os
+import random
 import shutil
+import subprocess
 import sys
 import uuid
 from contextlib import contextmanager
-import subprocess
+from math import sqrt
 
 logger = logging.getLogger(__name__)
 

@@ -11,21 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from future.utils import with_metaclass
 import enum
+import logging
 import os
 import shutil
-import logging
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 from collections import namedtuple
 from contextlib import contextmanager
+from typing import Optional, Tuple
 
+from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
+                                        DEFAULT_BATCH_SYSTEM)
+from toil.common import Toil, cacheDirName
+from toil.deferred import DeferredFunctionManager
+from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.objects import abstractclassmethod
 from toil.lib.threading import LastProcessStandingArena
-from toil.batchSystems.registry import BATCH_SYSTEM_FACTORY_REGISTRY, DEFAULT_BATCH_SYSTEM
-from toil.common import Toil, cacheDirName
-from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.deferred import DeferredFunctionManager
 
 try:
     from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
@@ -65,7 +66,7 @@ WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
     'cleanWorkDir'))
 
 
-class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
+class AbstractBatchSystem(ABC):
     """
     An abstract (as far as Python currently allows) base class to represent the interface the batch
     system must provide to Toil.
@@ -234,7 +235,6 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
         :param setOption: A function with signature setOption(varName, parsingFn=None, checkFn=None, default=None)
            used to update run configuration
         """
-        pass
         
     def getWorkerContexts(self):
         """

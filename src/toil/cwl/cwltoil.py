@@ -30,7 +30,7 @@ import tempfile
 import urllib
 import uuid
 from typing import (Any, Dict, Iterator, List, Mapping, MutableMapping,
-                    MutableSequence, Text, TextIO, Tuple, TypeVar, Union, cast)
+                    MutableSequence, Text, TextIO, Tuple, Union, cast)
 from urllib import parse as urlparse
 
 import cwltool.builder
@@ -42,24 +42,18 @@ import cwltool.main
 import cwltool.provenance
 import cwltool.resolver
 import cwltool.stdfsaccess
-import cwltool.workflow
-import schema_salad.ref_resolver
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mutation import MutationManager
-from cwltool.pathmapper import MapperEnt, PathMapper, downloadHttpFile
+from cwltool.pathmapper import (MapperEnt, PathMapper, adjustDirObjs,
+                                adjustFileObjs, downloadHttpFile, visit_class)
 from cwltool.process import (Process, add_sizes, compute_checksums,
                              fill_in_defaults, shortname)
 from cwltool.secrets import SecretStore
 from cwltool.software_requirements import (
     DependenciesConfiguration, get_container_from_software_requirements)
-from cwltool.utils import (CWLObjectType, adjustDirObjs, adjustFileObjs,
-                           aslist, convert_pathsep_to_unix, get_listing,
-                           normalizeFilesDirs, visit_class)
-from ruamel.yaml.comments import CommentedMap
-from schema_salad import validate
-from schema_salad.schema import Names
-from schema_salad.sourceline import SourceLine
+from cwltool.utils import (CWLObjectType, aslist, convert_pathsep_to_unix,
+                           get_listing, normalizeFilesDirs)
 
 from toil.common import Config, Toil, addOptions
 from toil.fileStores import FileID
@@ -102,8 +96,6 @@ def cwltoil_was_removed():
 class UnresolvedDict(dict):
     """Tag to indicate a dict contains promises that must be resolved."""
 
-    pass
-
 
 class SkipNull:
     """
@@ -113,8 +105,6 @@ class SkipNull:
     The CWL 1.2 specification calls for treating this the exactly the same as a
     null value.
     """
-
-    pass
 
 
 def filter_skip_null(name: str, value: Any) -> Any:

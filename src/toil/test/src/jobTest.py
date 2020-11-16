@@ -11,28 +11,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, print_function
-from __future__ import division
-from builtins import chr
-from builtins import map
-from builtins import str
-from builtins import range
-from past.utils import old_div
 import collections
-import unittest
 import logging
 import os
 import random
+import unittest
 
-# Python 3 compatibility imports
-from six.moves import xrange
+import pytest
 
 from toil.common import Toil
+from toil.job import Job, JobFunctionWrappingJob, JobGraphDeadlockException
 from toil.leader import FailedJobsException
 from toil.lib.bioio import getTempFile
-from toil.job import Job, JobGraphDeadlockException, JobFunctionWrappingJob
 from toil.test import ToilTest, slow, travis_test
-import pytest
 
 logger = logging.getLogger(__name__)
 
@@ -469,7 +460,7 @@ class JobTest(ToilTest):
         referring to nodes and the edge is from a to b.
         """
         # Pick number of total edges to create
-        edgeNumber = random.choice(range(nodeNumber - 1, 1 + old_div((nodeNumber * (nodeNumber - 1)), 2)))
+        edgeNumber = random.choice(range(nodeNumber - 1, 1 + (nodeNumber * (nodeNumber - 1) // 2)))
         # Make a spanning tree of edges so that nodes are connected
         edges = set([(random.choice(range(i)), i) for i in range(1, nodeNumber)])
         # Add extra random edges until there are edgeNumber edges

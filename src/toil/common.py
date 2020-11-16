@@ -13,27 +13,29 @@
 # limitations under the License.
 import logging
 import os
+import pickle
 import re
+import subprocess
 import sys
 import tempfile
 import time
 import uuid
-import requests
 from argparse import ArgumentParser
 
+import requests
+
+from toil import logProcessContext, lookupEnvVar
+from toil.batchSystems.options import addOptions as addBatchOptions
+from toil.batchSystems.options import \
+    setDefaultOptions as setDefaultBatchOptions
+from toil.batchSystems.options import setOptions as setBatchOptions
+from toil.lib.bioio import (addLoggingOptions, getLogLevelString,
+                            setLoggingFromOptions)
 from toil.lib.humanize import bytes2human
 from toil.lib.retry import retry
-import subprocess
-from toil import pickle
-from toil import logProcessContext
-from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
-from toil.realtimeLogger import RealtimeLogger
-from toil.batchSystems.options import addOptions as addBatchOptions
-from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
-from toil.batchSystems.options import setOptions as setBatchOptions
 from toil.provisioners import clusterFactory
 from toil.provisioners.aws import checkValidNodeTypes, zoneToRegion
-from toil import lookupEnvVar
+from toil.realtimeLogger import RealtimeLogger
 from toil.version import dockerRegistry, dockerTag
 
 # aim to pack autoscaling jobs within a 30 minute block before provisioning a new node
@@ -991,7 +993,8 @@ class Toil(object):
                     with self._jobStore.writeSharedFileStream('userScript') as f:
                         pickle.dump(userScript, f, protocol=pickle.HIGHEST_PROTOCOL)
                 else:
-                    from toil.batchSystems.singleMachine import SingleMachineBatchSystem
+                    from toil.batchSystems.singleMachine import \
+                        SingleMachineBatchSystem
                     if not isinstance(self._batchSystem, SingleMachineBatchSystem):
                         logger.warning('Batch system does not support auto-deployment. The user '
                                     'script %s will have to be present at the same location on '
