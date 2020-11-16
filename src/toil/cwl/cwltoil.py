@@ -37,7 +37,6 @@ from typing import (
     Mapping,
     MutableMapping,
     MutableSequence,
-    Set,
     Text,
     TextIO,
     Tuple,
@@ -105,6 +104,14 @@ CWL_INTERNAL_JOBS = (
     "ResolveIndirect",
 )
 
+
+def cwltoil_was_removed():
+    """Complain about deprecated entrypoint."""
+    raise RuntimeError(
+        'Please run with "toil-cwl-runner" instead of "cwltoil" (which has been removed).'
+    )
+
+
 # The job object passed into CWLJob and CWLWorkflow
 # is a dict mapping to tuple of (key, dict)
 # the final dict is derived by evaluating each
@@ -116,12 +123,6 @@ CWL_INTERNAL_JOBS = (
 # output object to the correct key of the input object.
 
 
-def cwltoil_was_removed():
-    raise RuntimeError(
-        'Please run with "toil-cwl-runner" instead of "cwltoil" (which has been removed).'
-    )
-
-
 class UnresolvedDict(dict):
     """Tag to indicate a dict contains promises that must be resolved."""
 
@@ -130,9 +131,11 @@ class UnresolvedDict(dict):
 
 class SkipNull:
     """
-    Internal sentinel object that indicates a null value produced by each port of a skipped
-    conditional step. The CWL 1.2 specification calls for treating this the exact same
-    as a null value.
+    Internal sentinel object.
+
+    Indicates a null value produced by each port of a skipped conditional step.
+    The CWL 1.2 specification calls for treating this the exactly the same as a
+    null value.
     """
 
     pass
@@ -181,6 +184,7 @@ def _filter_skip_null(value: Any, err_flag: List[bool]) -> Any:
 class Conditional:
     """
     Object holding conditional expression until we are ready to evaluate it.
+
     Evaluation occurs at the moment the encloses step is ready to run.
     """
 
@@ -206,7 +210,7 @@ class Conditional:
 
     def is_false(self, job: Union[dict, None]) -> bool:
         """
-        Determine if expression evaluates to False given completed step inputs
+        Determine if expression evaluates to False given completed step inputs.
 
         :param job: job output object
         :return: bool
@@ -232,8 +236,7 @@ class Conditional:
 
     def skipped_outputs(self) -> dict:
         """
-        Generate a dictionary of SkipNull objects corresponding to the output
-        structure of the step.
+        Generate a dict of SkipNull objects corresponding to the output structure of the step.
 
         :return: dict
         """
@@ -252,14 +255,14 @@ class Conditional:
 
 
 class ResolveSource:
-    """
-    Apply linkMerge and pickValue operators to values coming into a port.
-    """
+    """Apply linkMerge and pickValue operators to values coming into a port."""
 
     def __init__(self, name: str, input: dict, source_key: str, promises: dict):
         """
-        Construct a container object that carries what information it can about the input
-        sources and the current promises, ready for evaluation when the time comes.
+        Construct a container object.
+
+        It will carry what information it can about the input sources and the
+        current promises, ready for evaluation when the time comes.
 
         :param name: human readable name of step/port that this value refers to
         :param input: CWL input object complete with linkMerge and pickValue fields
@@ -284,7 +287,7 @@ class ResolveSource:
 
     def resolve(self) -> Any:
         """
-        First apply linkMerge then pickValue if either present
+        First apply linkMerge then pickValue if either present.
 
         :return: dict
         """
@@ -300,7 +303,7 @@ class ResolveSource:
 
     def link_merge(self, values: dict) -> Union[list, dict]:
         """
-        Apply linkMerge operator to `values` object
+        Apply linkMerge operator to `values` object.
 
         :param values: dict: result of step
         """
@@ -325,9 +328,10 @@ class ResolveSource:
 
     def pick_value(self, values: Union[List, Any]) -> Any:
         """
-        Apply pickValue operator to `values` object
+        Apply pickValue operator to `values` object.
 
-        :param values: Intended to be a list, but other types will be returned without modification.
+        :param values: Intended to be a list, but other types will be returned
+                       without modification.
         :return:
         """
         pick_value_type = self.input.get("pickValue")
@@ -374,14 +378,15 @@ class ResolveSource:
 
 class StepValueFrom:
     """
-    A workflow step input which has a valueFrom expression attached to it, which
-    is evaluated to produce the actual input object for the step.
+    A workflow step input which has a valueFrom expression attached to it.
+
+    The valueFrom expression will be evaluated to produce the actual input
+    object for the step.
     """
 
     def __init__(self, expr: str, source: Any, req: List[Dict[str, Any]]):
         """
-        Instantiate an object to carry as much information as we have access to right now
-        about this valueFrom expression
+        Instantiate an object to carry all know about this valueFrom expression.
 
         :param expr: str: expression as a string
         :param source: the source promise of this step
@@ -394,8 +399,11 @@ class StepValueFrom:
 
     def eval_prep(self, step_inputs: dict, file_store: AbstractFileStore):
         """
-        If loadContents is specified, this will resolve the contents of any file in
-        a set of inputs associated with the StepValueFrom object's self.source.
+        Resolve the contents of any file in a set of inputs.
+
+        The inputs must be associated with the StepValueFrom object's self.source.
+
+        Called when loadContents is specified.
 
         :param step_inputs: Workflow step inputs.
         :param file_store: A toil file store, needed to resolve toil fs:// paths.
@@ -416,7 +424,7 @@ class StepValueFrom:
 
     def resolve(self) -> Any:
         """
-        The valueFrom expression's context is the value for this input. Resolve the promise.
+        Resolve the promise in the valueFrom expression's context.
 
         :return: object that will serve as expression context
         """
@@ -425,7 +433,7 @@ class StepValueFrom:
 
     def do_eval(self, inputs: CWLObjectType) -> Any:
         """
-        Evaluate the valueFrom expression with the given input object
+        Evaluate the valueFrom expression with the given input object.
 
         :param inputs:
         :return: object
@@ -436,13 +444,11 @@ class StepValueFrom:
 
 
 class DefaultWithSource:
-    """
-    A workflow step input that has both a source and a default value.
-    """
+    """A workflow step input that has both a source and a default value."""
 
     def __init__(self, default: Any, source: Any):
         """
-        Instantiate an object to handle a source that has a default value
+        Instantiate an object to handle a source that has a default value.
 
         :param default: the default value
         :param source: the source object
@@ -452,7 +458,9 @@ class DefaultWithSource:
 
     def resolve(self) -> Any:
         """
-        Determine the final input value when the time is right (when the source can be resolved)
+        Determine the final input value when the time is right.
+
+        (when the source can be resolved)
 
         :return: dict
         """
@@ -464,14 +472,14 @@ class DefaultWithSource:
 
 
 class JustAValue:
-    """
-    A simple value masquerading as a 'resolve'-able object
-    """
+    """A simple value masquerading as a 'resolve'-able object."""
 
     def __init__(self, val: Any):
+        """Store the value."""
         self.val = val
 
     def resolve(self) -> Any:
+        """Return the value."""
         return self.val
 
 
@@ -479,11 +487,10 @@ def resolve_dict_w_promises(
     dict_w_promises: dict, file_store: AbstractFileStore = None
 ) -> dict:
     """
-    Resolve the contents of an unresolved dictionary (containing promises) and
-    evaluate expressions to produce the dictionary of actual values.
+    Resolve a dictionary of promises evaluate expressions to produce the actual values.
 
     :param dict_w_promises: input dict for these values
-    :return:
+    :return: dictionary of actual values
     """
     if isinstance(dict_w_promises, UnresolvedDict):
         first_pass_results = {k: v.resolve() for k, v in dict_w_promises.items()}
@@ -502,8 +509,11 @@ def resolve_dict_w_promises(
 
 
 def simplify_list(maybe_list: Any) -> Any:
-    """Turn a length one list loaded by cwltool into a scalar.
-    Anything else is passed as-is, by reference."""
+    """
+    Turn a length one list loaded by cwltool into a scalar.
+
+    Anything else is passed as-is, by reference.
+    """
     if isinstance(maybe_list, MutableSequence):
         is_list = aslist(maybe_list)
         if len(is_list) == 1:
@@ -513,9 +523,11 @@ def simplify_list(maybe_list: Any) -> Any:
 
 class ToilPathMapper(PathMapper):
     """
-    ToilPathMapper keeps track of a file's symbolic identifier (the Toil
-    FileID), its local path on the host (the value returned by readGlobalFile)
-    and the the location of the file inside the Docker container.
+    Keeps track of files in a Toil way.
+
+    Maps the symbolic identifier of a file (the Toil FileID), its local path on
+    the host (the value returned by readGlobalFile) and the the location of the
+    file inside the software container.
     """
 
     def __init__(
@@ -527,15 +539,12 @@ class ToilPathMapper(PathMapper):
         get_file: Union[Any, None] = None,
         stage_listing: bool = False,
     ):
+        """Initialize this ToilPathMapper."""
         self.get_file = get_file
         self.stage_listing = stage_listing
         super(ToilPathMapper, self).__init__(
             referenced_files, basedir, stagedir, separateDirs=separateDirs
         )
-
-    def mapper(self, src: str) -> MapperEnt:
-        result = super(ToilPathMapper, self).mapper(src)
-        return result
 
     def visit(
         self,
@@ -545,7 +554,7 @@ class ToilPathMapper(PathMapper):
         copy: bool = False,
         staged: bool = False,
     ) -> None:
-
+        """Iterate over a CWL object, resolving File and Directory path references."""
         tgt = convert_pathsep_to_unix(os.path.join(stagedir, obj["basename"]))
         if obj["location"] in self._pathmap:
             return
@@ -623,6 +632,7 @@ class ToilCommandLineTool(cwltool.command_line_tool.CommandLineTool):
         runtimeContext: cwltool.context.RuntimeContext,
         separateDirs: bool,
     ) -> cwltool.pathmapper.PathMapper:
+        """Create the appropriate ToilPathMapper for the situation."""
         return ToilPathMapper(
             reffiles,
             runtimeContext.basedir,
@@ -637,8 +647,9 @@ def toil_make_tool(
     loading_context: cwltool.context.LoadingContext,
 ) -> cwltool.command_line_tool.CommandLineTool:
     """
-    Factory function passed to load_tool() which creates instances of the
-    custom ToilCommandLineTool.
+    Emit custom ToilCommandLineTools.
+
+    This factory funciton is meant to be passed to cwltool.load_tool().
     """
     if (
         isinstance(toolpath_object, Mapping)
@@ -652,10 +663,12 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
     """Custom filesystem access class which handles toil filestore references."""
 
     def __init__(self, basedir: str, file_store: AbstractFileStore = None):
+        """Create a FsAccess object for the given Toil Filestore and basedir."""
         self.file_store = file_store
         super(ToilFsAccess, self).__init__(basedir)
 
     def exists(self, path: str) -> bool:
+        """Test for file existance."""
         # toil's _abs() throws errors when files are not found and cwltool's _abs() does not
         try:
             return os.path.exists(self._abs(path))
@@ -668,10 +681,10 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
         Overwrites cwltool.stdfsaccess.StdFsAccess._abs() to account for toil specific schema.
         """
-
-        # Used to fetch a path to determine if a file exists in the inherited cwltool.stdfsaccess.StdFsAccess,
-        # (among other things) so this should not error on missing files.
-        # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43
+        # Used to fetch a path to determine if a file exists in the inherited
+        # cwltool.stdfsaccess.StdFsAccess, (among other things) so this should
+        # not error on missing files.
+        # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43  # noqa B950
         if path.startswith("toilfs:"):
             logger.debug("Need to download file to get a local absolute path.")
             destination = self.file_store.readGlobalFile(FileID.unpack(path[7:]))
@@ -781,10 +794,10 @@ def uploadFile(
     skip_broken: bool = False,
 ) -> None:
     """
-    Update a file object so that the location is a reference to the toil file
-    store, writing it to the file store if necessary.
-    """
+    Update a file object so that the location is a reference to the toil file store.
 
+    Write the file object to the file store if necessary.
+    """
     if file_metadata["location"].startswith("toilfs:") or file_metadata[
         "location"
     ].startswith("_:"):
@@ -813,22 +826,26 @@ def uploadFile(
 
 
 def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> str:
-    """Wrap writeGlobalFile to accept file:// URIs"""
+    """Wrap writeGlobalFile to accept file:// URIs."""
     fileuri = fileuri if ":/" in fileuri else f"file://{fileuri}"
     return file_store.writeGlobalFile(schema_salad.ref_resolver.uri_file_path(fileuri))
 
 
 class ResolveIndirect(Job):
-    """A helper Job which accepts an unresolved dict (containing promises) and
-    produces a dictionary of actual values.
+    """
+    Helper Job.
 
+    Accepts an unresolved dict (containing promises) and produces a dictionary
+    of actual values.
     """
 
     def __init__(self, cwljob: dict):
+        """Store the dictionary of promises for later resolution."""
         super(ResolveIndirect, self).__init__()
         self.cwljob = cwljob
 
     def run(self, file_store: AbstractFileStore) -> dict:
+        """Evaluate the promises and return their values."""
         return resolve_dict_w_promises(self.cwljob)
 
 
@@ -901,8 +918,11 @@ def toilStageFiles(
 
 
 class CWLJobWrapper(Job):
-    """Wrap a CWL job that uses dynamic resources requirement.  When executed, this
-    creates a new child job which has the correct resource requirement set.
+    """
+    Wrap a CWL job that uses dynamic resources requirement.
+
+    When executed, this creates a new child job which has the correct resource
+    requirement set.
     """
 
     def __init__(
@@ -912,6 +932,7 @@ class CWLJobWrapper(Job):
         runtime_context: cwltool.context.RuntimeContext,
         conditional: Union[Conditional, None] = None,
     ):
+        """Store our context for later evaluation."""
         super(CWLJobWrapper, self).__init__(cores=1, memory=1024 * 1024, disk=8 * 1024)
         self.cwltool = remove_pickle_problems(tool)
         self.cwljob = cwljob
@@ -919,6 +940,7 @@ class CWLJobWrapper(Job):
         self.conditional = conditional
 
     def run(self, file_store: AbstractFileStore) -> Any:
+        """Create a child job with the correct resource requirements set."""
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
         fill_in_defaults(
             self.cwltool.tool["inputs"],
@@ -936,7 +958,7 @@ class CWLJobWrapper(Job):
 
 
 class CWLJob(Job):
-    """Execute a CWL tool using cwltool.executors.SingleJobExecutor"""
+    """Execute a CWL tool using cwltool.executors.SingleJobExecutor."""
 
     def __init__(
         self,
@@ -945,7 +967,7 @@ class CWLJob(Job):
         runtime_context: cwltool.context.RuntimeContext,
         conditional: Union[Conditional, None] = None,
     ):
-
+        """Store the context for later execution."""
         self.cwltool = remove_pickle_problems(tool)
         self.conditional = conditional or Conditional()
 
@@ -1008,7 +1030,7 @@ class CWLJob(Job):
         self.workdir = runtime_context.workdir
 
     def required_env_vars(self, cwljob: Any) -> Iterator[Tuple[str, str]]:
-        """An iterator that yields environment variables specified with the EnvVarRequirement keyword."""
+        """Yield environment variables from EnvVarRequirement."""
         if isinstance(cwljob, dict):
             if cwljob.get("class") == "EnvVarRequirement":
                 for t in cwljob.get("envDef", {}):
@@ -1023,12 +1045,14 @@ class CWLJob(Job):
 
     def populate_env_vars(self, cwljob: dict) -> dict:
         """
-        Prepares environment variables necessary at runtime of the job.
+        Prepare environment variables necessary at runtime for the job.
 
-        Env vars specified in the CWL "requirements" section should already be loaded in self.cwltool.requirements,
-        however those specified with "EnvVarRequirement" take precedence and are only populated here.  Therefore,
-        this not only returns a dictionary with all evaluated "EnvVarRequirement" env vars, but checks
-        self.cwltool.requirements for any env vars with the same name and replaces their value with that found in the
+        Env vars specified in the CWL "requirements" section should already be
+        loaded in self.cwltool.requirements, however those specified with
+        "EnvVarRequirement" take precedence and are only populated here. Therefore,
+        this not only returns a dictionary with all evaluated "EnvVarRequirement"
+        env vars, but checks self.cwltool.requirements for any env vars with the
+        same name and replaces their value with that found in the
         "EnvVarRequirement" env var if it exists.
         """
         self.builder.job = cwljob
@@ -1038,12 +1062,13 @@ class CWLJob(Job):
             required_env_vars[
                 k
             ] = v  # will tell cwltool which env vars to take from the environment
-            os.environ[
-                k
-            ] = v  # needs to actually be populated in the environment as well or they're not used
+            os.environ[k] = v
+            # needs to actually be populated in the environment as well or
+            # they're not used
 
-        # EnvVarRequirement env vars take priority over those specified with "requirements"
-        # so cwltool.requirements need to be overwritten if an env var with the same name is found
+        # EnvVarRequirement env vars take priority over those specified with
+        # "requirements" so cwltool.requirements need to be overwritten if an
+        # env var with the same name is found
         for req in self.cwltool.requirements:
             for env_def in req.get("envDef", {}):
                 env_name = env_def.get("envName", "")
@@ -1052,6 +1077,7 @@ class CWLJob(Job):
         return required_env_vars
 
     def run(self, file_store: AbstractFileStore) -> Any:
+        """Execute the CWL document."""
         # Adjust cwltool's logging to conform to Toil's settings.
         # We need to make sure this happens in every worker process before we
         # do CWL things.
@@ -1108,8 +1134,8 @@ class CWLJob(Job):
             toil_get_file, file_store, index, existing
         )
 
-        process_uuid = uuid.uuid4()
-        started_at = datetime.datetime.now()
+        process_uuid = uuid.uuid4()  # noqa F841
+        started_at = datetime.datetime.now()  # noqa F841
 
         logger.debug("Running CWL job: %s", cwljob)
 
@@ -1119,7 +1145,7 @@ class CWLJob(Job):
             runtime_context=runtime_context,
             logger=cwllogger,
         )
-        ended_at = datetime.datetime.now()
+        ended_at = datetime.datetime.now()  # noqa F841
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
 
@@ -1160,8 +1186,9 @@ def makeJob(
     conditional: Union[Conditional, None],
 ) -> tuple:
     """
-    Create the correct Toil Job object for the CWL tool (workflow, job, or job
-    wrapper for dynamic resource requirements.)
+    Create the correct Toil Job object for the CWL tool.
+
+    Types: workflow, job, or job wrapper for dynamic resource requirements.
 
     :return: "wfjob, followOn" if the input tool is a workflow, and "job, job" otherwise
     """
@@ -1196,8 +1223,9 @@ def makeJob(
 
 class CWLScatter(Job):
     """
-    Implement workflow scatter step.  When run, this creates a child job for
-    each parameterization of the scatter.
+    Implement workflow scatter step.
+
+    When run, this creates a child job for each parameterization of the scatter.
     """
 
     def __init__(
@@ -1207,6 +1235,7 @@ class CWLScatter(Job):
         runtime_context: cwltool.context.RuntimeContext,
         conditional: Union[Conditional, None],
     ):
+        """Store our context for later execution."""
         super(CWLScatter, self).__init__()
         self.step = step
         self.cwljob = cwljob
@@ -1216,6 +1245,7 @@ class CWLScatter(Job):
     def flat_crossproduct_scatter(
         self, joborder: dict, scatter_keys: list, outputs: list, postScatterEval: Any
     ) -> None:
+        """Cartesian product of the inputs, then flattened."""
         scatter_key = shortname(scatter_keys[0])
         for n in range(0, len(joborder[scatter_key])):
             updated_joborder = copy.copy(joborder)
@@ -1238,6 +1268,7 @@ class CWLScatter(Job):
     def nested_crossproduct_scatter(
         self, joborder: dict, scatter_keys: list, postScatterEval: Any
     ) -> list:
+        """Cartesian product of the inputs."""
         scatter_key = shortname(scatter_keys[0])
         outputs = []
         for n in range(0, len(joborder[scatter_key])):
@@ -1262,6 +1293,7 @@ class CWLScatter(Job):
         return outputs
 
     def run(self, file_store: AbstractFileStore) -> list:
+        """Generate the follow on scatter jobs."""
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
         if isinstance(self.step.tool["scatter"], str):
@@ -1334,8 +1366,10 @@ class CWLScatter(Job):
 
 class CWLGather(Job):
     """
-    Follows on to a scatter.  This gathers the outputs of each job in the
-    scatter into an array for each output parameter.
+    Follows on to a scatter Job.
+
+    This gathers the outputs of each job in the scatter into an array for each
+    output parameter.
     """
 
     def __init__(
@@ -1343,30 +1377,30 @@ class CWLGather(Job):
         step: cwltool.workflow.WorkflowStep,
         outputs: Union[Mapping, MutableSequence],
     ):
+        """Collect our context for later gathering."""
         super(CWLGather, self).__init__()
         self.step = step
         self.outputs = outputs
 
-    def allkeys(self, obj: Union[Mapping, MutableSequence], keys: Set) -> None:
-        if isinstance(obj, Mapping):
-            for key in list(obj.keys()):
-                keys.add(key)
-        elif isinstance(obj, MutableSequence):
-            for item in obj:
-                self.allkeys(item, keys)
+    @staticmethod
+    def extract(obj: Union[Mapping, MutableSequence], k: str) -> list:
+        """
+        Extract the given key from the obj.
 
-    def extract(self, obj: Union[Mapping, MutableSequence], k: str) -> list:
+        If the object is a list, extract it from all members of the list.
+        """
         if isinstance(obj, Mapping):
             return obj.get(k)
         elif isinstance(obj, MutableSequence):
             cp = []
             for item in obj:
-                cp.append(self.extract(item, k))
+                cp.append(CWLGather.extract(item, k))
             return cp
         else:
             return []
 
-    def run(self, file_store: AbstractFileStore) -> Any:
+    def run(self, file_store: AbstractFileStore) -> Dict[str, Any]:
+        """Gather all the outputs of the scatter."""
         outobj = {}
 
         def sn(n):
@@ -1382,19 +1416,23 @@ class CWLGather(Job):
 
 
 class SelfJob:
-    """Fake job object to facilitate implementation of CWLWorkflow.run()"""
+    """Fake job object to facilitate implementation of CWLWorkflow.run()."""
 
     def __init__(self, j: cwltool.workflow.Workflow, v: dict):
+        """Record the workflow and dictionary."""
         self.j = j
         self.v = v
 
     def rv(self) -> Any:
+        """Return our properties dictionary."""
         return self.v
 
     def addChild(self, c: str) -> Any:
+        """Add a child to our workflow."""
         return self.j.addChild(c)
 
     def hasChild(self, c: str) -> Any:
+        """Check if the given child is in our workflow."""
         return self.j.hasChild(c)
 
 
@@ -1410,7 +1448,11 @@ def remove_pickle_problems(obj: cwltool.workflow.Workflow) -> cwltool.workflow.W
 
 
 class CWLWorkflow(Job):
-    """Traverse a CWL workflow graph and create a Toil job graph with appropriate dependencies."""
+    """
+    Toil Job to convert a CWL workflow grah into a Toil job graph.
+
+    The Toil job graph will include the appropriate dependencies.
+    """
 
     def __init__(
         self,
@@ -1419,6 +1461,7 @@ class CWLWorkflow(Job):
         runtime_context: cwltool.context.RuntimeContext,
         conditional: Union[Conditional, None] = None,
     ):
+        """Gather our context for later execution."""
         super(CWLWorkflow, self).__init__()
         self.cwlwf = cwlwf
         self.cwljob = cwljob
@@ -1427,6 +1470,7 @@ class CWLWorkflow(Job):
         self.conditional = conditional or Conditional()
 
     def run(self, file_store: AbstractFileStore):
+        """Convert a CWL Workflow graph into a Toil job graph."""
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
         if self.conditional.is_false(cwljob):
@@ -1568,6 +1612,7 @@ def visitSteps(
     ],
     op: Any,
 ) -> None:
+    """Iterate over a CWL Process object, running the op on each WorkflowStep."""
     if isinstance(cmdline_tool, cwltool.workflow.Workflow):
         for step in cmdline_tool.steps:
             op(step.tool)
@@ -1576,16 +1621,22 @@ def visitSteps(
 
 def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> list:
     """
-    Interpolated strings and optional inputs in secondary files were added to CWL in version 1.1.
+    Remove unprocessed secondary files.
 
-    The CWL libraries we call do successfully resolve the interpolated strings, but add the resolved
-    fields to the list of unresolved fields so we remove them here after the fact.
+    Interpolated strings and optional inputs in secondary files were added to
+    CWL in version 1.1.
 
-    We also remove any secondary files here not containing 'toilfs:', which means that it was not
-    successfully imported into the toil jobstore.  The 'required' logic seems to be handled deeper in
-    cwltool.builder.Builder(), and correctly determines which files should be imported.  Therefore we
-    remove the files here and if this file is SUPPOSED to exist, it will still give the appropriate file
-    does not exist error, but just a bit further down the track.
+    The CWL libraries we call do successfully resolve the interpolated strings,
+    but add the resolved fields to the list of unresolved fields so we remove
+    them here after the fact.
+
+    We also remove any secondary files here not containing 'toilfs:', which
+    means that it was not successfully imported into the toil jobstore.  The
+    'required' logic seems to be handled deeper in cwltool.builder.Builder(),
+    and correctly determines which files should be imported.  Therefore we
+    remove the files here and if this file is SUPPOSED to exist, it will still
+    give the appropriate file does not exist error, but just a bit further down
+    the track.
     """
     intermediate_secondary_files = []
     final_secondary_files = []
@@ -1605,22 +1656,26 @@ def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> list
 
 def determine_load_listing(tool: ToilCommandLineTool):
     """
-    Determines the directory.listing feature in CWL.
+    Determine the directory.listing feature in CWL.
 
-    In CWL, any input directory can have a DIRECTORY_NAME.listing (where DIRECTORY_NAME is any variable name) set to
-    one of the following three options:
+    In CWL, any input directory can have a DIRECTORY_NAME.listing (where
+    DIRECTORY_NAME is any variable name) set to one of the following three
+    options:
 
         no_listing: DIRECTORY_NAME.listing will be undefined.
             e.g. inputs.DIRECTORY_NAME.listing == unspecified
 
-        shallow_listing: DIRECTORY_NAME.listing will return a list one level deep of DIRECTORY_NAME's contents.
+        shallow_listing: DIRECTORY_NAME.listing will return a list one level
+                         deep of DIRECTORY_NAME's contents.
             e.g. inputs.DIRECTORY_NAME.listing == [items in directory]
                  inputs.DIRECTORY_NAME.listing[0].listing == undefined
                  inputs.DIRECTORY_NAME.listing.length == # of items in directory
 
-        deep_listing: DIRECTORY_NAME.listing will return a list of the entire contents of DIRECTORY_NAME.
+        deep_listing: DIRECTORY_NAME.listing will return a list of the entire
+                      contents of DIRECTORY_NAME.
             e.g. inputs.DIRECTORY_NAME.listing == [items in directory]
-                 inputs.DIRECTORY_NAME.listing[0].listing == [items in subdirectory if it exists and is the first item listed]
+                 inputs.DIRECTORY_NAME.listing[0].listing == [items
+                      in subdirectory if it exists and is the first item listed]
                  inputs.DIRECTORY_NAME.listing.length == # of items in directory
 
     See: https://www.commonwl.org/v1.1/CommandLineTool.html#LoadListingRequirement
@@ -1644,7 +1699,7 @@ def determine_load_listing(tool: ToilCommandLineTool):
 
 
 def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
-    """Main method for toil-cwl-runner."""
+    """Run the main loop for toil-cwl-runner."""
     # Remove cwltool logger's stream handler so it uses Toil's
     cwllogger.removeHandler(defaultStreamHandler)
     config = Config()
@@ -2050,13 +2105,16 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             runtime_context.no_read_only = options.no_read_only
             runtime_context.basedir = options.basedir
 
-            # We instantiate an early builder object here to populate indirect secondaryFile references
-            # using cwltool's library because we need to resolve them before toil imports them into the filestore.
-            # A second builder will be built in the job's run method when toil actually starts the cwl job.
+            # We instantiate an early builder object here to populate indirect
+            # secondaryFile references using cwltool's library because we need
+            # to resolve them before toil imports them into the filestore.
+            # A second builder will be built in the job's run method when toil
+            # actually starts the cwl job.
             builder = tool._init_job(initialized_job_order, runtime_context)
 
-            # make sure this doesn't add listing items; if shallow_listing is selected, it will discover dirs one deep
-            # and then again later on (producing 2+ deep listings instead of only 1)
+            # make sure this doesn't add listing items; if shallow_listing is
+            # selected, it will discover dirs one deep and then again later on
+            # (producing 2+ deep listings instead of only 1)
             builder.loadListing = "no_listing"
 
             builder.bind_input(
@@ -2065,7 +2123,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 discover_secondaryFiles=True,
             )
 
-            # files with the 'file://' uri are imported into the jobstore and changed to 'toilfs:'
+            # files with the 'file://' uri are imported into the jobstore and
+            # changed to 'toilfs:'
             import_files(initialized_job_order)
 
             visitSteps(tool, import_files)
@@ -2146,6 +2205,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 def find_default_container(
     args: argparse.Namespace, builder: cwltool.builder.Builder
 ) -> str:
+    """Find the default constuctor by consulting a Toil.options object."""
     default_container = None
     if args.default_container:
         default_container = args.default_container
