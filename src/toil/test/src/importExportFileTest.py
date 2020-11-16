@@ -106,8 +106,6 @@ class ImportExportFileTest(ToilTest):
         maintains its executability after being exported.
         """
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.logLevel = "INFO"
-
         with Toil(options) as toil:
             for executable in True,False:
                 srcFile = '%s/%s%s' % (self._tempDir, 'in', str(uuid.uuid4()))
