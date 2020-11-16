@@ -251,7 +251,7 @@ class hidden(object):
                             logger.info('No longer have file: %s', fsID)
                 i += 1
 
-        def testWriteReadGlobalFile(self):
+        def testWriteReadGlobalFilePermissions(self):
             for executable in True,False:
                 A = Job.wrapJobFn(self._testWriteReadGlobalFilePermissions, executable=executable)
                 Job.Runner.startToil(A, self.options)
