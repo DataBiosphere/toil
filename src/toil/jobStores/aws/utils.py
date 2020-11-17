@@ -346,7 +346,7 @@ def connection_reset(e):
 
 
 def sdb_unavailable(e):
-    return isinstance(e, BotoServerError) and e.status == 503
+    return isinstance(e, BotoServerError) and e.status in (500, 503)
 
 
 def no_such_sdb_domain(e):

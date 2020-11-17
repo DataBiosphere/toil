@@ -30,14 +30,27 @@ from typing import (Optional,
                     Any)
 
 from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.wdl.wdl_types import WDLPair
 
 wdllogger = logging.getLogger(__name__)
 
 
 class WDLRuntimeError(Exception):
     """ WDL-related run-time error."""
+
     def __init__(self, message):
         super(WDLRuntimeError, self).__init__(message)
+
+
+class WDLJSONEncoder(json.JSONEncoder):
+    """
+    Extended JSONEncoder to support WDL-specific JSON encoding.
+    """
+
+    def default(self, obj):
+        if isinstance(obj, WDLPair):
+            return obj.to_dict()
+        return json.JSONEncoder.default(self, obj)
 
 
 def glob(glob_pattern, directoryname):
@@ -233,6 +246,72 @@ def process_infile(f, fileStore):
         return process_single_infile(f, fileStore)
     else:
         raise RuntimeError('Error processing file: '.format(str(f)))
+
+
+def parse_value_from_type(in_data: Any,
+                          var_type: str,
+                          read_in_file: bool = False,
+                          file_store: Optional[AbstractFileStore] = None,
+                          cwd: Optional[str] = None,
+                          temp_dir: Optional[str] = None,
+                          docker: Optional[bool] = None
+                          ):
+    """
+    Calls at runtime. This function parses and validates input from its type. File
+    import is also handled.
+
+    For values set in a task block, set `read_in_file` to True to process and read
+    all encountered files. This requires `cwd`, `temp_dir`, and `docker` to be
+    passed into this function.
+    """
+
+    def validate(val: bool, msg: str):
+        if not val:
+            raise WDLRuntimeError(f'Invalid input: {msg}')
+
+    if not in_data:  # optional type?
+        # TODO: check if type is in fact an optional.
+        return in_data
+
+    if var_type == 'File':
+        # in_data can be an array of files
+        if read_in_file:
+            return process_and_read_file(f=abspath_file(f=in_data, cwd=cwd),
+                                         tempDir=temp_dir,
+                                         fileStore=file_store,
+                                         docker=docker)
+
+        return process_infile(in_data, file_store)
+
+    elif isinstance(in_data, list):
+        # if in_data is not an array of files, then handle elements one by one.
+        return [parse_value_from_type(i, var_type, read_in_file, file_store, cwd, temp_dir, docker) for i in in_data]
+
+    elif var_type == 'Pair':
+        if isinstance(in_data, WDLPair):
+            left = in_data.left
+            right = in_data.right
+
+        elif isinstance(in_data, dict):
+            validate('left' in in_data and 'right' in in_data, f'Pair needs \'left\' and \'right\' keys')
+            left = in_data.get('left')
+            right = in_data.get('right')
+        else:
+            validate(isinstance(in_data, tuple) and len(in_data) == 2, 'Only support Pair len == 2')
+            left, right = in_data
+
+        return WDLPair(parse_value_from_type(left, var_type.left, read_in_file, file_store, cwd, temp_dir, docker),
+                       parse_value_from_type(right, var_type.right, read_in_file, file_store, cwd, temp_dir, docker))
+
+    elif var_type == 'Map':
+        validate(isinstance(in_data, dict), f'Expected dict, but got {type(in_data)}')
+        return {k:
+                parse_value_from_type(v, var_type.value, read_in_file, file_store, cwd, temp_dir, docker)
+                for k, v in in_data.items()}
+
+    else:
+        # everything else is fine as is.
+        return in_data
 
 
 def sub(input_str: str, pattern: str, replace: str) -> str:
@@ -814,7 +893,7 @@ def write_json(in_json: Any,
     path = _get_temp_file_path('write_json', temp_dir)
 
     with open(path, 'w') as file:
-        file.write(json.dumps(in_json, indent=indent, separators=separators))
+        file.write(json.dumps(in_json, indent=indent, separators=separators, cls=WDLJSONEncoder))
 
     if file_store:
         file_store.writeGlobalFile(path, cleanup=True)

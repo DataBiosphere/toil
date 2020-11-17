@@ -22,6 +22,7 @@ import shutil
 import zipfile
 import pytest
 import uuid
+import psutil
 import subprocess
 from urllib.request import urlretrieve
 from io import StringIO
@@ -42,6 +43,7 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
     try:
         cmd = ['cwltest',
                '--tool=toil-cwl-runner',
+               f'-j{int(psutil.cpu_count()/2)}',
                f'--test={yml}',
                '--timeout=2400',
                f'--basedir={workDir}']

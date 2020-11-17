@@ -1,8 +1,9 @@
+from typing import Any
+
 
 class WDLType:
     """
     Represents a primitive or compound WDL type:
-
     https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#types
     """
     def __init__(self, optional: bool = False):
@@ -17,7 +18,6 @@ class WDLType:
 
     def validate(self):
         """
-
         """
         pass
 
@@ -41,7 +41,6 @@ class WDLCompoundType(WDLType):
 
 class WDLStringType(WDLType):
     """
-
     """
     @property
     def type_name(self) -> str:
@@ -50,7 +49,6 @@ class WDLStringType(WDLType):
 
 class WDLIntType(WDLType):
     """
-
     """
     @property
     def type_name(self) -> str:
@@ -59,7 +57,6 @@ class WDLIntType(WDLType):
 
 class WDLFloatType(WDLType):
     """
-
     """
     @property
     def type_name(self) -> str:
@@ -68,7 +65,6 @@ class WDLFloatType(WDLType):
 
 class WDLBooleanType(WDLType):
     """
-
     """
     @property
     def type_name(self) -> str:
@@ -77,7 +73,6 @@ class WDLBooleanType(WDLType):
 
 class WDLFileType(WDLType):
     """
-
     """
     @property
     def type_name(self) -> str:
@@ -86,7 +81,6 @@ class WDLFileType(WDLType):
 
 class WDLArrayType(WDLCompoundType):
     """
-
     """
     def __init__(self, element: WDLType, optional: bool = False):
         super().__init__(optional)
@@ -103,7 +97,6 @@ class WDLArrayType(WDLCompoundType):
 
 class WDLPairType(WDLCompoundType):
     """
-
     """
     def __init__(self, left: WDLType, right: WDLType, optional: bool = False):
         super().__init__(optional)
@@ -117,7 +110,6 @@ class WDLPairType(WDLCompoundType):
 
 class WDLMapType(WDLCompoundType):
     """
-
     """
     def __init__(self, key: WDLType, value: WDLType, optional: bool = False):
         super().__init__(optional)
@@ -127,3 +119,20 @@ class WDLMapType(WDLCompoundType):
     @property
     def type_name(self) -> str:
         return f'Map[{self.key.type_name}, {self.value.type_name}]'
+
+
+class WDLPair:
+    """
+    Represent a WDL Pair literal defined at
+    https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#pair-literals
+    """
+
+    def __init__(self, left: Any, right: Any):
+        self.left = left
+        self.right = right
+
+    def to_dict(self):
+        return {'left': self.left, 'right': self.right}
+
+    def __repr__(self):
+        return str(self.to_dict())

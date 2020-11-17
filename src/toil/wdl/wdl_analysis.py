@@ -18,15 +18,14 @@ from collections import OrderedDict
 
 import toil.wdl.wdl_parser as wdl_parser
 
-from toil.wdl.wdl_types import WDLStringType
-from toil.wdl.wdl_types import WDLIntType
-from toil.wdl.wdl_types import WDLFloatType
+from toil.wdl.wdl_types import WDLArrayType
 from toil.wdl.wdl_types import WDLBooleanType
 from toil.wdl.wdl_types import WDLFileType
-from toil.wdl.wdl_types import WDLArrayType
-from toil.wdl.wdl_types import WDLPairType
+from toil.wdl.wdl_types import WDLFloatType
+from toil.wdl.wdl_types import WDLIntType
 from toil.wdl.wdl_types import WDLMapType
-
+from toil.wdl.wdl_types import WDLPairType
+from toil.wdl.wdl_types import WDLStringType
 
 wdllogger = logging.getLogger(__name__)
 
@@ -623,12 +622,18 @@ class AnalyzeWDL:
         Required.
 
         Currently supported:
-        Types are: Boolean, Float, Int, File, String, and Array[subtype].
-        OptionalTypes are: Boolean?, Float?, Int?, File?, String?, and Array[subtype]?.
+        Types are: Boolean, Float, Int, File, String, Array[subtype],
+                    Pair[subtype, subtype], and Map[subtype, subtype].
+        OptionalTypes are: Boolean?, Float?, Int?, File?, String?, Array[subtype]?,
+                            Pair[subtype, subtype]?, and Map[subtype, subtype]?.
 
         Python is not typed, so we don't need typing except to identify type: "File",
         which Toil needs to import, so we recursively travel down to the innermost
         type which will tell us if the variables are files that need importing.
+
+        For Pair and Map compound types, we recursively travel down the subtypes and
+        store them as attributes of a `WDLType` string. This way, the type structure is
+        preserved, which will allow us to import files appropriately.
 
         :param typeAST:
         :return: a WDLType instance
@@ -818,16 +823,21 @@ class AnalyzeWDL:
         if isinstance(lhsAST, wdl_parser.Terminal):
             es = es + lhsAST.source_string
         elif isinstance(lhsAST, wdl_parser.Ast):
-            raise NotImplementedError
+            es = es + self.parse_declaration_expressn(lhsAST, es)
         elif isinstance(lhsAST, wdl_parser.AstList):
             raise NotImplementedError
 
-        es = es + '_'
+        # hack-y way to make sure pair.left and pair.right are parsed correctly.
+        if isinstance(rhsAST, wdl_parser.Terminal) and (
+                rhsAST.source_string == 'left' or rhsAST.source_string == 'right'):
+            es = es + '.'
+        else:
+            es = es + '_'
 
         if isinstance(rhsAST, wdl_parser.Terminal):
             es = es + rhsAST.source_string
         elif isinstance(rhsAST, wdl_parser.Ast):
-            raise NotImplementedError
+            es = es + self.parse_declaration_expressn(rhsAST, es)
         elif isinstance(rhsAST, wdl_parser.AstList):
             raise NotImplementedError
 
@@ -998,8 +1008,6 @@ class AnalyzeWDL:
         var_map['name'] = var_name
         var_map['type'] = var_type
         var_map['value'] = var_expressn
-
-        print(str(var_type))
 
         return var_name, var_map
 
