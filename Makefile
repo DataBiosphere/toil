@@ -229,6 +229,11 @@ check_cpickle:
 format: $(wildcard src/toil/cwl/*.py)
 	black $^
 
+mypy:
+	mypy --ignore-missing-imports --no-strict-optional \
+		--warn-redundant-casts --warn-unused-ignores \
+		$(CURDIR)/src/toil/cwl/cwltoil.py
+
 .PHONY: help \
 		prepare \
 		check_cpickle \

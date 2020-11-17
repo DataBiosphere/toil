@@ -29,20 +29,8 @@ import sys
 import tempfile
 import urllib
 import uuid
-from typing import (
-    Any,
-    Dict,
-    Iterator,
-    List,
-    Mapping,
-    MutableMapping,
-    MutableSequence,
-    Text,
-    TextIO,
-    Tuple,
-    Union,
-    cast,
-)
+from typing import (Any, Dict, Iterator, List, Mapping, MutableMapping,
+                    MutableSequence, Text, TextIO, Tuple, TypeVar, Union, cast)
 from urllib import parse as urlparse
 
 import cwltool.builder
@@ -60,28 +48,15 @@ from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mutation import MutationManager
 from cwltool.pathmapper import MapperEnt, PathMapper, downloadHttpFile
-from cwltool.process import (
-    Process,
-    add_sizes,
-    compute_checksums,
-    fill_in_defaults,
-    shortname,
-)
+from cwltool.process import (Process, add_sizes, compute_checksums,
+                             fill_in_defaults, shortname)
 from cwltool.secrets import SecretStore
 from cwltool.software_requirements import (
-    DependenciesConfiguration,
-    get_container_from_software_requirements,
-)
-from cwltool.utils import (
-    CWLObjectType,
-    adjustDirObjs,
-    adjustFileObjs,
-    aslist,
-    convert_pathsep_to_unix,
-    get_listing,
-    normalizeFilesDirs,
-    visit_class,
-)
+    DependenciesConfiguration, get_container_from_software_requirements)
+from cwltool.utils import (CWLObjectType, adjustDirObjs, adjustFileObjs,
+                           aslist, convert_pathsep_to_unix, get_listing,
+                           normalizeFilesDirs, visit_class)
+from ruamel.yaml.comments import CommentedMap
 from schema_salad import validate
 from schema_salad.schema import Names
 from schema_salad.sourceline import SourceLine
@@ -90,7 +65,8 @@ from toil.common import Config, Toil, addOptions
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job
-from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobStoreException
+from toil.jobStores.abstractJobStore import (NoSuchFileException,
+                                             NoSuchJobStoreException)
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
@@ -192,7 +168,7 @@ class Conditional:
         self,
         expression: Union[str, None] = None,
         outputs: Union[dict, None] = None,
-        requirements: List[Dict[str, Any]] = None,
+        requirements: List[CWLObjectType] = [],
     ):
         """
         Instantiate a conditional expression.
@@ -297,7 +273,7 @@ class ResolveSource:
             value = self.promise_tuples
             result = value[1].get(value[0])  # type: ignore
 
-        result = self.pick_value(result)  # type: ignore
+        result = self.pick_value(result)
         result = filter_skip_null(self.name, result)
         return result
 
@@ -384,7 +360,7 @@ class StepValueFrom:
     object for the step.
     """
 
-    def __init__(self, expr: str, source: Any, req: List[Dict[str, Any]]):
+    def __init__(self, expr: str, source: Any, req: List[CWLObjectType]):
         """
         Instantiate an object to carry all know about this valueFrom expression.
 
@@ -548,38 +524,45 @@ class ToilPathMapper(PathMapper):
 
     def visit(
         self,
-        obj: Dict[str, Any],
+        obj: CWLObjectType,
         stagedir: str,
         basedir: str,
         copy: bool = False,
         staged: bool = False,
     ) -> None:
         """Iterate over a CWL object, resolving File and Directory path references."""
-        tgt = convert_pathsep_to_unix(os.path.join(stagedir, obj["basename"]))
+        tgt = convert_pathsep_to_unix(
+            os.path.join(stagedir, cast(str, obj["basename"]))
+        )
         if obj["location"] in self._pathmap:
             return
         if obj["class"] == "Directory":
-            if obj["location"].startswith("file://"):
-                resolved = schema_salad.ref_resolver.uri_file_path(obj["location"])
+            location = cast(str, obj["location"])
+            if location.startswith("file://"):
+                resolved = schema_salad.ref_resolver.uri_file_path(location)
             else:
-                resolved = obj["location"]
-            self._pathmap[obj["location"]] = MapperEnt(
+                resolved = location
+            self._pathmap[location] = MapperEnt(
                 resolved, tgt, "WritableDirectory" if copy else "Directory", staged
             )
 
-            if obj["location"].startswith("file://") and not self.stage_listing:
+            if location.startswith("file://") and not self.stage_listing:
                 staged = False
 
             self.visitlisting(
-                obj.get("listing", []), tgt, basedir, copy=copy, staged=staged
+                cast(List, obj.get("listing", [])),
+                tgt,
+                basedir,
+                copy=copy,
+                staged=staged,
             )
 
         elif obj["class"] == "File":
-            path = obj["location"]
+            path = cast(str, obj["location"])
             ab = cwltool.stdfsaccess.abspath(path, basedir)
             if "contents" in obj and path.startswith("_:"):
                 self._pathmap[path] = MapperEnt(
-                    obj["contents"],
+                    cast(str, obj["contents"]),
                     tgt,
                     "CreateWritableFile" if copy else "CreateFile",
                     # "CreateFile",  # TODO: Allow "WritableFile" here; see base class
@@ -614,7 +597,7 @@ class ToilPathMapper(PathMapper):
                     )
 
             self.visitlisting(
-                obj.get("secondaryFiles", []),
+                cast(List[CWLObjectType], obj.get("secondaryFiles", [])),
                 stagedir,
                 basedir,
                 copy=copy,
@@ -638,14 +621,14 @@ class ToilCommandLineTool(cwltool.command_line_tool.CommandLineTool):
             runtimeContext.basedir,
             stagedir,
             separateDirs,
-            runtimeContext.toil_get_file,
+            runtimeContext.toil_get_file,  # type: ignore
         )
 
 
 def toil_make_tool(
-    toolpath_object: MutableMapping[str, Any],
-    loading_context: cwltool.context.LoadingContext,
-) -> cwltool.command_line_tool.CommandLineTool:
+    toolpath_object: CommentedMap,
+    loadingContext: cwltool.context.LoadingContext,
+) -> Process:
     """
     Emit custom ToilCommandLineTools.
 
@@ -655,8 +638,8 @@ def toil_make_tool(
         isinstance(toolpath_object, Mapping)
         and toolpath_object.get("class") == "CommandLineTool"
     ):
-        return ToilCommandLineTool(toolpath_object, loading_context)
-    return cwltool.workflow.default_make_tool(toolpath_object, loading_context)
+        return ToilCommandLineTool(toolpath_object, loadingContext)
+    return cwltool.workflow.default_make_tool(toolpath_object, loadingContext)
 
 
 class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
@@ -985,7 +968,7 @@ class CWLJob(Job):
                 resources={},
                 mutation_manager=None,
                 formatgraph=None,
-                make_fs_access=runtime_context.make_fs_access,
+                make_fs_access=runtime_context.make_fs_access,  # type: ignore
                 fs_access=runtime_context.make_fs_access(""),
                 job_script_provider=None,
                 timeout=runtime_context.eval_timeout,
@@ -996,7 +979,7 @@ class CWLJob(Job):
                 outdir="",
                 tmpdir="/tmp",  # TODO: use actual defaults here
                 stagedir="/var/lib/cwl",  # TODO: use actual defaults here
-                cwlVersion=self.cwltool.metadata["cwlVersion"],
+                cwlVersion=cast(str, self.cwltool.metadata["cwlVersion"]),
             )
 
         req = tool.evalResources(self.builder, runtime_context)
@@ -1013,7 +996,10 @@ class CWLJob(Job):
         super(CWLJob, self).__init__(
             cores=req["cores"],
             memory=int(req["ram"] * (2 ** 20)),
-            disk=int((req["tmpdirSize"] * (2 ** 20)) + (req["outdirSize"] * (2 ** 20))),
+            disk=int(
+                (cast(int, req["tmpdirSize"]) * (2 ** 20))
+                + (cast(int, req["outdirSize"]) * (2 ** 20))
+            ),
             unitName=unitName,
             displayName=displayName,
         )
@@ -1027,14 +1013,14 @@ class CWLJob(Job):
             pass
         self.runtime_context = runtime_context
         self.step_inputs = self.cwltool.tool["inputs"]
-        self.workdir = runtime_context.workdir
+        self.workdir = runtime_context.workdir  # type: ignore
 
     def required_env_vars(self, cwljob: Any) -> Iterator[Tuple[str, str]]:
         """Yield environment variables from EnvVarRequirement."""
         if isinstance(cwljob, dict):
             if cwljob.get("class") == "EnvVarRequirement":
                 for t in cwljob.get("envDef", {}):
-                    yield t["envName"], self.builder.do_eval(t["envValue"])
+                    yield t["envName"], cast(str, self.builder.do_eval(t["envValue"]))
             for v in cwljob.values():
                 for env_name, env_value in self.required_env_vars(v):
                     yield env_name, env_value
@@ -1070,7 +1056,7 @@ class CWLJob(Job):
         # "requirements" so cwltool.requirements need to be overwritten if an
         # env var with the same name is found
         for req in self.cwltool.requirements:
-            for env_def in req.get("envDef", {}):
+            for env_def in cast(Dict, req.get("envDef", {})):
                 env_name = env_def.get("envName", "")
                 if env_name in required_env_vars:
                     env_def["envValue"] = required_env_vars[env_name]
@@ -1098,7 +1084,9 @@ class CWLJob(Job):
         immobile_cwljob_dict = copy.deepcopy(cwljob)
         for inp_id in immobile_cwljob_dict.keys():
             found = False
-            for field in self.cwltool.inputs_record_schema["fields"]:
+            for field in cast(
+                List[Dict[str, str]], self.cwltool.inputs_record_schema["fields"]
+            ):
                 if field["name"] == inp_id:
                     found = True
             if not found:
@@ -1130,7 +1118,7 @@ class CWLJob(Job):
         )
         runtime_context.preserve_environment = required_env_vars
 
-        runtime_context.toil_get_file = functools.partial(
+        runtime_context.toil_get_file = functools.partial(  # type: ignore
             toil_get_file, file_store, index, existing
         )
 
@@ -1193,7 +1181,12 @@ def makeJob(
     :return: "wfjob, followOn" if the input tool is a workflow, and "job, job" otherwise
     """
     if tool.tool["class"] == "Workflow":
-        wfjob = CWLWorkflow(tool, jobobj, runtime_context, conditional=conditional)
+        wfjob = CWLWorkflow(
+            cast(cwltool.workflow.Workflow, tool),
+            jobobj,
+            runtime_context,
+            conditional=conditional,
+        )
         followOn = ResolveIndirect(wfjob.rv())
         wfjob.addFollowOn(followOn)
         return wfjob, followOn
@@ -1214,7 +1207,10 @@ def makeJob(
                 if isinstance(r, str) and ("$(" in r or "${" in r):
                     # Found a dynamic resource requirement so use a job wrapper
                     job = CWLJobWrapper(
-                        tool, jobobj, runtime_context, conditional=conditional
+                        cast(ToilCommandLineTool, tool),
+                        jobobj,
+                        runtime_context,
+                        conditional=conditional,
                     )
                     return job, job
         job = CWLJob(tool, jobobj, runtime_context, conditional=conditional)  # type: ignore
@@ -1415,15 +1411,15 @@ class CWLGather(Job):
         return outobj
 
 
-class SelfJob:
+class SelfJob(Job):
     """Fake job object to facilitate implementation of CWLWorkflow.run()."""
 
-    def __init__(self, j: cwltool.workflow.Workflow, v: dict):
+    def __init__(self, j: "CWLWorkflow", v: dict):
         """Record the workflow and dictionary."""
         self.j = j
         self.v = v
 
-    def rv(self) -> Any:
+    def rv(self, *path) -> Any:
         """Return our properties dictionary."""
         return self.v
 
@@ -1436,13 +1432,24 @@ class SelfJob:
         return self.j.hasChild(c)
 
 
-def remove_pickle_problems(obj: cwltool.workflow.Workflow) -> cwltool.workflow.Workflow:
+ProcessType = TypeVar(
+    "ProcessType",
+    ToilCommandLineTool,
+    cwltool.workflow.WorkflowStep,
+    cwltool.workflow.Workflow,
+    cwltool.command_line_tool.CommandLineTool,
+    cwltool.command_line_tool.ExpressionTool,
+    Process,
+)
+
+
+def remove_pickle_problems(obj: ProcessType) -> ProcessType:
     """Doc_loader does not pickle correctly, causing Toil errors, remove from objects."""
     if hasattr(obj, "doc_loader"):
         obj.doc_loader = None
-    if hasattr(obj, "embedded_tool"):
+    if isinstance(obj, cwltool.workflow.WorkflowStep):
         obj.embedded_tool = remove_pickle_problems(obj.embedded_tool)
-    if hasattr(obj, "steps"):
+    elif isinstance(obj, cwltool.workflow.Workflow):
         obj.steps = [remove_pickle_problems(s) for s in obj.steps]
     return obj
 
@@ -1481,10 +1488,10 @@ class CWLWorkflow(Job):
         #   that may be used as a "source" for a step input workflow output
         #   parameter
         # to: the job that will produce that value.
-        promises = {}
+        promises: Dict[str, Job] = {}
 
         # `jobs` dict from step id to job that implements that step.
-        jobs = {}  # type: ignore
+        jobs = {}
 
         for inp in self.cwlwf.tool["inputs"]:
             promises[inp["id"]] = SelfJob(self, cwljob)
@@ -1561,17 +1568,13 @@ class CWLWorkflow(Job):
                             for s in aslist(inp.get("source", [])):
                                 if isinstance(
                                     promises[s], (CWLJobWrapper, CWLGather)
-                                ) and not promises[s].hasFollowOn(
-                                    wfjob
-                                ):  # type: ignore
-                                    promises[s].addFollowOn(wfjob)  # type: ignore
+                                ) and not promises[s].hasFollowOn(wfjob):
+                                    promises[s].addFollowOn(wfjob)
                                     connected = True
                                 if not isinstance(
                                     promises[s], (CWLJobWrapper, CWLGather)
-                                ) and not promises[s].hasChild(
-                                    wfjob
-                                ):  # type: ignore
-                                    promises[s].addChild(wfjob)  # type: ignore
+                                ) and not promises[s].hasChild(wfjob):
+                                    promises[s].addChild(wfjob)
                                     connected = True
                         if not connected:
                             # the workflow step has default inputs only & isn't
@@ -1580,7 +1583,7 @@ class CWLWorkflow(Job):
                             self.addChild(wfjob)
 
                         for out in step.tool["outputs"]:
-                            promises[out["id"]] = followOn  # type: ignore
+                            promises[out["id"]] = followOn
 
                 for inp in step.tool["inputs"]:
                     for source in aslist(inp.get("source", [])):
@@ -1607,9 +1610,7 @@ class CWLWorkflow(Job):
 
 
 def visitSteps(
-    cmdline_tool: Union[
-        cwltool.command_line_tool.CommandLineTool, cwltool.workflow.Workflow
-    ],
+    cmdline_tool: Process,
     op: Any,
 ) -> None:
     """Iterate over a CWL Process object, running the op on each WorkflowStep."""
@@ -1958,7 +1959,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     runtime_context.find_default_container = functools.partial(
         find_default_container, options
     )
-    runtime_context.workdir = workdir
+    runtime_context.workdir = workdir  # type: ignore
     runtime_context.move_outputs = "leave"
     runtime_context.rm_tmpdir = False
     loading_context = cwltool.context.LoadingContext(vars(options))
@@ -2012,7 +2013,10 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 loading_context, workflowobj, uri
             )
             loading_context.overrides_list.extend(
-                loading_context.metadata.get("cwltool:overrides", [])
+                cast(
+                    List[CWLObjectType],
+                    loading_context.metadata.get("cwltool:overrides", []),
+                )
             )
 
             document_loader = loading_context.loader
@@ -2020,13 +2024,9 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             processobj = document_loader.idx
 
             if options.provenance and runtime_context.research_obj:
-                processobj["id"] = metadata["id"]
-                processobj, metadata = loading_context.loader.resolve_ref(uri)
                 runtime_context.research_obj.packed_workflow(
-                    cwltool.main.print_pack(document_loader, processobj, uri, metadata)
+                    cwltool.main.print_pack(loading_context, uri)
                 )
-
-            loading_context.overrides_list.extend(metadata.get("cwltool:overrides", []))
 
             try:
                 tool = cwltool.load_tool.make_tool(uri, loading_context)
@@ -2131,7 +2131,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
             for job_name in initialized_job_order:
                 if isinstance(initialized_job_order[job_name], list):
-                    for job_params in initialized_job_order[job_name]:
+                    for job_params in cast(List, initialized_job_order[job_name]):
                         if isinstance(job_params, dict):
                             if "secondaryFiles" in job_params:
                                 job_params[
@@ -2159,7 +2159,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         toilStageFiles(toil, outobj, outdir, destBucket=options.destBucket)
 
         if runtime_context.research_obj is not None:
-            runtime_context.research_obj.create_job(outobj, None, True)
+            runtime_context.research_obj.create_job(outobj, True)
 
             def remove_at_id(doc):
                 if isinstance(doc, MutableMapping):
@@ -2206,10 +2206,8 @@ def find_default_container(
     args: argparse.Namespace, builder: cwltool.builder.Builder
 ) -> str:
     """Find the default constuctor by consulting a Toil.options object."""
-    default_container = None
     if args.default_container:
-        default_container = args.default_container
-    elif args.beta_use_biocontainers:
-        default_container = get_container_from_software_requirements(args, builder)
-
-    return default_container
+        return args.default_container
+    if args.beta_use_biocontainers:
+        return get_container_from_software_requirements(True, builder)
+    return None
