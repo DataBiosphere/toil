@@ -18,6 +18,16 @@ from collections import OrderedDict
 
 import toil.wdl.wdl_parser as wdl_parser
 
+from toil.wdl.wdl_types import WDLStringType
+from toil.wdl.wdl_types import WDLIntType
+from toil.wdl.wdl_types import WDLFloatType
+from toil.wdl.wdl_types import WDLBooleanType
+from toil.wdl.wdl_types import WDLFileType
+from toil.wdl.wdl_types import WDLArrayType
+from toil.wdl.wdl_types import WDLPairType
+from toil.wdl.wdl_types import WDLMapType
+
+
 wdllogger = logging.getLogger(__name__)
 
 
@@ -621,21 +631,53 @@ class AnalyzeWDL:
         type which will tell us if the variables are files that need importing.
 
         :param typeAST:
-        :return:
+        :return: a WDLType instance
         """
         if isinstance(typeAST, wdl_parser.Terminal):
-            return typeAST.source_string
-        elif isinstance(typeAST, wdl_parser.Ast):
-            if typeAST.name == 'Type':
-                return self.parse_declaration_type(typeAST.attr('subtype'))
-            elif typeAST.name == 'OptionalType':
-                return self.parse_declaration_type(typeAST.attr('innerType'))
+            if typeAST.source_string == 'String':
+                return WDLStringType()
+            elif typeAST.source_string == 'Int':
+                return WDLIntType()
+            elif typeAST.source_string == 'Float':
+                return WDLFloatType()
+            elif typeAST.source_string == 'Boolean':
+                return WDLBooleanType()
+            elif typeAST.source_string == 'File':
+                return WDLFileType()
             else:
                 raise NotImplementedError
-        elif isinstance(typeAST, wdl_parser.AstList):
-            for ast in typeAST:
-                # TODO only ever seen one element lists.
-                return self.parse_declaration_type(ast)
+
+        elif isinstance(typeAST, wdl_parser.Ast):
+
+            if typeAST.name == 'Type':
+                subtype = typeAST.attr('subtype')
+                optional = False
+            elif typeAST.name == 'OptionalType':
+                subtype = typeAST.attr('innerType')
+                optional = True
+            else:
+                raise NotImplementedError
+
+            if isinstance(subtype, wdl_parser.AstList):
+                # we're looking at a compound type
+                name = typeAST.attr('name').source_string
+                elements = [self.parse_declaration_type(element) for element in subtype]
+
+                if name == 'Array':
+                    return WDLArrayType(elements[0], optional=optional)
+                if name == 'Pair':
+                    return WDLPairType(*elements, optional=optional)
+                elif name == 'Map':
+                    return WDLMapType(*elements, optional=optional)
+                else:
+                    raise NotImplementedError
+            else:
+                # deeply recursive types (TODO: adding tests #3331)
+                wdl_type = self.parse_declaration_type(subtype)
+                wdl_type.optional = optional
+                return wdl_type
+        else:
+            raise NotImplementedError
 
     def parse_declaration_expressn(self, expressionAST, es, output_expressn=False):
         """
@@ -956,6 +998,8 @@ class AnalyzeWDL:
         var_map['name'] = var_name
         var_map['type'] = var_type
         var_map['value'] = var_expressn
+
+        print(str(var_type))
 
         return var_name, var_map
 
