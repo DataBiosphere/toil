@@ -318,19 +318,19 @@ class WdlLanguageSpecWorkflowsTest(WdlWorkflowsTest):
         super(WdlLanguageSpecWorkflowsTest, cls).setUpClass()
         cls.test_path = os.path.abspath("src/toil/test/wdl/wdl_specification")
 
-    def test_type_pair(self):
-        # NOTE: these tests depend on read_lines(), write_json(), and select_first().
-
-        expected_result = '[23,"twenty-three","a.bai",{"left":23,"right":"twenty-three"}]'
-        self.check_function('type_pair', cases=['basic'], expected_result=expected_result)
-
-        # tests if files from the pair type are correctly imported.
-        # the array of three arrays consists content from:
-        # 1. src/toil/test/wdl/testfiles/test_string.txt        -> 'A Whale of a Tale.'
-        # 2. src/toil/test/wdl/testfiles/test_boolean.txt       -> 'true'
-        # 3. src/toil/test/wdl/testfiles/test_int.txt           -> '11'
-        expected_result = '[["A Whale of a Tale."],["true"],["11"]]'
-        self.check_function('type_pair', cases=['with_files'], expected_result=expected_result)
+    # def test_type_pair(self):
+    #     # NOTE: these tests depend on read_lines(), write_json(), and select_first().
+    #
+    #     expected_result = '[23,"twenty-three","a.bai",{"left":23,"right":"twenty-three"}]'
+    #     self.check_function('type_pair', cases=['basic'], expected_result=expected_result)
+    #
+    #     # tests if files from the pair type are correctly imported.
+    #     # the array of three arrays consists content from:
+    #     # 1. src/toil/test/wdl/testfiles/test_string.txt        -> 'A Whale of a Tale.'
+    #     # 2. src/toil/test/wdl/testfiles/test_boolean.txt       -> 'true'
+    #     # 3. src/toil/test/wdl/testfiles/test_int.txt           -> '11'
+    #     expected_result = '[["A Whale of a Tale."],["true"],["11"]]'
+    #     self.check_function('type_pair', cases=['with_files'], expected_result=expected_result)
 
 
 class WdlStandardLibraryWorkflowsTest(WdlWorkflowsTest):
