@@ -31,14 +31,15 @@ import os
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
 from toil.common import Toil, jobStoreLocatorHelp, Config
-from toil.jobStores.abstractJobStore import NoSuchJobStoreException, NoSuchFileException
+from toil.jobStores.errors import NoSuchJobStoreException, NoSuchFileException
 from toil.job import JobException, ServiceJobDescription
 from toil.statsAndLogging import StatsAndLogging
 from toil.version import version
 
 logger = logging.getLogger(__name__)
 
-class ToilStatus():
+
+class ToilStatus:
     """Tool for reporting on job status."""
     def __init__(self, jobStoreName, specifiedJobs=None):
         self.jobStoreName = jobStoreName

@@ -166,6 +166,7 @@ class ToilWdlIntegrationTest(ToilTest):
         wdl_locations = glob('wdl_*.py', os.path.abspath('src/toil'))
         wdl_that_should_exist = [os.path.abspath('src/toil/wdl/wdl_analysis.py'),
                                  os.path.abspath('src/toil/wdl/wdl_synthesis.py'),
+                                 os.path.abspath('src/toil/wdl/wdl_types.py'),
                                  os.path.abspath('src/toil/wdl/wdl_functions.py'),
                                  os.path.abspath('src/toil/wdl/wdl_parser.py')]
         # make sure the files match the expected files
