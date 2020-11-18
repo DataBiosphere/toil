@@ -41,8 +41,11 @@ class GCEProvisioner(AbstractProvisioner):
     NODE_BOTO_PATH = "/root/.boto" # boto file path on instances
     SOURCE_IMAGE = (b'projects/flatcar-cloud/global/images/family/flatcar-stable')
 
-    def __init__(self, clusterName, zone, nodeStorage, nodeStorageOverrides, sseKey):
-        super(GCEProvisioner, self).__init__(clusterName, zone, nodeStorage, nodeStorageOverrides)
+    def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):
+        if clusterType != 'mesos':
+            # We only support Mesos clusters.
+            raise ClusterTypeNotSupportedException(GCEProvisioner, clusterType)
+        super(GCEProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
         self.cloud = 'gce'
         self._sseKey = sseKey
 

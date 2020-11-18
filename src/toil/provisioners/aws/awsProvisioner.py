@@ -101,8 +101,11 @@ class InvalidClusterStateException(Exception):
 
 
 class AWSProvisioner(AbstractProvisioner):
-    def __init__(self, clusterName, zone, nodeStorage, nodeStorageOverrides, sseKey):
-        super(AWSProvisioner, self).__init__(clusterName, zone, nodeStorage, nodeStorageOverrides)
+    def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):
+        if clusterType != 'mesos':
+            # We only support Mesos clusters.
+            raise ClusterTypeNotSupportedException(AWSProvisioner, clusterType)
+        super(AWSProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
         self.cloud = 'aws'
         self._sseKey = sseKey
         self._zone = zone if zone else getCurrentAWSZone()

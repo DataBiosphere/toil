@@ -105,15 +105,20 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     """
     LEADER_HOME_DIR = '/root/'  # home directory in the Toil appliance on an instance
 
-    def __init__(self, clusterName=None, zone=None, nodeStorage=50, nodeStorageOverrides=None):
+    def __init__(self, clusterName=None, clusterType='mesos', zone=None, nodeStorage=50, nodeStorageOverrides=None):
         """
         Initialize provisioner.
+        
+        Implementations should raise ClusterTypeNotSupportedException if
+        presented with an unimplemented clusterType.
 
         :param clusterName: The cluster identifier.
+        :param clusterType: The kind of cluster to make; 'mesos' or 'kubernetes'.
         :param zone: The zone the cluster runs in.
         :param nodeStorage: The amount of storage on the worker instances, in gigabytes.
         """
         self.clusterName = clusterName
+        self.clusterType = clusterType
         self._zone = zone
         self._nodeStorage = nodeStorage
         self._nodeStorageOverrides = {}
