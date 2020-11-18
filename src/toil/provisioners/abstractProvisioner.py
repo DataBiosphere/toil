@@ -253,11 +253,11 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         os.chmod('/root/.ssh', 0o700)
         subprocess.check_call(['bash', '-c', 'eval $(ssh-agent) && ssh-add -k'])
         with open('/root/.ssh/id_rsa.pub') as f:
-            masterPublicKey = f.read()
-        masterPublicKey = masterPublicKey.split(' ')[1]  # take 'body' of key
+            leaderPublicKey = f.read()
+        leaderPublicKey = leaderPublicKey.split(' ')[1]  # take 'body' of key
         # confirm it really is an RSA public key
-        assert masterPublicKey.startswith('AAAAB3NzaC1yc2E'), masterPublicKey
-        return masterPublicKey
+        assert leaderPublicKey.startswith('AAAAB3NzaC1yc2E'), leaderPublicKey
+        return leaderPublicKey
 
 
     cloudConfigTemplate = """#cloud-config
@@ -393,7 +393,7 @@ coreos:
     WORKER_DOCKER_ARGS = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} --no-hostname_lookup --no-systemd_enable_support'
 
 
-    def _getCloudConfigUserData(self, role, masterPublicKey=None, keyPath=None, preemptable=False):
+    def _getCloudConfigUserData(self, role, leaderPublicKey=None, keyPath=None, preemptable=False):
         """
         Return the text (not bytes) user data to pass to a provisioned node.
         """
@@ -409,7 +409,7 @@ coreos:
             raise RuntimeError("Unknown role %s" % role)
 
         template = self.cloudConfigTemplate
-        if masterPublicKey:
+        if leaderPublicKey:
             template += self.sshTemplate
         if keyPath:
             mesosArgs = keyPath + ' ' + mesosArgs
@@ -421,7 +421,7 @@ coreos:
         templateArgs = dict(role=role,
                             dockerImage=applianceSelf(),
                             entrypoint=entryPoint,
-                            sshKey=masterPublicKey,   # ignored if None
+                            sshKey=leaderPublicKey,   # ignored if None
                             mesosArgs=mesosArgs,
                             customInitCommand=customInitCmd())
         userData = template.format(**templateArgs)

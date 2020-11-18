@@ -84,7 +84,7 @@ class GCEProvisioner(AbstractProvisioner):
         self._leaderPrivateIP = leader.privateIP
 
         # generate a public key for the leader, which is used to talk to workers
-        self._masterPublicKey = self._setSSH()
+        self._leaderPublicKey = self._setSSH()
 
         # The location of the Google credentials file on instances.
         self._credentialsPath = GoogleJobStore.nodeServiceAccountJson
@@ -108,7 +108,7 @@ class GCEProvisioner(AbstractProvisioner):
         self._projectId = self.googleConnectionParams['project_id']
         self._clientEmail = self.googleConnectionParams['client_email']
         self._credentialsPath = self._googleJson
-        self._masterPublicKey = None
+        self._leaderPublicKey = None
         self._gceDriver = self._getDriver()
 
 
@@ -226,9 +226,9 @@ class GCEProvisioner(AbstractProvisioner):
     def addNodes(self, nodeType, numNodes, preemptable, spotBid=None):
         assert self._leaderPrivateIP
 
-        # If keys are rsynced, then the mesos-agent needs to be started after the keys have been
+        # If keys are rsynced, then the mesos-slave needs to be started after the keys have been
         # transferred. The waitForKey.sh script loops on the new VM until it finds the keyPath file, then it starts the
-        # mesos-agent. If there are multiple keys to be transferred, then the last one to be transferred must be
+        # mesos-slave. If there are multiple keys to be transferred, then the last one to be transferred must be
         # set to keyPath.
         keyPath = None
         botoExists = False
@@ -244,7 +244,7 @@ class GCEProvisioner(AbstractProvisioner):
             logger.debug('Launching %s preemptable nodes', numNodes)
 
         #kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
-        userData =  self._getCloudConfigUserData('worker', self._masterPublicKey, keyPath, preemptable)
+        userData =  self._getCloudConfigUserData('worker', self._leaderPublicKey, keyPath, preemptable)
         metadata = {'items': [{'key': 'user-data', 'value': userData}]}
         imageType = 'flatcar-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
