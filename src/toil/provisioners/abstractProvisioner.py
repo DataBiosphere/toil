@@ -16,6 +16,7 @@ from abc import ABCMeta, abstractmethod
 from functools import total_ordering
 import logging
 import os.path
+import yaml
 
 import subprocess
 from toil import applianceSelf, customDockerInitCmd, customInitCmd
@@ -259,6 +260,68 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         assert leaderPublicKey.startswith('AAAAB3NzaC1yc2E'), leaderPublicKey
         return leaderPublicKey
 
+
+    class InstanceConfiguration:
+        """
+        Allows defining the initial setup for an instance and then turning it
+        into a CloudConfig configuration for instance user data.
+        """
+
+        def __init__(self):
+            # Holds dicts with keys 'path', 'owner', 'permissions', and 'content' for files to create.
+            # Permissions is a string octal number with leading 0.
+            self.files = []
+            # Holds dicts with keys 'name', 'command', and 'content' defining Systemd units to create
+            self.units = []
+            # Holds strings like "ssh-rsa actualKeyData" for keys to authorize (independently of cloud provider's system)
+            self.sshPublicKeys = []
+            
+        def addFile(self, path: str, owner: str = 'root', permissions: str = '0755', content: str = ''):
+            """
+            Make a file on the instance with the given owner, permissions, and content.
+            """
+            
+            self.files.append({'path': path, 'owner': owner, 'permissions': permissions, 'content': content})
+            
+        def addUnit(self, name: str, command: str = 'start', content: str = ''):
+            """
+            Make a systemd on the instance with the given name (including
+            .service), and content, and apply the given command to it (default:
+            'start').
+            """
+            
+            self.units.append({'name': name, 'command': command, 'content': content})
+            
+        def addSSHRSAKey(self, keyData: str):
+            """
+            Authorize the given bare, encoded RSA key (without "ssh-rsa").
+            """
+            
+            self.sshPublicKeys.append("ssh-rsa " + keyData)
+           
+            
+        def toCloudConfig(self) -> str:
+            """
+            Return a CloudConfig configuration describing the desired config.
+            """
+            
+            # Define the base config
+            config = {
+                'write_files': self.files,
+                'coreos': {
+                    'update': {
+                        'reboot-strategy': 'off'
+                    }, 
+                    'units': self.units
+                }
+            }
+            
+            if len(self.sshPublicKeys) > 0:
+                # Add SSH keys if needed
+                config['ssh_authorized_keys'] = self.sshPublicKeys
+            
+            # Mark as CloudConfig and serialize as YAML
+            return '#cloud-config\n\n' + yaml.dump(config)
 
     cloudConfigTemplate = """#cloud-config
 
