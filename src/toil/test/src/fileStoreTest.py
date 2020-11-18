@@ -23,6 +23,7 @@ from abc import abstractmethod, ABCMeta
 from struct import pack, unpack
 from uuid import uuid4
 
+from toil.common import Toil
 from toil.job import Job
 from toil.fileStores import FileID
 from toil.fileStores.cachingFileStore import IllegalDeletionCacheError, CacheUnbalancedError, CachingFileStore
@@ -283,6 +284,28 @@ class hidden(object):
                     currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
 
                     assert initialPermissions == currentPermissions
+
+        def testWriteExportFileCompatibility(self):
+            A = Job.wrapJobFn(self._testWriteExportFileCompatibility)
+            with Toil(self.options) as toil:
+                initialPermissions, fileID = toil.start(A)
+                dstFile = self._createTempDir() + 'out'
+                toil.exportFile(fileID, 'file://' + dstFile)
+                currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
+
+                assert initialPermissions == currentPermissions
+
+        @staticmethod
+        def _testWriteExportFileCompatibility(job):
+            workDir = job.fileStore.getLocalTempDir()
+            srcFile = '%s/%s%s' % (workDir, 'in', str(uuid4()))
+            with open(srcFile, 'w') as f:
+                f.write('Hello')
+            os.chmod(srcFile, os.stat(srcFile).st_mode | stat.S_IXUSR)
+            initialPermissions = os.stat(srcFile).st_mode & stat.S_IXUSR
+            fileID = job.fileStore.writeGlobalFile(srcFile)
+
+            return initialPermissions, fileID
 
         @staticmethod
         def _writeFileToJobStore(job, isLocalFile, nonLocalDir=None, fileMB=1):
