@@ -253,17 +253,17 @@ class hidden(object):
                 i += 1
 
         def testWriteReadGlobalFilePermissions(self):
+            """
+            Ensures that uploaded files preserve their file permissions when they
+            are downloaded again. This function checks that a written executable file
+            maintains its executability after being read.
+            """
             for executable in True,False:
                 A = Job.wrapJobFn(self._testWriteReadGlobalFilePermissions, executable=executable)
                 Job.Runner.startToil(A, self.options)
 
         @staticmethod
         def _testWriteReadGlobalFilePermissions(job, executable):
-            """
-            Ensures that uploaded files preserve their file permissions when they
-            are downloaded again. This function checks that a written executable file
-            maintains its executability after being read.
-            """
             workDir = job.fileStore.getLocalTempDir()
             srcFile = '%s/%s%s' % (workDir, 'in', str(uuid4()))
             with open(srcFile, 'w') as f:
@@ -286,22 +286,28 @@ class hidden(object):
                     assert initialPermissions == currentPermissions
 
         def testWriteExportFileCompatibility(self):
-            A = Job.wrapJobFn(self._testWriteExportFileCompatibility)
-            with Toil(self.options) as toil:
-                initialPermissions, fileID = toil.start(A)
-                dstFile = self._createTempDir() + 'out'
-                toil.exportFile(fileID, 'file://' + dstFile)
-                currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
+            """
+            Ensures that files created in a job preserve their executable permissions
+            when they are exported from the leader.
+            """
+            for executable in True,False:
+                A = Job.wrapJobFn(self._testWriteExportFileCompatibility, executable=executable)
+                with Toil(self.options) as toil:
+                    initialPermissions, fileID = toil.start(A)
+                    dstFile = self._createTempDir() + 'out'
+                    toil.exportFile(fileID, 'file://' + dstFile)
+                    currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
 
-                assert initialPermissions == currentPermissions
+                    assert initialPermissions == currentPermissions
 
         @staticmethod
-        def _testWriteExportFileCompatibility(job):
+        def _testWriteExportFileCompatibility(job, executable):
             workDir = job.fileStore.getLocalTempDir()
             srcFile = '%s/%s%s' % (workDir, 'in', str(uuid4()))
             with open(srcFile, 'w') as f:
                 f.write('Hello')
-            os.chmod(srcFile, os.stat(srcFile).st_mode | stat.S_IXUSR)
+            if executable:
+                os.chmod(srcFile, os.stat(srcFile).st_mode | stat.S_IXUSR)
             initialPermissions = os.stat(srcFile).st_mode & stat.S_IXUSR
             fileID = job.fileStore.writeGlobalFile(srcFile)
 
