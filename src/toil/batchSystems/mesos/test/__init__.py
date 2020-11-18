@@ -119,7 +119,7 @@ class MesosTestSupport(object):
             # We also make sure to point it explicitly at the right temp work directory, and
             # to disable systemd support because we have to be root to make systemd make us
             # things and we probably aren't when testing.
-            return [self.findMesosBinary(['mesos-agent', 'mesos-slave']),
+            return [self.findMesosBinary(['mesos-agent', 'mesos-agent']),
                     '--ip=127.0.0.1',
                     '--master=127.0.0.1:5050',
                     '--attributes=preemptable:False',

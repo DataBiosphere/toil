@@ -740,7 +740,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             
             # We need the container ID to read the log, but we are never given
             # it, and I can't find a good way to list it, because the API only
-            # seems to report running containers. So we dump all the avaiilable
+            # seems to report running containers. So we dump all the available
             # files with /files/debug and look for one that looks right.
             filesQueryURL = errorLogURL = "http://%s:%d/files/debug" % \
                 (agentAddress, agentPort)
@@ -762,10 +762,6 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                     stderrFilenames.append("%s/stderr" % filename)
                 elif filename.endswith("log"):
                     agentLogFilenames.append(filename)
-                    
-            if '/slave/log' not in agentLogFilenames:
-                # Look here even if not reported.
-                agentLogFilenames.append('/slave/log')
                     
             if len(stderrFilenames) == 0:
                 log.warning("Could not find any containers in '%s'." % filesDict)

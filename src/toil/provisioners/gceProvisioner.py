@@ -226,9 +226,9 @@ class GCEProvisioner(AbstractProvisioner):
     def addNodes(self, nodeType, numNodes, preemptable, spotBid=None):
         assert self._leaderPrivateIP
 
-        # If keys are rsynced, then the mesos-slave needs to be started after the keys have been
+        # If keys are rsynced, then the mesos-agent needs to be started after the keys have been
         # transferred. The waitForKey.sh script loops on the new VM until it finds the keyPath file, then it starts the
-        # mesos-slave. If there are multiple keys to be transferred, then the last one to be transferred must be
+        # mesos-agent. If there are multiple keys to be transferred, then the last one to be transferred must be
         # set to keyPath.
         keyPath = None
         botoExists = False
