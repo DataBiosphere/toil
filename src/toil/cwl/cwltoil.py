@@ -571,7 +571,7 @@ class ToilPathMapper(PathMapper):
                     )
             
             self.visitlisting(
-                obj.get("secondaryFiles", []),
+                cast(List[CWLObjectType], obj.get("secondaryFiles", [])),
                 stagedir,
                 basedir,
                 copy=copy,
