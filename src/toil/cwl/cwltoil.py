@@ -29,8 +29,21 @@ import sys
 import tempfile
 import urllib
 import uuid
-from typing import (Any, Dict, Iterator, List, Mapping, MutableMapping,
-                    MutableSequence, Text, TextIO, Tuple, TypeVar, Union, cast)
+from typing import (
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    Text,
+    TextIO,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+)
 from urllib import parse as urlparse
 
 import cwltool.builder
@@ -44,19 +57,33 @@ import cwltool.resolver
 import cwltool.stdfsaccess
 import cwltool.workflow
 import schema_salad.ref_resolver
-from cwltool.builder import content_limit_respected_read
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mutation import MutationManager
 from cwltool.pathmapper import MapperEnt, PathMapper, downloadHttpFile
-from cwltool.process import (Process, add_sizes, compute_checksums,
-                             fill_in_defaults, shortname)
+from cwltool.process import (
+    Process,
+    add_sizes,
+    compute_checksums,
+    fill_in_defaults,
+    shortname,
+)
 from cwltool.secrets import SecretStore
 from cwltool.software_requirements import (
-    DependenciesConfiguration, get_container_from_software_requirements)
-from cwltool.utils import (CWLOutputAtomType, CWLObjectType, adjustDirObjs,
-                           adjustFileObjs, aslist, convert_pathsep_to_unix,
-                           get_listing, normalizeFilesDirs, visit_class)
+    DependenciesConfiguration,
+    get_container_from_software_requirements,
+)
+from cwltool.utils import (
+    CWLOutputAtomType,
+    CWLObjectType,
+    adjustDirObjs,
+    adjustFileObjs,
+    aslist,
+    convert_pathsep_to_unix,
+    get_listing,
+    normalizeFilesDirs,
+    visit_class,
+)
 from ruamel.yaml.comments import CommentedMap
 from schema_salad import validate
 from schema_salad.schema import Names
@@ -66,8 +93,7 @@ from toil.common import Config, Toil, addOptions
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job
-from toil.jobStores.abstractJobStore import (NoSuchFileException,
-                                             NoSuchJobStoreException)
+from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobStoreException
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
@@ -487,12 +513,12 @@ def resolve_dict_w_promises(
     # rather than copying them, so we make them here
     for entry in result:
         if isinstance(result[entry], dict):
-            location = result[entry].get('location')
+            location = result[entry].get("location")
             if location:
-                if location.startswith('_:file://'):
-                    local_dir_path = location[len('_:file://'):]
+                if location.startswith("_:file://"):
+                    local_dir_path = location[len("_:file://") :]
                     os.makedirs(local_dir_path, exist_ok=True)
-                    result[entry]['location'] = local_dir_path
+                    result[entry]["location"] = local_dir_path
     return result
 
 
@@ -689,8 +715,10 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         if path.startswith("toilfs:"):
             logger.debug("Need to download file to get a local absolute path.")
             destination = self.file_store.readGlobalFile(FileID.unpack(path[7:]))
-            logger.debug('Downloaded %s to %s', path, destination)
-            assert os.path.exists(destination), f'{destination} does not exist after file store import.'
+            logger.debug("Downloaded %s to %s", path, destination)
+            assert os.path.exists(
+                destination
+            ), f"{destination} does not exist after file store import."
             return destination
         else:
             result = super(ToilFsAccess, self)._abs(path)
@@ -833,13 +861,13 @@ def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> str:
 
 
 def remove_empty_listings(
-    fs_access: cwltool.stdfsaccess.StdFsAccess, rec: CWLObjectType, recursive: bool = True
+    fs_access: cwltool.stdfsaccess.StdFsAccess, rec: CWLObjectType
 ) -> None:
     if rec.get("class") != "Directory":
         finddirs = []  # type: List[CWLObjectType]
         visit_class(rec, ("Directory",), finddirs.append)
         for f in finddirs:
-            remove_empty_listings(fs_access, f, recursive=recursive)
+            remove_empty_listings(fs_access, f)
         return
     if "listing" in rec and rec["listing"] == []:
         del rec["listing"]
@@ -853,6 +881,7 @@ class ResolveIndirect(Job):
     Accepts an unresolved dict (containing promises) and produces a dictionary
     of actual values.
     """
+
     def __init__(self, cwljob: dict):
         """Store the dictionary of promises for later resolution."""
         super(ResolveIndirect, self).__init__()
@@ -1175,9 +1204,14 @@ class CWLJob(Job):
             ),
         )
 
-        adjustDirObjs(output, functools.partial(
-            remove_empty_listings, cwltool.stdfsaccess.StdFsAccess(outdir),
-            recursive=True))
+        adjustDirObjs(
+            output,
+            functools.partial(
+                remove_empty_listings,
+                cwltool.stdfsaccess.StdFsAccess(outdir),
+                recursive=True,
+            ),
+        )
 
         adjustDirObjs(output, prepareDirectoryForUpload)
 
@@ -1692,7 +1726,9 @@ def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> list
 
 def determine_inplace_update(tool):
     inplace_update_req, _ = tool.get_requirement("InplaceUpdateRequirement")
-    inplace_update_tool_req = inplace_update_req.get("inplaceUpdate", False) if inplace_update_req else False
+    inplace_update_tool_req = (
+        inplace_update_req.get("inplaceUpdate", False) if inplace_update_req else False
+    )
     inplace_update = tool.tool.get("inplaceUpdate", None) or inplace_update_tool_req
     return cast(bool, inplace_update)
 
@@ -1739,8 +1775,10 @@ def determine_load_listing(tool: ToilCommandLineTool):
     )
     load_listing = tool.tool.get("loadListing", None) or load_listing_tool_req
 
-    listing_choices = ('no_listing', 'shallow_listing', 'deep_listing')
-    assert load_listing in listing_choices, f'Unknown loadListing specified: "{load_listing}".  Valid choices: {listing_choices}'
+    listing_choices = ("no_listing", "shallow_listing", "deep_listing")
+    assert (
+        load_listing in listing_choices
+    ), f'Unknown loadListing specified: "{load_listing}".  Valid choices: {listing_choices}'
     return load_listing
 
 
@@ -2148,7 +2186,9 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             runtime_context.no_match_user = options.no_match_user
             runtime_context.no_read_only = options.no_read_only
             runtime_context.basedir = options.basedir
-            runtime_context.move_outputs = "move" if determine_inplace_update(tool) else "leave"
+            runtime_context.move_outputs = (
+                "move" if determine_inplace_update(tool) else "leave"
+            )
 
             # We instantiate an early builder object here to populate indirect
             # secondaryFile references using cwltool's library because we need
