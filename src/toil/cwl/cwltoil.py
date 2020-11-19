@@ -693,7 +693,7 @@ def prepareDirectoryForUpload(directory_metadata: dict,
 
     Makes sure the directory actually exists, and rewrites its location to be
     something we can use on another machine.
-    
+
     Since Files and sub-Directories are already tracked by the directory's
     listing, we just need some sentinel path to represent the existence of a
     directory coming from Toil and not the local filesystem.
@@ -1468,6 +1468,13 @@ def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> list
     return final_secondary_files
 
 
+def determine_inplace_update(tool):
+    inplace_update_req, _ = tool.get_requirement("InplaceUpdateRequirement")
+    inplace_update_tool_req = inplace_update_req.get("inplaceUpdate", False) if inplace_update_req else False
+    inplace_update = tool.tool.get("inplaceUpdate", None) or inplace_update_tool_req
+    return cast(bool, inplace_update)
+
+
 def determine_load_listing(tool: ToilCommandLineTool):
     """
     Determines the directory.listing feature in CWL.
@@ -1705,7 +1712,6 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     runtime_context.find_default_container = functools.partial(
         find_default_container, options)
     runtime_context.workdir = workdir
-    runtime_context.move_outputs = "move"
     runtime_context.rm_tmpdir = False
     loading_context = cwltool.context.LoadingContext(vars(options))
 
@@ -1814,6 +1820,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             runtime_context.no_match_user = options.no_match_user
             runtime_context.no_read_only = options.no_read_only
             runtime_context.basedir = options.basedir
+            runtime_context.move_outputs = "move" if determine_inplace_update(tool) else "leave"
 
             # We instantiate an early builder object here to populate indirect secondaryFile references
             # using cwltool's library because we need to resolve them before toil imports them into the filestore.
