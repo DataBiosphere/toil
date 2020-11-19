@@ -18,6 +18,14 @@ import logging
 
 import toil.wdl.wdl_parser as wdl_parser
 from toil.wdl.wdl_functions import heredoc_wdl
+from toil.wdl.wdl_types import (
+    WDLType,
+    WDLCompoundType,
+    WDLFileType,
+    WDLArrayType,
+    WDLPairType,
+    WDLMapType
+)
 
 wdllogger = logging.getLogger(__name__)
 
@@ -79,9 +87,16 @@ class SynthesizeWDL:
                     from toil.common import Toil
                     from toil.lib.docker import apiDockerCall
                     from toil.wdl.wdl_types import WDLType
+                    from toil.wdl.wdl_types import WDLStringType
+                    from toil.wdl.wdl_types import WDLIntType
+                    from toil.wdl.wdl_types import WDLFloatType
+                    from toil.wdl.wdl_types import WDLBooleanType
+                    from toil.wdl.wdl_types import WDLFileType
+                    from toil.wdl.wdl_types import WDLArrayType
                     from toil.wdl.wdl_types import WDLPairType
                     from toil.wdl.wdl_types import WDLMapType
                     from toil.wdl.wdl_functions import generate_docker_bashscript_file
+                    from toil.wdl.wdl_functions import import_file_from_type
                     from toil.wdl.wdl_functions import parse_value_from_type
                     from toil.wdl.wdl_functions import generate_stdout_file
                     from toil.wdl.wdl_functions import select_first
@@ -192,7 +207,7 @@ class SynthesizeWDL:
         for wfname, wf in iteritems(self.workflows_dictionary):
             if 'wf_declarations' in wf:
                 for var, var_expressn in iteritems(wf['wf_declarations']):
-                    var_type = var_expressn['type']
+                    var_type: WDLType = var_expressn['type']
 
                     # check the json file for the expression's value
                     # this is a higher priority and overrides anything written in the .wdl
@@ -200,19 +215,23 @@ class SynthesizeWDL:
                     if json_expressn is not None:
                         var_expressn['value'] = json_expressn
 
-                    # empty string
-                    if not var_expressn['value'] and (var_type in ('String', 'File')):
-                        main_section += '        {} = ""\n'.format(var)
-                    # None
-                    elif var_expressn['value'] is None and not (var_type in ('String', 'File')):
-                        main_section += '        {} = None\n'.format(var)
-                    # import filepath into jobstore
-                    elif var_expressn['value'] and (var_expressn['type'] == 'File'):
-                        main_section += '        {} = process_infile({}, fileStore)\n'.format(var,
-                                                                                              var_expressn['value'])
-                    # normal declaration
-                    else:
-                        main_section += '        {} = {}\n'.format(var, var_expressn['value'])
+                    # TODO: temporary!
+                    if var_expressn['value'] and var_type == 'File':
+                        var_expressn['value'] = f"process_infile({var_expressn['value']}, fileStore)"
+
+                    main_section += heredoc_wdl(
+                        '''
+                        {var} = {var_type}.create(
+                                       {var_expressn})  # value''',
+                        dictionary={'var': var,
+                                    'var_type': var_type.as_compiled_string(),
+                                    'var_expressn': var_expressn['value']},
+                        indent='        ')
+
+                    # # only recursively check for file imports if we have a file type
+                    # if self.needs_file_import(var_type):
+                    #     main_section += '        import_file_from_type({}, var_type={}, file_store=fileStore)\n'\
+                    #         .format(var, var_type.as_compiled_string())
 
         return main_section
 
@@ -722,6 +741,26 @@ class SynthesizeWDL:
                     return self.json_dict[identifier]
 
         return None
+
+    def needs_file_import(self, var_type: WDLType) -> bool:
+        """
+        Check if the given type contains a File type. A return value of True
+        means that the value with this type has files to import.
+        """
+        if isinstance(var_type, WDLFileType):
+            return True
+
+        if isinstance(var_type, WDLCompoundType):
+            if isinstance(var_type, WDLArrayType):
+                return self.needs_file_import(var_type.element)
+            elif isinstance(var_type, WDLPairType):
+                return self.needs_file_import(var_type.left) and self.needs_file_import(var_type.right)
+            elif isinstance(var_type, WDLMapType):
+                return self.needs_file_import(var_type.key) and self.needs_file_import(var_type.value)
+            else:
+                raise ValueError(var_type)
+
+        return False
 
     def write_function_bashscriptline(self, job):
         '''

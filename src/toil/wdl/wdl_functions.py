@@ -30,7 +30,10 @@ from typing import (Optional,
                     Any)
 
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.wdl.wdl_types import WDLPair
+from toil.wdl.wdl_types import (
+    WDLType,
+    WDLPair
+)
 
 wdllogger = logging.getLogger(__name__)
 
@@ -248,8 +251,24 @@ def process_infile(f, fileStore):
         raise RuntimeError('Error processing file: '.format(str(f)))
 
 
+def import_file_from_type(in_data: Any,
+                          var_type: WDLType,
+                          read_in_file: bool = False,
+                          file_store: Optional[AbstractFileStore] = None,
+                          cwd: Optional[str] = None,
+                          temp_dir: Optional[str] = None,
+                          docker: Optional[bool] = None) -> None:
+    """
+
+    """
+    if in_data is None:
+        if var_type.optional:
+            return in_data
+        raise WDLRuntimeError(f'{var_type} is required, but got None.')
+
+
 def parse_value_from_type(in_data: Any,
-                          var_type: str,
+                          var_type: WDLType,
                           read_in_file: bool = False,
                           file_store: Optional[AbstractFileStore] = None,
                           cwd: Optional[str] = None,
