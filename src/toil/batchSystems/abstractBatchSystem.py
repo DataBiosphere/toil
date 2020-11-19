@@ -11,11 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-from future import standard_library
-standard_library.install_aliases()
 from future.utils import with_metaclass
-from builtins import object
 import enum
 import os
 import shutil
@@ -26,7 +22,7 @@ from contextlib import contextmanager
 
 from toil.lib.objects import abstractclassmethod
 from toil.lib.threading import LastProcessStandingArena
-from toil.batchSystems import registry
+from toil.batchSystems.registry import BATCH_SYSTEM_FACTORY_REGISTRY, DEFAULT_BATCH_SYSTEM
 from toil.common import Toil, cacheDirName
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.deferred import DeferredFunctionManager
@@ -54,7 +50,7 @@ class BatchJobExitReason(enum.Enum):
     LOST = 3  # Preemptable failure (job's executing host went away).
     KILLED = 4  # Job killed before finishing.
     ERROR = 5  # Internal error.
-
+    MEMLIMIT = 6 # Job hit batch system imposed memory limit
 
 # Value to use as exitStatus in UpdatedBatchJobInfo.exitStatus when status is not available.
 EXIT_STATUS_UNAVAILABLE_VALUE = 255
@@ -401,8 +397,7 @@ class BatchSystemLocalSupport(BatchSystemSupport):
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(BatchSystemLocalSupport, self).__init__(config, maxCores, maxMemory, maxDisk)
-        self.localBatch = registry.batchSystemFactoryFor(
-            registry.defaultBatchSystem())()(
+        self.localBatch = BATCH_SYSTEM_FACTORY_REGISTRY[DEFAULT_BATCH_SYSTEM]()(
                 config, config.maxLocalJobs, maxMemory, maxDisk)
 
     def handleLocalJob(self, jobDesc):  # type: (JobDescription) -> Optional[int]

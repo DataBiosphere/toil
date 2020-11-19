@@ -1,5 +1,4 @@
-from __future__ import absolute_import
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,14 +10,12 @@ from __future__ import absolute_import
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-#
-
 from toil.lib.threading import cpu_count
-
-from .registry import batchSystemFactoryFor, defaultBatchSystem, uniqueNames
+from toil.batchSystems.registry import BATCH_SYSTEM_FACTORY_REGISTRY, DEFAULT_BATCH_SYSTEM, BATCH_SYSTEMS
 
 import socket
 from contextlib import closing
+
 
 def getPublicIP():
     """Get the IP that this machine uses to contact the internet.
@@ -105,27 +102,19 @@ _options = [
     ]
 
 
-def addOptionsDefinition(optionsDefinition):
-    _options.append(optionsDefinition)
-
-
 def setOptions(config, setOption):
-    batchSystem = config.batchSystem
-
-    factory = batchSystemFactoryFor(batchSystem)
-    batchSystem = factory()
-
-    batchSystem.setOptions(setOption)
+    batch_system_factory = BATCH_SYSTEM_FACTORY_REGISTRY[config.batchSystem]()
+    batch_system_factory.setOptions(setOption)
 
 
 def addOptions(addOptionFn, config):
-    addOptionFn("--batchSystem", dest="batchSystem", default=defaultBatchSystem(), choices = uniqueNames(),
-                help=("The type of batch system to run the job(s) with, currently can be one "
-                      "of %s'. default=%s" % (', '.join(uniqueNames()), defaultBatchSystem())))
+    addOptionFn("--batchSystem", dest="batchSystem", default=DEFAULT_BATCH_SYSTEM, choices=BATCH_SYSTEMS,
+                help=(f"The type of batch system to run the job(s) with, currently can be one "
+                      f"of {', '.join(BATCH_SYSTEMS)}. default={DEFAULT_BATCH_SYSTEM}"))
     addOptionFn("--disableHotDeployment", dest="disableAutoDeployment",
                 action='store_true', default=None,
                 help=("Hot-deployment was renamed to auto-deployment.  Option now redirects to "
-                "--disableAutoDeployment.  Left in for backwards compatibility."))
+                      "--disableAutoDeployment.  Left in for backwards compatibility."))
     addOptionFn("--disableAutoDeployment", dest="disableAutoDeployment",
                 action='store_true', default=None,
                 help=("Should auto-deployment of the user script be deactivated? If True, the user "
@@ -162,7 +151,7 @@ def setDefaultOptions(config):
     config.batchSystem = "single_machine"
     config.disableAutoDeployment = False
     config.environment = {}
-    config.statePollingWait = None  # if not set, will default to seconds in getWaitDuration()
+    config.statePollingWait = None
     config.maxLocalJobs = cpu_count()
     config.manualMemArgs = False
 

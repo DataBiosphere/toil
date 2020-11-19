@@ -786,7 +786,7 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
     """
 
     def getBatchSystemName(self):
-        return "singleMachine"
+        return "single_machine"
 
     @slow
     def testConcurrencyWithDisk(self):
@@ -911,7 +911,6 @@ class MesosBatchSystemJobTest(hidden.AbstractBatchSystemJobTest, MesosTestSuppor
     """
     Tests Toil workflow against the Mesos batch system
     """
-
     def getOptions(self, tempDir):
         options = super(MesosBatchSystemJobTest, self).getOptions(tempDir)
         options.mesosMasterAddress = 'localhost:5050'

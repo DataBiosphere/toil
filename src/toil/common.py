@@ -41,11 +41,8 @@ defaultTargetTime = 1800
 logger = logging.getLogger(__name__)
 
 
-class Config(object):
-    """
-    Class to represent configuration operations for a toil workflow run.
-    """
-
+class Config:
+    """Class to represent configuration operations for a toil workflow run."""
     def __init__(self):
         # Core options
         self.workflowID = None
@@ -107,6 +104,7 @@ class Config(object):
         # Retrying/rescuing jobs
         self.retryCount = 1
         self.enableUnlimitedPreemptableRetries = False
+        self.doubleMem = False
         self.maxJobDuration = sys.maxsize
         self.rescueJobsFrequency = 3600
 
@@ -136,11 +134,8 @@ class Config(object):
         self.cwl = False
 
     def setOptions(self, options):
-        """
-        Creates a config object from the options object.
-        """
-        from toil.lib.humanize import human2bytes  # This import is used to convert
-        # from human readable quantites to integers
+        """Creates a config object from the options object."""
+        from toil.lib.humanize import human2bytes
         def setOption(varName, parsingFn=None, checkFn=None, default=None):
             # If options object has the option "varName" specified
             # then set the "varName" attrib to this value in the config object
@@ -171,15 +166,11 @@ class Config(object):
             else:
                 return s
 
-        def parseStrList(s):
-            s = s.split(",")
-            s = [str(x) for x in s]
-            return s
+        def parseStrList(s: str):
+            return [str(x) for x in s.split(",")]
 
-        def parseIntList(s):
-            s = s.split(",")
-            s = [int(x) for x in s]
-            return s
+        def parseIntList(s: str):
+            return [int(x) for x in s.split(",")]
 
         # Core options
         setOption("jobStore", parsingFn=parseJobStore)
@@ -272,6 +263,7 @@ class Config(object):
         # Retrying/rescuing jobs
         setOption("retryCount", int, iC(1))
         setOption("enableUnlimitedPreemptableRetries")
+        setOption("doubleMem")
         setOption("maxJobDuration", int, iC(1))
         setOption("rescueJobsFrequency", int, iC(1))
 
@@ -389,6 +381,9 @@ def _addOptions(addGroupFn, config):
     addOptionFn = addGroupFn("toil options for specifying the batch system",
                              "Allows the specification of the batch system, and arguments to the "
                              "batch system/big batch system (see below).")
+    addOptionFn("--statePollingWait", dest="statePollingWait", default=1, type=int,
+                help=("Time, in seconds, to wait before doing a scheduler query for job state. "
+                      "Return cached results if within the waiting period."))
     addBatchOptions(addOptionFn, config)
 
     #
@@ -499,9 +494,6 @@ def _addOptions(addGroupFn, config):
                     "enumerate running jobs quickly enough, or if polling for running jobs is "
                     "placing an unacceptable load on a shared cluster. default=%s" %
                     config.deadlockCheckInterval))
-        addOptionFn("--statePollingWait", dest="statePollingWait", default=1, type=int,
-                    help=("Time, in seconds, to wait before doing a scheduler query for job state. "
-                          "Return cached results if within the waiting period."))
 
     #
     # Resource requirements
@@ -554,6 +546,10 @@ def _addOptions(addGroupFn, config):
                 help=("If set, preemptable failures (or any failure due to an instance getting "
                       "unexpectedly terminated) would not count towards job failures and "
                       "--retryCount."))
+    addOptionFn("--doubleMem", dest="doubleMem", action='store_true', default=False,
+                help=("If set, batch jobs which die to reaching memory limit on batch schedulers "
+                      "will have their memory doubled and they will be retried. The remaining "
+                      "retry count will be reduced by 1. Currently supported by LSF."))
     addOptionFn("--maxJobDuration", dest="maxJobDuration", default=None,
                 help=("Maximum runtime of a job (in seconds) before we kill it "
                       "(this is a lower bound, and the actual time before killing "
@@ -933,7 +929,7 @@ class Toil(object):
     @staticmethod
     def buildLocator(name, rest):
         assert ':' not in name
-        return name + ':' + rest
+        return f'{name}:{rest}'
 
     @classmethod
     def resumeJobStore(cls, locator):
@@ -957,23 +953,21 @@ class Toil(object):
                       maxMemory=config.maxMemory,
                       maxDisk=config.maxDisk)
 
-        from toil.batchSystems.registry import batchSystemFactoryFor
+        from toil.batchSystems.registry import BATCH_SYSTEM_FACTORY_REGISTRY
 
         try:
-            factory = batchSystemFactoryFor(config.batchSystem)
-            batchSystemClass = factory()
+            batch_system = BATCH_SYSTEM_FACTORY_REGISTRY[config.batchSystem]()
         except:
-            raise RuntimeError('Unrecognised batch system: %s' % config.batchSystem)
+            raise RuntimeError(f'Unrecognized batch system: {config.batchSystem}')
 
-        if not config.disableCaching and not batchSystemClass.supportsWorkerCleanup():
-            raise RuntimeError('%s currently does not support shared caching, because it '
+        if not config.disableCaching and not batch_system.supportsWorkerCleanup():
+            raise RuntimeError(f'{config.batchSystem} currently does not support shared caching, because it '
                                'does not support cleaning up a worker after the last job '
                                'finishes. Set the --disableCaching flag if you want to '
-                               'use this batch system.' % config.batchSystem)
-        logger.debug('Using the %s' %
-                    re.sub("([a-z])([A-Z])", r'\g<1> \g<2>', batchSystemClass.__name__).lower())
+                               'use this batch system.')
+        logger.debug('Using the %s' % re.sub("([a-z])([A-Z])", r"\g<1> \g<2>", batch_system.__name__).lower())
 
-        return batchSystemClass(**kwargs)
+        return batch_system(**kwargs)
 
     def _setupAutoDeployment(self, userScript=None):
         """

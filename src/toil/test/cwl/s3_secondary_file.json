@@ -1,0 +1,16 @@
+{
+  "ref": {
+        "class": "File",
+        "location": "whale.txt",
+        "size": 1111,
+        "checksum": "sha1$hash",
+        "secondaryFiles": [
+          {
+            "class": "File",
+            "location": "s3://toil-cwl-infra-test-bucket-dont-delete/whale.txt.changedOnPorpoise",
+            "size": 24,
+            "checksum": "sha1$hash"
+          }
+        ]
+  }
+}
