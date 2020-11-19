@@ -23,7 +23,7 @@ import subprocess
 from toil import applianceSelf, customDockerInitCmd, customInitCmd
 
 a_short_time = 5
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @total_ordering
@@ -343,7 +343,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         """
         Add a service to prepare and mount local scratch volumes.
         """
-        config.addFile("/home/core/volumes.sh", content=textwrap.dedent("""
+        config.addFile("/home/core/volumes.sh", content=textwrap.dedent("""\
             #!/bin/bash
             set -x
             ephemeral_count=0
@@ -390,7 +390,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
                 sudo mount --bind /mnt/ephemeral/var/lib/$directory /var/lib/$directory
             done
             """))
-        config.addService("volume-mounting.service", content=textwrap.dedent("""
+        config.addUnit("volume-mounting.service", content=textwrap.dedent("""\
             [Unit]
             Description=mounts ephemeral volumes & bind mounts toil directories
             Before=docker.service
@@ -399,14 +399,14 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             Type=oneshot
             Restart=no
             ExecStart=/usr/bin/bash /home/core/volumes.sh
-        """))
+            """))
     
     def addNodeExporterService(self, config: InstanceConfiguration):
         """
         Add the node exporter service for Prometheus to an instance configuration.
         """
         
-        config.addService("node-exporter.service", content=textwrap.dedent("""
+        config.addUnit("node-exporter.service", content=textwrap.dedent('''\
             [Unit]
             Description=node-exporter container
             After=docker.service
@@ -415,18 +415,18 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             Restart=on-failure
             RestartSec=2
             ExecStartPre=-/usr/bin/docker rm node_exporter
-            ExecStart=/usr/bin/docker run \
-                -p 9100:9100 \
-                -v /proc:/host/proc \
-                -v /sys:/host/sys \
-                -v /:/rootfs \
-                --name node-exporter \
-                --restart always \
-                quay.io/prometheus/node-exporter:v0.15.2 \
-                --path.procfs /host/proc \
-                --path.sysfs /host/sys \
+            ExecStart=/usr/bin/docker run \\
+                -p 9100:9100 \\
+                -v /proc:/host/proc \\
+                -v /sys:/host/sys \\
+                -v /:/rootfs \\
+                --name node-exporter \\
+                --restart always \\
+                quay.io/prometheus/node-exporter:v0.15.2 \\
+                --path.procfs /host/proc \\
+                --path.sysfs /host/sys \\
                 --collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
-        """))
+            '''))
         
     def addToilMesosService(self, config: InstanceConfiguration, role: str, keyPath: str = None, preemptable: bool = False):
         """
@@ -466,7 +466,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             mesosArgs = " ".join(["'" + customDockerInitCommand + "'", entryPoint, mesosArgs])
             entryPoint = "customDockerInit.sh"
         
-        config.addService(f"toil-{role}.service", content=textwrap.dedent(f"""
+        config.addUnit(f"toil-{role}.service", content=textwrap.dedent(f'''\
             [Unit]
             Description=toil-{role} container
             After=docker.service
@@ -476,19 +476,19 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             RestartSec=2
             ExecStartPre=-/usr/bin/docker rm toil_{role}
             ExecStartPre=-/usr/bin/bash -c '{customInitCmd()}'
-            ExecStart=/usr/bin/docker run \
-                --entrypoint={entryPoint} \
-                --net=host \
-                -v /var/run/docker.sock:/var/run/docker.sock \
-                -v /var/lib/mesos:/var/lib/mesos \
-                -v /var/lib/docker:/var/lib/docker \
-                -v /var/lib/toil:/var/lib/toil \
-                -v /var/lib/cwl:/var/lib/cwl \
-                -v /tmp:/tmp \
-                --name=toil_{role} \
-                {applianceSelf()} \
+            ExecStart=/usr/bin/docker run \\
+                --entrypoint={entryPoint} \\
+                --net=host \\
+                -v /var/run/docker.sock:/var/run/docker.sock \\
+                -v /var/lib/mesos:/var/lib/mesos \\
+                -v /var/lib/docker:/var/lib/docker \\
+                -v /var/lib/toil:/var/lib/toil \\
+                -v /var/lib/cwl:/var/lib/cwl \\
+                -v /tmp:/tmp \\
+                --name=toil_{role} \\
+                {applianceSelf()} \\
                 {mesosArgs}
-        """))
+            '''))
         
 
     def _getCloudConfigUserData(self, role, leaderPublicKey=None, keyPath=None, preemptable=False):
@@ -514,5 +514,8 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         
             
         # Make it into a string for CloudConfig
-        return config.toCloudConfig()
+        configString = config.toCloudConfig()
+        logger.info('Config: ' + configString)
+        return configString
+        
 
