@@ -17,6 +17,7 @@ from functools import total_ordering
 import logging
 import os.path
 import yaml
+import textwrap
 
 import subprocess
 from toil import applianceSelf, customDockerInitCmd, customInitCmd
@@ -322,158 +323,141 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             
             # Mark as CloudConfig and serialize as YAML
             return '#cloud-config\n\n' + yaml.dump(config)
-
-    cloudConfigTemplate = """#cloud-config
-
-write_files:
-    - path: "/home/core/volumes.sh"
-      permissions: "0777"
-      owner: "root"
-      content: |
-        #!/bin/bash
-        set -x
-        ephemeral_count=0
-        drives=""
-        directories="toil mesos docker cwl"
-        for drive in /dev/xvd{{a..z}} /dev/nvme{{0..26}}n1; do
-            echo checking for $drive
-            if [ -b $drive ]; then
-                echo found it
-                if mount | grep $drive; then
-                    echo "already mounted, likely a root device"
-                else
-                    ephemeral_count=$((ephemeral_count + 1 ))
-                    drives="$drives $drive"
-                    echo increased ephemeral count by one
+            
+            
+    def getBaseInstanceConfiguration(self) -> InstanceConfiguration:
+        """
+        Get the base configuration for both leader and worker instances for all cluster types.
+        """
+        
+        config = self.InstanceConfiguration()
+        
+        # First we have volume mounting. That always happens.
+        self.addVolumesService(config)
+        # We also always add the service to talk to Prometheus
+        self.addNodeExporterService(config)
+        
+        return config
+        
+    def addVolumesService(self, config: InstanceConfiguration):
+        """
+        Add a service to prepare and mount local scratch volumes.
+        """
+        config.addFile("/home/core/volumes.sh", content=textwrap.dedent("""
+            #!/bin/bash
+            set -x
+            ephemeral_count=0
+            drives=""
+            directories="toil mesos docker cwl"
+            for drive in /dev/xvd{a..z} /dev/nvme{0..26}n1; do
+                echo checking for $drive
+                if [ -b $drive ]; then
+                    echo found it
+                    if mount | grep $drive; then
+                        echo "already mounted, likely a root device"
+                    else
+                        ephemeral_count=$((ephemeral_count + 1 ))
+                        drives="$drives $drive"
+                        echo increased ephemeral count by one
+                    fi
                 fi
+            done
+            if (("$ephemeral_count" == "0" )); then
+                echo no ephemeral drive
+                for directory in $directories; do
+                    sudo mkdir -p /var/lib/$directory
+                done
+                exit 0
             fi
-        done
-        if (("$ephemeral_count" == "0" )); then
-            echo no ephemeral drive
+            sudo mkdir /mnt/ephemeral
+            if (("$ephemeral_count" == "1" )); then
+                echo one ephemeral drive to mount
+                sudo mkfs.ext4 -F $drives
+                sudo mount $drives /mnt/ephemeral
+            fi
+            if (("$ephemeral_count" > "1" )); then
+                echo multiple drives
+                for drive in $drives; do
+                    dd if=/dev/zero of=$drive bs=4096 count=1024
+                done
+                sudo mdadm --create -f --verbose /dev/md0 --level=0 --raid-devices=$ephemeral_count $drives # determine force flag
+                sudo mkfs.ext4 -F /dev/md0
+                sudo mount /dev/md0 /mnt/ephemeral
+            fi
             for directory in $directories; do
+                sudo mkdir -p /mnt/ephemeral/var/lib/$directory
                 sudo mkdir -p /var/lib/$directory
+                sudo mount --bind /mnt/ephemeral/var/lib/$directory /var/lib/$directory
             done
-            exit 0
-        fi
-        sudo mkdir /mnt/ephemeral
-        if (("$ephemeral_count" == "1" )); then
-            echo one ephemeral drive to mount
-            sudo mkfs.ext4 -F $drives
-            sudo mount $drives /mnt/ephemeral
-        fi
-        if (("$ephemeral_count" > "1" )); then
-            echo multiple drives
-            for drive in $drives; do
-                dd if=/dev/zero of=$drive bs=4096 count=1024
-            done
-            sudo mdadm --create -f --verbose /dev/md0 --level=0 --raid-devices=$ephemeral_count $drives # determine force flag
-            sudo mkfs.ext4 -F /dev/md0
-            sudo mount /dev/md0 /mnt/ephemeral
-        fi
-        for directory in $directories; do
-            sudo mkdir -p /mnt/ephemeral/var/lib/$directory
-            sudo mkdir -p /var/lib/$directory
-            sudo mount --bind /mnt/ephemeral/var/lib/$directory /var/lib/$directory
-        done
+            """))
+        config.addService("volume-mounting.service", content=textwrap.dedent("""
+            [Unit]
+            Description=mounts ephemeral volumes & bind mounts toil directories
+            Before=docker.service
 
-coreos:
-    update:
-      reboot-strategy: off
-    units:
-    - name: "volume-mounting.service"
-      command: "start"
-      content: |
-        [Unit]
-        Description=mounts ephemeral volumes & bind mounts toil directories
-        Before=docker.service
-
-        [Service]
-        Type=oneshot
-        Restart=no
-        ExecStart=/usr/bin/bash /home/core/volumes.sh
-
-    - name: "toil-{role}.service"
-      command: "start"
-      content: |
-        [Unit]
-        Description=toil-{role} container
-        After=docker.service
-
-        [Service]
-        Restart=on-failure
-        RestartSec=2
-        ExecStartPre=-/usr/bin/docker rm toil_{role}
-        ExecStartPre=-/usr/bin/bash -c '{customInitCommand}'
-        ExecStart=/usr/bin/docker run \
-            --entrypoint={entrypoint} \
-            --net=host \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            -v /var/lib/mesos:/var/lib/mesos \
-            -v /var/lib/docker:/var/lib/docker \
-            -v /var/lib/toil:/var/lib/toil \
-            -v /var/lib/cwl:/var/lib/cwl \
-            -v /tmp:/tmp \
-            --name=toil_{role} \
-            {dockerImage} \
-            {mesosArgs}
-    - name: "node-exporter.service"
-      command: "start"
-      content: |
-        [Unit]
-        Description=node-exporter container
-        After=docker.service
-
-        [Service]
-        Restart=on-failure
-        RestartSec=2
-        ExecStartPre=-/usr/bin/docker rm node_exporter
-        ExecStart=/usr/bin/docker run \
-            -p 9100:9100 \
-            -v /proc:/host/proc \
-            -v /sys:/host/sys \
-            -v /:/rootfs \
-            --name node-exporter \
-            --restart always \
-            quay.io/prometheus/node-exporter:v0.15.2 \
-            --path.procfs /host/proc \
-            --path.sysfs /host/sys \
-            --collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
-"""
-
-    sshTemplate = """ssh_authorized_keys:
-    - "ssh-rsa {sshKey}"
-"""
-
-    # If keys are rsynced, then the mesos-agent needs to be started after the keys have been
-    # transferred. The waitForKey.sh script loops on the new VM until it finds the keyPath file, then it starts the
-    # mesos-agent. If there are multiple keys to be transferred, then the last one to be transferred must be
-    # set to keyPath.
-
-    MESOS_LOG_DIR = '--log_dir=/var/lib/mesos '
-    LEADER_DOCKER_ARGS = '--registry=in_memory --cluster={name}'
-    # --no-systemd_enable_support is necessary in Ubuntu 16.04 (otherwise,
-    # Mesos attempts to contact systemd but can't find its run file)
-    WORKER_DOCKER_ARGS = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} --no-hostname_lookup --no-systemd_enable_support'
-
-
-    def _getCloudConfigUserData(self, role, leaderPublicKey=None, keyPath=None, preemptable=False):
+            [Service]
+            Type=oneshot
+            Restart=no
+            ExecStart=/usr/bin/bash /home/core/volumes.sh
+        """))
+    
+    def addNodeExporterService(self, config: InstanceConfiguration):
         """
-        Return the text (not bytes) user data to pass to a provisioned node.
+        Add the node exporter service for Prometheus to an instance configuration.
         """
+        
+        config.addService("node-exporter.service", content=textwrap.dedent("""
+            [Unit]
+            Description=node-exporter container
+            After=docker.service
+
+            [Service]
+            Restart=on-failure
+            RestartSec=2
+            ExecStartPre=-/usr/bin/docker rm node_exporter
+            ExecStart=/usr/bin/docker run \
+                -p 9100:9100 \
+                -v /proc:/host/proc \
+                -v /sys:/host/sys \
+                -v /:/rootfs \
+                --name node-exporter \
+                --restart always \
+                quay.io/prometheus/node-exporter:v0.15.2 \
+                --path.procfs /host/proc \
+                --path.sysfs /host/sys \
+                --collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
+        """))
+        
+    def addToilMesosService(self, config: InstanceConfiguration, role: str, keyPath: str = None, preemptable: bool = False):
+        """
+        Add the Toil leader or worker service for Mesos to an instance configuration.
+        
+        :param role: Should be 'leader' or 'worker'. Will not work for 'worker' until leader credentials have been collected.
+        :param keyPath: path on the node to a server-side encryption key that will be added to the node after it starts. The service will wait until the key is present before starting.
+        :param preemptable: Whether a woeker should identify itself as preemptable or not to the scheduler.
+        """
+        
+        # If keys are rsynced, then the mesos-agent needs to be started after the keys have been
+        # transferred. The waitForKey.sh script loops on the new VM until it finds the keyPath file, then it starts the
+        # mesos-agent. If there are multiple keys to be transferred, then the last one to be transferred must be
+        # set to keyPath.
+
+        MESOS_LOG_DIR = '--log_dir=/var/lib/mesos '
+        LEADER_DOCKER_ARGS = '--registry=in_memory --cluster={name}'
+        # --no-systemd_enable_support is necessary in Ubuntu 16.04 (otherwise,
+        # Mesos attempts to contact systemd but can't find its run file)
+        WORKER_DOCKER_ARGS = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} --no-hostname_lookup --no-systemd_enable_support'
 
         if role == 'leader':
             entryPoint = 'mesos-master'
-            mesosArgs = self.MESOS_LOG_DIR + self.LEADER_DOCKER_ARGS.format(name=self.clusterName)
+            mesosArgs = MESOS_LOG_DIR + LEADER_DOCKER_ARGS.format(name=self.clusterName)
         elif role == 'worker':
             entryPoint = 'mesos-agent'
-            mesosArgs = self.MESOS_LOG_DIR + self.WORKER_DOCKER_ARGS.format(ip=self._leaderPrivateIP,
+            mesosArgs = MESOS_LOG_DIR + WORKER_DOCKER_ARGS.format(ip=self._leaderPrivateIP,
                                                         preemptable=preemptable)
         else:
             raise RuntimeError("Unknown role %s" % role)
 
-        template = self.cloudConfigTemplate
-        if leaderPublicKey:
-            template += self.sshTemplate
         if keyPath:
             mesosArgs = keyPath + ' ' + mesosArgs
             entryPoint = "waitForKey.sh"
@@ -481,11 +465,54 @@ coreos:
         if customDockerInitCommand:
             mesosArgs = " ".join(["'" + customDockerInitCommand + "'", entryPoint, mesosArgs])
             entryPoint = "customDockerInit.sh"
-        templateArgs = dict(role=role,
-                            dockerImage=applianceSelf(),
-                            entrypoint=entryPoint,
-                            sshKey=leaderPublicKey,   # ignored if None
-                            mesosArgs=mesosArgs,
-                            customInitCommand=customInitCmd())
-        userData = template.format(**templateArgs)
-        return userData
+        
+        config.addService(f"toil-{role}.service", content=textwrap.dedent(f"""
+            [Unit]
+            Description=toil-{role} container
+            After=docker.service
+
+            [Service]
+            Restart=on-failure
+            RestartSec=2
+            ExecStartPre=-/usr/bin/docker rm toil_{role}
+            ExecStartPre=-/usr/bin/bash -c '{customInitCmd()}'
+            ExecStart=/usr/bin/docker run \
+                --entrypoint={entryPoint} \
+                --net=host \
+                -v /var/run/docker.sock:/var/run/docker.sock \
+                -v /var/lib/mesos:/var/lib/mesos \
+                -v /var/lib/docker:/var/lib/docker \
+                -v /var/lib/toil:/var/lib/toil \
+                -v /var/lib/cwl:/var/lib/cwl \
+                -v /tmp:/tmp \
+                --name=toil_{role} \
+                {applianceSelf()} \
+                {mesosArgs}
+        """))
+        
+
+    def _getCloudConfigUserData(self, role, leaderPublicKey=None, keyPath=None, preemptable=False):
+        """
+        Return the text (not bytes) user data to pass to a provisioned node.
+        
+        :param str leaderPublicKey: The RSA public key of the leader node, for worker nodes.
+        :param str keyPath: The path of a secret key for the worker to wait for the leader to create on it.
+        :param bool preemptable: Set to true for a worker node to identify itself as preemptible in the cluster.
+        """
+
+        # Start with a base config
+        config = self.getBaseInstanceConfiguration()
+        if leaderPublicKey:
+            # Add in the leader's public SSH key if needed
+            config.addSSHRSAKey(leaderPublicKey)
+        
+        if self.clusterType == 'mesos':
+            # Give it a Mesos service
+            self.addToilMesosService(config, role, keyPath, preemptable)
+        else:
+            raise NotImplementedError(f'Cluster type {self.clusterType} not implemented')
+        
+            
+        # Make it into a string for CloudConfig
+        return config.toCloudConfig()
+
