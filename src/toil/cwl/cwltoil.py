@@ -755,7 +755,7 @@ def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> str:
 
 
 def remove_empty_listings(
-    fs_access: "StdFsAccess", rec: CWLObjectType, recursive: bool = True
+    fs_access: cwltool.stdfsaccess.StdFsAccess, rec: CWLObjectType, recursive: bool = True
 ) -> None:
     if rec.get("class") != "Directory":
         finddirs = []  # type: List[CWLObjectType]
