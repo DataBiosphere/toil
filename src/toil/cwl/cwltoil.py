@@ -1209,7 +1209,6 @@ class CWLJob(Job):
             functools.partial(
                 remove_empty_listings,
                 cwltool.stdfsaccess.StdFsAccess(outdir),
-                recursive=True,
             ),
         )
 
