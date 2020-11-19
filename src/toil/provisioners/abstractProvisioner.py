@@ -18,6 +18,7 @@ import logging
 import os.path
 import yaml
 import textwrap
+import urllib.request
 
 import subprocess
 from toil import applianceSelf, customDockerInitCmd, customInitCmd
@@ -284,16 +285,14 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             
             self.files.append({'path': path, 'owner': owner, 'permissions': permissions, 'content': content})
             
-        def addUnit(self, name: str, command: str = 'start', content: str = ''):
+        def addUnit(self, name: str, command: str = 'start', enable: bool = True, content: str = ''):
             """
-            Make a systemd on the instance with the given name (including
+            Make a systemd unit on the instance with the given name (including
             .service), and content, and apply the given command to it (default:
-            'start').
+            'start'). Units will be enabled by default.
             """
             
-            logger.info("Add unit:\n%s", content)
-            
-            self.units.append({'name': name, 'command': command, 'content': content})
+            self.units.append({'name': name, 'command': command, 'enable': enable, 'content': content})
             
         def addSSHRSAKey(self, keyData: str):
             """
@@ -430,9 +429,13 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
                 --collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
             '''))
         
-    def addToilMesosService(self, config: InstanceConfiguration, role: str, keyPath: str = None, preemptable: bool = False):
+    def addToilService(self, config: InstanceConfiguration, role: str, keyPath: str = None, preemptable: bool = False):
         """
-        Add the Toil leader or worker service for Mesos to an instance configuration.
+        Add the Toil leader or worker service to an instance configuration.
+        
+        Will run Mesos master or agent as appropriate in Mesos clusters.
+        For Kubernetes clusters, will just sleep to provide a place to shell
+        into on the leader, and shouldn't run on the worker.
         
         :param role: Should be 'leader' or 'worker'. Will not work for 'worker' until leader credentials have been collected.
         :param keyPath: path on the node to a server-side encryption key that will be added to the node after it starts. The service will wait until the key is present before starting.
@@ -443,35 +446,45 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         # transferred. The waitForKey.sh script loops on the new VM until it finds the keyPath file, then it starts the
         # mesos-agent. If there are multiple keys to be transferred, then the last one to be transferred must be
         # set to keyPath.
-
         MESOS_LOG_DIR = '--log_dir=/var/lib/mesos '
         LEADER_DOCKER_ARGS = '--registry=in_memory --cluster={name}'
         # --no-systemd_enable_support is necessary in Ubuntu 16.04 (otherwise,
         # Mesos attempts to contact systemd but can't find its run file)
         WORKER_DOCKER_ARGS = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} --no-hostname_lookup --no-systemd_enable_support'
 
-        if role == 'leader':
-            entryPoint = 'mesos-master'
-            mesosArgs = MESOS_LOG_DIR + LEADER_DOCKER_ARGS.format(name=self.clusterName)
-        elif role == 'worker':
-            entryPoint = 'mesos-agent'
-            mesosArgs = MESOS_LOG_DIR + WORKER_DOCKER_ARGS.format(ip=self._leaderPrivateIP,
-                                                        preemptable=preemptable)
+        if self.clusterType == 'mesos':
+            if role == 'leader':
+                entryPoint = 'mesos-master'
+                entryPointArgs = MESOS_LOG_DIR + LEADER_DOCKER_ARGS.format(name=self.clusterName)
+            elif role == 'worker':
+                entryPoint = 'mesos-agent'
+                entryPointArgs = MESOS_LOG_DIR + WORKER_DOCKER_ARGS.format(ip=self._leaderPrivateIP,
+                                                            preemptable=preemptable)
+            else:
+                raise RuntimeError("Unknown role %s" % role)
+        elif self.clusterType == 'kubernetes':
+            if role == 'leader':
+                entryPoint = 'sleep'
+                entryPointArgs = 'infinity'
+            else:
+                raise RuntimeError('Toil service not needed for %s nodes in a %s cluster',
+                    role, self.clusterType)
         else:
-            raise RuntimeError("Unknown role %s" % role)
+            raise RuntimeError('Toil service not needed in a %s cluster', self.clusterType)
 
         if keyPath:
-            mesosArgs = keyPath + ' ' + mesosArgs
+            entryPointArgs = keyPath + ' ' + entryPointArgs
             entryPoint = "waitForKey.sh"
         customDockerInitCommand = customDockerInitCmd()
         if customDockerInitCommand:
-            mesosArgs = " ".join(["'" + customDockerInitCommand + "'", entryPoint, mesosArgs])
+            entryPointArgs = " ".join(["'" + customDockerInitCommand + "'", entryPoint, entryPointArgs])
             entryPoint = "customDockerInit.sh"
         
         config.addUnit(f"toil-{role}.service", content=textwrap.dedent(f'''\
             [Unit]
             Description=toil-{role} container
             After=docker.service
+            After=create-kubernetes-cluster.service
 
             [Service]
             Restart=on-failure
@@ -487,10 +500,248 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
                 -v /var/lib/toil:/var/lib/toil \\
                 -v /var/lib/cwl:/var/lib/cwl \\
                 -v /tmp:/tmp \\
+                -v /opt:/opt \\
+                -v /etc/kubernetes:/etc/kubernetes \\
                 --name=toil_{role} \\
                 {applianceSelf()} \\
-                {mesosArgs}
+                {entryPointArgs}
             '''))
+            
+    def getKubernetesValues(self):
+        """
+        Returns a dict of Kubernetes component versions and paths for formatting into Kubernetes-related templates.
+        """
+        return dict(
+            CNI_VERSION="v0.8.2",
+            CRICTL_VERSION="v1.17.0",
+            CNI_DIR="/opt/cni/bin",
+            DOWNLOAD_DIR="/opt/bin",
+            # This is the version of Kubernetes to use
+            # Get current from: curl -sSL https://dl.k8s.io/release/stable.txt
+            # Make sure it is compatible with the kubelet.service unit we ship, or update that too.
+            KUBERNETES_VERSION="v1.19.3",
+            # Now we need the basic cluster services
+            # Version of Flannel networking to get the YAML from
+            FLANNEL_VERSION="v0.13.0",
+            # Version of node CSR signign bot to run
+            RUBBER_STAMP_VERSION="v0.3.1",
+            # Version of the autoscaler to run
+            AUTOSCALER_VERSION="1.19.0",
+            # Version of metrics service to install for `kubectl top nodes`
+            METRICS_API_VERSION="v0.3.7",
+            CLUSTER_NAME=self.clusterName
+        )
+        
+    def addKubernetesServices(self, config: InstanceConfiguration):
+        """
+        Add installing Kubernetes and Kubeadm and setting up the Kubelet to run when configured to an instance configuration.
+        The same process applies to leaders and workers.
+        """
+        
+        values = self.getKubernetesValues()
+        
+        # We're going to ship the Kubelet service from Kubernetes' release pipeline via cloud-config
+        config.addUnit("kubelet.service", content=textwrap.dedent('''\
+            # This came from https://raw.githubusercontent.com/kubernetes/release/v0.4.0/cmd/kubepkg/templates/latest/deb/kubelet/lib/systemd/system/kubelet.service
+            # It has been modified to replace /usr/bin with {DOWNLOAD_DIR}
+            # License: https://raw.githubusercontent.com/kubernetes/release/v0.4.0/LICENSE
+            
+            [Unit]
+            Description=kubelet: The Kubernetes Node Agent
+            Documentation=https://kubernetes.io/docs/home/
+            Wants=network-online.target
+            After=network-online.target
+
+            [Service]
+            ExecStart={DOWNLOAD_DIR}/kubelet
+            Restart=always
+            StartLimitInterval=0
+            RestartSec=10
+
+            [Install]
+            WantedBy=multi-user.target
+            ''').format(**values))
+        
+        # It needs this config file
+        config.addFile("/etc/systemd/system/kubelet.service.d/10-kubeadm.conf", permissions="0644", content=textwrap.dedent('''\
+            # This came from https://raw.githubusercontent.com/kubernetes/release/v0.4.0/cmd/kubepkg/templates/latest/deb/kubeadm/10-kubeadm.conf
+            # It has been modified to replace /usr/bin with {DOWNLOAD_DIR}
+            # License: https://raw.githubusercontent.com/kubernetes/release/v0.4.0/LICENSE
+            
+            # Note: This dropin only works with kubeadm and kubelet v1.11+
+            [Service]
+            Environment="KUBELET_KUBECONFIG_ARGS=--bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf"
+            Environment="KUBELET_CONFIG_ARGS=--config=/var/lib/kubelet/config.yaml"
+            # This is a file that "kubeadm init" and "kubeadm join" generates at runtime, populating the KUBELET_KUBEADM_ARGS variable dynamically
+            EnvironmentFile=-/var/lib/kubelet/kubeadm-flags.env
+            # This is a file that the user can use for overrides of the kubelet args as a last resort. Preferably, the user should use
+            # the .NodeRegistration.KubeletExtraArgs object in the configuration files instead. KUBELET_EXTRA_ARGS should be sourced from this file.
+            EnvironmentFile=-/etc/default/kubelet
+            ExecStart=
+            ExecStart={DOWNLOAD_DIR}/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_KUBEADM_ARGS $KUBELET_EXTRA_ARGS
+            ''').format(**values))
+        
+        # Before we let the kubelet try to start, we have to actually download it (and kubeadm)
+        config.addFile("/home/core/install-kubernetes.sh", content=textwrap.dedent('''\
+            #!/usr/bin/env bash
+            set -e
+            
+            # Make sure we have Docker enabled; Kubeadm later might complain it isn't.
+            systemctl enable docker.service
+            
+            mkdir -p {CNI_DIR}
+            curl -L "https://github.com/containernetworking/plugins/releases/download/{CNI_VERSION}/cni-plugins-linux-amd64-{CNI_VERSION}.tgz" | tar -C {CNI_DIR} -xz
+            mkdir -p {DOWNLOAD_DIR}
+            curl -L "https://github.com/kubernetes-sigs/cri-tools/releases/download/{CRICTL_VERSION}/crictl-{CRICTL_VERSION}-linux-amd64.tar.gz" | tar -C {DOWNLOAD_DIR} -xz
+
+            cd {DOWNLOAD_DIR}
+            curl -L --remote-name-all https://storage.googleapis.com/kubernetes-release/release/{KUBERNETES_VERSION}/bin/linux/amd64/{{kubeadm,kubelet,kubectl}}
+            chmod +x {{kubeadm,kubelet,kubectl}}
+            ''').format(**values))
+        config.addUnit("install-kubernetes.service", content=textwrap.dedent('''\
+            [Unit]
+            Description=base Kubernetes installation
+            Wants=network-online.target
+            After=network-online.target
+            Before=kubelet.service
+
+            [Service]
+            Type=oneshot
+            Restart=no
+            ExecStart=/usr/bin/bash /home/core/install-kubernetes.sh
+            '''))
+            
+        # Now we should have the kubeadm command, and the bootlooping kubelet
+        # waiting for kubeadm to configure it.
+        
+    
+    def addKubernetesLeader(self, config: InstanceConfiguration):
+        """
+        Add services to configure as a Kubernetes leader, if Kubernetes is already set to be installed.
+        """
+        
+        values = self.getKubernetesValues()
+        
+        # Main kubeadm cluster configuration
+        config.addFile("/home/core/kubernetes-leader.yml", permissions="0644", content=textwrap.dedent('''\
+            apiVersion: kubeadm.k8s.io/v1beta2
+            kind: InitConfiguration
+            nodeRegistration:
+              kubeletExtraArgs:
+                volume-plugin-dir: "/opt/libexec/kubernetes/kubelet-plugins/volume/exec/"
+                cloud-provider: aws
+            ---
+            apiVersion: kubeadm.k8s.io/v1beta2
+            kind: ClusterConfiguration
+            controllerManager:
+              extraArgs:
+                flex-volume-plugin-dir: "/opt/libexec/kubernetes/kubelet-plugins/volume/exec/"
+            networking:
+              serviceSubnet: "10.96.0.0/12"
+              podSubnet: "10.244.0.0/16"
+              dnsDomain: "cluster.local"
+            ---
+            apiVersion: kubelet.config.k8s.io/v1beta1
+            kind: KubeletConfiguration
+            serverTLSBootstrap: true
+            rotateCertificates: true
+            cgroupDriver: systemd
+            '''))
+            
+        # Make a script to apply that and the other cluster components
+        # Note that we're escaping {{thing}} as {{{{thing}}}} because we need to match mustaches in a yaml we hack up.
+        config.addFile("/home/core/create-kubernetes-cluster.sh", content=textwrap.dedent('''\
+            #!/usr/bin/env bash
+            set -e
+            
+            export PATH="$PATH:{DOWNLOAD_DIR}"
+            
+            # We need the kubelet being restarted constantly by systemd while kubeadm is setting up.
+            # Systemd doesn't really let us say that in the unit file.
+            systemctl start kubelet
+            
+            kubeadm init --config /home/core/kubernetes-leader.yml
+
+            mkdir -p $HOME/.kube
+            cp /etc/kubernetes/admin.conf $HOME/.kube/config
+            chown $(id -u):$(id -g) $HOME/.kube/config
+
+            # Install network
+            kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/{FLANNEL_VERSION}/Documentation/kube-flannel.yml
+
+            # Deploy rubber stamp CSR signing bot
+            kubectl apply -f https://raw.githubusercontent.com/kontena/kubelet-rubber-stamp/release/{RUBBER_STAMP_VERSION}/deploy/service_account.yaml
+            kubectl apply -f https://raw.githubusercontent.com/kontena/kubelet-rubber-stamp/release/{RUBBER_STAMP_VERSION}/deploy/role.yaml
+            kubectl apply -f https://raw.githubusercontent.com/kontena/kubelet-rubber-stamp/release/{RUBBER_STAMP_VERSION}/deploy/role_binding.yaml
+            kubectl apply -f https://raw.githubusercontent.com/kontena/kubelet-rubber-stamp/release/{RUBBER_STAMP_VERSION}/deploy/operator.yaml
+
+            # Set up autoscaler
+            curl -sSL https://raw.githubusercontent.com/kubernetes/autoscaler/cluster-autoscaler-{AUTOSCALER_VERSION}/cluster-autoscaler/cloudprovider/aws/examples/cluster-autoscaler-run-on-master.yaml | \\
+                sed "s|--nodes={{{{ node_asg_min }}}}:{{{{ node_asg_max }}}}:{{{{ name }}}}|--node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/{CLUSTER_NAME}|" | \\
+                sed 's|kubernetes.io/role: master|node-role.kubernetes.io/master: ""|' | \\
+                sed 's|operator: "Equal"|operator: "Exists"|' | \\
+                sed '/value: "true"/d' | \\
+                sed 's|path: "/etc/ssl/certs/ca-bundle.crt"|path: "/usr/share/ca-certificates/ca-certificates.crt"|' | \\
+                kubectl apply -f -
+
+            # Set up metrics server, which needs serverTLSBootstrap and rubber stamp, and insists on running on a worker
+            curl -sSL https://github.com/kubernetes-sigs/metrics-server/releases/download/{METRICS_API_VERSION}/components.yaml | \\
+                sed 's/          - --secure-port=4443/          - --secure-port=4443\\n          - --kubelet-preferred-address-types=Hostname/' | \\
+                kubectl apply -f -
+                
+            # Grab some joining info
+            echo "JOIN_TOKEN=$(kubeadm token create --ttl 0)" >/etc/kubernetes/worker.env
+            echo "JOIN_CERT_HASH=sha256:$(openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //')" >>/etc/kubernetes/worker.env
+            echo "JOIN_ENDPOINT=\"$(hostname):6443\"" >>/etc/kubernetes/worker.env
+            ''').format(**values))
+        config.addUnit("create-kubernetes-cluster.service", content=textwrap.dedent('''\
+            [Unit]
+            Description=Kubernetes cluster bootstrap
+            After=install-kubernetes.service
+            After=docker.service
+            Before=toil-leader.service
+            # Can't be before kubelet.service because Kubelet has to come up as we run this.
+
+            [Service]
+            Type=oneshot
+            Restart=no
+            ExecStart=/usr/bin/bash /home/core/create-kubernetes-cluster.sh
+            '''))
+            
+        # We also need a node cleaner service
+        config.addFile("/home/core/cleanup-nodes.sh", content=textwrap.dedent('''\
+            #!/usr/bin/env bash
+            # cleanup-nodes.sh: constantly clean up NotReady nodes that are tainted as having been deleted
+            set -e
+
+            export PATH="$PATH:{DOWNLOAD_DIR}"
+
+            while true ; do
+                echo "$(date | tr -d '\\n'): Checking for scaled-in nodes..."
+                for NODE_NAME in $(kubectl --kubeconfig /etc/kubernetes/admin.conf get nodes -o json | jq -r '.items[] | select(.spec.taints) | select(.spec.taints[] | select(.key == "ToBeDeletedByClusterAutoscaler")) | select(.spec.taints[] | select(.key == "node.kubernetes.io/unreachable")) | select(.status.conditions[] | select(.type == "Ready" and .status == "Unknown")) | .metadata.name' | tr '\\n' ' ') ; do
+                    # For every node that's tainted as ToBeDeletedByClusterAutoscaler, and
+                    # as node.kubernetes.io/unreachable, and hasn't dialed in recently (and
+                    # is thus in readiness state Unknown)
+                    echo "Node $NODE_NAME is supposed to be scaled away and also gone. Removing from cluster..."
+                    # Drop it
+                    kubectl --kubeconfig /etc/kubernetes/admin.conf delete node "$NODE_NAME"
+                done
+                sleep 30
+            done
+            ''').format(**values))
+        config.addUnit("cleanup-nodes.service", content=textwrap.dedent('''\
+            [Unit]
+            Description=Remove scaled-in nodes
+            After=install-kubernetes.service
+            [Service]
+            ExecStart=/home/core/cleanup-nodes.sh
+            Restart=always
+            StartLimitInterval=0
+            RestartSec=10
+            [Install]
+            WantedBy=multi-user.target
+            '''))
+        
         
 
     def _getCloudConfigUserData(self, role, leaderPublicKey=None, keyPath=None, preemptable=False):
@@ -508,16 +759,19 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             # Add in the leader's public SSH key if needed
             config.addSSHRSAKey(leaderPublicKey)
         
-        if self.clusterType == 'mesos':
-            # Give it a Mesos service
-            self.addToilMesosService(config, role, keyPath, preemptable)
-        else:
-            raise NotImplementedError(f'Cluster type {self.clusterType} not implemented')
-        
+        if self.clusterType == 'kubernetes':
+            # Install Kubernetes
+            self.addKubernetesServices(config)
+            
+            if role == 'leader':
+                # Set up the cluster
+                self.addKubernetesLeader(config)
+                
+        if self.clusterType == 'mesos' or role == 'leader':
+            # Leaders, and all nodes in a Mesos cluster, need a Toil service
+            self.addToilService(config, role, keyPath, preemptable)
             
         # Make it into a string for CloudConfig
-        configString = config.toCloudConfig()
-        logger.info('Config: ' + configString)
-        return configString
+        return config.toCloudConfig()
         
 

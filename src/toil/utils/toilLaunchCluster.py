@@ -35,6 +35,9 @@ def createTagsDict(tagList):
 def main():
     parser = getBasicOptionParser()
     parser = addBasicProvisionerOptions(parser)
+    parser.add_argument("-T", "--clusterType", dest="clusterType",
+                        choices=['mesos', 'kubernetes'], default='mesos',
+                        help="Cluster scheduler to use.")
     parser.add_argument("--leaderNodeType", dest="leaderNodeType", required=True,
                         help="Non-preemptable node type to use for the cluster leader.")
     parser.add_argument("--keyPairName", dest='keyPairName',
@@ -135,6 +138,7 @@ def main():
 
     cluster = clusterFactory(provisioner=config.provisioner,
                              clusterName=config.clusterName,
+                             clusterType=config.clusterType,
                              zone=config.zone,
                              nodeStorage=config.nodeStorage)
 

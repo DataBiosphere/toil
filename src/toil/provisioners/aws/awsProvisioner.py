@@ -102,8 +102,7 @@ class InvalidClusterStateException(Exception):
 
 class AWSProvisioner(AbstractProvisioner):
     def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):
-        if clusterType != 'mesos':
-            # We only support Mesos clusters.
+        if clusterType not in ['mesos', 'kubernetes']:
             raise ClusterTypeNotSupportedException(AWSProvisioner, clusterType)
         super(AWSProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
         self.cloud = 'aws'
@@ -172,6 +171,14 @@ class AWSProvisioner(AbstractProvisioner):
         :param awsEc2ExtraSecurityGroupIds: Optionally provide additional security group IDs.
         :return: None
         """
+        
+        if self.clusterType == 'kubernetes':
+            if E2Instances[leaderNodeType].cores < 2:
+                # Kubernetes won't run here.
+                raise RuntimeError('Kubernetes requires 2 or more cores, and %s is too small' %
+                                   leaderNodeType)
+        
+        
         self._keyName = keyName
         self._vpcSubnet = vpcSubnet
 
@@ -207,17 +214,24 @@ class AWSProvisioner(AbstractProvisioner):
                                      placement={'AvailabilityZone': self._zone},
                                      subnet_id=self._vpcSubnet)
 
-        # wait for the leader to finish setting up
+        # wait for the leader to exist at all
         leader = instances[0]
-        leader.wait_until_running()
+        leader.wait_until_exists()
 
         default_tags = {'Name': self.clusterName, 'Owner': owner, _TOIL_NODE_TYPE_TAG_KEY: 'leader'}
         default_tags.update(userTags)
+        if self.clusterType == 'kubernetes':
+            # All nodes need a tag putting them in the cluster.
+            # This tag needs to be on there before the a leader can finish its startup.
+            default_tags['kubernetes.io/cluster/' + self.clusterName] = ''
 
         tags = []
         for user_key, user_value in default_tags.items():
             tags.append({'Key': user_key, 'Value': user_value})
         leader.create_tags(Tags=tags)
+        
+        # Don't go on until the leader is started
+        leader.wait_until_running()
 
         self._tags = leader.tags
         self._leaderPrivateIP = leader.private_ip_address
@@ -662,6 +676,7 @@ class AWSProvisioner(AbstractProvisioner):
                 with attempt:
                     # open port 22 for ssh-ing
                     web.authorize(ip_protocol='tcp', from_port=22, to_port=22, cidr_ip='0.0.0.0/0')
+                    # TODO: boto2 doesn't support IPv6 here but we need to.
             for attempt in old_retry(predicate=groupNotFound, timeout=300):
                 with attempt:
                     # the following authorizes all TCP access within the web security group
@@ -679,11 +694,75 @@ class AWSProvisioner(AbstractProvisioner):
     def full_policy(self, resource):
         return dict(Version="2012-10-17", Statement=[dict(Effect="Allow", Resource="*", Action=f"{resource}:*")])
 
+    def kubernetes_policy(self):
+        """
+        Get the Kubernetes policy grants not provided by the full grants on EC2
+        and IAM. See
+        <https://github.com/DataBiosphere/toil/wiki/Manual-Autoscaling-Kubernetes-Setup#leader-policy>
+        and
+        <https://github.com/DataBiosphere/toil/wiki/Manual-Autoscaling-Kubernetes-Setup#worker-policy>.
+        
+        These are mostly needed to support Kubernetes' AWS CloudProvider, and
+        some are for the Kubernetes Cluster Autoscaler's AWS integration.
+        
+        Some of these are really only needed on the leader.
+        """
+        
+        return dict(Version="2012-10-17", Statement=[dict(Effect="Allow", Resource="*", Action=[
+            "ecr:GetAuthorizationToken",
+            "ecr:BatchCheckLayerAvailability",
+            "ecr:GetDownloadUrlForLayer",
+            "ecr:GetRepositoryPolicy",
+            "ecr:DescribeRepositories",
+            "ecr:ListImages",
+            "ecr:BatchGetImage",
+            "autoscaling:DescribeAutoScalingGroups",
+            "autoscaling:DescribeAutoScalingInstances",
+            "autoscaling:DescribeLaunchConfigurations",
+            "autoscaling:DescribeTags",
+            "autoscaling:SetDesiredCapacity",
+            "autoscaling:TerminateInstanceInAutoScalingGroup",
+            "elasticloadbalancing:AddTags",
+            "elasticloadbalancing:ApplySecurityGroupsToLoadBalancer",
+            "elasticloadbalancing:AttachLoadBalancerToSubnets",
+            "elasticloadbalancing:ConfigureHealthCheck",
+            "elasticloadbalancing:CreateListener",
+            "elasticloadbalancing:CreateLoadBalancer",
+            "elasticloadbalancing:CreateLoadBalancerListeners",
+            "elasticloadbalancing:CreateLoadBalancerPolicy",
+            "elasticloadbalancing:CreateTargetGroup",
+            "elasticloadbalancing:DeleteListener",
+            "elasticloadbalancing:DeleteLoadBalancer",
+            "elasticloadbalancing:DeleteLoadBalancerListeners",
+            "elasticloadbalancing:DeleteTargetGroup",
+            "elasticloadbalancing:DeregisterInstancesFromLoadBalancer",
+            "elasticloadbalancing:DeregisterTargets",
+            "elasticloadbalancing:DescribeListeners",
+            "elasticloadbalancing:DescribeLoadBalancerAttributes",
+            "elasticloadbalancing:DescribeLoadBalancerPolicies",
+            "elasticloadbalancing:DescribeLoadBalancers",
+            "elasticloadbalancing:DescribeTargetGroups",
+            "elasticloadbalancing:DescribeTargetHealth",
+            "elasticloadbalancing:DetachLoadBalancerFromSubnets",
+            "elasticloadbalancing:ModifyListener",
+            "elasticloadbalancing:ModifyLoadBalancerAttributes",
+            "elasticloadbalancing:ModifyTargetGroup",
+            "elasticloadbalancing:RegisterInstancesWithLoadBalancer",
+            "elasticloadbalancing:RegisterTargets",
+            "elasticloadbalancing:SetLoadBalancerPoliciesForBackendServer",
+            "elasticloadbalancing:SetLoadBalancerPoliciesOfListener",
+            "kms:DescribeKey"
+        ])])
+
     @awsRetry
     def _getProfileArn(self):
         assert self._ctx
         policy = dict(iam_full=self.full_policy('iam'), ec2_full=self.full_policy('ec2'),
                       s3_full=self.full_policy('s3'), sbd_full=self.full_policy('sdb'))
+        if self.clusterType == 'kubernetes':
+            # We also need autoscaling groups and some other stuff for AWS-Kubernetes integrations.
+            # TODO: We use one merged policy for leader and worker, but we could be more specific.
+            policy['kubernetes_merged'] = self.kubernetes_policy()
         iamRoleName = self._ctx.setup_iam_ec2_role(role_name=_INSTANCE_PROFILE_ROLE_NAME, policies=policy)
 
         try:
