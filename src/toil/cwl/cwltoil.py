@@ -617,13 +617,18 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         except NoSuchFileException:
             return False
 
+    def realpath(self, path: str) -> str:
+        if path.startswith("toilfs:"):
+            # import the file and make it available locally if it exists
+            path = self._abs(path)
+        return os.path.realpath(path)
+
     def _abs(self, path: str) -> str:
         """
         Return a local absolute path for a file (no schema).
 
         Overwrites cwltool.stdfsaccess.StdFsAccess._abs() to account for toil specific schema.
         """
-
         # Used to fetch a path to determine if a file exists in the inherited cwltool.stdfsaccess.StdFsAccess,
         # (among other things) so this should not error on missing files.
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43
@@ -631,7 +636,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             logger.debug('Need to download file to get a local absolute path.')
             destination = self.file_store.readGlobalFile(FileID.unpack(path[7:]))
             logger.debug('Downloaded %s to %s', path, destination)
-            assert os.path.exists(destination)
+            assert os.path.exists(destination), f'{destination} does not exist after file store import.'
             return destination
         else:
             result = super(ToilFsAccess, self)._abs(path)
@@ -747,6 +752,20 @@ def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> str:
     fileuri = fileuri if ':/' in fileuri else f'file://{fileuri}'
     return file_store.writeGlobalFile(
         schema_salad.ref_resolver.uri_file_path(fileuri))
+
+
+def remove_empty_listings(
+    fs_access: "StdFsAccess", rec: CWLObjectType, recursive: bool = True
+) -> None:
+    if rec.get("class") != "Directory":
+        finddirs = []  # type: List[CWLObjectType]
+        visit_class(rec, ("Directory",), finddirs.append)
+        for f in finddirs:
+            remove_empty_listings(fs_access, f, recursive=recursive)
+        return
+    if "listing" in rec and rec["listing"] == []:
+        del rec["listing"]
+        return
 
 
 class ResolveIndirect(Job):
@@ -965,21 +984,6 @@ class CWLJob(Job):
 
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
-            # input_dirs = []
-            # for source in self.cwljob:
-            #     if cwljob[source]['class'] == 'Directory':
-            #         input_dirs.append(self.cwljob[source].input['source'])
-            #
-            # for step in self.cwltool.metadata['steps']:
-            #     for i in step.get('in', []):
-            #         if i['source'] in input_dirs:
-            #             for o in step.get('out', []):
-            #                 if o in input_dirs:
-
-        # just run tests at this point to check if others pass
-        if 'd1' in cwljob:
-            cwljob['d1']['listing'] = cwljob['d2']['listing']
-
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
 
@@ -1041,6 +1045,10 @@ class CWLJob(Job):
 
         adjustDirObjs(output, functools.partial(
             get_listing, cwltool.stdfsaccess.StdFsAccess(outdir),
+            recursive=True))
+
+        adjustDirObjs(output, functools.partial(
+            remove_empty_listings, cwltool.stdfsaccess.StdFsAccess(outdir),
             recursive=True))
 
         adjustDirObjs(output, prepareDirectoryForUpload)
@@ -1492,7 +1500,10 @@ def determine_load_listing(tool: ToilCommandLineTool):
     """
     load_listing_req, _ = tool.get_requirement("LoadListingRequirement")
     load_listing_tool_req = load_listing_req.get("loadListing", "no_listing") if load_listing_req else "no_listing"
-    load_listing = tool.tool.get("loadListing") or load_listing_tool_req
+    load_listing = tool.tool.get("loadListing", None) or load_listing_tool_req
+
+    listing_choices = ('no_listing', 'shallow_listing', 'deep_listing')
+    assert load_listing in listing_choices, f'Unknown loadListing specified: "{load_listing}".  Valid choices: {listing_choices}'
     return load_listing
 
 
@@ -1694,7 +1705,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     runtime_context.find_default_container = functools.partial(
         find_default_container, options)
     runtime_context.workdir = workdir
-    runtime_context.move_outputs = "leave"
+    runtime_context.move_outputs = "move"
     runtime_context.rm_tmpdir = False
     loading_context = cwltool.context.LoadingContext(vars(options))
 
