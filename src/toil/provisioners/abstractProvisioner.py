@@ -291,6 +291,8 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             'start').
             """
             
+            logger.info("Add unit:\n%s", content)
+            
             self.units.append({'name': name, 'command': command, 'content': content})
             
         def addSSHRSAKey(self, keyData: str):

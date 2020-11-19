@@ -33,6 +33,13 @@ def main():
                         help="Pass an additional option to the SSH command.")
     parser.add_argument('args', nargs=argparse.REMAINDER)
     config = parseBasicOptions(parser)
+    
+    # Since we collect all the remaining argumkents at the end for a command to
+    # run, it's easy to lose options.
+    if len(config.args) > 0 and config.args[0].startswith('-'):
+        logger.warning('Argument \'%s\' interpreted as a command to run '
+                       'despite looking like an option.', config.args[0])
+    
     cluster = clusterFactory(provisioner=config.provisioner,
                              clusterName=config.clusterName,
                              zone=config.zone)

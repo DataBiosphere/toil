@@ -109,6 +109,13 @@ class AWSProvisioner(AbstractProvisioner):
         self.cloud = 'aws'
         self._sseKey = sseKey
         self._zone = zone if zone else getCurrentAWSZone()
+        
+        if zone is None:
+            # Can't proceed without a real zone
+            raise RuntimeError('No AWS availability zone specified. Configure in Boto '
+                               'configuration file, TOIL_AWS_ZONE environment variable, or '
+                               'on the command line.')
+    
 
         # establish boto3 clients
         self.session = boto3.Session(region_name=zoneToRegion(self._zone))
