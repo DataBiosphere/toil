@@ -19,15 +19,17 @@ logger = logging.getLogger(__name__)
 
 def clusterFactory(provisioner, clusterName=None, clusterType='mesos', zone=None, nodeStorage=50, nodeStorageOverrides=None, sseKey=None):
     """
+    Find and instantiate the appropriate provisioner instance to make clusters
+    in the given cloud.
+    
+    Raises ClusterTypeNotSupportedException if the given provisioner does not
+    implement clusters of the given type.
+    
     :param provisioner: The cloud type of the cluster.
     :param clusterName: The name of the cluster.
     :param clusterType: The type of cluster: 'mesos' or 'kubernetes'.
     :param zone: The cloud zone
     :return: A cluster object for the the cloud type.
-    
-    Raises ClusterTypeNotSupportedException if the given provisioner does not
-    implement clusters of the given type.
-    
     """
     if provisioner == 'aws':
         try:

@@ -134,7 +134,7 @@ class AWSProvisioner(AbstractProvisioner):
         self._leaderPrivateIP = instanceMetaData['local-ipv4']  # this is PRIVATE IP
         self._keyName = list(instanceMetaData['public-keys'].keys())[0]
         self._tags = self.getLeader().tags
-        self._masterPublicKey = self._setSSH()
+        self._leaderPublicKey = self._setSSH()
         self._leaderProfileArn = instanceMetaData['iam']['info']['InstanceProfileArn']
         # The existing metadata API returns a single string if there is one security group, but
         # a list when there are multiple: change the format to always be a list.
@@ -182,8 +182,8 @@ class AWSProvisioner(AbstractProvisioner):
             },
         ]
 
-        self._masterPublicKey = 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded' # dummy key
-        userData = self._getCloudConfigUserData('leader', self._masterPublicKey)
+        self._leaderPublicKey = 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded' # dummy key
+        userData = self._getCloudConfigUserData('leader', self._leaderPublicKey)
         if isinstance(userData, text_type):
             # Spot-market provisioning requires bytes for user data.
             # We probably won't have a spot-market leader, but who knows!
@@ -320,7 +320,7 @@ class AWSProvisioner(AbstractProvisioner):
         bdm = self._getBlockDeviceMapping(instanceType, rootVolSize=self._nodeStorageOverrides.get(nodeType, self._nodeStorage))
 
         keyPath = self._sseKey if self._sseKey else None
-        userData = self._getCloudConfigUserData('worker', self._masterPublicKey, keyPath, preemptable)
+        userData = self._getCloudConfigUserData('worker', self._leaderPublicKey, keyPath, preemptable)
         if isinstance(userData, text_type):
             # Spot-market provisioning requires bytes for user data.
             userData = userData.encode('utf-8')
