@@ -222,10 +222,9 @@ class SynthesizeWDL:
                     main_section += heredoc_wdl(
                         '''
                         {var} = {var_type}.create(
-                                       {var_expressn})  # value''',
-                        dictionary={'var': var,
-                                    'var_type': self.write_declaration_type(var_type),
-                                    'var_expressn': var_expressn['value']},
+                                       {var_expressn})  # value''', {'var': var,
+                                                                     'var_type': self.write_declaration_type(var_type),
+                                                                     'var_expressn': var_expressn['value']},
                         indent='        ')
 
                     # # only recursively check for file imports if we have a file type
@@ -754,11 +753,11 @@ class SynthesizeWDL:
             if isinstance(var_type, WDLArrayType):
                 return self.needs_file_import(var_type.element)
             elif isinstance(var_type, WDLPairType):
-                return self.needs_file_import(var_type.left) and self.needs_file_import(var_type.right)
+                return self.needs_file_import(var_type.left) or self.needs_file_import(var_type.right)
             elif isinstance(var_type, WDLMapType):
-                return self.needs_file_import(var_type.key) and self.needs_file_import(var_type.value)
+                return self.needs_file_import(var_type.key) or self.needs_file_import(var_type.value)
             else:
-                raise ValueError(var_type)
+                raise NotImplementedError
 
         return False
 
