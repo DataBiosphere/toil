@@ -224,7 +224,7 @@ class SynthesizeWDL:
                         {var} = {var_type}.create(
                                        {var_expressn})  # value''',
                         dictionary={'var': var,
-                                    'var_type': var_type.as_compiled_string(),
+                                    'var_type': self.write_declaration_type(var_type),
                                     'var_expressn': var_expressn['value']},
                         indent='        ')
 
@@ -761,6 +761,33 @@ class SynthesizeWDL:
                 raise ValueError(var_type)
 
         return False
+
+    def write_declaration_type(self, var_type: WDLType):
+        """
+        Return a string that preserves the construction of the given WDL type
+        so it can be passed into the compiled script.
+        """
+
+        section = var_type.__class__.__name__ + '('  # e.g.: 'WDLIntType('
+
+        if isinstance(var_type, WDLCompoundType):
+            if isinstance(var_type, WDLArrayType):
+                section += self.write_declaration_type(var_type.element)
+            elif isinstance(var_type, WDLPairType):
+                section += self.write_declaration_type(var_type.left) + ', '
+                section += self.write_declaration_type(var_type.right)
+            elif isinstance(var_type, WDLMapType):
+                section += self.write_declaration_type(var_type.key) + ', '
+                section += self.write_declaration_type(var_type.value)
+            else:
+                raise ValueError(var_type)
+
+        if var_type.optional:
+            if isinstance(var_type, WDLCompoundType):
+                section += ', '
+            section += 'optional=True'
+
+        return section + ')'
 
     def write_function_bashscriptline(self, job):
         '''

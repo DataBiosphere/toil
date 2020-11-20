@@ -24,17 +24,12 @@ class WDLType:
         """
         raise NotImplementedError
 
-    def as_compiled_string(self) -> str:
-        """
-        Return a string that preserves the construction of this WDL type so it
-        can be passed into the compiled script.
-        """
-        return f"{self.__class__.__name__}({'optional=True' if self.optional else ''})"
-
     def create(self, value: Any) -> Any:
         """
         Calls at runtime. Returns an instance of the current type. Some types
         (e.g.: WDLFileType and WDLPairType) require special treatment.
+
+        An error may be raised if the value is not in the correct format.
 
         :param value: a Python object
         """
@@ -60,6 +55,9 @@ class WDLCompoundType(WDLType, ABC):
 
 class WDLStringType(WDLType):
     """
+    Represent a WDL String primitive type:
+
+    https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#types
     """
 
     @property
@@ -67,11 +65,20 @@ class WDLStringType(WDLType):
         return 'String'
 
     def create(self, value: Any) -> Any:
+        if value is None:
+            if self.optional:
+                return ''
+            else:
+                raise WDLArgumentError
+
         return value
 
 
 class WDLIntType(WDLType):
     """
+    Represent a WDL Int primitive type:
+
+    https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#types
     """
 
     @property
@@ -79,11 +86,20 @@ class WDLIntType(WDLType):
         return 'Int'
 
     def create(self, value: Any) -> Any:
-        return value
+        if value is None:
+            if self.optional:
+                return None
+            else:
+                raise WDLArgumentError
+
+        return int(value)
 
 
 class WDLFloatType(WDLType):
     """
+    Represent a WDL Float primitive type:
+
+    https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#types
     """
 
     @property
@@ -91,11 +107,20 @@ class WDLFloatType(WDLType):
         return 'Float'
 
     def create(self, value: Any) -> Any:
-        return value
+        if value is None:
+            if self.optional:
+                return None
+            else:
+                raise WDLArgumentError
+
+        return float(value)
 
 
 class WDLBooleanType(WDLType):
     """
+    Represent a WDL Boolean primitive type:
+
+    https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#types
     """
 
     @property
@@ -103,11 +128,20 @@ class WDLBooleanType(WDLType):
         return 'Boolean'
 
     def create(self, value: Any) -> Any:
-        return value
+        if value is None:
+            if self.optional:
+                return None
+            else:
+                raise WDLArgumentError
+
+        return True if value else False
 
 
 class WDLFileType(WDLType):
     """
+    Represent a WDL File primitive type:
+
+    https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#types
     """
 
     @property
@@ -115,12 +149,20 @@ class WDLFileType(WDLType):
         return 'File'
 
     def create(self, value: Any) -> Any:
-        # return WDLFile(value, optional=self.optional)
+        if value is None:
+            if self.optional:
+                return ''
+            else:
+                raise WDLArgumentError
+
         return value
 
 
 class WDLArrayType(WDLCompoundType):
     """
+    Represent a WDL Array compound type:
+
+    https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#types
     """
 
     def __init__(self, element: WDLType, optional: bool = False):
@@ -135,18 +177,24 @@ class WDLArrayType(WDLCompoundType):
     def name(self) -> str:
         return f'Array[{self.element.name}]'
 
-    def as_compiled_string(self) -> str:
-        return f"WDLArrayType({self.element.as_compiled_string()}{', optional=True' if self.optional else ''})"
-
     def create(self, value: Any) -> Any:
-        if not value:
-            return value
+        if value is None:
+            if self.optional:
+                return None
+            else:
+                raise WDLArgumentError
+
+        if not isinstance(value, list):
+            raise WDLArgumentError('expected list')
 
         return [self.element.create(val) for val in value]
 
 
 class WDLPairType(WDLCompoundType):
     """
+    Represent a WDL Pair compound type:
+
+    https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#types
     """
 
     def __init__(self, left: WDLType, right: WDLType, optional: bool = False):
@@ -158,11 +206,12 @@ class WDLPairType(WDLCompoundType):
     def name(self) -> str:
         return f'Pair[{self.left.name}, {self.right.name}]'
 
-    def as_compiled_string(self) -> str:
-        return f"WDLPairType({self.left.as_compiled_string()}, {self.right.as_compiled_string()}" \
-               f"{', optional=True' if self.optional else ''})"
-
     def create(self, value: Any) -> Any:
+        if value is None:
+            if self.optional:
+                return None
+            else:
+                raise WDLArgumentError
 
         if isinstance(value, WDLPair):
             return value
@@ -183,6 +232,9 @@ class WDLPairType(WDLCompoundType):
 
 class WDLMapType(WDLCompoundType):
     """
+    Represent a WDL Map compound type:
+
+    https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#types
     """
 
     def __init__(self, key: WDLType, value: WDLType, optional: bool = False):
@@ -194,40 +246,27 @@ class WDLMapType(WDLCompoundType):
     def name(self) -> str:
         return f'Map[{self.key.name}, {self.value.name}]'
 
-    def as_compiled_string(self) -> str:
-        return f"WDLMapType({self.key.as_compiled_string()}, {self.value.as_compiled_string()}" \
-               f"{', optional=True' if self.optional else ''})"
-
     def create(self, value: Any) -> Any:
-        return {self.key.create(k): self.value.create(v) for k, v in value}
+        if value is None:
+            if self.optional:
+                return None
+            else:
+                raise WDLArgumentError
+
+        if not isinstance(value, dict):
+            raise WDLArgumentError('expected dict')
+
+        return {self.key.create(k): self.value.create(v) for k, v in value.items()}
 
 
 #
 # WDL instances
 #
 
-class WDLFile:
-    """
-    """
-
-    def __init__(self, file_name, optional):
-        self.file_name = file_name
-        self.optional = optional
-
-        self.imported = False
-
-    def import_to_job_store(self):
-        if self.imported:
-            return False
-
-        # import
-
-        self.imported = True
-
-
 class WDLPair:
     """
-    Represent a WDL Pair literal defined at
+    Represent a WDL Pair literal defined at:
+
     https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#pair-literals
     """
 
