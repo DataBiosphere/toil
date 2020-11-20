@@ -310,8 +310,37 @@ class hidden(object):
                 os.chmod(srcFile, os.stat(srcFile).st_mode | stat.S_IXUSR)
             initialPermissions = os.stat(srcFile).st_mode & stat.S_IXUSR
             fileID = job.fileStore.writeGlobalFile(srcFile)
-
             return initialPermissions, fileID
+
+        def testImportReadFileCompatibility(self):
+            """
+            Ensures that files imported to the leader preserve their executable permissions
+            when they are read by the fileStore
+            """
+            with Toil(self.options) as toil:
+                workDir = self._createTempDir()
+                for executable in True, False:
+                    srcFile = '%s/%s%s' % (workDir, 'in', str(uuid4()))
+                    with open(srcFile, 'w') as f:
+                        f.write('Hello')
+                    if executable:
+                        os.chmod(srcFile, os.stat(srcFile).st_mode | stat.S_IXUSR)
+                    initialPermissions = os.stat(srcFile).st_mode & stat.S_IXUSR
+                    jobStoreFileID = toil.importFile('file://' + srcFile)
+                    for mutable in True,False:
+                        for symlink in True, False:
+                            dstFile = '%s/%s%s' % (workDir, 'out', str(uuid4()))
+                            A = Job.wrapJobFn(_testImportReadFileCompatibility, fileID=jobStoreFileID, dstFile=dstFile,
+                                                mutable=mutable, symlink=symlink)
+                            dstFile = toil.start(A)
+                            currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
+
+                            assert initialPermissions == currentPermissions
+
+        @staticmethod
+        def _testImportReadFileCompatibility(job, fileID, dstFile, mutable, symlink):
+            job.fileStore.readGlobalFile(fileID, dstFile, mutable=mutable, symlink=symlink)
+            return dstFile
 
         @staticmethod
         def _writeFileToJobStore(job, isLocalFile, nonLocalDir=None, fileMB=1):
