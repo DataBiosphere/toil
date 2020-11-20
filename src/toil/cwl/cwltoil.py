@@ -2185,9 +2185,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             runtime_context.no_match_user = options.no_match_user
             runtime_context.no_read_only = options.no_read_only
             runtime_context.basedir = options.basedir
-            runtime_context.move_outputs = (
-                "move" if determine_inplace_update(tool) else "leave"
-            )
+            runtime_context.move_outputs = "leave"
 
             # We instantiate an early builder object here to populate indirect
             # secondaryFile references using cwltool's library because we need
