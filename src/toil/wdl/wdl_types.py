@@ -25,7 +25,7 @@ class WDLType:
         raise NotImplementedError
 
     @property
-    def default(self):
+    def default_value(self):
         """
         Default value if optional.
         """
@@ -41,9 +41,9 @@ class WDLType:
         if value is None:
             # check if input is in fact an optional.
             if self.optional:
-                return self.default
+                return self.default_value
             else:
-                raise WDLRuntimeError(f"Required workflow input for '{self.name}' type not specified.")
+                raise WDLRuntimeError(f"Required input for '{self.name}' type not specified.")
 
         return self._create(value)
 
@@ -76,7 +76,7 @@ class WDLStringType(WDLType):
         return 'String'
 
     @property
-    def default(self):
+    def default_value(self):
         return ''
 
     def _create(self, value: Any) -> Any:
@@ -124,7 +124,7 @@ class WDLFileType(WDLType):
         return 'File'
 
     @property
-    def default(self):
+    def default_value(self):
         return ''
 
     def _create(self, value: Any) -> Any:

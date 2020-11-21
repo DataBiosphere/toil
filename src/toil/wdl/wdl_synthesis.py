@@ -96,8 +96,6 @@ class SynthesizeWDL:
                     from toil.wdl.wdl_types import WDLPairType
                     from toil.wdl.wdl_types import WDLMapType
                     from toil.wdl.wdl_functions import generate_docker_bashscript_file
-                    from toil.wdl.wdl_functions import import_file_from_type
-                    from toil.wdl.wdl_functions import parse_value_from_type
                     from toil.wdl.wdl_functions import generate_stdout_file
                     from toil.wdl.wdl_functions import select_first
                     from toil.wdl.wdl_functions import sub
@@ -215,22 +213,13 @@ class SynthesizeWDL:
                     if json_expressn is not None:
                         var_expressn['value'] = json_expressn
 
-                    # TODO: temporary!
-                    if var_expressn['value'] and var_type == 'File':
-                        var_expressn['value'] = f"process_infile({var_expressn['value']}, fileStore)"
+                    main_section += '        {} = {}.create(\n                {})\n'\
+                        .format(var, self.write_declaration_type(var_type), var_expressn['value'])
 
-                    main_section += heredoc_wdl(
-                        '''
-                        {var} = {var_type}.create(
-                                       {var_expressn})  # value''', {'var': var,
-                                                                     'var_type': self.write_declaration_type(var_type),
-                                                                     'var_expressn': var_expressn['value']},
-                        indent='        ')
-
-                    # # only recursively check for file imports if we have a file type
-                    # if self.needs_file_import(var_type):
-                    #     main_section += '        import_file_from_type({}, var_type={}, file_store=fileStore)\n'\
-                    #         .format(var, var_type.as_compiled_string())
+                    # import filepath into jobstore
+                    if self.needs_file_import(var_type) and var_expressn['value']:
+                        main_section += '        {} = process_infile({}, fileStore, {})\n'.format(
+                            var, var, self.write_declaration_type(var_type))
 
         return main_section
 
@@ -676,6 +665,7 @@ class SynthesizeWDL:
         if 'inputs' in self.tasks_dictionary[job]:
             for i in self.tasks_dictionary[job]['inputs']:
                 var = i[0]
+                var_type = i[1]
                 var_expressn = i[2]
                 json_expressn = self.json_var(task=job, var=var)
 
@@ -683,10 +673,18 @@ class SynthesizeWDL:
                 # whatever is in the wdl file
                 if json_expressn is not None:
                     var_expressn = json_expressn
-                if var_expressn is None:
-                    var_expressn = var
 
-                fn_section += '        self.id_{} = {}\n'.format(var, var_expressn)
+                # store the type IF we need to call process_and_read_file() in write_function_cmdline().
+                # fn_section += '        self._toil_wdl_internal__id_{}_type = {}\n'\
+                #     .format(var, self.write_declaration_type(var_type))
+
+                if var_expressn is None:
+                    # declarations from workflow
+                    fn_section += '        self.id_{} = {}\n'.format(var, var)
+                else:
+                    # declarations from a WDL or JSON file
+                    fn_section += '        self.id_{} = {}.create(\n                {})\n'\
+                        .format(var, self.write_declaration_type(var_type), var_expressn)
 
         fn_section += heredoc_wdl('''
 
@@ -707,10 +705,20 @@ class SynthesizeWDL:
             for i in self.tasks_dictionary[job]['inputs']:
                 var = i[0]
                 var_type = i[1]
+                var_type_str = self.write_declaration_type(var_type)
+
                 docker_bool = str(self.needsdocker(job))
-                if var_type == 'File':
-                    fn_section += '        {} = process_and_read_file(abspath_file(self.id_{}, _toil_wdl_internal__current_working_dir), tempDir, fileStore, docker={})\n'.format(
-                        var, var, docker_bool)
+
+                if self.needs_file_import(var_type):
+                    args = ', '.join(
+                        [
+                            f'abspath_file(self.id_{var}, {var_type_str}, _toil_wdl_internal__current_working_dir)',
+                            f'{var_type_str}',
+                            'tempDir',
+                            'fileStore',
+                            f'docker={docker_bool}'
+                        ])
+                    fn_section += '        {} = process_and_read_file({})\n'.format(var, args)
                 else:
                     fn_section += '        {} = self.id_{}\n'.format(var, var)
 
@@ -857,7 +865,9 @@ class SynthesizeWDL:
         if 'raw_commandline' in self.tasks_dictionary[job]:
             for cmd in self.tasks_dictionary[job]['raw_commandline']:
                 if not cmd.startswith("r'''"):
-                    cmd = 'str({i} if not isinstance({i}, tuple) else process_and_read_file({i}, tempDir, fileStore)).strip("{nl}")'.format(i=cmd, nl=r"\n")
+                    # all files should be read? since functions that return a File already read the files.
+                    #     cmd = 'str({i} if not isinstance({i}, tuple) else process_and_read_file({i}, tempDir, fileStore)).strip("{nl}")'.format(i=cmd, nl=r"\n")
+                    cmd = 'str({i}).strip("{n1}")'.format(i=cmd, n1=r"\n")
                 fn_section = fn_section + heredoc_wdl('''
                         try:
                             # Intended to deal with "optional" inputs that may not exist

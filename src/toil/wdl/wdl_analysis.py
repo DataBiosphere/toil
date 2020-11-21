@@ -18,14 +18,16 @@ from collections import OrderedDict
 
 import toil.wdl.wdl_parser as wdl_parser
 
-from toil.wdl.wdl_types import WDLArrayType
-from toil.wdl.wdl_types import WDLBooleanType
-from toil.wdl.wdl_types import WDLFileType
-from toil.wdl.wdl_types import WDLFloatType
-from toil.wdl.wdl_types import WDLIntType
-from toil.wdl.wdl_types import WDLMapType
-from toil.wdl.wdl_types import WDLPairType
-from toil.wdl.wdl_types import WDLStringType
+from toil.wdl.wdl_types import (
+    WDLStringType,
+    WDLIntType,
+    WDLFloatType,
+    WDLBooleanType,
+    WDLFileType,
+    WDLArrayType,
+    WDLPairType,
+    WDLMapType
+)
 
 wdllogger = logging.getLogger(__name__)
 
@@ -677,7 +679,8 @@ class AnalyzeWDL:
                 else:
                     raise NotImplementedError
             else:
-                # deeply recursive types (TODO: adding tests #3331)
+                # either a primitive optional type OR deeply recursive types
+                # TODO: adding tests #3331
                 wdl_type = self.parse_declaration_type(subtype)
                 wdl_type.optional = optional
                 return wdl_type
