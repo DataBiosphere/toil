@@ -32,7 +32,7 @@ sys.path.insert(0, pkg_root)  # noqa
 
 from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
                        needs_mesos, needs_parasol, needs_gridengine, needs_slurm,
-                       needs_torque)
+                       needs_torque, needs_aws_s3)
 
 
 log = logging.getLogger(__name__)
@@ -136,6 +136,7 @@ class CWLv10Test(ToilTest):
                   input_location,
                   self._expected_download_output(self.outDir))
 
+    @needs_aws_s3
     def test_s3_as_secondary_file(self):
         from toil.cwl import cwltoil
         st = StringIO()
@@ -159,6 +160,7 @@ class CWLv10Test(ToilTest):
     def test_run_revsort_debug_worker(self):
         self.revsort('revsort.cwl', self._debug_worker_tester)
 
+    @needs_aws_s3
     def test_run_s3(self):
         self.download('download_s3.json', self._tester)
 

@@ -517,7 +517,7 @@ def resolve_dict_w_promises(
             location = result[entry].get("location")
             if location:
                 if location.startswith("_:file://"):
-                    local_dir_path = location[len("_:file://"):]
+                    local_dir_path = location[len("_:file://") :]
                     os.makedirs(local_dir_path, exist_ok=True)
                     result[entry]["location"] = local_dir_path
     return result
@@ -707,8 +707,8 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
     def listdir(self, fn: str) -> List[str]:
         directory = self._abs(fn)
-        if fn.startswith('_:file://'):
-            directory = fn[len('_:file://'):]
+        if fn.startswith("_:file://"):
+            directory = fn[len("_:file://") :]
             if os.path.isdir(directory):
                 return [
                     cwltool.stdfsaccess.abspath(urllib.parse.quote(entry), fn)
@@ -737,8 +737,10 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             destination = self.file_store.readGlobalFile(FileID.unpack(path[7:]))
             logger.debug("Downloaded %s to %s", path, destination)
             if not os.path.exists(destination):
-                raise RuntimeError(f"{destination} does not exist after filestore import.")
-        elif path.startswith('_:file://'):
+                raise RuntimeError(
+                    f"{destination} does not exist after filestore import."
+                )
+        elif path.startswith("_:file://"):
             destination = path
         else:
             destination = super(ToilFsAccess, self)._abs(path)
@@ -1791,7 +1793,9 @@ def determine_load_listing(tool: ToilCommandLineTool):
 
     listing_choices = ("no_listing", "shallow_listing", "deep_listing")
     if load_listing not in listing_choices:
-        raise ValueError(f'Unknown loadListing specified: "{load_listing}".  Valid choices: {listing_choices}')
+        raise ValueError(
+            f'Unknown loadListing specified: "{load_listing}".  Valid choices: {listing_choices}'
+        )
     return load_listing
 
 
