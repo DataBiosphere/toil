@@ -1740,15 +1740,6 @@ def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> list
     return final_secondary_files
 
 
-def determine_inplace_update(tool):
-    inplace_update_req, _ = tool.get_requirement("InplaceUpdateRequirement")
-    inplace_update_tool_req = (
-        inplace_update_req.get("inplaceUpdate", False) if inplace_update_req else False
-    )
-    inplace_update = tool.tool.get("inplaceUpdate", None) or inplace_update_tool_req
-    return cast(bool, inplace_update)
-
-
 def determine_load_listing(tool: ToilCommandLineTool):
     """
     Determine the directory.listing feature in CWL.
@@ -2205,8 +2196,6 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             runtime_context.no_read_only = options.no_read_only
             runtime_context.basedir = options.basedir
             runtime_context.move_outputs = "move"
-            # if determine_inplace_update(tool):
-            #     runtime_context.move_outputs = "leave"
 
             # We instantiate an early builder object here to populate indirect
             # secondaryFile references using cwltool's library because we need
