@@ -224,7 +224,7 @@ def process_single_infile(f, fileStore):
     return filepath, preserveThisFilename
 
 
-def process_infile(f: Any, fileStore: AbstractFileStore, var_type: Optional[WDLType] = None):
+def process_infile(f: Any, fileStore: AbstractFileStore):
     """
     TODO: Update docstring.
 
@@ -237,46 +237,28 @@ def process_infile(f: Any, fileStore: AbstractFileStore, var_type: Optional[WDLT
     :param f: String or an Array.  The smallest element must be a string,
               so: an array of strings, an array of arrays of strings... etc.
     :param fileStore: The filestore object that is called to load files into the filestore.
-    :param var_type: WDLType of the input.
     :return: A tuple or an array of tuples.
     """
-    # if no type is passed then set type base on input value.
-    if not var_type:
-        if isinstance(f, (str, tuple)):
-            var_type = WDLFileType()
-        elif isinstance(f, list):
-            var_type = WDLArrayType(WDLFileType())
-        else:
-            raise WDLRuntimeError(f'Unable to process file for type {type(f)}.')
-
-    # check for optionals
-    if not f and var_type.optional:
-        return ''
-
-    # check if this has already been processed
     if isinstance(f, tuple):
-        return f
-    if isinstance(var_type, WDLFileType):
-        return process_single_infile(f, fileStore)
-    elif isinstance(var_type, WDLArrayType):
-        # recursively call process_infile() to handle cases like Array[Map[String, File]]
-        return [process_infile(sf, fileStore, var_type.element) for sf in f]
-    elif isinstance(var_type, WDLPairType):
-        if isinstance(f, WDLPair):
-            f.left = process_infile(f.left, fileStore, var_type.left)
-            f.right = process_infile(f.right, fileStore, var_type.right)
+        # check if this has already been processed
+        if f[1]:
             return f
         else:
-            raise WDLRuntimeError('Error processing file: '.format(str(f)))
-    elif isinstance(var_type, WDLMapType):
-        if isinstance(f, dict):
-            return {process_infile(k, fileStore, var_type.key):
-                    process_infile(v, fileStore, var_type.value) for k, v in f.items()}
-        else:
-            raise WDLRuntimeError('Error processing file: '.format(str(f)))
-    else:
-        # everything else is fine as is.
+            return process_single_infile(f[0], fileStore)
+    elif isinstance(f, list):
+        # recursively call process_infile() to handle cases like Array[Map[String, File]]
+        return [process_infile(sf, fileStore) for sf in f]
+    elif isinstance(f, WDLPair):
+        f.left = process_infile(f.left, fileStore)
+        f.right = process_infile(f.right, fileStore)
         return f
+    elif isinstance(f, dict):
+        return {process_infile(k, fileStore): process_infile(v, fileStore) for k, v in f}
+    elif isinstance(f, (int, str, bool, float)):
+        # primitives are fine as is.
+        return f
+    else:
+        raise WDLRuntimeError('Error processing file: '.format(str(f)))
 
 
 def sub(input_str: str, pattern: str, replace: str) -> str:
@@ -353,40 +335,36 @@ def abspath_single_file(f, cwd):
         return os.path.join(cwd, f)
 
 
-def abspath_file(f: Any, var_type: WDLType, cwd: str):
+def abspath_file(f: Any, cwd: str):
     if not f:
         # in the case of "optional" files (same treatment in 'process_and_read_file()')
         # TODO: handle this at compile time, not here
         return ''
-    # check if this has already been processed
     if isinstance(f, tuple):
+        # check if this has already been processed
+        if f[1]:
+            return f
+        if f[0].startswith('s3://') or f[0].startswith('http://') or f[0].startswith('https://') or \
+                f[0].startswith('file://') or f[0].startswith('wasb://') or f[0].startswith('gs://'):
+            return f
+        return abspath_single_file(f[0], cwd), None
+    elif isinstance(f, list):
+        # recursively call abspath_file() to handle cases like Array[Map[String, File]]
+        return [abspath_file(sf, cwd) for sf in f]
+    elif isinstance(f, WDLPair):
+        f.left = abspath_file(f.left, cwd)
+        f.right = abspath_file(f.right, cwd)
         return f
-    if isinstance(f, str) and isinstance(var_type, WDLFileType):
-        if f.startswith('s3://') or f.startswith('http://') or f.startswith('https://') or \
-                f.startswith('file://') or f.startswith('wasb://') or f.startswith('gs://'):
-            return f
-        return abspath_single_file(f, cwd)
-    elif isinstance(var_type, WDLArrayType):
-        return [abspath_file(sf, var_type.element, cwd) for sf in f]
-    elif isinstance(var_type, WDLPairType):
-        if isinstance(f, WDLPair):
-            f.left = abspath_file(f.left, var_type.left, cwd)
-            f.right = abspath_file(f.right, var_type.right, cwd)
-            return f
-        else:
-            raise WDLRuntimeError('Error processing file: ({}) of type: ({}).'.format(str(f), str(type(f))))
-    elif isinstance(var_type, WDLMapType):
-        if isinstance(f, dict):
-            return {abspath_file(k, var_type.key, cwd):
-                    abspath_file(v, var_type.value, cwd) for k, v in f.items()}
-        else:
-            raise WDLRuntimeError('Error processing file: ({}) of type: ({}).'.format(str(f), str(type(f))))
+    elif isinstance(f, dict):
+        return {abspath_file(k, cwd): abspath_file(v, cwd) for k, v in f}
+    elif isinstance(f, (int, str, bool, float)):
+        # primitives are fine as is.
+        return f
     else:
-        # everything else is fine as is.
-        return f
+        raise WDLRuntimeError('Error processing file: ({}) of type: ({}).'.format(str(f), str(type(f))))
 
 
-def read_single_file(f, tempDir, fileStore, docker=False):
+def read_single_file(f, tempDir, fileStore, docker=False) -> str:
     import os
     try:
         fpath = fileStore.readGlobalFile(f[0], userPath=os.path.join(tempDir, f[1]))
@@ -395,37 +373,33 @@ def read_single_file(f, tempDir, fileStore, docker=False):
     return fpath
 
 
-def read_file(f: Any, var_type: WDLType, tempDir: str, fileStore: AbstractFileStore, docker: bool = False):
-    # check if this has already been processed
-    if isinstance(var_type, WDLFileType):
+def read_file(f: Any, tempDir: str, fileStore: AbstractFileStore, docker: bool = False):
+    if isinstance(f, tuple):
         return read_single_file(f, tempDir, fileStore, docker=docker)
-    elif isinstance(var_type, WDLArrayType):
-        return [read_file(sf, var_type.element, tempDir, fileStore, docker=docker) for sf in f]
-    elif isinstance(var_type, WDLPairType):
-        if isinstance(f, WDLPair):
-            f.left = read_file(f.left, var_type.left, tempDir, fileStore, docker=docker)
-            f.right = read_file(f.right, var_type.right, tempDir, fileStore, docker=docker)
-            return f
-        else:
-            raise RuntimeError('Error processing file: {}'.format(str(f)))
-    elif isinstance(var_type, WDLMapType):
-        if isinstance(f, dict):
-            return {read_file(k, var_type.key, tempDir, fileStore, docker=docker):
-                    read_file(v, var_type.value, tempDir, fileStore, docker=docker) for k, v in f.items()}
-        else:
-            raise RuntimeError('Error processing file: {}'.format(str(f)))
-    else:
-        # everything else is fine as is.
+    elif isinstance(f, list):
+        # recursively call read_file() to handle cases like Array[Map[String, File]]
+        return [read_file(sf, tempDir, fileStore, docker=docker) for sf in f]
+    elif isinstance(f, WDLPair):
+        f.left = read_file(f.left, tempDir, fileStore, docker=docker)
+        f.right = read_file(f.right, tempDir, fileStore, docker=docker)
         return f
+    elif isinstance(f, dict):
+        return {read_file(k, tempDir, fileStore, docker=docker):
+                read_file(v, tempDir, fileStore, docker=docker) for k, v in f}
+    elif isinstance(f, (int, str, bool, float)):
+        # primitives are fine as is.
+        return f
+    else:
+        raise WDLRuntimeError('Error processing file: {}'.format(str(f)))
 
 
-def process_and_read_file(f, var_type: WDLType, tempDir, fileStore, docker=False):
+def process_and_read_file(f, tempDir, fileStore, docker=False):
     if not f:
         # in the case of "optional" files (same treatment in 'abspath_file()')
         # TODO: handle this at compile time, not here and change to the empty string
         return None
-    processed_file = process_infile(f, fileStore, var_type)
-    return read_file(processed_file, var_type, tempDir, fileStore, docker=docker)
+    processed_file = process_infile(f, fileStore)
+    return read_file(processed_file, tempDir, fileStore, docker=docker)
 
 
 def generate_stdout_file(output, tempDir, fileStore, stderr=False):
@@ -573,7 +547,13 @@ def size(f: Optional[Union[tuple, List[tuple]]] = None,
     if f is None:
         return 0
 
-    assert isinstance(f, (str, tuple, list)), f'size() excepts a "File" or "File?" argument!  Not: {type(f)}'
+    # it is possible that size() is called directly (e.g.: size('file')) and so it is not treated as a file.
+    if isinstance(f, str):
+        f = (f, None)
+    elif isinstance(f, list):
+        f = [(f, None) if isinstance(sf, str) else sf for sf in f]
+
+    assert isinstance(f, (tuple, list)), f'size() excepts a "File" or "File?" argument!  Not: {type(f)}'
 
     # validate the input. fileStore is only required if the input is not processed.
     f = process_infile(f, fileStore)

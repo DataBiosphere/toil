@@ -141,9 +141,9 @@ class ToilWdlIntegrationTest(ToilTest):
         options = Job.Runner.getDefaultOptions('./toilWorkflowRun')
         options.clean = 'always'
         with Toil(options) as toil:
-            small = process_infile(os.path.abspath('src/toil/test/wdl/testfiles/vocab.wdl'), toil)
+            small = process_infile((os.path.abspath('src/toil/test/wdl/testfiles/vocab.wdl'), None), toil)
             small_file = size(small)
-            large = process_infile(self.encode_data, toil)
+            large = process_infile((self.encode_data, None), toil)
             larger_file = size(large)
             larger_file_in_mb = size(large, 'mb')
             assert small_file >= 1800, small_file

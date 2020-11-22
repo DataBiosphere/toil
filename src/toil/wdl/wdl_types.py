@@ -128,7 +128,13 @@ class WDLFileType(WDLType):
         return ''
 
     def _create(self, value: Any) -> Any:
-        return value
+        if isinstance(value, tuple):
+            return value
+
+        # Unprocessed and unread files are represented as a tuple: (file_path, preserved_file_name).
+        # Unprocessed files (not imported to the fileStore) are tuples in the form of (file_path, None).
+        # Once the file is read (via readGlobalFile), it will change to the absolute path as a string.
+        return value, None
 
 
 class WDLArrayType(WDLCompoundType):
@@ -208,8 +214,7 @@ class WDLMapType(WDLCompoundType):
 
 class WDLPair:
     """
-    Represent a WDL Pair literal defined at:
-
+    Represent a WDL Pair literal defined at
     https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#pair-literals
     """
 
