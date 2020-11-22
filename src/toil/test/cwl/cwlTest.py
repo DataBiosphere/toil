@@ -233,8 +233,7 @@ class CWLv10Test(ToilTest):
         run_conformance_tests(workDir=self.workDir,
                               yml='conformance_test_v1.0.yaml',
                               caching=caching,
-                              batchSystem=batchSystem,
-                              selected_tests='122')
+                              batchSystem=batchSystem)
 
     @slow
     @needs_lsf
@@ -381,8 +380,7 @@ class CWLv11Test(ToilTest):
         run_conformance_tests(workDir=self.cwlSpec,
                               yml=self.test_yaml,
                               caching=caching,
-                              batchSystem=batchSystem,
-                              selected_tests='236,237')
+                              batchSystem=batchSystem)
 
 @needs_cwl
 class CWLv12Test(ToilTest):
@@ -419,5 +417,4 @@ class CWLv12Test(ToilTest):
                               yml=self.test_yaml,
                               caching=caching,
                               batchSystem=batchSystem,
-                              selected_tests='237,238')
-                              # selected_tests='1-306,308,312-329,333-336')
+                              selected_tests='1-306,308,312-329,333-336')
