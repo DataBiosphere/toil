@@ -29,6 +29,7 @@ import sys
 import tempfile
 import urllib
 import uuid
+import shutil
 from typing import (
     Any,
     Dict,
@@ -509,16 +510,16 @@ def resolve_dict_w_promises(
         else:
             result[k] = first_pass_results[k]
 
-    # '_:' prefixed file paths are a signal to cwltool to create folders in place
-    # rather than copying them, so we make them here
-    for entry in result:
-        if isinstance(result[entry], dict):
-            location = result[entry].get("location")
-            if location:
-                if location.startswith("_:file://"):
-                    local_dir_path = location[len("_:file://") :]
-                    os.makedirs(local_dir_path, exist_ok=True)
-                    result[entry]["location"] = local_dir_path
+    # # '_:' prefixed file paths are a signal to cwltool to create folders in place
+    # # rather than copying them, so we make them here
+    # for entry in result:
+    #     if isinstance(result[entry], dict):
+    #         location = result[entry].get("location")
+    #         if location:
+    #             if location.startswith("_:file://"):
+    #                 local_dir_path = location[len("_:file://"):]
+    #                 os.makedirs(local_dir_path, exist_ok=True)
+    #                 result[entry]["location"] = local_dir_path
     return result
 
 
@@ -696,11 +697,13 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         except NoSuchFileException:
             return False
 
-    def realpath(self, path: str) -> str:
-        if path.startswith("toilfs:"):
-            # import the file and make it available locally if it exists
-            path = self._abs(path)
-        return os.path.realpath(path)
+    # def realpath(self, path: str) -> str:
+    #     if path.startswith("toilfs:"):
+    #         # import the file and make it available locally if it exists
+    #         path = self._abs(path)
+    #     elif path.startswith("_:"):
+    #         return path
+    #     return os.path.realpath(path)
 
     def _abs(self, path: str) -> str:
         """
@@ -860,14 +863,12 @@ def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> str:
     return file_store.writeGlobalFile(schema_salad.ref_resolver.uri_file_path(fileuri))
 
 
-def remove_empty_listings(
-    fs_access: cwltool.stdfsaccess.StdFsAccess, rec: CWLObjectType
-) -> None:
+def remove_empty_listings(rec: CWLObjectType) -> None:
     if rec.get("class") != "Directory":
         finddirs = []  # type: List[CWLObjectType]
         visit_class(rec, ("Directory",), finddirs.append)
         for f in finddirs:
-            remove_empty_listings(fs_access, f)
+            remove_empty_listings(f)
         return
     if "listing" in rec and rec["listing"] == []:
         del rec["listing"]
@@ -1152,6 +1153,11 @@ class CWLJob(Job):
             if not found:
                 cwljob.pop(inp_id)
 
+        # adjustDirObjs(
+        #     cwljob,
+        #     functools.partial(remove_empty_listings),
+        # )
+
         # Exports temporary directory for batch systems that reset TMPDIR
         os.environ["TMPDIR"] = os.path.realpath(file_store.getLocalTempDir())
         outdir = os.path.join(file_store.getLocalTempDir(), "out")
@@ -1201,14 +1207,6 @@ class CWLJob(Job):
             output,
             functools.partial(
                 get_listing, cwltool.stdfsaccess.StdFsAccess(outdir), recursive=True
-            ),
-        )
-
-        adjustDirObjs(
-            output,
-            functools.partial(
-                remove_empty_listings,
-                cwltool.stdfsaccess.StdFsAccess(outdir),
             ),
         )
 
@@ -2186,6 +2184,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             runtime_context.no_read_only = options.no_read_only
             runtime_context.basedir = options.basedir
             runtime_context.move_outputs = "leave"
+            # if determine_inplace_update(tool):
+            #     runtime_context.move_outputs = "leave"
 
             # We instantiate an early builder object here to populate indirect
             # secondaryFile references using cwltool's library because we need
