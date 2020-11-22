@@ -510,16 +510,16 @@ def resolve_dict_w_promises(
         else:
             result[k] = first_pass_results[k]
 
-    # # '_:' prefixed file paths are a signal to cwltool to create folders in place
-    # # rather than copying them, so we make them here
-    # for entry in result:
-    #     if isinstance(result[entry], dict):
-    #         location = result[entry].get("location")
-    #         if location:
-    #             if location.startswith("_:file://"):
-    #                 local_dir_path = location[len("_:file://"):]
-    #                 os.makedirs(local_dir_path, exist_ok=True)
-    #                 result[entry]["location"] = local_dir_path
+    # '_:' prefixed file paths are a signal to cwltool to create folders in place
+    # rather than copying them, so we make them here
+    for entry in result:
+        if isinstance(result[entry], dict):
+            location = result[entry].get("location")
+            if location:
+                if location.startswith("_:file://"):
+                    local_dir_path = location[len("_:file://"):]
+                    os.makedirs(local_dir_path, exist_ok=True)
+                    result[entry]["location"] = local_dir_path
     return result
 
 
@@ -697,13 +697,13 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         except NoSuchFileException:
             return False
 
-    # def realpath(self, path: str) -> str:
-    #     if path.startswith("toilfs:"):
-    #         # import the file and make it available locally if it exists
-    #         path = self._abs(path)
-    #     elif path.startswith("_:"):
-    #         return path
-    #     return os.path.realpath(path)
+    def realpath(self, path: str) -> str:
+        if path.startswith("toilfs:"):
+            # import the file and make it available locally if it exists
+            path = self._abs(path)
+        elif path.startswith("_:"):
+            return path
+        return os.path.realpath(path)
 
     def _abs(self, path: str) -> str:
         """
@@ -719,9 +719,8 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             logger.debug("Need to download file to get a local absolute path.")
             destination = self.file_store.readGlobalFile(FileID.unpack(path[7:]))
             logger.debug("Downloaded %s to %s", path, destination)
-            assert os.path.exists(
-                destination
-            ), f"{destination} does not exist after file store import."
+            if not os.path.exists(destination):
+                raise RuntimeError(f"{destination} does not exist after filestore import.")
             return destination
         else:
             result = super(ToilFsAccess, self)._abs(path)
@@ -1153,10 +1152,10 @@ class CWLJob(Job):
             if not found:
                 cwljob.pop(inp_id)
 
-        # adjustDirObjs(
-        #     cwljob,
-        #     functools.partial(remove_empty_listings),
-        # )
+        adjustDirObjs(
+            cwljob,
+            functools.partial(remove_empty_listings),
+        )
 
         # Exports temporary directory for batch systems that reset TMPDIR
         os.environ["TMPDIR"] = os.path.realpath(file_store.getLocalTempDir())
@@ -1773,9 +1772,8 @@ def determine_load_listing(tool: ToilCommandLineTool):
     load_listing = tool.tool.get("loadListing", None) or load_listing_tool_req
 
     listing_choices = ("no_listing", "shallow_listing", "deep_listing")
-    assert (
-        load_listing in listing_choices
-    ), f'Unknown loadListing specified: "{load_listing}".  Valid choices: {listing_choices}'
+    if load_listing not in listing_choices:
+        raise ValueError(f'Unknown loadListing specified: "{load_listing}".  Valid choices: {listing_choices}')
     return load_listing
 
 
@@ -2040,6 +2038,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         find_default_container, options
     )
     runtime_context.workdir = workdir  # type: ignore
+    runtime_context.move_outputs = "leave"
     runtime_context.rm_tmpdir = False
     loading_context = cwltool.context.LoadingContext(vars(options))
 
@@ -2183,7 +2182,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             runtime_context.no_match_user = options.no_match_user
             runtime_context.no_read_only = options.no_read_only
             runtime_context.basedir = options.basedir
-            runtime_context.move_outputs = "leave"
+            runtime_context.move_outputs = "move"
             # if determine_inplace_update(tool):
             #     runtime_context.move_outputs = "leave"
 
