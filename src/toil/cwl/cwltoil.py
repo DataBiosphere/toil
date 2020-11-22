@@ -705,6 +705,23 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             return path
         return os.path.realpath(path)
 
+    def listdir(self, fn: str) -> List[str]:
+        directory = self._abs(fn)
+        if fn.startswith('_:file://'):
+            directory = fn[len('_:file://'):]
+            if os.path.isdir(directory):
+                return [
+                    cwltool.stdfsaccess.abspath(urllib.parse.quote(entry), fn)
+                    for entry in os.listdir(directory)
+                ]
+            else:
+                return []
+        else:
+            return [
+                cwltool.stdfsaccess.abspath(urllib.parse.quote(entry), fn)
+                for entry in os.listdir(self._abs(directory))
+            ]
+
     def _abs(self, path: str) -> str:
         """
         Return a local absolute path for a file (no schema).
@@ -721,10 +738,11 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             logger.debug("Downloaded %s to %s", path, destination)
             if not os.path.exists(destination):
                 raise RuntimeError(f"{destination} does not exist after filestore import.")
-            return destination
+        elif path.startswith('_:file://'):
+            destination = path
         else:
-            result = super(ToilFsAccess, self)._abs(path)
-            return result
+            destination = super(ToilFsAccess, self)._abs(path)
+        return destination
 
 
 def toil_get_file(
