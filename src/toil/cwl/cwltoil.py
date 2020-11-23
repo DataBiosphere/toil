@@ -503,6 +503,11 @@ def resolve_dict_w_promises(
 
     result = {}
     for k, v in dict_w_promises.items():
+        # if 'secondaryFiles' in v:
+        #     secondary_files = []
+        #     for secondary_file in v['secondaryFiles']:
+        #         secondary_files.append({sk: sv.resolve() for sk, sv in secondary_file})
+        #     first_pass_results[k] = secondary_files
         if isinstance(v, StepValueFrom):
             if file_store:
                 v.eval_prep(first_pass_results, file_store)
@@ -732,6 +737,8 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         # cwltool.stdfsaccess.StdFsAccess, (among other things) so this should
         # not error on missing files.
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43  # noqa B950
+        if path.endswith('.accessory'):
+            print('ok')
         if path.startswith("toilfs:"):
             logger.debug("Need to download file to get a local absolute path.")
             destination = self.file_store.readGlobalFile(FileID.unpack(path[7:]))
@@ -2161,7 +2168,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 )  # actually import files into the jobstore
 
             import_files(tool.tool)
-
+#
             for inp in tool.tool["inputs"]:
 
                 def set_secondary(fileobj):
@@ -2208,6 +2215,9 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             # selected, it will discover dirs one deep and then again later on
             # (producing 2+ deep listings instead of only 1)
             builder.loadListing = "no_listing"
+
+            # if 'inputWithSecondary' in initialized_job_order:
+            #     initialized_job_order = {'inputWithSecondary': {'class': 'File', 'location': 'file:///home/quokka/git/236-cwl/cwl-v1.2/tests/secondaryfiles/secondary_file_test.txt', 'size': 0, 'basename': 'secondary_file_test.txt', 'nameroot': 'secondary_file_test', 'nameext': '.txt'}}
 
             builder.bind_input(
                 tool.inputs_record_schema,
