@@ -2137,31 +2137,6 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             fs_access = cwltool.stdfsaccess.StdFsAccess(options.basedir)
             fill_in_defaults(tool.tool["inputs"], initialized_job_order, fs_access)
 
-            def path_to_loc(obj):
-                if "location" not in obj and "path" in obj:
-                    obj["location"] = obj["path"]
-                    del obj["path"]
-
-            def import_files(inner_tool):
-                visit_class(inner_tool, ("File", "Directory"), path_to_loc)
-                visit_class(
-                    inner_tool, ("File",), functools.partial(add_sizes, fs_access)
-                )
-                normalizeFilesDirs(inner_tool)
-
-                adjustFileObjs(
-                    inner_tool,
-                    functools.partial(
-                        uploadFile,
-                        toil.importFile,
-                        fileindex,
-                        existing,
-                        skip_broken=True,
-                    ),
-                )  # actually import files into the jobstore
-
-            import_files(tool.tool)
-
             for inp in tool.tool["inputs"]:
 
                 def set_secondary(fileobj):
@@ -2214,6 +2189,29 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 initialized_job_order,
                 discover_secondaryFiles=True,
             )
+
+            def path_to_loc(obj):
+                if "location" not in obj and "path" in obj:
+                    obj["location"] = obj["path"]
+                    del obj["path"]
+
+            def import_files(inner_tool):
+                visit_class(inner_tool, ("File", "Directory"), path_to_loc)
+                visit_class(
+                    inner_tool, ("File",), functools.partial(add_sizes, fs_access)
+                )
+                normalizeFilesDirs(inner_tool)
+
+                adjustFileObjs(
+                    inner_tool,
+                    functools.partial(
+                        uploadFile,
+                        toil.importFile,
+                        fileindex,
+                        existing,
+                        skip_broken=True,
+                    ),
+                )
 
             # files with the 'file://' uri are imported into the jobstore and
             # changed to 'toilfs:'
