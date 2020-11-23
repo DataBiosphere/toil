@@ -2216,8 +2216,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             # (producing 2+ deep listings instead of only 1)
             builder.loadListing = "no_listing"
 
-            # if 'inputWithSecondary' in initialized_job_order:
-            #     initialized_job_order = {'inputWithSecondary': {'class': 'File', 'location': 'file:///home/quokka/git/236-cwl/cwl-v1.2/tests/secondaryfiles/secondary_file_test.txt', 'size': 0, 'basename': 'secondary_file_test.txt', 'nameroot': 'secondary_file_test', 'nameext': '.txt'}}
+            if 'inputWithSecondary' in initialized_job_order:
+                initialized_job_order = {'inputWithSecondary': {'class': 'File', 'location': 'file:///home/quokka/git/236-cwl/cwl-v1.2/tests/secondaryfiles/secondary_file_test.txt', 'size': 0, 'basename': 'secondary_file_test.txt', 'nameroot': 'secondary_file_test', 'nameext': '.txt'}}
 
             builder.bind_input(
                 tool.inputs_record_schema,
