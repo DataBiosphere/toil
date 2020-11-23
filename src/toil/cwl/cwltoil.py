@@ -29,8 +29,22 @@ import sys
 import tempfile
 import urllib
 import uuid
-from typing import (Any, Dict, Iterator, List, Mapping, MutableMapping,
-                    MutableSequence, Text, TextIO, Tuple, TypeVar, Union, cast)
+import shutil
+from typing import (
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    Text,
+    TextIO,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+)
 from urllib import parse as urlparse
 
 import cwltool.builder
@@ -48,14 +62,29 @@ from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mutation import MutationManager
 from cwltool.pathmapper import MapperEnt, PathMapper, downloadHttpFile
-from cwltool.process import (Process, add_sizes, compute_checksums,
-                             fill_in_defaults, shortname)
+from cwltool.process import (
+    Process,
+    add_sizes,
+    compute_checksums,
+    fill_in_defaults,
+    shortname,
+)
 from cwltool.secrets import SecretStore
 from cwltool.software_requirements import (
-    DependenciesConfiguration, get_container_from_software_requirements)
-from cwltool.utils import (CWLObjectType, adjustDirObjs, adjustFileObjs,
-                           aslist, convert_pathsep_to_unix, get_listing,
-                           normalizeFilesDirs, visit_class)
+    DependenciesConfiguration,
+    get_container_from_software_requirements,
+)
+from cwltool.utils import (
+    CWLOutputAtomType,
+    CWLObjectType,
+    adjustDirObjs,
+    adjustFileObjs,
+    aslist,
+    convert_pathsep_to_unix,
+    get_listing,
+    normalizeFilesDirs,
+    visit_class,
+)
 from ruamel.yaml.comments import CommentedMap
 from schema_salad import validate
 from schema_salad.schema import Names
@@ -65,8 +94,7 @@ from toil.common import Config, Toil, addOptions
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job
-from toil.jobStores.abstractJobStore import (NoSuchFileException,
-                                             NoSuchJobStoreException)
+from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobStoreException
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
@@ -481,6 +509,17 @@ def resolve_dict_w_promises(
             result[k] = v.do_eval(inputs=first_pass_results)
         else:
             result[k] = first_pass_results[k]
+
+    # '_:' prefixed file paths are a signal to cwltool to create folders in place
+    # rather than copying them, so we make them here
+    for entry in result:
+        if isinstance(result[entry], dict):
+            location = result[entry].get("location")
+            if location:
+                if location.startswith("_:file://"):
+                    local_dir_path = location[len("_:file://") :]
+                    os.makedirs(local_dir_path, exist_ok=True)
+                    result[entry]["location"] = local_dir_path
     return result
 
 
@@ -658,6 +697,31 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         except NoSuchFileException:
             return False
 
+    def realpath(self, path: str) -> str:
+        if path.startswith("toilfs:"):
+            # import the file and make it available locally if it exists
+            path = self._abs(path)
+        elif path.startswith("_:"):
+            return path
+        return os.path.realpath(path)
+
+    def listdir(self, fn: str) -> List[str]:
+        directory = self._abs(fn)
+        if fn.startswith("_:file://"):
+            directory = fn[len("_:file://") :]
+            if os.path.isdir(directory):
+                return [
+                    cwltool.stdfsaccess.abspath(urllib.parse.quote(entry), fn)
+                    for entry in os.listdir(directory)
+                ]
+            else:
+                return []
+        else:
+            return [
+                cwltool.stdfsaccess.abspath(urllib.parse.quote(entry), fn)
+                for entry in os.listdir(self._abs(directory))
+            ]
+
     def _abs(self, path: str) -> str:
         """
         Return a local absolute path for a file (no schema).
@@ -672,11 +736,15 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             logger.debug("Need to download file to get a local absolute path.")
             destination = self.file_store.readGlobalFile(FileID.unpack(path[7:]))
             logger.debug("Downloaded %s to %s", path, destination)
-            assert os.path.exists(destination)
-            return destination
+            if not os.path.exists(destination):
+                raise RuntimeError(
+                    f"{destination} does not exist after filestore import."
+                )
+        elif path.startswith("_:file://"):
+            destination = path
         else:
-            result = super(ToilFsAccess, self)._abs(path)
-            return result
+            destination = super(ToilFsAccess, self)._abs(path)
+        return destination
 
 
 def toil_get_file(
@@ -812,6 +880,18 @@ def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> str:
     """Wrap writeGlobalFile to accept file:// URIs."""
     fileuri = fileuri if ":/" in fileuri else f"file://{fileuri}"
     return file_store.writeGlobalFile(schema_salad.ref_resolver.uri_file_path(fileuri))
+
+
+def remove_empty_listings(rec: CWLObjectType) -> None:
+    if rec.get("class") != "Directory":
+        finddirs = []  # type: List[CWLObjectType]
+        visit_class(rec, ("Directory",), finddirs.append)
+        for f in finddirs:
+            remove_empty_listings(f)
+        return
+    if "listing" in rec and rec["listing"] == []:
+        del rec["listing"]
+        return
 
 
 class ResolveIndirect(Job):
@@ -1091,6 +1171,11 @@ class CWLJob(Job):
                     found = True
             if not found:
                 cwljob.pop(inp_id)
+
+        adjustDirObjs(
+            cwljob,
+            functools.partial(remove_empty_listings),
+        )
 
         # Exports temporary directory for batch systems that reset TMPDIR
         os.environ["TMPDIR"] = os.path.realpath(file_store.getLocalTempDir())
@@ -1695,7 +1780,13 @@ def determine_load_listing(tool: ToilCommandLineTool):
         if load_listing_req
         else "no_listing"
     )
-    load_listing = tool.tool.get("loadListing") or load_listing_tool_req
+    load_listing = tool.tool.get("loadListing", None) or load_listing_tool_req
+
+    listing_choices = ("no_listing", "shallow_listing", "deep_listing")
+    if load_listing not in listing_choices:
+        raise ValueError(
+            f'Unknown loadListing specified: "{load_listing}".  Valid choices: {listing_choices}'
+        )
     return load_listing
 
 
@@ -2104,6 +2195,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             runtime_context.no_match_user = options.no_match_user
             runtime_context.no_read_only = options.no_read_only
             runtime_context.basedir = options.basedir
+            runtime_context.move_outputs = "move"
 
             # We instantiate an early builder object here to populate indirect
             # secondaryFile references using cwltool's library because we need
