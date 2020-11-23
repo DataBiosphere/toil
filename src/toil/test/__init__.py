@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -412,6 +412,7 @@ def needs_docker(test_item):
     else:
         return unittest.skip("Install docker to include this test.")(test_item)
 
+
 def needs_encryption(test_item):
     """
     Use as a decorator before test classes or methods to only run them if PyNaCl is installed
@@ -466,6 +467,7 @@ def needs_appliance(test_item):
     return unittest.skip(f"Cannot find appliance {image}. Use 'make test' target to automatically build appliance, or "
                          f"just run 'make push_docker' prior to running this test.")(test_item)
 
+
 def needs_fetchable_appliance(test_item):
     """
     Use as a decorator before test classes or methods to only run them if
@@ -483,8 +485,7 @@ def needs_fetchable_appliance(test_item):
                              f"just run 'make push_docker' prior to running this test.")(test_item)
     else:
         return test_item
-        
-    
+
 
 def integrative(test_item):
     """
