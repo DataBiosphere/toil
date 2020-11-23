@@ -255,7 +255,6 @@ def process_infile(f: Any, fileStore: AbstractFileStore):
     elif isinstance(f, dict):
         return {process_infile(k, fileStore): process_infile(v, fileStore) for k, v in f}
     elif isinstance(f, (int, str, bool, float)):
-        # primitives are fine as is.
         return f
     else:
         raise WDLRuntimeError('Error processing file: '.format(str(f)))
@@ -358,7 +357,6 @@ def abspath_file(f: Any, cwd: str):
     elif isinstance(f, dict):
         return {abspath_file(k, cwd): abspath_file(v, cwd) for k, v in f}
     elif isinstance(f, (int, str, bool, float)):
-        # primitives are fine as is.
         return f
     else:
         raise WDLRuntimeError('Error processing file: ({}) of type: ({}).'.format(str(f), str(type(f))))
@@ -387,7 +385,6 @@ def read_file(f: Any, tempDir: str, fileStore: AbstractFileStore, docker: bool =
         return {read_file(k, tempDir, fileStore, docker=docker):
                 read_file(v, tempDir, fileStore, docker=docker) for k, v in f}
     elif isinstance(f, (int, str, bool, float)):
-        # primitives are fine as is.
         return f
     else:
         raise WDLRuntimeError('Error processing file: {}'.format(str(f)))

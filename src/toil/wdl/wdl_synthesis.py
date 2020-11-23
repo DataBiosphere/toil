@@ -687,10 +687,10 @@ class SynthesizeWDL:
                              def run(self, fileStore):
                                  fileStore.logToMaster("{jobname}")
                                  tempDir = fileStore.getLocalTempDir()
-
+                                 
                                  _toil_wdl_internal__stdout_file = os.path.join(tempDir, 'stdout')
                                  _toil_wdl_internal__stderr_file = os.path.join(tempDir, 'stderr')
-
+                                 
                                  try:
                                      os.makedirs(os.path.join(tempDir, 'execution'))
                                  except OSError as e:
@@ -701,7 +701,6 @@ class SynthesizeWDL:
             for i in self.tasks_dictionary[job]['inputs']:
                 var = i[0]
                 var_type = i[1]
-                var_type_str = self.write_declaration_type(var_type)
 
                 docker_bool = str(self.needsdocker(job))
 
@@ -761,7 +760,6 @@ class SynthesizeWDL:
                 return self.needs_file_import(var_type.key) or self.needs_file_import(var_type.value)
             else:
                 raise NotImplementedError
-
         return False
 
     def write_declaration_type(self, var_type: WDLType):
@@ -769,7 +767,6 @@ class SynthesizeWDL:
         Return a string that preserves the construction of the given WDL type
         so it can be passed into the compiled script.
         """
-
         section = var_type.__class__.__name__ + '('  # e.g.: 'WDLIntType('
 
         if isinstance(var_type, WDLCompoundType):
@@ -788,7 +785,6 @@ class SynthesizeWDL:
             if isinstance(var_type, WDLCompoundType):
                 section += ', '
             section += 'optional=True'
-
         return section + ')'
 
     def write_function_bashscriptline(self, job):

@@ -208,10 +208,6 @@ class WDLMapType(WDLCompoundType):
         return {self.key.create(k): self.value.create(v) for k, v in value.items()}
 
 
-#
-# WDL instances
-#
-
 class WDLPair:
     """
     Represent a WDL Pair literal defined at

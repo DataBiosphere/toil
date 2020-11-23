@@ -680,7 +680,7 @@ class AnalyzeWDL:
                     raise NotImplementedError
             else:
                 # either a primitive optional type OR deeply recursive types
-                # TODO: adding tests #3331
+                # TODO: add tests #3331
                 wdl_type = self.parse_declaration_type(subtype)
                 wdl_type.optional = optional
                 return wdl_type
