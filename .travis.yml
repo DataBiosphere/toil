@@ -4,7 +4,7 @@ python:
 install:
   - make prepare
   - make develop extras=[aws,google] # adding extras to avoid import errors
-  - pip uninstall cwltool  # temporary and to be removed before merging
+  - pip uninstall -y cwltool  # temporary and to be removed before merging
 script:
   - TOIL_TEST_QUICK=True make test_offline
 env:
