@@ -88,7 +88,6 @@ cyan=\033[0;36m
 
 develop: check_venv
 	pip install -e .$(extras)
-	pip install --no-cache --upgrade git+https://github.com/common-workflow-language/cwltool.git
 
 clean_develop: check_venv
 	- pip uninstall -y toil
