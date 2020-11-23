@@ -414,9 +414,9 @@ class CWLv12Test(ToilTest):
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance(self, batchSystem=None, caching=False):
-        # TODO: we do not currently pass tests: 307, 309, 310, 311, 330, 331, 332
+        # TODO: we do not currently pass tests: 307, 330, 331, 332
         run_conformance_tests(workDir=self.cwlSpec,
                               yml=self.test_yaml,
                               caching=caching,
                               batchSystem=batchSystem,
-                              selected_tests='1-306,308,312-329,333-336')
+                              selected_tests='1-306,308-329,333-336')
