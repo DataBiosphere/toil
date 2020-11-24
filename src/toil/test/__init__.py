@@ -399,6 +399,15 @@ def needs_lsf(test_item):
         return unittest.skip("Install LSF to include this test.")(test_item)
 
 
+def needs_java(test_item):
+    """Use as a test decorator to run only if java is installed."""
+    test_item = _mark_test('java', test_item)
+    if which('java'):
+        return test_item
+    else:
+        return unittest.skip("Install java to include this test.")(test_item)
+
+
 def needs_docker(test_item):
     """
     Use as a decorator before test classes or methods to only run them if

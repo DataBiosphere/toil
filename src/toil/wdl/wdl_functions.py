@@ -351,12 +351,20 @@ def process_single_outfile(f, fileStore, workDir, outDir):
         output_f_path = os.path.join('execution', f)
     elif os.path.exists(os.path.join(workDir, f)):
         output_f_path = os.path.join(workDir, f)
+    elif os.path.exists(os.path.join(outDir, f)):
+        output_f_path = os.path.join(outDir, f)
     else:
         tmp = subprocess.check_output(['ls', '-lha', workDir]).decode('utf-8')
         exe = subprocess.check_output(['ls', '-lha', os.path.join(workDir, 'execution')]).decode('utf-8')
-        raise RuntimeError('OUTPUT FILE: {} was not found!\n'
+        for std_file in ('stdout', 'stderr'):
+            std_file = os.path.join(workDir, 'execution', std_file)
+            if os.path.exists(std_file):
+                with open(std_file, 'rb') as f:
+                    wdllogger.info(f.read())
+
+        raise RuntimeError('OUTPUT FILE: {} was not found in {}!\n'
                            '{}\n\n'
-                           '{}\n'.format(f, tmp, exe))
+                           '{}\n'.format(f, os.getcwd(), tmp, exe))
     output_file = fileStore.writeGlobalFile(output_f_path)
     preserveThisFilename = os.path.basename(output_f_path)
     fileStore.exportFile(output_file, "file://" + os.path.join(os.path.abspath(outDir), preserveThisFilename))

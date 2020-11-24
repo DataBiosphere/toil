@@ -23,7 +23,7 @@ from toil.wdl.wdl_functions import defined
 from toil.wdl.wdl_functions import read_tsv
 from toil.wdl.wdl_functions import read_csv
 from toil.wdl.wdl_functions import basename
-from toil.test import ToilTest, slow, needs_docker
+from toil.test import ToilTest, slow, needs_docker, needs_java
 from toil import urlretrieve
 import zipfile
 import shutil
@@ -54,17 +54,6 @@ class ToilWdlIntegrationTest(ToilTest):
         cls.gatk_data = os.path.join(cls.test_directory, "GATK_data.zip")
         cls.gatk_data_dir = os.path.join(cls.test_directory, "GATK_data")
 
-        # GATK tests will not run on jenkins b/c GATK.jar needs Java 7
-        # and jenkins only has Java 6 (12-16-2017).
-        # Set this to true to run the GATK integration tests locally.
-        cls.manual_integration_tests = False
-
-        # Delete the test datasets after running the tests.
-        # Jenkins requires this to not error on "untracked files".
-        # Set to true if running tests locally and you don't want to
-        # redownload the data each time you run the test.
-        cls.jenkins = True
-
         cls.fetch_and_unzip_from_s3(filename='ENCODE_data.zip',
                                     data=cls.encode_data,
                                     data_dir=cls.encode_data_dir)
@@ -73,42 +62,53 @@ class ToilWdlIntegrationTest(ToilTest):
                                     data=cls.wdl_data,
                                     data_dir=cls.wdl_data_dir)
 
-        # these tests require Java 7 (GATK.jar); jenkins has Java 6 and so must
-        # be run manually as integration tests (12.16.2017)
-        if cls.manual_integration_tests:
-            cls.fetch_and_unzip_from_s3(filename='GATK_data.zip',
-                                        data=cls.gatk_data,
-                                        data_dir=cls.gatk_data_dir)
+        cls.fetch_and_unzip_from_s3(filename='GATK_data.zip',
+                                    data=cls.gatk_data,
+                                    data_dir=cls.gatk_data_dir)
 
     def tearDown(self):
-        """Clean up outputs."""
-        remove_outputs(self.output_dir)
-
-        jobstores = ['./toilWorkflowRun', '/mnt/ephemeral/workspace/toil-pull-requests/toilWorkflowRun']
-        for jobstore in jobstores:
-            if os.path.exists(jobstore):
-                shutil.rmtree(jobstore)
-
-        unittest.TestCase.tearDown(self)
+        if os.path.exists(self.output_dir):
+            shutil.rmtree(self.output_dir)
 
     @classmethod
     def tearDownClass(cls):
-        """Clean up (shared) inputs."""
-        if cls.jenkins:
-            if os.path.exists(cls.gatk_data):
-                os.remove(cls.gatk_data)
-            if os.path.exists(cls.gatk_data_dir):
-                shutil.rmtree(cls.gatk_data_dir)
-
-            if os.path.exists(cls.wdl_data):
-                os.remove(cls.wdl_data)
-            if os.path.exists(cls.wdl_data_dir):
-                shutil.rmtree(cls.wdl_data_dir)
-
-            if os.path.exists(cls.encode_data):
-                os.remove(cls.encode_data)
-            if os.path.exists(cls.encode_data_dir):
-                shutil.rmtree(cls.encode_data_dir)
+        """We generate a lot of cruft."""
+        jobstores = ['./toilWorkflowRun', '/mnt/ephemeral/workspace/toil-pull-requests/toilWorkflowRun']
+        data_dirs = [cls.gatk_data_dir, cls.wdl_data_dir, cls.encode_data_dir]
+        data_zips = [cls.gatk_data, cls.wdl_data, cls.encode_data]
+        encode_outputs = ['ENCFF000VOL_chr21.fq.gz',
+                          'ENCFF000VOL_chr21.raw.srt.bam',
+                          'ENCFF000VOL_chr21.raw.srt.bam.flagstat.qc',
+                          'ENCFF000VOL_chr21.raw.srt.dup.qc',
+                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.bam',
+                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.bam.bai',
+                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.filt.nodup.sample.15.SE.tagAlign.gz',
+                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.filt.nodup.sample.15.SE.tagAlign.gz.cc.plot.pdf',
+                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.filt.nodup.sample.15.SE.tagAlign.gz.cc.qc',
+                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.flagstat.qc',
+                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.pbc.qc',
+                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.SE.tagAlign.gz',
+                          'ENCFF000VOL_chr21.sai',
+                          'test.txt',
+                          'filter_qc.json',
+                          'filter_qc.log',
+                          'GRCh38_chr21_bwa.tar.gz',
+                          'mapping.json',
+                          'mapping.log',
+                          'post_mapping.json',
+                          'post_mapping.log',
+                          'wdl-stats.log',
+                          'xcor.json',
+                          'xcor.log',
+                          'toilwdl_compiled.pyc',
+                          'toilwdl_compiled.py',
+                          'post_processing.log',
+                          'md5.log']
+        for cleanup in jobstores + data_dirs + data_zips + encode_outputs:
+            if os.path.isdir(cleanup):
+                shutil.rmtree(cleanup)
+            elif os.path.exists(cleanup):
+                os.remove(cleanup)
 
     @needs_docker
     def testMD5sum(self):
@@ -264,59 +264,60 @@ class ToilWdlIntegrationTest(ToilTest):
 
     # estimated run time 27 sec
     @slow
+    @needs_java
     def testTut01(self):
         '''Test if toilwdl produces the same outputs as known good outputs for WDL's
         GATK tutorial #1.'''
-        if self.manual_integration_tests:
-            wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl")
-            json = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
-            ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/output/")
+        wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl")
+        json = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
+        ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/output/")
 
-            subprocess.check_call([exactPython, self.program, wdl, json, '-o', self.output_dir])
+        subprocess.check_call([exactPython, self.program, wdl, json, '-o', self.output_dir])
 
-            compare_runs(self.output_dir, ref_dir)
+        compare_runs(self.output_dir, ref_dir)
 
     # estimated run time 28 sec
     @slow
+    @needs_java
     def testTut02(self):
         '''Test if toilwdl produces the same outputs as known good outputs for WDL's
         GATK tutorial #2.'''
-        if self.manual_integration_tests:
-            wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/simpleVariantSelection.wdl")
-            json = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/simpleVariantSelection_inputs.json")
-            ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/output/")
+        wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/simpleVariantSelection.wdl")
+        json = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/simpleVariantSelection_inputs.json")
+        ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/output/")
 
-            subprocess.check_call([exactPython, self.program, wdl, json, '-o', self.output_dir])
+        subprocess.check_call([exactPython, self.program, wdl, json, '-o', self.output_dir])
 
-            compare_runs(self.output_dir, ref_dir)
+        compare_runs(self.output_dir, ref_dir)
 
     # estimated run time 60 sec
     @slow
+    @needs_java
     def testTut03(self):
         '''Test if toilwdl produces the same outputs as known good outputs for WDL's
         GATK tutorial #3.'''
-        if self.manual_integration_tests:
-            wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/simpleVariantDiscovery.wdl")
-            json = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/simpleVariantDiscovery_inputs.json")
-            ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/output/")
+        wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/simpleVariantDiscovery.wdl")
+        json = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/simpleVariantDiscovery_inputs.json")
+        ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/output/")
 
-            subprocess.check_call([exactPython, self.program, wdl, json, '-o', self.output_dir])
+        subprocess.check_call([exactPython, self.program, wdl, json, '-o', self.output_dir])
 
-            compare_runs(self.output_dir, ref_dir)
+        compare_runs(self.output_dir, ref_dir)
 
     # estimated run time 175 sec
     @slow
+    @needs_java
+    @unittest.skip('broken; see: https://github.com/DataBiosphere/toil/issues/3339')
     def testTut04(self):
         '''Test if toilwdl produces the same outputs as known good outputs for WDL's
         GATK tutorial #4.'''
-        if self.manual_integration_tests:
-            wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/jointCallingGenotypes.wdl")
-            json = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/jointCallingGenotypes_inputs.json")
-            ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/output/")
+        wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/jointCallingGenotypes.wdl")
+        json = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/jointCallingGenotypes_inputs.json")
+        ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/output/")
 
-            subprocess.check_call([exactPython, self.program, wdl, json, '-o', self.output_dir])
+        subprocess.check_call([exactPython, self.program, wdl, json, '-o', self.output_dir])
 
-            compare_runs(self.output_dir, ref_dir)
+        compare_runs(self.output_dir, ref_dir)
 
     # estimated run time 80 sec
     @slow
@@ -374,7 +375,7 @@ class ToilWdlIntegrationTest(ToilTest):
             u'helloHaplotypeCaller.haplotypeCaller.sampleName': u'"WDL_tut1_output"',
             u'helloHaplotypeCaller.haplotypeCaller.inputBAM': u'"src/toil/test/wdl/GATK_data/inputs/NA12878_wgs_20.bam"',
             u'helloHaplotypeCaller.haplotypeCaller.bamIndex': u'"src/toil/test/wdl/GATK_data/inputs/NA12878_wgs_20.bai"',
-            u'helloHaplotypeCaller.haplotypeCaller.GATK': u'"src/toil/test/wdl/GATK_data/GenomeAnalysisTK.jar"',
+            u'helloHaplotypeCaller.haplotypeCaller.GATK': u'"src/toil/test/wdl/GATK_data/gatk-package-4.1.9.0-local.jar"',
             u'helloHaplotypeCaller.haplotypeCaller.RefDict': u'"src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.dict"',
             u'helloHaplotypeCaller.haplotypeCaller.RefFasta': u'"src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.fasta"'}
 
@@ -397,49 +398,6 @@ class ToilWdlIntegrationTest(ToilTest):
                 zip_ref.extractall(cls.test_directory)
 
 
-def remove_outputs(output_dir):
-    '''Remove the outputs generated by various unittests.
-
-    These are created in the current working directory, which on jenkins is the
-    main toil folder.  They must be removed so that jenkins does not think we
-    have untracked files in our github repo.'''
-    encode_outputs = ['ENCFF000VOL_chr21.fq.gz',
-                      'ENCFF000VOL_chr21.raw.srt.bam',
-                      'ENCFF000VOL_chr21.raw.srt.bam.flagstat.qc',
-                      'ENCFF000VOL_chr21.raw.srt.dup.qc',
-                      'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.bam',
-                      'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.bam.bai',
-                      'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.filt.nodup.sample.15.SE.tagAlign.gz',
-                      'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.filt.nodup.sample.15.SE.tagAlign.gz.cc.plot.pdf',
-                      'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.filt.nodup.sample.15.SE.tagAlign.gz.cc.qc',
-                      'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.flagstat.qc',
-                      'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.pbc.qc',
-                      'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.SE.tagAlign.gz',
-                      'ENCFF000VOL_chr21.sai',
-                      'test.txt',
-                      'filter_qc.json',
-                      'filter_qc.log',
-                      'GRCh38_chr21_bwa.tar.gz',
-                      'mapping.json',
-                      'mapping.log',
-                      'post_mapping.json',
-                      'post_mapping.log',
-                      'wdl-stats.log',
-                      'xcor.json',
-                      'xcor.log',
-                      'toilwdl_compiled.pyc',
-                      'toilwdl_compiled.py']
-    other_log_outputs = ['post_processing.log',
-                         'md5.log']
-    outputs = encode_outputs + other_log_outputs
-    for output in outputs:
-        output = os.path.abspath(output)
-        if os.path.exists(output):
-            os.remove(output)
-    if os.path.exists(output_dir):
-        shutil.rmtree(output_dir)
-
-
 def compare_runs(output_dir, ref_dir):
     """
     Takes two directories and compares all of the files between those two
@@ -457,7 +415,7 @@ def compare_runs(output_dir, ref_dir):
     """
     reference_output_files = os.listdir(ref_dir)
     for file in reference_output_files:
-        if file != 'outputs.txt':
+        if file not in ('outputs.txt', '__pycache__'):
             test_output_files = os.listdir(output_dir)
             filepath = os.path.join(ref_dir, file)
             with open(filepath, 'r') as default_file:
@@ -523,7 +481,14 @@ def compare_vcf_files(filepath1, filepath2):
                 # Quality score may vary (<1%) between systems because of
                 # (assumed) rounding differences.  Same for the "info" sect.
                 if j < 5:
-                    assert test_data[i][j] == good_data[i][j], "File does not match: %r" % filepath1
+                    if j == 4:
+                        if test_data[i][j].startswith('*,'):
+                            test_data[i][j] = test_data[i][j][2:]
+                        if good_data[i][j].startswith('*,'):
+                            good_data[i][j] = good_data[i][j][2:]
+                    assert test_data[i][j] == good_data[i][j], f"\nInconsistent VCFs: {filepath1} != {filepath2}\n" \
+                                                               f" - {test_data[i][j]} != {good_data[i][j]}\n" \
+                                                               f" - Line: {i} Column: {j}"
 
 
 if __name__ == "__main__":
