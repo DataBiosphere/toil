@@ -41,7 +41,6 @@ class ToilWdlIntegrationTest(ToilTest):
     @classmethod
     def setUpClass(cls):
         """Runs once for all tests."""
-        cls.pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
         cls.program = os.path.abspath("src/toil/wdl/toilwdl.py")
 
         cls.test_directory = os.path.abspath("src/toil/test/wdl/")
