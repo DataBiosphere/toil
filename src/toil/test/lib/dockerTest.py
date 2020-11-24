@@ -269,15 +269,14 @@ class DockerTest(ToilTest):
         silently missed.  This tests to make sure that the piping API for
         dockerCall() throws an exception if non-last commands in the chain fail.
         """
-        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir,
-                                                            'jobstore'))
+        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, 'jobstore'))
         options.logLevel = self.dockerTestLogLevel
         options.workDir = self.tempDir
         options.clean = 'always'
         options.caching = disableCaching
         A = Job.wrapJobFn(_testDockerPipeChainErrorFn)
         rv = Job.Runner.startToil(A, options)
-        assert rv == True
+        assert rv is True
 
     def testNonCachingDockerChain(self):
         self.testDockerPipeChain(disableCaching=False)
@@ -365,7 +364,7 @@ def _testDockerPipeChainFn(job):
     """Return the result of a simple pipe chain.  Should be 2."""
     parameters = [['printf', 'x\n y\n'], ['wc', '-l']]
     return apiDockerCall(job,
-                         image='ubuntu:latest',
+                         image='quay.io/ucsc_cgl/ubuntu:20.04',
                          parameters=parameters,
                          privileged=True)
 
@@ -406,7 +405,7 @@ def _testDockerLogsFn(job,
         file.write(bash_script)
 
     out = apiDockerCall(job,
-                        image='ubuntu:latest',
+                        image='quay.io/ucsc_cgl/ubuntu:20.04',
                         working_dir=working_dir,
                         parameters=[script_file],
                         volumes={working_dir: {'bind': working_dir, 'mode': 'rw'}},
