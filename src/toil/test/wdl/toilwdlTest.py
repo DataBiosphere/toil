@@ -23,7 +23,7 @@ from toil.wdl.wdl_functions import defined
 from toil.wdl.wdl_functions import read_tsv
 from toil.wdl.wdl_functions import read_csv
 from toil.wdl.wdl_functions import basename
-from toil.test import ToilTest, slow, needs_docker
+from toil.test import ToilTest, slow, needs_docker, needs_java
 from toil import urlretrieve
 import zipfile
 import shutil
@@ -264,6 +264,7 @@ class ToilWdlIntegrationTest(ToilTest):
 
     # estimated run time 27 sec
     @slow
+    @needs_java
     def testTut01(self):
         '''Test if toilwdl produces the same outputs as known good outputs for WDL's
         GATK tutorial #1.'''
@@ -277,6 +278,7 @@ class ToilWdlIntegrationTest(ToilTest):
 
     # estimated run time 28 sec
     @slow
+    @needs_java
     def testTut02(self):
         '''Test if toilwdl produces the same outputs as known good outputs for WDL's
         GATK tutorial #2.'''
@@ -290,6 +292,7 @@ class ToilWdlIntegrationTest(ToilTest):
 
     # estimated run time 60 sec
     @slow
+    @needs_java
     def testTut03(self):
         '''Test if toilwdl produces the same outputs as known good outputs for WDL's
         GATK tutorial #3.'''
@@ -303,6 +306,7 @@ class ToilWdlIntegrationTest(ToilTest):
 
     # estimated run time 175 sec
     @slow
+    @needs_java
     @unittest.skip('broken; see: https://github.com/DataBiosphere/toil/issues/3339')
     def testTut04(self):
         '''Test if toilwdl produces the same outputs as known good outputs for WDL's

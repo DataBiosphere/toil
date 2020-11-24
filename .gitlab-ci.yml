@@ -83,9 +83,10 @@ py37_wdl:
   stage: main_tests
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata jq python3.7 python3.7-dev
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata jq python3.7 python3.7-dev default-jre
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all]
-    - make test tests=src/toil/test/wdl/toilwdlTest.py
+    - which java &> /dev/null || { echo >&2 "Java is not installed.  Install java to run these tests."; exit 1; }
+    - make test tests=src/toil/test/wdl/toilwdlTest.py  # needs java (default-jre) to run "GATK.jar"
     - make test tests=src/toil/test/wdl/builtinTest.py
 
 py37_jobstore_and_provisioning:
