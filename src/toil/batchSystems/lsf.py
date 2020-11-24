@@ -314,7 +314,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 command = re.search(r"Command <(.*?)>", s)
                 if meminfo:
                     if not command:
-                        logger.info("Missing Command: %s", bjobs)
+                        logger.info("Cannot Parse Max Memory Due to Missing Command String: %s", bjobs)
                     else:
                         logger.info("[job ID %s, Command %s] the maximum memory used was: %s",
                                     str(jobID), command.group(1), meminfo.group(1))
@@ -325,7 +325,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             except subprocess.CalledProcessError as err:
                 logger.debug("[job ID %s] Unable to collect maximum memory usage: %s",
                              str(jobID), str(err))
-                return 0
+            return None
 
     def getWaitDuration(self):
         """We give LSF a second to catch its breath (in seconds)"""
