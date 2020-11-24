@@ -116,6 +116,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             if '.' in lsfJobID:
                 job, task = lsfJobID.split('.', 1)
 
+            self.parseMaxMem(job)
             # first try bjobs to find out job state
             if check_lsf_json_output_supported:
                 args = ["bjobs", "-json", "-o",
@@ -296,6 +297,34 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 logger.error("Could not find bjobs output json in: {}".format(bjobs_output_str))
 
             return bjobs_records
+
+        def parseMaxMem(self, jobID):
+            """
+            Parse the maximum memory from job.
+
+            params:
+            jobID: ID number of the job
+            """
+            memargs = ["bjobs", "-l", str(jobID)]
+            try:
+                bjobs = subprocess.check_output(memargs, universal_newlines=True)
+                memregex = r"MAX MEM: (.*?);"
+                meminfo = re.search(memregex, bjobs)
+                s = " ".join(bjobs.split())
+                command = re.search(r"Command <(.*?)>", s)
+                if meminfo:
+                    if not command:
+                        logger.info("Cannot Parse Max Memory Due to Missing Command String: %s", bjobs)
+                    else:
+                        logger.info("[job ID %s, Command %s] the maximum memory used was: %s",
+                                    str(jobID), command.group(1), meminfo.group(1))
+                else:
+                    logger.debug("[job ID %s] Unable to collect maximum memory usage: %s",
+                                 str(jobID), bjobs)
+                return meminfo
+            except subprocess.CalledProcessError as err:
+                logger.debug("[job ID %s] Unable to collect maximum memory usage: %s",
+                             str(jobID), str(err))
 
     def getWaitDuration(self):
         """We give LSF a second to catch its breath (in seconds)"""
