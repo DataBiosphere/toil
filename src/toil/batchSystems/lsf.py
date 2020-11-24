@@ -116,7 +116,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             if '.' in lsfJobID:
                 job, task = lsfJobID.split('.', 1)
 
-            meminfo = self.parseMaxMem(job)
+            self.parseMaxMem(job)
             # first try bjobs to find out job state
             if check_lsf_json_output_supported:
                 args = ["bjobs", "-json", "-o",
@@ -325,7 +325,6 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             except subprocess.CalledProcessError as err:
                 logger.debug("[job ID %s] Unable to collect maximum memory usage: %s",
                              str(jobID), str(err))
-            return None
 
     def getWaitDuration(self):
         """We give LSF a second to catch its breath (in seconds)"""
