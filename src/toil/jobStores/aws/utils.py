@@ -33,6 +33,7 @@ from boto.exception import (SDBResponseError,
                             S3CreateError,
                             S3CopyError)
 import boto3
+from botocore.exceptions import ClientError
 
 log = logging.getLogger(__name__)
 
@@ -379,7 +380,8 @@ def retryable_s3_errors(e):
             or (isinstance(e, BotoServerError) and e.status == 500)
             # Throttling response sometimes received on bucket creation
             or (isinstance(e, BotoServerError) and e.status == 503 and e.code == 'SlowDown')
-            or (isinstance(e, S3CopyError) and 'try again' in e.message))
+            or (isinstance(e, S3CopyError) and 'try again' in e.message)
+            or (isinstance(e, ClientError) and 'BucketNotEmpty' in str(e)))
 
 
 def retry_s3(delays=default_delays, timeout=default_timeout, predicate=retryable_s3_errors):
