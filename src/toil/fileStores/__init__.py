@@ -14,6 +14,7 @@
 from __future__ import absolute_import
 
 import os
+import stat
 
 __all__ = ['fileStore', 'nonCachingFileStore', 'cachingFileStore', 'FileID']
 
@@ -29,11 +30,12 @@ class FileID(str):
     def __new__(cls, fileStoreID, *args):
         return super(FileID, cls).__new__(cls, fileStoreID)
 
-    def __init__(self, fileStoreID, size):
+    def __init__(self, fileStoreID, size, executable):
         # Don't pass an argument to parent class's __init__.
         # In Python 3 we can have super(FileID, self) hand us object's __init__ which chokes on any arguments.
         super(FileID, self).__init__()
         self.size = size
+        self.executable = executable
 
     def pack(self):
         """
@@ -43,7 +45,8 @@ class FileID(str):
 
     @classmethod
     def forPath(cls, fileStoreID, filePath):
-        return cls(fileStoreID, os.stat(filePath).st_size)
+        executable = os.stat(filePath).st_mode & stat.S_IXUSR != 0
+        return cls(fileStoreID, os.stat(filePath).st_size, executable)
 
     @classmethod
     def unpack(cls, packedFileStoreID):
