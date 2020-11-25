@@ -564,8 +564,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
 
     @classmethod
     def _initModuleName(cls, dirPath):
-        for extension in ('.py', '.pyc', '.pyo'):
-            name = f'__init__{extension}'
+        for name in ('__init__.py', '__init__.pyc', '__init__.pyo'):
             if os.path.exists(os.path.join(dirPath, name)):
                 return name
         return None
