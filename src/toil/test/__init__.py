@@ -732,7 +732,7 @@ class ApplianceTestSupport(ToilTest):
             while self.isAlive():
                 p = subprocess.run(['docker', 'inspect', '--format={{ .State.Running }}', self.containerName],
                                    stdout=subprocess.PIPE)
-                if 'true' == p.stdout:
+                if 'true' == p.stdout.strip():
                     break
                 time.sleep(1)
 
