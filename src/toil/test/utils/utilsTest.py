@@ -407,7 +407,7 @@ class UtilsTest(ToilTest):
         # Make sure it printed some kind of complaint about the missing command.
         args, kwargs = mock_print.call_args
         self.assertIn('invalidcommand', args[0])
-    
+
     def testRestartAttribute(self):
         """
         Test that the job store is only destroyed when we observe a succcessful workflow run.
@@ -430,7 +430,7 @@ class UtilsTest(ToilTest):
 
         # Check the job store is destroyed after calling restart()
         self.assertFalse(os.path.exists(self.toilDir))
-        
+
 
 def printUnicodeCharacter():
     # We want to get a unicode character to stdout but we can't print it directly because of

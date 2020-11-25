@@ -29,7 +29,6 @@ import sys
 import tempfile
 import urllib
 import uuid
-import shutil
 from typing import (
     Any,
     Dict,
@@ -87,6 +86,7 @@ from ruamel.yaml.comments import CommentedMap
 from schema_salad import validate
 from schema_salad.schema import Names
 from schema_salad.sourceline import SourceLine
+import schema_salad.ref_resolver
 
 from toil.common import Config, Toil, addOptions
 from toil.fileStores import FileID
