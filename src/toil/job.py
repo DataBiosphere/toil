@@ -35,8 +35,8 @@ import dill
 from toil.common import Config, Toil, addOptions, safeUnpickleFromStream
 from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
-from toil.lib.bioio import (getTotalCpuTime, getTotalCpuTimeAndMemoryUsage,
-                            setLoggingFromOptions)
+from toil.lib.bioio import (get_total_cpu_time, get_total_cpu_time_and_memory_usage,
+                            set_logging_from_options)
 from toil.lib.expando import Expando
 from toil.lib.humanize import human2bytes
 from toil.resource import ModuleDescriptor
@@ -1726,7 +1726,7 @@ class Job:
             :return: The return value of the root job's run function.
             :rtype: Any
             """
-            setLoggingFromOptions(options)
+            set_logging_from_options(options)
             with Toil(options) as toil:
                 if not options.restart:
                     return toil.start(job)
@@ -2289,7 +2289,7 @@ class Job:
         """
         if stats is not None:
             startTime = time.time()
-            startClock = getTotalCpuTime()
+            startClock = get_total_cpu_time()
         baseDir = os.getcwd()
 
         yield
@@ -2313,7 +2313,7 @@ class Job:
             os.chdir(baseDir)
         # Finish up the stats
         if stats is not None:
-            totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
+            totalCpuTime, totalMemoryUsage = get_total_cpu_time_and_memory_usage()
             stats.jobs.append(
                 Expando(
                     time=str(time.time() - startTime),

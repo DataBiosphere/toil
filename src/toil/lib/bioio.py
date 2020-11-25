@@ -28,10 +28,11 @@ DEFAULT_LOGLEVEL = logging.INFO
 __loggingFiles = []
 
 
-def setLogLevel(level):
+def set_log_level(level, set_logger=None):
     """Sets the root logger level to a given string level (like "INFO")."""
     level = "CRITICAL" if level.upper() == "OFF" else level.upper()
-    root_logger.setLevel(level)
+    set_logger = set_logger if set_logger else root_logger
+    set_logger.setLevel(level)
     # There are quite a few cases where we expect AWS requests to fail, but it seems
     # that boto handles these by logging the error *and* raising an exception. We
     # don't want to confuse the user with those error messages.
@@ -71,7 +72,7 @@ def add_logging_options(parser: ArgumentParser):
                        help="Turn on rotating logging, which prevents log files from getting too big.")
 
 
-def configureRootLogger():
+def configure_root_logger():
     """
     Set up the root logger with handlers and formatting.
 
@@ -94,10 +95,10 @@ def log_to_file(log_file, log_rotation):
         root_logger.addHandler(handler)
 
 
-def setLoggingFromOptions(options):
-    configureRootLogger()
+def set_logging_from_options(options):
+    configure_root_logger()
     options.logLevel = options.logLevel or logging.getLevelName(root_logger.getEffectiveLevel())
-    setLogLevel(options.logLevel)
+    set_log_level(options.logLevel)
     logger.debug(f"Root logger is at level '{logging.getLevelName(root_logger.getEffectiveLevel())}', "
                  f"'toil' logger at level '{logging.getLevelName(toil_logger.getEffectiveLevel())}'.")
 
@@ -105,7 +106,7 @@ def setLoggingFromOptions(options):
     log_to_file(options.logFile, options.logRotating)
 
 
-def getTotalCpuTimeAndMemoryUsage():
+def get_total_cpu_time_and_memory_usage():
     """
     Gives the total cpu time of itself and all its children, and the maximum RSS memory usage of
     itself and its single largest child.
@@ -117,7 +118,7 @@ def getTotalCpuTimeAndMemoryUsage():
     return total_cpu_time, total_memory_usage
 
 
-def getTotalCpuTime():
+def get_total_cpu_time():
     """Gives the total cpu time, including the children."""
     me = resource.getrusage(resource.RUSAGE_SELF)
     childs = resource.getrusage(resource.RUSAGE_CHILDREN)
@@ -154,7 +155,7 @@ def parser_with_common_options(provisioner_options=False):
     return parser
 
 
-def getTempFile(suffix="", rootDir=None):
+def get_temp_file(suffix="", rootDir=None):
     """Returns a string representing a temporary file, that must be manually deleted."""
     if rootDir is None:
         handle, tmp_file = tempfile.mkstemp(suffix)

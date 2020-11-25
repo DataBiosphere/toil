@@ -28,7 +28,7 @@ from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
 from toil.batchSystems.options import setOptions as setBatchOptions
-from toil.lib.bioio import add_logging_options, setLoggingFromOptions, root_logger
+from toil.lib.bioio import add_logging_options, set_logging_from_options, root_logger
 from toil.lib.humanize import bytes2human
 from toil.lib.retry import retry
 from toil.provisioners import clusterFactory
@@ -750,7 +750,7 @@ class Toil(object):
         consolidate the derived configuration with the one from the previous invocation of the
         workflow.
         """
-        setLoggingFromOptions(self.options)
+        set_logging_from_options(self.options)
         config = Config()
         config.setOptions(self.options)
         jobStore = self.getJobStore(config.jobStore)

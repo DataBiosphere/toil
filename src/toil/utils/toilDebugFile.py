@@ -17,7 +17,7 @@ import logging
 import os.path
 
 from toil.common import Config, Toil, jobStoreLocatorHelp
-from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
+from toil.lib.bioio import parser_with_common_options, set_logging_from_options
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +120,7 @@ def main():
 
     # Load the jobStore
     options = parser.parse_args()
-    setLoggingFromOptions(options)
+    set_logging_from_options(options)
     config = Config()
     config.setOptions(options)
     jobStore = Toil.resumeJobStore(config.jobStore)

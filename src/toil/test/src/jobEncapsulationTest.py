@@ -14,7 +14,7 @@
 import os
 
 from toil.job import Job
-from toil.lib.bioio import getTempFile
+from toil.lib.bioio import get_temp_file
 from toil.test import ToilTest, travis_test
 from toil.test.src.jobTest import fn1Test
 
@@ -31,7 +31,7 @@ class JobEncapsulationTest(ToilTest):
         class.
         """
         # Temporary file
-        outFile = getTempFile(rootDir=self._createTempDir())
+        outFile = get_temp_file(rootDir=self._createTempDir())
         try:
             # Encapsulate a job graph
             a = Job.wrapJobFn(encapsulatedJobFn, "A", outFile, name="a")

@@ -33,8 +33,8 @@ from toil.common import Toil, safeUnpickleFromStream
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import CheckpointJobDescription, Job
-from toil.lib.bioio import (configureRootLogger, getTotalCpuTime,
-                            getTotalCpuTimeAndMemoryUsage, setLogLevel)
+from toil.lib.bioio import (configure_root_logger, get_total_cpu_time,
+                            get_total_cpu_time_and_memory_usage, set_log_level)
 from toil.lib.expando import MagicExpando
 
 try:
@@ -130,8 +130,8 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     :return int: 1 if a job failed, or 0 if all jobs succeeded
     """
     
-    configureRootLogger()
-    setLogLevel(config.logLevel)
+    configure_root_logger()
+    set_log_level(config.logLevel)
 
     ##########################################
     #Create the worker killer, if requested
@@ -350,7 +350,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         ##########################################
         
         if config.stats:
-            startClock = getTotalCpuTime()
+            startClock = get_total_cpu_time()
 
         startTime = time.time()
         while True:
@@ -478,7 +478,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         #Finish up the stats
         ##########################################
         if config.stats:
-            totalCPUTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
+            totalCPUTime, totalMemoryUsage = get_total_cpu_time_and_memory_usage()
             statsDict.workers.time = str(time.time() - startTime)
             statsDict.workers.clock = str(totalCPUTime - startClock)
             statsDict.workers.memory = str(totalMemoryUsage)

@@ -207,7 +207,7 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
                         cls.logger.setLevel(logging.CRITICAL)
                     else:
                         # Adopt the logging level set on the leader.
-                        toil.lib.bioio.setLogLevel(level, cls.logger)
+                        toil.lib.bioio.set_log_level(level, cls.logger)
                         try:
                             address = os.environ[cls.envPrefix + 'ADDRESS']
                         except KeyError:

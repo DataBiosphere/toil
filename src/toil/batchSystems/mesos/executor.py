@@ -33,7 +33,7 @@ from pymesos import Executor, MesosExecutorDriver, decode_data, encode_data
 from urllib2 import urlopen
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
-from toil.lib.bioio import configureRootLogger, setLogLevel
+from toil.lib.bioio import configure_root_logger, set_log_level
 from toil.lib.expando import Expando
 from toil.lib.threading import cpu_count
 from toil.resource import Resource
@@ -233,8 +233,8 @@ class MesosExecutor(Executor):
 
 
 def main():
-    configureRootLogger()
-    setLogLevel("DEBUG")
+    configure_root_logger()
+    set_log_level("DEBUG")
 
     if not os.environ.get("MESOS_AGENT_ENDPOINT"):
         # Some Mesos setups in our tests somehow lack this variable. Provide a

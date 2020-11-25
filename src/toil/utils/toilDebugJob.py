@@ -15,7 +15,7 @@
 import logging
 
 from toil.common import Config, Toil, jobStoreLocatorHelp
-from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
+from toil.lib.bioio import parser_with_common_options, set_logging_from_options
 from toil.utils.toilDebugFile import printContentsOfJobStore
 from toil.worker import workerScript
 
@@ -34,7 +34,7 @@ def main():
                         " from the last known run.")
 
     options = parser.parse_args()
-    setLoggingFromOptions(options)
+    set_logging_from_options(options)
     config = Config()
     config.setOptions(options)
 

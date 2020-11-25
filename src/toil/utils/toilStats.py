@@ -17,7 +17,7 @@ import logging
 from functools import partial
 
 from toil.common import Config, Toil, jobStoreLocatorHelp
-from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
+from toil.lib.bioio import parser_with_common_options, set_logging_from_options
 from toil.lib.expando import Expando
 
 logger = logging.getLogger(__name__)
@@ -526,7 +526,7 @@ def main():
     parser.add_argument("--sortField", default="med", choices=sort_field_choices,
                         help=f"How to sort job fields.  Choices: {sort_field_choices}. Default: med.")
     options = parser.parse_args()
-    setLoggingFromOptions(options)
+    set_logging_from_options(options)
     config = Config()
     config.setOptions(options)
     jobStore = Toil.resumeJobStore(config.jobStore)

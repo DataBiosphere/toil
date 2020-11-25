@@ -16,7 +16,7 @@ import os
 import logging
 
 from toil import applianceSelf
-from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
+from toil.lib.bioio import parser_with_common_options, set_logging_from_options
 from toil.provisioners import clusterFactory
 from toil.provisioners.aws import checkValidNodeTypes
 
@@ -91,7 +91,7 @@ def main():
                              "with its name equal to the cluster name will always be created, thus ensure that "
                              "the extra security groups do not have the same name as the cluster name.")
     options = parser.parse_args()
-    setLoggingFromOptions(options)
+    set_logging_from_options(options)
     tags = createTagsDict(options.tags) if options.tags else dict()
     checkValidNodeTypes(options.provisioner, options.nodeTypes)
     checkValidNodeTypes(options.provisioner, options.leaderNodeType)

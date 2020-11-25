@@ -18,7 +18,7 @@ import signal
 import tempfile
 
 from toil.common import Config, Toil, jobStoreLocatorHelp
-from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
+from toil.lib.bioio import parser_with_common_options, set_logging_from_options
 from toil.version import version
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ def main():
                              "by default uses the current working directory as the base.")
     parser.add_argument("--version", action='version', version=version)
     options = parser.parse_args()
-    setLoggingFromOptions(options)
+    set_logging_from_options(options)
     config = Config()
     config.setOptions(options)
     config.jobStore = config.jobStore[5:] if config.jobStore.startswith('file:') else config.jobStore

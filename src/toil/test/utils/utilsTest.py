@@ -33,7 +33,7 @@ import toil.test.sort.sort
 from toil import resolveEntryPoint
 from toil.common import Config, Toil
 from toil.job import Job
-from toil.lib.bioio import getTempFile, system
+from toil.lib.bioio import get_temp_file, system
 from toil.provisioners import clusterFactory
 from toil.test import (ToilTest, integrative, needs_aws_ec2, needs_cwl,
                        needs_docker, needs_rsync3, slow, travis_test)
@@ -54,7 +54,7 @@ class UtilsTest(ToilTest):
     def setUp(self):
         super(UtilsTest, self).setUp()
         self.tempDir = self._createTempDir()
-        self.tempFile = getTempFile(rootDir=self.tempDir)
+        self.tempFile = get_temp_file(rootDir=self.tempDir)
         self.outputFile = 'someSortedStuff.txt'
         self.toilDir = os.path.join(self.tempDir, "jobstore")
         self.assertFalse(os.path.exists(self.toilDir))
