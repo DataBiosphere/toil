@@ -22,7 +22,7 @@ import pytest
 from toil.common import Toil
 from toil.job import Job, JobFunctionWrappingJob, JobGraphDeadlockException
 from toil.leader import FailedJobsException
-from toil.lib.bioio import getTempFile
+from toil.lib.bioio import get_temp_file
 from toil.test import ToilTest, slow, travis_test
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ class JobTest(ToilTest):
           
         Follow on is marked by ->
         """
-        outFile = getTempFile(rootDir=self._createTempDir())
+        outFile = get_temp_file(rootDir=self._createTempDir())
         try:
 
             # Create the jobs
@@ -95,7 +95,7 @@ class JobTest(ToilTest):
           
         Follow on is marked by ->
         """
-        outFile = getTempFile(rootDir=self._createTempDir())
+        outFile = get_temp_file(rootDir=self._createTempDir())
         try:
 
             # Create the jobs

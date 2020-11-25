@@ -6,9 +6,8 @@ import subprocess
 import sys
 import uuid
 from contextlib import contextmanager
-from math import sqrt
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 def robust_rmtree(path):
@@ -111,7 +110,7 @@ def AtomicFileCreate(final_path, keep=False):
     try:
         yield tmp_path
         atomic_install(tmp_path, final_path)
-    except Exception as ex:
+    except Exception:
         if not keep:
             try:
                 os.unlink(tmp_path)
@@ -192,9 +191,8 @@ class WriteWatchingStream(object):
 
 class CalledProcessErrorStderr(subprocess.CalledProcessError):
     """Version of CalledProcessError that include stderr in the error message if it is set"""
-
     def __str__(self):
-        if (self.returncode and (self.returncode < 0)) or (self.stderr is None):
+        if self.returncode < 0 or (self.stderr is None):
             return str(super())
         else:
             err = self.stderr if isinstance(self.stderr, str) else self.stderr.decode("ascii", errors="replace")
@@ -217,13 +215,13 @@ def call_command(cmd, *, input=None, timeout=None, useCLocale=True, env=None):
         env = dict(os.environ) if env is None else dict(env)  # copy since modifying
         env["LANGUAGE"] = env["LC_ALL"] = "C"
 
-    logger.debug("run command: {}".format(" ".join(cmd)))
+    log.debug("run command: {}".format(" ".join(cmd)))
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             encoding='utf-8', errors="replace", env=env)
     stdout, stderr = proc.communicate(input=input, timeout=timeout)
     sys.stderr.write(stderr)
     if proc.returncode != 0:
-        logger.debug("command failed: {}: {}".format(" ".join(cmd), stderr.rstrip()))
+        log.debug("command failed: {}: {}".format(" ".join(cmd), stderr.rstrip()))
         raise CalledProcessErrorStderr(proc.returncode, cmd, output=stdout, stderr=stderr)
-    logger.debug("command succeeded: {}: {}".format(" ".join(cmd), stdout.rstrip()))
+    log.debug("command succeeded: {}: {}".format(" ".join(cmd), stdout.rstrip()))
     return stdout

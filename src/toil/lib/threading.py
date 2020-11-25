@@ -33,11 +33,9 @@ from toil.lib.misc import robust_rmtree
 
 log = logging.getLogger(__name__)
 
-class BoundedEmptySemaphore( BoundedSemaphore ):
-    """
-    A bounded semaphore that is initially empty.
-    """
 
+class BoundedEmptySemaphore(BoundedSemaphore):
+    """A bounded semaphore that is initially empty."""
     def __init__( self, value=1, verbose=None ):
         super( BoundedEmptySemaphore, self ).__init__( value, verbose )
         for i in range( value ):
@@ -266,7 +264,7 @@ def get_process_name(workDir):
             fcntl.lockf(nameFD, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except IOError as e:
             # Someone else might have locked it even though they should not have.
-            raise RuntimeError("Could not lock process name file %s: %s" % (nameFileName, str(e)))
+            raise RuntimeError(f"Could not lock process name file {nameFileName}: {e}")
 
         # Save the basename
         current_process_name_for[workDir] = os.path.basename(nameFileName)
@@ -275,7 +273,7 @@ def get_process_name(workDir):
         return current_process_name_for[workDir] 
 
         # TODO: we leave the file open forever. We might need that in order for
-        # it to stay locked while we are alive.
+        #  it to stay locked while we are alive.
 
 def process_name_exists(workDir, name):
     """
@@ -311,7 +309,7 @@ def process_name_exists(workDir, name):
         nameFD = os.open(nameFileName, os.O_RDONLY)
         try:
             fcntl.lockf(nameFD, fcntl.LOCK_SH | fcntl.LOCK_NB)
-        except IOError as e:
+        except IOError:
             # Could not lock. Process is alive.
             return True
         else:
@@ -521,7 +519,7 @@ class LastProcessStandingArena:
                 fd = os.open(full_path, os.O_RDONLY)
                 try:
                     fcntl.lockf(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
-                except IOError as e:
+                except IOError:
                     # Could not lock. It's alive!
                     break
                 else:

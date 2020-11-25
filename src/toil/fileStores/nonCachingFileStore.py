@@ -27,7 +27,6 @@ import dill
 from toil.common import getDirSizeRecursively, getFileSystemSize
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.lib.bioio import makePublicDir
 from toil.lib.humanize import bytes2human
 from toil.lib.misc import robust_rmtree
 from toil.lib.threading import get_process_name, process_name_exists
@@ -50,7 +49,7 @@ class NonCachingFileStore(AbstractFileStore):
     def open(self, job):
         jobReqs = job.disk
         startingDir = os.getcwd()
-        self.localTempDir = makePublicDir(os.path.join(self.localTempDir, str(uuid.uuid4())))
+        self.localTempDir = os.makedirs(os.path.join(self.localTempDir, str(uuid.uuid4())), exist_ok=True)
         self._removeDeadJobs(self.workDir)
         self.jobStateFile = self._createJobStateFile()
         freeSpace, diskSize = getFileSystemSize(self.localTempDir)

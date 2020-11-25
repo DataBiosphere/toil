@@ -29,8 +29,7 @@ from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import \
     setDefaultOptions as setDefaultBatchOptions
 from toil.batchSystems.options import setOptions as setBatchOptions
-from toil.lib.bioio import (addLoggingOptions, getLogLevelString,
-                            setLoggingFromOptions)
+from toil.lib.bioio import (add_logging_options, setLoggingFromOptions, root_logger)
 from toil.lib.humanize import bytes2human
 from toil.lib.retry import retry
 from toil.provisioners import clusterFactory
@@ -54,7 +53,7 @@ class Config:
         finished sucessfully and its job store has been clean up."""
         self.workflowAttemptNumber = None
         self.jobStore = None
-        self.logLevel = getLogLevelString()
+        self.logLevel = logging.getLevelName(root_logger.getEffectiveLevel())
         self.workDir = None
         self.noStdOutErr = False
         self.stats = False
@@ -329,7 +328,7 @@ def _addOptions(addGroupFn, config):
                              "Options to specify the location of the Toil workflow and turn on "
                              "stats collation about the performance of jobs.")
     addOptionFn('jobStore', type=str,
-                help="The location of the job store for the workflow. " + jobStoreLocatorHelp)
+                help=f"The location of the job store for the workflow. {jobStoreLocatorHelp}")
     addOptionFn("--workDir", dest="workDir", default=None,
                 help="Absolute path to directory where temporary files generated during the Toil "
                      "run should be placed. Standard output and error from batch system jobs "
@@ -651,13 +650,9 @@ def parseBool(val):
     else:
         raise RuntimeError("Could not interpret \"%s\" as a boolean value" % val)
 
+
 def addOptions(parser, config=Config()):
-    """
-    Adds toil options to a parser object, either optparse or argparse.
-    """
-    # Wrapper function that allows toil to be used with both the optparse and
-    # argparse option parsing modules
-    addLoggingOptions(parser)  # This adds the logging stuff.
+    add_logging_options(parser)  # This adds the logging stuff.
     if isinstance(parser, ArgumentParser):
         def addGroup(headingString, bodyString):
             return parser.add_argument_group(headingString, bodyString).add_argument
@@ -894,7 +889,7 @@ class Toil(object):
             self._provisioner.setAutoscaledNodeTypes(self.config.nodeTypes)
 
     @classmethod
-    def getJobStore(cls, locator):
+    def getJobStore(cls, locator: str):
         """
         Create an instance of the concrete job store implementation that matches the given locator.
 
@@ -1444,6 +1439,7 @@ def getFileSystemSize(dirPath):
     freeSpace = diskStats.f_frsize * diskStats.f_bavail
     diskSize = diskStats.f_frsize * diskStats.f_blocks
     return freeSpace, diskSize
+
 
 def safeUnpickleFromStream(stream):
     string = stream.read()

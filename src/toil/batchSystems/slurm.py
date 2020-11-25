@@ -17,11 +17,11 @@ import os
 from pipes import quote
 
 from toil.batchSystems import MemoryString
-from toil.batchSystems.abstractGridEngineBatchSystem import \
-    AbstractGridEngineBatchSystem
+from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)
+
 
 class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
@@ -213,9 +213,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     @classmethod
     def getWaitDuration(cls):
         # Extract the slurm batchsystem config for the appropriate value
-        wait_duration_seconds = 1
         lines = call_command(['scontrol', 'show', 'config']).split('\n')
-        time_value_list = []
+        time_value_list = [1]
         for line in lines:
             values = line.split()
             if len(values) > 0 and (values[0] == "SchedulerTimeSlice" or values[0] == "AcctGatherNodeFreq"):

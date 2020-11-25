@@ -16,14 +16,14 @@ import os
 
 from toil.common import Toil, ToilContextManagerException
 from toil.job import Job
-from toil.lib.bioio import getTempFile
+from toil.lib.bioio import get_temp_file
 from toil.test import ToilTest, slow
 
 
 @slow
 class ToilContextManagerTest(ToilTest):
     def setUp(self):
-        self.exportPath = getTempFile()
+        self.exportPath = get_temp_file()
 
     def tearDown(self):
         os.remove(self.exportPath)

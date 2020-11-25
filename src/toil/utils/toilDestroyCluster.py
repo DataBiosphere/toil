@@ -1,4 +1,4 @@
-# Copyright (C) 2015 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2020 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,19 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""
-Terminates the specified cluster and associated resources
-"""
-from toil.lib.bioio import getBasicOptionParser, parseBasicOptions
+"""Terminates the specified cluster and associated resources."""
+from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
 from toil.provisioners import clusterFactory
-from toil.utils import addBasicProvisionerOptions
 
 
 def main():
-    parser = getBasicOptionParser()
-    parser = addBasicProvisionerOptions(parser)
-    config = parseBasicOptions(parser)
-    cluster = clusterFactory(provisioner=config.provisioner,
-                             clusterName=config.clusterName,
-                             zone=config.zone)
+    parser = parser_with_common_options(provisioner_options=True)
+    options = parser.parse_args()
+    setLoggingFromOptions(options)
+    cluster = clusterFactory(provisioner=options.provisioner,
+                             clusterName=options.clusterName,
+                             zone=options.zone)
     cluster.destroyCluster()

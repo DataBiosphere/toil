@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,8 +33,8 @@ from toil.common import Toil, safeUnpickleFromStream
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import CheckpointJobDescription, Job
-from toil.lib.bioio import (configureRootLogger, getTotalCpuTime,
-                            getTotalCpuTimeAndMemoryUsage, setLogLevel)
+from toil.lib.bioio import (configureRootLogger, get_total_cpu_time,
+                            get_total_cpu_and_memory_usage, setLogLevel)
 from toil.lib.expando import MagicExpando
 
 try:
@@ -350,7 +350,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         ##########################################
         
         if config.stats:
-            startClock = getTotalCpuTime()
+            startClock = get_total_cpu_time()
 
         startTime = time.time()
         while True:
@@ -478,7 +478,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         #Finish up the stats
         ##########################################
         if config.stats:
-            totalCPUTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
+            totalCPUTime, totalMemoryUsage = get_total_cpu_and_memory_usage()
             statsDict.workers.time = str(time.time() - startTime)
             statsDict.workers.clock = str(totalCPUTime - startClock)
             statsDict.workers.memory = str(totalMemoryUsage)

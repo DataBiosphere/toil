@@ -35,7 +35,7 @@ import dill
 from toil.common import Config, Toil, addOptions, safeUnpickleFromStream
 from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
-from toil.lib.bioio import (getTotalCpuTime, getTotalCpuTimeAndMemoryUsage,
+from toil.lib.bioio import (get_total_cpu_time, get_total_cpu_and_memory_usage,
                             setLoggingFromOptions)
 from toil.lib.expando import Expando
 from toil.lib.humanize import human2bytes
@@ -1706,11 +1706,10 @@ class Job:
         @staticmethod
         def addToilOptions(parser):
             """
-            Adds the default toil options to an :mod:`optparse` or :mod:`argparse`
-            parser object.
+            Adds the default toil options to an :mod:`argparse` parser object.
 
             :param parser: Options object to add toil options to.
-            :type parser: optparse.OptionParser or argparse.ArgumentParser
+            :type parser: argparse.ArgumentParser
             """
             addOptions(parser)
 
@@ -2289,7 +2288,7 @@ class Job:
         """
         if stats is not None:
             startTime = time.time()
-            startClock = getTotalCpuTime()
+            startClock = get_total_cpu_time()
         baseDir = os.getcwd()
 
         yield
@@ -2313,7 +2312,7 @@ class Job:
             os.chdir(baseDir)
         # Finish up the stats
         if stats is not None:
-            totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
+            totalCpuTime, totalMemoryUsage = get_total_cpu_and_memory_usage()
             stats.jobs.append(
                 Expando(
                     time=str(time.time() - startTime),
@@ -2758,14 +2757,14 @@ class ServiceHostJob(Job):
 
             #Now flag that the service is running jobs can connect to it
             logger.debug("Removing the start jobStoreID to indicate that establishment of the service")
-            assert self.description.startJobStoreID != None
+            assert self.description.startJobStoreID is not None
             if fileStore.jobStore.fileExists(self.description.startJobStoreID):
                 fileStore.jobStore.deleteFile(self.description.startJobStoreID)
             assert not fileStore.jobStore.fileExists(self.description.startJobStoreID)
 
             #Now block until we are told to stop, which is indicated by the removal
             #of a file
-            assert self.description.terminateJobStoreID != None
+            assert self.description.terminateJobStoreID is not None
             while True:
                 # Check for the terminate signal
                 if not fileStore.jobStore.fileExists(self.description.terminateJobStoreID):

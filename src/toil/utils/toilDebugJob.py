@@ -1,4 +1,4 @@
-# Copyright (C) 2017- Regents of the University of California
+# Copyright (C) 2017-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,26 +11,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-"""Debug tool for running a toil job locally.
-"""
-
+"""Debug tool for running a toil job locally."""
 import logging
 
 from toil.common import Config, Toil, jobStoreLocatorHelp
-from toil.lib.bioio import getBasicOptionParser, parseBasicOptions
+from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
 from toil.utils.toilDebugFile import printContentsOfJobStore
-from toil.version import version
 from toil.worker import workerScript
 
-logger = logging.getLogger( __name__ )
+log = logging.getLogger(__name__)
 
-def print_successor_jobs():
-    pass
 
 def main():
-    parser = getBasicOptionParser()
-
+    parser = parser_with_common_options()
     parser.add_argument("jobStore", type=str,
                         help="The location of the job store used by the workflow." + jobStoreLocatorHelp)
     parser.add_argument("jobID", nargs=1, help="The job store id of a job "
@@ -39,25 +32,22 @@ def main():
                         help="Return information about this job to the user"
                         " including preceding jobs, inputs, outputs, and runtime"
                         " from the last known run.")
-    parser.add_argument("--version", action='version', version=version)
-    
-    # Parse options
-    options = parseBasicOptions(parser)
+
+    options = parser.parse_args()
+    setLoggingFromOptions(options)
     config = Config()
     config.setOptions(options)
-    
-    # Load the job store
+
     jobStore = Toil.resumeJobStore(config.jobStore)
 
     if options.printJobInfo:
-        printContentsOfJobStore(jobStorePath=options.jobStore, nameOfJob=options.printJobInfo)
+        printContentsOfJobStore(jobStorePath=config.jobStore, nameOfJob=options.printJobInfo)
 
     # TODO: Option to print list of successor jobs
     # TODO: Option to run job within python debugger, allowing step through of arguments
     # idea would be to have option to import pdb and set breakpoint at the start of the user's code
 
-    # Run the job locally
     jobID = options.jobID[0]
-    logger.debug("Going to run the following job locally: %s", jobID)
+    log.debug(f"Running the following job locally: {jobID}")
     workerScript(jobStore, config, jobID, jobID, redirectOutputToLogFile=False)
-    logger.debug("Ran the following job locally: %s", jobID)
+    log.debug(f"Finished running: {jobID}")

@@ -33,7 +33,7 @@ import toil.test.sort.sort
 from toil import resolveEntryPoint
 from toil.common import Config, Toil
 from toil.job import Job
-from toil.lib.bioio import getTempFile, system
+from toil.lib.bioio import get_temp_file
 from toil.provisioners import clusterFactory
 from toil.test import (ToilTest, integrative, needs_aws_ec2, needs_cwl,
                        needs_docker, needs_rsync3, slow, travis_test)
@@ -45,6 +45,19 @@ from toil.version import python
 logger = logging.getLogger(__name__)
 
 
+def system(command):
+    """
+    A convenience wrapper around subprocess.check_call that logs the command before passing it
+    on. The command can be either a string or a sequence of strings. If it is a string shell=True
+    will be passed to subprocess.check_call.
+
+    :type command: str | sequence[string]
+    """
+    # TODO: Replace.  This function is redundant with other subprocess call functions.
+    logger.debug(f'Running: {command}')
+    subprocess.check_call(command, shell=isinstance(command, str), bufsize=-1)
+
+
 class UtilsTest(ToilTest):
     """
     Tests the utilities that toil ships with, e.g. stats and status, in conjunction with restart
@@ -54,7 +67,7 @@ class UtilsTest(ToilTest):
     def setUp(self):
         super(UtilsTest, self).setUp()
         self.tempDir = self._createTempDir()
-        self.tempFile = getTempFile(rootDir=self.tempDir)
+        self.tempFile = get_temp_file(rootDir=self.tempDir)
         self.outputFile = 'someSortedStuff.txt'
         self.toilDir = os.path.join(self.tempDir, "jobstore")
         self.assertFalse(os.path.exists(self.toilDir))

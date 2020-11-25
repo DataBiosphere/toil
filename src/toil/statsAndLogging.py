@@ -20,7 +20,7 @@ import os
 import time
 from threading import Event, Thread
 
-from toil.lib.bioio import getTotalCpuTime
+from toil.lib.bioio import get_total_cpu_time
 from toil.lib.expando import Expando
 
 logger = logging.getLogger( __name__ )
@@ -150,7 +150,7 @@ class StatsAndLogging( object ):
         """
         #  Overall timing
         startTime = time.time()
-        startClock = getTotalCpuTime()
+        startClock = get_total_cpu_time()
 
         def callback(fileHandle):
             statsStr = fileHandle.read()
@@ -189,7 +189,7 @@ class StatsAndLogging( object ):
 
         # Finish the stats file
         text = json.dumps(dict(total_time=str(time.time() - startTime),
-                               total_clock=str(getTotalCpuTime() - startClock)), ensure_ascii=True)
+                               total_clock=str(get_total_cpu_time() - startClock)), ensure_ascii=True)
         jobStore.writeStatsAndLogging(text)
 
     def check(self):
