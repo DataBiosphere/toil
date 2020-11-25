@@ -15,7 +15,6 @@
 import logging
 import os
 import signal
-import tempfile
 
 from toil.common import Config, Toil, jobStoreLocatorHelp
 from toil.lib.bioio import parser_with_common_options, set_logging_from_options
@@ -28,11 +27,8 @@ def main():
     parser = parser_with_common_options()
 
     parser.add_argument("jobStore", type=str,
-                        help="The location of the job store used by the workflow whose jobs should "
-                             "be killed." + jobStoreLocatorHelp)
-    parser.add_argument("--tempDirRoot", dest="tempDirRoot", type=str, default=tempfile.gettempdir(),
-                        help="Path to where temporary directory containing all temp files are created, "
-                             "by default uses the current working directory as the base.")
+                        help=f"The location of the job store used by the workflow whose jobs should "
+                             f"be killed. {jobStoreLocatorHelp}")
     parser.add_argument("--version", action='version', version=version)
     options = parser.parse_args()
     set_logging_from_options(options)
