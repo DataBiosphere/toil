@@ -319,11 +319,20 @@ jobStoreLocatorHelp = ("A job store holds persistent information about the jobs 
                        "file:./foo or just file:foo) or /bar (equivalent to file:/bar).")
 
 
-def _addOptions(addGroupFn, config):
+def addOptions(parser: ArgumentParser, config: Config = Config()):
+    if not isinstance(parser, ArgumentParser):
+        raise ValueError(f"Unanticipated class: {parser.__class__}.  Must be: argparse.ArgumentParser.")
+
+    def addGroupFn(group_title, group_description):
+        return parser.add_argument_group(group_title, group_description).add_argument
+
+    add_logging_options(parser)
+    parser.register("type", "bool", parseBool)  # Custom type for arg=True/False.
+
     #
     # Core options
     #
-    addOptionFn = addGroupFn("toil core options",
+    addOptionFn = addGroupFn("Toil core options.",
                              "Options to specify the location of the Toil workflow and turn on "
                              "stats collation about the performance of jobs.")
     addOptionFn('jobStore', type=str,
@@ -377,7 +386,6 @@ def _addOptions(addGroupFn, config):
     #
     # Batch system options
     #
-
     addOptionFn = addGroupFn("toil options for specifying the batch system",
                              "Allows the specification of the batch system, and arguments to the "
                              "batch system/big batch system (see below).")
@@ -648,18 +656,6 @@ def parseBool(val):
         return False
     else:
         raise RuntimeError("Could not interpret \"%s\" as a boolean value" % val)
-
-def addOptions(parser, config=Config()):
-    add_logging_options(parser)
-    if isinstance(parser, ArgumentParser):
-        def addGroup(headingString, bodyString):
-            return parser.add_argument_group(headingString, bodyString).add_argument
-
-        parser.register("type", "bool", parseBool)  # Custom type for arg=True/False.
-        _addOptions(addGroup, config)
-    else:
-        raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting "
-                           "argparse.ArgumentParser" % parser.__class__)
 
 
 def getNodeID():
