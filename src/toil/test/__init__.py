@@ -139,7 +139,7 @@ class ToilTest(unittest.TestCase):
         return projectRootPath
 
     def _createTempDir(self, purpose=None):
-        prefix = '-'.join(['toil', 'test', strclass(self), self._testMethodName, purpose, ''])
+        prefix = '-'.join(['toil', 'test', strclass(self.__class__), self._testMethodName, purpose, ''])
         temp_dir_path = os.path.realpath(tempfile.mkdtemp(dir=self._tempBaseDir, prefix=prefix))
         self._tempDirs.append(temp_dir_path)
         return temp_dir_path
