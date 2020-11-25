@@ -13,16 +13,15 @@
 # limitations under the License.
 import logging
 import os
-
 import subprocess
-from toil.version import exactPython
 from abc import abstractmethod
-
-import pytest
 from uuid import uuid4
 
+import pytest
 
-from toil.test import needs_google, integrative, ToilTest, needs_appliance, timeLimit, slow
+from toil.test import (ToilTest, integrative, needs_appliance, needs_google,
+                       slow, timeLimit)
+from toil.version import exactPython
 
 log = logging.getLogger(__name__)
 

@@ -29,7 +29,6 @@ import sys
 import tempfile
 import urllib
 import uuid
-import shutil
 from typing import (
     Any,
     Dict,
@@ -56,8 +55,6 @@ import cwltool.main
 import cwltool.provenance
 import cwltool.resolver
 import cwltool.stdfsaccess
-import cwltool.workflow
-import schema_salad.ref_resolver
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mutation import MutationManager
@@ -89,6 +86,7 @@ from ruamel.yaml.comments import CommentedMap
 from schema_salad import validate
 from schema_salad.schema import Names
 from schema_salad.sourceline import SourceLine
+import schema_salad.ref_resolver
 
 from toil.common import Config, Toil, addOptions
 from toil.fileStores import FileID
@@ -130,8 +128,6 @@ def cwltoil_was_removed():
 class UnresolvedDict(dict):
     """Tag to indicate a dict contains promises that must be resolved."""
 
-    pass
-
 
 class SkipNull:
     """
@@ -141,8 +137,6 @@ class SkipNull:
     The CWL 1.2 specification calls for treating this the exactly the same as a
     null value.
     """
-
-    pass
 
 
 def filter_skip_null(name: str, value: Any) -> Any:

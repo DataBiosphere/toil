@@ -11,28 +11,25 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from past.utils import old_div
 import base64
+import boto3
 import bz2
+import errno
+import itertools
+import logging
 import os
 import socket
-import logging
 import types
-import itertools
-import errno
-
 from ssl import SSLError
-from six import iteritems
 
+from toil.lib.compatibility import compat_bytes, compat_oldstr
 from toil.lib.exceptions import panic
-from toil.lib.compatibility import compat_oldstr, compat_bytes, USING_PYTHON2
 from toil.lib.retry import old_retry
 from boto.exception import (SDBResponseError,
                             BotoServerError,
                             S3ResponseError,
                             S3CreateError,
                             S3CopyError)
-import boto3
 from botocore.exceptions import ClientError
 
 log = logging.getLogger(__name__)
@@ -86,9 +83,7 @@ class SDBHelper(object):
 
     maxAttributesPerItem = 256
     maxValueSize = 1024
-    # in python2 1 / 2 == 0, in python 3 1 / 2 == 0.5
-    # old_div implents the python2 behavior in both 2 & 3
-    maxRawValueSize = old_div(maxValueSize * 3, 4)
+    maxRawValueSize = maxValueSize * 3 // 4
     # Just make sure we don't have a problem with padding or integer truncation:
     assert len(base64.b64encode(b' ' * maxRawValueSize)) == 1024
     assert len(base64.b64encode(b' ' * (1 + maxRawValueSize))) > 1024
@@ -159,14 +154,11 @@ class SDBHelper(object):
         :rtype: (str|None,int)
         :return: the binary data and the number of chunks it was composed from
         """
-        chunks = [(int(k), v) for k, v in iteritems(attributes) if cls._isValidChunkName(k)]
+        chunks = [(int(k), v) for k, v in attributes.items() if cls._isValidChunkName(k)]
         chunks.sort()
         numChunks = int(attributes[u'numChunks'])
         if numChunks:
-            if USING_PYTHON2:
-                serializedJob = b''.join(v for k, v in chunks)
-            else:
-                serializedJob = b''.join(v.encode() for k, v in chunks)
+            serializedJob = b''.join(v.encode() for k, v in chunks)
             compressed = base64.b64decode(serializedJob)
             if compressed[0] == b'C'[0]:
                 binary = bz2.decompress(compressed[1:])
@@ -179,7 +171,6 @@ class SDBHelper(object):
         return binary, numChunks
 
 
-from boto.sdb.connection import SDBConnection
 
 
 def fileSizeAndTime(localFilePath):

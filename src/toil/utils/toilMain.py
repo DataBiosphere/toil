@@ -1,7 +1,8 @@
 import os
-import sys
 import re
+import sys
 import textwrap
+
 import pkg_resources
 
 from toil.version import version
@@ -30,16 +31,10 @@ def main():
 
 def loadModules():
     # noinspection PyUnresolvedReferences
-    from toil.utils import (toilKill,
-                            toilStats,
-                            toilStatus,
-                            toilClean,
-                            toilLaunchCluster,
-                            toilDestroyCluster,
-                            toilSshCluster,
-                            toilRsyncCluster,
-                            toilDebugFile,
-                            toilDebugJob)
+    from toil.utils import (toilClean, toilDebugFile, toilDebugJob,  # noqa
+                            toilDestroyCluster, toilKill, toilLaunchCluster,
+                            toilRsyncCluster, toilSshCluster, toilStats,
+                            toilStatus)
     return {"-".join([i.lower() for i in re.findall('[A-Z][^A-Z]*', name)]): module for name, module in locals().items()}
 
 

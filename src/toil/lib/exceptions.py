@@ -14,9 +14,6 @@
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
 
-from __future__ import absolute_import
-from future.utils import raise_
-from builtins import object
 import sys
 
 
@@ -53,3 +50,13 @@ class panic( object ):
             self.log.warning( "Exception during panic", exc_info=exc_info )
         exc_type, exc_value, traceback = self.exc_info
         raise_(exc_type, exc_value, traceback)
+
+def raise_(exc_type, exc_value, traceback) -> None:
+     if exc_value is not None:
+         exc = exc_type(exc_value)
+     else:
+         exc = exc_type
+     if exc.__traceback__ is not traceback:
+         raise exc.with_traceback(traceback)
+     raise exc
+

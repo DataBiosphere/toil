@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from builtins import map
 import errno
 import hashlib
 import importlib
@@ -20,21 +19,20 @@ import logging
 import os
 import shutil
 import sys
-
 from collections import namedtuple
 from contextlib import closing
 from io import BytesIO
 from pydoc import locate
 from tempfile import mkdtemp
 from urllib.error import HTTPError
+from urllib.request import urlopen
 from zipfile import ZipFile
-from six.moves.urllib.request import urlopen
 
-from toil.lib.retry import retry, ErrorCondition
-from toil.lib.memoize import strict_bool
-from toil.lib.iterables import concat
-from toil.version import exactPython
 from toil import inVirtualEnv
+from toil.lib.iterables import concat
+from toil.lib.memoize import strict_bool
+from toil.lib.retry import ErrorCondition, retry
+from toil.version import exactPython
 
 log = logging.getLogger(__name__)
 

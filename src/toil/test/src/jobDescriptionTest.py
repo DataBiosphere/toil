@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
 import os
 from argparse import ArgumentParser
+
 from toil.common import Toil
 from toil.job import Job, JobDescription, TemporaryID
 from toil.test import ToilTest, travis_test
+
 
 class JobDescriptionTest(ToilTest):
     

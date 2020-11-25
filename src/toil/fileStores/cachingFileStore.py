@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from contextlib import contextmanager
 import errno
 import hashlib
 import logging
@@ -19,20 +18,20 @@ import os
 import re
 import shutil
 import sqlite3
-import sys
 import tempfile
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
+from toil.fileStores import FileID
+from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.bioio import makePublicDir
 from toil.lib.humanize import bytes2human
-from toil.lib.misc import robust_rmtree, atomic_copy, atomic_copyobj
-from toil.lib.retry import retry, ErrorCondition
+from toil.lib.misc import atomic_copy, atomic_copyobj, robust_rmtree
+from toil.lib.retry import ErrorCondition, retry
 from toil.lib.threading import get_process_name, process_name_exists
-from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.fileStores import FileID
 
 logger = logging.getLogger(__name__)
 
@@ -698,7 +697,6 @@ class CachingFileStore(AbstractFileStore):
                 # Probably already deleted
                 logger.debug('File already gone: %s', filePath)
                 # Still need to mark it as deleted
-                pass
 
             # Whether we deleted the file or just found out that it is gone, we
             # need to take credit for deleting it so that we remove it from the

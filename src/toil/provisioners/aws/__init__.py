@@ -11,16 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import datetime
 import logging
 import os
 from collections import namedtuple
 from difflib import get_close_matches
 from operator import attrgetter
-import datetime
 from statistics import stdev, mean
-from six import string_types
-from six.moves.urllib.request import urlopen
-from six.moves.urllib.error import URLError
+from urllib.request import urlopen
+from urllib.error import URLError
 
 logger = logging.getLogger(__name__)
 
@@ -217,7 +216,7 @@ def checkValidNodeTypes(provisioner, nodeTypes):
         return
     if not isinstance(nodeTypes, list):
         nodeTypes = [nodeTypes]
-    if not isinstance(nodeTypes[0], string_types):
+    if not isinstance(nodeTypes[0], str):
         return
     # check if a valid node type for aws
     from toil.lib.generatedEC2Lists import E2Instances, regionDict

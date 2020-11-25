@@ -13,6 +13,7 @@
 # limitations under the License.
 import logging
 import os
+import subprocess
 import time
 from abc import abstractmethod
 from inspect import getsource
@@ -20,15 +21,12 @@ from textwrap import dedent
 from uuid import uuid4
 
 import pytest
-from builtins import next
-from builtins import range
-from builtins import str
 
-import subprocess
 from toil.provisioners import clusterFactory
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
+from toil.test import (ToilTest, integrative, needs_appliance, needs_aws_ec2,
+                       slow, timeLimit)
 from toil.version import exactPython
-from toil.test import needs_aws_ec2, integrative, ToilTest, needs_appliance, timeLimit, slow
 
 log = logging.getLogger(__name__)
 
@@ -242,8 +240,9 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         self.requestedNodeStorage = 20
 
     def launchCluster(self):
-        from toil.lib.ec2 import wait_instances_running
         from boto.ec2.blockdevicemapping import BlockDeviceType
+
+        from toil.lib.ec2 import wait_instances_running
         self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
                                      '--nodeTypes', ",".join(self.instanceTypes), '-w', ",".join(self.numWorkers), '--nodeStorage', str(self.requestedLeaderStorage)])
 
@@ -323,9 +322,10 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
 
     def _getScript(self):
         def restartScript():
-            from toil.job import Job
             import argparse
             import os
+
+            from toil.job import Job
 
             def f0(job):
                 if 'FAIL' in os.environ:
@@ -390,8 +390,8 @@ class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
 
     def _getScript(self):
         def userScript():
-            from toil.job import Job
             from toil.common import Toil
+            from toil.job import Job
 
             # Because this is the only job in the pipeline and because it is preemptable,
             # there will be no non-preemptable jobs. The non-preemptable scaler will therefore

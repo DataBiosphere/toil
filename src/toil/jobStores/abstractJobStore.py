@@ -11,32 +11,28 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import shutil
-import re
-import pickle
 import logging
-from abc import ABCMeta, abstractmethod
-from contextlib import contextmanager, closing
+import pickle
+import re
+import shutil
+import urllib.parse as urlparse
+from abc import ABC, ABCMeta, abstractmethod
+from contextlib import closing, contextmanager
 from datetime import timedelta
-from uuid import uuid4
-from requests.exceptions import HTTPError
 from http.client import BadStatusLine
+from urllib.request import urlopen
+from uuid import uuid4
 
-# Python 3 compatibility imports
-from six import itervalues
-from six.moves.urllib.request import urlopen
-import six.moves.urllib.parse as urlparse
-
-from toil.lib.retry import retry, ErrorCondition
+from requests.exceptions import HTTPError
 
 from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
-from toil.job import JobException, CheckpointJobDescription, ServiceJobDescription
+from toil.job import (CheckpointJobDescription, JobException,
+                      ServiceJobDescription)
 from toil.lib.memoize import memoize
 from toil.lib.misc import WriteWatchingStream
 from toil.lib.objects import abstractclassmethod
-from future.utils import with_metaclass
-
+from toil.lib.retry import ErrorCondition, retry
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +101,7 @@ class JobStoreExistsException(Exception):
             "the job store with 'toil clean' to start the workflow from scratch." % locator)
 
 
-class AbstractJobStore(with_metaclass(ABCMeta, object)):
+class AbstractJobStore(ABC):
     """
     Represents the physical storage for the jobs and files in a Toil workflow.
     
@@ -509,7 +505,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
         def getJobDescriptions():
             if jobCache is not None:
-                return itervalues(jobCache)
+                return jobCache.values()
             else:
                 return self.jobs()
 
@@ -1109,7 +1105,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
             raise ValueError("Not a valid shared file name: '%s'." % sharedFileName)
 
 
-class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
+class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     @classmethod
     def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() in ('http', 'https', 'ftp') and not export

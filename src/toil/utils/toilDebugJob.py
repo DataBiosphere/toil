@@ -15,15 +15,13 @@
 """Debug tool for running a toil job locally.
 """
 
-from __future__ import absolute_import
 import logging
 
-from toil.lib.bioio import getBasicOptionParser
-from toil.lib.bioio import parseBasicOptions
-from toil.common import jobStoreLocatorHelp, Config, Toil
+from toil.common import Config, Toil, jobStoreLocatorHelp
+from toil.lib.bioio import getBasicOptionParser, parseBasicOptions
+from toil.utils.toilDebugFile import printContentsOfJobStore
 from toil.version import version
 from toil.worker import workerScript
-from toil.utils.toilDebugFile import printContentsOfJobStore
 
 logger = logging.getLogger( __name__ )
 

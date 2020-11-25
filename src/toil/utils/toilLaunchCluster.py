@@ -15,11 +15,12 @@
 Launches a toil leader instance with the specified provisioner.
 """
 import logging
-from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
-from toil.utils import addBasicProvisionerOptions, getZoneFromEnv
+
+from toil import applianceSelf
+from toil.lib.bioio import getBasicOptionParser, parseBasicOptions
 from toil.provisioners import clusterFactory
 from toil.provisioners.aws import checkValidNodeTypes
-from toil import applianceSelf
+from toil.utils import addBasicProvisionerOptions, getZoneFromEnv
 
 logger = logging.getLogger(__name__)
 

@@ -1,33 +1,18 @@
 import json
-import unittest
 import os
-import subprocess
 import shutil
+import subprocess
+import unittest
 import uuid
-from typing import Optional, List
+from typing import List, Optional
 
-from toil.wdl.wdl_functions import sub
-from toil.wdl.wdl_functions import ceil
-from toil.wdl.wdl_functions import floor
-from toil.wdl.wdl_functions import read_lines
-from toil.wdl.wdl_functions import read_tsv
-from toil.wdl.wdl_functions import read_json
-from toil.wdl.wdl_functions import read_map
-from toil.wdl.wdl_functions import read_int
-from toil.wdl.wdl_functions import read_string
-from toil.wdl.wdl_functions import read_float
-from toil.wdl.wdl_functions import read_boolean
-from toil.wdl.wdl_functions import write_lines
-from toil.wdl.wdl_functions import write_tsv
-from toil.wdl.wdl_functions import write_json
-from toil.wdl.wdl_functions import write_map
-from toil.wdl.wdl_functions import transpose
-from toil.wdl.wdl_functions import length
-
-from toil.wdl.wdl_functions import WDLPair
-
-from toil.version import exactPython
 from toil.test import ToilTest
+from toil.version import exactPython
+from toil.wdl.wdl_functions import (WDLPair, ceil, floor, length, read_boolean,
+                                    read_float, read_int, read_json,
+                                    read_lines, read_map, read_string,
+                                    read_tsv, sub, transpose, write_json,
+                                    write_lines, write_map, write_tsv)
 
 
 class WdlStandardLibraryFunctionsTest(ToilTest):

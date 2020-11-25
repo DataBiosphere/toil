@@ -17,7 +17,7 @@
 collect_ignore = []
 
 try:
-    import pymesos
+    import pymesos  # noqa: F401
 except ImportError:
     collect_ignore.append("batchSystem.py")
     collect_ignore.append("executor.py")

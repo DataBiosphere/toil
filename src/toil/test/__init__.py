@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
 
 import datetime
 import logging
@@ -19,6 +18,7 @@ import os
 import re
 import shutil
 import signal
+import subprocess
 import tempfile
 import threading
 import time
@@ -29,17 +29,12 @@ from contextlib import contextmanager
 from inspect import getsource
 from shutil import which
 from textwrap import dedent
+from unittest.util import strclass
+from urllib.request import urlopen
 
 import pytz
-from builtins import str
-from future.utils import with_metaclass
-from six import iteritems, itervalues
-from six.moves.urllib.request import urlopen
-from unittest.util import strclass
 
-from toil import subprocess
-from toil import toilPackageDirPath, applianceSelf, ApplianceImageNotFound
-from toil import which
+from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
 from toil.lib.iterables import concat
 from toil.lib.memoize import memoize
 from toil.lib.threading import ExceptionalThread, cpu_count
@@ -348,8 +343,10 @@ def needs_mesos(test_item):
     if not (which('mesos-master') or which('mesos-slave')):
         return unittest.skip("Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
     try:
-        import pymesos
         import psutil
+        import pymesos
+        print(psutil.__file__)
+        pritn(pymesos.__file__)  # keep these imports from being removed.
     except ImportError:
         return unittest.skip("Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
     return test_item
@@ -431,6 +428,7 @@ def needs_encryption(test_item):
     try:
         # noinspection PyUnresolvedReferences
         import nacl
+        print(nacl.__file__)  # keep this import from being removed.
     except ImportError:
         return unittest.skip(
             "Install Toil with the 'encryption' extra to include this test.")(test_item)
@@ -447,6 +445,7 @@ def needs_cwl(test_item):
     try:
         # noinspection PyUnresolvedReferences
         import cwltool
+        print(cwltool.__file__)  # keep this import from being removed
     except ImportError:
         return unittest.skip("Install Toil with the 'cwl' extra to include this test.")(test_item)
     else:
@@ -739,7 +738,7 @@ class ApplianceTestSupport(ToilTest):
             with self.WorkerThread(self, mounts, numCores) as worker:
                 yield leader, worker
 
-    class Appliance(with_metaclass(ABCMeta, ExceptionalThread)):
+    class Appliance(ExceptionalThread, metaclass=ABCMeta):
         @abstractmethod
         def _getRole(self):
             return 'leader'
@@ -759,7 +758,7 @@ class ApplianceTestSupport(ToilTest):
             """
             :param ApplianceTestSupport outer:
             """
-            assert all(' ' not in v for v in itervalues(mounts)), 'No spaces allowed in mounts'
+            assert all(' ' not in v for v in mounts.values()), 'No spaces allowed in mounts'
             super(ApplianceTestSupport.Appliance, self).__init__()
             self.outer = outer
             self.mounts = mounts
@@ -776,7 +775,7 @@ class ApplianceTestSupport(ToilTest):
                                    '--net=host',
                                    '-i',
                                    '--name=' + self.containerName,
-                                   ['--volume=%s:%s' % mount for mount in iteritems(self.mounts)],
+                                   ['--volume=%s:%s' % mount for mount in self.mounts.items()],
                                    image,
                                    self._containerCommand()))
                 log.info('Running %r', args)
@@ -823,7 +822,7 @@ class ApplianceTestSupport(ToilTest):
             """
             # Delete all files within each mounted directory, but not the directory itself.
             cmd = 'shopt -s dotglob && rm -rf ' + ' '.join(v + '/*'
-                                                           for k, v in iteritems(self.mounts)
+                                                           for k, v in self.mounts.items()
                                                            if os.path.isdir(k))
             self.outer._run('docker', 'run',
                             '--rm',

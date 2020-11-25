@@ -9,7 +9,6 @@ class WDLType(str):
     """
     # TODO: make this into its own class instead of extending string.
     #  This requires all WDL types to be a WDLType.
-    pass
 
 
 class WDLPairType(WDLType):
