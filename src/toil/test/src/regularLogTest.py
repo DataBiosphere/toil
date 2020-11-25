@@ -60,8 +60,7 @@ class RegularLogTest(ToilTest):
                                               '--clean=always',
                                               '--logLevel=info'], stderr=subprocess.STDOUT)
         assert helloWorld.childMessage in toilOutput.decode('utf-8')
-    
-    @travis_test
+
     def testWriteLogs(self):
         subprocess.check_call([sys.executable,
                                '-m', helloWorld.__name__,

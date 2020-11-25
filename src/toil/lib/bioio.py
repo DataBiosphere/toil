@@ -58,7 +58,8 @@ def add_logging_options(parser: ArgumentParser):
     group = parser.add_argument_group("Logging Options")
     default_loglevel = logging.getLevelName(DEFAULT_LOGLEVEL)
 
-    levels = ('CRITICAL', 'ERROR', 'WARNING', 'DEBUG', 'INFO')
+    levels = ['CRITICAL', 'ERROR', 'WARNING', 'DEBUG', 'INFO']
+    levels += [l.lower() for l in levels]
     for level in levels:
         group.add_argument(f"--log{level}", dest="logLevel", default=default_loglevel, action="store_const",
                            const=level, help=f"Turn on loglevel {level}.  Default: {default_loglevel}.")
