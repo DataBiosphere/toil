@@ -14,11 +14,14 @@
 from future.utils import with_metaclass
 from abc import ABCMeta, abstractmethod
 from functools import total_ordering
+import configparser
 import logging
 import os.path
 import yaml
 import textwrap
 import urllib.request
+
+from typing import Dict
 
 import subprocess
 from toil import applianceSelf, customDockerInitCmd, customInitCmd
@@ -129,13 +132,89 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             nodeShape, storageOverride = override.split(':')
             self._nodeStorageOverrides[nodeShape] = int(storageOverride)
         self._leaderPrivateIP = None
+        # This will hold an SSH public key for Mesos clusters, or the
+        # Kubernetes joining information as a dict for Kubernetes clusters.
+        self._leaderWorkerAuthentication = None
 
     def readClusterSettings(self):
         """
         Initialize class from an existing cluster. This method assumes that
         the instance we are running on is the leader.
+        
+        Implementations must call _setLeaderWorkerAuthentication().
         """
         raise NotImplementedError
+        
+    def _setLeaderWorkerAuthentication(self):
+        """
+        Configure authentication between the leader and the workers.
+        
+        Assumes that we are running on the leader. Configures the backing
+        cluster scheduler so that the leader and workers will be able to
+        communicate securely. Authentication may be one-way or mutual.
+        
+        Until this is called, new nodes may not be able to communicate with the
+        leader. Afterward, the provisioner will include the necessary
+        authentication information when provisioning nodes.
+        """
+        
+        if self.clusterType == 'mesos':
+            # We're using a Mesos cluster, so set up SSH from leader to workers.
+            self._leaderWorkerAuthentication = self._setSSH()
+        elif self.clusterType == 'kubernetes':
+            # We're using a Kubernetes cluster.
+            self._leaderWorkerAuthentication = self._getKubernetesJoiningInfo()
+            
+    def _clearLeaderWorkerAuthentication(self):
+        """
+        Forget any authentication information populated by
+        _setLeaderWorkerAuthentication(). It will need to be called again to
+        provision more workers.
+        """
+        
+        self._leaderWorkerAuthentication = None
+            
+    def _setSSH(self) -> str:
+        """
+        Generate a key pair, save it in /root/.ssh/id_rsa.pub, and return the public key.
+        The file /root/.sshSuccess is used to prevent this operation from running twice.
+        :return Public key.
+        """
+        if not os.path.exists('/root/.sshSuccess'):
+            subprocess.check_call(['ssh-keygen', '-f', '/root/.ssh/id_rsa', '-t', 'rsa', '-N', ''])
+            with open('/root/.sshSuccess', 'w') as f:
+                f.write('written here because of restrictive permissions on .ssh dir')
+        os.chmod('/root/.ssh', 0o700)
+        subprocess.check_call(['bash', '-c', 'eval $(ssh-agent) && ssh-add -k'])
+        with open('/root/.ssh/id_rsa.pub') as f:
+            leaderPublicKey = f.read()
+        leaderPublicKey = leaderPublicKey.split(' ')[1]  # take 'body' of key
+        # confirm it really is an RSA public key
+        assert leaderPublicKey.startswith('AAAAB3NzaC1yc2E'), leaderPublicKey
+        return leaderPublicKey
+        
+    def _getKubernetesJoiningInfo(self) -> Dict[str, str]:
+        """
+        Get the Kubernetes joining info created when Kubernetes was set up on
+        this node, which is the leader.
+        
+        Returns a dict of JOIN_TOKEN, JOIN_CERT_HASH, and JOIN_ENDPOINT, which
+        can be inserted into our Kubernetes worker setup script and config.
+        """
+        
+        # Make a parser for the config
+        config = configparser.ConfigParser(interpolation=None)
+        # Leave case alone
+        config.optionxform = str
+        
+        # This info is always supposed to be set up before the Toil appliance
+        # starts, and mounted in at the same path as on the host. So we just go
+        # read it.
+        config.read_file(open('/etc/kubernetes/worker.ini', 'r'))
+
+        # Grab everything out of the default section where our setup script put
+        # it.
+        return dict(config['DEFAULT'])
 
     def setAutoscaledNodeTypes(self, nodeTypes):
         """
@@ -243,26 +322,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError
 
-    def _setSSH(self):
-        """
-        Generate a key pair, save it in /root/.ssh/id_rsa.pub, and return the public key.
-        The file /root/.sshSuccess is used to prevent this operation from running twice.
-        :return Public key.
-        """
-        if not os.path.exists('/root/.sshSuccess'):
-            subprocess.check_call(['ssh-keygen', '-f', '/root/.ssh/id_rsa', '-t', 'rsa', '-N', ''])
-            with open('/root/.sshSuccess', 'w') as f:
-                f.write('written here because of restrictive permissions on .ssh dir')
-        os.chmod('/root/.ssh', 0o700)
-        subprocess.check_call(['bash', '-c', 'eval $(ssh-agent) && ssh-add -k'])
-        with open('/root/.ssh/id_rsa.pub') as f:
-            leaderPublicKey = f.read()
-        leaderPublicKey = leaderPublicKey.split(' ')[1]  # take 'body' of key
-        # confirm it really is an RSA public key
-        assert leaderPublicKey.startswith('AAAAB3NzaC1yc2E'), leaderPublicKey
-        return leaderPublicKey
-
-
+    
     class InstanceConfiguration:
         """
         Allows defining the initial setup for an instance and then turning it
@@ -689,10 +749,11 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
                 sed 's/          - --secure-port=4443/          - --secure-port=4443\\n          - --kubelet-preferred-address-types=Hostname/' | \\
                 kubectl apply -f -
                 
-            # Grab some joining info
-            echo "JOIN_TOKEN=$(kubeadm token create --ttl 0)" >/etc/kubernetes/worker.env
-            echo "JOIN_CERT_HASH=sha256:$(openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //')" >>/etc/kubernetes/worker.env
-            echo "JOIN_ENDPOINT=\"$(hostname):6443\"" >>/etc/kubernetes/worker.env
+            # Grab some joining info and make a file we can parse later with configparser
+            echo "[DEFAULT]" >/etc/kubernetes/worker.ini
+            echo "JOIN_TOKEN=$(kubeadm token create --ttl 0)" >>/etc/kubernetes/worker.ini
+            echo "JOIN_CERT_HASH=sha256:$(openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //')" >>/etc/kubernetes/worker.ini
+            echo "JOIN_ENDPOINT=$(hostname):6443" >>/etc/kubernetes/worker.ini
             ''').format(**values))
         config.addUnit("create-kubernetes-cluster.service", content=textwrap.dedent('''\
             [Unit]
@@ -741,23 +802,82 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             [Install]
             WantedBy=multi-user.target
             '''))
+    
+    def addKubernetesWorker(self, config: InstanceConfiguration, authVars: Dict[str, str]):
+        """
+        Add services to configure as a Kubernetes worker, if Kubernetes is
+        already set to be installed.
         
+        Authenticate back to the leader using the JOIN_TOKEN, JOIN_CERT_HASH,
+        and JOIN_ENDPOINT set in the given authentication data dict.
         
+        :param config: The configuration to add services to
+        :param authVars: Dict with authentication info
+        """
+        
+        # Collect one combined set of auth and general settings.
+        values = dict(**self.getKubernetesValues(), **authVars)
+        
+        # Kubeadm worker configuration
+        config.addFile("/home/core/kubernetes-worker.yml", permissions="0644", content=textwrap.dedent('''\
+            apiVersion: kubeadm.k8s.io/v1beta2
+            kind: JoinConfiguration
+            nodeRegistration:
+              kubeletExtraArgs:
+                volume-plugin-dir: "/opt/libexec/kubernetes/kubelet-plugins/volume/exec/"
+                cloud-provider: aws
+            discovery:
+              bootstrapToken:
+                apiServerEndpoint: {JOIN_ENDPOINT}
+                token: {JOIN_TOKEN}
+                caCertHashes:
+                - "{JOIN_CERT_HASH}"
+            ---
+            apiVersion: kubelet.config.k8s.io/v1beta1
+            kind: KubeletConfiguration
+            cgroupDriver: systemd
+            '''.format(**values)))
+            
+        # Make a script to join the cluster using that configuration
+        config.addFile("/home/core/join-kubernetes-cluster.sh", content=textwrap.dedent('''\
+            #!/usr/bin/env bash
+            set -e
+            
+            export PATH="$PATH:{DOWNLOAD_DIR}"
+            
+            # We need the kubelet being restarted constantly by systemd while kubeadm is setting up.
+            # Systemd doesn't really let us say that in the unit file.
+            systemctl start kubelet
+            
+            kubeadm join {JOIN_ENDPOINT} --config /home/core/kubernetes-worker.yml
+            ''').format(**values))
+            
+        config.addUnit("join-kubernetes-cluster.service", content=textwrap.dedent('''\
+            [Unit]
+            Description=Kubernetes cluster membership
+            After=install-kubernetes.service
+            After=docker.service
+            # Can't be before kubelet.service because Kubelet has to come up as we run this.
 
-    def _getCloudConfigUserData(self, role, leaderPublicKey=None, keyPath=None, preemptable=False):
+            [Service]
+            Type=oneshot
+            Restart=no
+            ExecStart=/usr/bin/bash /home/core/join-kubernetes-cluster.sh
+            '''))
+
+    def _getCloudConfigUserData(self, role, keyPath=None, preemptable=False):
         """
         Return the text (not bytes) user data to pass to a provisioned node.
         
-        :param str leaderPublicKey: The RSA public key of the leader node, for worker nodes.
+        If leader-worker authentication is currently stored, uses it to connect
+        the worker to the leader.
+        
         :param str keyPath: The path of a secret key for the worker to wait for the leader to create on it.
         :param bool preemptable: Set to true for a worker node to identify itself as preemptible in the cluster.
         """
 
         # Start with a base config
         config = self.getBaseInstanceConfiguration()
-        if leaderPublicKey:
-            # Add in the leader's public SSH key if needed
-            config.addSSHRSAKey(leaderPublicKey)
         
         if self.clusterType == 'kubernetes':
             # Install Kubernetes
@@ -766,10 +886,26 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             if role == 'leader':
                 # Set up the cluster
                 self.addKubernetesLeader(config)
+            
+            # We can't actually set up a Kubernetes worker without credentials
+            # to connect back to the leader.
                 
         if self.clusterType == 'mesos' or role == 'leader':
             # Leaders, and all nodes in a Mesos cluster, need a Toil service
             self.addToilService(config, role, keyPath, preemptable)
+            
+        if role == 'worker' and self._leaderWorkerAuthentication is not None:
+            # We need to connect the worker to the leader.
+            if self.clusterType == 'mesos':
+                # This involves an SSH public key form the leader
+                config.addSSHRSAKey(self._leaderWorkerAuthentication)
+            elif self.clusterType == 'kubernetes':
+                # We can install the Kubernetes wotker and make it phone home
+                # to the leader.
+                # TODO: this puts sufficient info to fake a malicious worker
+                # into the worker config, which probably is accessible by
+                # anyone in the cloud account.
+                self.addKubernetesWorker(config, self._leaderWorkerAuthentication)
             
         # Make it into a string for CloudConfig
         return config.toCloudConfig()

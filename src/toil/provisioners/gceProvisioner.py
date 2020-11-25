@@ -83,13 +83,14 @@ class GCEProvisioner(AbstractProvisioner):
         leader = self.getLeader()
         self._leaderPrivateIP = leader.privateIP
 
-        # generate a public key for the leader, which is used to talk to workers
-        self._leaderPublicKey = self._setSSH()
-
         # The location of the Google credentials file on instances.
         self._credentialsPath = GoogleJobStore.nodeServiceAccountJson
         self._keyName = 'core' # key name leader users to communicate with works
         self._botoPath = self.NODE_BOTO_PATH # boto credentials (used if reading an AWS bucket)
+        
+        # Let the base provisioner work out how to deploy duly authorized
+        # workers for this leader.
+        self._setLeaderWorkerAuthentication()
 
     def _readCredentials(self):
         """
@@ -108,7 +109,7 @@ class GCEProvisioner(AbstractProvisioner):
         self._projectId = self.googleConnectionParams['project_id']
         self._clientEmail = self.googleConnectionParams['client_email']
         self._credentialsPath = self._googleJson
-        self._leaderPublicKey = None
+        self._clearLeaderWorkerAuthentication() # TODO: Why are we doing this?
         self._gceDriver = self._getDriver()
 
 
@@ -244,7 +245,7 @@ class GCEProvisioner(AbstractProvisioner):
             logger.debug('Launching %s preemptable nodes', numNodes)
 
         #kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
-        userData =  self._getCloudConfigUserData('worker', self._leaderPublicKey, keyPath, preemptable)
+        userData =  self._getCloudConfigUserData('worker', keyPath, preemptable)
         metadata = {'items': [{'key': 'user-data', 'value': userData}]}
         imageType = 'flatcar-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
