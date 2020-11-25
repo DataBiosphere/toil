@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,28 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-"""Tool for reporting on job status.
-"""
-
-# standard library
+"""Tool for reporting on job status."""
 import logging
 import os
 import sys
 from functools import reduce
 
-# toil imports
 from toil.common import Config, Toil, jobStoreLocatorHelp
 from toil.job import JobException, ServiceJobDescription
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobStoreException)
-from toil.lib.bioio import getBasicOptionParser, parseBasicOptions
+from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
 from toil.statsAndLogging import StatsAndLogging
-from toil.version import version
 
 logger = logging.getLogger(__name__)
 
-class ToilStatus():
+
+class ToilStatus:
     """Tool for reporting on job status."""
     def __init__(self, jobStoreName, specifiedJobs=None):
         self.jobStoreName = jobStoreName
@@ -60,7 +55,7 @@ class ToilStatus():
 
         # Print the edges
         for job in set(self.jobsToReport):
-            for level, jobList  in enumerate(job.stack):
+            for level, jobList in enumerate(job.stack):
                 for childJob in jobList:
                     # Check, b/c successor may be finished / not in the set of jobs
                     if childJob.jobStoreID in jobsToNodeNames:
@@ -179,7 +174,7 @@ class ToilStatus():
         except NoSuchFileException:
             pass
         return 'QUEUED'
-    
+
     @staticmethod
     def getStatus(jobStoreName):
         """
@@ -285,13 +280,13 @@ class ToilStatus():
 
         return jobsToReport
 
+
 def main():
     """Reports the state of a Toil workflow."""
-    parser = getBasicOptionParser()
-
+    parser = parser_with_common_options()
     parser.add_argument("jobStore", type=str,
-                        help="The location of a job store that holds the information about the "
-                             "workflow whose status is to be reported on." + jobStoreLocatorHelp)
+                        help=f"The location of a job store that holds the information about the "
+                             f"workflow whose status is to be reported on. {jobStoreLocatorHelp}")
 
     parser.add_argument("--failIfNotComplete", action="store_true",
                         help="Return exit value of 1 if toil jobs not all completed. default=%(default)s",
@@ -322,9 +317,8 @@ def main():
                         help="Print children of each job. default=%(default)s",
                         default=False)
 
-    parser.add_argument("--version", action='version', version=version)
-
-    options = parseBasicOptions(parser)
+    options = parser.parse_args()
+    setLoggingFromOptions(options)
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -363,14 +357,14 @@ def main():
         status.print_dot_chart()
     if options.stats:
         print('Of the %i jobs considered, '
-           'there are %i jobs with children, '
-           '%i jobs ready to run, '
-           '%i zombie jobs, '
-           '%i jobs with services, '
-           '%i services, '
-           'and %i jobs with log files currently in %s.' %
-            (len(status.jobsToReport), len(hasChildren), len(readyToRun), len(zombies),
-             len(hasServices), len(services), len(hasLogFile), status.jobStore))
+              'there are %i jobs with children, '
+              '%i jobs ready to run, '
+              '%i zombie jobs, '
+              '%i jobs with services, '
+              '%i services, '
+              'and %i jobs with log files currently in %s.' %
+              (len(status.jobsToReport), len(hasChildren), len(readyToRun), len(zombies),
+               len(hasServices), len(services), len(hasLogFile), status.jobStore))
 
     if len(status.jobsToReport) > 0 and options.failIfNotComplete:
         # Upon workflow completion, all jobs will have been removed from job store

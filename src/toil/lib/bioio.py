@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,165 +11,99 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 import logging
-import logging.handlers
 import os
 import random
 import resource
-import subprocess
 import tempfile
 from argparse import ArgumentParser
-from xml.dom import minidom  # For making stuff pretty
 
-defaultLogLevel = logging.INFO
+from toil.version import version
+
 logger = logging.getLogger(__name__)
-rootLogger = logging.getLogger()
-toilLogger = logging.getLogger('toil')
+root_logger = logging.getLogger()
+toil_logger = logging.getLogger('toil')
 
-
-def getLogLevelString(logger=None):
-    if logger is None:
-        logger = rootLogger
-    return logging.getLevelName(logger.getEffectiveLevel())
-
+DEFAULT_LOGLEVEL = logging.INFO
 __loggingFiles = []
-def addLoggingFileHandler(fileName, rotatingLogging=False):
-    if fileName in __loggingFiles:
-        return
-    __loggingFiles.append(fileName)
-    if rotatingLogging:
-        handler = logging.handlers.RotatingFileHandler(fileName, maxBytes=1000000, backupCount=1)
-    else:
-        handler = logging.FileHandler(fileName)
-    rootLogger.addHandler(handler)
-    return handler
 
 
-def setLogLevel(level, logger=None):
-    """
-    Sets the log level to a given string level (like "INFO"). Operates on the
-    root logger by default, but another logger can be specified instead.
-    """
-    if logger is None:
-        logger = rootLogger
-    level = level.upper()
-    if level == "OFF": level = "CRITICAL"
-    # Note that getLevelName works in both directions, numeric to textual and textual to numeric
-    numericLevel = logging.getLevelName(level)
-    assert logging.getLevelName(numericLevel) == level
-    logger.setLevel(numericLevel)
+def setLogLevel(level):
+    """Sets the root logger level to a given string level (like "INFO")."""
+    level = "CRITICAL" if level.upper() == "OFF" else level.upper()
+    root_logger.setLevel(level)
     # There are quite a few cases where we expect AWS requests to fail, but it seems
     # that boto handles these by logging the error *and* raising an exception. We
     # don't want to confuse the user with those error messages.
-    logging.getLogger( 'boto' ).setLevel( logging.CRITICAL )
+    logging.getLogger('boto').setLevel(logging.CRITICAL)
 
-def logFile(fileName, printFunction=logger.info):
-    """Writes out a formatted version of the given log file
-    """
-    printFunction("Reporting file: %s" % fileName)
-    shortName = fileName.split("/")[-1]
-    fileHandle = open(fileName, 'r')
-    line = fileHandle.readline()
-    while line != '':
-        if line[-1] == '\n':
-            line = line[:-1]
-        printFunction("%s:\t%s" % (shortName, line))
-        line = fileHandle.readline()
-    fileHandle.close()
-    
-def logStream(fileHandle, shortName, printFunction=logger.info):
-    """Writes out a formatted version of the given log stream.
-    """
-    printFunction("Reporting file: %s" % shortName)
-    line = fileHandle.readline()
-    while line != '':
-        if line[-1] == '\n':
-            line = line[:-1]
-        printFunction("%s:\t%s" % (shortName, line))
-        line = fileHandle.readline()
-    fileHandle.close()
 
-def addLoggingOptions(parser):
-    # Wrapper function that allows toil to be used with both the optparse and
-    # argparse option parsing modules
-    if isinstance(parser, ArgumentParser):
-        group = parser.add_argument_group("Logging Options",
-                                          "Options that control logging")
-        _addLoggingOptions(group.add_argument)
-    else:
-        raise RuntimeError("Unanticipated class passed to "
-                           "addLoggingOptions(), %s. Expecting "
-                           "argparse.ArgumentParser" % parser.__class__)
+def add_provisioner_options(parser):
+    group = parser.add_argument_group("Provisioner Options")
+    group.add_argument('-p', "--provisioner", dest='provisioner', choices=['aws', 'gce'], required=False,
+                       default="aws", help="The provisioner for cluster auto-scaling.  "
+                                           "AWS and Google are currently supported")
+    group.add_argument('-z', '--zone', dest='zone', required=False, default=None,
+                       help="The availability zone of the master. This parameter can also be set via the 'TOIL_X_ZONE' "
+                            "environment variable, where X is AWS or GCE, or by the ec2_region_name parameter "
+                            "in your .boto file, or derived from the instance metadata if using this utility on an "
+                            "existing EC2 instance.")
+    group.add_argument("clusterName", help="The name that the cluster will be identifiable by.  "
+                                           "Must be lowercase and may not contain the '_' character.")
 
-supportedLogLevels = (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG)
 
-def _addLoggingOptions(addOptionFn):
-    """
-    Adds logging options
-    """
-    # BEFORE YOU ADD OR REMOVE OPTIONS TO THIS FUNCTION, KNOW THAT YOU MAY ONLY USE VARIABLES ACCEPTED BY BOTH
-    # optparse AND argparse FOR EXAMPLE, YOU MAY NOT USE default=%default OR default=%(default)s
-    defaultLogLevelName = logging.getLevelName( defaultLogLevel )
-    addOptionFn("--logOff", dest="logLevel",
-                default=defaultLogLevelName,
-                action="store_const", const="CRITICAL",
-                help="Same as --logCritical")
-    for level in supportedLogLevels:
-        levelName = logging.getLevelName(level)
-        levelNameCapitalized = levelName.capitalize()
-        addOptionFn("--log" + levelNameCapitalized, dest="logLevel",
-                    default=defaultLogLevelName,
-                    action="store_const", const=levelName,
-                    help="Turn on logging at level %s and above. (default is %s)" % (levelName, defaultLogLevelName))
-    addOptionFn("--logLevel", dest="logLevel", default=defaultLogLevelName,
-                help=("Log at given level (may be either OFF (or CRITICAL), ERROR, WARN (or WARNING), INFO or DEBUG). "
-                      "(default is %s)" % defaultLogLevelName))
-    addOptionFn("--logFile", dest="logFile", help="File to log in")
-    addOptionFn("--rotatingLogging", dest="logRotating", action="store_true", default=False,
-                help="Turn on rotating logging, which prevents log files getting too big.")
+def add_logging_options(parser: ArgumentParser):
+    """Add logging options to set the global log level."""
+    group = parser.add_argument_group("Logging Options")
+    default_loglevel = logging.getLevelName(DEFAULT_LOGLEVEL)
+
+    levels = ('CRITICAL', 'ERROR', 'WARNING', 'DEBUG', 'INFO')
+    for level in levels:
+        group.add_argument(f"--log{level}", dest="logLevel", default=default_loglevel, action="store_const",
+                           const=level, help=f"Turn on loglevel {level}.  Default: {default_loglevel}.")
+
+    group.add_argument("--logOff", dest="logLevel", default=default_loglevel,
+                       action="store_const", const="CRITICAL", help="Same as --logCRITICAL.")
+    group.add_argument("--logLevel", dest="logLevel", default=default_loglevel, choices=levels,
+                       help=f"Set the log level. Default: {default_loglevel}.  Options: {levels}.")
+    group.add_argument("--logFile", dest="logFile", help="File to log in.")
+    group.add_argument("--rotatingLogging", dest="logRotating", action="store_true", default=False,
+                       help="Turn on rotating logging, which prevents log files from getting too big.")
+
 
 def configureRootLogger():
     """
     Set up the root logger with handlers and formatting.
-    
+
     Should be called (either by itself or via setLoggingFromOptions) before any
     entry point tries to log anything, to ensure consistent formatting.
     """
-    
-    formatStr = ' '.join(['[%(asctime)s]', '[%(threadName)-10s]',
-                          '[%(levelname).1s]', '[%(name)s]', '%(message)s'])
-    logging.basicConfig(format=formatStr, datefmt='%Y-%m-%dT%H:%M:%S%z')
-    rootLogger.setLevel(defaultLogLevel)
+    logging.basicConfig(format='[%(asctime)s] [%(threadName)-10s] [%(levelname).1s] [%(name)s] %(message)s',
+                        datefmt='%Y-%m-%dT%H:%M:%S%z')
+    root_logger.setLevel(DEFAULT_LOGLEVEL)
+
+
+def log_to_file(log_file, log_rotation):
+    if log_file and log_file not in __loggingFiles:
+        logger.debug(f"Logging to file '{log_file}'.")
+        __loggingFiles.append(log_file)
+        if log_rotation:
+            handler = logging.handlers.RotatingFileHandler(log_file, maxBytes=1000000, backupCount=1)
+        else:
+            handler = logging.FileHandler(log_file)
+        root_logger.addHandler(handler)
+
 
 def setLoggingFromOptions(options):
-    """
-    Sets the logging from a dictionary of name/value options.
-    """
     configureRootLogger()
-    if options.logLevel is not None:
-        setLogLevel(options.logLevel)
-    else:
-        # Ensure that any other log level overrides are in effect even if no log level is explicitly set
-        setLogLevel(getLogLevelString())
-    logger.debug("Root logger is at level '%s', 'toil' logger at level '%s'.",
-                getLogLevelString(logger=rootLogger), getLogLevelString(logger=toilLogger))
-    if options.logFile is not None:
-        addLoggingFileHandler(options.logFile, rotatingLogging=options.logRotating)
-        logger.debug("Logging to file '%s'." % options.logFile)
+    options.logLevel = options.logLevel or logging.getLevelName(root_logger.getEffectiveLevel())
+    setLogLevel(options.logLevel)
+    logger.debug(f"Root logger is at level '{logging.getLevelName(root_logger.getEffectiveLevel())}', "
+                 f"'toil' logger at level '{logging.getLevelName(toil_logger.getEffectiveLevel())}'.")
 
+    # start logging to log file if specified
+    log_to_file(options.logFile, options.logRotating)
 
-def system(command):
-    """
-    A convenience wrapper around subprocess.check_call that logs the command before passing it
-    on. The command can be either a string or a sequence of strings. If it is a string shell=True
-    will be passed to subprocess.check_call.
-
-    :type command: str | sequence[string]
-    """
-    logger.debug('Running: %r', command)
-    subprocess.check_call(command, shell=isinstance(command, str), bufsize=-1)
 
 def getTotalCpuTimeAndMemoryUsage():
     """
@@ -177,118 +111,24 @@ def getTotalCpuTimeAndMemoryUsage():
     itself and its single largest child.
     """
     me = resource.getrusage(resource.RUSAGE_SELF)
-    childs = resource.getrusage(resource.RUSAGE_CHILDREN)
-    totalCPUTime = me.ru_utime + me.ru_stime + childs.ru_utime + childs.ru_stime
-    totalMemoryUsage = me.ru_maxrss + childs.ru_maxrss
-    return totalCPUTime, totalMemoryUsage
+    children = resource.getrusage(resource.RUSAGE_CHILDREN)
+    total_cpu_time = me.ru_utime + me.ru_stime + children.ru_utime + children.ru_stime
+    total_memory_usage = me.ru_maxrss + children.ru_maxrss
+    return total_cpu_time, total_memory_usage
+
 
 def getTotalCpuTime():
-    """Gives the total cpu time, including the children.
-    """
-    return getTotalCpuTimeAndMemoryUsage()[0]
+    """Gives the total cpu time, including the children."""
+    me = resource.getrusage(resource.RUSAGE_SELF)
+    childs = resource.getrusage(resource.RUSAGE_CHILDREN)
+    return me.ru_utime + me.ru_stime + childs.ru_utime + childs.ru_stime
 
-def getTotalMemoryUsage():
-    """Gets the amount of memory used by the process and its largest child.
-    """
-    return getTotalCpuTimeAndMemoryUsage()[1]
 
 def absSymPath(path):
-    """like os.path.abspath except it doesn't dereference symlinks
-    """
+    """like os.path.abspath except it doesn't dereference symlinks."""
     curr_path = os.getcwd()
     return os.path.normpath(os.path.join(curr_path, path))
 
-#########################################################
-#########################################################
-#########################################################
-#testing settings
-#########################################################
-#########################################################
-#########################################################
-
-class TestStatus(object):
-    ###Global variables used by testing framework to run tests.
-    TEST_SHORT = 0
-    TEST_MEDIUM = 1
-    TEST_LONG = 2
-    TEST_VERY_LONG = 3
-
-    TEST_STATUS = TEST_SHORT
-
-    SAVE_ERROR_LOCATION = None
-
-    def getTestStatus():
-        return TestStatus.TEST_STATUS
-    getTestStatus = staticmethod(getTestStatus)
-
-    def setTestStatus(status):
-        assert status in (TestStatus.TEST_SHORT, TestStatus.TEST_MEDIUM, TestStatus.TEST_LONG, TestStatus.TEST_VERY_LONG)
-        TestStatus.TEST_STATUS = status
-    setTestStatus = staticmethod(setTestStatus)
-
-    def getSaveErrorLocation():
-        """Location to in which to write inputs which created test error.
-        """
-        return TestStatus.SAVE_ERROR_LOCATION
-    getSaveErrorLocation = staticmethod(getSaveErrorLocation)
-
-    def setSaveErrorLocation(dir):
-        """Set location in which to write inputs which created test error.
-        """
-        logger.debug("Location to save error files in: %s" % dir)
-        assert os.path.isdir(dir)
-        TestStatus.SAVE_ERROR_LOCATION = dir
-    setSaveErrorLocation = staticmethod(setSaveErrorLocation)
-
-    def getTestSetup(shortTestNo=1, mediumTestNo=5, longTestNo=100, veryLongTestNo=0):
-        if TestStatus.TEST_STATUS == TestStatus.TEST_SHORT:
-            return shortTestNo
-        elif TestStatus.TEST_STATUS == TestStatus.TEST_MEDIUM:
-            return mediumTestNo
-        elif TestStatus.TEST_STATUS == TestStatus.TEST_LONG:
-            return longTestNo
-        else: #Used for long example tests
-            return veryLongTestNo
-    getTestSetup = staticmethod(getTestSetup)
-
-    def getPathToDataSets():
-        """This method is used to store the location of
-        the path where all the data sets used by tests for analysis are kept.
-        These are not kept in the distrbution itself for reasons of size.
-        """
-        assert "SON_TRACE_DATASETS" in os.environ
-        return os.environ["SON_TRACE_DATASETS"]
-    getPathToDataSets = staticmethod(getPathToDataSets)
-
-def getBasicOptionParser( parser=None):
-    if parser is None:
-        parser = ArgumentParser()
-
-    addLoggingOptions(parser)
-
-    parser.add_argument("--tempDirRoot", dest="tempDirRoot", type=str,
-                      help="Path to where temporary directory containing all temp files are created, by default uses the current working directory as the base.",
-                      default=tempfile.gettempdir())
-
-    return parser
-
-def parseBasicOptions(parser):
-    """Setups the standard things from things added by getBasicOptionParser.
-    """
-    options = parser.parse_args()
-
-    setLoggingFromOptions(options)
-
-    #Set up the temp dir root
-    if options.tempDirRoot == "None": # FIXME: Really, a string containing the word None?
-        options.tempDirRoot = tempfile.gettempdir()
-
-    return options
-
-def getRandomAlphaNumericString(length=10):
-    """Returns a random alpha numeric string of the given length.
-    """
-    return "".join([ random.choice('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') for i in range(0, length) ])
 
 def makePublicDir(dirName):
     """Makes a given subdirectory if it doesn't already exist, making sure it is public.
@@ -298,15 +138,31 @@ def makePublicDir(dirName):
         os.chmod(dirName, 0o777)
     return dirName
 
+
+def parser_with_common_options(provisioner_options=False):
+    parser = ArgumentParser()
+
+    if provisioner_options:
+        add_provisioner_options(parser)
+
+    # always add these
+    add_logging_options(parser)
+    parser.add_argument("--version", action='version', version=version)
+    parser.add_argument("--tempDirRoot", dest="tempDirRoot", type=str, default=tempfile.gettempdir(),
+                        help="Path to where temporary directory containing all temp files are created, "
+                             "by default uses the current working directory as the base.")
+    return parser
+
+
 def getTempFile(suffix="", rootDir=None):
-    """Returns a string representing a temporary file, that must be manually deleted
-    """
+    """Returns a string representing a temporary file, that must be manually deleted."""
     if rootDir is None:
-        handle, tmpFile = tempfile.mkstemp(suffix)
+        handle, tmp_file = tempfile.mkstemp(suffix)
         os.close(handle)
-        return tmpFile
+        return tmp_file
     else:
-        tmpFile = os.path.join(rootDir, "tmp_" + getRandomAlphaNumericString() + suffix)
-        open(tmpFile, 'w').close()
-        os.chmod(tmpFile, 0o777) #Ensure everyone has access to the file.
-        return tmpFile
+        alphanumerics = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+        tmp_file = os.path.join(rootDir, f"tmp_{''.join([random.choice(alphanumerics) for _ in range(0, 10)])}{suffix}")
+        open(tmp_file, 'w').close()
+        os.chmod(tmp_file, 0o777)  # Ensure everyone has access to the file.
+        return tmp_file

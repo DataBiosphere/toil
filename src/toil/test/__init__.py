@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import datetime
 import logging
 import os
@@ -346,7 +345,7 @@ def needs_mesos(test_item):
         import psutil
         import pymesos
         print(psutil.__file__)
-        pritn(pymesos.__file__)  # keep these imports from being removed.
+        print(pymesos.__file__)  # keep these imports from being removed.
     except ImportError:
         return unittest.skip("Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
     return test_item

@@ -26,11 +26,9 @@ import requests
 
 from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import addOptions as addBatchOptions
-from toil.batchSystems.options import \
-    setDefaultOptions as setDefaultBatchOptions
+from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
 from toil.batchSystems.options import setOptions as setBatchOptions
-from toil.lib.bioio import (addLoggingOptions, getLogLevelString,
-                            setLoggingFromOptions)
+from toil.lib.bioio import add_logging_options, setLoggingFromOptions, root_logger
 from toil.lib.humanize import bytes2human
 from toil.lib.retry import retry
 from toil.provisioners import clusterFactory
@@ -54,7 +52,7 @@ class Config:
         finished sucessfully and its job store has been clean up."""
         self.workflowAttemptNumber = None
         self.jobStore = None
-        self.logLevel = getLogLevelString()
+        self.logLevel = logging.getLevelName(root_logger.getEffectiveLevel())
         self.workDir = None
         self.noStdOutErr = False
         self.stats = False
@@ -652,12 +650,7 @@ def parseBool(val):
         raise RuntimeError("Could not interpret \"%s\" as a boolean value" % val)
 
 def addOptions(parser, config=Config()):
-    """
-    Adds toil options to a parser object, either optparse or argparse.
-    """
-    # Wrapper function that allows toil to be used with both the optparse and
-    # argparse option parsing modules
-    addLoggingOptions(parser)  # This adds the logging stuff.
+    add_logging_options(parser)
     if isinstance(parser, ArgumentParser):
         def addGroup(headingString, bodyString):
             return parser.add_argument_group(headingString, bodyString).add_argument
@@ -789,11 +782,11 @@ class Toil(object):
             if (exc_type is not None and self.config.clean == "onError" or
                             exc_type is None and self.config.clean == "onSuccess" or
                         self.config.clean == "always"):
-    
-                try:           
+
+                try:
                     if self.config.restart and not self._inRestart:
                         pass
-                    else:      
+                    else:
                         self._jobStore.destroy()
                         logger.info("Successfully deleted the job store: %s" % str(self._jobStore))
                 except:
@@ -1422,7 +1415,7 @@ def getDirSizeRecursively(dirPath):
     # The call: 'du -s /some/path' should give the number of 512-byte blocks
     # allocated with the environment variable: BLOCKSIZE='512' set, and we
     # multiply this by 512 to return the filesize in bytes.
-    
+
     try:
         return int(subprocess.check_output(['du', '-s', dirPath],
                                            env=dict(os.environ, BLOCKSIZE='512')).decode('utf-8').split()[0]) * 512

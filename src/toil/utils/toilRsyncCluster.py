@@ -17,16 +17,14 @@ Rsyncs into the toil appliance container running on the leader of the cluster
 import argparse
 import logging
 
-from toil.lib.bioio import getBasicOptionParser, parseBasicOptions
+from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
 from toil.provisioners import clusterFactory
-from toil.utils import addBasicProvisionerOptions
 
 logger = logging.getLogger(__name__)
 
 
 def main():
-    parser = getBasicOptionParser()
-    parser = addBasicProvisionerOptions(parser)
+    parser = parser_with_common_options(provisioner_options=True)
     parser.add_argument("--insecure", dest='insecure', action='store_true', required=False,
                         help="Temporarily disable strict host key checking.")
     parser.add_argument("args", nargs=argparse.REMAINDER, help="Arguments to pass to"
@@ -35,8 +33,9 @@ def main():
                         " specify `toil rsync-cluster -p aws test-cluster example.py :`."
                         "\nOr, to download a file from the remote:, `toil rsync-cluster"
                         " -p aws test-cluster :example.py .`")
-    config = parseBasicOptions(parser)
-    cluster = clusterFactory(provisioner=config.provisioner,
-                             clusterName=config.clusterName,
-                             zone=config.zone)
-    cluster.getLeader().coreRsync(args=config.args, strict=not config.insecure)
+    options = parser.parse_args()
+    setLoggingFromOptions(options)
+    cluster = clusterFactory(provisioner=options.provisioner,
+                             clusterName=options.clusterName,
+                             zone=options.zone)
+    cluster.getLeader().coreRsync(args=options.args, strict=not options.insecure)

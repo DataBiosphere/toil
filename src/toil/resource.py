@@ -522,8 +522,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             except AttributeError:
                 return False
 
-            workerModuleFiles = concat(('worker' + ext for ext in self.moduleExtensions),
-                                       '_toil_worker')  # the setuptools entry point
+            workerModuleFiles = ['worker.py', 'worker.pyc', 'worker.pyo', '_toil_worker']  # setuptools entry point
             return mainModuleFile in workerModuleFiles
 
     def globalize(self):
@@ -564,12 +563,9 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
                     tuple(concat(initName, self.dirPath, exactPython, os.path.split(self.dirPath), self.name)))
             return self.dirPath
 
-    moduleExtensions = ('.py', '.pyc', '.pyo')
-
     @classmethod
     def _initModuleName(cls, dirPath):
-        for extension in cls.moduleExtensions:
-            name = '__init__' + extension
+        for name in ('__init__.py', '__init__.pyc', '__init__.pyo'):
             if os.path.exists(os.path.join(dirPath, name)):
                 return name
         return None

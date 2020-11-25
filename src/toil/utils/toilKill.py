@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,26 +11,31 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """Kills rogue toil processes."""
 import logging
 import os
 import signal
+import tempfile
 
 from toil.common import Config, Toil, jobStoreLocatorHelp
-from toil.lib.bioio import getBasicOptionParser, parseBasicOptions
+from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
 from toil.version import version
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
+
 
 def main():
-    parser = getBasicOptionParser()
+    parser = parser_with_common_options()
 
     parser.add_argument("jobStore", type=str,
                         help="The location of the job store used by the workflow whose jobs should "
                              "be killed." + jobStoreLocatorHelp)
+    parser.add_argument("--tempDirRoot", dest="tempDirRoot", type=str, default=tempfile.gettempdir(),
+                        help="Path to where temporary directory containing all temp files are created, "
+                             "by default uses the current working directory as the base.")
     parser.add_argument("--version", action='version', version=version)
-    options = parseBasicOptions(parser)
+    options = parser.parse_args()
+    setLoggingFromOptions(options)
     config = Config()
     config.setOptions(options)
     config.jobStore = config.jobStore[5:] if config.jobStore.startswith('file:') else config.jobStore

@@ -11,16 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""
-Launches a toil leader instance with the specified provisioner.
-"""
+"""Launches a toil leader instance with the specified provisioner."""
+import os
 import logging
 
 from toil import applianceSelf
-from toil.lib.bioio import getBasicOptionParser, parseBasicOptions
+from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
 from toil.provisioners import clusterFactory
 from toil.provisioners.aws import checkValidNodeTypes
-from toil.utils import addBasicProvisionerOptions, getZoneFromEnv
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +32,7 @@ def createTagsDict(tagList):
 
 
 def main():
-    parser = getBasicOptionParser()
-    parser = addBasicProvisionerOptions(parser)
+    parser = parser_with_common_options(provisioner_options=True)
     parser.add_argument("--leaderNodeType", dest="leaderNodeType", required=True,
                         help="Non-preemptable node type to use for the cluster leader.")
     parser.add_argument("--keyPairName", dest='keyPairName',
@@ -93,25 +90,25 @@ def main():
                         help="Any additional security groups to attach to EC2 instances. Note that a security group "
                              "with its name equal to the cluster name will always be created, thus ensure that "
                              "the extra security groups do not have the same name as the cluster name.")
-    config = parseBasicOptions(parser)
-    tags = createTagsDict(config.tags) if config.tags else dict()
-    checkValidNodeTypes(config.provisioner, config.nodeTypes)
-    checkValidNodeTypes(config.provisioner, config.leaderNodeType)
-
+    options = parser.parse_args()
+    setLoggingFromOptions(options)
+    tags = createTagsDict(options.tags) if options.tags else dict()
+    checkValidNodeTypes(options.provisioner, options.nodeTypes)
+    checkValidNodeTypes(options.provisioner, options.leaderNodeType)
 
     # checks the validity of TOIL_APPLIANCE_SELF before proceeding
-    applianceSelf(forceDockerAppliance=config.forceDockerAppliance)
+    applianceSelf(forceDockerAppliance=options.forceDockerAppliance)
 
     spotBids = []
     nodeTypes = []
     preemptableNodeTypes = []
     numNodes = []
     numPreemptableNodes = []
-    if (config.nodeTypes or config.workers) and not (config.nodeTypes and config.workers):
+    if (options.nodeTypes or options.workers) and not (options.nodeTypes and options.workers):
         raise RuntimeError("The --nodeTypes and --workers options must be specified together,")
-    if config.nodeTypes:
-        nodeTypesList = config.nodeTypes.split(",")
-        numWorkersList = config.workers.split(",")
+    if options.nodeTypes:
+        nodeTypesList = options.nodeTypes.split(",")
+        numWorkersList = options.workers.split(",")
         if not len(nodeTypesList) == len(numWorkersList):
             raise RuntimeError("List of node types must be the same length as the list of workers.")
         for nodeTypeStr, num in zip(nodeTypesList, numWorkersList):
@@ -125,33 +122,32 @@ def main():
                 nodeTypes.append(nodeTypeStr)
                 numNodes.append(int(num))
 
-    owner = config.owner or config.keyPairName or 'toil'
+    owner = options.owner or options.keyPairName or 'toil'
 
     # Check to see if the user specified a zone. If not, see if one is stored in an environment variable.
-    config.zone = config.zone or getZoneFromEnv(config.provisioner)
+    options.zone = options.zone or os.environ.get(f'TOIL_{options.provisioner.upper()}_ZONE')
 
-    if not config.zone:
+    if not options.zone:
         raise RuntimeError('Please provide a value for --zone or set a default in the TOIL_' +
-                           config.provisioner.upper() + '_ZONE environment variable.')
+                           options.provisioner.upper() + '_ZONE environment variable.')
 
-    cluster = clusterFactory(provisioner=config.provisioner,
-                             clusterName=config.clusterName,
-                             zone=config.zone,
-                             nodeStorage=config.nodeStorage)
+    cluster = clusterFactory(provisioner=options.provisioner,
+                             clusterName=options.clusterName,
+                             zone=options.zone,
+                             nodeStorage=options.nodeStorage)
 
-    cluster.launchCluster(leaderNodeType=config.leaderNodeType,
-                          leaderStorage=config.leaderStorage,
+    cluster.launchCluster(leaderNodeType=options.leaderNodeType,
+                          leaderStorage=options.leaderStorage,
                           owner=owner,
-                          keyName=config.keyPairName,
-                          botoPath=config.botoPath,
+                          keyName=options.keyPairName,
+                          botoPath=options.botoPath,
                           userTags=tags,
-                          vpcSubnet=config.vpcSubnet,
-                          awsEc2ProfileArn=config.awsEc2ProfileArn,
-                          awsEc2ExtraSecurityGroupIds=config.awsEc2ExtraSecurityGroupIds)
+                          vpcSubnet=options.vpcSubnet,
+                          awsEc2ProfileArn=options.awsEc2ProfileArn,
+                          awsEc2ExtraSecurityGroupIds=options.awsEc2ExtraSecurityGroupIds)
 
     for nodeType, workers in zip(nodeTypes, numNodes):
         cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=False)
     for nodeType, workers, spotBid in zip(preemptableNodeTypes, numPreemptableNodes, spotBids):
         cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=True,
                          spotBid=spotBid)
-

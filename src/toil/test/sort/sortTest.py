@@ -28,7 +28,7 @@ from toil.job import Job
 from toil.jobStores.abstractJobStore import (JobStoreExistsException,
                                              NoSuchJobStoreException)
 from toil.leader import FailedJobsException
-from toil.lib.bioio import getLogLevelString
+from toil.lib.bioio import root_logger
 from toil.test import (ToilTest, needs_aws_ec2, needs_google, needs_gridengine,
                        needs_mesos, needs_parasol, needs_torque, slow)
 from toil.test.sort.sort import (copySubRangeOfFile, getMidPoint, main,
@@ -94,7 +94,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             try:
                 # Specify options
                 options = Job.Runner.getDefaultOptions(jobStoreLocator)
-                options.logLevel = getLogLevelString()
+                options.logLevel = logging.getLevelName(root_logger.getEffectiveLevel())
                 options.retryCount = retryCount
                 options.batchSystem = batchSystem
                 options.clean = "never"
