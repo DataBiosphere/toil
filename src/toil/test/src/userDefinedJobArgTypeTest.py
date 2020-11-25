@@ -12,11 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from builtins import object
+import subprocess
 import sys
 
-import subprocess
 from toil.job import Job
 from toil.test import ToilTest, slow, travis_test
 

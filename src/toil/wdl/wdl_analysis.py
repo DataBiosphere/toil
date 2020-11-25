@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
-import os
 import logging
+import os
 from collections import OrderedDict
 
 import toil.wdl.wdl_parser as wdl_parser
-from toil.wdl.wdl_types import WDLPairType, WDLMapType
+from toil.wdl.wdl_types import WDLMapType, WDLPairType
 
 wdllogger = logging.getLogger(__name__)
 

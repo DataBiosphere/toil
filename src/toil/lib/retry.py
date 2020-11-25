@@ -119,20 +119,19 @@ Use-cases covered currently:
 If new functionality is needed, it's currently best practice in Toil to add
 functionality to the ErrorCondition itself rather than making a new custom retry method.
 """
-import time
 import copy
 import functools
+import http.client
 import logging
+import sqlite3
+import time
 import traceback
+import urllib.error
+from contextlib import contextmanager
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 import requests.exceptions
-import http.client
-import urllib.error
 import urllib3.exceptions
-import sqlite3
-
-from contextlib import contextmanager
-from typing import List, Optional, Tuple, Callable, Any, Union
 
 SUPPORTED_HTTP_ERRORS = [http.client.HTTPException,
                          urllib.error.HTTPError,

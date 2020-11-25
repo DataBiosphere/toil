@@ -1,17 +1,15 @@
-from abc import ABCMeta, abstractmethod
 import logging
 import shutil
-import threading
 import subprocess
-from past.builtins import basestring
-from six.moves.urllib.request import urlopen
-from contextlib import closing
+import threading
 import time
+from abc import ABCMeta, abstractmethod
+from contextlib import closing
+from shutil import which
+from urllib.request import urlopen
 
 from toil.lib.retry import retry
-from shutil import which
 from toil.lib.threading import ExceptionalThread, cpu_count
-from future.utils import with_metaclass
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +59,7 @@ class MesosTestSupport(object):
         self._stopProcess(self.master.popen)
         self.master.join()
 
-    class MesosThread(with_metaclass(ABCMeta, ExceptionalThread)):
+    class MesosThread(ExceptionalThread, metaclass=ABCMeta):
         lock = threading.Lock()
 
         def __init__(self, numCores):
@@ -79,7 +77,7 @@ class MesosTestSupport(object):
             log.info('Exiting %s', self.__class__.__name__)
 
         def findMesosBinary(self, names):
-            if isinstance(names, basestring):
+            if isinstance(names, str):
                 # Handle a single string
                 names = [names]
         

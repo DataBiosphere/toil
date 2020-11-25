@@ -17,8 +17,9 @@ SSHs into the toil appliance container running on the leader of the cluster
 import argparse
 import logging
 import sys
+
+from toil.lib.bioio import getBasicOptionParser, parseBasicOptions
 from toil.provisioners import clusterFactory
-from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions
 
 logger = logging.getLogger(__name__)

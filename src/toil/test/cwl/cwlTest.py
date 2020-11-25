@@ -13,19 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
+import logging
 import os
+import re
+import shutil
+import subprocess
 import sys
 import unittest
-import re
-import logging
-import shutil
-import zipfile
-import pytest
 import uuid
-import psutil
-import subprocess
-from urllib.request import urlretrieve
+import zipfile
 from io import StringIO
+from urllib.request import urlretrieve
+
+import psutil
+import pytest
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
@@ -33,7 +34,6 @@ sys.path.insert(0, pkg_root)  # noqa
 from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
                        needs_mesos, needs_parasol, needs_gridengine, needs_slurm,
                        needs_torque, needs_aws_s3)
-
 
 log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 3600
@@ -414,9 +414,9 @@ class CWLv12Test(ToilTest):
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance(self, batchSystem=None, caching=False):
-        # TODO: we do not currently pass tests: 307, 309, 310, 311, 330, 331, 332
+        # TODO: we do not currently pass tests: 307, 332
         run_conformance_tests(workDir=self.cwlSpec,
                               yml=self.test_yaml,
                               caching=caching,
                               batchSystem=batchSystem,
-                              selected_tests='1-306,308,312-329,333-336')
+                              selected_tests='1-306,308-331,333-336')

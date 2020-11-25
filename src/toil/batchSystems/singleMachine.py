@@ -12,24 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from past.utils import old_div
-from contextlib import contextmanager
 import logging
-import os
-import time
 import math
+import os
 import subprocess
 import sys
+import time
 import traceback
-from threading import Thread, Event
-from threading import Lock, Condition
-from six.moves.queue import Empty, Queue
+from contextlib import contextmanager
+from queue import Empty, Queue
+from threading import Condition, Event, Lock, Thread
 
 import toil
-from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, EXIT_STATUS_UNAVAILABLE_VALUE, UpdatedBatchJobInfo
-from toil.lib.threading import cpu_count
 from toil import worker as toil_worker
+from toil.batchSystems.abstractBatchSystem import (
+    EXIT_STATUS_UNAVAILABLE_VALUE, BatchSystemSupport, UpdatedBatchJobInfo)
 from toil.common import Toil
+from toil.lib.threading import cpu_count
 
 log = logging.getLogger(__name__)
 
@@ -148,7 +147,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """
 
         # A pool representing available CPU in units of minCores
-        self.coreFractions = ResourcePool(int(old_div(self.maxCores, self.minCores)), 'cores')
+        self.coreFractions = ResourcePool(int(self.maxCores / self.minCores), 'cores')
         # A pool representing available memory in bytes
         self.memory = ResourcePool(self.maxMemory, 'memory')
         # A pool representing the available space in bytes
@@ -201,7 +200,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                         args = self.inputQueue.get_nowait()
                         jobCommand, jobID, jobCores, jobMemory, jobDisk, environment = args
 
-                        coreFractions = int(old_div(jobCores, self.minCores))
+                        coreFractions = int(jobCores / self.minCores)
                         
                         # Try to start the child
                         result = self._startChild(jobCommand, jobID,

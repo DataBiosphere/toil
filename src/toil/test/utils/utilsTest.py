@@ -11,36 +11,36 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-from builtins import str
-import os
-import sys
-import uuid
-import shutil
-import tempfile
-import pytest
 import logging
+import os
+import shutil
+import sys
+import tempfile
+import uuid
+
+import pytest
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
+import subprocess
 import time
-import psutil
+
+from mock import patch
 
 import toil
 import toil.test.sort.sort
-import subprocess
 from toil import resolveEntryPoint
+from toil.common import Config, Toil
 from toil.job import Job
-from toil.utils.toilStatus import ToilStatus
 from toil.lib.bioio import getTempFile, system
-from toil.test import ToilTest, needs_aws_ec2, needs_rsync3, integrative, slow, needs_cwl, needs_docker, travis_test
+from toil.provisioners import clusterFactory
+from toil.test import (ToilTest, integrative, needs_aws_ec2, needs_cwl,
+                       needs_docker, needs_rsync3, slow, travis_test)
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
-from toil.common import Toil, Config
-from toil.provisioners import clusterFactory
+from toil.utils.toilStatus import ToilStatus
 from toil.version import python
-from mock import patch
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +130,7 @@ class UtilsTest(ToilTest):
 
         try:
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
+            logger.debug("Found AWSProvisioner: %s.", AWSProvisioner.__file__)
 
             # launch master with an assortment of custom tags
             system([self.toilMain, 'launch-cluster', '-t', 'key1=value1', '-t', 'key2=value2', '--tag', 'key3=value3',
@@ -406,7 +407,7 @@ class UtilsTest(ToilTest):
         # Make sure it printed some kind of complaint about the missing command.
         args, kwargs = mock_print.call_args
         self.assertIn('invalidcommand', args[0])
-    
+
     def testRestartAttribute(self):
         """
         Test that the job store is only destroyed when we observe a succcessful workflow run.
@@ -429,7 +430,7 @@ class UtilsTest(ToilTest):
 
         # Check the job store is destroyed after calling restart()
         self.assertFalse(os.path.exists(self.toilDir))
-        
+
 
 def printUnicodeCharacter():
     # We want to get a unicode character to stdout but we can't print it directly because of

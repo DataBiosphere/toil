@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from toil.job import Job
-from toil.test import ToilTest, travis_test
 import logging
+
+from toil.job import Job
 from toil.realtimeLogger import RealtimeLogger
+from toil.test import ToilTest, travis_test
 
 
 class RealtimeLoggerTest(ToilTest):

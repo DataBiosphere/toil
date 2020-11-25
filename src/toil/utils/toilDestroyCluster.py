@@ -14,9 +14,10 @@
 """
 Terminates the specified cluster and associated resources
 """
+from toil.lib.bioio import getBasicOptionParser, parseBasicOptions
 from toil.provisioners import clusterFactory
-from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions
+
 
 def main():
     parser = getBasicOptionParser()

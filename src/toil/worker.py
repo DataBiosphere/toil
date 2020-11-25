@@ -11,40 +11,32 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, print_function
-from future import standard_library
-standard_library.install_aliases()
-from builtins import str
-from builtins import map
-from builtins import filter
 import argparse
 import base64
-from contextlib import contextmanager
+import copy
+import json
+import logging
 import os
 import pickle
-import sys
-import copy
 import random
-import json
-import tempfile
-import traceback
-import time
+import shutil
 import signal
 import socket
-import logging
-import shutil
+import sys
+import tempfile
+import time
+import traceback
+from contextlib import contextmanager
 
-from toil.lib.compatibility import USING_PYTHON2
-from toil.lib.expando import MagicExpando
-from toil.common import Toil, safeUnpickleFromStream
-from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil import logProcessContext
-from toil.job import Job, CheckpointJobDescription
-from toil.lib.bioio import configureRootLogger
-from toil.lib.bioio import setLogLevel
-from toil.lib.bioio import getTotalCpuTime
-from toil.lib.bioio import getTotalCpuTimeAndMemoryUsage
+from toil.common import Toil, safeUnpickleFromStream
 from toil.deferred import DeferredFunctionManager
+from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.job import CheckpointJobDescription, Job
+from toil.lib.bioio import (configureRootLogger, getTotalCpuTime,
+                            getTotalCpuTimeAndMemoryUsage, setLogLevel)
+from toil.lib.expando import MagicExpando
+
 try:
     from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
 except ImportError:

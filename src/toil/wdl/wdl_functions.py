@@ -11,23 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import csv
 import fnmatch
 import json
-import os
 import logging
-import re
-import textwrap
-import csv
 import math
-
+import os
+import re
 import subprocess
+import textwrap
 import uuid
-from typing import (Optional,
-                    List,
-                    Tuple,
-                    Dict,
-                    Union,
-                    Any)
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.wdl.wdl_types import WDLPair
@@ -351,12 +345,20 @@ def process_single_outfile(f, fileStore, workDir, outDir):
         output_f_path = os.path.join('execution', f)
     elif os.path.exists(os.path.join(workDir, f)):
         output_f_path = os.path.join(workDir, f)
+    elif os.path.exists(os.path.join(outDir, f)):
+        output_f_path = os.path.join(outDir, f)
     else:
         tmp = subprocess.check_output(['ls', '-lha', workDir]).decode('utf-8')
         exe = subprocess.check_output(['ls', '-lha', os.path.join(workDir, 'execution')]).decode('utf-8')
-        raise RuntimeError('OUTPUT FILE: {} was not found!\n'
+        for std_file in ('stdout', 'stderr'):
+            std_file = os.path.join(workDir, 'execution', std_file)
+            if os.path.exists(std_file):
+                with open(std_file, 'rb') as f:
+                    wdllogger.info(f.read())
+
+        raise RuntimeError('OUTPUT FILE: {} was not found in {}!\n'
                            '{}\n\n'
-                           '{}\n'.format(f, tmp, exe))
+                           '{}\n'.format(f, os.getcwd(), tmp, exe))
     output_file = fileStore.writeGlobalFile(output_f_path)
     preserveThisFilename = os.path.basename(output_f_path)
     fileStore.exportFile(output_file, "file://" + os.path.join(os.path.abspath(outDir), preserveThisFilename))
@@ -615,16 +617,15 @@ def select_first(values):
 
 
 def combine_dicts(dict1, dict2):
-    from six import iteritems
     combineddict= {}
-    for k, v in iteritems(dict1):
+    for k, v in dict1.items():
         counter1 = 0
         while isinstance(v, list):
             counter1 += 1
             v = v[0]
         break
 
-    for k, v in iteritems(dict2):
+    for k, v in dict2.items():
         counter2 = 0
         while isinstance(v, list):
             counter2 += 1

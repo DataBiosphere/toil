@@ -29,7 +29,6 @@ import sys
 import tempfile
 import urllib
 import uuid
-import shutil
 from typing import (
     Any,
     Dict,
@@ -56,8 +55,6 @@ import cwltool.main
 import cwltool.provenance
 import cwltool.resolver
 import cwltool.stdfsaccess
-import cwltool.workflow
-import schema_salad.ref_resolver
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mutation import MutationManager
@@ -89,6 +86,7 @@ from ruamel.yaml.comments import CommentedMap
 from schema_salad import validate
 from schema_salad.schema import Names
 from schema_salad.sourceline import SourceLine
+import schema_salad.ref_resolver
 
 from toil.common import Config, Toil, addOptions
 from toil.fileStores import FileID
@@ -130,8 +128,6 @@ def cwltoil_was_removed():
 class UnresolvedDict(dict):
     """Tag to indicate a dict contains promises that must be resolved."""
 
-    pass
-
 
 class SkipNull:
     """
@@ -141,8 +137,6 @@ class SkipNull:
     The CWL 1.2 specification calls for treating this the exactly the same as a
     null value.
     """
-
-    pass
 
 
 def filter_skip_null(name: str, value: Any) -> Any:
@@ -2144,33 +2138,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             fs_access = cwltool.stdfsaccess.StdFsAccess(options.basedir)
             fill_in_defaults(tool.tool["inputs"], initialized_job_order, fs_access)
 
-            def path_to_loc(obj):
-                if "location" not in obj and "path" in obj:
-                    obj["location"] = obj["path"]
-                    del obj["path"]
-
-            def import_files(inner_tool):
-                visit_class(inner_tool, ("File", "Directory"), path_to_loc)
-                visit_class(
-                    inner_tool, ("File",), functools.partial(add_sizes, fs_access)
-                )
-                normalizeFilesDirs(inner_tool)
-
-                adjustFileObjs(
-                    inner_tool,
-                    functools.partial(
-                        uploadFile,
-                        toil.importFile,
-                        fileindex,
-                        existing,
-                        skip_broken=True,
-                    ),
-                )  # actually import files into the jobstore
-
-            import_files(tool.tool)
-#
             for inp in tool.tool["inputs"]:
-
                 def set_secondary(fileobj):
                     if isinstance(fileobj, Mapping) and fileobj.get("class") == "File":
                         if "secondaryFiles" not in fileobj:
@@ -2224,6 +2192,29 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 initialized_job_order,
                 discover_secondaryFiles=True,
             )
+
+            def path_to_loc(obj):
+                if "location" not in obj and "path" in obj:
+                    obj["location"] = obj["path"]
+                    del obj["path"]
+
+            def import_files(inner_tool):
+                visit_class(inner_tool, ("File", "Directory"), path_to_loc)
+                visit_class(
+                    inner_tool, ("File",), functools.partial(add_sizes, fs_access)
+                )
+                normalizeFilesDirs(inner_tool)
+
+                adjustFileObjs(
+                    inner_tool,
+                    functools.partial(
+                        uploadFile,
+                        toil.importFile,
+                        fileindex,
+                        existing,
+                        skip_broken=True,
+                    ),
+                )
 
             # files with the 'file://' uri are imported into the jobstore and
             # changed to 'toilfs:'

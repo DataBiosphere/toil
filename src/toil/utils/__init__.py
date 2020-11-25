@@ -1,8 +1,9 @@
-from __future__ import absolute_import
 
-from toil import version
 import logging
 import os
+
+from toil import version
+
 logger = logging.getLogger(__name__)
 
 

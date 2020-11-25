@@ -12,20 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
 
 import logging
+import os
+import shutil
+import signal
 
 from toil.common import Toil
 from toil.job import Job
 from toil.leader import FailedJobsException
 from toil.test import ToilTest, slow
-
-import inspect
-import os
-import shutil
-import signal
-
 
 logger = logging.getLogger(__name__)
 

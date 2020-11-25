@@ -12,25 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
-from builtins import map
-from builtins import str
-from builtins import range
-from past.utils import old_div
 import logging
-import os
-from pipes import quote
-from toil.lib.misc import call_command, CalledProcessErrorStderr
-import time
 import math
-
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
-from six import iteritems
+import os
+import time
+from pipes import quote
 
 from toil.batchSystems import MemoryString
-from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
+from toil.batchSystems.abstractGridEngineBatchSystem import \
+    AbstractGridEngineBatchSystem
+from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +108,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             reqline = list()
             sgeArgs = os.getenv('TOIL_GRIDENGINE_ARGS')
             if mem is not None:
-                memStr = str(old_div(mem, 1024)) + 'K'
+                memStr = str(mem // 1024) + 'K'
                 if not self.boss.config.manualMemArgs:
                     # for UGE instead of SGE; see #2309
                     reqline += ['vf=' + memStr, 'h_vmem=' + memStr]
@@ -185,6 +176,6 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                 maxCPU = int(items[cpu_index])
             if items[mem_index] != '-' and MemoryString(items[mem_index]) > maxMEM:
                 maxMEM = MemoryString(items[mem_index])
-        if maxCPU is 0 or maxMEM is 0:
+        if maxCPU == 0 or maxMEM == 0:
             raise RuntimeError('qhost returned null NCPU or MEMTOT info')
         return maxCPU, maxMEM

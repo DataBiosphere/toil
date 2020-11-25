@@ -1,16 +1,15 @@
-from __future__ import absolute_import
-import unittest
 import os
 import re
-import sys
 import shutil
+import sys
+import unittest
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
 import subprocess
-from toil.test import ToilTest
-from toil.test import needs_cwl
+
+from toil.test import ToilTest, needs_cwl
 from toil.version import python
 
 

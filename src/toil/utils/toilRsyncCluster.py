@@ -17,10 +17,9 @@ Rsyncs into the toil appliance container running on the leader of the cluster
 import argparse
 import logging
 
-from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
+from toil.lib.bioio import getBasicOptionParser, parseBasicOptions
 from toil.provisioners import clusterFactory
 from toil.utils import addBasicProvisionerOptions
-
 
 logger = logging.getLogger(__name__)
 

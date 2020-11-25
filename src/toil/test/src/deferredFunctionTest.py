@@ -12,41 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import print_function
 
-from builtins import str
-from builtins import range
-from builtins import object
-import filecmp
-from abc import abstractmethod, ABCMeta
-from struct import pack, unpack
-from uuid import uuid4
-
-from toil.job import Job
-from toil.fileStores.cachingFileStore import IllegalDeletionCacheError, CacheUnbalancedError, CachingFileStore
-from toil.test import ToilTest, slow, travis_test
-from toil.leader import FailedJobsException
-from toil.lib.threading import cpu_count 
-from toil.jobStores.abstractJobStore import NoSuchFileException
-
-import collections
-import inspect
 import os
-import random
 import signal
 import time
-import pytest
+from abc import ABCMeta
+from uuid import uuid4
 
-# Python 3 compatibility imports
-from six.moves import xrange
-from future.utils import with_metaclass
+from toil.fileStores.cachingFileStore import CachingFileStore
+from toil.job import Job
+from toil.leader import FailedJobsException
+from toil.lib.threading import cpu_count
+from toil.test import ToilTest, slow, travis_test
 
 # Some tests take too long on the AWS jobstore and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.
 testingIsAutomatic = True
 
-class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
+class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
     """
     Test the deferred function system.
     """

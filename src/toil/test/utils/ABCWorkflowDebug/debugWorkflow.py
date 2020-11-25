@@ -1,9 +1,10 @@
-from toil.job import Job
-from toil.common import Toil
-import subprocess
-from toil.version import python
-import os
 import logging
+import os
+import subprocess
+
+from toil.common import Toil
+from toil.job import Job
+from toil.version import python
 
 logger = logging.getLogger(__name__)
 

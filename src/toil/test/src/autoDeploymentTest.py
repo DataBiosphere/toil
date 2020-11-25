@@ -1,15 +1,11 @@
 # coding=utf-8
-from builtins import str
-from builtins import object
 import logging
-import sys
+import subprocess
 from contextlib import contextmanager
 
 from toil.lib.iterables import concat
-
-import subprocess
+from toil.test import ApplianceTestSupport, needs_appliance, needs_mesos, slow
 from toil.version import exactPython
-from toil.test import needs_mesos, ApplianceTestSupport, needs_appliance, slow
 
 log = logging.getLogger(__name__)
 
@@ -55,8 +51,8 @@ class AutoDeploymentTest(ApplianceTestSupport):
         """
         with self._venvApplianceCluster() as (leader, worker):
             def userScript():
-                from toil.job import Job
                 from toil.common import Toil
+                from toil.job import Job
 
                 # noinspection PyUnusedLocal
                 def job(job, disk='10M', cores=1, memory='10M'):
@@ -117,10 +113,11 @@ class AutoDeploymentTest(ApplianceTestSupport):
 
             # Deploy the user script
             def userScript():
-                from toil.job import Job
-                from toil.common import Toil
                 # noinspection PyUnresolvedReferences
                 from toil_lib.foo import libraryJob
+
+                from toil.common import Toil
+                from toil.job import Job
 
                 # noinspection PyUnusedLocal
                 def job(job, disk='10M', cores=1, memory='10M'):
@@ -165,8 +162,8 @@ class AutoDeploymentTest(ApplianceTestSupport):
         """
         with self._venvApplianceCluster() as (leader, worker):
             def userScript():
-                from toil.job import Job
                 from toil.common import Toil
+                from toil.job import Job
 
                 # A user-defined type, i.e. a type defined in the user script
                 class X(object):
@@ -248,10 +245,11 @@ class AutoDeploymentTest(ApplianceTestSupport):
         """
         with self._venvApplianceCluster() as (leader, worker):
             def userScript():
-                import time
                 import logging
-                from toil.job import Job
+                import time
+
                 from toil.common import Toil
+                from toil.job import Job
 
                 log = logging.getLogger(__name__)
 
@@ -354,8 +352,9 @@ class AutoDeploymentTest(ApplianceTestSupport):
             def userScript():
                 import os
                 import time
-                from toil.job import Job
+
                 from toil.common import Toil
+                from toil.job import Job
                 from toil.leader import FailedJobsException
 
                 TIMEOUT = 10
