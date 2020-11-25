@@ -24,9 +24,9 @@ import dill
 from toil.common import cacheDirName
 from toil.fileStores import FileID
 from toil.lib.misc import WriteWatchingStream
-from toil.lib.objects import abstractclassmethod
 
 logger = logging.getLogger(__name__)
+
 
 class AbstractFileStore(ABC):
     """
@@ -415,7 +415,8 @@ class AbstractFileStore(ABC):
             assert isinstance(stateDict, dict)
             self.__dict__.update(stateDict)
 
-        @abstractclassmethod
+        @classmethod
+        @abstractmethod
         @contextmanager
         def open(cls, outer=None):
             """
@@ -497,7 +498,8 @@ class AbstractFileStore(ABC):
         """
         raise NotImplementedError()
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def shutdown(cls, dir_):
         """
         Shutdown the filestore on this node.
