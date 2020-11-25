@@ -18,6 +18,8 @@ from collections import namedtuple
 from difflib import get_close_matches
 from operator import attrgetter
 from statistics import stdev, mean
+from urllib.request import urlopen
+from urllib.error import URLError
 
 logger = logging.getLogger(__name__)
 
