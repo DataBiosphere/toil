@@ -26,6 +26,7 @@ import errno
 import fcntl
 import logging
 import os
+import stat
 import sys
 import uuid
 
@@ -106,6 +107,8 @@ class NonCachingFileStore(AbstractFileStore):
 
         self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
         self.localFileMap[fileStoreID].append(localFilePath)
+        if fileStoreID.executable:
+            os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
         self.logAccess(fileStoreID, localFilePath)
         return localFilePath
 
