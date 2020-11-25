@@ -13,8 +13,6 @@
 # limitations under the License.
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
-
-
 from toil.lib.memoize import sync_memoize
 
 
@@ -55,44 +53,6 @@ class abstractclassmethod(classmethod):
     def __init__(self, callable):
         callable.__isabstractmethod__ = True
         super(abstractclassmethod, self).__init__(callable)
-
-
-class abstractstaticmethod(staticmethod):
-    """
-    This class defines a decorator that allows the decorated class to be both an abstract method
-    and a static method.
-
-    Based on code found at
-
-    http://stackoverflow.com/questions/11217878/python-2-7-combine-abc-abstractmethod-and-classmethod
-
-    >>> from abc import ABCMeta
-
-    >>> class DemoABC:
-    ...     __metaclass__ = ABCMeta
-    ...
-    ...     @abstractstaticmethod
-    ...     def f(n):
-    ...         raise NotImplementedError()
-
-    >>> class DemoConcrete(DemoABC):
-    ...     @staticmethod
-    ...     def f(n):
-    ...         return 2*n
-
-    >>> d = DemoABC.f(5)  # Fails because f() is not implemented
-    Traceback (most recent call last):
-    ...
-    NotImplementedError
-
-    >>> DemoConcrete.f(5)  # Succeeds by calling a concrete f()
-    10
-    """
-    __isabstractmethod__ = True
-
-    def __init__(self, callable):
-        callable.__isabstractmethod__ = True
-        super(abstractstaticmethod, self).__init__(callable)
 
 
 class InnerClass(object):

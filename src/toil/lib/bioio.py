@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
-import logging.handlers
 import os
 import random
 import resource
@@ -21,10 +20,11 @@ from argparse import ArgumentParser
 
 from toil.version import version
 
-DEFAULT_LOGLEVEL = logging.INFO
 logger = logging.getLogger(__name__)
 root_logger = logging.getLogger()
 toil_logger = logging.getLogger('toil')
+
+DEFAULT_LOGLEVEL = logging.INFO
 __loggingFiles = []
 
 

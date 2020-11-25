@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 import gzip
 import json
 import logging
@@ -23,14 +21,11 @@ from threading import Event, Thread
 from toil.lib.bioio import get_total_cpu_time
 from toil.lib.expando import Expando
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
 
-class StatsAndLogging( object ):
-    """
-    Class manages a thread that aggregates statistics and logging information on a toil run.
-    """
-
+class StatsAndLogging:
+    """Manages a thread that aggregates statistics and logging information on a toil run."""
     def __init__(self, jobStore, config):
         self._stop = Event()
         self._worker = Thread(target=self.statsAndLoggingAggregator,
@@ -38,9 +33,7 @@ class StatsAndLogging( object ):
                               daemon=True)
 
     def start(self):
-        """
-        Start the stats and logging thread.
-        """
+        """Start the stats and logging thread."""
         self._worker.start()
         
     @classmethod

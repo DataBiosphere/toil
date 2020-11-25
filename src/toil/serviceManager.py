@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 import logging
 import time
 from queue import Empty, Queue
@@ -21,12 +19,11 @@ from threading import Event, Thread
 from toil.job import ServiceJobDescription
 from toil.lib.throttle import LocalThrottle, throttle
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
-class ServiceManager( object ):
-    """
-    Manages the scheduling of services.
-    """
+
+class ServiceManager:
+    """Manages the scheduling of services."""
     def __init__(self, jobStore, toilState):
         logger.debug("Initializing service manager")
         self.jobStore = jobStore
@@ -35,23 +32,22 @@ class ServiceManager( object ):
 
         self.jobDescriptionsWithServicesBeingStarted = set()
 
-        self._terminate = Event() # This is used to terminate the thread associated
+        self._terminate = Event()  # This is used to terminate the thread associated
         # with the service manager
 
-        self._jobDescriptionsWithServicesToStart = Queue() # This is the input queue of
+        self._jobDescriptionsWithServicesToStart = Queue()  # This is the input queue of
         # JobDescriptions that have services that need to be started
 
-        self._jobDescriptionsWithServicesThatHaveStarted = Queue() # This is the output queue
+        self._jobDescriptionsWithServicesThatHaveStarted = Queue()  # This is the output queue
         # of JobDescriptions that have services that are already started
         
-        self._jobDescriptionsWithServicesThatHaveFailedToStart = Queue() # This is the output queue
+        self._jobDescriptionsWithServicesThatHaveFailedToStart = Queue()  # This is the output queue
         # of JobDescriptions that have services that are unable to start
 
-        self.serviceJobDescriptionsToStart = Queue() # This is the queue of services for the
+        self.serviceJobDescriptionsToStart = Queue()  # This is the queue of services for the
         # batch system to start
 
-        self.jobsIssuedToServiceManager = 0 # The number of jobs the service manager
-        # is scheduling
+        self.jobsIssuedToServiceManager = 0  # The number of jobs the service manager is scheduling
 
         # Start a thread that starts the services of JobDescriptions in the
         # _jobDescriptionsWithServicesToStart input queue and puts the
@@ -66,13 +62,9 @@ class ServiceManager( object ):
                                             self.serviceJobDescriptionsToStart, self._terminate,
                                             self.jobStore),
                                       daemon=True)
-                                      
-                        
-        
+
     def start(self): 
-        """
-        Start the service scheduling thread.
-        """
+        """Start the service scheduling thread."""
         self._serviceStarter.start()
 
     def scheduleServices(self, jobDesc):
@@ -221,7 +213,6 @@ class ServiceManager( object ):
                         # ensure entire service "groups" are issued as a whole.
                         blockUntilServiceGroupIsStarted(jobDesc,
                                                         jobDescriptionsWithServicesThatHaveStarted,
-                                                        jobDescriptionsWithServicesThatHaveFailedToStart,
                                                         serviceJobsToStart, terminate, jobStore)
                         continue
                     # Found a new job that needs to schedule its services.
@@ -276,8 +267,7 @@ class ServiceManager( object ):
                 for jobDesc in jobDescriptionsToRemove:
                     del servicesRemainingToStartForJob[jobDesc]
 
-def blockUntilServiceGroupIsStarted(jobDesc, jobDescriptionsWithServicesThatHaveStarted, jobDescriptionsWithServicesThatHaveFailedToStart, serviceJobsToStart, terminate, jobStore):
-    
+def blockUntilServiceGroupIsStarted(jobDesc, jobDescriptionsWithServicesThatHaveStarted, serviceJobsToStart, terminate, jobStore):
     # Keep the user informed, but not too informed, as services start up
     logLimiter = LocalThrottle(60)
     

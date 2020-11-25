@@ -3,7 +3,6 @@ import logging
 import subprocess
 from contextlib import contextmanager
 
-from toil.lib.iterables import concat
 from toil.test import ApplianceTestSupport, needs_appliance, needs_mesos, slow
 from toil.version import exactPython
 
@@ -78,7 +77,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
                         '--mesosMaster=localhost:5050',
                         '--defaultMemory=10M',
                         '/data/jobstore']
-            command = concat(pythonArgs, toilArgs)
+            command = pythonArgs + toilArgs
             self.assertRaises(subprocess.CalledProcessError, leader.runOnAppliance, *command)
 
             # Deploy an updated version of the script ...
@@ -87,7 +86,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
                                 packagePath='foo.bar',
                                 script=userScript)
             # ... and restart Toil.
-            command = concat(pythonArgs, '--restart', toilArgs)
+            command = pythonArgs + ['--restart'] + toilArgs
             leader.runOnAppliance(*command)
 
     def testSplitRootPackages(self):

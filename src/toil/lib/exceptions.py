@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,11 +13,10 @@
 # limitations under the License.
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
-
 import sys
 
 
-class panic( object ):
+class panic:
     """
     The Python idiom for reraising a primary exception fails when the except block raises a
     secondary exception, e.g. while trying to cleanup. In that case the original exception is

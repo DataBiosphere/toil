@@ -29,7 +29,6 @@ from urllib.request import urlopen
 from zipfile import ZipFile
 
 from toil import inVirtualEnv
-from toil.lib.iterables import concat
 from toil.lib.memoize import strict_bool
 from toil.lib.retry import ErrorCondition, retry
 from toil.version import exactPython
@@ -522,8 +521,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             except AttributeError:
                 return False
 
-            workerModuleFiles = concat(('worker' + ext for ext in self.moduleExtensions),
-                                       '_toil_worker')  # the setuptools entry point
+            workerModuleFiles = ['worker.py', 'worker.pyc', 'worker.pyo', '_toil_worker']  # setuptools entry point
             return mainModuleFile in workerModuleFiles
 
     def globalize(self):
@@ -557,19 +555,17 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         else:
             initName = self._initModuleName(self.dirPath)
             if initName:
+                basedir, filename = os.path.split(self.dirPath)
                 raise ResourceException(
-                    "Toil does not support loading a user script from a package directory. You "
-                    "may want to remove %s from %s or invoke the user script as a module via "
-                    "'PYTHONPATH=\"%s\" %s -m %s.%s'." %
-                    tuple(concat(initName, self.dirPath, exactPython, os.path.split(self.dirPath), self.name)))
+                    f"Toil does not support loading a user script from a package directory. You "
+                    f"may want to remove {initName} from {self.dirPath} or invoke the user script as a module via "
+                    f"'PYTHONPATH=\"{exactPython}\" {basedir} -m {filename}.{self.name}'.")
             return self.dirPath
-
-    moduleExtensions = ('.py', '.pyc', '.pyo')
 
     @classmethod
     def _initModuleName(cls, dirPath):
-        for extension in cls.moduleExtensions:
-            name = '__init__' + extension
+        for extension in ('.py', '.pyc', '.pyo'):
+            name = f'__init__{extension}'
             if os.path.exists(os.path.join(dirPath, name)):
                 return name
         return None

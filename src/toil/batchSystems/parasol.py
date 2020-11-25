@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import logging
 import os
 import re
@@ -27,7 +26,6 @@ from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
 from toil.common import Toil
 from toil.lib.bioio import get_temp_file
-from toil.lib.iterables import concat
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +97,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         recursively call the issue parasol command, repeating this pattern for a maximum of N
         times. The final exit value will reflect this.
         """
-        command = list(concat(self.parasolCommand, command))
+        command = self.parasolCommand + command
         while True:
             logger.debug('Running %r', command)
             process = subprocess.Popen(command,
@@ -145,7 +143,7 @@ class ParasolBatchSystem(BatchSystemSupport):
 
         # Prefix the command with environment overrides, optionally looking them up from the
         # current environment if the value is None
-        command = ' '.join(concat('env', self.__environment(), jobDesc.command))
+        command = ' '.join(['env'] + self.__environment() + [jobDesc.command])
         parasolCommand = ['-verbose',
                           '-ram=%i' % jobDesc.memory,
                           '-cpu=%i' % jobDesc.cores,
@@ -188,7 +186,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         return super(ParasolBatchSystem, self).setEnv(name, value)
 
     def __environment(self):
-        return (k + '=' + (os.environ[k] if v is None else v) for k, v in list(self.environment.items()))
+        return [k + '=' + (os.environ[k] if v is None else v) for k, v in list(self.environment.items())]
 
     def killBatchJobs(self, jobIDs):
         """Kills the given jobs, represented as Job ids, then checks they are dead by checking

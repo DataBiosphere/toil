@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@
 # limitations under the License.
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
-
 import atexit
 import fcntl
 import logging
@@ -24,7 +23,6 @@ import tempfile
 import threading
 import traceback
 from contextlib import contextmanager
-from threading import BoundedSemaphore
 
 import psutil
 
@@ -32,15 +30,6 @@ from toil.lib.exceptions import raise_
 from toil.lib.misc import robust_rmtree
 
 log = logging.getLogger(__name__)
-
-
-class BoundedEmptySemaphore(BoundedSemaphore):
-    """A bounded semaphore that is initially empty."""
-    def __init__( self, value=1, verbose=None ):
-        super( BoundedEmptySemaphore, self ).__init__( value, verbose )
-        for i in range( value ):
-            # Empty out the semaphore
-            assert self.acquire( blocking=False )
 
 
 class ExceptionalThread(threading.Thread):

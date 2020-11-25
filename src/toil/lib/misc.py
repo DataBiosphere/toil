@@ -208,7 +208,6 @@ def call_command(cmd, *, input=None, timeout=None, useCLocale=True, env=None):
     is force to prevent failures that occurred in some batch systems
     with UTF-8 locale.
     """
-
     # using non-C locales can cause GridEngine commands, maybe other to
     # generate errors
     if useCLocale:

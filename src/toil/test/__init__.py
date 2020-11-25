@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import datetime
 import logging
 import os
@@ -34,12 +33,10 @@ from urllib.request import urlopen
 
 import pytz
 
-from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
-from toil.lib.iterables import concat
+from toil import ApplianceImageNotFound, applianceSelf
 from toil.lib.memoize import memoize
 from toil.lib.threading import ExceptionalThread, cpu_count
 from toil.provisioners.aws import runningOnEC2
-from toil.version import distVersion
 
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
@@ -126,10 +123,6 @@ class ToilTest(unittest.TestCase):
         return region.group(1)
 
     @classmethod
-    def _getUtilScriptPath(cls, script_name):
-        return os.path.join(toilPackageDirPath(), 'utils', script_name + '.py')
-
-    @classmethod
     def _projectRootPath(cls):
         """
         Returns the path to the project root, i.e. the directory that typically contains the .git
@@ -146,15 +139,9 @@ class ToilTest(unittest.TestCase):
         return projectRootPath
 
     def _createTempDir(self, purpose=None):
-        return self._createTempDirEx(self._testMethodName, purpose)
-
-    @classmethod
-    def _createTempDirEx(cls, *names):
-        prefix = ['toil', 'test', strclass(cls)]
-        prefix.extend([_f for _f in names if _f])
-        prefix.append('')
-        temp_dir_path = os.path.realpath(tempfile.mkdtemp(dir=cls._tempBaseDir, prefix='-'.join(prefix)))
-        cls._tempDirs.append(temp_dir_path)
+        prefix = '-'.join(['toil', 'test', strclass(self), self._testMethodName, purpose, ''])
+        temp_dir_path = os.path.realpath(tempfile.mkdtemp(dir=self._tempBaseDir, prefix=prefix))
+        self._tempDirs.append(temp_dir_path)
         return temp_dir_path
 
     def _getTestJobStorePath(self):
@@ -165,61 +152,6 @@ class ToilTest(unittest.TestCase):
         # reasonably well (1 in 63 ^ 6 chance of collision), making this an unlikely scenario.
         os.rmdir(path)
         return path
-
-    @classmethod
-    def _getSourceDistribution(cls):
-        """
-        Find the sdist tarball for this project, check whether it is up-to date and return the
-        path to it.
-
-        :rtype: str
-        """
-        sdistPath = os.path.join(cls._projectRootPath(), 'dist', 'toil-%s.tar.gz' % distVersion)
-        assert os.path.isfile(sdistPath), "Can't find Toil source distribution at %s. Run 'make sdist'." % sdistPath
-        excluded = set(cls._run('git', 'ls-files', '--others', '-i', '--exclude-standard',
-                                capture=True,
-                                cwd=cls._projectRootPath()).splitlines())
-        dirty = cls._run('find', 'src', '-type', 'f', '-newer', sdistPath,
-                         capture=True,
-                         cwd=cls._projectRootPath()).splitlines()
-        assert all(path.startswith('src') for path in dirty)
-        dirty = set(dirty)
-        dirty.difference_update(excluded)
-        assert not dirty, "Run 'make clean_sdist sdist'. Files newer than %s: %r" % (sdistPath, list(dirty))
-        return sdistPath
-
-    @classmethod
-    def _run(cls, command, *args, **kwargs):
-        """
-        Run a command. Convenience wrapper for subprocess.check_call and subprocess.check_output.
-
-        :param str command: The command to be run.
-
-        :param str args: Any arguments to be passed to the command.
-
-        :param Any kwargs: keyword arguments for subprocess.Popen constructor. Pass capture=True
-               to have the process' stdout returned. Pass input='some string' to feed input to the
-               process' stdin.
-
-        :rtype: None|str
-
-        :return: The output of the process' stdout if capture=True was passed, None otherwise.
-        """
-        args = list(concat(command, args))
-        log.info('Running %r', args)
-        capture = kwargs.pop('capture', False)
-        _input = kwargs.pop('input', None)
-        if capture:
-            kwargs['stdout'] = subprocess.PIPE
-        if _input is not None:
-            kwargs['stdin'] = subprocess.PIPE
-        popen = subprocess.Popen(args, **kwargs)
-        stdout, stderr = popen.communicate(input=_input)
-        assert stderr is None
-        if popen.returncode != 0:
-            raise subprocess.CalledProcessError(popen.returncode, args)
-        if capture:
-            return stdout
 
     def _getScriptSource(self, callable_):
         """
@@ -770,14 +702,11 @@ class ApplianceTestSupport(ToilTest):
             with self.lock:
                 image = applianceSelf()
                 # Omitting --rm, it's unreliable, see https://github.com/docker/docker/issues/16575
-                args = list(concat('docker', 'run',
-                                   '--entrypoint=' + self._entryPoint(),
-                                   '--net=host',
-                                   '-i',
-                                   '--name=' + self.containerName,
-                                   ['--volume=%s:%s' % mount for mount in self.mounts.items()],
-                                   image,
-                                   self._containerCommand()))
+                args = ['docker', 'run', f'--entrypoint={self._entryPoint()}',
+                        '--net=host', '-i', f'--name={self.containerName}'] + \
+                       ['--volume=%s:%s' % mount for mount in self.mounts.items()] + \
+                       [image] + \
+                       self._containerCommand()
                 log.info('Running %r', args)
                 self.popen = subprocess.Popen(args)
             self.start()
@@ -788,29 +717,23 @@ class ApplianceTestSupport(ToilTest):
         def __exit__(self, exc_type, exc_val, exc_tb):
             try:
                 try:
-                    self.outer._run('docker', 'stop', self.containerName)
+                    subprocess.run(['docker', 'stop', self.containerName])
                     self.join()
                 finally:
                     if self.cleanMounts:
                         self.__cleanMounts()
             finally:
-                self.outer._run('docker', 'rm', '-f', self.containerName)
+                subprocess.run(['docker', 'rm', '-f', self.containerName])
             return False  # don't swallow exception
 
         def __wait_running(self):
             log.info("Waiting for %s container process to appear. "
                      "Expect to see 'Error: No such image or container'.", self._getRole())
             while self.isAlive():
-                try:
-                    running = self.outer._run('docker', 'inspect',
-                                              '--format={{ .State.Running }}',
-                                              self.containerName,
-                                              capture=True).strip()
-                except subprocess.CalledProcessError:
-                    pass
-                else:
-                    if 'true' == running:
-                        break
+                p = subprocess.run(['docker', 'inspect', '--format={{ .State.Running }}', self.containerName],
+                                   stdout=subprocess.PIPE)
+                if 'true' == p.stdout:
+                    break
                 time.sleep(1)
 
         def __cleanMounts(self):
@@ -824,12 +747,8 @@ class ApplianceTestSupport(ToilTest):
             cmd = 'shopt -s dotglob && rm -rf ' + ' '.join(v + '/*'
                                                            for k, v in self.mounts.items()
                                                            if os.path.isdir(k))
-            self.outer._run('docker', 'run',
-                            '--rm',
-                            '--entrypoint=/bin/bash',
-                            applianceSelf(),
-                            '-c',
-                            cmd)
+            subprocess.run(['docker', 'run', '--rm', '--entrypoint=/bin/bash',
+                            applianceSelf(), '-c', cmd])
 
         def tryRun(self):
             self.popen.wait()
@@ -839,8 +758,7 @@ class ApplianceTestSupport(ToilTest):
             # Check if thread is still alive. Note that ExceptionalThread.join raises the
             # exception that occurred in the thread.
             self.join(timeout=0)
-            # noinspection PyProtectedMember
-            self.outer._run('docker', 'exec', '-i', self.containerName, *args, **kwargs)
+            subprocess.run(['docker', 'exec', '-i', self.containerName, *args], **kwargs)
 
         def writeToAppliance(self, path, contents):
             self.runOnAppliance('tee', path, input=contents)
@@ -866,8 +784,8 @@ class ApplianceTestSupport(ToilTest):
             for package in packages:
                 path += '/' + package
                 self.runOnAppliance('mkdir', '-p', path)
-                self.writeToAppliance(path + '/__init__.py', '')
-            self.writeToAppliance(path + '/' + module + '.py', script)
+                self.writeToAppliance(f'{path}/__init__.py'.encode('utf-8'), '')
+            self.writeToAppliance(f'{path}/{module}.py', script)
 
     class LeaderThread(Appliance):
         def _entryPoint(self):
