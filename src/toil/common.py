@@ -11,39 +11,31 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-
-from future import standard_library
-
-standard_library.install_aliases()
-from builtins import str
-from builtins import range
-from builtins import object
 import logging
 import os
+import pickle
 import re
+import subprocess
 import sys
 import tempfile
 import time
 import uuid
-import requests
 from argparse import ArgumentParser
-from six import iteritems
 
+import requests
+
+from toil import logProcessContext, lookupEnvVar
+from toil.batchSystems.options import addOptions as addBatchOptions
+from toil.batchSystems.options import \
+    setDefaultOptions as setDefaultBatchOptions
+from toil.batchSystems.options import setOptions as setBatchOptions
+from toil.lib.bioio import (addLoggingOptions, getLogLevelString,
+                            setLoggingFromOptions)
 from toil.lib.humanize import bytes2human
 from toil.lib.retry import retry
-import subprocess
-from toil import pickle
-from toil import logProcessContext
-from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
-from toil.realtimeLogger import RealtimeLogger
-from toil.batchSystems.options import addOptions as addBatchOptions
-from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
-from toil.batchSystems.options import setOptions as setBatchOptions
 from toil.provisioners import clusterFactory
 from toil.provisioners.aws import checkValidNodeTypes, zoneToRegion
-from toil import lookupEnvVar
+from toil.realtimeLogger import RealtimeLogger
 from toil.version import dockerRegistry, dockerTag
 
 # aim to pack autoscaling jobs within a 30 minute block before provisioning a new node
@@ -51,11 +43,8 @@ defaultTargetTime = 1800
 logger = logging.getLogger(__name__)
 
 
-class Config(object):
-    """
-    Class to represent configuration operations for a toil workflow run.
-    """
-
+class Config:
+    """Class to represent configuration operations for a toil workflow run."""
     def __init__(self):
         # Core options
         self.workflowID = None
@@ -117,11 +106,12 @@ class Config(object):
         # Retrying/rescuing jobs
         self.retryCount = 1
         self.enableUnlimitedPreemptableRetries = False
+        self.doubleMem = False
         self.maxJobDuration = sys.maxsize
         self.rescueJobsFrequency = 3600
 
         # Misc
-        self.disableCaching = True
+        self.disableCaching = False
         self.disableChaining = False
         self.disableJobStoreChecksumVerification = False
         self.maxLogFileSize = 64000
@@ -146,11 +136,8 @@ class Config(object):
         self.cwl = False
 
     def setOptions(self, options):
-        """
-        Creates a config object from the options object.
-        """
-        from toil.lib.humanize import human2bytes  # This import is used to convert
-        # from human readable quantites to integers
+        """Creates a config object from the options object."""
+        from toil.lib.humanize import human2bytes
         def setOption(varName, parsingFn=None, checkFn=None, default=None):
             # If options object has the option "varName" specified
             # then set the "varName" attrib to this value in the config object
@@ -181,15 +168,11 @@ class Config(object):
             else:
                 return s
 
-        def parseStrList(s):
-            s = s.split(",")
-            s = [str(x) for x in s]
-            return s
+        def parseStrList(s: str):
+            return [str(x) for x in s.split(",")]
 
-        def parseIntList(s):
-            s = s.split(",")
-            s = [int(x) for x in s]
-            return s
+        def parseIntList(s: str):
+            return [int(x) for x in s.split(",")]
 
         # Core options
         setOption("jobStore", parsingFn=parseJobStore)
@@ -282,6 +265,7 @@ class Config(object):
         # Retrying/rescuing jobs
         setOption("retryCount", int, iC(1))
         setOption("enableUnlimitedPreemptableRetries")
+        setOption("doubleMem")
         setOption("maxJobDuration", int, iC(1))
         setOption("rescueJobsFrequency", int, iC(1))
 
@@ -399,6 +383,9 @@ def _addOptions(addGroupFn, config):
     addOptionFn = addGroupFn("toil options for specifying the batch system",
                              "Allows the specification of the batch system, and arguments to the "
                              "batch system/big batch system (see below).")
+    addOptionFn("--statePollingWait", dest="statePollingWait", default=1, type=int,
+                help=("Time, in seconds, to wait before doing a scheduler query for job state. "
+                      "Return cached results if within the waiting period."))
     addBatchOptions(addOptionFn, config)
 
     #
@@ -509,9 +496,6 @@ def _addOptions(addGroupFn, config):
                     "enumerate running jobs quickly enough, or if polling for running jobs is "
                     "placing an unacceptable load on a shared cluster. default=%s" %
                     config.deadlockCheckInterval))
-        addOptionFn("--statePollingWait", dest="statePollingWait", default=1, type=int,
-                    help=("Time, in seconds, to wait before doing a scheduler query for job state. "
-                          "Return cached results if within the waiting period."))
 
     #
     # Resource requirements
@@ -564,6 +548,10 @@ def _addOptions(addGroupFn, config):
                 help=("If set, preemptable failures (or any failure due to an instance getting "
                       "unexpectedly terminated) would not count towards job failures and "
                       "--retryCount."))
+    addOptionFn("--doubleMem", dest="doubleMem", action='store_true', default=False,
+                help=("If set, batch jobs which die to reaching memory limit on batch schedulers "
+                      "will have their memory doubled and they will be retried. The remaining "
+                      "retry count will be reduced by 1. Currently supported by LSF."))
     addOptionFn("--maxJobDuration", dest="maxJobDuration", default=None,
                 help=("Maximum runtime of a job (in seconds) before we kill it "
                       "(this is a lower bound, and the actual time before killing "
@@ -578,10 +566,9 @@ def _addOptions(addGroupFn, config):
     #
     addOptionFn = addGroupFn("Toil Miscellaneous Options", "Miscellaneous Options")
     addOptionFn('--disableCaching', dest='disableCaching',
-                type='bool', nargs='?', const=True, default=True,
+                type='bool', nargs='?', const=True, default=False,
                 help='Disables caching in the file store. This flag must be set to use '
-                     'a batch system that does not support caching such as Grid Engine, Parasol, '
-                     'LSF, or Slurm')
+                     'a batch system that does not support cleanup, such as Parasol.')
     addOptionFn('--disableChaining', dest='disableChaining', action='store_true', default=False,
                 help="Disables chaining of jobs (chaining uses one job's resource allocation "
                 "for its successor job if possible).")
@@ -656,6 +643,14 @@ def _addOptions(addGroupFn, config):
                       "'badWorkerFailInterval' seconds after the worker starts, default=%s" % config.badWorkerFailInterval))
 
 
+def parseBool(val):
+    if val.lower() in ['true', 't', 'yes', 'y', 'on', '1']:
+        return True
+    elif val.lower() in ['false', 'f', 'no', 'n', 'off', '0']:
+        return False
+    else:
+        raise RuntimeError("Could not interpret \"%s\" as a boolean value" % val)
+
 def addOptions(parser, config=Config()):
     """
     Adds toil options to a parser object, either optparse or argparse.
@@ -667,7 +662,7 @@ def addOptions(parser, config=Config()):
         def addGroup(headingString, bodyString):
             return parser.add_argument_group(headingString, bodyString).add_argument
 
-        parser.register("type", "bool", lambda v: v.lower() == "true")  # Custom type for arg=True/False.
+        parser.register("type", "bool", parseBool)  # Custom type for arg=True/False.
         _addOptions(addGroup, config)
     else:
         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting "
@@ -758,6 +753,7 @@ class Toil(object):
         """
         self._jobCache = dict()
         self._inContextManager = False
+        self._inRestart = False
 
     def __enter__(self):
         """
@@ -793,9 +789,13 @@ class Toil(object):
             if (exc_type is not None and self.config.clean == "onError" or
                             exc_type is None and self.config.clean == "onSuccess" or
                         self.config.clean == "always"):
-                try:
-                    self._jobStore.destroy()
-                    logger.info("Successfully deleted the job store: %s" % str(self._jobStore))
+    
+                try:           
+                    if self.config.restart and not self._inRestart:
+                        pass
+                    else:      
+                        self._jobStore.destroy()
+                        logger.info("Successfully deleted the job store: %s" % str(self._jobStore))
                 except:
                     logger.info("Failed to delete the job store: %s" % str(self._jobStore))
                     raise
@@ -805,6 +805,7 @@ class Toil(object):
             else:
                 logger.exception('The following error was raised during clean up:')
         self._inContextManager = False
+        self._inRestart = False
         return False  # let exceptions through
 
     def start(self, rootJob):
@@ -838,12 +839,12 @@ class Toil(object):
                 promise = rootJob.rv()
                 pickle.dump(promise, fH, protocol=pickle.HIGHEST_PROTOCOL)
 
-            # Setup the first wrapper and cache it
-            rootJobGraph = rootJob._serialiseFirstJob(self._jobStore)
-            self._cacheJob(rootJobGraph)
+            # Setup the first JobDescription and cache it
+            rootJobDescription = rootJob.saveAsRootJob(self._jobStore)
+            self._cacheJob(rootJobDescription)
 
             self._setProvisioner()
-            return self._runMainLoop(rootJobGraph)
+            return self._runMainLoop(rootJobDescription)
         finally:
             self._shutdownBatchSystem()
 
@@ -853,6 +854,7 @@ class Toil(object):
 
         :return: The root job's return value
         """
+        self._inRestart = True
         self._assertContextManagerUsed()
         self.writePIDFile()
         if not self.config.restart:
@@ -874,8 +876,8 @@ class Toil(object):
             self._serialiseEnv()
             self._cacheAllJobs()
             self._setProvisioner()
-            rootJobGraph = self._jobStore.clean(jobCache=self._jobCache)
-            return self._runMainLoop(rootJobGraph)
+            rootJobDescription = self._jobStore.clean(jobCache=self._jobCache)
+            return self._runMainLoop(rootJobDescription)
         finally:
             self._shutdownBatchSystem()
 
@@ -929,7 +931,7 @@ class Toil(object):
     @staticmethod
     def buildLocator(name, rest):
         assert ':' not in name
-        return name + ':' + rest
+        return f'{name}:{rest}'
 
     @classmethod
     def resumeJobStore(cls, locator):
@@ -953,22 +955,21 @@ class Toil(object):
                       maxMemory=config.maxMemory,
                       maxDisk=config.maxDisk)
 
-        from toil.batchSystems.registry import batchSystemFactoryFor
+        from toil.batchSystems.registry import BATCH_SYSTEM_FACTORY_REGISTRY
 
         try:
-            factory = batchSystemFactoryFor(config.batchSystem)
-            batchSystemClass = factory()
+            batch_system = BATCH_SYSTEM_FACTORY_REGISTRY[config.batchSystem]()
         except:
-            raise RuntimeError('Unrecognised batch system: %s' % config.batchSystem)
+            raise RuntimeError(f'Unrecognized batch system: {config.batchSystem}')
 
-        if not config.disableCaching and not batchSystemClass.supportsWorkerCleanup():
-            raise RuntimeError('%s currently does not support shared caching.  Set the '
-                               '--disableCaching flag if you want to '
-                               'use this batch system.' % config.batchSystem)
-        logger.debug('Using the %s' %
-                    re.sub("([a-z])([A-Z])", r'\g<1> \g<2>', batchSystemClass.__name__).lower())
+        if not config.disableCaching and not batch_system.supportsWorkerCleanup():
+            raise RuntimeError(f'{config.batchSystem} currently does not support shared caching, because it '
+                               'does not support cleaning up a worker after the last job '
+                               'finishes. Set the --disableCaching flag if you want to '
+                               'use this batch system.')
+        logger.debug('Using the %s' % re.sub("([a-z])([A-Z])", r"\g<1> \g<2>", batch_system.__name__).lower())
 
-        return batchSystemClass(**kwargs)
+        return batch_system(**kwargs)
 
     def _setupAutoDeployment(self, userScript=None):
         """
@@ -992,7 +993,8 @@ class Toil(object):
                     with self._jobStore.writeSharedFileStream('userScript') as f:
                         pickle.dump(userScript, f, protocol=pickle.HIGHEST_PROTOCOL)
                 else:
-                    from toil.batchSystems.singleMachine import SingleMachineBatchSystem
+                    from toil.batchSystems.singleMachine import \
+                        SingleMachineBatchSystem
                     if not isinstance(self._batchSystem, SingleMachineBatchSystem):
                         logger.warning('Batch system does not support auto-deployment. The user '
                                     'script %s will have to be present at the same location on '
@@ -1040,7 +1042,7 @@ class Toil(object):
         Sets the environment variables required by the job store and those passed on command line.
         """
         for envDict in (self._jobStore.getEnv(), self.config.environment):
-            for k, v in iteritems(envDict):
+            for k, v in envDict.items():
                 self._batchSystem.setEnv(k, v)
 
     def _serialiseEnv(self):
@@ -1057,14 +1059,14 @@ class Toil(object):
         Downloads all jobs in the current job store into self.jobCache.
         """
         logger.debug('Caching all jobs in job store')
-        self._jobCache = {jobGraph.jobStoreID: jobGraph for jobGraph in self._jobStore.jobs()}
+        self._jobCache = {jobDesc.jobStoreID: jobDesc for jobDesc in self._jobStore.jobs()}
         logger.debug('{} jobs downloaded.'.format(len(self._jobCache)))
 
     def _cacheJob(self, job):
         """
         Adds given job to current job cache.
 
-        :param toil.jobGraph.JobGraph job: job to be added to current job cache
+        :param toil.job.JobDescription job: job to be added to current job cache
         """
         self._jobCache[job.jobStoreID] = job
 
@@ -1230,7 +1232,7 @@ class ToilMetrics:
                                                           "-v", "/proc:/host/proc",
                                                           "-v", "/sys:/host/sys",
                                                           "-v", "/:/rootfs",
-                                                          "prom/node-exporter:0.12.0",
+                                                          "quay.io/prometheus/node-exporter:0.15.2",
                                                           "-collector.procfs", "/host/proc",
                                                           "-collector.sysfs", "/host/sys",
                                                           "-collector.filesystem.ignored-mount-points",
@@ -1280,22 +1282,19 @@ class ToilMetrics:
             logger.warning("Could not start prometheus/grafana dashboard.")
             return
 
-        # Add prometheus data source
-        def requestPredicate(e):
-            if isinstance(e, requests.exceptions.ConnectionError):
-                return True
-            return False
-
         try:
-            for attempt in retry(delays=(0, 1, 1, 4, 16), predicate=requestPredicate):
-                with attempt:
-                    requests.post('http://localhost:3000/api/datasources', auth=('admin', 'admin'),
-                                  data='{"name":"DS_PROMETHEUS","type":"prometheus", \
-                                  "url":"http://localhost:9090", "access":"direct"}',
-                                  headers={'content-type': 'application/json', "access": "direct"})
+            self.add_prometheus_data_source()
         except requests.exceptions.ConnectionError:
-            logger.debug(
-                "Could not add data source to Grafana dashboard - no metrics will be displayed.")
+            logger.debug("Could not add data source to Grafana dashboard - no metrics will be displayed.")
+
+    @retry(errors=[requests.exceptions.ConnectionError])
+    def add_prometheus_data_source(self):
+        requests.post(
+            'http://localhost:3000/api/datasources',
+            auth=('admin', 'admin'),
+            data='{"name":"DS_PROMETHEUS","type":"prometheus", "url":"http://localhost:9090", "access":"direct"}',
+            headers={'content-type': 'application/json', "access": "direct"}
+        )
 
     def log(self, message):
         if self.mtailProc:

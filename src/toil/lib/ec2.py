@@ -1,13 +1,13 @@
 import logging
 import time
-from collections import Iterator
 from operator import attrgetter
-from past.builtins import map
-from toil.lib.exceptions import panic
-from toil.lib.retry import retry
-from boto.ec2.instance import Instance
-from boto.ec2.spotinstancerequest import SpotInstanceRequest
+from typing import Dict, List, Optional
+
+from boto3.resources.base import ServiceResource
 from boto.exception import EC2ResponseError
+
+from toil.lib.exceptions import panic
+from toil.lib.retry import old_retry
 
 a_short_time = 5
 a_long_time = 60 * 60
@@ -28,9 +28,9 @@ def not_found(e):
 
 
 def retry_ec2(t=a_short_time, retry_for=10 * a_short_time, retry_while=not_found):
-    return retry(delays=(t, t, t * 2, t * 4),
-                 timeout=retry_for,
-                 predicate=retry_while)
+    return old_retry(delays=(t, t, t * 2, t * 4),
+                     timeout=retry_for,
+                     predicate=retry_while)
 
 
 class UnexpectedResourceState(Exception):
@@ -88,7 +88,7 @@ def wait_instances_running(ec2, instances):
                 other_ids.add(i.id)
                 yield i
         log.info('%i instance(s) pending, %i running, %i other.',
-                 *map(len, (pending_ids, running_ids, other_ids)))
+                 *list(map(len, (pending_ids, running_ids, other_ids))))
         if not pending_ids:
             break
         seconds = max(a_short_time, min(len(pending_ids), 10 * a_short_time))
@@ -156,7 +156,7 @@ def wait_spot_requests_active(ec2, requests, timeout=None, tentative=False):
                 yield batch
             log.info('%i spot requests(s) are open (%i of which are pending evaluation and %i '
                      'are pending fulfillment), %i are active and %i are in another state.',
-                     *map(len, (open_ids, eval_ids, fulfill_ids, active_ids, other_ids)))
+                     *list(map(len, (open_ids, eval_ids, fulfill_ids, active_ids, other_ids))))
             if not open_ids or tentative and not eval_ids and not fulfill_ids:
                 break
             sleep_time = 2 * a_short_time
@@ -253,3 +253,51 @@ def create_ondemand_instances(ec2, image_id, spec, num_instances=1):
                                      min_count=num_instances,
                                      max_count=num_instances,
                                      **spec).instances
+
+
+# TODO: Implement retry_decorator here
+# [5, 5, 10, 20, 20, 20, 20] I don't think we need to retry for an hour... ???
+# InvalidGroup.NotFound
+# OR
+# 'invalid iam instance profile' in m.lower() or 'no associated iam roles' in m.lower()
+def create_instances(ec2: ServiceResource,
+                     image_id: str,
+                     key_name: str,
+                     instance_type: str,
+                     num_instances: int = 1,
+                     security_group_ids: Optional[List] = None,
+                     user_data: Optional[bytes] = None,
+                     block_device_map: Optional[List[Dict]] = None,
+                     instance_profile_arn: Optional[Dict] = None,
+                     placement: Optional[Dict] = None,
+                     subnet_id: str = None):
+    """
+    Replaces create_ondemand_instances.  Uses boto3.
+
+    See "create_instances" (returns a list of ec2.Instance objects):
+      https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
+    Not to be confused with "run_instances" (same input args; returns a dictionary):
+      https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.run_instances
+    """
+    log.info('Creating %s instance(s) ... ', instance_type)
+    for attempt in retry_ec2(retry_for=a_long_time, retry_while=inconsistencies_detected):
+        with attempt:
+            request = {'ImageId': image_id,
+                       'MinCount': num_instances,
+                       'MaxCount': num_instances,
+                       'KeyName': key_name,
+                       'SecurityGroupIds': security_group_ids,
+                       'InstanceType': instance_type,
+                       'UserData': user_data,
+                       'Placement': placement,
+                       'BlockDeviceMappings': block_device_map,
+                       'IamInstanceProfile': instance_profile_arn,
+                       'SubnetId': subnet_id}
+
+            # remove empty args
+            actual_request = dict()
+            for key in request:
+                if request[key]:
+                    actual_request[key] = request[key]
+
+            return ec2.create_instances(**actual_request)

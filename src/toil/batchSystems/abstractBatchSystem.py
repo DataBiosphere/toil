@@ -11,24 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-from future import standard_library
-standard_library.install_aliases()
-from future.utils import with_metaclass
-from builtins import object
 import enum
+import logging
 import os
 import shutil
-import logging
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 from collections import namedtuple
 from contextlib import contextmanager
+from typing import Optional, Tuple
 
-from toil.lib.objects import abstractclassmethod
-from toil.batchSystems import registry
+from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
+                                        DEFAULT_BATCH_SYSTEM)
 from toil.common import Toil, cacheDirName
-from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.deferred import DeferredFunctionManager
+from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.lib.objects import abstractclassmethod
+from toil.lib.threading import LastProcessStandingArena
 
 try:
     from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
@@ -53,7 +51,7 @@ class BatchJobExitReason(enum.Enum):
     LOST = 3  # Preemptable failure (job's executing host went away).
     KILLED = 4  # Job killed before finishing.
     ERROR = 5  # Internal error.
-
+    MEMLIMIT = 6 # Job hit batch system imposed memory limit
 
 # Value to use as exitStatus in UpdatedBatchJobInfo.exitStatus when status is not available.
 EXIT_STATUS_UNAVAILABLE_VALUE = 255
@@ -68,7 +66,7 @@ WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
     'cleanWorkDir'))
 
 
-class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
+class AbstractBatchSystem(ABC):
     """
     An abstract (as far as Python currently allows) base class to represent the interface the batch
     system must provide to Toil.
@@ -92,12 +90,14 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
     @abstractclassmethod
     def supportsWorkerCleanup(cls):
         """
-        Indicates whether this batch system invokes :meth:`workerCleanup` after the last job for
-        a particular workflow invocation finishes. Note that the term *worker* refers to an
-        entire node, not just a worker process. A worker process may run more than one job
-        sequentially, and more than one concurrent worker process may exist on a worker node,
-        for the same workflow. The batch system is said to *shut down* after the last worker
-        process terminates.
+        Indicates whether this batch system invokes
+        :meth:`BatchSystemSupport.workerCleanup` after the last job for a
+        particular workflow invocation finishes. Note that the term *worker*
+        refers to an entire node, not just a worker process. A worker process
+        may run more than one job sequentially, and more than one concurrent
+        worker process may exist on a worker node, for the same workflow. The
+        batch system is said to *shut down* after the last worker process
+        terminates.
 
         :rtype: bool
         """
@@ -115,11 +115,11 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
         raise NotImplementedError()
 
     @abstractmethod
-    def issueBatchJob(self, jobNode):
+    def issueBatchJob(self, jobDesc):
         """
         Issues a job with the specified command to the batch system and returns a unique jobID.
 
-        :param jobNode a toil.job.JobNode
+        :param jobDesc a toil.job.JobDescription
 
         :return: a unique jobID that can be used to reference the newly issued job
         :rtype: int
@@ -235,7 +235,20 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
         :param setOption: A function with signature setOption(varName, parsingFn=None, checkFn=None, default=None)
            used to update run configuration
         """
-        pass
+        
+    def getWorkerContexts(self):
+        """
+        Get a list of picklable context manager objects to wrap worker work in,
+        in order.
+        
+        Can be used to ask the Toil worker to do things in-process (such as
+        configuring environment variables, hot-deploying user scripts, or
+        cleaning up a node) that would otherwise require a wrapping "executor"
+        process.
+        
+        :rtype: list
+        """
+        return []
 
 
 class BatchSystemSupport(AbstractBatchSystem):
@@ -384,20 +397,19 @@ class BatchSystemLocalSupport(BatchSystemSupport):
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(BatchSystemLocalSupport, self).__init__(config, maxCores, maxMemory, maxDisk)
-        self.localBatch = registry.batchSystemFactoryFor(
-            registry.defaultBatchSystem())()(
+        self.localBatch = BATCH_SYSTEM_FACTORY_REGISTRY[DEFAULT_BATCH_SYSTEM]()(
                 config, config.maxLocalJobs, maxMemory, maxDisk)
 
-    def handleLocalJob(self, jobNode):  # type: (JobNode) -> Optional[int]
+    def handleLocalJob(self, jobDesc):  # type: (JobDescription) -> Optional[int]
         """
         To be called by issueBatchJobs.
 
-        Returns the jobID if the jobNode has been submitted to the local queue,
+        Returns the jobID if the jobDesc has been submitted to the local queue,
         otherwise returns None
         """
         if (not self.config.runCwlInternalJobsOnWorkers
-                and jobNode.jobName.startswith(CWL_INTERNAL_JOBS)):
-            return self.localBatch.issueBatchJob(jobNode)
+                and jobDesc.jobName.startswith(CWL_INTERNAL_JOBS)):
+            return self.localBatch.issueBatchJob(jobDesc)
         else:
             return None
 
@@ -435,6 +447,64 @@ class BatchSystemLocalSupport(BatchSystemSupport):
         """To be called from shutdown()"""
         self.localBatch.shutdown()
 
+class BatchSystemCleanupSupport(BatchSystemLocalSupport):
+    """
+    Adds cleanup support when the last running job leaves a node, for batch
+    systems that can't provide it using the backing scheduler.
+    """
+    
+    @classmethod
+    def supportsWorkerCleanup(cls):
+        return True
+        
+    def getWorkerContexts(self):
+        # Tell worker to register for and invoke cleanup
+        
+        # Create a context manager that has a copy of our cleanup info
+        context = WorkerCleanupContext(self.workerCleanupInfo)
+       
+        # Send it along so the worker works inside of it
+        contexts = super(BatchSystemCleanupSupport, self).getWorkerContexts()
+        contexts.append(context)
+        return contexts
+        
+    def __init__(self, config, maxCores, maxMemory, maxDisk):
+        super(BatchSystemCleanupSupport, self).__init__(config, maxCores, maxMemory, maxDisk)
+        
+class WorkerCleanupContext:
+    """
+    Context manager used by :class:`BatchSystemCleanupSupport` to implement
+    cleanup on a node after the last worker is done working.
+    
+    Gets wrapped around the worker's work.
+    """
+    
+    def __init__(self, workerCleanupInfo):
+        """
+        Wrap the given workerCleanupInfo in a context manager.
+        
+        :param WorkerCleanupInfo workerCleanupInfo: Info to use to clean up the worker if we are
+                                                    the last to exit the context manager.
+        """
+        
+        
+        self.workerCleanupInfo = workerCleanupInfo
+        self.arena = None
+        
+    def __enter__(self):
+        # Set up an arena so we know who is the last worker to leave
+        self.arena = LastProcessStandingArena(Toil.getToilWorkDir(self.workerCleanupInfo.workDir), 
+                                              self.workerCleanupInfo.workflowID + '-cleanup')
+        self.arena.enter()
+        
+    def __exit__(self, type, value, traceback):
+        for _ in self.arena.leave():
+            # We are the last concurrent worker to finish.
+            # Do batch system cleanup.
+            logger.debug('Cleaning up worker')
+            BatchSystemSupport.workerCleanup(self.workerCleanupInfo)
+        # We have nothing to say about exceptions
+        return False
 
 class NodeInfo(object):
     """

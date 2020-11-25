@@ -12,30 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import, print_function
 
-from future import standard_library
-
-standard_library.install_aliases()
-from builtins import map
-from builtins import str
-from collections import defaultdict
-from contextlib import contextmanager
-import dill
 import errno
 import fcntl
 import logging
 import os
 import sys
 import uuid
+from collections import defaultdict
+from contextlib import contextmanager
 
+import dill
+
+from toil.common import getDirSizeRecursively, getFileSystemSize
+from toil.fileStores import FileID
+from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.lib.bioio import makePublicDir
+from toil.lib.humanize import bytes2human
 from toil.lib.misc import robust_rmtree
 from toil.lib.threading import get_process_name, process_name_exists
-from toil.lib.humanize import bytes2human
-from toil.common import getDirSizeRecursively, getFileSystemSize
-from toil.lib.bioio import makePublicDir
-from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.fileStores import FileID
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +40,8 @@ if sys.version_info[0] < 3:
     FileNotFoundError = OSError
 
 class NonCachingFileStore(AbstractFileStore):
-    def __init__(self, jobStore, jobGraph, localTempDir, waitForPreviousCommit):
-        super(NonCachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, waitForPreviousCommit)
+    def __init__(self, jobStore, jobDesc, localTempDir, waitForPreviousCommit):
+        super(NonCachingFileStore, self).__init__(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
         # This will be defined in the `open` method.
         self.jobStateFile = None
         self.localFileMap = defaultdict(list)
@@ -64,7 +59,8 @@ class NonCachingFileStore(AbstractFileStore):
                            self.jobName)
         try:
             os.chdir(self.localTempDir)
-            yield
+            with super().open(job):
+                yield
         finally:
             diskUsed = getDirSizeRecursively(self.localTempDir)
             logString = ("Job {jobName} used {percent:.2f}% ({humanDisk}B [{disk}B] used, "
@@ -87,9 +83,12 @@ class NonCachingFileStore(AbstractFileStore):
 
     def writeGlobalFile(self, localFileName, cleanup=False):
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
-        creatorID = self.jobGraph.jobStoreID
+        creatorID = self.jobDesc.jobStoreID
         fileStoreID = self.jobStore.writeFile(absLocalFileName, creatorID, cleanup)
-        self.localFileMap[fileStoreID].append(absLocalFileName)
+        if absLocalFileName.startswith(self.localTempDir):
+            # Only files in the appropriate directory should become local files
+            # we can delete with deleteLocalFile
+            self.localFileMap[fileStoreID].append(absLocalFileName)
         return FileID.forPath(fileStoreID, absLocalFileName)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
@@ -102,11 +101,13 @@ class NonCachingFileStore(AbstractFileStore):
 
         self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
         self.localFileMap[fileStoreID].append(localFilePath)
+        self.logAccess(fileStoreID, localFilePath)
         return localFilePath
 
     @contextmanager
     def readGlobalFileStream(self, fileStoreID):
         with self.jobStore.readFileStream(fileStoreID) as f:
+            self.logAccess(fileStoreID)
             yield f
 
     def exportFile(self, jobStoreFileID, dstUrl):
@@ -116,7 +117,7 @@ class NonCachingFileStore(AbstractFileStore):
         try:
             localFilePaths = self.localFileMap.pop(fileStoreID)
         except KeyError:
-            raise OSError(errno.ENOENT, "Attempting to delete a non-local file")
+            raise OSError(errno.ENOENT, "Attempting to delete local copies of a file with none")
         else:
             for localFilePath in localFilePaths:
                 os.remove(localFilePath)
@@ -148,18 +149,18 @@ class NonCachingFileStore(AbstractFileStore):
         try:
             # Indicate any files that should be deleted once the update of
             # the job wrapper is completed.
-            self.jobGraph.filesToDelete = list(self.filesToDelete)
+            self.jobDesc.filesToDelete = list(self.filesToDelete)
             # Complete the job
-            self.jobStore.update(self.jobGraph)
+            self.jobStore.update(self.jobDesc)
             # Delete any remnant jobs
             list(map(self.jobStore.delete, self.jobsToDelete))
             # Delete any remnant files
             list(map(self.jobStore.deleteFile, self.filesToDelete))
             # Remove the files to delete list, having successfully removed the files
             if len(self.filesToDelete) > 0:
-                self.jobGraph.filesToDelete = []
+                self.jobDesc.filesToDelete = []
                 # Update, removing emptying files to delete
-                self.jobStore.update(self.jobGraph)
+                self.jobStore.update(self.jobDesc)
         except:
             self._terminateEvent.set()
             raise
@@ -169,7 +170,6 @@ class NonCachingFileStore(AbstractFileStore):
         Cleanup function that is run when destroying the class instance.  Nothing to do since there
         are no async write events.
         """
-        pass
 
     @classmethod
     def _removeDeadJobs(cls, nodeInfo, batchSystemShutdown=False):

@@ -11,19 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-from builtins import range
 import codecs
-import random
-import os
 import errno
-
-# Python 3 compatibility imports
-from six.moves import xrange
+import os
+import random
 
 from toil.common import Toil
-from toil.job import Job
 from toil.fileStores import FileID
+from toil.job import Job
 from toil.test import ToilTest, slow, travis_test
 
 PREFIX_LENGTH=200

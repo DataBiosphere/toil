@@ -12,24 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from past.utils import old_div
-from contextlib import contextmanager
 import logging
-import os
-import time
 import math
+import os
 import subprocess
 import sys
+import time
 import traceback
-from threading import Thread, Event
-from threading import Lock, Condition
-from six.moves.queue import Empty, Queue
+from contextlib import contextmanager
+from queue import Empty, Queue
+from threading import Condition, Event, Lock, Thread
 
 import toil
-from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, EXIT_STATUS_UNAVAILABLE_VALUE, UpdatedBatchJobInfo
-from toil.lib.threading import cpu_count
 from toil import worker as toil_worker
+from toil.batchSystems.abstractBatchSystem import (
+    EXIT_STATUS_UNAVAILABLE_VALUE, BatchSystemSupport, UpdatedBatchJobInfo)
 from toil.common import Toil
+from toil.lib.threading import cpu_count
 
 log = logging.getLogger(__name__)
 
@@ -118,7 +117,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # A dictionary mapping IDs of submitted jobs to the command line
         self.jobs = {}
         """
-        :type: dict[str,toil.job.JobNode]
+        :type: dict[str,toil.job.JobDescription]
         """
 
         # A queue of jobs waiting to be executed. Consumed by the daddy thread.
@@ -148,7 +147,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """
 
         # A pool representing available CPU in units of minCores
-        self.coreFractions = ResourcePool(int(old_div(self.maxCores, self.minCores)), 'cores')
+        self.coreFractions = ResourcePool(int(self.maxCores / self.minCores), 'cores')
         # A pool representing available memory in bytes
         self.memory = ResourcePool(self.maxMemory, 'memory')
         # A pool representing the available space in bytes
@@ -201,7 +200,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                         args = self.inputQueue.get_nowait()
                         jobCommand, jobID, jobCores, jobMemory, jobDisk, environment = args
 
-                        coreFractions = int(old_div(jobCores, self.minCores))
+                        coreFractions = int(jobCores / self.minCores)
                         
                         # Try to start the child
                         result = self._startChild(jobCommand, jobID,
@@ -483,36 +482,36 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         log.debug('Child %d for job %s succeeded', pid, jobID)
 
         
-    def issueBatchJob(self, jobNode):
+    def issueBatchJob(self, jobDesc):
         """Adds the command and resources to a queue to be run."""
 
         self._checkOnDaddy()
 
         # Round cores to minCores and apply scale.
         # Make sure to give minCores even if asked for 0 cores, or negative or something. 
-        cores = max(math.ceil(jobNode.cores * self.scale / self.minCores) * self.minCores, self.minCores)
+        cores = max(math.ceil(jobDesc.cores * self.scale / self.minCores) * self.minCores, self.minCores)
         
         # Don't do our own assertions about job size vs. our configured size.
         # The abstract batch system can handle it.
-        self.checkResourceRequest(jobNode.memory, cores, jobNode.disk, name=jobNode.jobName,
+        self.checkResourceRequest(jobDesc.memory, cores, jobDesc.disk, name=jobDesc.jobName,
             detail='Scale is set to {}.'.format(self.scale))
         
-        self.checkResourceRequest(jobNode.memory, cores, jobNode.disk)
+        self.checkResourceRequest(jobDesc.memory, cores, jobDesc.disk)
         log.debug("Issuing the command: %s with memory: %i, cores: %i, disk: %i" % (
-            jobNode.command, jobNode.memory, cores, jobNode.disk))
+            jobDesc.command, jobDesc.memory, cores, jobDesc.disk))
         with self.jobIndexLock:
             jobID = self.jobIndex
             self.jobIndex += 1
-        self.jobs[jobID] = jobNode.command
+        self.jobs[jobID] = jobDesc.command
         
         if self.debugWorker:
             # Run immediately, blocking for return.
             # Ignore resource requirements; we run one job at a time
-            self._runDebugJob(jobNode.command, jobID, self.environment.copy())
+            self._runDebugJob(jobDesc.command, jobID, self.environment.copy())
         else:
             # Queue the job for later
-            self.inputQueue.put((jobNode.command, jobID, cores, jobNode.memory,
-                                jobNode.disk, self.environment.copy()))
+            self.inputQueue.put((jobDesc.command, jobID, cores, jobDesc.memory,
+                                jobDesc.disk, self.environment.copy()))
             
 
         return jobID

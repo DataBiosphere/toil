@@ -12,34 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import ast
-import logging
-import os
-import pwd
-import socket
-import time
-import sys
 import getpass
 import json
+import logging
+import os
+import pickle
+import pwd
+import socket
+import sys
+import time
 import traceback
-import addict
-
-from urllib.request import urlopen
-from urllib.parse import quote_plus
 from contextlib import contextmanager
 from queue import Empty, Queue
-from pymesos import MesosSchedulerDriver, Scheduler, encode_data, decode_data
+from urllib.parse import quote_plus
+from urllib.request import urlopen
 
-from toil.lib.compatibility import USING_PYTHON2
-from toil import pickle
-from toil.lib.memoize import strict_bool
+import addict
+from pymesos import MesosSchedulerDriver, Scheduler, decode_data, encode_data
+
 from toil import resolveEntryPoint
-from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
-                                                   BatchJobExitReason,
-                                                   BatchSystemLocalSupport,
-                                                   EXIT_STATUS_UNAVAILABLE_VALUE,
-                                                   NodeInfo,
-                                                   UpdatedBatchJobInfo)
-from toil.batchSystems.mesos import ToilJob, MesosShape, TaskData, JobQueue
+from toil.batchSystems.abstractBatchSystem import (
+    EXIT_STATUS_UNAVAILABLE_VALUE, AbstractScalableBatchSystem,
+    BatchJobExitReason, BatchSystemLocalSupport, NodeInfo, UpdatedBatchJobInfo)
+from toil.batchSystems.mesos import JobQueue, MesosShape, TaskData, ToilJob
+from toil.lib.memoize import strict_bool
 
 log = logging.getLogger(__name__)
 
@@ -359,7 +355,6 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
     def _declineAllOffers(self, driver, offers):
         for offer in offers:
-            log.debug("Declining offer %s.", offer.id.value)
             driver.declineOffer(offer.id)
 
     def _parseOffer(self, offer):
@@ -417,7 +412,6 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         jobTypes = self.jobQueues.sortedTypes
 
         if not jobTypes:
-            log.debug('There are no queued tasks. Declining Mesos offers.')
             # Without jobs, we can get stuck with no jobs and no new offers until we decline it.
             self._declineAllOffers(driver, offers)
             return
@@ -426,8 +420,6 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         # Right now, gives priority to largest jobs
         for offer in offers:
             if offer.hostname in self.ignoredNodes:
-                log.debug("Declining offer %s because node %s is designated for termination" %
-                        (offer.id.value, offer.hostname))
                 driver.declineOffer(offer.id)
                 continue
             runnableTasks = []
@@ -656,10 +648,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         
         # Take it out of base 64 encoding from Protobuf
-        if USING_PYTHON2:
-            message = decode_data(message)
-        else:
-            message = decode_data(message).decode()
+        message = decode_data(message).decode()
         
         log.debug('Got framework message from executor %s running on agent %s: %s',
                   executorId.value, agentId.value, message)

@@ -198,7 +198,7 @@ To run the workflow, you will need to run the Toil leader process somewhere. It 
 Option 1: Running the Leader Inside Kubernetes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Once you have determined a set of environment variable values for your workflow run, write a YAML file that defines a Kubernetes job to run your workflow with that configuration. Some configuration items (such as your username, and the name of your AWS credentials secret) need to be written into the YAML soi that they can be used from the leader as well.
+Once you have determined a set of environment variable values for your workflow run, write a YAML file that defines a Kubernetes job to run your workflow with that configuration. Some configuration items (such as your username, and the name of your AWS credentials secret) need to be written into the YAML so that they can be used from the leader as well.
 
 Note that the leader pod will need your workflow script, its other dependencies, and Toil all installed. An easy way to get Toil installed is to start with the Toil appliance image for the version of Toil you want to use. In this example, we use ``quay.io/ucsc_cgl/toil:4.1.0``.
 
@@ -211,83 +211,84 @@ Here's an example YAML file to run a test workflow: ::
      # Also specify it in TOIL_KUBERNETES_OWNER
      name: demo-user-toil-test
    # Do not try and rerun the leader job if it fails
-   backoffLimit: 0
+   
    spec:
-   template:
-     spec:
-       # Do not restart the pod when the job fails, but keep it around so the
-       # log can be retrieved
-       restartPolicy: Never
-       volumes:
-       - name: aws-credentials-vol
-         secret:
-           # Make sure the AWS credentials are available as a volume.
-           # This should match TOIL_AWS_SECRET_NAME
-           secretName: aws-credentials
-       # You may need to replace this with a different service account name as
-       # appropriate for your cluster.
-       serviceAccountName: default
-       containers:
-       - name: main
-         image: quay.io/ucsc_cgl/toil:4.1.0
-         env:
-         # Specify your username for inclusion in job names
-         - name: TOIL_KUBERNETES_OWNER
-           value: demo-user
-         # Specify where to find the AWS credentials to access the job store with
-         - name: TOIL_AWS_SECRET_NAME
-           value: aws-credentials
-         # Specify where per-host caches should be stored, on the Kubernetes hosts.
-         # Needs to be set for Toil's caching to be efficient.
-         - name: TOIL_KUBERNETES_HOST_PATH
-           value: /data/scratch
-         volumeMounts:
-         # Mount the AWS credentials volume
-         - mountPath: /root/.aws
-           name: aws-credentials-vol
-         resources:
-           # Make sure to set these resource limits to values large enough
-           # to accomodate the work your workflow does in the leader
-           # process, but small enough to fit on your cluster.
-           #
-           # Since no request values are specified, the limits are also used
-           # for the requests.
-           limits:
-             cpu: 2
-             memory: "4Gi"
-             ephemeral-storage: "10Gi"
-         command:
-         - /bin/bash
-         - -c
-         - |
-           # This Bash script will set up Toil and the workflow to run, and run them.
-           set -e
-           # We make sure to create a work directory; Toil can't hot-deploy a
-           # script from the root of the filesystem, which is where we start.
-           mkdir /tmp/work
-           cd /tmp/work
-           # We make a virtual environment to allow workflow dependencies to be
-           # hot-deployed.
-           #
-           # We don't really make use of it in this example, but for workflows
-           # that depend on PyPI packages we will need this.
-           #
-           # We use --system-site-packages so that the Toil installed in the
-           # appliance image is still available.
-           virtualenv --python python3 --system-site-packages venv
-           . venv/bin/activate
-           # Now we install the workflow. Here we're using a demo workflow
-           # script from Toil itself.
-           wget https://raw.githubusercontent.com/DataBiosphere/toil/releases/4.1.0/src/toil/test/docs/scripts/tutorial_helloworld.py
-           # Now we run the workflow. We make sure to use the Kubernetes batch
-           # system and an AWS job store, and we set some generally useful
-           # logging options. We also make sure to enable caching.
-           python3 tutorial_helloworld.py \
-               aws:us-west-2:demouser-toil-test-jobstore \
-               --batchSystem kubernetes \
-               --realTimeLogging \
-               --logInfo \
-               --disableCaching false
+    backoffLimit: 0
+    template:
+      spec:
+        # Do not restart the pod when the job fails, but keep it around so the
+        # log can be retrieved
+        restartPolicy: Never
+        volumes:
+        - name: aws-credentials-vol
+          secret:
+            # Make sure the AWS credentials are available as a volume.
+            # This should match TOIL_AWS_SECRET_NAME
+            secretName: aws-credentials
+        # You may need to replace this with a different service account name as
+        # appropriate for your cluster.
+        serviceAccountName: default
+        containers:
+        - name: main
+          image: quay.io/ucsc_cgl/toil:4.1.0
+          env:
+          # Specify your username for inclusion in job names
+          - name: TOIL_KUBERNETES_OWNER
+            value: demo-user
+          # Specify where to find the AWS credentials to access the job store with
+          - name: TOIL_AWS_SECRET_NAME
+            value: aws-credentials
+          # Specify where per-host caches should be stored, on the Kubernetes hosts.
+          # Needs to be set for Toil's caching to be efficient.
+          - name: TOIL_KUBERNETES_HOST_PATH
+            value: /data/scratch
+          volumeMounts:
+          # Mount the AWS credentials volume
+          - mountPath: /root/.aws
+            name: aws-credentials-vol
+          resources:
+            # Make sure to set these resource limits to values large enough
+            # to accomodate the work your workflow does in the leader
+            # process, but small enough to fit on your cluster.
+            #
+            # Since no request values are specified, the limits are also used
+            # for the requests.
+            limits:
+              cpu: 2
+              memory: "4Gi"
+              ephemeral-storage: "10Gi"
+          command:
+          - /bin/bash
+          - -c
+          - |
+            # This Bash script will set up Toil and the workflow to run, and run them.
+            set -e
+            # We make sure to create a work directory; Toil can't hot-deploy a
+            # script from the root of the filesystem, which is where we start.
+            mkdir /tmp/work
+            cd /tmp/work
+            # We make a virtual environment to allow workflow dependencies to be
+            # hot-deployed.
+            #
+            # We don't really make use of it in this example, but for workflows
+            # that depend on PyPI packages we will need this.
+            #
+            # We use --system-site-packages so that the Toil installed in the
+            # appliance image is still available.
+            virtualenv --python python3 --system-site-packages venv
+            . venv/bin/activate
+            # Now we install the workflow. Here we're using a demo workflow
+            # script from Toil itself.
+            wget https://raw.githubusercontent.com/DataBiosphere/toil/releases/4.1.0/src/toil/test/docs/scripts/tutorial_helloworld.py
+            # Now we run the workflow. We make sure to use the Kubernetes batch
+            # system and an AWS job store, and we set some generally useful
+            # logging options. We also make sure to enable caching.
+            python3 tutorial_helloworld.py \
+                aws:us-west-2:demouser-toil-test-jobstore \
+                --batchSystem kubernetes \
+                --realTimeLogging \
+                --logInfo \
+                --disableCaching false
 
 You can save this YAML as ``leader.yaml``, and then run it on your Kubernetes installation with: ::
 
@@ -363,7 +364,12 @@ Here is an example of running our test workflow leader locally, outside of Kuber
    $ virtualenv --python python3 --system-site-packages venv
    $ . venv/bin/activate
    $ wget https://raw.githubusercontent.com/DataBiosphere/toil/releases/4.1.0/src/toil/test/docs/scripts/tutorial_helloworld.py
-   $ python3 tutorial_helloworld.py aws:us-west-2:demouser-toil-test-jobstore  --batchSystem kubernetes --realTimeLogging --logInfo --disableCaching false
+   $ python3 tutorial_helloworld.py \
+         aws:us-west-2:demouser-toil-test-jobstore \
+         --batchSystem kubernetes \
+         --realTimeLogging \
+         --logInfo \
+         --disableCaching false
 
 
 

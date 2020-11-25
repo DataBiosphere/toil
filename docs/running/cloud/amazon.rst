@@ -95,7 +95,11 @@ during the computation of a workflow, first set up and configure an account with
    (again, note that we set TOIL_APPLIANCE_SELF to toil version 3.12.0 in this example, but please set the version to
    the installed version that you are using if you're using a different version): ::
 
-        $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.12.0 toil launch-cluster clustername --leaderNodeType t2.medium --zone us-west-1a --keyPairName id_rsa
+    $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.12.0 \
+          toil launch-cluster clustername \
+          --leaderNodeType t2.medium \
+          --zone us-west-1a \
+          --keyPairName id_rsa
 
 To further break down each of these commands:
 
@@ -172,7 +176,10 @@ Details about Launching a Cluster in AWS
 Using the provisioner to launch a Toil leader instance is simple using the ``launch-cluster`` command. For example,
 to launch a cluster named "my-cluster" with a t2.medium leader in the us-west-2a zone, run ::
 
-    (venv) $ toil launch-cluster my-cluster --leaderNodeType t2.medium --zone us-west-2a --keyPairName <your-AWS-key-pair-name>
+    (venv) $ toil launch-cluster my-cluster \
+                 --leaderNodeType t2.medium \
+                 --zone us-west-2a \
+                 --keyPairName <your-AWS-key-pair-name>
 
 The cluster name is used to uniquely identify your cluster and will be used to
 populate the instance's ``Name`` tag. Also, the Toil provisioner will
@@ -218,7 +225,10 @@ change. This is in contrast with :ref:`Autoscaling`.
 
 To launch worker nodes alongside the leader we use the ``-w`` option::
 
-    (venv) $ toil launch-cluster my-cluster --leaderNodeType t2.small -z us-west-2a --keyPairName your-AWS-key-pair-name --nodeTypes m3.large,t2.micro -w 1,4
+    (venv) $ toil launch-cluster my-cluster \
+                 --leaderNodeType t2.small -z us-west-2a \
+                 --keyPairName your-AWS-key-pair-name \
+                 --nodeTypes m3.large,t2.micro -w 1,4
 
 This will spin up a leader node of type t2.small with five additional workers --- one m3.large instance and four t2.micro.
 
@@ -257,19 +267,26 @@ Autoscaling leverages Mesos containers to provide an execution environment for t
 
 #. Launch the leader node in AWS using the :ref:`launchCluster` command: ::
 
-    (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2a
+    (venv) $ toil launch-cluster <cluster-name> \
+                 --keyPairName <AWS-key-pair-name> \
+                 --leaderNodeType t2.medium \
+                 --zone us-west-2a
 
 #. Copy the ``sort.py`` script up to the leader node: ::
 
-    (venv) $ toil rsync-cluster <cluster-name> sort.py :/root
+    (venv) $ toil rsync-cluster -z us-west-2a <cluster-name> sort.py :/root
 
 #. Login to the leader node: ::
 
-    (venv) $ toil ssh-cluster <cluster-name>
+    (venv) $ toil ssh-cluster -z us-west-2a <cluster-name>
 
 #. Run the script as an autoscaling workflow: ::
 
-    $ python /root/sort.py aws:us-west-2:<my-jobstore-name> --provisioner aws --nodeTypes c3.large --maxNodes 2 --batchSystem mesos
+    $ python /root/sort.py aws:us-west-2:<my-jobstore-name> \
+          --provisioner aws \
+          --nodeTypes c3.large \
+          --maxNodes 2 \
+          --batchSystem mesos
 
 .. note::
 

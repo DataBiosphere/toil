@@ -1,4 +1,3 @@
-from __future__ import print_function
 # Copyright (C) 2015-2016 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,10 +13,10 @@ from __future__ import print_function
 # limitations under the License.
 import logging
 import mimetypes
-import sys
 import os
-
 import subprocess
+import sys
+
 from toil.test import ToilTest, slow, travis_test
 from toil.test.mesos import helloWorld
 
@@ -97,6 +96,6 @@ class RegularLogTest(ToilTest):
                                               '-m', helloWorld.__name__,
                                               './toilTest',
                                               '--clean=always',
-                                              '--batchSystem=singleMachine',
+                                              '--batchSystem=single_machine',
                                               '--logLevel=debug'], stderr=subprocess.STDOUT)
         assert "single machine batch system" in toilOutput.decode('utf-8')

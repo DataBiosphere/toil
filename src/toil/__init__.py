@@ -12,38 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
 
 import errno
 import logging
 import os
-import requests
+import re
 import socket
+import subprocess
 import sys
 import time
 from datetime import datetime
+
+import requests
 from pytz import timezone
+
 from docker.errors import ImageNotFound
 from toil.lib.memoize import memoize
 from toil.lib.retry import retry
 from toil.version import currentCommit
-
-# subprocess32 is a backport of python3's subprocess module for use on Python2,
-# and includes many reliability bug fixes relevant on POSIX platforms.
-if os.name == 'posix' and sys.version_info[0] < 3:
-    import subprocess32 as subprocess
-else:
-    import subprocess
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-try:
-    from urllib import urlretrieve
-except ImportError:
-    from urllib.request import urlretrieve
 
 log = logging.getLogger(__name__)
 
@@ -220,15 +206,41 @@ def customDockerInitCmd():
     Returns the custom command (if any) provided through the ``TOIL_CUSTOM_DOCKER_INIT_COMMAND``
     environment variable to run prior to running the workers and/or the primary node's services.
     This can be useful for doing any custom initialization on instances (e.g. authenticating to
-    private docker registries). An empty string is returned if the environment variable is not
-    set.
+    private docker registries). Any single quotes are escaped and the command cannot contain a
+    set of blacklisted chars (newline or tab). An empty string is returned if the environment
+    variable is not set.
 
     :rtype: str
     """
     command = lookupEnvVar(name='user-defined custom docker init command',
                            envName='TOIL_CUSTOM_DOCKER_INIT_COMMAND',
                            defaultValue='')
+    _check_custom_bash_cmd(command)
     return command.replace("'", "'\\''")  # Ensure any single quotes are escaped.
+
+
+def customInitCmd():
+    """
+    Returns the custom command (if any) provided through the ``TOIL_CUSTOM_INIT_COMMAND``
+    environment variable to run prior to running Toil appliance itself in workers and/or the
+    primary node (i.e. this is run one stage before ``TOIL_CUSTOM_DOCKER_INIT_COMMAND``).
+    This can be useful for doing any custom initialization on instances (e.g. authenticating to
+    private docker registries). Any single quotes are escaped and the command cannot contain a
+    set of blacklisted chars (newline or tab). An empty string is returned if the environment
+    variable is not set.
+
+    :rtype: str
+    """
+    command = lookupEnvVar(name='user-defined custom init command',
+                           envName='TOIL_CUSTOM_INIT_COMMAND',
+                           defaultValue='')
+    _check_custom_bash_cmd(command)
+    return command.replace("'", "'\\''")  # Ensure any single quotes are escaped.
+
+
+def _check_custom_bash_cmd(cmd_str):
+    """Ensures that the bash command doesn't contain blacklisted characters."""
+    assert not re.search(r'[\n\r\t]', cmd_str), f'"{cmd_str}" contains invalid characters (newline and/or tab).'
 
 
 def lookupEnvVar(name, envName, defaultValue):
@@ -421,8 +433,9 @@ def logProcessContext(config):
 
 try:
     from boto import provider
+    from botocore.credentials import (JSONFileCache, RefreshableCredentials,
+                                      create_credential_resolver)
     from botocore.session import Session
-    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache
 
     cache_path = '~/.cache/aws/cached_temporary_credentials'
     datetime_format = "%Y-%m-%dT%H:%M:%SZ"  # incidentally the same as the format used by AWS
@@ -536,6 +549,7 @@ try:
 
             self._obtain_credentials_from_cache_or_boto3()
 
+        @retry()
         def _obtain_credentials_from_boto3(self):
             """
             We know the current cached credentials are not good, and that we
@@ -543,21 +557,17 @@ try:
             (_access_key, _secret_key, _security_token,
             _credential_expiry_time) from Boto 3.
             """
-
             # We get a Credentials object
             # <https://github.com/boto/botocore/blob/8d3ea0e61473fba43774eb3c74e1b22995ee7370/botocore/credentials.py#L227>
             # or a RefreshableCredentials, or None on failure.
-            creds = None
-            for attempt in retry(timeout=10, predicate=lambda _: True):
-                with attempt:
-                    creds = self._boto3_resolver.load_credentials()
+            creds = self._boto3_resolver.load_credentials()
 
-                    if creds is None:
-                        try:
-                            resolvers = str(self._boto3_resolver.providers)
-                        except:
-                            resolvers = "(Resolvers unavailable)"
-                        raise RuntimeError("Could not obtain AWS credentials from Boto3. Resolvers tried: " + resolvers)
+            if creds is None:
+                try:
+                    resolvers = str(self._boto3_resolver.providers)
+                except:
+                    resolvers = "(Resolvers unavailable)"
+                raise RuntimeError("Could not obtain AWS credentials from Boto3. Resolvers tried: " + resolvers)
 
             # Make sure the credentials actually has some credentials if it is lazy
             creds.get_frozen_credentials()

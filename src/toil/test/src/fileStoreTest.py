@@ -12,45 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import print_function
-
-from builtins import str
-from builtins import range
-from builtins import object
-import filecmp
-from abc import abstractmethod, ABCMeta
-from struct import pack, unpack
-from uuid import uuid4
-
-from toil.job import Job
-from toil.fileStores import FileID
-from toil.fileStores.cachingFileStore import IllegalDeletionCacheError, CacheUnbalancedError, CachingFileStore
-from toil.test import ToilTest, needs_aws_ec2, needs_google, slow, travis_test
-from toil.leader import FailedJobsException
-from toil.jobStores.abstractJobStore import NoSuchFileException
-from toil.realtimeLogger import RealtimeLogger
 
 import collections
 import datetime
+import errno
+import filecmp
 import inspect
 import logging
 import os
 import random
 import signal
-import sys
 import time
+from abc import ABCMeta
+from struct import pack, unpack
+from uuid import uuid4
+
 import pytest
-import subprocess
 
-# Python 3 compatibility imports
-from six.moves import xrange
-from future.utils import with_metaclass
-
-if sys.version_info[0] < 3:
-    # Define a usable FileNotFoundError as will be raised by os.remove on a
-    # nonexistent file.
-    FileNotFoundError = OSError
+from toil.fileStores import FileID
+from toil.fileStores.cachingFileStore import (CacheUnbalancedError,
+                                              IllegalDeletionCacheError)
+from toil.job import Job
+from toil.jobStores.abstractJobStore import NoSuchFileException
+from toil.leader import FailedJobsException
+from toil.realtimeLogger import RealtimeLogger
+from toil.test import ToilTest, needs_aws_ec2, needs_google, slow, travis_test
 
 # Some tests take too long on the AWS jobstore and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.
@@ -64,7 +50,7 @@ class hidden(object):
     Hiding the abstract test classes from the Unittest loader so it can be inherited in different
     test suites for the different job stores.
     """
-    class AbstractFileStoreTest(with_metaclass(ABCMeta, ToilTest)):
+    class AbstractFileStoreTest(ToilTest, metaclass=ABCMeta):
         """
         An abstract base class for testing the various general functions described in
         :class:toil.fileStores.abstractFileStore.AbstractFileStore
@@ -116,6 +102,53 @@ class hidden(object):
             C.addChild(D)
             Job.Runner.startToil(A, self.options)
 
+        @slow
+        def testFileStoreLogging(self):
+            """
+            Write a couple of files to the jobstore.  Delete a couple of them.  Read back written
+            and locally deleted files.
+            """
+            
+            class WatchingHandler(logging.Handler):
+                """
+                A logging handler that watches for a certain substring and
+                trips a flag if it appears.
+                """
+                def __init__(self, match: str):
+                    super().__init__()
+                    self.match = match
+                    self.seen = False
+                def emit(self, record):
+                    if self.match in record.getMessage():
+                        self.seen = True
+            
+            handler = WatchingHandler("cats.txt")
+            
+            logging.getLogger().addHandler(handler)
+            
+            F = Job.wrapJobFn(self._accessAndFail,
+                              disk='100M')
+            try:
+                Job.Runner.startToil(F, self.options)
+            except FailedJobsException:
+                # We expect this.
+                pass
+            
+            logging.getLogger().removeHandler(handler)
+            
+            assert handler.seen, "Downloaded file name not found in logs of failing Toil run"
+            
+        @staticmethod
+        def _accessAndFail(job):
+            with job.fileStore.writeGlobalFileStream() as (stream, fileID):
+                stream.write('Cats'.encode('utf-8'))
+            localPath = os.path.join(job.fileStore.getLocalTempDir(), 'cats.txt')
+            job.fileStore.readGlobalFile(fileID, localPath)
+            with job.fileStore.readGlobalFileStream(fileID) as stream2:
+                pass
+            raise RuntimeError("I do not like this file")
+            
+
         # Test filestore operations.  This is a slightly less intense version of the cache specific
         # test `testReturnFileSizes`
         @slow
@@ -143,8 +176,13 @@ class hidden(object):
             cls = hidden.AbstractNonCachingFileStoreTest
             fsId, _ = cls._writeFileToJobStore(job, isLocalFile=True, nonLocalDir=nonLocalDir,
                                                fileMB=writeFileSize)
+
+            # Fill in the size of the local file we just made
             writtenFiles[fsId] = writeFileSize
-            localFileIDs.add(list(writtenFiles.keys())[0])
+            # Remember it actually should be local
+            localFileIDs.add(fsId)
+            logger.info('Now have local file: %s', fsId)
+            
             i = 0
             while i <= numIters:
                 randVal = random.random()
@@ -155,7 +193,9 @@ class hidden(object):
                                                        nonLocalDir=nonLocalDir,
                                                        fileMB=writeFileSize)
                     writtenFiles[fsID] = writeFileSize
-                    localFileIDs.add(fsID)
+                    if isLocalFile:
+                        localFileIDs.add(fsID)
+                    logger.info('Wrote %s file of size %d MB: %s', 'local' if isLocalFile else 'non-local', writeFileSize, fsID)
                 else:
                     if len(writtenFiles) == 0:
                         continue
@@ -168,16 +208,31 @@ class hidden(object):
                         job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, str(uuid4())]),
                                                      cache=cache, mutable=mutable)
                         localFileIDs.add(fsID)
+                        logger.info('Read %s %s local copy of: %s', 'mutable' if mutable else 'immutable', 'cached' if cache else 'uncached', fsID)
                     else:  # Delete
                         if rdelRandVal <= 0.5:  # Local Delete
                             if fsID not in localFileIDs:
-                                continue
-                            job.fileStore.deleteLocalFile(fsID)
+                                # Make sure trying to deleteLocalFile this file fails properly
+                                try:
+                                    job.fileStore.deleteLocalFile(fsID)
+                                except OSError as e:
+                                    if e.errno != errno.ENOENT:
+                                        # This is supposed to produce an
+                                        # ENOENT. If it doesn't something is
+                                        # broken.
+                                        raise
+                                    logger.info('Correctly fail to local-delete non-local file: %s', fsID)
+                                else:
+                                    assert False, "Was able to delete non-local file {}".format(fsID)
+                            else:
+                                logger.info('Delete local file: %s', fsID)
+                                job.fileStore.deleteLocalFile(fsID)
                         else:  # Global Delete
                             job.fileStore.deleteGlobalFile(fsID)
                             writtenFiles.pop(fsID)
                         if fsID in localFileIDs:
                             localFileIDs.remove(fsID)
+                            logger.info('No longer have file: %s', fsID)
                 i += 1
 
         @staticmethod
@@ -200,7 +255,7 @@ class hidden(object):
 
             return job.fileStore.writeGlobalFile(testFile.name), testFile
 
-    class AbstractNonCachingFileStoreTest(with_metaclass(ABCMeta, AbstractFileStoreTest)):
+    class AbstractNonCachingFileStoreTest(AbstractFileStoreTest, metaclass=ABCMeta):
         """
         Abstract tests for the the various functions in
         :class:toil.fileStores.nonCachingFileStore.NonCachingFileStore. These
@@ -212,7 +267,7 @@ class hidden(object):
             super(hidden.AbstractNonCachingFileStoreTest, self).setUp()
             self.options.disableCaching = True
 
-    class AbstractCachingFileStoreTest(with_metaclass(ABCMeta, AbstractFileStoreTest)):
+    class AbstractCachingFileStoreTest(AbstractFileStoreTest, metaclass=ABCMeta):
         """
         Abstract tests for the the various cache-related functions in
         :class:toil.fileStores.cachingFileStore.CachingFileStore.
@@ -788,7 +843,8 @@ class hidden(object):
             RealtimeLogger.info('Expecting %d bytes cached initially', cached)
             work_dir = job.fileStore.getLocalTempDir()
             writtenFiles = {}  # fsID: (size, isLocal)
-            localFileIDs = collections.defaultdict(list)  # fsid: local/non-local/mutable/immutable
+            # fsid: local/mutable/immutable for all operations that should make local files as tracked by the FileStore
+            localFileIDs = collections.defaultdict(list)  
             # Add one file for the sake of having something in the job store
             writeFileSize = random.randint(0, 30)
             jobDisk -= writeFileSize * 1024 * 1024
@@ -815,6 +871,7 @@ class hidden(object):
                         RealtimeLogger.info('Writing a local file of %d MB', writeFileSize)
                         fsID = cls._writeFileToJobStoreWithAsserts(job, isLocalFile=True,
                                                                    fileMB=writeFileSize)
+                        RealtimeLogger.info('Wrote local file: %s', fsID)
                         writtenFiles[fsID] = writeFileSize
                         localFileIDs[fsID].append('local')
                         jobDisk -= writeFileSize * 1024 * 1024
@@ -828,8 +885,9 @@ class hidden(object):
                         fsID = cls._writeFileToJobStoreWithAsserts(job, isLocalFile=False,
                                                                    nonLocalDir=nonLocalDir,
                                                                    fileMB=writeFileSize)
+                        RealtimeLogger.info('Wrote non-local file: %s', fsID)
                         writtenFiles[fsID] = writeFileSize
-                        localFileIDs[fsID].append('non-local')
+                        # Don't record in localFileIDs because we're not local
                         # No change to the job since there was no caching
                     RealtimeLogger.info('Checking for %d bytes cached', cached)
                     cls._requirementsConcur(job, jobDisk, cached)
@@ -841,7 +899,7 @@ class hidden(object):
                         rdelRandVal = random.random()
                         fileWasCached = job.fileStore.fileIsCached(fsID)
                     if randVal < 0.66:  # Read
-                        RealtimeLogger.info('Reading a file with size %d and previous cache status %s', rdelFileSize, str(fileWasCached))
+                        RealtimeLogger.info('Reading a file with size %d and previous cache status %s: %s', rdelFileSize, str(fileWasCached), fsID)
                         if rdelRandVal <= 0.5:  # Read as mutable, uncached
                             RealtimeLogger.info('Reading as mutable and uncached; should still have %d bytes cached', cached)
                             job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, str(uuid4())]),
@@ -868,10 +926,10 @@ class hidden(object):
                         if rdelRandVal <= 0.5:  # Local Delete
                             if fsID not in list(localFileIDs.keys()):
                                 continue
-                            RealtimeLogger.info('Deleting a file locally')
+                            RealtimeLogger.info('Deleting a file locally with history %s: %s', localFileIDs[fsID], fsID)
                             job.fileStore.deleteLocalFile(fsID)
                         else:  # Global Delete
-                            RealtimeLogger.info('Deleting a file globally')
+                            RealtimeLogger.info('Deleting a file globally: %s', fsID)
                             job.fileStore.deleteGlobalFile(fsID)
                             try:
                                 job.fileStore.readGlobalFile(fsID)
@@ -884,7 +942,7 @@ class hidden(object):
                             writtenFiles.pop(fsID)
                         if fsID in list(localFileIDs.keys()):
                             for lFID in localFileIDs[fsID]:
-                                if lFID not in ('non-local', 'mutable'):
+                                if lFID != 'mutable':
                                     jobDisk += rdelFileSize * 1024 * 1024
                             localFileIDs.pop(fsID)
                         if fileWasCached:
@@ -1059,8 +1117,17 @@ class hidden(object):
             # Delete fsid of local file. The file should be deleted
             job.fileStore.deleteLocalFile(localFsID)
             assert not os.path.exists(localFile.name)
-            # Delete fsid of non-local file. The file should persist
-            job.fileStore.deleteLocalFile(nonLocalFsID)
+            # Delete fsid of non-local file. It should fail and the file should persist
+            try:
+                job.fileStore.deleteLocalFile(nonLocalFsID)
+            except OSError as e:
+                if e.errno != errno.ENOENT:
+                    # This is supposed to produce an
+                    # ENOENT. If it doesn't something is
+                    # broken.
+                    raise
+            else:
+                assert False, "Error should have been raised"
             assert os.path.exists(nonLocalFile.name)
             # Read back one file and then delete it
             readBackFile1 = job.fileStore.readGlobalFile(localFsID)

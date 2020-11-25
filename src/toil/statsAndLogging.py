@@ -12,19 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
 
-from builtins import str
-from builtins import object
 import gzip
 import json
 import logging
 import os
 import time
-from threading import Thread, Event
+from threading import Event, Thread
 
-from toil.lib.expando import Expando
 from toil.lib.bioio import getTotalCpuTime
+from toil.lib.expando import Expando
 
 logger = logging.getLogger( __name__ )
 
@@ -142,7 +139,8 @@ class StatsAndLogging( object ):
             # There are chained jobs in this output - indicate this with a symlink
             # of the job's name to this file
             name = createName(path, alternateName, extension, failed)
-            os.symlink(os.path.relpath(fullName, path), name)
+            if not os.path.exists(name):
+                os.symlink(os.path.relpath(fullName, path), name)
 
     @classmethod
     def statsAndLoggingAggregator(cls, jobStore, stop, config):

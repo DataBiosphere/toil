@@ -14,9 +14,7 @@
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
 
-from __future__ import absolute_import
 
-from builtins import object
 from toil.lib.memoize import sync_memoize
 
 

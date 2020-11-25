@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from setuptools import find_packages, setup
-import os
 
 
 def runSetup():
@@ -30,32 +29,26 @@ def runSetup():
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
     apacheLibcloud = 'apache-libcloud==2.2.1'
-    cwltool = 'cwltool==3.0.20200709181526'
+    cwltool = 'cwltool==3.0.20201121085451'
     galaxyToolUtil = 'galaxy-tool-util'
     htcondor = 'htcondor>=8.6.0'
     kubernetes = 'kubernetes>=10, <11'
     idna = 'idna>=2'
     pytz = 'pytz>=2012'
-    dill = 'dill==0.3.1.1'
-    six = 'six>=1.10.0'
-    future = 'future'
+    dill = 'dill>=0.3.2, <0.4'
     requests = 'requests>=2, <3'
-    docker = 'docker==2.5.1'
+    docker = 'docker==4.3.1'
     dateutil = 'python-dateutil'
-    addict = 'addict<=2.2.0'
-    pathlib2 = 'pathlib2==2.3.2'
+    addict = 'addict>=2.2.1, <2.3'
     enlighten = 'enlighten>=1.5.2, <2'
 
     core_reqs = [
         dill,
-        six,
-        future,
         requests,
         docker,
         dateutil,
         psutil,
         addict,
-        pathlib2,
         pytz,
         enlighten]
 
@@ -140,7 +133,7 @@ def runSetup():
         package_dir={'': 'src'},
         packages=find_packages(where='src',
                                # Note that we intentionally include the top-level `test` package for
-                               # functionality like the @experimental and @integrative decoratorss:
+                               # functionality like the @experimental and @integrative decorators:
                                exclude=['*.test.*']),
         package_data = {
             '': ['*.yml', 'cloud-config'],
@@ -174,8 +167,8 @@ def importVersion():
         pass
     else:
         # Use the template to generate src/toil/version.py
-        import os
         import errno
+        import os
         from tempfile import NamedTemporaryFile
 
         new = version_template.expand_()

@@ -245,7 +245,17 @@ run on a local machine.
 To spin up a local cluster, start by using the following Docker run command to launch
 a Toil leader container::
 
-    docker run --entrypoint=mesos-master --net=host -d --name=leader --volume=/home/jobStoreParentDir:/jobStoreParentDir quay.io/ucsc_cgl/toil:3.6.0 --registry=in_memory --ip=127.0.0.1 --port=5050 --allocation_interval=500ms
+    docker run \
+        --entrypoint=mesos-master \
+        --net=host \
+        -d \
+        --name=leader \
+        --volume=/home/jobStoreParentDir:/jobStoreParentDir \
+        quay.io/ucsc_cgl/toil:3.6.0 \
+        --registry=in_memory \
+        --ip=127.0.0.1 \
+        --port=5050 \
+        --allocation_interval=500ms
 
 A couple notes on this command: the ``-d`` flag tells Docker to run in daemon mode so
 the container will run in the background. To verify that the container is running you
@@ -258,7 +268,18 @@ where the job store will be written. Due to complications with running Docker on
 recommend only mounting directories within your home directory. The next command will
 launch the Toil worker container with similar parameters::
 
-    docker run --entrypoint=mesos-slave --net=host -d --name=worker --volume=/home/jobStoreParentDir:/jobStoreParentDir quay.io/ucsc_cgl/toil:3.6.0 --work_dir=/var/lib/mesos --master=127.0.0.1:5050 --ip=127.0.0.1 —-attributes=preemptable:False --resources=cpus:2
+    docker run \
+        --entrypoint=mesos-slave \
+        --net=host \
+        -d \
+        --name=worker \
+        --volume=/home/jobStoreParentDir:/jobStoreParentDir \
+        quay.io/ucsc_cgl/toil:3.6.0 \
+        --work_dir=/var/lib/mesos \
+        --master=127.0.0.1:5050 \
+        --ip=127.0.0.1 \
+        —-attributes=preemptable:False \
+        --resources=cpus:2
 
 Note here that we are specifying 2 CPUs and a non-preemptable worker. We can
 easily change either or both of these in a logical way. To change the number
@@ -343,6 +364,13 @@ Pull Requests
 * Modified pull requests must be re-reviewed before merging. **Note that Github
   does not enforce this!**
 
+* When merging a pull request, make sure to update the `Draft Changelog`_ on
+  the Github wiki, which we will use to produce the changelog for the next
+  release. The PR template tells you to do this, so don't forget. New entries
+  should go at the bottom.
+
+  .. _Draft Changelog: https://github.com/DataBiosphere/toil/wiki/Draft-Changelog
+
 * Pull requests will not be merged unless Travis and Gitlab CI tests pass.
   Gitlab tests are only run on code in the main Toil repository on some branch,
   so it is the responsibility of the approving reviewer to make sure that pull
@@ -375,3 +403,172 @@ Pull Requests
 
   .. _Co-authored-by: https://github.blog/2018-01-29-commit-together-with-co-authors/
   .. _Issue #2816: https://github.com/DataBiosphere/toil/issues/2816
+  .. _toil.lib.retry: https://github.com/DataBiosphere/toil/blob/master/src/toil/lib/retry.py
+  
+
+Publishing a Release
+~~~~~~~~~~~~~~~~~~~~
+
+These are the steps to take to publish a Toil release:
+
+* Determine the release version **X.Y.Z**. This should follow
+  `semantic versioning`_; if user-workflow-breaking changes are made, **X**
+  should be incremented, and **Y** and **Z** should be zero. If non-breaking
+  changes are made but new functionality is added, **X** should remain the same
+  as the last release, **Y** should be incremented, and **Z** should be zero.
+  If only patches are released, **X** and **Y** should be the same as the last
+  release and **Z** should be incremented.
+
+  .. _semantic versioning: https://semver.org/
+
+* If it does not exist already, create a release branch in the Toil repo
+  named ``X.Y.x``, where **x** is a literal lower-case "x". For patch releases,
+  find the existing branch and make sure it is up to date with the patch
+  commits that are to be released. They may be `cherry-picked over`_ from
+  master.
+
+  .. _cherry-picked over: https://trunkbaseddevelopment.com/branch-for-release/
+
+* On the release branch, edit ``version_template.py`` in the root of the
+  repository. Find the line that looks like this (slightly different for patch
+  releases):
+
+  .. code-block:: python
+
+      baseVersion = 'X.Y.0a1'
+
+  Make it look like this instead:
+
+  .. code-block:: python
+
+      baseVersion = 'X.Y.Z'
+
+  Commit your change to the branch.
+
+* Tag the current state of the release branch as ``releases/X.Y.Z``.
+
+* Make the Github release here_, referencing that tag. For a non-patch
+  release, fill in the description with the changelog from `the wiki page`_,
+  which you should clear. For a patch release, just describe the patch.
+
+  .. _here: https://github.com/DataBiosphere/toil/releases/new
+  .. _the wiki page: https://github.com/DataBiosphere/toil/wiki/Draft-Changelog
+
+* For a non-patch release, set up the main branch so that development
+  builds will declare themselves to be alpha versions of what the next release
+  will probably be. Edit  ``version_template.py`` in the root of the repository
+  on the main branch to set ``baseVersion`` like this:
+
+  .. code-block:: python
+
+      baseVersion = 'X.Y+1.0a1'
+
+  Make sure to replace ``X`` and ``Y+1`` with actual numbers.
+
+Adding Retries to a Function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+See `toil.lib.retry`_ .
+
+retry() can be used to decorate any function based on the list of errors one wishes to retry on.
+
+This list of errors can contain normal Exception objects, and/or RetryCondition objects wrapping Exceptions to
+include additional conditions.
+
+For example, retrying on a one Exception (HTTPError)::
+
+    from requests import get
+    from requests.exceptions import HTTPError
+
+    @retry(errors=[HTTPError])
+    def update_my_wallpaper():
+        return get('https://www.deviantart.com/')
+
+Or::
+
+    from requests import get
+    from requests.exceptions import HTTPError
+
+    @retry(errors=[HTTPError, ValueError])
+    def update_my_wallpaper():
+        return get('https://www.deviantart.com/')
+
+The examples above will retry for the default interval on any errors specified the "errors=" arg list.
+
+To retry on specifically 500/502/503/504 errors, you could specify an ErrorCondition object instead, for example::
+
+    from requests import get
+    from requests.exceptions import HTTPError
+
+    @retry(errors=[
+        ErrorCondition(
+                   error=HTTPError,
+                   error_codes=[500, 502, 503, 504]
+               )])
+    def update_my_wallpaper():
+        return requests.get('https://www.deviantart.com/')
+
+To retry on specifically errors containing the phrase "NotFound"::
+
+    from requests import get
+    from requests.exceptions import HTTPError
+
+    @retry(errors=[
+        ErrorCondition(
+            error=HTTPError,
+            error_message_must_include="NotFound"
+        )])
+    def update_my_wallpaper():
+        return requests.get('https://www.deviantart.com/')
+
+To retry on all HTTPError errors EXCEPT an HTTPError containing the phrase "NotFound"::
+
+    from requests import get
+    from requests.exceptions import HTTPError
+
+    @retry(errors=[
+        HTTPError,
+        ErrorCondition(
+                   error=HTTPError,
+                   error_message_must_include="NotFound",
+                   retry_on_this_condition=False
+               )])
+    def update_my_wallpaper():
+        return requests.get('https://www.deviantart.com/')
+
+To retry on boto3's specific status errors, an example of the implementation is::
+
+    import boto3
+    from botocore.exceptions import ClientError
+
+    @retry(errors=[
+        ErrorCondition(
+                   error=ClientError,
+                   boto_error_codes=["BucketNotFound"]
+               )])
+    def boto_bucket(bucket_name):
+        boto_session = boto3.session.Session()
+        s3_resource = boto_session.resource('s3')
+        return s3_resource.Bucket(bucket_name)
+
+Any combination of these will also work, provided the codes are matched to the correct exceptions.  A ValueError will
+not return a 404, for example.
+
+The retry function as a decorator should make retrying functions easier and clearer.  It also encourages
+smaller independent functions, as opposed to lumping many different things that may need to be retried on
+different conditions in the same function.
+
+The ErrorCondition object tries to take some of the heavy lifting of writing specific retry conditions
+and boil it down to an API that covers all common use-cases without the user having to write
+any new bespoke functions.
+
+Use-cases covered currently:
+
+1. Retrying on a normal error, like a KeyError.
+2. Retrying on HTTP error codes (use ErrorCondition).
+3. Retrying on boto's specific status errors, like "BucketNotFound" (use ErrorCondition).
+4. Retrying when an error message contains a certain phrase (use ErrorCondition).
+5. Explicitly NOT retrying on a condition (use ErrorCondition).
+
+If new functionality is needed, it's currently best practice in Toil to add
+functionality to the ErrorCondition itself rather than making a new custom retry method.

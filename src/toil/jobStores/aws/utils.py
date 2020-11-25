@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,35 +11,26 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-from __future__ import division
-from builtins import str
-from builtins import next
-from builtins import range
-from past.utils import old_div
-from builtins import object
 import base64
+import boto3
 import bz2
+import errno
+import itertools
+import logging
 import os
 import socket
-import logging
 import types
-import itertools
-import errno
-
 from ssl import SSLError
-from six import iteritems
 
+from toil.lib.compatibility import compat_bytes, compat_oldstr
 from toil.lib.exceptions import panic
-from toil.lib.compatibility import compat_oldstr, compat_bytes, USING_PYTHON2
-from toil.lib.retry import retry
+from toil.lib.retry import old_retry
 from boto.exception import (SDBResponseError,
                             BotoServerError,
                             S3ResponseError,
                             S3CreateError,
                             S3CopyError)
-import boto3
+from botocore.exceptions import ClientError
 
 log = logging.getLogger(__name__)
 
@@ -92,9 +83,7 @@ class SDBHelper(object):
 
     maxAttributesPerItem = 256
     maxValueSize = 1024
-    # in python2 1 / 2 == 0, in python 3 1 / 2 == 0.5
-    # old_div implents the python2 behavior in both 2 & 3
-    maxRawValueSize = old_div(maxValueSize * 3, 4)
+    maxRawValueSize = maxValueSize * 3 // 4
     # Just make sure we don't have a problem with padding or integer truncation:
     assert len(base64.b64encode(b' ' * maxRawValueSize)) == 1024
     assert len(base64.b64encode(b' ' * (1 + maxRawValueSize))) > 1024
@@ -165,14 +154,11 @@ class SDBHelper(object):
         :rtype: (str|None,int)
         :return: the binary data and the number of chunks it was composed from
         """
-        chunks = [(int(k), v) for k, v in iteritems(attributes) if cls._isValidChunkName(k)]
+        chunks = [(int(k), v) for k, v in attributes.items() if cls._isValidChunkName(k)]
         chunks.sort()
         numChunks = int(attributes[u'numChunks'])
         if numChunks:
-            if USING_PYTHON2:
-                serializedJob = b''.join(v for k, v in chunks)
-            else:
-                serializedJob = b''.join(v.encode() for k, v in chunks)
+            serializedJob = b''.join(v.encode() for k, v in chunks)
             compressed = base64.b64decode(serializedJob)
             if compressed[0] == b'C'[0]:
                 binary = bz2.decompress(compressed[1:])
@@ -185,7 +171,6 @@ class SDBHelper(object):
         return binary, numChunks
 
 
-from boto.sdb.connection import SDBConnection
 
 
 def fileSizeAndTime(localFilePath):
@@ -353,7 +338,7 @@ def connection_reset(e):
 
 
 def sdb_unavailable(e):
-    return isinstance(e, BotoServerError) and e.status == 503
+    return isinstance(e, BotoServerError) and e.status in (500, 503)
 
 
 def no_such_sdb_domain(e):
@@ -375,7 +360,7 @@ def retryable_sdb_errors(e):
 
 
 def retry_sdb(delays=default_delays, timeout=default_timeout, predicate=retryable_sdb_errors):
-    return retry(delays=delays, timeout=timeout, predicate=predicate)
+    return old_retry(delays=delays, timeout=timeout, predicate=predicate)
 
 
 def retryable_s3_errors(e):
@@ -386,11 +371,12 @@ def retryable_s3_errors(e):
             or (isinstance(e, BotoServerError) and e.status == 500)
             # Throttling response sometimes received on bucket creation
             or (isinstance(e, BotoServerError) and e.status == 503 and e.code == 'SlowDown')
-            or (isinstance(e, S3CopyError) and 'try again' in e.message))
+            or (isinstance(e, S3CopyError) and 'try again' in e.message)
+            or (isinstance(e, ClientError) and 'BucketNotEmpty' in str(e)))
 
 
 def retry_s3(delays=default_delays, timeout=default_timeout, predicate=retryable_s3_errors):
-    return retry(delays=delays, timeout=timeout, predicate=predicate)
+    return old_retry(delays=delays, timeout=timeout, predicate=predicate)
 
 
 def region_to_bucket_location(region):

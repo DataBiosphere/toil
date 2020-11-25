@@ -11,36 +11,36 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-from builtins import str
-import os
-import sys
-import uuid
-import shutil
-import tempfile
-import pytest
 import logging
+import os
+import shutil
+import sys
+import tempfile
+import uuid
+
+import pytest
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
+import subprocess
 import time
-import psutil
+
+from mock import patch
 
 import toil
 import toil.test.sort.sort
-import subprocess
 from toil import resolveEntryPoint
+from toil.common import Config, Toil
 from toil.job import Job
-from toil.utils.toilStatus import ToilStatus
 from toil.lib.bioio import getTempFile, system
-from toil.test import ToilTest, needs_aws_ec2, needs_rsync3, integrative, slow, needs_cwl, needs_docker, travis_test
+from toil.provisioners import clusterFactory
+from toil.test import (ToilTest, integrative, needs_aws_ec2, needs_cwl,
+                       needs_docker, needs_rsync3, slow, travis_test)
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
-from toil.common import Toil, Config
-from toil.provisioners import clusterFactory
+from toil.utils.toilStatus import ToilStatus
 from toil.version import python
-from mock import patch
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +71,9 @@ class UtilsTest(ToilTest):
                                   'file:' + self.toilDir,
                                   '--clean=never',
                                   '--numLines=1', '--lineLength=1']
+        
+        self.restart_sort_workflow_cmd = [python, '-m', 'toil.test.sort.restart_sort',
+                                  'file:' + self.toilDir]
 
     def tearDown(self):
         if os.path.exists(self.tempDir):
@@ -127,6 +130,7 @@ class UtilsTest(ToilTest):
 
         try:
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
+            logger.debug("Found AWSProvisioner: %s.", AWSProvisioner.__file__)
 
             # launch master with an assortment of custom tags
             system([self.toilMain, 'launch-cluster', '-t', 'key1=value1', '-t', 'key2=value2', '--tag', 'key3=value3',
@@ -355,7 +359,6 @@ class UtilsTest(ToilTest):
     def testGetStatusFailedToilWF(self):
         """
         Test that ToilStatus.getStatus() behaves as expected with a failing Toil workflow.
-
         While this workflow could be called by importing and evoking its main function, doing so would remove the
         opportunity to test the 'RUNNING' functionality of getStatus().
         """
@@ -404,6 +407,29 @@ class UtilsTest(ToilTest):
         # Make sure it printed some kind of complaint about the missing command.
         args, kwargs = mock_print.call_args
         self.assertIn('invalidcommand', args[0])
+
+    def testRestartAttribute(self):
+        """
+        Test that the job store is only destroyed when we observe a succcessful workflow run.
+        The following simulates a failing workflow that attempts to resume without restart().
+        In this case, the job store should not be destroyed until restart() is called.
+        """
+        # Run a workflow that will always fail
+        cmd = self.restart_sort_workflow_cmd + ['--badWorker=1']
+        subprocess.run(cmd)
+        
+        restart_cmd = self.restart_sort_workflow_cmd + ['--badWorker=0', '--restart']
+        subprocess.run(restart_cmd)
+
+        # Check the job store exists after restart attempt
+        self.assertTrue(os.path.exists(self.toilDir))
+
+        successful_cmd = [python, '-m', 'toil.test.sort.sort', 'file:' + self.toilDir, 
+                                  '--restart']
+        subprocess.run(successful_cmd)
+
+        # Check the job store is destroyed after calling restart()
+        self.assertFalse(os.path.exists(self.toilDir))
 
 
 def printUnicodeCharacter():

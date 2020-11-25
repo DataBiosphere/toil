@@ -12,29 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
 
-from future import standard_library
-standard_library.install_aliases()
-from builtins import str
-from builtins import map
-from builtins import object
 import json
 import logging
 import os
 import time
 from collections import defaultdict
-
-from toil.lib.retry import retry
-from toil.lib.threading import ExceptionalThread
-from toil.lib.throttle import throttle
 from itertools import islice
 
-from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, NodeInfo
-from toil.provisioners.abstractProvisioner import Shape
-from toil.job import ServiceJobNode
+from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
+                                                   NodeInfo)
 from toil.common import defaultTargetTime
+from toil.job import ServiceJobDescription
+from toil.lib.retry import old_retry
+from toil.lib.threading import ExceptionalThread
+from toil.lib.throttle import throttle
+from toil.provisioners.abstractProvisioner import Shape
 
 logger = logging.getLogger(__name__)
 
@@ -423,7 +416,7 @@ class ClusterScaler(object):
         """
         Adds the shape of a completed job to the queue, allowing the scalar to use the last N
         completed jobs in factoring how many nodes are required in the cluster.
-        :param toil.job.JobNode job: The memory, core and disk requirements of the completed job
+        :param toil.job.JobDescription job: The description of the completed job
         :param int wallTime: The wall-time taken to complete the job in seconds.
         """
 
@@ -590,7 +583,7 @@ class ClusterScaler(object):
                 the `numNodes` argument. It represents the closest possible approximation of the
                 actual cluster size at the time this method returns.
         """
-        for attempt in retry(predicate=self.provisioner.retryPredicate):
+        for attempt in old_retry(predicate=self.provisioner.retryPredicate):
             with attempt:
                 workerInstances = self.getNodes(preemptable=preemptable)
                 logger.debug("Cluster contains %i instances" % len(workerInstances))
@@ -725,7 +718,6 @@ class ClusterScaler(object):
                 continue
             else:
                 logger.debug("Did not find %s in %spreemptable static nodes", node.privateIP, prefix)
-                pass
             nodesToTerminate.append((node, nodeInfo))
         # Sort nodes by number of workers and time left in billing cycle
         nodesToTerminate.sort(key=lambda node_nodeInfo: (
@@ -870,7 +862,7 @@ class ScalerThread(ExceptionalThread):
                     queuedJobShapes = [
                         Shape(wallTime=self.scaler.getAverageRuntime(
                             jobName=job.jobName,
-                            service=isinstance(job, ServiceJobNode)),
+                            service=isinstance(job, ServiceJobDescription)),
                             memory=job.memory,
                             cores=job.cores,
                             disk=job.disk,

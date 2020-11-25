@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,16 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from future.utils import with_metaclass
-from abc import ABCMeta, abstractmethod
-from builtins import object
-from functools import total_ordering
 import logging
 import os.path
-
 import subprocess
-from toil import applianceSelf, customDockerInitCmd
-from toil.lib.retry import never
+from abc import ABC, abstractmethod
+from functools import total_ordering
+
+from toil import applianceSelf, customDockerInitCmd, customInitCmd
 
 a_short_time = 5
 log = logging.getLogger(__name__)
@@ -100,7 +97,7 @@ class Shape(object):
              self.preemptable))
 
 
-class AbstractProvisioner(with_metaclass(ABCMeta, object)):
+class AbstractProvisioner(ABC):
     """
     An abstract base class to represent the interface for provisioning worker nodes to use in a
     Toil cluster.
@@ -161,10 +158,10 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         :param e: exception raised during execution of setNodeCount
         :return: boolean indicating whether the exception e should be retried
         """
-        return never(e)
+        return False
 
     @abstractmethod
-    def launchCluster(self, leaderNodeType, leaderStorage, owner, **kwargs):
+    def launchCluster(self, *args, **kwargs):
         """
         Initialize a cluster and create a leader node.
 
@@ -337,6 +334,7 @@ coreos:
         Restart=on-failure
         RestartSec=2
         ExecStartPre=-/usr/bin/docker rm toil_{role}
+        ExecStartPre=-/usr/bin/bash -c '{customInitCommand}'
         ExecStart=/usr/bin/docker run \
             --entrypoint={entrypoint} \
             --net=host \
@@ -367,7 +365,7 @@ coreos:
             -v /:/rootfs \
             --name node-exporter \
             --restart always \
-            prom/node-exporter:v0.15.2 \
+            quay.io/prometheus/node-exporter:v0.15.2 \
             --path.procfs /host/proc \
             --path.sysfs /host/sys \
             --collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
@@ -418,6 +416,7 @@ coreos:
                             dockerImage=applianceSelf(),
                             entrypoint=entryPoint,
                             sshKey=masterPublicKey,   # ignored if None
-                            mesosArgs=mesosArgs)
+                            mesosArgs=mesosArgs,
+                            customInitCommand=customInitCmd())
         userData = template.format(**templateArgs)
         return userData

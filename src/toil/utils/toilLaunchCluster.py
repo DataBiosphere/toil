@@ -1,4 +1,4 @@
-# Copyright (C) 2015 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2020 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,14 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-Launches a toil leader instance with the specified provisioner
+Launches a toil leader instance with the specified provisioner.
 """
 import logging
-from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
-from toil.utils import addBasicProvisionerOptions, getZoneFromEnv
+
+from toil import applianceSelf
+from toil.lib.bioio import getBasicOptionParser, parseBasicOptions
 from toil.provisioners import clusterFactory
 from toil.provisioners.aws import checkValidNodeTypes
-from toil import applianceSelf
+from toil.utils import addBasicProvisionerOptions, getZoneFromEnv
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,7 @@ def main():
                              "with its name equal to the cluster name will always be created, thus ensure that "
                              "the extra security groups do not have the same name as the cluster name.")
     config = parseBasicOptions(parser)
-    tagsDict = None if config.tags is None else createTagsDict(config.tags)
+    tags = createTagsDict(config.tags) if config.tags else dict()
     checkValidNodeTypes(config.provisioner, config.nodeTypes)
     checkValidNodeTypes(config.provisioner, config.leaderNodeType)
 
@@ -124,19 +125,14 @@ def main():
                 nodeTypes.append(nodeTypeStr)
                 numNodes.append(int(num))
 
-    # set owner (default to keyPairName if not given)
-    owner = 'toil'
-    if config.owner:
-        owner = config.owner
-    elif config.keyPairName:
-        owner = config.keyPairName
+    owner = config.owner or config.keyPairName or 'toil'
 
     # Check to see if the user specified a zone. If not, see if one is stored in an environment variable.
     config.zone = config.zone or getZoneFromEnv(config.provisioner)
 
     if not config.zone:
         raise RuntimeError('Please provide a value for --zone or set a default in the TOIL_' +
-                           config.provisioner.upper() + '_ZONE enviroment variable.')
+                           config.provisioner.upper() + '_ZONE environment variable.')
 
     cluster = clusterFactory(provisioner=config.provisioner,
                              clusterName=config.clusterName,
@@ -148,7 +144,7 @@ def main():
                           owner=owner,
                           keyName=config.keyPairName,
                           botoPath=config.botoPath,
-                          userTags=tagsDict,
+                          userTags=tags,
                           vpcSubnet=config.vpcSubnet,
                           awsEc2ProfileArn=config.awsEc2ProfileArn,
                           awsEc2ExtraSecurityGroupIds=config.awsEc2ExtraSecurityGroupIds)
@@ -157,5 +153,5 @@ def main():
         cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=False)
     for nodeType, workers, spotBid in zip(preemptableNodeTypes, numPreemptableNodes, spotBids):
         cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=True,
-                                           spotBid=spotBid)
+                         spotBid=spotBid)
 

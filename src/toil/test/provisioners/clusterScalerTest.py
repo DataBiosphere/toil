@@ -12,40 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
-from builtins import map
-from builtins import object
-from builtins import range
-from past.utils import old_div
-import time
 import datetime
-from contextlib import contextmanager
-from threading import Thread, Event
 import logging
 import random
+import time
 import types
 import uuid
 from collections import defaultdict
+from contextlib import contextmanager
+from queue import Empty, Queue
+from threading import Event, Thread
+
 from mock import MagicMock
 
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
-from six import iteritems
-
-from toil.job import JobNode, Job
-from toil.lib.humanize import human2bytes as h2b
-from toil.test import ToilTest, slow, travis_test
-from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
-                                                   NodeInfo,
-                                                   AbstractBatchSystem)
-from toil.provisioners.node import Node
-from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
-from toil.provisioners.clusterScaler import (ClusterScaler,
-                                             ScalerThread,
-                                             BinPackedFit,
-                                             NodeReservation)
+from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
+                                                   AbstractScalableBatchSystem,
+                                                   NodeInfo)
 from toil.common import Config, defaultTargetTime
+from toil.job import JobDescription
+from toil.lib.humanize import human2bytes as h2b
+from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
+from toil.provisioners.clusterScaler import (BinPackedFit, ClusterScaler,
+                                             NodeReservation, ScalerThread)
+from toil.provisioners.node import Node
+from toil.test import ToilTest, slow, travis_test
 
 logger = logging.getLogger(__name__)
 
@@ -506,14 +496,12 @@ class ScalerThreadTest(ToilTest):
                     # Add 1000 random jobs
                     for _ in range(1000):
                         x = mock.getNodeShape(nodeType=jobShape)
-                        iJ = JobNode(jobStoreID=1,
-                                     requirements=dict(
-                                         memory=random.choice(list(range(1, x.memory))),
-                                         cores=random.choice(list(range(1, x.cores))),
-                                         disk=random.choice(list(range(1, x.disk))),
-                                         preemptable=preemptable),
-                                     command=None,
-                                     jobName='testClusterScaling', unitName='')
+                        iJ = JobDescription(requirements=dict(
+                                                memory=random.choice(list(range(1, x.memory))),
+                                                cores=random.choice(list(range(1, x.cores))),
+                                                disk=random.choice(list(range(1, x.disk))),
+                                                preemptable=preemptable),
+                                            jobName='testClusterScaling', unitName='')
                         clusterScaler.addCompletedJob(iJ, random.choice(list(range(1, x.wallTime))))
 
             startTime = time.time()
@@ -539,7 +527,7 @@ class ScalerThreadTest(ToilTest):
                      "Total-worker-time: %s, Worker-time-per-job: %s" %
                     (mock.totalJobs, sum(mock.maxWorkers.values()),
                      mock.totalWorkerTime,
-                     old_div(mock.totalWorkerTime, mock.totalJobs) if mock.totalJobs > 0 else 0.0))
+                     mock.totalWorkerTime // mock.totalJobs if mock.totalJobs > 0 else 0.0))
 
     @slow
     def testClusterScaling(self):
@@ -613,14 +601,12 @@ class ScalerThreadTest(ToilTest):
 
             # Add medium completed jobs
             for i in range(1000):
-                iJ = JobNode(jobStoreID=1,
-                             requirements=dict(
-                                 memory=random.choice(range(smallNode.memory, mediumNode.memory)),
-                                 cores=mediumNode.cores,
-                                 disk=largeNode.cores,
-                                 preemptable=False),
-                             command=None,
-                             jobName='testClusterScaling', unitName='')
+                iJ = JobDescription(requirements=dict(
+                                        memory=random.choice(range(smallNode.memory, mediumNode.memory)),
+                                        cores=mediumNode.cores,
+                                        disk=largeNode.cores,
+                                        preemptable=False),
+                                    jobName='testClusterScaling', unitName='')
                 clusterScaler.addCompletedJob(iJ, random.choice(range(1, 10)))
 
             while mock.getNumberOfJobsIssued() > 0 or mock.getNumberOfNodes() > 0:
@@ -707,7 +693,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         self.leaderThread.join()
 
     # Stub out all AbstractBatchSystem methods since they are never called
-    for name, value in iteritems(AbstractBatchSystem.__dict__):
+    for name, value in AbstractBatchSystem.__dict__.items():
         if getattr(value, '__isabstractmethod__', False):
             exec('def %s(): pass' % name)
         # Without this, the class would end up with .name and .value attributes
@@ -756,9 +742,11 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         """
         self.totalJobs += 1
         jobID = uuid.uuid4()
-        self.jobBatchSystemIDToIssuedJob[jobID] = Job(memory=jobShape.memory,
-                                                      cores=jobShape.cores, disk=jobShape.disk,
-                                                      preemptable=preemptable)
+        self.jobBatchSystemIDToIssuedJob[jobID] = JobDescription(requirements={"memory": jobShape.memory,
+                                                                               "cores": jobShape.cores,
+                                                                               "disk": jobShape.disk,
+                                                                               "preemptable": preemptable},
+                                                                 jobName='job{}'.format(self.totalJobs))
         self.jobQueue.put(jobID)
 
     # JobBatcher functionality

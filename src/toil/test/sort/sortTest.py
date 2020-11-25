@@ -11,35 +11,28 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, print_function
-from builtins import str
-from builtins import range
-import unittest
+import logging
 import os
 import random
 import shutil
+import subprocess
+import unittest
 from contextlib import contextmanager
 from uuid import uuid4
-import logging
 
-import subprocess
 from toil import resolveEntryPoint
+from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.common import Toil
 from toil.job import Job
-from toil.lib.bioio import getLogLevelString
-from toil.batchSystems.mesos.test import MesosTestSupport
-from toil.test.sort.sort import merge, sort, copySubRangeOfFile, getMidPoint, makeFileToSort, main
-from toil.test import (ToilTest,
-                       needs_aws_ec2,
-                       needs_mesos,
-                       needs_parasol,
-                       needs_gridengine,
-                       needs_torque,
-                       needs_google,
-                       slow)
-from toil.jobStores.abstractJobStore import NoSuchJobStoreException, JobStoreExistsException
+from toil.jobStores.abstractJobStore import (JobStoreExistsException,
+                                             NoSuchJobStoreException)
 from toil.leader import FailedJobsException
+from toil.lib.bioio import getLogLevelString
+from toil.test import (ToilTest, needs_aws_ec2, needs_google, needs_gridengine,
+                       needs_mesos, needs_parasol, needs_torque, slow)
+from toil.test.sort.sort import (copySubRangeOfFile, getMidPoint, main,
+                                 makeFileToSort, merge, sort)
 
 log = logging.getLogger(__name__)
 
@@ -175,7 +168,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
     @needs_aws_ec2
     def testAwsSingle(self):
-        self._toilSort(jobStoreLocator=self._awsJobStore(), batchSystem='singleMachine')
+        self._toilSort(jobStoreLocator=self._awsJobStore(), batchSystem='single_machine')
 
     @needs_aws_ec2
     @needs_mesos
@@ -196,7 +189,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
     @needs_google
     def testGoogleSingle(self):
-        self._toilSort(jobStoreLocator=self._googleJobStore(), batchSystem="singleMachine")
+        self._toilSort(jobStoreLocator=self._googleJobStore(), batchSystem="single_machine")
 
     @needs_google
     @needs_mesos
@@ -208,18 +201,18 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             self._stopMesos()
 
     def testFileSingle(self):
-        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='singleMachine')
+        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='single_machine')
 
     def testFileSingleNonCaching(self):
-        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='singleMachine',
+        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='single_machine',
                        disableCaching=True)
 
     def testFileSingleCheckpoints(self):
-        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='singleMachine',
+        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='single_machine',
                        retryCount=2, downCheckpoints=True)
 
     def testFileSingle10000(self):
-        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='singleMachine',
+        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='single_machine',
                        lines=10000, N=10000)
 
     @needs_gridengine

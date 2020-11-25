@@ -59,7 +59,6 @@ A more detailed example shows how we can specify both Toil and cwltool arguments
         --writeLogs `pwd` \
         --logLevel DEBUG \
         --retryCount 2 \
-        --disableCaching \
         --maxLogFileSize 20000000000 \
         --stats \
         standard_bam_processing.cwl \
@@ -90,9 +89,6 @@ printed to the stdout stream after workflow execution.
 ``--writeLogs``: Directory where all job logs will be stored.
 
 ``--retryCount``: How many times to retry each Toil job.
-
-``--disableCaching``: Currently required for batch systems (LSF, slurm,
-gridengine, htcondor, torque)
 
 ``--maxLogFileSize``: Logs that get larger than this value will be truncated.
 

@@ -11,14 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-from six import iteritems
-import requests
-import os
-import json
 import datetime
+import json
 import logging
+import os
 import textwrap
+
+import requests
 
 logger = logging.getLogger(__name__)
 dirname = os.path.dirname(__file__)
@@ -171,7 +170,7 @@ def fetchEC2InstanceDict(awsBillingJson, region):
     :return:
     """
     ec2InstanceList = []
-    for k, v in iteritems(awsBillingJson['products']):
+    for k, v in awsBillingJson['products'].items():
         i = v['attributes']
         # NOTES:
         #
@@ -238,7 +237,7 @@ def updateStaticEC2Instances():
     instancesByRegion = {}
     for regionNickname in EC2Regions:
         currentEC2Dict = fetchEC2InstanceDict(awsProductDict, region=EC2Regions[regionNickname])
-        for instanceName, instanceTypeObj in iteritems(currentEC2Dict):
+        for instanceName, instanceTypeObj in currentEC2Dict.items():
             if instanceTypeObj not in currentEC2List:
                 currentEC2List.append(instanceTypeObj)
             instancesByRegion.setdefault(regionNickname, []).append(instanceName)
@@ -262,7 +261,6 @@ def updateStaticEC2Instances():
         # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
         # See the License for the specific language governing permissions and
         # limitations under the License.
-        from six import iteritems
         from toil.lib.ec2nodes import InstanceType\n\n\n''').format(year=datetime.date.today().strftime("%Y"))[1:])
 
     # write header of total EC2 instance type list
@@ -279,7 +277,7 @@ def updateStaticEC2Instances():
     genString = genString + '}\n\n'
 
     genString = genString + 'regionDict = {\n'
-    for regionName, instanceList in iteritems(instancesByRegion):
+    for regionName, instanceList in instancesByRegion.items():
         genString = genString + "              '{regionName}': [".format(regionName=regionName)
         for instance in sorted(instanceList):
             genString = genString + "'{instance}', ".format(instance=instance)
@@ -293,7 +291,7 @@ def updateStaticEC2Instances():
         f.write(genString)
 
     # append key for fetching at the end
-    regionKey = '\nec2InstancesByRegion = dict((region, [E2Instances[i] for i in instances]) for region, instances in iteritems(regionDict))\n'
+    regionKey = '\nec2InstancesByRegion = dict((region, [E2Instances[i] for i in instances]) for region, instances in regionDict.items())\n'
 
     with open(genFile, 'a+') as f:
         f.write(regionKey)

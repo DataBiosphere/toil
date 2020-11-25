@@ -1,4 +1,4 @@
-# Copyright (C) 2018 UCSC Computational Genomics Lab
+# Copyright (C) 2018-2020 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,17 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
-from past.builtins import basestring
-
 import json
-import os
 import logging
+import os
 from collections import OrderedDict
 
 import toil.wdl.wdl_parser as wdl_parser
+from toil.wdl.wdl_types import WDLMapType, WDLPairType
 
 wdllogger = logging.getLogger(__name__)
 
@@ -122,7 +118,7 @@ class AnalyzeWDL:
         with open(JSON_file) as data_file:
             data = json.load(data_file)
         for d in data:
-            if isinstance(data[d], basestring):
+            if isinstance(data[d], str):
                 self.json_dict[d] = '"' + data[d] + '"'
             else:
                 self.json_dict[d] = data[d]
@@ -618,25 +614,51 @@ class AnalyzeWDL:
         Required.
 
         Currently supported:
-        Types are: Boolean, Float, Int, File, String, and Array[subtype].
-        OptionalTypes are: Boolean?, Float?, Int?, File?, String?, and Array[subtype]?.
+        Types are: Boolean, Float, Int, File, String, Array[subtype],
+                    Pair[subtype, subtype], and Map[subtype, subtype].
+        OptionalTypes are: Boolean?, Float?, Int?, File?, String?, Array[subtype]?,
+                            Pair[subtype, subtype]?, and Map[subtype, subtype].
 
         Python is not typed, so we don't need typing except to identify type: "File",
         which Toil needs to import, so we recursively travel down to the innermost
         type which will tell us if the variables are files that need importing.
 
+        For Pair and Map compound types, we recursively travel down the subtypes and
+        store them as attributes of a `WDLType` string. This way, the type structure is
+        preserved, which will allow us to import files appropriately.
+
         :param typeAST:
         :return:
         """
+        # TODO: represent all WDL types as WDLType subclasses, even terminal ones.
+
         if isinstance(typeAST, wdl_parser.Terminal):
             return typeAST.source_string
         elif isinstance(typeAST, wdl_parser.Ast):
             if typeAST.name == 'Type':
-                return self.parse_declaration_type(typeAST.attr('subtype'))
+                subtype = typeAST.attr('subtype')
             elif typeAST.name == 'OptionalType':
-                return self.parse_declaration_type(typeAST.attr('innerType'))
+                subtype = typeAST.attr('innerType')
             else:
                 raise NotImplementedError
+
+            if isinstance(subtype, wdl_parser.AstList):
+                # we're looking at a compound type
+                name = self.parse_declaration_type(typeAST.attr('name'))
+                elements = [self.parse_declaration_type(element) for element in subtype]
+
+                if name == 'Array':
+                    # for arrays, recursively travel down to the innermost type
+                    return self.parse_declaration_type(subtype)
+                if name == 'Pair':
+                    return WDLPairType(*elements)
+                elif name == 'Map':
+                    return WDLMapType(*elements)
+                else:
+                    raise NotImplementedError
+
+            return self.parse_declaration_type(subtype)
+
         elif isinstance(typeAST, wdl_parser.AstList):
             for ast in typeAST:
                 # TODO only ever seen one element lists.
@@ -781,16 +803,21 @@ class AnalyzeWDL:
         if isinstance(lhsAST, wdl_parser.Terminal):
             es = es + lhsAST.source_string
         elif isinstance(lhsAST, wdl_parser.Ast):
-            raise NotImplementedError
+            es = es + self.parse_declaration_expressn(lhsAST, es)
         elif isinstance(lhsAST, wdl_parser.AstList):
             raise NotImplementedError
 
-        es = es + '_'
+        # hack-y way to make sure pair.left and pair.right are parsed correctly.
+        if isinstance(rhsAST, wdl_parser.Terminal) and (
+                rhsAST.source_string == 'left' or rhsAST.source_string == 'right'):
+            es = es + '.'
+        else:
+            es = es + '_'
 
         if isinstance(rhsAST, wdl_parser.Terminal):
             es = es + rhsAST.source_string
         elif isinstance(rhsAST, wdl_parser.Ast):
-            raise NotImplementedError
+            es = es + self.parse_declaration_expressn(rhsAST, es)
         elif isinstance(rhsAST, wdl_parser.AstList):
             raise NotImplementedError
 
@@ -884,12 +911,8 @@ class AnalyzeWDL:
         """
         Parses out cromwell's built-in function calls.
 
-        Some of these are special
-        and need minor adjustments, for example length(), which is equivalent to
-        python's len() function.  Or sub, which is equivalent to re.sub(), but
-        needs a rearrangement of input variables.
-
-        Known to be supported: sub, size, read_tsv, length, select_first.
+        Some of these are special and need minor adjustments,
+        for example size() requires a fileStore.
 
         :param name:
         :param params:
@@ -899,11 +922,14 @@ class AnalyzeWDL:
         # name of the function
         if isinstance(name, wdl_parser.Terminal):
             if name.str:
-                # use python's built-in for length()
-                if name.source_string == 'length':
-                    es = es + 'len('
-                elif name.source_string == 'stdout':
-                    return es + 'stdout'
+                if name.source_string == 'stdout':
+                    # let the stdout() function reference the generated stdout file path.
+                    return es + '_toil_wdl_internal__stdout_file'
+                elif name.source_string == 'stderr':
+                    return es + '_toil_wdl_internal__stderr_file'
+                elif name.source_string in ('range', 'zip'):
+                    # replace python built-in functions
+                    es += f'wdl_{name.source_string}('
                 else:
                     es = es + name.source_string + '('
             else:
@@ -913,16 +939,14 @@ class AnalyzeWDL:
         elif isinstance(name, wdl_parser.AstList):
             raise NotImplementedError
 
-        # use python's re.sub() for sub()
-        if name.source_string == 'sub':
-            es_params = self.parse_declaration_expressn_fncall_SUBparams(params)
-        else:
-            es_params = self.parse_declaration_expressn_fncall_normalparams(params)
+        es_params = self.parse_declaration_expressn_fncall_normalparams(params)
 
         if name.source_string == 'glob':
             return es + es_params + ', tempDir)'
         elif name.source_string == 'size':
-            return es + es_params + ', fileStore=fileStore)'
+            return es + (es_params + ', ' if es_params else '') + 'fileStore=fileStore)'
+        elif name.source_string in ('write_lines', 'write_tsv', 'write_json', 'write_map'):
+            return es + es_params + ', temp_dir=tempDir, file_store=fileStore)'
         else:
             return es + es_params + ')'
 
@@ -940,32 +964,6 @@ class AnalyzeWDL:
             if es_param.endswith(', '):
                 es_param = es_param[:-2]
             return es_param
-
-    def parse_declaration_expressn_fncall_SUBparams(self, params):
-        """
-        Needs rearrangement:
-
-        0 1 2
-        WDL native params: sub(input, pattern, replace)
-
-        1 2 0
-        Python's re.sub() params: sub(pattern, replace, input)
-
-        :param params:
-        :param es:
-        :return:
-        """
-        # arguments passed to the function
-        if isinstance(params, wdl_parser.Terminal):
-            raise NotImplementedError
-        elif isinstance(params, wdl_parser.Ast):
-            raise NotImplementedError
-        elif isinstance(params, wdl_parser.AstList):
-            assert len(params) == 3, ('sub() function requires exactly 3 arguments.')
-            es_params0 = self.parse_declaration_expressn(params[0], es='')
-            es_params1 = self.parse_declaration_expressn(params[1], es='')
-            es_params2 = self.parse_declaration_expressn(params[2], es='')
-            return es_params1 + ', ' + es_params2 + ', ' + es_params0
 
     def parse_workflow_declaration(self, wf_declaration_subAST):
         '''

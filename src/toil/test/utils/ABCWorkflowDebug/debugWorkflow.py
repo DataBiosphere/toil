@@ -1,9 +1,10 @@
-from toil.job import Job
-from toil.common import Toil
-import subprocess
-from toil.version import python
-import os
 import logging
+import os
+import subprocess
+
+from toil.common import Toil
+from toil.job import Job
+from toil.version import python
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +29,7 @@ def writeA(job, mkFile):
     tempDir = job.fileStore.getLocalTempDir()
 
     # import files
-    try:
-        mkFile_fs = job.fileStore.readGlobalFile(mkFile[0], userPath=os.path.join(tempDir, mkFile[1]))
-    except:
-        mkFile_fs = os.path.join(tempDir, mkFile[1])
+    mkFile_fs = job.fileStore.readGlobalFile(mkFile[0], userPath=os.path.join(tempDir, mkFile[1]))
 
     # make a file (A.txt) and writes a string 'A' into it using 'mkFile.py'
     content = 'A'
@@ -57,14 +55,8 @@ def writeB(job, mkFile, B_file):
     tempDir = job.fileStore.getLocalTempDir()
 
     # import files
-    try:
-        mkFile_fs = job.fileStore.readGlobalFile(mkFile[0], userPath=os.path.join(tempDir, mkFile[1]))
-    except:
-        mkFile_fs = os.path.join(tempDir, mkFile[1])
-    try:
-        B_file_fs = job.fileStore.readGlobalFile(B_file[0], userPath=os.path.join(tempDir, B_file[1]))
-    except:
-        B_file_fs = os.path.join(tempDir, B_file[1])
+    mkFile_fs = job.fileStore.readGlobalFile(mkFile[0], userPath=os.path.join(tempDir, mkFile[1]))
+    B_file_fs = job.fileStore.readGlobalFile(B_file[0], userPath=os.path.join(tempDir, B_file[1]))
 
     # make a file (B.txt) and write the contents of 'B_file.txt' into it using 'mkFile.py'
     with open(B_file_fs, "r") as f:
@@ -95,7 +87,7 @@ def writeC(job):
     with open(output_filename, 'w') as f:
         f.write('C')
     output_file = job.fileStore.writeGlobalFile(output_filename)
-    C1 = (output_file, output_filename)
+    C1 = (output_file, 'C.txt')
     rvDict = {"C1": C1}
     return rvDict
 
@@ -107,18 +99,9 @@ def writeABC(job, A_dict, B_dict, C_dict, filepath):
     tempDir = job.fileStore.getLocalTempDir()
 
     # import files
-    try:
-        A_fs = job.fileStore.readGlobalFile(A_dict['A1'][0], userPath=os.path.join(tempDir, A_dict['A1'][1]))
-    except:
-        A_fs = os.path.join(tempDir, A_dict['A1'][1])
-    try:
-        B_fs = job.fileStore.readGlobalFile(B_dict['B1'][0], userPath=os.path.join(tempDir, B_dict['B1'][1]))
-    except:
-        B_fs = os.path.join(tempDir, B_dict['B1'][1])
-    try:
-        C_fs = job.fileStore.readGlobalFile(C_dict['C1'][0], userPath=os.path.join(tempDir, C_dict['C1'][1]))
-    except:
-        C_fs = os.path.join(tempDir, C_dict['C1'][1])
+    A_fs = job.fileStore.readGlobalFile(A_dict['A1'][0], userPath=os.path.join(tempDir, A_dict['A1'][1]))
+    B_fs = job.fileStore.readGlobalFile(B_dict['B1'][0], userPath=os.path.join(tempDir, B_dict['B1'][1]))
+    C_fs = job.fileStore.readGlobalFile(C_dict['C1'][0], userPath=os.path.join(tempDir, C_dict['C1'][1]))
 
     file_contents = ''
     with open(A_fs, "r") as f:

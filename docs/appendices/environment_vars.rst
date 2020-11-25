@@ -38,6 +38,11 @@ There are several environment variables that affect the way Toil runs.
 |                                  | Kubernetes jobs. If not set, Toil will use the     |
 |                                  | current user name.                                 |
 +----------------------------------+----------------------------------------------------+
+| KUBE_WATCH_ENABLED               | A boolean variable that allows for users           |
+|                                  | to utilize kubernetes watch stream feature         |
+|                                  | intead of polling for running jobs. Default        | 
+|                                  | value is set to False.                             |
++----------------------------------+----------------------------------------------------+
 | TOIL_APPLIANCE_SELF              | The fully qualified reference for the Toil         |
 |                                  | Appliance you wish to use, in the form             |
 |                                  | ``REPO/IMAGE:TAG``.                                |
@@ -135,6 +140,12 @@ There are several environment variables that affect the way Toil runs.
 |                                  | docker authentication. Example for AWS ECR:        |
 |                                  | ``pip install awscli && eval $(aws ecr get-login   |
 |                                  | --no-include-email --region us-east-1)``.          |
++----------------------------------+----------------------------------------------------+
+| TOIL_CUSTOM_INIT_COMMAND         | Any custom bash command to run prior to starting   |
+|                                  | the Toil appliance. Can be used for any custom     |
+|                                  | initialization in the worker and/or primary nodes  |
+|                                  | such as private docker authentication for the Toil |
+|                                  | appliance itself (i.e. from TOIL_APPLIANCE_SELF).  |
 +----------------------------------+----------------------------------------------------+
 
 .. _standard temporary directory: https://docs.python.org/3/library/tempfile.html#tempfile.gettempdir

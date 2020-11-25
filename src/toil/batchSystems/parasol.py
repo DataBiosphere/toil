@@ -12,31 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
-from builtins import next
-from builtins import str
-from past.utils import old_div
-from future.utils import listitems
 import logging
 import os
 import re
-import sys
 import subprocess
+import sys
 import tempfile
 import time
+from queue import Empty, Queue
+from shutil import which
 from threading import Thread
 
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
-from six import itervalues
-
-from toil.lib.iterables import concat
-from shutil import which
-
-from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, UpdatedBatchJobInfo
-from toil.lib.bioio import getTempFile
+from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
+                                                   UpdatedBatchJobInfo)
 from toil.common import Toil
+from toil.lib.bioio import getTempFile
+from toil.lib.iterables import concat
 
 logger = logging.getLogger(__name__)
 
@@ -132,14 +123,14 @@ class ParasolBatchSystem(BatchSystemSupport):
 
     parasolOutputPattern = re.compile("your job ([0-9]+).*")
 
-    def issueBatchJob(self, jobNode):
+    def issueBatchJob(self, jobDesc):
         """
         Issues parasol with job commands.
         """
-        self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
+        self.checkResourceRequest(jobDesc.memory, jobDesc.cores, jobDesc.disk)
 
         MiB = 1 << 20
-        truncatedMemory = (old_div(jobNode.memory, MiB)) * MiB
+        truncatedMemory = jobDesc.memory // MiB * MiB
         # Look for a batch for jobs with these resource requirements, with
         # the memory rounded down to the nearest megabyte. Rounding down
         # meams the new job can't ever decrease the memory requirements
@@ -147,21 +138,21 @@ class ParasolBatchSystem(BatchSystemSupport):
         if len(self.resultsFiles) >= self.maxBatches:
             raise RuntimeError( 'Number of batches reached limit of %i' % self.maxBatches)
         try:
-            results = self.resultsFiles[(truncatedMemory, jobNode.cores)]
+            results = self.resultsFiles[(truncatedMemory, jobDesc.cores)]
         except KeyError:
             results = getTempFile(rootDir=self.parasolResultsDir)
-            self.resultsFiles[(truncatedMemory, jobNode.cores)] = results
+            self.resultsFiles[(truncatedMemory, jobDesc.cores)] = results
 
         # Prefix the command with environment overrides, optionally looking them up from the
         # current environment if the value is None
-        command = ' '.join(concat('env', self.__environment(), jobNode.command))
+        command = ' '.join(concat('env', self.__environment(), jobDesc.command))
         parasolCommand = ['-verbose',
-                          '-ram=%i' % jobNode.memory,
-                          '-cpu=%i' % jobNode.cores,
+                          '-ram=%i' % jobDesc.memory,
+                          '-cpu=%i' % jobDesc.cores,
                           '-results=' + results,
                           'add', 'job', command]
         # Deal with the cpus
-        self.usedCpus += jobNode.cores
+        self.usedCpus += jobDesc.cores
         while True:  # Process finished results with no wait
             try:
                 jobID = self.cpuUsageQueue.get_nowait()
@@ -186,7 +177,7 @@ class ParasolBatchSystem(BatchSystemSupport):
                 time.sleep(5)
             else:
                 jobID = int(match.group(1))
-                self.jobIDsToCpu[jobID] = jobNode.cores
+                self.jobIDsToCpu[jobID] = jobDesc.cores
                 self.runningJobs.add(jobID)
                 logger.debug("Got the parasol job id: %s from line: %s" % (jobID, line))
                 return jobID
@@ -197,7 +188,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         return super(ParasolBatchSystem, self).setEnv(name, value)
 
     def __environment(self):
-        return (k + '=' + (os.environ[k] if v is None else v) for k, v in listitems(self.environment))
+        return (k + '=' + (os.environ[k] if v is None else v) for k, v in list(self.environment.items()))
 
     def killBatchJobs(self, jobIDs):
         """Kills the given jobs, represented as Job ids, then checks they are dead by checking
@@ -242,7 +233,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         created by other users.
         """
         issuedJobs = set()
-        for resultsFile in itervalues(self.resultsFiles):
+        for resultsFile in self.resultsFiles.values():
             issuedJobs.update(self.getJobIDsForResultsFile(resultsFile))
 
         return list(issuedJobs)
@@ -352,7 +343,7 @@ class ParasolBatchSystem(BatchSystemSupport):
 
     def shutdown(self):
         self.killBatchJobs(self.getIssuedBatchJobIDs())  # cleanup jobs
-        for results in itervalues(self.resultsFiles):
+        for results in self.resultsFiles.values():
             exitValue = self._runParasol(['-results=' + results, 'clear', 'sick'],
                                          autoRetry=False)[0]
             if exitValue is not None:

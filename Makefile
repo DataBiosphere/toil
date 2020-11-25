@@ -15,7 +15,7 @@ include common.mk
 
 define help
 
-Supported targets: prepare, develop, docs, sdist, clean, test, docker and push_docker.
+Supported targets: prepare, develop, docs, sdist, clean, test, docker, and push_docker.
 
 Please note that all build targets require a virtualenv to be active.
 
@@ -47,16 +47,11 @@ set the 'tests' variable to run a particular test, e.g.
 
 	make test tests=src/toil/test/sort/sortTest.py::SortTest::testSort
     
-The 'test_offline' target is similar, but runs on;y tests that don't need
-Internet or Docker by default. You can configure the tests it runs with the
-'tests_local' variable:
+The 'test_offline' target is similar, but runs only tests that don't need
+Internet or Docker by default.  The 'test_offline' target takes the same tests
+argument as the 'test' target.
 
-    make test_offline tests_local=src/toil/test/src/threadingTest.py
-
-The 'integration_test' target runs toil's integration tests. These are more thorough but also
-more costly than the regular unit tests. For the AWS integration tests to run, the environment
-variable 'TOIL_AWS_KEYNAME' must be set. This user will be charged for expenses accrued during the
-test.
+    make test_offline tests=src/toil/test/src/threadingTest.py
 
 The 'docker' target builds the Docker images that make up the Toil appliance. You may set the
 TOIL_DOCKER_REGISTRY variable to override the default registry that the 'push_docker' target pushes
@@ -72,9 +67,7 @@ requires the TOIL_DOCKER_REGISTRY variable to be set to a value other than the d
 accidentally pushing to the official Docker registry for Toil.
 
 The TOIL_DOCKER_NAME environment variable can be set to customize the appliance image name that
-is created by the 'docker' target and pushed by the 'push_docker' target. The Toil team\'s
-continuous integration system overrides this variable to avoid conflicts between concurrently
-executing builds for the same revision, e.g. toil-pr and toil-it.
+is created by the 'docker' target and pushed by the 'push_docker' target.
 
 endef
 export help
@@ -84,15 +77,9 @@ help:
 
 # This Makefile uses bash features like printf and <()
 SHELL=bash
-python=python
-pip=pip
-tests=src
-tests_local=src/toil/test
-# do slightly less than travis timeout of 10 min.
-pytest_args_local=-vv --timeout=530
+tests=src/toil/test
 extras=
-
-sdist_name:=toil-$(shell $(python) version_template.py distVersion).tar.gz
+sdist_name:=toil-$(shell python version_template.py distVersion).tar.gz
 
 green=\033[0;32m
 normal=\033[0m
@@ -100,10 +87,10 @@ red=\033[0;31m
 cyan=\033[0;36m
 
 develop: check_venv
-	$(pip) install -e .$(extras)
+	pip install -e .$(extras)
 
 clean_develop: check_venv
-	- $(pip) uninstall -y toil
+	- pip uninstall -y toil
 	- rm -rf src/*.egg-info
 	- rm src/toil/version.py
 
@@ -111,7 +98,7 @@ sdist: dist/$(sdist_name)
 
 dist/$(sdist_name): check_venv
 	@test -f dist/$(sdist_name) && mv dist/$(sdist_name) dist/$(sdist_name).old || true
-	$(python) setup.py sdist
+	python setup.py sdist
 	@test -f dist/$(sdist_name).old \
 	    && ( cmp -s <(tar -xOzf dist/$(sdist_name)) <(tar -xOzf dist/$(sdist_name).old) \
 	         && mv dist/$(sdist_name).old dist/$(sdist_name) \
@@ -124,12 +111,9 @@ clean_sdist:
 	- rm src/toil/version.py
 
 # We always claim to be Travis, so that local test runs will not skip Travis tests.
-# Gitlab doesn't run tests via the Makefile.
-
-# The auto-deployment test needs the docker appliance
-test: check_venv check_build_reqs docker
+test: check_venv check_build_reqs
 	TRAVIS=true \
-	    $(python) -m pytest --cov=toil $(pytest_args_local) $(tests)
+	    python -m pytest --cov=toil --duration=0 -s -r s $(tests)
 
 
 # This target will skip building docker and all docker based tests
@@ -138,7 +122,7 @@ test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
 	TRAVIS=true \
-	    $(python) -m pytest $(pytest_args_local) $(tests_local)
+	    python -m pytest -vv --timeout=530 --cov=toil $(tests)
 
 ifdef TOIL_DOCKER_REGISTRY
 
@@ -183,7 +167,7 @@ docker/$(sdist_name): dist/$(sdist_name)
 	cp $< $@
 
 docker/Dockerfile: docker/Dockerfile.py docker/$(sdist_name)
-	_TOIL_SDIST_NAME=$(sdist_name) $(python) docker/Dockerfile.py > $@
+	_TOIL_SDIST_NAME=$(sdist_name) python docker/Dockerfile.py > $@
 
 clean_docker:
 	-rm docker/Dockerfile docker/$(sdist_name)
@@ -214,15 +198,16 @@ clean_docs: check_venv
 clean: clean_develop clean_sdist clean_docs
 
 check_build_reqs:
-	@($(python) -c 'import mock; import pytest' && which sphinx-build >/dev/null) \
+	@(python -c 'import mock; import pytest' && which sphinx-build >/dev/null) \
 		|| ( printf "$(red)Build requirements are missing. Run 'make prepare' to install them.$(normal)\n" ; false )
 
 prepare: check_venv
-	$(pip) install mock==1.0.1 pytest==4.3.1 pytest-cov==2.6.1 stubserver==1.0.1 pytest-timeout==1.3.3 \
-	setuptools==45.3.0 'sphinx>=2.4.4,<3' cwltest mypy
+	pip install mock==1.0.1 pytest==4.3.1 pytest-cov==2.6.1 stubserver==1.0.1 \
+		pytest-timeout==1.3.3 setuptools==45.3.0 'sphinx>=2.4.4,<3' \
+		cwltest mypy flake8 flake8-bugbear black isort pydocstyle
 
 check_venv:
-	@$(python) -c 'import sys, os; sys.exit( int( 0 if "VIRTUAL_ENV" in os.environ else 1 ) )' \
+	@python -c 'import sys, os; sys.exit( int( 0 if "VIRTUAL_ENV" in os.environ else 1 ) )' \
 		|| ( printf "$(red)A virtualenv must be active.$(normal)\n" ; false )
 
 check_clean_working_copy:
@@ -240,6 +225,27 @@ check_cpickle:
 	# fail if cPickle.dump(s) called without HIGHEST_PROTOCOL
 	# https://github.com/BD2KGenomics/toil/issues/1503
 	! find src -iname '*.py' | xargs grep 'cPickle.dump' | grep --invert-match HIGHEST_PROTOCOL
+
+PYSOURCES=$(shell find src -name '*.py') setup.py version_template.py
+
+# Linting and code style related targets
+## sorting imports using isort: https://github.com/timothycrosley/isort
+sort_imports: $(PYSOURCES)
+	isort $^
+
+remove_unused_imports: $(PYSOURCES)
+	autoflake --in-place --remove-all-unused-imports $^
+
+format: $(wildcard src/toil/cwl/*.py)
+	black $^
+
+mypy:
+	mypy --ignore-missing-imports --no-strict-optional \
+		--warn-redundant-casts --warn-unused-ignores \
+		$(CURDIR)/src/toil/cwl/cwltoil.py
+
+flake8: $(PYSOURCES)
+	flake8 --ignore=E501,W293,W291,E265,E302,E722,E126,E303,E261,E201,E202,W503,W504,W391,E128,E301,E127,E502,E129,E262,E111,E117,E306,E203,E231,E226,E741,E122,E251,E305,E701,E222,E225,E241,E305,E123,E121,E703,E704,E125,E402 $^
 
 .PHONY: help \
 		prepare \

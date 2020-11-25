@@ -12,22 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import, print_function
-from future import standard_library
-standard_library.install_aliases()
-from builtins import map
-from builtins import str
-from builtins import range
-from builtins import object
-from collections import namedtuple
-from contextlib import contextmanager
-
-import dill
 import fcntl
 import logging
 import os
 import shutil
 import tempfile
+from collections import namedtuple
+from contextlib import contextmanager
+
+import dill
 
 from toil.realtimeLogger import RealtimeLogger
 from toil.resource import ModuleDescriptor
@@ -36,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name module')):
     """
+    >>> from collections import defaultdict
     >>> df = DeferredFunction.create(defaultdict, None, {'x':1}, y=2)
     >>> df
     DeferredFunction(defaultdict, ...)
@@ -252,7 +246,6 @@ class DeferredFunctionManager(object):
         except EOFError as e:
             # This is expected and means we read all the complete entries.
             logger.debug("Out of deferred functions!")
-            pass
 
     def _runOwnDeferredFunctions(self):
         """

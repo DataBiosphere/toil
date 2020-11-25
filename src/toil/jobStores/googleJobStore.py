@@ -11,36 +11,30 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-
-from functools import wraps
-
-from future import standard_library
-standard_library.install_aliases()
-from builtins import str
-from contextlib import contextmanager
-import uuid
 import logging
-import time
 import os
-from toil import pickle
-from toil.lib.misc import AtomicFileCreate
-from toil.lib.retry import retry
-from toil.lib.compatibility import compat_bytes
-from google.cloud import storage, exceptions
-from google.api_core.exceptions import GoogleAPICallError, InternalServerError, ServiceUnavailable
-from toil.lib.misc import truncExpBackoff
+import pickle
+import time
+import uuid
+from contextlib import contextmanager
+from functools import wraps
+from io import StringIO
 
-# Python 3 compatibility imports
-from six.moves import StringIO
+from google.api_core.exceptions import (GoogleAPICallError,
+                                        InternalServerError,
+                                        ServiceUnavailable)
+from google.cloud import exceptions, storage
 
-from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
-                                             NoSuchFileException, NoSuchJobStoreException,
+from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              JobStoreExistsException,
-                                             ConcurrentFileModificationException)
-from toil.jobStores.utils import WritablePipe, ReadablePipe
-from toil.jobGraph import JobGraph
+                                             NoSuchFileException,
+                                             NoSuchJobException,
+                                             NoSuchJobStoreException)
+from toil.jobStores.utils import ReadablePipe, WritablePipe
+from toil.lib.compatibility import compat_bytes
+from toil.lib.misc import AtomicFileCreate, truncExpBackoff
+from toil.lib.retry import old_retry
+
 log = logging.getLogger(__name__)
 
 GOOGLE_STORAGE = 'gs'
@@ -77,9 +71,9 @@ def googleRetry(f):
     """
     @wraps(f)
     def wrapper(*args, **kwargs):
-        for attempt in retry(delays=truncExpBackoff(),
-                             timeout=300,
-                             predicate=googleRetryPredicate):
+        for attempt in old_retry(delays=truncExpBackoff(),
+                                 timeout=300,
+                                 predicate=googleRetryPredicate):
             with attempt:
                 return f(*args, **kwargs)
     return wrapper
@@ -173,20 +167,20 @@ class GoogleJobStore(AbstractJobStore):
         # google freaks out if we call delete multiple times on the bucket obj, so after success
         # just set to None.
         self.bucket = None
-
-    def create(self, jobNode):
-        jobStoreID = self._newJobID()
-        log.debug("Creating job %s for '%s'",
-                  jobStoreID, '<no command>' if jobNode.command is None else jobNode.command)
-        job = JobGraph.fromJobNode(jobNode, jobStoreID=jobStoreID, tryCount=self._defaultTryCount())
-        if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
-            self._batchedJobGraphs.append(job)
-        else:
-            self._writeString(jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL))  # UPDATE: bz2.compress(
-        return job
-
+        
     def _newJobID(self):
         return "job"+str(uuid.uuid4())
+
+    def assignID(self, jobDescription):
+        jobStoreID = self._newJobID()
+        log.debug("Assigning ID to job %s for '%s'",
+                  jobStoreID, '<no command>' if jobDescription.command is None else jobDescription.command)
+        jobDescription.jobStoreID = jobStoreID
+
+    def create(self, jobDescription):
+        # TODO: we don't implement batching, but we probably should.
+        self._writeString(jobDescription.jobStoreID, pickle.dumps(jobDescription, protocol=pickle.HIGHEST_PROTOCOL))
+        return jobDescription
 
     @googleRetry
     def exists(self, jobStoreID):
@@ -207,7 +201,13 @@ class GoogleJobStore(AbstractJobStore):
             jobString = self._readContents(jobStoreID)
         except NoSuchFileException:
             raise NoSuchJobException(jobStoreID)
-        return pickle.loads(jobString)  # UPDATE bz2.decompress(
+        job = pickle.loads(jobString) 
+        # It is our responsibility to make sure that the JobDescription is
+        # connected to the current config on this machine, for filling in
+        # defaults. The leader and worker should never see config-less
+        # JobDescriptions.
+        job.assignConfig(self.config)
+        return job
 
     def update(self, job):
         self._writeString(job.jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL), update=True)
@@ -249,12 +249,12 @@ class GoogleJobStore(AbstractJobStore):
         return fileID
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False):
+    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None):
         fileID = self._newID(isFile=True, jobStoreID=jobStoreID if cleanup else None)
         with self._uploadStream(fileID, update=False) as writable:
             yield writable, fileID
 
-    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False):
+    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
         fileID = self._newID(isFile=True, jobStoreID=jobStoreID if cleanup else None)
         self._writeFile(fileID, StringIO(""))
         return fileID

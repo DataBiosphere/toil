@@ -1,6 +1,7 @@
 from toil.common import Toil
 from toil.job import Job
 
+
 class LocalFileStoreJob(Job):
     def run(self, fileStore):
         # self.TempDir will always contain the name of a directory within the allocated disk space reserved for the job

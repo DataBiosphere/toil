@@ -1,4 +1,4 @@
-# Copyright (C) 2015 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2020 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,34 +11,32 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
+import logging
+import os
+import string
+import time
+import urllib.request
 from functools import wraps
 
-from builtins import str
-from builtins import range
-import time
-import string
-import json
-import urllib.request
-
-# Python 3 compatibility imports
-from _ssl import SSLError
-from six import iteritems, text_type
-from toil.lib.memoize import memoize
+import boto3
 import boto.ec2
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
 from boto.utils import get_instance_metadata
-from toil.lib.ec2 import (a_short_time, create_ondemand_instances,
-                          create_spot_instances, wait_instances_running, wait_transition)
-from toil.lib.misc import truncExpBackoff
-from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
-from toil.provisioners.aws import *
+
 from toil.lib.context import Context
-from toil.lib.retry import retry
-from toil.lib.memoize import less_strict_bool
-from toil.provisioners import NoSuchClusterException
-from toil.provisioners.node import Node
+from toil.lib.ec2 import (a_short_time, create_instances,
+                          create_ondemand_instances, create_spot_instances,
+                          wait_instances_running, wait_transition)
 from toil.lib.generatedEC2Lists import E2Instances
+from toil.lib.memoize import less_strict_bool, memoize
+from toil.lib.misc import truncExpBackoff
+from toil.lib.retry import old_retry
+from toil.provisioners import NoSuchClusterException
+from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
+from toil.provisioners.aws import getCurrentAWSZone, getSpotZone, zoneToRegion
+from toil.provisioners.node import Node
 
 logger = logging.getLogger(__name__)
 logging.getLogger("boto").setLevel(logging.CRITICAL)
@@ -64,6 +62,7 @@ def awsRetryPredicate(e):
         return True
     return False
 
+
 def awsFilterImpairedNodes(nodes, ec2):
     # if TOIL_AWS_NODE_DEBUG is set don't terminate nodes with
     # failing status checks so they can be debugged
@@ -88,9 +87,9 @@ def awsRetry(f):
     """
     @wraps(f)
     def wrapper(*args, **kwargs):
-        for attempt in retry(delays=truncExpBackoff(),
-                             timeout=300,
-                             predicate=awsRetryPredicate):
+        for attempt in old_retry(delays=truncExpBackoff(),
+                                 timeout=300,
+                                 predicate=awsRetryPredicate):
             with attempt:
                 return f(*args, **kwargs)
     return wrapper
@@ -101,16 +100,16 @@ class InvalidClusterStateException(Exception):
 
 
 class AWSProvisioner(AbstractProvisioner):
-    """
-    Implements an AWS provisioner using the boto libraries.
-    """
-
     def __init__(self, clusterName, zone, nodeStorage, nodeStorageOverrides, sseKey):
         super(AWSProvisioner, self).__init__(clusterName, zone, nodeStorage, nodeStorageOverrides)
         self.cloud = 'aws'
         self._sseKey = sseKey
-        if not zone:
-            self._zone = getCurrentAWSZone()
+        self._zone = zone if zone else getCurrentAWSZone()
+
+        # establish boto3 clients
+        self.session = boto3.Session(region_name=zoneToRegion(self._zone))
+        self.ec2 = self.session.resource('ec2')
+
         if clusterName:
             self._buildContext()  # create connection (self._ctx)
         else:
@@ -138,60 +137,85 @@ class AWSProvisioner(AbstractProvisioner):
         rawSecurityGroups = instanceMetaData['security-groups']
         self._leaderSecurityGroupNames = [rawSecurityGroups] if not isinstance(rawSecurityGroups, list) else rawSecurityGroups
 
-    def launchCluster(self, leaderNodeType, leaderStorage, owner, **kwargs):
+    def launchCluster(self,
+                      leaderNodeType: str,
+                      leaderStorage: int,
+                      owner: str,
+                      keyName: str,
+                      botoPath: str,
+                      userTags: dict,
+                      vpcSubnet: str,
+                      awsEc2ProfileArn: str,
+                      awsEc2ExtraSecurityGroupIds: list):
         """
-        In addition to the parameters inherited from the abstractProvisioner,
-        the AWS launchCluster takes the following parameters:
-        keyName: The key used to communicate with instances
-        vpcSubnet: A subnet (optional).
-        """
-        if 'keyName' not in kwargs:
-            raise RuntimeError("A keyPairName is required for the AWS provisioner.")
-        self._keyName = kwargs['keyName']
-        self._vpcSubnet = kwargs.get('vpcSubnet')
+        Starts a single leader node and populates this class with the leader's metadata.
 
-        profileArn = kwargs.get('awsEc2ProfileArn') or self._getProfileArn()
+        :param leaderNodeType: An AWS instance type, like "t2.medium", for example.
+        :param leaderStorage: An integer number of gigabytes to provide the leader instance with.
+        :param owner: Resources will be tagged with this owner string.
+        :param keyName: The ssh key to use to access the leader node.
+        :param botoPath: The path to the boto credentials directory.
+        :param userTags: Optionally provided user tags to put on the leader.
+        :param vpcSubnet: Optionally specify the VPC subnet.
+        :param awsEc2ProfileArn: Optionally provide the profile ARN.
+        :param awsEc2ExtraSecurityGroupIds: Optionally provide additional security group IDs.
+        :return: None
+        """
+        self._keyName = keyName
+        self._vpcSubnet = vpcSubnet
+
+        profileArn = awsEc2ProfileArn or self._getProfileArn()
         # the security group name is used as the cluster identifier
         sgs = self._createSecurityGroup()
-        bdm = self._getBlockDeviceMapping(E2Instances[leaderNodeType], rootVolSize=leaderStorage)
+        bdm = [
+            {
+                'DeviceName': '/dev/xvda',
+                'Ebs': {
+                    'DeleteOnTermination': True,
+                    'VolumeSize': leaderStorage,
+                    'VolumeType': 'gp2'
+                }
+            },
+        ]
 
         self._masterPublicKey = 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded' # dummy key
         userData = self._getCloudConfigUserData('leader', self._masterPublicKey)
-        if isinstance(userData, text_type):
+        if isinstance(userData, str):
             # Spot-market provisioning requires bytes for user data.
             # We probably won't have a spot-market leader, but who knows!
             userData = userData.encode('utf-8')
-        specKwargs = {'key_name': self._keyName,
-                      'security_group_ids': [sg.id for sg in sgs] + kwargs.get('awsEc2ExtraSecurityGroupIds', []),
-                      'instance_type': leaderNodeType,
-                      'user_data': userData,
-                      'block_device_map': bdm,
-                      'instance_profile_arn': profileArn,
-                      'placement': self._zone}
-        if self._vpcSubnet:
-            specKwargs["subnet_id"] = self._vpcSubnet
-        instances = create_ondemand_instances(self._ctx.ec2, image_id=self._discoverAMI(),
-                                                  spec=specKwargs, num_instances=1)
+        instances = create_instances(self.ec2,
+                                     image_id=self._discoverAMI(),
+                                     num_instances=1,
+                                     key_name=self._keyName,
+                                     security_group_ids=[sg.id for sg in sgs] + awsEc2ExtraSecurityGroupIds,
+                                     instance_type=leaderNodeType,
+                                     user_data=userData,
+                                     block_device_map=bdm,
+                                     instance_profile_arn={'Arn': profileArn},
+                                     placement={'AvailabilityZone': self._zone},
+                                     subnet_id=self._vpcSubnet)
 
         # wait for the leader to finish setting up
         leader = instances[0]
-        wait_instances_running(self._ctx.ec2, [leader])
-        self._waitForIP(leader)
-        leaderNode = Node(publicIP=leader.ip_address, privateIP=leader.private_ip_address,
+        leader.wait_until_running()
+
+        default_tags = {'Name': self.clusterName, 'Owner': owner, _TOIL_NODE_TYPE_TAG_KEY: 'leader'}
+        default_tags.update(userTags)
+
+        tags = []
+        for user_key, user_value in default_tags.items():
+            tags.append({'Key': user_key, 'Value': user_value})
+        leader.create_tags(Tags=tags)
+
+        self._tags = leader.tags
+        self._leaderPrivateIP = leader.private_ip_address
+        self._subnetID = leader.subnet_id
+
+        leaderNode = Node(publicIP=leader.public_ip_address, privateIP=leader.private_ip_address,
                           name=leader.id, launchTime=leader.launch_time, nodeType=leaderNodeType,
                           preemptable=False, tags=leader.tags)
         leaderNode.waitForNode('toil_leader')
-
-        defaultTags = {'Name': self.clusterName, 'Owner': owner, _TOIL_NODE_TYPE_TAG_KEY: 'leader'}
-        if kwargs['userTags']:
-            defaultTags.update(kwargs['userTags'])
-
-        # if we running launch cluster we need to save this data as it won't be generated
-        # from the metadata. This data is needed to launch worker nodes.
-        self._leaderPrivateIP = leader.private_ip_address
-        self._addTags([leader], defaultTags)
-        self._tags = leader.tags
-        self._subnetID = leader.subnet_id
 
     def getNodeShape(self, nodeType, preemptable=False):
         instanceType = E2Instances[nodeType]
@@ -257,7 +281,7 @@ class AWSProvisioner(AbstractProvisioner):
         if len(instances) == len(instancesToTerminate):
             logger.debug('Deleting security group...')
             removed = False
-            for attempt in retry(timeout=300, predicate=expectedShutdownErrors):
+            for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                 with attempt:
                     for sg in self._ctx.ec2.get_all_security_groups():
                         if sg.name == self.clusterName and vpcId and sg.vpc_id == vpcId:
@@ -279,8 +303,7 @@ class AWSProvisioner(AbstractProvisioner):
                            'roles will not be deleted.')
 
     def terminateNodes(self, nodes):
-        instanceIDs = [x.name for x in nodes]
-        self._terminateIDs(instanceIDs)
+        self._terminateIDs([x.name for x in nodes])
 
     def addNodes(self, nodeType, numNodes, preemptable, spotBid=None):
         assert self._leaderPrivateIP
@@ -294,7 +317,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         keyPath = self._sseKey if self._sseKey else None
         userData = self._getCloudConfigUserData('worker', self._masterPublicKey, keyPath, preemptable)
-        if isinstance(userData, text_type):
+        if isinstance(userData, str):
             # Spot-market provisioning requires bytes for user data.
             userData = userData.encode('utf-8')
         sgs = [sg for sg in self._ctx.ec2.get_all_security_groups() if sg.name in self._leaderSecurityGroupNames]
@@ -309,7 +332,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         instancesLaunched = []
 
-        for attempt in retry(predicate=awsRetryPredicate):
+        for attempt in old_retry(predicate=awsRetryPredicate):
             with attempt:
                 # after we start launching instances we want to ensure the full setup is done
                 # the biggest obstacle is AWS request throttling, so we retry on these errors at
@@ -333,7 +356,7 @@ class AWSProvisioner(AbstractProvisioner):
                     # flatten the list
                     instancesLaunched = [item for sublist in instancesLaunched for item in sublist]
 
-        for attempt in retry(predicate=awsRetryPredicate):
+        for attempt in old_retry(predicate=awsRetryPredicate):
             with attempt:
                 wait_instances_running(self._ctx.ec2, instancesLaunched)
 
@@ -399,7 +422,7 @@ class AWSProvisioner(AbstractProvisioner):
         # What region do we care about?
         region = zoneToRegion(self._zone)
         
-        for attempt in retry(predicate=lambda e: True):
+        for attempt in old_retry(predicate=lambda e: True):
             # Until we get parseable JSON
             # TODO: What errors do we get for timeout, JSON parse failure, etc?
             with attempt:
@@ -469,7 +492,7 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _addTags(cls, instances, tags):
         for instance in instances:
-            for key, value in iteritems(tags):
+            for key, value in tags.items():
                 cls._addTag(instance, key, value)
 
     @classmethod
@@ -624,15 +647,15 @@ class AWSProvisioner(AbstractProvisioner):
             else:
                 raise
         else:
-            for attempt in retry(predicate=groupNotFound, timeout=300):
+            for attempt in old_retry(predicate=groupNotFound, timeout=300):
                 with attempt:
                     # open port 22 for ssh-ing
                     web.authorize(ip_protocol='tcp', from_port=22, to_port=22, cidr_ip='0.0.0.0/0')
-            for attempt in retry(predicate=groupNotFound, timeout=300):
+            for attempt in old_retry(predicate=groupNotFound, timeout=300):
                 with attempt:
                     # the following authorizes all TCP access within the web security group
                     web.authorize(ip_protocol='tcp', from_port=0, to_port=65535, src_group=web)
-            for attempt in retry(predicate=groupNotFound, timeout=300):
+            for attempt in old_retry(predicate=groupNotFound, timeout=300):
                 with attempt:
                     # We also want to open up UDP, both for user code and for the RealtimeLogger
                     web.authorize(ip_protocol='udp', from_port=0, to_port=65535, src_group=web)
@@ -642,13 +665,14 @@ class AWSProvisioner(AbstractProvisioner):
                 out.append(sg)
         return out
 
+    def full_policy(self, resource):
+        return dict(Version="2012-10-17", Statement=[dict(Effect="Allow", Resource="*", Action=f"{resource}:*")])
+
     @awsRetry
     def _getProfileArn(self):
         assert self._ctx
-        def addRoleErrors(e):
-            return e.status == 404
-        policy = dict(iam_full=iamFullPolicy, ec2_full=ec2FullPolicy,
-                      s3_full=s3FullPolicy, sbd_full=sdbFullPolicy)
+        policy = dict(iam_full=self.full_policy('iam'), ec2_full=self.full_policy('ec2'),
+                      s3_full=self.full_policy('s3'), sbd_full=self.full_policy('sdb'))
         iamRoleName = self._ctx.setup_iam_ec2_role(role_name=_INSTANCE_PROFILE_ROLE_NAME, policies=policy)
 
         try:
@@ -672,8 +696,8 @@ class AWSProvisioner(AbstractProvisioner):
                 return profile_arn
             else:
                 self._ctx.iam.remove_role_from_instance_profile(iamRoleName,
-                                                          profile.roles.member.role_name)
-        for attempt in retry(predicate=addRoleErrors):
+                                                                profile.roles.member.role_name)
+        for attempt in old_retry(predicate=lambda err: err.status == 404):
             with attempt:
                 self._ctx.iam.add_role_to_instance_profile(iamRoleName, iamRoleName)
         return profile_arn

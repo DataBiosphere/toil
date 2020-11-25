@@ -11,13 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
 import os
 
+from toil.job import Job
 from toil.lib.bioio import getTempFile
-from toil.job import Job as T
 from toil.test import ToilTest, travis_test
-from toil.test.src.jobTest import fn1Test as f
+from toil.test.src.jobTest import fn1Test
 
 
 class JobEncapsulationTest(ToilTest):
@@ -35,18 +34,18 @@ class JobEncapsulationTest(ToilTest):
         outFile = getTempFile(rootDir=self._createTempDir())
         try:
             # Encapsulate a job graph
-            a = T.wrapJobFn(encapsulatedJobFn, "A", outFile)
-            a = a.encapsulate()
+            a = Job.wrapJobFn(encapsulatedJobFn, "A", outFile, name="a")
+            a = a.encapsulate(name="a-encap")
             # Now add children/follow to the encapsulated graph
-            d = T.wrapFn(f, a.rv(), outFile)
-            e = T.wrapFn(f, d.rv(), outFile)
+            d = Job.wrapFn(fn1Test, a.rv(), outFile, name="d")
+            e = Job.wrapFn(fn1Test, d.rv(), outFile, name="e")
             a.addChild(d)
             a.addFollowOn(e)
             # Create the runner for the workflow.
-            options = T.Runner.getDefaultOptions(self._getTestJobStorePath())
+            options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
             options.logLevel = "INFO"
             # Run the workflow, the return value being the number of failed jobs
-            T.Runner.startToil(a, options)
+            Job.Runner.startToil(a, options)
             # Check output
             self.assertEqual(open(outFile, 'r').readline(), "ABCDE")
         finally:
@@ -59,8 +58,8 @@ class JobEncapsulationTest(ToilTest):
         with unique roots.
         """
         # Temporary file
-        a = T.wrapFn(noOp)
-        b = T.wrapFn(noOp)
+        a = Job.wrapFn(noOp)
+        b = Job.wrapFn(noOp)
         a.addChild(b).encapsulate()
         self.assertEqual(len(a.getRootJobs()), 1)
 
@@ -69,6 +68,6 @@ def noOp():
     pass
 
 def encapsulatedJobFn(job, string, outFile):
-    a = job.addChildFn(f, string, outFile)
-    b = a.addFollowOnFn(f, a.rv(), outFile)
+    a = job.addChildFn(fn1Test, string, outFile, name="inner-a")
+    b = a.addFollowOnFn(fn1Test, a.rv(), outFile, name="inner-b")
     return b.rv()

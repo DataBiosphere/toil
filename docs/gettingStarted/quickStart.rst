@@ -178,7 +178,11 @@ Running the example
 
 3. Run with custom options::
 
-      (venv) $ python sort.py file:jobStore --numLines=5000 --lineLength=10 --overwriteOutput=True --workDir=/tmp/
+      (venv) $ python sort.py file:jobStore \
+                   --numLines=5000 \
+                   --lineLength=10 \
+                   --overwriteOutput=True \
+                   --workDir=/tmp/
 
    Here we see that we can add our own options to a Toil script. As noted above, the first two
    options, ``--numLines`` and ``--lineLength``, determine the number of lines and how many characters are in each line.
@@ -293,7 +297,9 @@ in addition to messages from the batch system and jobs. This can be configured
 with the ``--logLevel`` flag. For example, to only log ``CRITICAL`` level
 messages to the screen::
 
-   (venv) $ python sort.py file:jobStore --logLevel=critical --overwriteOutput=True
+   (venv) $ python sort.py file:jobStore \
+                --logLevel=critical \
+                --overwriteOutput=True
 
 This hides most of the information we get from the Toil run. For more detail,
 we can run the pipeline with ``--logLevel=debug`` to see a comprehensive
@@ -339,11 +345,16 @@ that a job store of the same name already exists. By default, in the event of a
 failure, the job store is preserved so that the workflow can be restarted,
 starting from the previously failed jobs. We can restart the pipeline by running ::
 
-   (venv) $ python sort.py file:jobStore --restart --overwriteOutput=True
+   (venv) $ python sort.py file:jobStore \
+                --restart \
+                --overwriteOutput=True
 
 We can also change the number of times Toil will attempt to retry a failed job::
 
-   (venv) $ python sort.py file:jobStore --retryCount 2 --restart --overwriteOutput=True
+   (venv) $ python sort.py file:jobStore \
+                --retryCount 2 \
+                --restart \
+                --overwriteOutput=True
 
 You'll now see Toil attempt to rerun the failed job until it runs out of tries.
 ``--retryCount`` is useful for non-systemic errors, like downloading a file that
@@ -354,7 +365,9 @@ line 30, or remove it, and then run
 
 ::
 
-    (venv) $ python sort.py file:jobStore --restart --overwriteOutput=True
+    (venv) $ python sort.py file:jobStore \
+                 --restart \
+                 --overwriteOutput=True
 
 The pipeline will run successfully, and the job store will be removed on the
 pipeline's completion.
@@ -380,7 +393,10 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 #. Launch a cluster in AWS using the :ref:`launchCluster` command::
 
-        (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2a
+        (venv) $ toil launch-cluster <cluster-name> \
+                     --keyPairName <AWS-key-pair-name> \
+                     --leaderNodeType t2.medium \
+                     --zone us-west-2a
 
    The arguments ``keyPairName``, ``leaderNodeType``, and ``zone`` are required to launch a cluster.
 
@@ -431,7 +447,10 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 #. First launch a node in AWS using the :ref:`launchCluster` command::
 
-      (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2a
+      (venv) $ toil launch-cluster <cluster-name> \
+                   --keyPairName <AWS-key-pair-name> \
+                   --leaderNodeType t2.medium \
+                   --zone us-west-2a
 
 #. Copy ``example.cwl`` and ``example-job.yaml`` from the :ref:`CWL example <cwlquickstart>` to the node using
    the :ref:`rsyncCluster` command::
@@ -458,7 +477,10 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 #. Now run the CWL workflow::
 
-      (venv) $ toil-cwl-runner --provisioner aws --jobStore aws:us-west-2a:any-name /tmp/example.cwl /tmp/example-job.yaml
+      (venv) $ toil-cwl-runner \
+                   --provisioner aws \
+                   --jobStore aws:us-west-2a:any-name \
+                   /tmp/example.cwl /tmp/example-job.yaml
 
    ..  tip::
 
@@ -508,7 +530,11 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 #. Launch a leader node using the :ref:`launchCluster` command::
 
-        (venv) $ toil launch-cluster <cluster-name> --provisioner <aws, gce> --keyPairName <key-pair-name> --leaderNodeType <type> --zone <zone>
+        (venv) $ toil launch-cluster <cluster-name> \
+                     --provisioner <aws, gce> \
+                     --keyPairName <key-pair-name> \
+                     --leaderNodeType <type> \
+                     --zone <zone>
 
 
    .. note::
@@ -553,7 +579,19 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 #. Run `Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ as an autoscaling workflow::
 
-       (cact_venv) $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.14.0 cactus --provisioner <aws, gce> --nodeType <type> --maxNodes 2 --minNodes 0 --retry 10 --batchSystem mesos --disableCaching --logDebug --logFile /logFile_pestis3 --configFile /root/cact_ex/blockTrim3.xml <aws, google>:<zone>:cactus-pestis /root/cact_ex/pestis-short-aws-seqFile.txt /root/cact_ex/pestis_output3.hal
+       (cact_venv) $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.14.0 cactus \
+                         --provisioner <aws, gce> \
+                         --nodeType <type> \
+                         --maxNodes 2 \
+                         --minNodes 0 \
+                         --retry 10 \
+                         --batchSystem mesos \
+                         --logDebug \
+                         --logFile /logFile_pestis3 \
+                         --configFile \
+                         /root/cact_ex/blockTrim3.xml <aws, google>:<zone>:cactus-pestis \
+                         /root/cact_ex/pestis-short-aws-seqFile.txt \
+                         /root/cact_ex/pestis_output3.hal
 
    .. note::
 
@@ -588,7 +626,10 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 #. Download the resulted output to local machine::
 
-        (venv) $ toil rsync-cluster --provisioner <aws, gce> <cluster-name>  :/root/cact_ex/pestis_output3.hal <path-of-folder-on-local-machine>
+        (venv) $ toil rsync-cluster \
+                     --provisioner <aws, gce> <cluster-name> \
+                     :/root/cact_ex/pestis_output3.hal \
+                     <path-of-folder-on-local-machine>
 
 #. Destroy the cluster::
 

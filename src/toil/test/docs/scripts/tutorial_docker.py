@@ -1,7 +1,8 @@
+import os
+
 from toil.common import Toil
 from toil.job import Job
 from toil.lib.docker import apiDockerCall
-import os
 
 align = Job.wrapJobFn(apiDockerCall,
                       image='ubuntu',

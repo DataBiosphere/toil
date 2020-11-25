@@ -1,0 +1,3 @@
+{
+  "readIntWorkflow.in_file": "src/toil/test/wdl/testfiles/test_int.txt"
+}

@@ -12,35 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
 
-from builtins import str
-from datetime import datetime
 import logging
 import time
-from threading import Thread, Lock
 from abc import ABCMeta, abstractmethod
+from datetime import datetime
+from queue import Empty, Queue
+from threading import Lock, Thread
 
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
-from future.utils import with_metaclass
-
+from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
+                                                   BatchSystemCleanupSupport,
+                                                   UpdatedBatchJobInfo)
 from toil.lib.misc import CalledProcessErrorStderr
 from toil.lib.objects import abstractclassmethod
-
-from toil.batchSystems.abstractBatchSystem import BatchSystemLocalSupport, UpdatedBatchJobInfo
 
 logger = logging.getLogger(__name__)
 
 
-class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
+class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     """
     A partial implementation of BatchSystemSupport for batch systems run on a
-    standard HPC cluster. By default worker cleanup and auto-deployment are not
-    implemented.
+    standard HPC cluster. By default auto-deployment is not implemented.
     """
 
-    class Worker(with_metaclass(ABCMeta, Thread)):
+    class Worker(Thread, metaclass=ABCMeta):
 
         def __init__(self, newJobsQueue, updatedJobsQueue, killQueue,
                      killedJobsQueue, boss):
@@ -193,9 +188,13 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             for jobID in list(self.runningJobs):
                 batchJobID = self.getBatchSystemID(jobID)
                 status = self.boss.with_retries(self.getJobExitCode, batchJobID)
-                if status is not None:
+                if status is not None and isinstance(status, int):
                     activity = True
                     self.updatedJobsQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=status, exitReason=None, wallTime=None))
+                    self.forgetJob(jobID)
+                elif status is not None and isinstance(status, BatchJobExitReason):
+                    activity = True
+                    self.updatedJobsQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=1, exitReason=status, wallTime=None))
                     self.forgetJob(jobID)
             self._checkOnJobsCache = activity
             self._checkOnJobsTimestamp = datetime.now()
@@ -281,10 +280,14 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
         @abstractmethod
         def getJobExitCode(self, batchJobID):
             """
-            Returns job exit code. Implementation-specific; called by
-            AbstractGridEngineWorker.checkOnJobs()
+            Returns job exit code or an instance of abstractBatchSystem.BatchJobExitReason.
+            if something else happened other than the job exiting.
+            Implementation-specific; called by AbstractGridEngineWorker.checkOnJobs()
 
             :param string batchjobID: batch system job ID
+
+            :rtype: int|toil.batchSystems.abstractBatchSystem.BatchJobExitReason: exit code int
+                    or BatchJobExitReason if something else happened other than job exiting.
             """
             raise NotImplementedError()
 
@@ -319,18 +322,18 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
     def supportsAutoDeployment(cls):
         return False
 
-    def issueBatchJob(self, jobNode):
+    def issueBatchJob(self, jobDesc):
         # Avoid submitting internal jobs to the batch queue, handle locally
-        localID = self.handleLocalJob(jobNode)
+        localID = self.handleLocalJob(jobDesc)
         if localID:
             return localID
         else:
-            self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
+            self.checkResourceRequest(jobDesc.memory, jobDesc.cores, jobDesc.disk)
             jobID = self.getNextJobID()
             self.currentJobs.add(jobID)
-            self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.command, jobNode.jobName))
-            logger.debug("Issued the job command: %s with job id: %s and job name %s", jobNode.command, str(jobID),
-                         jobNode.jobName)
+            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, jobDesc.jobName))
+            logger.debug("Issued the job command: %s with job id: %s and job name %s", jobDesc.command, str(jobID),
+                         jobDesc.jobName)
         return jobID
 
     def killBatchJobs(self, jobIDs):

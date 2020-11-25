@@ -12,65 +12,51 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
 
-from future import standard_library
-
-standard_library.install_aliases()
-from builtins import str
-from builtins import range
-from contextlib import contextmanager, closing
-import logging
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-import re
-import time
-import uuid
 import base64
 import hashlib
 import itertools
+import logging
+import pickle
+import re
 import reprlib
+import time
+import urllib.error
 import urllib.parse
-import urllib.request, urllib.parse, urllib.error
+import urllib.request
+import uuid
+from contextlib import closing, contextmanager
 from io import BytesIO
 
-from toil.lib.memoize import strict_bool
-from toil.lib.exceptions import panic
-from toil.lib.objects import InnerClass
 import boto3
 import boto.s3
 import boto.sdb
-from boto.exception import S3CreateError
-from boto.exception import SDBResponseError, S3ResponseError
-import botocore.session
 import botocore.credentials
+import botocore.session
+from boto.exception import S3CreateError, S3ResponseError, SDBResponseError
 
-from toil.lib.compatibility import compat_bytes, compat_plain
-from toil.lib.misc import AtomicFileCreate
-from toil.fileStores import FileID
-from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             NoSuchJobException,
-                                             ConcurrentFileModificationException,
-                                             NoSuchFileException,
-                                             NoSuchJobStoreException,
-                                             JobStoreExistsException)
-from toil.jobStores.aws.utils import (SDBHelper,
-                                      retry_sdb,
-                                      no_such_sdb_domain,
-                                      sdb_unavailable,
-                                      monkeyPatchSdbConnection,
-                                      retry_s3,
-                                      retryable_s3_errors,
-                                      bucket_location_to_region,
-                                      region_to_bucket_location, copyKeyMultipart,
-                                      uploadFromPath, chunkedFileUpload, fileSizeAndTime)
-from toil.jobStores.utils import WritablePipe, ReadablePipe, ReadableTransformingPipe
-from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
+from toil.fileStores import FileID
+from toil.jobStores.abstractJobStore import (
+    AbstractJobStore, ConcurrentFileModificationException,
+    JobStoreExistsException, NoSuchFileException, NoSuchJobException,
+    NoSuchJobStoreException)
+from toil.jobStores.aws.utils import (SDBHelper, bucket_location_to_region,
+                                      chunkedFileUpload, copyKeyMultipart,
+                                      fileSizeAndTime,
+                                      monkeyPatchSdbConnection,
+                                      no_such_sdb_domain,
+                                      region_to_bucket_location, retry_s3,
+                                      retry_sdb, retryable_s3_errors,
+                                      sdb_unavailable, uploadFromPath)
+from toil.jobStores.utils import (ReadablePipe, ReadableTransformingPipe,
+                                  WritablePipe)
+from toil.lib.compatibility import compat_bytes, compat_plain
+from toil.lib.ec2nodes import EC2Regions
+from toil.lib.exceptions import panic
+from toil.lib.memoize import strict_bool
+from toil.lib.misc import AtomicFileCreate
+from toil.lib.objects import InnerClass
 
 # Make sure to use credential caching when talking to Amazon via boto3
 # See https://github.com/boto/botocore/pull/1338/
@@ -85,7 +71,6 @@ class ChecksumError(Exception):
     """
     Raised when a download from AWS does not contain the correct data.
     """
-    pass
 
 class AWSJobStore(AbstractJobStore):
     """
@@ -119,6 +104,9 @@ class AWSJobStore(AbstractJobStore):
         """
         super(AWSJobStore, self).__init__()
         region, namePrefix = locator.split(':')
+        regions = EC2Regions.keys()
+        if region not in regions:
+            raise ValueError(f'Region "{region}" is not one of: {regions}')
         if not self.bucketNameRe.match(namePrefix):
             raise ValueError("Invalid name prefix '%s'. Name prefixes must contain only digits, "
                              "hyphens or lower-case letters and must not start or end in a "
@@ -270,6 +258,8 @@ class AWSJobStore(AbstractJobStore):
             binary, _ = SDBHelper.attributesToBinary(item)
             assert binary is not None
         job = pickle.loads(binary)
+        if job is not None:
+            job.assignConfig(self.config)
         return job
 
     def _awsJobToItem(self, job):
@@ -289,32 +279,30 @@ class AWSJobStore(AbstractJobStore):
 
     @contextmanager
     def batch(self):
-        self._batchedJobGraphs = []
+        self._batchedUpdates = []
         yield
-        batches = [self._batchedJobGraphs[i:i + self.jobsPerBatchInsert] for i in
-                   range(0, len(self._batchedJobGraphs), self.jobsPerBatchInsert)]
+        batches = [self._batchedUpdates[i:i + self.jobsPerBatchInsert] for i in
+                   range(0, len(self._batchedUpdates), self.jobsPerBatchInsert)]
 
         for batch in batches:
-            items = {jobGraph.jobStoreID: self._awsJobToItem(jobGraph) for jobGraph in batch}
+            items = {compat_bytes(jobDescription.jobStoreID): self._awsJobToItem(jobDescription) for jobDescription in batch}
             for attempt in retry_sdb():
                 with attempt:
                     assert self.jobsDomain.batch_put_attributes(items)
-        self._batchedJobGraphs = None
+        self._batchedUpdates = None
 
-    def create(self, jobNode):
+    def assignID(self, jobDescription):
         jobStoreID = self._newJobID()
-        log.debug("Creating job %s for '%s'",
-                  jobStoreID, '<no command>' if jobNode.command is None else jobNode.command)
-        job = JobGraph.fromJobNode(jobNode, jobStoreID=jobStoreID, tryCount=self._defaultTryCount())
+        log.debug("Assigning ID to job %s for '%s'",
+                  jobStoreID, '<no command>' if jobDescription.command is None else jobDescription.command)
+        jobDescription.jobStoreID = jobStoreID
 
-        if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
-            self._batchedJobGraphs.append(job)
+    def create(self, jobDescription):
+        if hasattr(self, "_batchedUpdates") and self._batchedUpdates is not None:
+            self._batchedUpdates.append(jobDescription)
         else:
-            item = self._awsJobToItem(job)
-            for attempt in retry_sdb():
-                with attempt:
-                    assert self.jobsDomain.put_attributes(job.jobStoreID, item)
-        return job
+            self.update(jobDescription)
+        return jobDescription
 
     def exists(self, jobStoreID):
         for attempt in retry_sdb():
@@ -348,12 +336,12 @@ class AWSJobStore(AbstractJobStore):
         log.debug("Loaded job %s", jobStoreID)
         return job
 
-    def update(self, job):
-        log.debug("Updating job %s", job.jobStoreID)
-        item = self._awsJobToItem(job)
+    def update(self, jobDescription):
+        log.debug("Updating job %s", jobDescription.jobStoreID)
+        item = self._awsJobToItem(jobDescription)
         for attempt in retry_sdb():
             with attempt:
-                assert self.jobsDomain.put_attributes(compat_bytes(job.jobStoreID), item)
+                assert self.jobsDomain.put_attributes(compat_bytes(jobDescription.jobStoreID), item)
 
     itemsPerBatchDelete = 25
 
@@ -399,7 +387,7 @@ class AWSJobStore(AbstractJobStore):
                         else:
                             self.filesBucket.delete_key(key_name=compat_bytes(item.name))
 
-    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False):
+    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
         info = self.FileInfo.create(jobStoreID if cleanup else None)
         with info.uploadStream() as _:
             # Empty
@@ -543,7 +531,7 @@ class AWSJobStore(AbstractJobStore):
         return info.fileID
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False):
+    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None):
         info = self.FileInfo.create(jobStoreID if cleanup else None)
         with info.uploadStream() as writable:
             yield writable, info.fileID

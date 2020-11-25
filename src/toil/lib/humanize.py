@@ -9,10 +9,6 @@ Author: Giampaolo Rodola' <g.rodola [AT] gmail [DOT] com>
 License: MIT
 """
 
-from __future__ import division
-# see: http://goo.gl/kTQMs
-from past.utils import old_div
-
 SYMBOLS = {
     'customary'     : ('', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y'),
     'customary_ext' : ('byte', 'kilo', 'mega', 'giga', 'tera', 'peta', 'exa', 'zetta', 'iotta'),
@@ -35,7 +31,7 @@ def bytes2human(n, fmt='%(value).1f %(symbol)s', symbols='customary'):
         prefix[s] = 1 << (i+1)*10
     for symbol in reversed(symbols[1:]):
         if n >= prefix[symbol]:
-            value = old_div(float(n), prefix[symbol])
+            value = float(n) // prefix[symbol]
             return fmt % locals()
     return fmt % dict(symbol=symbols[0], value=n)
 

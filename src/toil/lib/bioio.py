@@ -12,28 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
 
-from builtins import range
-from builtins import object
-import sys
-import os
 import logging
-import resource
 import logging.handlers
-import tempfile
+import os
 import random
-import math
-import shutil
-from argparse import ArgumentParser
-from optparse import OptionContainer, OptionGroup
+import resource
 import subprocess
-
-# Python 3 compatibility imports
-from six.moves import xrange
-from six import string_types
-
-import xml.etree.cElementTree as ET
+import tempfile
+from argparse import ArgumentParser
 from xml.dom import minidom  # For making stuff pretty
 
 defaultLogLevel = logging.INFO
@@ -182,7 +169,7 @@ def system(command):
     :type command: str | sequence[string]
     """
     logger.debug('Running: %r', command)
-    subprocess.check_call(command, shell=isinstance(command, string_types), bufsize=-1)
+    subprocess.check_call(command, shell=isinstance(command, str), bufsize=-1)
 
 def getTotalCpuTimeAndMemoryUsage():
     """

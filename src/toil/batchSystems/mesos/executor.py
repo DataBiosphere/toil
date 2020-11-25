@@ -12,39 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from future import standard_library
-standard_library.install_aliases()
-from builtins import str
+import json
+import logging
 import os
 import os.path
+import pickle
 import random
-import socket
+import resource
 import signal
+import socket
+import subprocess
 import sys
 import threading
-import logging
-import psutil
-import traceback
 import time
-import json
-import resource
-import subprocess
-
-try:
-    from urllib2 import urlopen
-except ImportError:
-    from urllib.request import urlopen
+import traceback
 
 import addict
-from pymesos import MesosExecutorDriver, Executor, decode_data, encode_data
+import psutil
+from pymesos import Executor, MesosExecutorDriver, decode_data, encode_data
+from urllib2 import urlopen
 
-from toil import pickle
-from toil.lib.bioio import configureRootLogger
-from toil.lib.bioio import setLogLevel
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
+from toil.lib.bioio import configureRootLogger, setLogLevel
 from toil.lib.expando import Expando
 from toil.lib.threading import cpu_count
-from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.resource import Resource
 
 log = logging.getLogger(__name__)
@@ -257,7 +248,7 @@ def main():
         try:
             urlopen("http://%s/logging/toggle?level=1&duration=15mins" % os.environ["MESOS_AGENT_ENDPOINT"]).read()
             log.debug("Toggled agent log level")
-        except Exception as e:
+        except Exception:
             log.debug("Failed to toggle agent log level")
         
     # Parse the agent state
@@ -279,7 +270,7 @@ def main():
                 try:
                     for line in open(os.path.join(dirpath, filename)):
                         log.debug(line.rstrip())
-                except Exception as e:
+                except Exception:
                     log.debug("Failed to read file")
                     
     # Mesos can also impose rlimit limits, including on things that really

@@ -15,24 +15,18 @@
 """Tool for reporting on job status.
 """
 
-# python 2/3 compatibility imports
-from __future__ import absolute_import
-from __future__ import print_function
-from six.moves import xrange
-from past.builtins import map
-from functools import reduce
-
 # standard library
 import logging
-import sys
 import os
+import sys
+from functools import reduce
 
 # toil imports
-from toil.lib.bioio import getBasicOptionParser
-from toil.lib.bioio import parseBasicOptions
-from toil.common import Toil, jobStoreLocatorHelp, Config
-from toil.jobStores.abstractJobStore import NoSuchJobStoreException, NoSuchFileException
-from toil.job import JobException
+from toil.common import Config, Toil, jobStoreLocatorHelp
+from toil.job import JobException, ServiceJobDescription
+from toil.jobStores.abstractJobStore import (NoSuchFileException,
+                                             NoSuchJobStoreException)
+from toil.lib.bioio import getBasicOptionParser, parseBasicOptions
 from toil.statsAndLogging import StatsAndLogging
 from toil.version import version
 
@@ -103,7 +97,7 @@ class ToilStatus():
             lf = lambda x: "%s:%s" % (x, str(x in properties))
             print("\t".join(("JOB:%s" % job,
                              "LOG_FILE:%s" % job.logJobStoreFileID,
-                             "TRYS_REMAINING:%i" % job.remainingRetryCount,
+                             "TRYS_REMAINING:%i" % job.remainingTryCount,
                              "CHILD_NUMBER:%s" % childNumber,
                              lf("READY_TO_RUN"), lf("IS_ZOMBIE"),
                              lf("HAS_SERVICES"), lf("IS_SERVICE"))))
@@ -127,7 +121,7 @@ class ToilStatus():
             if job.logJobStoreFileID is not None:
                 hasLogFile.append(job)
 
-            childNumber = reduce(lambda x, y: x + y, map(len, job.stack) + [0])
+            childNumber = reduce(lambda x, y: x + y, list(map(len, job.stack)) + [0])
             if childNumber > 0:  # Total number of successors > 0
                 hasChildren.append(job)
                 properties.add("HAS_CHILDREN")
@@ -142,8 +136,7 @@ class ToilStatus():
             if job.services:
                 hasServices.append(job)
                 properties.add("HAS_SERVICES")
-            if job.startJobStoreID or job.terminateJobStoreID or job.errorJobStoreID:
-                # These attributes are only set in service jobs
+            if isinstance(job, ServiceJobDescription):
                 services.append(job)
                 properties.add("IS_SERVICE")
 
@@ -186,7 +179,7 @@ class ToilStatus():
         except NoSuchFileException:
             pass
         return 'QUEUED'
-
+    
     @staticmethod
     def getStatus(jobStoreName):
         """
@@ -277,13 +270,13 @@ class ToilStatus():
         jobsToReport.append(rootJob)
         # Traverse jobs in stack
         for jobs in rootJob.stack:
-            for successorJobStoreID in [x.jobStoreID for x in jobs]:
+            for successorJobStoreID in jobs:
                 if successorJobStoreID not in foundJobStoreIDs and self.jobStore.exists(successorJobStoreID):
                     self.traverseJobGraph(self.jobStore.load(successorJobStoreID), jobsToReport, foundJobStoreIDs)
 
         # Traverse service jobs
         for jobs in rootJob.services:
-            for serviceJobStoreID in [x.jobStoreID for x in jobs]:
+            for serviceJobStoreID in jobs:
                 if self.jobStore.exists(serviceJobStoreID):
                     if serviceJobStoreID in foundJobStoreIDs:
                         raise RuntimeError('Service job was unexpectedly found while traversing ')
@@ -291,7 +284,6 @@ class ToilStatus():
                     jobsToReport.append(self.jobStore.load(serviceJobStoreID))
 
         return jobsToReport
-
 
 def main():
     """Reports the state of a Toil workflow."""
