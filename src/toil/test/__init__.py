@@ -785,7 +785,7 @@ class ApplianceTestSupport(ToilTest):
                 path += '/' + package
                 self.runOnAppliance('mkdir', '-p', path)
                 self.writeToAppliance(f'{path}/__init__.py'.encode('utf-8'), '')
-            self.writeToAppliance(f'{path}/{module}.py', script)
+            self.writeToAppliance(f'{path}/{module}.py'.encode('utf-8'), script)
 
     class LeaderThread(Appliance):
         def _entryPoint(self):
