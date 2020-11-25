@@ -33,7 +33,7 @@ import toil.test.sort.sort
 from toil import resolveEntryPoint
 from toil.common import Config, Toil
 from toil.job import Job
-from toil.lib.bioio import get_temp_file, system
+from toil.lib.bioio import get_temp_file
 from toil.provisioners import clusterFactory
 from toil.test import (ToilTest, integrative, needs_aws_ec2, needs_cwl,
                        needs_docker, needs_rsync3, slow, travis_test)
@@ -43,6 +43,17 @@ from toil.utils.toilStatus import ToilStatus
 from toil.version import python
 
 logger = logging.getLogger(__name__)
+
+
+def system(command):
+    """
+    A convenience wrapper around subprocess.check_call that logs the command before passing it
+    on. The command can be either a string or a sequence of strings. If it is a string shell=True
+    will be passed to subprocess.check_call.
+    :type command: str | sequence[string]
+    """
+    logger.debug('Running: %r', command)
+    subprocess.check_call(command, shell=isinstance(command, str), bufsize=-1)
 
 
 class UtilsTest(ToilTest):
