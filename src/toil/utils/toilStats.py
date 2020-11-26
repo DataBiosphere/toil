@@ -515,7 +515,7 @@ def main():
     parser.add_argument("--sortReverse", "--reverseSort", default=False, action="store_true", help="Reverse sort.")
 
     category_choices = ["time", "clock", "wait", "memory"]
-    parser.add_argument("--categories", choices=category_choices,
+    parser.add_argument("--categories", default=','.join(category_choices), type=str,
                         help=f"Comma separated list of any of the following: {category_choices}.")
 
     sort_category_choices = ["time", "clock", "wait", "memory", "alpha", "count"]
@@ -526,6 +526,12 @@ def main():
     parser.add_argument("--sortField", default="med", choices=sort_field_choices,
                         help=f"How to sort job fields.  Choices: {sort_field_choices}. Default: med.")
     options = parser.parse_args()
+
+    for c in options.categories.split(","):
+        if c.strip() not in category_choices:
+            raise ValueError(f'{c} not in {category_choices}!')
+    options.categories = [x.strip().lower() for x in options.categories.split(",")]
+
     set_logging_from_options(options)
     config = Config()
     config.setOptions(options)
