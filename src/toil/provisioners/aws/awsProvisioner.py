@@ -144,7 +144,9 @@ class AWSProvisioner(AbstractProvisioner):
         # The existing metadata API returns a single string if there is one security group, but
         # a list when there are multiple: change the format to always be a list.
         rawSecurityGroups = instanceMetaData['security-groups']
-        self._leaderSecurityGroupNames = [rawSecurityGroups] if not isinstance(rawSecurityGroups, list) else rawSecurityGroups
+        self._leaderSecurityGroupNames = {rawSecurityGroups} if not isinstance(rawSecurityGroups, list) else set(rawSecurityGroups)
+        # Since we have access to the names, we don't also need to use any IDs
+        self._leaderSecurityGroupIDs = set()
         
         # Let the base provisioner work out how to deploy duly authorized
         # workers for this leader.
@@ -235,10 +237,15 @@ class AWSProvisioner(AbstractProvisioner):
         # Don't go on until the leader is started
         leader.wait_until_running()
 
-        self._tags = leader.tags
+        # Remember enough about the leader to let us launch workers in its
+        # cluster.
+        self._tags = {t['Key']: t['Value'] for t in tags}
         self._leaderPrivateIP = leader.private_ip_address
         self._subnetID = leader.subnet_id
-
+        self._leaderSecurityGroupNames = set()
+        self._leaderSecurityGroupIDs = set([sg.id for sg in sgs] + awsEc2ExtraSecurityGroupIds)
+        self._leaderProfileArn = profileArn
+        
         leaderNode = Node(publicIP=leader.public_ip_address, privateIP=leader.private_ip_address,
                           name=leader.id, launchTime=leader.launch_time, nodeType=leaderNodeType,
                           preemptable=False, tags=leader.tags)
@@ -350,7 +357,10 @@ class AWSProvisioner(AbstractProvisioner):
         if isinstance(userData, text_type):
             # Spot-market provisioning requires bytes for user data.
             userData = userData.encode('utf-8')
-        sgs = [sg for sg in self._ctx.ec2.get_all_security_groups() if sg.name in self._leaderSecurityGroupNames]
+        # Depending on if we enumerated them on the leader or locally, we might
+        # know the required security groups by name, ID, or both.
+        sgs = [sg for sg in self._ctx.ec2.get_all_security_groups() if (sg.name in self._leaderSecurityGroupNames or
+                                                                        sg.id in self._leaderSecurityGroupIDs)]
         kwargs = {'key_name': self._keyName,
                   'security_group_ids': [sg.id for sg in sgs],
                   'instance_type': instanceType.name,
