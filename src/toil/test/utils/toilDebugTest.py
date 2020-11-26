@@ -11,13 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-import unittest
+import logging
 import os
 import shutil
-import logging
-
 import subprocess
+import unittest
+
 from toil.test import ToilTest, slow, travis_test
 from toil.utils.toilDebugFile import recursiveGlob
 

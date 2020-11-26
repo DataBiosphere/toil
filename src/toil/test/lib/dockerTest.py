@@ -12,21 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import os
 import signal
 import time
-import os
-import sys
 import uuid
-import docker
 from threading import Thread
-from docker.errors import ContainerError
 
+import docker
+from docker.errors import ContainerError
 from toil.job import Job
 from toil.leader import FailedJobsException
-from toil.test import ToilTest, slow, needs_docker
-from toil.lib.docker import apiDockerCall, containerIsRunning, dockerKill
-from toil.lib.docker import FORGO, STOP, RM
-
+from toil.lib.docker import (FORGO, RM, STOP, apiDockerCall,
+                             containerIsRunning, dockerKill)
+from toil.test import ToilTest, needs_docker, slow
 
 logger = logging.getLogger(__name__)
 
@@ -258,8 +256,7 @@ class DockerTest(ToilTest):
         A = Job.wrapJobFn(_testDockerPipeChainFn)
         rv = Job.Runner.startToil(A, options)
         logger.info('Container pipeline result: %s', repr(rv))
-        if sys.version_info >= (3, 0):
-            rv = rv.decode('utf-8')
+        rv = rv.decode('utf-8')
         assert rv.strip() == '2'
 
     def testDockerPipeChainErrorDetection(self, disableCaching=True):
@@ -269,15 +266,14 @@ class DockerTest(ToilTest):
         silently missed.  This tests to make sure that the piping API for
         dockerCall() throws an exception if non-last commands in the chain fail.
         """
-        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir,
-                                                            'jobstore'))
+        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, 'jobstore'))
         options.logLevel = self.dockerTestLogLevel
         options.workDir = self.tempDir
         options.clean = 'always'
         options.caching = disableCaching
         A = Job.wrapJobFn(_testDockerPipeChainErrorFn)
         rv = Job.Runner.startToil(A, options)
-        assert rv == True
+        assert rv is True
 
     def testNonCachingDockerChain(self):
         self.testDockerPipeChain(disableCaching=False)
@@ -365,7 +361,7 @@ def _testDockerPipeChainFn(job):
     """Return the result of a simple pipe chain.  Should be 2."""
     parameters = [['printf', 'x\n y\n'], ['wc', '-l']]
     return apiDockerCall(job,
-                         image='ubuntu:latest',
+                         image='quay.io/ucsc_cgl/ubuntu:20.04',
                          parameters=parameters,
                          privileged=True)
 
@@ -406,7 +402,7 @@ def _testDockerLogsFn(job,
         file.write(bash_script)
 
     out = apiDockerCall(job,
-                        image='ubuntu:latest',
+                        image='quay.io/ucsc_cgl/ubuntu:20.04',
                         working_dir=working_dir,
                         parameters=[script_file],
                         volumes={working_dir: {'bind': working_dir, 'mode': 'rw'}},

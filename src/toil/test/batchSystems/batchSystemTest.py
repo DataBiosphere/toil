@@ -12,54 +12,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
-from builtins import map
-from builtins import str
-from builtins import range
-from builtins import object
-from past.utils import old_div
+import fcntl
+import itertools
+import logging
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from abc import ABCMeta, abstractmethod
 from fractions import Fraction
 from inspect import getsource
-import logging
-import os
-import fcntl
-import itertools
-import tempfile
 from textwrap import dedent
-import time
-import sys
-import subprocess
 from unittest import skipIf
 
-from toil.common import Config
+from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
+                                                   InsufficientSystemResources)
 # Don't import any batch systems here that depend on extras
 # in order to import properly. Import them later, in tests 
 # protected by annotations.
 from toil.batchSystems.mesos.test import MesosTestSupport
-from toil.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
+from toil.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
-from toil.batchSystems.abstractBatchSystem import (InsufficientSystemResources,
-                                                   BatchSystemSupport)
+from toil.common import Config
 from toil.job import Job, JobDescription
 from toil.lib.threading import cpu_count
-from toil.test import (ToilTest,
-                       needs_aws_s3,
-                       needs_lsf,
-                       needs_kubernetes,
-                       needs_fetchable_appliance,
-                       needs_mesos,
-                       needs_parasol,
-                       needs_gridengine,
-                       needs_slurm,
-                       needs_torque,
-                       needs_htcondor,
-                       slow,
-                       tempFileContaining,
-                       travis_test)
-from future.utils import with_metaclass
+from toil.test import (ToilTest, needs_aws_s3, needs_fetchable_appliance,
+                       needs_gridengine, needs_htcondor, needs_kubernetes,
+                       needs_lsf, needs_mesos, needs_parasol, needs_slurm,
+                       needs_torque, slow, travis_test)
 
 log = logging.getLogger(__name__)
 
@@ -80,7 +62,7 @@ class hidden(object):
     http://stackoverflow.com/questions/1323455/python-unit-test-with-base-and-sub-class#answer-25695512
     """
 
-    class AbstractBatchSystemTest(with_metaclass(ABCMeta, ToilTest)):
+    class AbstractBatchSystemTest(ToilTest, metaclass=ABCMeta):
         """
         A base test case with generic tests that every batch system should pass.
 
@@ -293,7 +275,7 @@ class hidden(object):
                 time.sleep(1)
             return runningIDs
 
-    class AbstractBatchSystemJobTest(with_metaclass(ABCMeta, ToilTest)):
+    class AbstractBatchSystemJobTest(ToilTest, metaclass=ABCMeta):
         """
         An abstract base class for batch system tests that use a full Toil workflow rather
         than using the batch system directly.
@@ -350,7 +332,7 @@ class hidden(object):
                                                 cores=coresPerJob, memory='1M', disk='1Mi'))
                 Job.Runner.startToil(root, options)
                 _, maxValue = getCounters(counterPath)
-                self.assertEqual(maxValue, old_div(self.cpuCount, coresPerJob))
+                self.assertEqual(maxValue, self.cpuCount // coresPerJob)
 
     class AbstractGridEngineBatchSystemTest(AbstractBatchSystemTest):
         """
@@ -472,7 +454,10 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
         self.counterPath = writeTempFile('0,0')
 
         def script():
-            import os, sys, fcntl, time
+            import fcntl
+            import os
+            import sys
+            import time
             def count(delta):
                 """
                 Adjust the first integer value in a file by the given amount. If the result
@@ -559,7 +544,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                                  'coresPerJob: {coresPerJob}, '
                                  'load: {load}'.format(**locals()))
                         # This is the key assertion:
-                        expectedMaxConcurrentTasks = min(old_div(maxCores, coresPerJob), jobs)
+                        expectedMaxConcurrentTasks = min(maxCores // coresPerJob, jobs)
                         self.assertEqual(maxConcurrentTasks, expectedMaxConcurrentTasks)
                         resetCounters(self.counterPath)
 
@@ -810,9 +795,9 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
         # Physically, we're asking for 50% of disk and 50% of disk + 500bytes in the two jobs. The
         # batchsystem should not allow the 2 child jobs to run concurrently.
         root.addChild(Job.wrapFn(measureConcurrency, counterPath, self.sleepTime, cores=1,
-                                    memory='1M', disk=old_div(availableDisk,2)))
+                                    memory='1M', disk=availableDisk // 2))
         root.addChild(Job.wrapFn(measureConcurrency, counterPath, self.sleepTime, cores=1,
-                                 memory='1M', disk=(old_div(availableDisk, 2)) + 500))
+                                 memory='1M', disk=(availableDisk // 2) + 500))
         Job.Runner.startToil(root, options)
         _, maxValue = getCounters(counterPath)
         self.assertEqual(maxValue, 1)
@@ -848,15 +833,15 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
 
         # Should block off 50% of memory while waiting for it's 3 cores
         firstJobChild = Job.wrapFn(_resourceBlockTestAuxFn, outFile=outFile, sleepTime=0,
-                                   writeVal='fJC', cores=3, memory=int(old_div(availableMemory,2)), disk='1M')
+                                   writeVal='fJC', cores=3, memory=int(availableMemory // 2), disk='1M')
 
         # These two shouldn't be able to run before B because there should be only
         # (50% of memory - 1M) available (firstJobChild should be blocking 50%)
         secondJobChild = Job.wrapFn(_resourceBlockTestAuxFn, outFile=outFile, sleepTime=5,
-                                    writeVal='sJC', cores=2, memory=int(old_div(availableMemory,1.5)),
+                                    writeVal='sJC', cores=2, memory=int(availableMemory // 1.5),
                                     disk='1M')
         secondJobGrandChild = Job.wrapFn(_resourceBlockTestAuxFn, outFile=outFile, sleepTime=5,
-                                         writeVal='sJGC', cores=2, memory=int(old_div(availableMemory,1.5)),
+                                         writeVal='sJGC', cores=2, memory=int(availableMemory // 1.5),
                                          disk='1M')
 
         root.addChild(blocker)

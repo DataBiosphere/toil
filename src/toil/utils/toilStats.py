@@ -16,20 +16,14 @@
 Reports statistical data about a given Toil workflow.
 """
 
-from __future__ import absolute_import, print_function
-from __future__ import division
-from builtins import str
-from builtins import range
-from past.utils import old_div
-from builtins import object
-from functools import partial
-import logging
 import json
-from toil.lib.bioio import getBasicOptionParser
-from toil.lib.bioio import parseBasicOptions
-from toil.common import Toil, jobStoreLocatorHelp, Config
-from toil.version import version
+import logging
+from functools import partial
+
+from toil.common import Config, Toil, jobStoreLocatorHelp
+from toil.lib.bioio import getBasicOptionParser, parseBasicOptions
 from toil.lib.expando import Expando
+from toil.version import version
 
 logger = logging.getLogger( __name__ )
 
@@ -142,7 +136,7 @@ def prettyMemory(k, field=None, isBytes=False):
     if k < 1024:
         return padStr("%gK" % k, field)
     if k < (1024 * 1024):
-        return padStr("%.1fM" % (old_div(k, 1024.0)), field)
+        return padStr("%.1fM" % (k / 1024.0), field)
     if k < (1024 * 1024 * 1024):
         return padStr("%.1fG" % (k / 1024.0 / 1024.0), field)
     if k < (1024 * 1024 * 1024 * 1024):
@@ -158,20 +152,20 @@ def prettyTime(t, field=None):
     if t < 120:
         return padStr("%ds" % t, field)
     if t < 120 * 60:
-        m = floor(old_div(t, 60.))
+        m = floor(t / 60.)
         s = t % 60
         return padStr("%dm%ds" % (m, s), field)
     if t < 25 * 60 * 60:
         h = floor(t / 60. / 60.)
-        m = floor(old_div((t - (h * 60. * 60.)), 60.))
+        m = floor((t - (h * 60. * 60.)) / 60.)
         s = t % 60
         return padStr("%dh%gm%ds" % (h, m, s), field)
     if t < 7 * 24 * 60 * 60:
         d = floor(t / 24. / 60. / 60.)
         h = floor((t - (d * 24. * 60. * 60.)) / 60. / 60.)
-        m = floor(old_div((t
+        m = floor((t
                    - (d * 24. * 60. * 60.)
-                   - (h * 60. * 60.)), 60.))
+                   - (h * 60. * 60.)) / 60.)
         s = t % 60
         dPlural = pluralDict[d > 1]
         return padStr("%dday%s%dh%dm%ds" % (d, dPlural, h, m, s), field)
@@ -181,10 +175,10 @@ def prettyTime(t, field=None):
                  - (w * 7. * 24. * 60. * 60.)
                  - (d * 24. * 60. * 60.))
                 / 60. / 60.)
-    m = floor(old_div((t
+    m = floor((t
                  - (w * 7. * 24. * 60. * 60.)
                  - (d * 24. * 60. * 60.)
-                 - (h * 60. * 60.)), 60.))
+                 - (h * 60. * 60.)) / 60.)
     s = t % 60
     wPlural = pluralDict[w > 1]
     dPlural = pluralDict[d > 1]
@@ -477,23 +471,23 @@ def buildElement(element, items, itemName):
     element[itemName]=Expando(
         total_number=float(len(items)),
         total_time=float(sum(itemTimes)),
-        median_time=float(itemTimes[old_div(len(itemTimes),2)]),
-        average_time=float(old_div(sum(itemTimes),len(itemTimes))),
+        median_time=float(itemTimes[len(itemTimes) // 2]),
+        average_time=float(sum(itemTimes) / len(itemTimes)),
         min_time=float(min(itemTimes)),
         max_time=float(max(itemTimes)),
         total_clock=float(sum(itemClocks)),
-        median_clock=float(itemClocks[old_div(len(itemClocks),2)]),
-        average_clock=float(old_div(sum(itemClocks),len(itemClocks))),
+        median_clock=float(itemClocks[len(itemClocks) // 2]),
+        average_clock=float(sum(itemClocks) / len(itemClocks)),
         min_clock=float(min(itemClocks)),
         max_clock=float(max(itemClocks)),
         total_wait=float(sum(itemWaits)),
-        median_wait=float(itemWaits[old_div(len(itemWaits),2)]),
-        average_wait=float(old_div(sum(itemWaits),len(itemWaits))),
+        median_wait=float(itemWaits[len(itemWaits) // 2]),
+        average_wait=float(sum(itemWaits) / len(itemWaits)),
         min_wait=float(min(itemWaits)),
         max_wait=float(max(itemWaits)),
         total_memory=float(sum(itemMemory)),
-        median_memory=float(itemMemory[old_div(len(itemMemory),2)]),
-        average_memory=float(old_div(sum(itemMemory),len(itemMemory))),
+        median_memory=float(itemMemory[len(itemMemory) // 2]),
+        average_memory=float(sum(itemMemory) / len(itemMemory)),
         min_memory=float(min(itemMemory)),
         max_memory=float(max(itemMemory)),
         name=itemName
@@ -506,8 +500,8 @@ def createSummary(element, containingItems, containingItemName, getFn):
     itemCounts.sort()
     if len(itemCounts) == 0:
         itemCounts.append(0)
-    element["median_number_per_%s" % containingItemName] = itemCounts[old_div(len(itemCounts), 2)]
-    element["average_number_per_%s" % containingItemName] = old_div(float(sum(itemCounts)), len(itemCounts))
+    element["median_number_per_%s" % containingItemName] = itemCounts[len(itemCounts) // 2]
+    element["average_number_per_%s" % containingItemName] = float(sum(itemCounts) / len(itemCounts))
     element["min_number_per_%s" % containingItemName] = min(itemCounts)
     element["max_number_per_%s" % containingItemName] = max(itemCounts)
 

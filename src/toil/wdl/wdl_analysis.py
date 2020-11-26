@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
-import os
 import logging
+import os
 from collections import OrderedDict
 
 import toil.wdl.wdl_parser as wdl_parser
@@ -655,7 +655,6 @@ class AnalyzeWDL:
                 raise NotImplementedError
 
         elif isinstance(typeAST, wdl_parser.Ast):
-
             if typeAST.name == 'Type':
                 subtype = typeAST.attr('subtype')
                 optional = False

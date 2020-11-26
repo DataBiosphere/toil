@@ -1,7 +1,9 @@
-import subprocess
 import os
+import subprocess
+
 from toil.common import Toil
 from toil.job import Job
+
 
 class discoverFiles(Job):
     """Views files at a specified path using ls."""

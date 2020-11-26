@@ -11,25 +11,24 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from abc import abstractmethod, ABCMeta
-from contextlib import contextmanager
-from threading import Semaphore, Event
-from future.utils import with_metaclass
-import dill
 import logging
 import os
 import tempfile
+from abc import ABC, abstractmethod
+from contextlib import contextmanager
+from threading import Event, Semaphore
 from typing import Union
 
-from toil.lib.objects import abstractclassmethod
-from toil.lib.misc import WriteWatchingStream
-from toil.common import cacheDirName
+import dill
 
+from toil.common import cacheDirName
 from toil.fileStores import FileID
+from toil.lib.misc import WriteWatchingStream
+from toil.lib.objects import abstractclassmethod
 
 logger = logging.getLogger(__name__)
 
-class AbstractFileStore(with_metaclass(ABCMeta, object)):
+class AbstractFileStore(ABC):
     """
     Interface used to allow user code run by Toil to read and write files.
     

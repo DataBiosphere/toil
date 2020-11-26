@@ -18,5 +18,7 @@ collect_ignore = []
 
 try:
     import cwltool
+
+    print(cwltool.__file__)  # prevent this import from being removed
 except ImportError:
     collect_ignore.append("cwltoil.py")

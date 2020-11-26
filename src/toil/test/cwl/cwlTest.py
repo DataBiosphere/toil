@@ -13,27 +13,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
+import logging
 import os
+import re
+import shutil
+import subprocess
 import sys
 import unittest
-import re
-import logging
-import shutil
-import zipfile
-import pytest
 import uuid
-import psutil
-import subprocess
-from urllib.request import urlretrieve
+import zipfile
 from io import StringIO
+from urllib.request import urlretrieve
+
+import psutil
+import pytest
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
 from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
                        needs_mesos, needs_parasol, needs_gridengine, needs_slurm,
-                       needs_torque)
-
+                       needs_torque, needs_aws_s3)
 
 log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 3600
@@ -136,6 +136,7 @@ class CWLv10Test(ToilTest):
                   input_location,
                   self._expected_download_output(self.outDir))
 
+    @needs_aws_s3
     def test_s3_as_secondary_file(self):
         from toil.cwl import cwltoil
         st = StringIO()
@@ -159,6 +160,7 @@ class CWLv10Test(ToilTest):
     def test_run_revsort_debug_worker(self):
         self.revsort('revsort.cwl', self._debug_worker_tester)
 
+    @needs_aws_s3
     def test_run_s3(self):
         self.download('download_s3.json', self._tester)
 
@@ -380,9 +382,7 @@ class CWLv11Test(ToilTest):
         run_conformance_tests(workDir=self.cwlSpec,
                               yml=self.test_yaml,
                               caching=caching,
-                              batchSystem=batchSystem,
-                              # TODO: we do not currently pass test: 236
-                              selected_tests='1-235,237-253')
+                              batchSystem=batchSystem)
 
 @needs_cwl
 class CWLv12Test(ToilTest):
@@ -414,9 +414,9 @@ class CWLv12Test(ToilTest):
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance(self, batchSystem=None, caching=False):
-        # TODO: we do not currently pass tests: 237 (offset from other versions), 307, 309, 310, 311, 330, 331, 332
+        # TODO: we do not currently pass tests: 307, 332
         run_conformance_tests(workDir=self.cwlSpec,
                               yml=self.test_yaml,
                               caching=caching,
                               batchSystem=batchSystem,
-                              selected_tests='1-236,238-306,308,312-329,333-336')
+                              selected_tests='1-306,308-331,333-336')

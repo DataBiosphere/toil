@@ -24,33 +24,30 @@ Docker
 import base64
 import datetime
 import getpass
-import kubernetes
 import logging
 import os
 import pickle
-import pytz
 import string
 import subprocess
 import sys
 import tempfile
 import time
 import uuid
-import urllib3
 
+import kubernetes
+import pytz
+import urllib3
 from kubernetes.client.rest import ApiException
 
 from toil import applianceSelf
-from toil.batchSystems.abstractBatchSystem import (BatchSystemCleanupSupport,
-                                                   BatchJobExitReason,
-                                                   EXIT_STATUS_UNAVAILABLE_VALUE,
-                                                   UpdatedBatchJobInfo)
+from toil.batchSystems.abstractBatchSystem import (
+    EXIT_STATUS_UNAVAILABLE_VALUE, BatchJobExitReason,
+    BatchSystemCleanupSupport, UpdatedBatchJobInfo)
 from toil.common import Toil
-from toil.lib.bioio import configureRootLogger
-from toil.lib.bioio import setLogLevel
+from toil.lib.bioio import configureRootLogger, setLogLevel
 from toil.lib.humanize import human2bytes
+from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
-
-from toil.lib.retry import retry, ErrorCondition
 
 logger = logging.getLogger(__name__)
 retryable_kubernetes_errors = [urllib3.exceptions.MaxRetryError,
@@ -715,13 +712,13 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     runtime = slow_down((termination.completion_time - termination.start_time).total_seconds())
                     result = UpdatedBatchJobInfo(jobID=jobID, exitStatus=exitCode, wallTime=runtime, exitReason=exitReason)
 
-                    if (ExiReason == BatchJobExitReason.FAILED) or (jobObject.status.finished == totalPods):
+                    if (exitReason == BatchJobExitReason.FAILED) or (jobObject.status.finished == totalPods):
                         # Cleanup if job is all finished or there was a pod that failed
                         self._try_kubernetes(self._api('batch').delete_namespaced_job, 
                                             jobObject.metadata.name,
                                             self.namespace,
                                             propagation_policy='Foreground')
-                        self._waitForJobDeath(jobOjbect.metadata.name)
+                        self._waitForJobDeath(jobObject.metadata.name)
                         return result
                     continue
                 else:

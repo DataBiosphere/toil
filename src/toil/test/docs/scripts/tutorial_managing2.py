@@ -1,7 +1,8 @@
+import os
+
 from toil.common import Toil
 from toil.job import Job
-import os
-import sys
+
 
 def globalFileStoreJobFn(job):
     job.log("The following example exercises all the methods provided"
@@ -21,12 +22,7 @@ def globalFileStoreJobFn(job):
     # Write another file using a stream; fileID2 is the
     # key for this second file.
     with job.fileStore.writeGlobalFileStream(cleanup=True) as (fH, fileID2):
-        if sys.version_info >= (3, 0):
-            # if python 3
-            fH.write(b"Out brief candle")
-        else:
-            # if python 2
-            fH.write("Out brief candle")
+        fH.write(b"Out brief candle")
 
     # Now read the first file; scratchFile2 is a local copy of the file that is read-only by default.
     scratchFile2 = job.fileStore.readGlobalFile(fileID)
