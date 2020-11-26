@@ -18,6 +18,7 @@ import configparser
 import logging
 import os.path
 import yaml
+import tempfile
 import textwrap
 import urllib.request
 
@@ -25,6 +26,7 @@ from typing import Dict
 
 import subprocess
 from toil import applianceSelf, customDockerInitCmd, customInitCmd
+from toil.provisioners.node import Node
 
 a_short_time = 5
 logger = logging.getLogger(__name__)
@@ -145,25 +147,30 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError
         
-    def _setLeaderWorkerAuthentication(self):
+    def _setLeaderWorkerAuthentication(self, leader: Node = None):
         """
         Configure authentication between the leader and the workers.
         
-        Assumes that we are running on the leader. Configures the backing
-        cluster scheduler so that the leader and workers will be able to
-        communicate securely. Authentication may be one-way or mutual.
+        Assumes that we are running on the leader, unless a Node is given, in
+        which case credentials will be pulled from or created there.
+        
+        Configures the backing cluster scheduler so that the leader and workers
+        will be able to communicate securely. Authentication may be one-way or
+        mutual.
         
         Until this is called, new nodes may not be able to communicate with the
         leader. Afterward, the provisioner will include the necessary
         authentication information when provisioning nodes.
+        
+        :param leader: Node to pull credentials from, if not the current machine.
         """
         
         if self.clusterType == 'mesos':
             # We're using a Mesos cluster, so set up SSH from leader to workers.
-            self._leaderWorkerAuthentication = self._setSSH()
+            self._leaderWorkerAuthentication = self._setSSH(leader=leader)
         elif self.clusterType == 'kubernetes':
             # We're using a Kubernetes cluster.
-            self._leaderWorkerAuthentication = self._getKubernetesJoiningInfo()
+            self._leaderWorkerAuthentication = self._getKubernetesJoiningInfo(leader=leader)
             
     def _clearLeaderWorkerAuthentication(self):
         """
@@ -174,32 +181,58 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         
         self._leaderWorkerAuthentication = None
             
-    def _setSSH(self) -> str:
+    def _setSSH(self, leader: Node = None) -> str:
         """
-        Generate a key pair, save it in /root/.ssh/id_rsa.pub, and return the public key.
-        The file /root/.sshSuccess is used to prevent this operation from running twice.
+        Generate a key pair, save it in /root/.ssh/id_rsa.pub on the leader,
+        and return the public key. The file /root/.sshSuccess is used to
+        prevent this operation from running twice.
+        
+        Also starts the ssh agent on the local node, if operating on the local
+        node.
+        
+        :param leader: Node to operate on, if not the current machine.
+        
         :return Public key.
         """
-        if not os.path.exists('/root/.sshSuccess'):
-            subprocess.check_call(['ssh-keygen', '-f', '/root/.ssh/id_rsa', '-t', 'rsa', '-N', ''])
-            with open('/root/.sshSuccess', 'w') as f:
-                f.write('written here because of restrictive permissions on .ssh dir')
-        os.chmod('/root/.ssh', 0o700)
-        subprocess.check_call(['bash', '-c', 'eval $(ssh-agent) && ssh-add -k'])
-        with open('/root/.ssh/id_rsa.pub') as f:
-            leaderPublicKey = f.read()
-        leaderPublicKey = leaderPublicKey.split(' ')[1]  # take 'body' of key
+        
+        # To work locally or remotely we need to do all our setup work as one
+        # big bash -c
+        command = ['bash', '-c', ('set -e; if [ ! -e /root/.sshSuccess ] ; '
+                    'then ssh-keygen -f /root/.ssh/id_rsa -t rsa -N ""; '
+                    'touch /root/.sshSuccess; fi; chmod 700 /root/.ssh;')]
+        
+        if leader is None:
+            # Run locally
+            subprocess.check_call(command)
+            
+            # Grab from local file
+            with open('/root/.ssh/id_rsa.pub') as f:
+                leaderPublicKey = f.read()
+        else:
+            # Run remotely
+            leader.coreSSH(*command, appliance=True)
+            
+            # Grab from remote file
+            with tempfile.TemporaryDirectory() as tmpdir:
+                localFile = os.path.join(tmpdir, 'id_rsa.pub')
+                leader.extractFile('/root/.ssh/id_rsa.pub', localFile, 'toil_leader')
+                
+                with open(localFile) as f:
+                    leaderPublicKey = f.read()
+        
         # confirm it really is an RSA public key
         assert leaderPublicKey.startswith('AAAAB3NzaC1yc2E'), leaderPublicKey
         return leaderPublicKey
         
-    def _getKubernetesJoiningInfo(self) -> Dict[str, str]:
+    def _getKubernetesJoiningInfo(self, leader: Node = None) -> Dict[str, str]:
         """
         Get the Kubernetes joining info created when Kubernetes was set up on
-        this node, which is the leader.
+        this node, which is the leader, or on a different specified Node.
         
         Returns a dict of JOIN_TOKEN, JOIN_CERT_HASH, and JOIN_ENDPOINT, which
         can be inserted into our Kubernetes worker setup script and config.
+        
+        :param leader: Node to operate on, if not the current machine.
         """
         
         # Make a parser for the config
@@ -207,10 +240,20 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         # Leave case alone
         config.optionxform = str
         
-        # This info is always supposed to be set up before the Toil appliance
-        # starts, and mounted in at the same path as on the host. So we just go
-        # read it.
-        config.read_file(open('/etc/kubernetes/worker.ini', 'r'))
+        if leader is None:
+            # This info is always supposed to be set up before the Toil appliance
+            # starts, and mounted in at the same path as on the host. So we just go
+            # read it.
+            with open('/etc/kubernetes/worker.ini') as f:
+                config.read_file(f)
+        else:
+            # Grab from remote file
+            with tempfile.TemporaryDirectory() as tmpdir:
+                localFile = os.path.join(tmpdir, 'worker.ini')
+                leader.extractFile('/etc/kubernetes/worker.ini', localFile, 'toil_leader')
+                
+                with open(localFile) as f:
+                    config.read_file(f)
 
         # Grab everything out of the default section where our setup script put
         # it.
@@ -252,6 +295,9 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     def launchCluster(self, *args, **kwargs):
         """
         Initialize a cluster and create a leader node.
+        
+        Implementations must call _setLeaderWorkerAuthentication() with the
+        leader so that workers can be launched.
 
         :param leaderNodeType: The leader instance.
         :param leaderStorage: The amount of disk to allocate to the leader in gigabytes.

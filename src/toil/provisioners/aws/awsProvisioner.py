@@ -243,6 +243,9 @@ class AWSProvisioner(AbstractProvisioner):
                           name=leader.id, launchTime=leader.launch_time, nodeType=leaderNodeType,
                           preemptable=False, tags=leader.tags)
         leaderNode.waitForNode('toil_leader')
+        
+        # Download credentials
+        self._setLeaderWorkerAuthentication(leaderNode)
 
     def getNodeShape(self, nodeType, preemptable=False):
         instanceType = E2Instances[nodeType]

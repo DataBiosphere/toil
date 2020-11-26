@@ -172,8 +172,11 @@ class GCEProvisioner(AbstractProvisioner):
         leaderNode.injectFile(self._credentialsPath, GoogleJobStore.nodeServiceAccountJson, 'toil_leader')
         if self._botoPath:
             leaderNode.injectFile(self._botoPath, self.NODE_BOTO_PATH, 'toil_leader')
+        # Download credentials
+        self._setLeaderWorkerAuthentication(leaderNode)
+        
         logger.debug('Launched leader')
-
+        
     def getNodeShape(self, nodeType, preemptable=False):
         # TODO: read this value only once
         sizes = self._gceDriver.list_sizes(location=self._zone)
