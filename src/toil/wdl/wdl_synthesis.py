@@ -854,7 +854,7 @@ class SynthesizeWDL:
         if 'raw_commandline' in self.tasks_dictionary[job]:
             for cmd in self.tasks_dictionary[job]['raw_commandline']:
                 if not cmd.startswith("r'''"):
-                    cmd = 'str({i} if not isinstance({i}, tuple) else process_and_read_file({i}, tempDir, fileStore)).strip("{nl}")'.format(i=cmd, nl=r"\n")
+                    cmd = 'str({i} if not isinstance({i}, WDLFile) else process_and_read_file({i}, tempDir, fileStore)).strip("{nl}")'.format(i=cmd, nl=r"\n")
                 fn_section = fn_section + heredoc_wdl('''
                         try:
                             # Intended to deal with "optional" inputs that may not exist
@@ -920,17 +920,17 @@ class SynthesizeWDL:
                 output_type = output[1]
                 output_value = output[2]
 
-                if output_type == 'File':
+                if self.needs_file_import(output_type):
                     nonglob_dict = {
                         "output_name": output_name,
+                        "output_type": self.write_declaration_type(output_type),
                         "expression": output_value,
-                        "out_dir": self.output_directory,
-                        "output_type": output_type}
+                        "out_dir": self.output_directory}
 
                     nonglob_template = heredoc_wdl('''
-                        # output-type: {output_type}
-                        output_filename = {expression}
-                        {output_name} = process_outfile(output_filename, fileStore, tempDir, '{out_dir}')
+                        {output_name} = {output_type}.create(
+                            {expression}, output=True)
+                        {output_name} = process_outfile({output_name}, fileStore, tempDir, '{out_dir}')
                     ''', nonglob_dict, indent='        ')[1:]
                     fn_section += nonglob_template
                     return_values.append(output_name)

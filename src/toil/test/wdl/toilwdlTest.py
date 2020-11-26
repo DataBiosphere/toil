@@ -141,12 +141,13 @@ class ToilWdlIntegrationTest(ToilTest):
         which returns a file's size based on the path."""
         from toil.common import Toil
         from toil.job import Job
+        from toil.wdl.wdl_types import WDLFile
         options = Job.Runner.getDefaultOptions('./toilWorkflowRun')
         options.clean = 'always'
         with Toil(options) as toil:
-            small = process_infile((os.path.abspath('src/toil/test/wdl/testfiles/vocab.wdl'), None), toil)
+            small = process_infile(WDLFile(file_path=os.path.abspath('src/toil/test/wdl/testfiles/vocab.wdl')), toil)
             small_file = size(small)
-            large = process_infile((self.encode_data, None), toil)
+            large = process_infile(WDLFile(file_path=self.encode_data), toil)
             larger_file = size(large)
             larger_file_in_mb = size(large, 'mb')
             assert small_file >= 1800, small_file

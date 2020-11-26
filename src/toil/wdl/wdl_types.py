@@ -1,6 +1,8 @@
 from abc import ABC
 from typing import Any
 
+from toil.job import Promise
+
 
 class WDLRuntimeError(RuntimeError):
     pass
@@ -31,7 +33,7 @@ class WDLType:
         """
         return None
 
-    def create(self, value: Any) -> Any:
+    def create(self, value: Any, output: bool = False) -> Any:
         """
         Calls at runtime. Returns an instance of the current type. An error may
         be raised if the value is not in the correct format.
@@ -51,7 +53,6 @@ class WDLType:
         raise NotImplementedError
 
     def __eq__(self, other):
-        # TODO: remove after refactor
         return self.name.__eq__(other)
 
     def __str__(self):
@@ -63,13 +64,13 @@ class WDLType:
 
 class WDLCompoundType(WDLType, ABC):
     """
-    Represent a WDL compound type.
+    Represents a WDL compound type.
     """
     pass
 
 
 class WDLStringType(WDLType):
-    """ Represent a WDL String primitive type."""
+    """ Represents a WDL String primitive type."""
 
     @property
     def name(self) -> str:
@@ -84,7 +85,7 @@ class WDLStringType(WDLType):
 
 
 class WDLIntType(WDLType):
-    """ Represent a WDL Int primitive type."""
+    """ Represents a WDL Int primitive type."""
 
     @property
     def name(self) -> str:
@@ -95,7 +96,7 @@ class WDLIntType(WDLType):
 
 
 class WDLFloatType(WDLType):
-    """ Represent a WDL Float primitive type."""
+    """ Represents a WDL Float primitive type."""
 
     @property
     def name(self) -> str:
@@ -106,7 +107,7 @@ class WDLFloatType(WDLType):
 
 
 class WDLBooleanType(WDLType):
-    """ Represent a WDL Boolean primitive type."""
+    """ Represents a WDL Boolean primitive type."""
 
     @property
     def name(self) -> str:
@@ -117,7 +118,7 @@ class WDLBooleanType(WDLType):
 
 
 class WDLFileType(WDLType):
-    """ Represent a WDL File primitive type."""
+    """ Represents a WDL File primitive type."""
 
     @property
     def name(self) -> str:
@@ -128,25 +129,18 @@ class WDLFileType(WDLType):
         return ''
 
     def _create(self, value: Any) -> Any:
-        if isinstance(value, tuple):
+        if isinstance(value, (WDLFile, Promise)):
             return value
 
-        # Unprocessed and unread files are represented as a tuple: (file_path, preserved_file_name).
-        # Unprocessed files (not imported to the fileStore) are tuples in the form of (file_path, None).
-        # Once the file is read (via readGlobalFile), it will change to the absolute path as a string.
-        return value, None
+        return WDLFile(file_path=value, imported=False)
 
 
 class WDLArrayType(WDLCompoundType):
-    """ Represent a WDL Array compound type."""
+    """ Represents a WDL Array compound type."""
 
     def __init__(self, element: WDLType, optional: bool = False):
         super().__init__(optional)
         self.element = element
-
-    def __eq__(self, other):
-        # TODO: remove after refactor
-        return self.element.__eq__(other)
 
     @property
     def name(self) -> str:
@@ -160,7 +154,7 @@ class WDLArrayType(WDLCompoundType):
 
 
 class WDLPairType(WDLCompoundType):
-    """ Represent a WDL Pair compound type."""
+    """ Represents a WDL Pair compound type."""
 
     def __init__(self, left: WDLType, right: WDLType, optional: bool = False):
         super().__init__(optional)
@@ -190,7 +184,7 @@ class WDLPairType(WDLCompoundType):
 
 
 class WDLMapType(WDLCompoundType):
-    """ Represent a WDL Map compound type."""
+    """ Represents a WDL Map compound type."""
 
     def __init__(self, key: WDLType, value: WDLType, optional: bool = False):
         super().__init__(optional)
@@ -208,9 +202,25 @@ class WDLMapType(WDLCompoundType):
         return {self.key.create(k): self.value.create(v) for k, v in value.items()}
 
 
+class WDLFile:
+    """
+    Represents a WDL File.
+    """
+    def __init__(self, file_path, file_name=None, imported=False):
+        """
+        :param file_path: Path to file.
+        :param file_name: Optional. Preserved file name.
+        :param imported: If True, this file has been imported to the fileStore
+                              via fileStore.importFile().
+        """
+        self.file_path = file_path
+        self.file_name = file_name
+        self.imported = imported
+
+
 class WDLPair:
     """
-    Represent a WDL Pair literal defined at
+    Represents a WDL Pair literal defined at
     https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#pair-literals
     """
 
