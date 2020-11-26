@@ -21,7 +21,7 @@ import traceback
 from threading import Event, Thread
 
 from toil.job import Job
-from toil.lib.bioio import get_temp_file
+from toil.lib.bioio import getTempFile
 from toil.test import ToilTest, slow
 
 logger = logging.getLogger( __name__ )
@@ -58,7 +58,7 @@ class JobServiceTest(ToilTest):
         Tests the creation of a Job.Service with random failures of the worker.
         """
         for test in range(2):
-            outFile = get_temp_file(rootDir=self._createTempDir()) # Temporary file
+            outFile = getTempFile(rootDir=self._createTempDir()) # Temporary file
             messageInt = random.randint(1, sys.maxsize)
             try:
                 # Wire up the services/jobs
@@ -78,7 +78,7 @@ class JobServiceTest(ToilTest):
         """
         Creates a job with more services than maxServices, checks that deadlock is detected.
         """
-        outFile = get_temp_file(rootDir=self._createTempDir())
+        outFile = getTempFile(rootDir=self._createTempDir())
         try:
             def makeWorkflow():
                 job = Job()
@@ -119,7 +119,7 @@ class JobServiceTest(ToilTest):
         """
         for test in range(1):
             # Temporary file
-            outFile = get_temp_file(rootDir=self._createTempDir())
+            outFile = getTempFile(rootDir=self._createTempDir())
             messages = [ random.randint(1, sys.maxsize) for i in range(3) ]
             try:
                 # Wire up the services/jobs
@@ -142,7 +142,7 @@ class JobServiceTest(ToilTest):
         """
         for test in range(1):
             # Temporary file
-            outFiles = [get_temp_file(rootDir=self._createTempDir()) for j in range(2)]
+            outFiles = [getTempFile(rootDir=self._createTempDir()) for j in range(2)]
             messageBundles = [ [ random.randint(1, sys.maxsize) for i in range(3) ] for j in range(2) ]
             try:
                 # Wire up the services/jobs

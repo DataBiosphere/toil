@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import subprocess
 import os
 import random
 import resource
@@ -85,28 +86,6 @@ def configure_root_logger():
     root_logger.setLevel(DEFAULT_LOGLEVEL)
 
 
-def log_to_file(log_file, log_rotation):
-    if log_file and log_file not in __loggingFiles:
-        logger.debug(f"Logging to file '{log_file}'.")
-        __loggingFiles.append(log_file)
-        if log_rotation:
-            handler = logging.handlers.RotatingFileHandler(log_file, maxBytes=1000000, backupCount=1)
-        else:
-            handler = logging.FileHandler(log_file)
-        root_logger.addHandler(handler)
-
-
-def set_logging_from_options(options):
-    configure_root_logger()
-    options.logLevel = options.logLevel or logging.getLevelName(root_logger.getEffectiveLevel())
-    set_log_level(options.logLevel)
-    logger.debug(f"Root logger is at level '{logging.getLevelName(root_logger.getEffectiveLevel())}', "
-                 f"'toil' logger at level '{logging.getLevelName(toil_logger.getEffectiveLevel())}'.")
-
-    # start logging to log file if specified
-    log_to_file(options.logFile, options.logRotating)
-
-
 def get_total_cpu_time_and_memory_usage():
     """
     Gives the total cpu time of itself and all its children, and the maximum RSS memory usage of
@@ -156,7 +135,31 @@ def parser_with_common_options(provisioner_options=False):
     return parser
 
 
-def get_temp_file(suffix="", rootDir=None):
+def log_to_file(log_file, log_rotation):
+    if log_file and log_file not in __loggingFiles:
+        logger.debug(f"Logging to file '{log_file}'.")
+        __loggingFiles.append(log_file)
+        if log_rotation:
+            handler = logging.handlers.RotatingFileHandler(log_file, maxBytes=1000000, backupCount=1)
+        else:
+            handler = logging.FileHandler(log_file)
+        root_logger.addHandler(handler)
+
+
+# used by cactus
+def setLoggingFromOptions(options):
+    configure_root_logger()
+    options.logLevel = options.logLevel or logging.getLevelName(root_logger.getEffectiveLevel())
+    set_log_level(options.logLevel)
+    logger.debug(f"Root logger is at level '{logging.getLevelName(root_logger.getEffectiveLevel())}', "
+                 f"'toil' logger at level '{logging.getLevelName(toil_logger.getEffectiveLevel())}'.")
+
+    # start logging to log file if specified
+    log_to_file(options.logFile, options.logRotating)
+
+
+# used by cactus
+def getTempFile(suffix="", rootDir=None):
     """Returns a string representing a temporary file, that must be manually deleted."""
     if rootDir is None:
         handle, tmp_file = tempfile.mkstemp(suffix)
@@ -168,3 +171,23 @@ def get_temp_file(suffix="", rootDir=None):
         open(tmp_file, 'w').close()
         os.chmod(tmp_file, 0o777)  # Ensure everyone has access to the file.
         return tmp_file
+
+
+# used by cactus
+# only used in utilsTest.py otherwise and could be removed or replaced
+def system(command):
+    """
+    A convenience wrapper around subprocess.check_call that logs the command before passing it
+    on. The command can be either a string or a sequence of strings. If it is a string shell=True
+    will be passed to subprocess.check_call.
+    :type command: str | sequence[string]
+    """
+    logger.debug('Running: %r', command)
+    subprocess.check_call(command, shell=isinstance(command, str), bufsize=-1)
+
+
+# used by cactus
+def getLogLevelString(logger=None):
+    if logger is None:
+        logger = root_logger
+    return logging.getLevelName(logger.getEffectiveLevel())

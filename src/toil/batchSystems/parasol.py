@@ -26,7 +26,7 @@ from threading import Thread
 from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
 from toil.common import Toil
-from toil.lib.bioio import get_temp_file
+from toil.lib.bioio import getTempFile
 from toil.lib.iterables import concat
 
 logger = logging.getLogger(__name__)
@@ -140,7 +140,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         try:
             results = self.resultsFiles[(truncatedMemory, jobDesc.cores)]
         except KeyError:
-            results = get_temp_file(rootDir=self.parasolResultsDir)
+            results = getTempFile(rootDir=self.parasolResultsDir)
             self.resultsFiles[(truncatedMemory, jobDesc.cores)] = results
 
         # Prefix the command with environment overrides, optionally looking them up from the
