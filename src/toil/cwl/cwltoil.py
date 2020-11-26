@@ -1730,8 +1730,11 @@ def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> list
     # remove secondary files still containing interpolated strings
     for sf in unfiltered_secondary_files["secondaryFiles"]:
         sf_bn = sf.get("basename", "")
+        sf_loc = sf.get("location", "")
         if ("$(" not in sf_bn) and ("${" not in sf_bn):
-            intermediate_secondary_files.append(sf)
+            if ("$(" not in sf_loc) and ("${" not in sf_loc):
+                print(sf_loc)
+                intermediate_secondary_files.append(sf)
     # remove secondary files that are not present in the filestore
     # i.e. 'file://' only gets converted to 'toilfs:' upon a successful import
     for sf in intermediate_secondary_files:
@@ -2184,9 +2187,6 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             # (producing 2+ deep listings instead of only 1)
             builder.loadListing = "no_listing"
 
-            if 'inputWithSecondary' in initialized_job_order:
-                initialized_job_order = {'inputWithSecondary': {'class': 'File', 'location': 'file:///home/quokka/git/236-cwl/cwl-v1.2/tests/secondaryfiles/secondary_file_test.txt', 'size': 0, 'basename': 'secondary_file_test.txt', 'nameroot': 'secondary_file_test', 'nameext': '.txt'}}
-
             builder.bind_input(
                 tool.inputs_record_schema,
                 initialized_job_order,
@@ -2230,6 +2230,13 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                                 job_params[
                                     "secondaryFiles"
                                 ] = remove_unprocessed_secondary_files(job_params)
+
+            for job_name in initialized_job_order:
+                if isinstance(initialized_job_order[job_name], dict):
+                    if "secondaryFiles" in initialized_job_order[job_name]:
+                        initialized_job_order[job_name][
+                            "secondaryFiles"
+                        ] = remove_unprocessed_secondary_files(initialized_job_order[job_name])
 
             try:
                 wf1, _ = makeJob(
