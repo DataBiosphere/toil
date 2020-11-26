@@ -21,7 +21,7 @@ from toil.common import Config, Toil, jobStoreLocatorHelp
 from toil.job import JobException, ServiceJobDescription
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobStoreException)
-from toil.lib.bioio import parser_with_common_options, set_logging_from_options
+from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
 from toil.statsAndLogging import StatsAndLogging
 
 logger = logging.getLogger(__name__)
@@ -318,7 +318,7 @@ def main():
                         default=False)
 
     options = parser.parse_args()
-    set_logging_from_options(options)
+    setLoggingFromOptions(options)
 
     if len(sys.argv) == 1:
         parser.print_help()

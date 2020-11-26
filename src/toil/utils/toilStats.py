@@ -17,7 +17,7 @@ import logging
 from functools import partial
 
 from toil.common import Config, Toil, jobStoreLocatorHelp
-from toil.lib.bioio import parser_with_common_options, set_logging_from_options
+from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
 from toil.lib.expando import Expando
 
 logger = logging.getLogger(__name__)
@@ -532,7 +532,7 @@ def main():
             raise ValueError(f'{c} not in {category_choices}!')
     options.categories = [x.strip().lower() for x in options.categories.split(",")]
 
-    set_logging_from_options(options)
+    setLoggingFromOptions(options)
     config = Config()
     config.setOptions(options)
     jobStore = Toil.resumeJobStore(config.jobStore)

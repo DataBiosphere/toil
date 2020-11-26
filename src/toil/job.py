@@ -36,7 +36,7 @@ from toil.common import Config, Toil, addOptions, safeUnpickleFromStream
 from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
 from toil.lib.bioio import (get_total_cpu_time, get_total_cpu_time_and_memory_usage,
-                            set_logging_from_options)
+                            setLoggingFromOptions)
 from toil.lib.expando import Expando
 from toil.lib.humanize import human2bytes
 from toil.resource import ModuleDescriptor
@@ -1726,7 +1726,7 @@ class Job:
             :return: The return value of the root job's run function.
             :rtype: Any
             """
-            set_logging_from_options(options)
+            setLoggingFromOptions(options)
             with Toil(options) as toil:
                 if not options.restart:
                     return toil.start(job)

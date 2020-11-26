@@ -16,7 +16,7 @@ import logging
 
 from toil.common import Toil, jobStoreLocatorHelp
 from toil.jobStores.abstractJobStore import NoSuchJobStoreException
-from toil.lib.bioio import parser_with_common_options, set_logging_from_options
+from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def main():
                         help=f"The location of the job store to delete.\n{jobStoreLocatorHelp}")
 
     options = parser.parse_args()
-    set_logging_from_options(options)
+    setLoggingFromOptions(options)
     try:
         jobstore = Toil.getJobStore(options.jobStore)
         jobstore.resume()

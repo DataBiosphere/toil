@@ -174,7 +174,7 @@ def getTempFile(suffix="", rootDir=None):
 
 
 # used by cactus
-# only used in utilsTest.py otherwise and could be removed or replaced
+# only used in utilsTest.py, otherwise and could be removed or replaced
 def system(command):
     """
     A convenience wrapper around subprocess.check_call that logs the command before passing it
@@ -187,6 +187,7 @@ def system(command):
 
 
 # used by cactus
+# not used
 def getLogLevelString(logger=None):
     if logger is None:
         logger = root_logger
