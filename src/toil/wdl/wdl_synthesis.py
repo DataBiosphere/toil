@@ -93,6 +93,7 @@ class SynthesizeWDL:
                     from toil.wdl.wdl_types import WDLArrayType
                     from toil.wdl.wdl_types import WDLPairType
                     from toil.wdl.wdl_types import WDLMapType
+                    from toil.wdl.wdl_types import WDLFile
                     from toil.wdl.wdl_types import WDLPair
                     from toil.wdl.wdl_functions import generate_docker_bashscript_file
                     from toil.wdl.wdl_functions import generate_stdout_file
