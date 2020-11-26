@@ -153,7 +153,8 @@ class DeferredFunctionManager(object):
         logger.debug("Deleting %s" % self.stateFileName)
 
         # Hide the state from other processes
-        os.unlink(self.stateFileName)
+        if os.path.exists(self.stateFileName):
+            os.unlink(self.stateFileName)
 
         # Unlock it
         fcntl.lockf(self.stateFD, fcntl.LOCK_UN)
