@@ -22,6 +22,7 @@ import logging
 import random
 import shutil
 import os
+import stat
 import re
 import tempfile
 import stat
@@ -295,12 +296,13 @@ class FileJobStore(AbstractJobStore):
     def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False):
         if issubclass(otherCls, FileJobStore):
             if sharedFileName is None:
+                executable = os.stat(url.path).st_mode & stat.S_IXUSR != 0
                 absPath = self._getUniqueFilePath(url.path)  # use this to get a valid path to write to in job store
                 with self.optionalHardCopy(hardlink):
                     self._copyOrLink(url, absPath)
                 # TODO: os.stat(absPath).st_size consistently gives values lower than
                 # getDirSizeRecursively()
-                return FileID(self._getFileIdFromPath(absPath), os.stat(absPath).st_size)
+                return FileID(self._getFileIdFromPath(absPath), os.stat(absPath).st_size, executable)
             else:
                 self._requireValidSharedFileName(sharedFileName)
                 path = self._getSharedFilePath(sharedFileName)
@@ -319,6 +321,8 @@ class FileJobStore(AbstractJobStore):
                 self._move_and_linkback(srcPath, destPath)
             else:
                 atomic_copy(srcPath, destPath)
+            if jobStoreFileID.executable:
+                os.chmod(destPath, os.stat(destPath).st_mode | stat.S_IXUSR)
         else:
             super(FileJobStore, self)._defaultExportFile(otherCls, jobStoreFileID, url)
 
