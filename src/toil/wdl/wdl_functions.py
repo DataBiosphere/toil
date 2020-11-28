@@ -217,18 +217,18 @@ def process_single_infile(wdl_file: WDLFile, fileStore: AbstractFileStore) -> WD
 
 def process_infile(f: Any, fileStore: AbstractFileStore):
     """
-    Takes any data and imports the WDLFile into the jobstore.
+    Takes any input and imports the WDLFile into the fileStore.
 
-    This returns the input data importing all WDLFile instances to the fileStore.  Toil
+    This returns the input importing all WDLFile instances to the fileStore.  Toil
     does not preserve a file's original name upon import and so the WDLFile also keeps
     track of this.
 
-    :param f: Any data. A file needs to be a WDLFile instance to be imported.
+    :param f: A primitive, WDLFile, or a container. A file needs to be a WDLFile instance
+              to be imported.
     :param fileStore: The fileStore object that is called to load files into the fileStore.
-    :return: input data.
     """
     if isinstance(f, WDLFile):
-        # check if this has already been processed
+        # check if this has already been imported into the fileStore
         if f.imported:
             return f
         else:
@@ -338,7 +338,7 @@ def abspath_file(f: Any, cwd: str):
         # TODO: handle this at compile time, not here
         return ''
     if isinstance(f, WDLFile):
-        # check if this has already been processed
+        # check if this has already been imported into the fileStore
         if f.imported:
             return f
         path = f.file_path
