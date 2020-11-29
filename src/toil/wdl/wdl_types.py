@@ -130,6 +130,7 @@ class WDLFileType(WDLType):
 
     def _create(self, value: Any) -> Any:
         if isinstance(value, (WDLFile, Promise)):
+            # return the original file if it's passed from task to task.
             return value
 
         return WDLFile(file_path=value, imported=False)
