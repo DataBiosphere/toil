@@ -497,11 +497,6 @@ def resolve_dict_w_promises(
 
     result = {}
     for k, v in dict_w_promises.items():
-        # if 'secondaryFiles' in v:
-        #     secondary_files = []
-        #     for secondary_file in v['secondaryFiles']:
-        #         secondary_files.append({sk: sv.resolve() for sk, sv in secondary_file})
-        #     first_pass_results[k] = secondary_files
         if isinstance(v, StepValueFrom):
             if file_store:
                 v.eval_prep(first_pass_results, file_store)
@@ -1195,7 +1190,6 @@ class CWLJob(Job):
         runtime_context = self.runtime_context.copy()
         runtime_context.basedir = os.getcwd()
         runtime_context.outdir = outdir
-        self.builder.outdir = outdir
         runtime_context.tmp_outdir_prefix = tmp_outdir_prefix
         runtime_context.tmpdir_prefix = file_store.getLocalTempDir()
         runtime_context.make_fs_access = functools.partial(
@@ -1206,7 +1200,11 @@ class CWLJob(Job):
         runtime_context.toil_get_file = functools.partial(  # type: ignore
             toil_get_file, file_store, index, existing
         )
-        runtime_context.builder = self.builder
+
+        # TODO: Pass in a real builder here so that cwltool's builder is built with Toil's fs_access?
+        #  see: https://github.com/common-workflow-language/cwltool/blob/78fe9d41ee5a44f8725dfbd7028e4a5ee42949cf/cwltool/builder.py#L474
+        # self.builder.outdir = outdir
+        # runtime_context.builder = self.builder
 
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
@@ -1706,7 +1704,15 @@ def visitSteps(
             visitSteps(step.embedded_tool, op)
 
 
-def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> list:
+def rm_unprocessed_secondary_files(job_params: Any) -> None:
+    if isinstance(job_params, list):
+        for j in job_params:
+            rm_unprocessed_secondary_files(j)
+    if isinstance(job_params, dict) and "secondaryFiles" in job_params:
+        job_params["secondaryFiles"] = filtered_secondary_files(job_params)
+
+
+def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
     """
     Remove unprocessed secondary files.
 
@@ -2174,32 +2180,11 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             runtime_context.basedir = options.basedir
             runtime_context.move_outputs = "move"
 
-            # for job_name in initialized_job_order:
-            #     if isinstance(initialized_job_order[job_name], list):
-            #         for job_params in cast(List, initialized_job_order[job_name]):
-            #             if isinstance(job_params, dict):
-            #                 if "secondaryFiles" in job_params:
-            #                     job_params[
-            #                         "secondaryFiles"
-            #                     ] = remove_unprocessed_secondary_files(job_params)
-            #
-            # for job_name in initialized_job_order:
-            #     if isinstance(initialized_job_order[job_name], dict):
-            #         if "secondaryFiles" in initialized_job_order[job_name]:
-            #             initialized_job_order[job_name][
-            #                 "secondaryFiles"
-            #             ] = remove_unprocessed_secondary_files(initialized_job_order[job_name])
-
-
             # We instantiate an early builder object here to populate indirect
             # secondaryFile references using cwltool's library because we need
             # to resolve them before toil imports them into the filestore.
             # A second builder will be built in the job's run method when toil
             # actually starts the cwl job.
-
-            if 'inputWithSecondary' in initialized_job_order:
-                del initialized_job_order['inputWithSecondary']['secondaryFiles']
-
             builder = tool._init_job(initialized_job_order, runtime_context)
 
             # make sure this doesn't add listing items; if shallow_listing is
@@ -2242,21 +2227,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
             visitSteps(tool, import_files)
 
-            for job_name in initialized_job_order:
-                if isinstance(initialized_job_order[job_name], list):
-                    for job_params in cast(List, initialized_job_order[job_name]):
-                        if isinstance(job_params, dict):
-                            if "secondaryFiles" in job_params:
-                                job_params[
-                                    "secondaryFiles"
-                                ] = remove_unprocessed_secondary_files(job_params)
-
-            for job_name in initialized_job_order:
-                if isinstance(initialized_job_order[job_name], dict):
-                    if "secondaryFiles" in initialized_job_order[job_name]:
-                        initialized_job_order[job_name][
-                            "secondaryFiles"
-                        ] = remove_unprocessed_secondary_files(initialized_job_order[job_name])
+            for job_name, job_params in initialized_job_order.items():
+                rm_unprocessed_secondary_files(job_params)
 
             try:
                 wf1, _ = makeJob(
@@ -2330,4 +2302,3 @@ def find_default_container(
         return args.default_container
     if args.beta_use_biocontainers:
         return get_container_from_software_requirements(True, builder)
-    return None
