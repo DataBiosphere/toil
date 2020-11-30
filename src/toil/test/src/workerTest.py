@@ -11,13 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import pickle
 
 from toil.common import Config
-from toil.job import JobDescription, CheckpointJobDescription
+from toil.job import CheckpointJobDescription, JobDescription
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.test import ToilTest, travis_test
 from toil.worker import nextChainable
+
 
 class WorkerTests(ToilTest):
     """Test miscellaneous units of the worker."""

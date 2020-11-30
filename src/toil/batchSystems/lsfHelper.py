@@ -22,15 +22,13 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from __future__ import print_function
-from __future__ import division
-from past.utils import old_div
-from packaging import version
+import fnmatch
 import math
 import os
-import subprocess
-import fnmatch
 import re
+import subprocess
+
+from packaging import version
 
 LSB_PARAMS_FILENAME = "lsb.params"
 LSF_CONF_FILENAME = "lsf.conf"
@@ -230,7 +228,7 @@ def convert_mb(kb, unit):
              "TB": 2}
     assert unit in UNITS, ("%s not a valid unit, valid units are %s."
                            % (unit, list(UNITS.keys())))
-    return int(old_div(float(kb), float(math.pow(1024, UNITS[unit]))))
+    return int(float(kb) // float(math.pow(1024, UNITS[unit])))
 
 
 

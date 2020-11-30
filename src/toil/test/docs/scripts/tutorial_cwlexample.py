@@ -1,7 +1,8 @@
-from toil.job import Job
-from toil.common import Toil
-import subprocess
 import os
+import subprocess
+
+from toil.common import Toil
+from toil.job import Job
 
 
 def initialize_jobs(job):

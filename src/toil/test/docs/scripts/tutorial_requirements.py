@@ -1,6 +1,8 @@
+import os
+
 from toil.common import Toil
 from toil.job import Job, PromisedRequirement
-import os
+
 
 def parentJob(job):
     downloadJob = Job.wrapJobFn(stageFn, "File://"+os.path.realpath(__file__), cores=0.1, memory='32M', disk='1M')

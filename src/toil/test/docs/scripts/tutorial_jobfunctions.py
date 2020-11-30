@@ -1,6 +1,7 @@
 from toil.common import Toil
 from toil.job import Job
 
+
 def helloWorld(job, message):
     job.log("Hello world, I have a message: {}".format(message))
 

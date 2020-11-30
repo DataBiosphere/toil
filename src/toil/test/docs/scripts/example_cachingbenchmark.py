@@ -17,17 +17,17 @@ Invoke like:
 """
 
 import argparse
-import sys
-import os
-import socket
-import time
-import random
 import collections
+import os
+import random
+import socket
+import sys
+import time
 
 from toil.common import Toil
 from toil.job import Job
-from toil.leader import FailedJobsException
 from toil.realtimeLogger import RealtimeLogger
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)

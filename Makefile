@@ -202,8 +202,9 @@ check_build_reqs:
 		|| ( printf "$(red)Build requirements are missing. Run 'make prepare' to install them.$(normal)\n" ; false )
 
 prepare: check_venv
-	pip install mock==1.0.1 pytest==4.3.1 pytest-cov==2.6.1 stubserver==1.0.1 pytest-timeout==1.3.3 \
-	setuptools==45.3.0 'sphinx>=2.4.4,<3' cwltest mypy
+	pip install mock==1.0.1 pytest==4.3.1 pytest-cov==2.6.1 stubserver==1.0.1 \
+		pytest-timeout==1.3.3 setuptools==45.3.0 'sphinx>=2.4.4,<3' \
+		cwltest mypy flake8 flake8-bugbear black isort pydocstyle
 
 check_venv:
 	@python -c 'import sys, os; sys.exit( int( 0 if "VIRTUAL_ENV" in os.environ else 1 ) )' \
@@ -224,6 +225,27 @@ check_cpickle:
 	# fail if cPickle.dump(s) called without HIGHEST_PROTOCOL
 	# https://github.com/BD2KGenomics/toil/issues/1503
 	! find src -iname '*.py' | xargs grep 'cPickle.dump' | grep --invert-match HIGHEST_PROTOCOL
+
+PYSOURCES=$(shell find src -name '*.py') setup.py version_template.py
+
+# Linting and code style related targets
+## sorting imports using isort: https://github.com/timothycrosley/isort
+sort_imports: $(PYSOURCES)
+	isort $^
+
+remove_unused_imports: $(PYSOURCES)
+	autoflake --in-place --remove-all-unused-imports $^
+
+format: $(wildcard src/toil/cwl/*.py)
+	black $^
+
+mypy:
+	mypy --ignore-missing-imports --no-strict-optional \
+		--warn-redundant-casts --warn-unused-ignores \
+		$(CURDIR)/src/toil/cwl/cwltoil.py
+
+flake8: $(PYSOURCES)
+	flake8 --ignore=E501,W293,W291,E265,E302,E722,E126,E303,E261,E201,E202,W503,W504,W391,E128,E301,E127,E502,E129,E262,E111,E117,E306,E203,E231,E226,E741,E122,E251,E305,E701,E222,E225,E241,E305,E123,E121,E703,E704,E125,E402 $^
 
 .PHONY: help \
 		prepare \

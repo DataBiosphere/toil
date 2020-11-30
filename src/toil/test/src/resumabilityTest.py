@@ -12,17 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from builtins import range
 import os
 
-# Python 3 compatibility imports
-from six.moves import xrange
-
 from toil.job import Job
-from toil.test import ToilTest, slow
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.leader import FailedJobsException
+from toil.test import ToilTest, slow
+
 
 @slow
 class ResumabilityTest(ToilTest):

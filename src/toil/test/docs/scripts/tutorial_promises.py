@@ -1,6 +1,7 @@
 from toil.common import Toil
 from toil.job import Job
 
+
 def fn(job, i):
     job.log("i is: %s" % i, level=100)
     return i+1

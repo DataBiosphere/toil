@@ -14,7 +14,6 @@
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
 
-from __future__ import absolute_import
 import re
 
 # Same as Python's fnmatch with the following differences:
@@ -85,7 +84,8 @@ def fnmatch( name, pat ):
 
 def filter( names, pat ):
     """Return the subset of the list NAMES that match PAT"""
-    import os, posixpath
+    import os
+    import posixpath
 
     result = [ ]
     pat = os.path.normcase( pat )

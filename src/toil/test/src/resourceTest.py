@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
 
 import importlib
 import os
+import subprocess
 import sys
 from inspect import getsource
 from io import BytesIO
@@ -24,7 +24,6 @@ from zipfile import ZipFile
 
 from mock import MagicMock, patch
 
-import subprocess
 from toil import inVirtualEnv
 from toil.resource import ModuleDescriptor, Resource, ResourceException
 from toil.test import ToilTest, tempFileContaining, travis_test
@@ -201,8 +200,9 @@ class ResourceTest(ToilTest):
 
         def script():
             import argparse
-            from toil.job import Job
+
             from toil.common import Toil
+            from toil.job import Job
 
             def fn():
                 pass

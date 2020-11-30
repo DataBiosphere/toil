@@ -11,22 +11,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from builtins import range
-import os
-import time
-import threading
 import json
-import requests
-import uuid
 import logging
+import os
+import threading
+import time
+import uuid
 
-from libcloud.compute.types import Provider
-from libcloud.compute.providers import get_driver
+import requests
 from libcloud.compute.drivers.gce import GCEFailedNode
+from libcloud.compute.providers import get_driver
+from libcloud.compute.types import Provider
 
-from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
-from toil.provisioners import NoSuchClusterException
 from toil.jobStores.googleJobStore import GoogleJobStore
+from toil.provisioners import NoSuchClusterException
+from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.node import Node
 
 logger = logging.getLogger(__name__)
