@@ -731,8 +731,6 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         # cwltool.stdfsaccess.StdFsAccess, (among other things) so this should
         # not error on missing files.
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43  # noqa B950
-        if path.endswith('.accessory'):
-            print('ok')
         if path.startswith("toilfs:"):
             logger.debug("Need to download file to get a local absolute path.")
             destination = self.file_store.readGlobalFile(FileID.unpack(path[7:]))
@@ -1197,6 +1195,7 @@ class CWLJob(Job):
         runtime_context = self.runtime_context.copy()
         runtime_context.basedir = os.getcwd()
         runtime_context.outdir = outdir
+        self.builder.outdir = outdir
         runtime_context.tmp_outdir_prefix = tmp_outdir_prefix
         runtime_context.tmpdir_prefix = file_store.getLocalTempDir()
         runtime_context.make_fs_access = functools.partial(
@@ -1207,6 +1206,7 @@ class CWLJob(Job):
         runtime_context.toil_get_file = functools.partial(  # type: ignore
             toil_get_file, file_store, index, existing
         )
+        runtime_context.builder = self.builder
 
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
@@ -1733,7 +1733,6 @@ def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> list
         sf_loc = sf.get("location", "")
         if ("$(" not in sf_bn) and ("${" not in sf_bn):
             if ("$(" not in sf_loc) and ("${" not in sf_loc):
-                print(sf_loc)
                 intermediate_secondary_files.append(sf)
     # remove secondary files that are not present in the filestore
     # i.e. 'file://' only gets converted to 'toilfs:' upon a successful import
@@ -2175,11 +2174,32 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             runtime_context.basedir = options.basedir
             runtime_context.move_outputs = "move"
 
+            # for job_name in initialized_job_order:
+            #     if isinstance(initialized_job_order[job_name], list):
+            #         for job_params in cast(List, initialized_job_order[job_name]):
+            #             if isinstance(job_params, dict):
+            #                 if "secondaryFiles" in job_params:
+            #                     job_params[
+            #                         "secondaryFiles"
+            #                     ] = remove_unprocessed_secondary_files(job_params)
+            #
+            # for job_name in initialized_job_order:
+            #     if isinstance(initialized_job_order[job_name], dict):
+            #         if "secondaryFiles" in initialized_job_order[job_name]:
+            #             initialized_job_order[job_name][
+            #                 "secondaryFiles"
+            #             ] = remove_unprocessed_secondary_files(initialized_job_order[job_name])
+
+
             # We instantiate an early builder object here to populate indirect
             # secondaryFile references using cwltool's library because we need
             # to resolve them before toil imports them into the filestore.
             # A second builder will be built in the job's run method when toil
             # actually starts the cwl job.
+
+            if 'inputWithSecondary' in initialized_job_order:
+                del initialized_job_order['inputWithSecondary']['secondaryFiles']
+
             builder = tool._init_job(initialized_job_order, runtime_context)
 
             # make sure this doesn't add listing items; if shallow_listing is
