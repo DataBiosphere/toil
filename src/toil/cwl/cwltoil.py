@@ -1744,7 +1744,8 @@ def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
     # i.e. 'file://' only gets converted to 'toilfs:' upon a successful import
     for sf in intermediate_secondary_files:
         sf_loc = sf.get("location", "")
-        if sf_loc.startswith("toilfs:"):
+        # directories aren't imported, so don't worry about them
+        if sf_loc.startswith("toilfs:") or sf.get('class', '') == 'Directory':
             final_secondary_files.append(sf)
     return final_secondary_files
 
