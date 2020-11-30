@@ -1745,7 +1745,7 @@ def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
     for sf in intermediate_secondary_files:
         sf_loc = sf.get("location", "")
         # directories aren't imported, so don't worry about them
-        if sf_loc.startswith("toilfs:") or sf.get('class', '') == 'Directory':
+        if sf_loc.startswith("toilfs:") or sf.get("class", "") == "Directory":
             final_secondary_files.append(sf)
     return final_secondary_files
 
@@ -2148,6 +2148,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             fill_in_defaults(tool.tool["inputs"], initialized_job_order, fs_access)
 
             for inp in tool.tool["inputs"]:
+
                 def set_secondary(fileobj):
                     if isinstance(fileobj, Mapping) and fileobj.get("class") == "File":
                         if "secondaryFiles" not in fileobj:
