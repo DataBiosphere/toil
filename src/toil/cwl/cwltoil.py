@@ -2046,8 +2046,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     outdir = os.path.abspath(options.outdir)
     tmp_outdir_prefix = os.path.abspath(options.tmp_outdir_prefix)
 
-    fileindex = {}  # type: ignore
-    existing = {}  # type: ignore
+    fileindex = dict()  # type: ignore
+    existing = dict()  # type: ignore
     conf_file = getattr(options, "beta_dependency_resolvers_configuration", None)
     use_conda_dependencies = getattr(options, "beta_conda_dependencies", None)
     job_script_provider = None
