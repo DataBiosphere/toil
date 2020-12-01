@@ -25,7 +25,6 @@ from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
 from toil.common import Toil, cacheDirName
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.lib.objects import abstractclassmethod
 from toil.lib.threading import LastProcessStandingArena
 
 try:
@@ -71,9 +70,8 @@ class AbstractBatchSystem(ABC):
     An abstract (as far as Python currently allows) base class to represent the interface the batch
     system must provide to Toil.
     """
-
-    # noinspection PyMethodParameters
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def supportsAutoDeployment(cls):
         """
         Whether this batch system supports auto-deployment of the user script itself. If it does,
@@ -86,8 +84,8 @@ class AbstractBatchSystem(ABC):
         """
         raise NotImplementedError()
 
-    # noinspection PyMethodParameters
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def supportsWorkerCleanup(cls):
         """
         Indicates whether this batch system invokes

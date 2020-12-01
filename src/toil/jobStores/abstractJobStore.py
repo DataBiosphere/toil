@@ -31,7 +31,6 @@ from toil.job import (CheckpointJobDescription, JobException,
                       ServiceJobDescription)
 from toil.lib.memoize import memoize
 from toil.lib.misc import WriteWatchingStream
-from toil.lib.objects import abstractclassmethod
 from toil.lib.retry import ErrorCondition, retry
 
 logger = logging.getLogger(__name__)
@@ -377,7 +376,8 @@ class AbstractJobStore(ABC):
         with self.readFileStream(jobStoreFileID) as readable:
             otherCls._writeToUrl(readable, url)
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def getSize(cls, url):
         """
         Get the size in bytes of the file at the given URL, or None if it cannot be obtained.
@@ -387,7 +387,8 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def _readFromUrl(cls, url, writable):
         """
         Reads the contents of the object at the specified location and writes it to the given
@@ -404,7 +405,8 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError()
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def _writeToUrl(cls, readable, url):
         """
         Reads the contents of the given readable stream and writes it to the object at the
@@ -419,7 +421,8 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError()
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def _supportsUrl(cls, url, export=False):
         """
         Returns True if the job store supports the URL's scheme.

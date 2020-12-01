@@ -1,14 +1,9 @@
-# coding=utf-8
 import json
 import logging
 import os
 import re
 
-try:
-    from urllib.parse import unquote
-except ImportError:
-    from urllib import unquote
-
+from urllib.parse import unquote
 from boto import iam, sns, sqs, vpc
 from boto.exception import BotoServerError
 from boto.s3.connection import S3Connection

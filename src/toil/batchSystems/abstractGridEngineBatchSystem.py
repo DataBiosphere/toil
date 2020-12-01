@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 import logging
 import time
 from abc import ABCMeta, abstractmethod
@@ -24,7 +22,6 @@ from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
                                                    BatchSystemCleanupSupport,
                                                    UpdatedBatchJobInfo)
 from toil.lib.misc import CalledProcessErrorStderr
-from toil.lib.objects import abstractclassmethod
 
 logger = logging.getLogger(__name__)
 
@@ -421,7 +418,8 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         time.sleep(sleeptime)
         return sleeptime
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def obtainSystemConstants(cls):
         """
         Returns the max. memory and max. CPU for the system

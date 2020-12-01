@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 import logging
 import logging.handlers
 import os
@@ -21,7 +19,6 @@ import resource
 import subprocess
 import tempfile
 from argparse import ArgumentParser
-from xml.dom import minidom  # For making stuff pretty
 
 defaultLogLevel = logging.INFO
 logger = logging.getLogger(__name__)
