@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@
 # limitations under the License.
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
-
 import atexit
 import fcntl
 import logging
@@ -24,7 +23,6 @@ import tempfile
 import threading
 import traceback
 from contextlib import contextmanager
-from threading import BoundedSemaphore
 
 import psutil
 
@@ -32,17 +30,6 @@ from toil.lib.exceptions import raise_
 from toil.lib.misc import robust_rmtree
 
 log = logging.getLogger(__name__)
-
-class BoundedEmptySemaphore( BoundedSemaphore ):
-    """
-    A bounded semaphore that is initially empty.
-    """
-
-    def __init__( self, value=1, verbose=None ):
-        super( BoundedEmptySemaphore, self ).__init__( value, verbose )
-        for i in range( value ):
-            # Empty out the semaphore
-            assert self.acquire( blocking=False )
 
 
 class ExceptionalThread(threading.Thread):
@@ -74,43 +61,24 @@ class ExceptionalThread(threading.Thread):
     AssertionError
 
     """
-
     exc_info = None
 
-    def run( self ):
+    def run(self):
         try:
-            self.tryRun( )
+            self.tryRun()
         except:
-            self.exc_info = sys.exc_info( )
+            self.exc_info = sys.exc_info()
             raise
 
-    def tryRun( self ):
-        super( ExceptionalThread, self ).run( )
+    def tryRun(self):
+        super(ExceptionalThread, self).run()
 
-    def join( self, *args, **kwargs ):
-        super( ExceptionalThread, self ).join( *args, **kwargs )
-        if not self.is_alive( ) and self.exc_info is not None:
+    def join(self, *args, **kwargs):
+        super(ExceptionalThread, self).join(*args, **kwargs)
+        if not self.is_alive() and self.exc_info is not None:
             exc_type, exc_value, traceback = self.exc_info
             self.exc_info = None
             raise_(exc_type, exc_value, traceback)
-
-
-# noinspection PyPep8Naming
-class defaultlocal(threading.local):
-    """
-    Thread local storage with default values for each field in each thread
-
-    >>>
-    >>> l = defaultlocal( foo=42 )
-    >>> def f(): print(l.foo)
-    >>> t = threading.Thread(target=f)
-    >>> t.start() ; t.join()
-    42
-    """
-
-    def __init__( self, **kwargs ):
-        super( defaultlocal, self ).__init__( )
-        self.__dict__.update( kwargs )
 
 
 def cpu_count():
@@ -276,6 +244,7 @@ def get_process_name(workDir):
 
         # TODO: we leave the file open forever. We might need that in order for
         # it to stay locked while we are alive.
+
 
 def process_name_exists(workDir, name):
     """
