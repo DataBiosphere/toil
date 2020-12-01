@@ -2304,3 +2304,4 @@ def find_default_container(
         return args.default_container
     if args.beta_use_biocontainers:
         return get_container_from_software_requirements(True, builder)
+    return None
