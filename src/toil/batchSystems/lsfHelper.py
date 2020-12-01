@@ -65,7 +65,7 @@ def apply_conf_file(fn, conf_filename):
     for env in LSF_CONF_ENV:
         conf_file = get_conf_file(conf_filename, env)
         if conf_file:
-            with open(conf_file) as conf_handle:
+            with open(conf_file, encoding='utf-8') as conf_handle:
                 value = fn(conf_handle)
             if value:
                 return value
