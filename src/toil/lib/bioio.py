@@ -287,14 +287,6 @@ def getRandomAlphaNumericString(length=10):
     """
     return "".join([ random.choice('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') for i in range(0, length) ])
 
-def makePublicDir(dirName):
-    """Makes a given subdirectory if it doesn't already exist, making sure it is public.
-    """
-    if not os.path.exists(dirName):
-        os.mkdir(dirName)
-        os.chmod(dirName, 0o777)
-    return dirName
-
 def getTempFile(suffix="", rootDir=None):
     """Returns a string representing a temporary file, that must be manually deleted
     """
