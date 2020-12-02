@@ -30,7 +30,7 @@ class FileID(str):
     def __new__(cls, fileStoreID, *args):
         return super(FileID, cls).__new__(cls, fileStoreID)
 
-    def __init__(self, fileStoreID, size, executable):
+    def __init__(self, fileStoreID, size, executable=False):
         # Don't pass an argument to parent class's __init__.
         # In Python 3 we can have super(FileID, self) hand us object's __init__ which chokes on any arguments.
         super(FileID, self).__init__()
@@ -41,7 +41,7 @@ class FileID(str):
         """
         Pack the FileID into a string so it can be passed through external code.
         """
-        return '{}:{}'.format(self.size, self)
+        return '{}:{}:{}'.format(self.size, self.executable, self)
 
     @classmethod
     def forPath(cls, fileStoreID, filePath):
@@ -54,10 +54,11 @@ class FileID(str):
         Unpack the result of pack() into a FileID object.
         """
 
-        # Find the separating character (first instance)
-        sepPos = packedFileStoreID.find(':')
+        # Separate each part of fileID
+        vals = packedFileStoreID.split(':')
         # Break up the packed value
-        size = int(packedFileStoreID[:sepPos])
-        value = packedFileStoreID[(sepPos + 1):]
+        size = int(vals[0])
+        executable = bool(vals[1])
+        value = vals[2]
         # Create the FileID
-        return cls(value, size)
+        return cls(value, size, executable)
