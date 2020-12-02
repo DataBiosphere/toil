@@ -1036,9 +1036,6 @@ class CachingFileStore(AbstractFileStore):
         # Create an empty file to get an ID.
         # Make sure to pass along the file basename.
         # TODO: this empty file could leak if we die now...
-        print("TESTING writeGlobalFile CACHING")
-        permissions = os.stat(localFileName).st_mode & stat.S_IXUSR
-        print("permissions BEFORE: {permissions}".format(permissions=permissions))
         fileID = self.jobStore.getEmptyFileStoreID(creatorID, cleanup, os.path.basename(localFileName))
         # Work out who we are
         me = get_process_name(self.workDir)
