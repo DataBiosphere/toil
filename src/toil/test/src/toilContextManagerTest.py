@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
 import os
-from toil.lib.bioio import getTempFile
+
 from toil.common import Toil, ToilContextManagerException
 from toil.job import Job
+from toil.lib.bioio import getTempFile
 from toil.test import ToilTest, slow
 
 

@@ -115,16 +115,20 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     str(slurmJobID)]
 
             stdout = call_command(args)
-            job = dict()
-            for line in stdout:
-                logger.debug("%s output %s", args[0], line)
-                values = line.strip().split()
+            if isinstance(stdout, str):
+                values = stdout.strip().split()
+            elif isinstance(stdout, bytes):
+                values = stdout.decode('utf-8').strip().split()
 
-                # If job information is not available an error is issued:
-                # slurm_load_jobs error: Invalid job id specified
-                # There is no job information, so exit.
-                if len(values) > 0 and values[0] == 'slurm_load_jobs':
-                    return (None, None)
+            # If job information is not available an error is issued:
+            # slurm_load_jobs error: Invalid job id specified
+            # There is no job information, so exit.
+            if len(values) > 0 and values[0] == 'slurm_load_jobs':
+                return (None, None)
+
+            job = dict()
+            for item in values:
+                logger.debug("%s output %s", args[0], line)
 
                 # Output is in the form of many key=value pairs, multiple pairs on each line
                 # and multiple lines in the output. Each pair is pulled out of each line and

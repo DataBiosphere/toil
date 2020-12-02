@@ -1,6 +1,8 @@
-from toil.job import Job
 import argparse
 import os
+
+from toil.job import Job
+
 
 def f0(job):
     if 'FAIL' in os.environ:

@@ -12,19 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
 
-from builtins import str
-import uuid
 import os
 import stat
+import uuid
 
 from toil.common import Toil
+from toil.fileStores import FileID
 from toil.job import Job
 from toil.leader import FailedJobsException
 from toil.test import ToilTest, slow, travis_test
-from toil.fileStores import FileID
-from toil.common import getDirSizeRecursively
 
 
 class ImportExportFileTest(ToilTest):

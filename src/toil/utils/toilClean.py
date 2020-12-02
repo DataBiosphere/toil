@@ -14,13 +14,11 @@
 """
 Delete the job store used by a previous Toil workflow invocation
 """
-from __future__ import absolute_import
 import logging
 
-from toil.lib.bioio import getBasicOptionParser
-from toil.lib.bioio import parseBasicOptions
-from toil.common import Toil, jobStoreLocatorHelp, Config
+from toil.common import Config, Toil, jobStoreLocatorHelp
 from toil.jobStores.abstractJobStore import NoSuchJobStoreException
+from toil.lib.bioio import getBasicOptionParser, parseBasicOptions
 from toil.version import version
 
 logger = logging.getLogger( __name__ )

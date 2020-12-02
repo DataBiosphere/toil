@@ -14,9 +14,9 @@
 """
 Updates Toil's internal list of EC2 instance types.
 """
-from __future__ import absolute_import
 import logging
 import socket
+
 from toil.lib.ec2nodes import updateStaticEC2Instances
 
 logger = logging.getLogger( __name__ )

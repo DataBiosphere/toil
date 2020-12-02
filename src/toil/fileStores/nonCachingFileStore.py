@@ -12,16 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import, print_function
 
-from future import standard_library
-
-standard_library.install_aliases()
-from builtins import map
-from builtins import str
-from collections import defaultdict
-from contextlib import contextmanager
-import dill
 import errno
 import fcntl
 import logging
@@ -29,14 +20,18 @@ import os
 import stat
 import sys
 import uuid
+from collections import defaultdict
+from contextlib import contextmanager
 
+import dill
+
+from toil.common import getDirSizeRecursively, getFileSystemSize
+from toil.fileStores import FileID
+from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.lib.bioio import makePublicDir
+from toil.lib.humanize import bytes2human
 from toil.lib.misc import robust_rmtree
 from toil.lib.threading import get_process_name, process_name_exists
-from toil.lib.humanize import bytes2human
-from toil.common import getDirSizeRecursively, getFileSystemSize
-from toil.lib.bioio import makePublicDir
-from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.fileStores import FileID
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +173,6 @@ class NonCachingFileStore(AbstractFileStore):
         Cleanup function that is run when destroying the class instance.  Nothing to do since there
         are no async write events.
         """
-        pass
 
     @classmethod
     def _removeDeadJobs(cls, nodeInfo, batchSystemShutdown=False):

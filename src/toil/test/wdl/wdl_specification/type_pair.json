@@ -1,0 +1,23 @@
+{
+  "typePairWorkflow.test_pair": {
+    "left": 23,
+    "right": "twenty-three"
+  },
+  "typePairWorkflow.test_pair_pair": {
+    "left": "a",
+    "right": {
+      "left": "a.bam",
+      "right": "a.bai"
+    }
+  },
+  "typePairWorkflow.test_pair_file": {
+    "left": "whale",
+    "right": "src/toil/test/wdl/testfiles/test_string.txt"
+  },
+  "typePairWorkflow.test_array_pair_file": [
+    {
+      "left": "test_A",
+      "right": "src/toil/test/wdl/testfiles/test_boolean.txt"
+    }
+  ]
+}

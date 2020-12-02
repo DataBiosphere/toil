@@ -1,6 +1,7 @@
 from toil.common import Toil
 from toil.job import Job
 
+
 def binaryStringFn(job, depth, message=""):
     if depth > 0:
         job.addChildJobFn(binaryStringFn, depth-1, message + "0")
