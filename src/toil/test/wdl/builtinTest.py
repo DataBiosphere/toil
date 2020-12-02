@@ -8,11 +8,27 @@ from typing import List, Optional
 
 from toil.test import ToilTest
 from toil.version import exactPython
-from toil.wdl.wdl_functions import (WDLPair, ceil, floor, length, read_boolean,
-                                    read_float, read_int, read_json,
-                                    read_lines, read_map, read_string,
-                                    read_tsv, sub, transpose, write_json,
-                                    write_lines, write_map, write_tsv)
+from toil.wdl.wdl_functions import (
+    ceil,
+    floor,
+    length,
+    read_boolean,
+    read_float,
+    read_int,
+    read_json,
+    read_lines,
+    read_map,
+    read_string,
+    read_tsv,
+    sub,
+    transpose,
+    write_json,
+    write_lines,
+    write_map,
+    write_tsv,
+    wdl_zip,
+    WDLPair,
+    WDLRuntimeError)
 
 
 class WdlStandardLibraryFunctionsTest(ToilTest):
@@ -230,6 +246,22 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
         self.assertEqual(3, length(['a', 'b', 'c']))
         self.assertEqual(0, length([]))
 
+    def testFn_Zip(self):
+        """Test the wdl built-in functional equivalent of 'zip()'."""
+        left_array = [1, 2, 3]
+        right_array = ['a', 'b', 'c']
+        zipped = wdl_zip(left_array, right_array)  # [WDLPair(1, 'a'), WDLPair(2, 'b'), WDLPair(3, 'c')]
+
+        self.assertEqual(3, len(zipped))
+
+        for index, pair in enumerate(zipped):
+            self.assertIsInstance(pair, WDLPair)
+            # check left and right values
+            self.assertEqual(left_array[index], pair.left)
+            self.assertEqual(right_array[index], pair.right)
+
+        # input with different size should fail.
+        self.assertRaises(WDLRuntimeError, wdl_zip, [1, 2, 3], ['a', 'b'])
 
 
 class WdlWorkflowsTest(ToilTest):
@@ -426,6 +458,10 @@ class WdlStandardLibraryWorkflowsTest(WdlWorkflowsTest):
         # length() should not work with Map[X, Y].
         self.check_function('length', cases=['as_input_with_map'],
                             expected_exception='WDLRuntimeError')
+
+    def test_zip(self):
+        self.check_function('zip', cases=['as_input'],
+                            expected_result='[{"left":1,"right":"a"},{"left":2,"right":"b"},{"left":3,"right":"c"}]')
 
 
 if __name__ == "__main__":

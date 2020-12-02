@@ -920,3 +920,20 @@ def length(in_array: List[Any]) -> int:
         raise WDLRuntimeError(f'length() requires ${in_array} to be a list!  Not: {type(in_array)}')
 
     return len(in_array)
+
+
+def wdl_zip(left: List[Any], right: List[Any]) -> List[WDLPair]:
+    """
+    Return the dot product of the two arrays. If the arrays have different lengths
+    it is an error.
+
+    WDL syntax: Array[Pair[X,Y]] zip(Array[X], Array[Y])
+    """
+    if not isinstance(left, list) or not isinstance(right, list):
+        raise WDLRuntimeError(f'zip() requires both inputs to be lists!  Not: {type(left)} and {type(right)}')
+
+    if len(left) != len(right):
+        raise WDLRuntimeError('zip() requires that input values have the same size!')
+
+    return list(WDLPair(left=left_val, right=right_val) for left_val, right_val in zip(left, right))
+
