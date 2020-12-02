@@ -189,12 +189,6 @@ def getTotalMemoryUsage():
     """
     return getTotalCpuTimeAndMemoryUsage()[1]
 
-def absSymPath(path):
-    """like os.path.abspath except it doesn't dereference symlinks
-    """
-    curr_path = os.getcwd()
-    return os.path.normpath(os.path.join(curr_path, path))
-
 #########################################################
 #########################################################
 #########################################################
