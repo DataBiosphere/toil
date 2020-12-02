@@ -12,26 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import print_function
-
-from builtins import str
-from builtins import range
-from builtins import object
-import filecmp
-from abc import abstractmethod, ABCMeta
-from struct import pack, unpack
-from uuid import uuid4
-
-from toil.common import Toil
-from toil.job import Job
-from toil.fileStores import FileID
-from toil.fileStores.cachingFileStore import IllegalDeletionCacheError, CacheUnbalancedError, CachingFileStore
-from toil.test import ToilTest, needs_aws_ec2, needs_google, slow, travis_test
-from toil.leader import FailedJobsException
-from toil.jobStores.abstractJobStore import NoSuchFileException
-from toil.realtimeLogger import RealtimeLogger
-
 import collections
 import datetime
 import errno
