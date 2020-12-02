@@ -40,7 +40,7 @@ class FileID(str):
         """
         Pack the FileID into a string so it can be passed through external code.
         """
-        return '{}:{}:{}'.format(self.size, self.executable, self)
+        return '{}:{}:{}'.format(self.size, int(self.executable), self)
 
     @classmethod
     def forPath(cls, fileStoreID, filePath):
