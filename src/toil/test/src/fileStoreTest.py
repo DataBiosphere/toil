@@ -175,7 +175,7 @@ class hidden(object):
             # Add one file for the sake of having something in the job store
             writeFileSize = random.randint(0, 30)
             cls = hidden.AbstractNonCachingFileStoreTest
-            fsId = cls._writeFileToJobStore(job, isLocalFile=True, nonLocalDir=nonLocalDir,
+            fsId, _ = cls._writeFileToJobStore(job, isLocalFile=True, nonLocalDir=nonLocalDir,
                                                fileMB=writeFileSize)
 
             # Fill in the size of the local file we just made
@@ -190,7 +190,7 @@ class hidden(object):
                 if randVal < 0.33:  # Write
                     writeFileSize = random.randint(0, 30)
                     isLocalFile = True if random.random() <= 0.5 else False
-                    fsID = cls._writeFileToJobStore(job, isLocalFile=isLocalFile,
+                    fsID, _ = cls._writeFileToJobStore(job, isLocalFile=isLocalFile,
                                                        nonLocalDir=nonLocalDir,
                                                        fileMB=writeFileSize)
                     writtenFiles[fsID] = writeFileSize
@@ -344,7 +344,7 @@ class hidden(object):
             with open(os.path.join(work_dir, str(uuid4())), 'wb') as testFile:
                 testFile.write(os.urandom(fileMB * 1024 * 1024))
 
-            return job.fileStore.writeGlobalFile(testFile.name)
+            return job.fileStore.writeGlobalFile(testFile.name), testFile
 
     class AbstractNonCachingFileStoreTest(AbstractFileStoreTest, metaclass=ABCMeta):
         """
@@ -506,7 +506,7 @@ class hidden(object):
                                            the job store later(T) or immediately(F) 
             """
             cls = hidden.AbstractNonCachingFileStoreTest
-            fsID = cls._writeFileToJobStore(job, isLocalFile, nonLocalDir, fileMB)
+            fsID, testFile = cls._writeFileToJobStore(job, isLocalFile, nonLocalDir, fileMB)
             actual = os.stat(testFile.name).st_nlink
 
             # If the caching is free, the job store must have hard links to
