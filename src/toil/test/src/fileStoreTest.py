@@ -29,6 +29,7 @@ from uuid import uuid4
 
 import pytest
 
+from toil.common import Toil
 from toil.fileStores import FileID
 from toil.fileStores.cachingFileStore import (CacheUnbalancedError,
                                               IllegalDeletionCacheError)
