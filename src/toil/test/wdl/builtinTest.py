@@ -248,17 +248,17 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
 
     def testFn_Zip(self):
         """Test the wdl built-in functional equivalent of 'zip()'."""
-        xs = [1, 2, 3]
-        ys = ['a', 'b', 'c']
-        zipped = wdl_zip(xs, ys)  # [WDLPair(1, 'a'), WDLPair(2, 'b'), WDLPair(3, 'c')]
+        left_array = [1, 2, 3]
+        right_array = ['a', 'b', 'c']
+        zipped = wdl_zip(left_array, right_array)  # [WDLPair(1, 'a'), WDLPair(2, 'b'), WDLPair(3, 'c')]
 
         self.assertEqual(3, len(zipped))
 
-        for index, val in enumerate(xs):
-            self.assertIsInstance(zipped[index], WDLPair)
+        for index, pair in enumerate(zipped):
+            self.assertIsInstance(pair, WDLPair)
             # check left and right values
-            self.assertEqual(val, zipped[index].left)
-            self.assertEqual(ys[index], zipped[index].right)
+            self.assertEqual(left_array[index], pair.left)
+            self.assertEqual(right_array[index], pair.right)
 
         # input with different size should fail.
         self.assertRaises(WDLRuntimeError, wdl_zip, [1, 2, 3], ['a', 'b'])
