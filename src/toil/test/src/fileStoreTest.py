@@ -505,7 +505,7 @@ class hidden(object):
                                            the job store later(T) or immediately(F) 
             """
             cls = hidden.AbstractNonCachingFileStoreTest
-            fsID, testFile = cls._writeFileToJobStore(job, isLocalFile, nonLocalDir, fileMB)
+            fsID = cls._writeFileToJobStore(job, isLocalFile, nonLocalDir, fileMB)
             actual = os.stat(testFile.name).st_nlink
 
             # If the caching is free, the job store must have hard links to
