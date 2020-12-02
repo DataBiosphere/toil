@@ -102,7 +102,7 @@ class NonCachingFileStore(AbstractFileStore):
 
         self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
         self.localFileMap[fileStoreID].append(localFilePath)
-        if fileStoreID.executable:
+        if getattr(fileStoreID, 'executable', False):
             os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
         self.logAccess(fileStoreID, localFilePath)
         return localFilePath

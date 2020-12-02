@@ -1122,7 +1122,7 @@ class CachingFileStore(AbstractFileStore):
             # We do not want to use the cache
             finalPath = self._readGlobalFileWithoutCache(fileStoreID, localFilePath, mutable, symlink, readerID)
 
-        if fileStoreID.executable:
+        if getattr(fileStoreID, 'executable', False):
             os.chmod(finalPath, os.stat(finalPath).st_mode | stat.S_IXUSR)
 
         # Record access in case the job crashes and we have to log it

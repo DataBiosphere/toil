@@ -315,7 +315,7 @@ class FileJobStore(AbstractJobStore):
                 self._move_and_linkback(srcPath, destPath)
             else:
                 atomic_copy(srcPath, destPath)
-            if jobStoreFileID.executable:
+            if getattr(jobStoreFileID, 'executable', False):
                 os.chmod(destPath, os.stat(destPath).st_mode | stat.S_IXUSR)
         else:
             super(FileJobStore, self)._defaultExportFile(otherCls, jobStoreFileID, url)
