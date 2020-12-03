@@ -315,16 +315,15 @@ class hidden(object):
                         for symlink in True, False:
                             dstFile = '%s/%s%s' % (workDir, 'out', str(uuid4()))
                             A = Job.wrapJobFn(_testImportReadFileCompatibility, fileID=jobStoreFileID, dstFile=dstFile,
-                                                mutable=mutable, symlink=symlink)
-                            dstFile = toil.start(A)
-                            currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
-
-                            assert initialPermissions == currentPermissions
+                                                initialPermissions=initialPermissions, mutable=mutable, symlink=symlink)
+                            toil.start(A)
 
         @staticmethod
-        def _testImportReadFileCompatibility(job, fileID, dstFile, mutable, symlink):
-            job.fileStore.readGlobalFile(fileID, dstFile, mutable=mutable, symlink=symlink)
-            return dstFile
+        def _testImportReadFileCompatibility(job, fileID, dstFile, initialPermissions, mutable, symlink):
+            dstFile = job.fileStore.readGlobalFile(fileID, dstFile, mutable=mutable, symlink=symlink)
+            currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
+
+            assert initialPermissions == currentPermissions
 
         @staticmethod
         def _writeFileToJobStore(job, isLocalFile, nonLocalDir=None, fileMB=1):
