@@ -1,0 +1,20 @@
+title: RunLog
+type: object
+properties:
+  run_id:
+    type: string
+    description: workflow run ID
+  request:
+    $ref: './RunRequest.yaml'
+  state:
+    $ref: './State.yaml'
+  run_log:
+    $ref: './Log.yaml'
+  task_logs:
+    type: array
+    items:
+      $ref: './Log.yaml'
+    description: The logs, and other key info like timing and exit code, for each step in the workflow run.
+  outputs:
+    type: object
+    description: The outputs from the workflow run.

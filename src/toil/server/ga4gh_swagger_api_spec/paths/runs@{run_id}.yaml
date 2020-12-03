@@ -1,0 +1,47 @@
+get:
+  tags:
+  - Workflow Runs
+  summary: GetRunLog
+  description: This endpoint provides detailed information about a given workflow run. The returned result has information about the outputs produced by this workflow (if available), a log object which allows the stderr and stdout to be retrieved, a log array so stderr/stdout for individual tasks can be retrieved, and the overall state of the workflow run (e.g. RUNNING, see the State section).
+  operationId: GetRunLog
+  parameters:
+  - name: run_id
+    in: path
+    description: ''
+    required: true
+    style: simple
+    schema:
+      type: string
+  responses:
+    200:
+      description: ''
+      headers: {}
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RunLog'
+    401:
+      description: The request is unauthorized.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    403:
+      description: The requester is not authorized to perform this action.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    404:
+      description: The requested workflow run not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    500:
+      description: An unexpected error occurred.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  deprecated: false

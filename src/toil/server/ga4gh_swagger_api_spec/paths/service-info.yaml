@@ -1,0 +1,40 @@
+get:
+  tags:
+  - Service Info
+  summary: GetServiceInfo
+  description: May include information related (but not limited to) the workflow descriptor formats, versions supported, the WES API versions supported, and information about general service availability.
+  operationId: GetServiceInfo
+  parameters: []
+  responses:
+    200:
+      description: ''
+      headers: {}
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ServiceInfo'
+    400:
+      description: The request is malformed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    401:
+      description: The request is unauthorized.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    403:
+      description: The requester is not authorized to perform this action.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    500:
+      description: An unexpected error occurred.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  deprecated: false

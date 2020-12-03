@@ -1,0 +1,9 @@
+title: WorkflowTypeVersion
+type: object
+properties:
+  workflow_type_version:
+    type: array
+    items:
+      type: string
+    description: an array of one or more acceptable types for the `workflow_type`
+description: Available workflow types supported by a given instance of the service.

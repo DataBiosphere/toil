@@ -1,0 +1,50 @@
+title: ServiceInfo
+allOf:
+  - $ref: 'https://raw.githubusercontent.com/ga4gh-discovery/ga4gh-service-info/v1.0.0/service-info.yaml#/components/schemas/Service'
+  - type: object
+    properties:
+      workflow_type_versions:
+        type: object
+        additionalProperties:
+          $ref: './WorkflowTypeVersion.yaml'
+      supported_wes_versions:
+        type: array
+        items:
+          type: string
+        description: The version(s) of the WES schema supported by this service
+      supported_filesystem_protocols:
+        type: array
+        items:
+          type: string
+        description: The filesystem protocols supported by this service, currently these may include common protocols using the terms 'http', 'https', 'sftp', 's3', 'gs', 'file', or 'synapse', but others  are possible and the terms beyond these core protocols are currently not fixed.   This section reports those protocols (either common or not) supported by this WES service.
+      workflow_engine_versions:
+        type: object
+        additionalProperties:
+          type: string
+      default_workflow_engine_parameters:
+        type: array
+        items:
+          $ref: './DefaultWorkflowEngineParameter.yaml'
+        description: Each workflow engine can present additional parameters that can be sent to the workflow engine. This message will list the default values, and their types for each workflow engine.
+      system_state_counts:
+        type: object
+        additionalProperties:
+          type: integer
+          format: int64
+      auth_instructions_url:
+        type: string
+        description: A web page URL with human-readable instructions on how to get an authorization token for use with a specific WES endpoint.
+      tags:
+        type: object
+        additionalProperties:
+          type: string
+          description: A message containing useful information about the running service, including supported versions and default settings.
+      required:
+        - workflow_type_versions
+        - supported_wes_versions
+        - supported_filesystem_protocols
+        - workflow_engine_versions
+        - default_workflow_engine_parameters
+        - system_state_counts
+        - auth_instructions_url
+        - tags

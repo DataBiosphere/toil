@@ -1,0 +1,10 @@
+title: RunStatus
+required:
+- run_id
+type: object
+properties:
+  run_id:
+    type: string
+  state:
+    $ref: './State.yaml'
+description: Small description of a workflow run, returned by server during listing
