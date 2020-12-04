@@ -320,7 +320,7 @@ class hidden(object):
 
         @staticmethod
         def _testImportReadFileCompatibility(job, fileID, dstFile, initialPermissions, mutable, symlink):
-            dstFile = job.fileStore.readGlobalFile(fileID, dstFile, mutable=mutable, symlink=symlink)
+            dstFile = job.fileStore.readGlobalFile(fileID, mutable=mutable, symlink=symlink)
             currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
 
             assert initialPermissions == currentPermissions
