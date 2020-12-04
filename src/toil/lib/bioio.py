@@ -106,12 +106,6 @@ def get_total_cpu_time():
     return me.ru_utime + me.ru_stime + childs.ru_utime + childs.ru_stime
 
 
-def absSymPath(path):
-    """like os.path.abspath except it doesn't dereference symlinks."""
-    curr_path = os.getcwd()
-    return os.path.normpath(os.path.join(curr_path, path))
-
-
 def makePublicDir(dirName):
     """Makes a given subdirectory if it doesn't already exist, making sure it is public.
     """

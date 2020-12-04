@@ -1121,6 +1121,23 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
         finally:
             os.unlink(path)
 
+    def test_jobstore_init_preserves_symlink_path(self):
+        """Test that if we provide a fileJobStore with a symlink to a directory, it doesn't de-reference it."""
+        dir_symlinked_to_original_filestore = None
+        original_filestore = None
+        try:
+            original_filestore = self._createExternalStore()
+            dir_symlinked_to_original_filestore = f'{original_filestore}-am-i-real'
+            os.symlink(original_filestore, dir_symlinked_to_original_filestore)
+            filejobstore_using_symlink = FileJobStore(dir_symlinked_to_original_filestore, fanOut=2)
+            self.assertEqual(dir_symlinked_to_original_filestore, filejobstore_using_symlink.jobStoreDir)
+        finally:
+            if dir_symlinked_to_original_filestore and os.path.exists(dir_symlinked_to_original_filestore):
+                os.unlink(dir_symlinked_to_original_filestore)
+            if original_filestore and os.path.exists(original_filestore):
+                shutil.rmtree(original_filestore)
+
+
 @needs_google
 class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
