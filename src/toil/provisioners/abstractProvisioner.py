@@ -210,7 +210,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
                 leaderPublicKey = f.read()
         else:
             # Run remotely
-            leader.coreSSH(*command, appliance=True)
+            leader.sshInstance(*command, appliance=True)
             
             # Grab from remote file
             with tempfile.TemporaryDirectory() as tmpdir:
