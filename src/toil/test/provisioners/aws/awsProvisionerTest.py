@@ -83,7 +83,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
                                '--leaderNodeType=t2.medium', self.clusterName] + args)
 
     def getMatchingRoles(self):
-        return list(self.cluster._ctx.local_roles())
+        return list(self.cluster._boto2.local_roles())
 
     def launchCluster(self):
         self.createClusterUtil()
@@ -163,7 +163,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
             # https://github.com/BD2KGenomics/toil/issues/1567
             # retry this for up to 1 minute until the volume disappears
             try:
-                self.cluster._ctx.ec2.get_all_volumes(volume_ids=[volumeID])
+                self.cluster._boto2.ec2.get_all_volumes(volume_ids=[volumeID])
                 time.sleep(10)
             except EC2ResponseError as e:
                 if e.status == 400 and 'InvalidVolume.NotFound' in e.code:
@@ -213,7 +213,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         :return: volumeID
         """
         volumeID = super(AWSAutoscaleTest, self).getRootVolID()
-        rootVolume = self.cluster._ctx.ec2.get_all_volumes(volume_ids=[volumeID])[0]
+        rootVolume = self.cluster._boto2.ec2.get_all_volumes(volume_ids=[volumeID])[0]
         # test that the leader is given adequate storage
         self.assertGreaterEqual(rootVolume.size, self.requestedLeaderStorage)
         return volumeID
@@ -257,10 +257,10 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         # test that workers have expected storage size
         # just use the first worker
         worker = workers[0]
-        worker = next(wait_instances_running(self.cluster._ctx.ec2, [worker]))
+        worker = next(wait_instances_running(self.cluster._boto2.ec2, [worker]))
         rootBlockDevice = worker.block_device_mapping["/dev/xvda"]
         self.assertTrue(isinstance(rootBlockDevice, BlockDeviceType))
-        rootVolume = self.cluster._ctx.ec2.get_all_volumes(volume_ids=[rootBlockDevice.volume_id])[0]
+        rootVolume = self.cluster._boto2.ec2.get_all_volumes(volume_ids=[rootBlockDevice.volume_id])[0]
         self.assertGreaterEqual(rootVolume.size, self.requestedNodeStorage)
 
     def _runScript(self, toilOptions):

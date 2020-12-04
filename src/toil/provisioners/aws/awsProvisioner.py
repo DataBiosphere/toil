@@ -32,7 +32,7 @@ from toil.lib.ec2 import (a_short_time, create_ondemand_instances, create_instan
 from toil.lib.misc import truncExpBackoff
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import zoneToRegion, getCurrentAWSZone, getSpotZone
-from toil.lib.context import Context
+from toil.provisioners.aws.boto2Context import Boto2Context
 from toil.lib.retry import old_retry
 from toil.lib.memoize import less_strict_bool
 from toil.provisioners import NoSuchClusterException
@@ -121,9 +121,9 @@ class AWSProvisioner(AbstractProvisioner):
         self.ec2 = self.session.resource('ec2')
 
         if clusterName:
-            self._buildContext()  # create connection (self._ctx)
+            self._buildContext()  # create boto2 context (self._boto2)
         else:
-            self._readClusterSettings()
+            self._readClusterSettings() # Also fills in self._boto2
 
     def _readClusterSettings(self):
         """
@@ -281,7 +281,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
         Terminate instances and delete the profile and security group.
         """
-        assert self._ctx
+        assert self._boto2
         def expectedShutdownErrors(e):
             return e.status == 400 and 'dependent object' in e.body
 
@@ -310,8 +310,8 @@ class AWSProvisioner(AbstractProvisioner):
         instances = self._getNodesInCluster(nodeType=None, both=True)
         spotIDs = self._getSpotRequestIDs()
         if spotIDs:
-            self._ctx.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
-        instancesToTerminate = awsFilterImpairedNodes(instances, self._ctx.ec2)
+            self._boto2.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
+        instancesToTerminate = awsFilterImpairedNodes(instances, self._boto2.ec2)
         if instancesToTerminate:
             vpcId = vpcId or instancesToTerminate[0].vpc_id
             destroyInstances(instancesToTerminate)
@@ -320,10 +320,10 @@ class AWSProvisioner(AbstractProvisioner):
             removed = False
             for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                 with attempt:
-                    for sg in self._ctx.ec2.get_all_security_groups():
+                    for sg in self._boto2.ec2.get_all_security_groups():
                         if sg.name == self.clusterName and vpcId and sg.vpc_id == vpcId:
                             try:
-                                self._ctx.ec2.delete_security_group(group_id=sg.id)
+                                self._boto2.ec2.delete_security_group(group_id=sg.id)
                                 removed = True
                             except BotoServerError as e:
                                 if e.error_code == 'InvalidGroup.NotFound':
@@ -359,7 +359,7 @@ class AWSProvisioner(AbstractProvisioner):
             userData = userData.encode('utf-8')
         # Depending on if we enumerated them on the leader or locally, we might
         # know the required security groups by name, ID, or both.
-        sgs = [sg for sg in self._ctx.ec2.get_all_security_groups() if (sg.name in self._leaderSecurityGroupNames or
+        sgs = [sg for sg in self._boto2.ec2.get_all_security_groups() if (sg.name in self._leaderSecurityGroupNames or
                                                                         sg.id in self._leaderSecurityGroupIDs)]
         kwargs = {'key_name': self._keyName,
                   'security_group_ids': [sg.id for sg in sgs],
@@ -379,13 +379,13 @@ class AWSProvisioner(AbstractProvisioner):
                 # every request in this method
                 if not preemptable:
                     logger.debug('Launching %s non-preemptable nodes', numNodes)
-                    instancesLaunched = create_ondemand_instances(self._ctx.ec2, image_id=self._discoverAMI(),
+                    instancesLaunched = create_ondemand_instances(self._boto2.ec2, image_id=self._discoverAMI(),
                                                                   spec=kwargs, num_instances=numNodes)
                 else:
                     logger.debug('Launching %s preemptable nodes', numNodes)
-                    kwargs['placement'] = getSpotZone(spotBid, instanceType.name, self._ctx)
+                    kwargs['placement'] = getSpotZone(spotBid, instanceType.name, self._boto2)
                     # force generator to evaluate
-                    instancesLaunched = list(create_spot_instances(ec2=self._ctx.ec2,
+                    instancesLaunched = list(create_spot_instances(ec2=self._boto2.ec2,
                                                                    price=spotBid,
                                                                    image_id=self._discoverAMI(),
                                                                    tags={'clusterName': self.clusterName},
@@ -398,7 +398,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         for attempt in old_retry(predicate=awsRetryPredicate):
             with attempt:
-                wait_instances_running(self._ctx.ec2, instancesLaunched)
+                wait_instances_running(self._boto2.ec2, instancesLaunched)
 
         self._tags[_TOIL_NODE_TYPE_TAG_KEY] = 'worker'
         AWSProvisioner._addTags(instancesLaunched, self._tags)
@@ -421,7 +421,7 @@ class AWSProvisioner(AbstractProvisioner):
         logger.debug('All workers found in cluster: %s', workerInstances)
         workerInstances = [i for i in workerInstances if preemptable != (i.spot_instance_request_id is None)]
         logger.debug('%spreemptable workers found in cluster: %s', 'non-' if not preemptable else '', workerInstances)
-        workerInstances = awsFilterImpairedNodes(workerInstances, self._ctx.ec2)
+        workerInstances = awsFilterImpairedNodes(workerInstances, self._boto2.ec2)
         return [Node(publicIP=i.ip_address, privateIP=i.private_ip_address,
                      name=i.id, launchTime=i.launch_time, nodeType=i.instance_type,
                      preemptable=preemptable, tags=i.tags)
@@ -437,7 +437,7 @@ class AWSProvisioner(AbstractProvisioner):
                     'is set, ec2_region_name is set in the .boto file, or that '
                     'you are running on EC2.')
         logger.debug("Building AWS context in zone %s for cluster %s" % (self._zone, self.clusterName))
-        self._ctx = Context(availability_zone=self._zone, namespace=self._toNameSpace())
+        self._boto2 = Context(availability_zone=self._zone, namespace=self._toNameSpace())
 
     @memoize
     def _discoverAMI(self):
@@ -499,7 +499,7 @@ class AWSProvisioner(AbstractProvisioner):
         return namespace.replace('-', '/')
 
     def getLeader(self, wait=False, returnRawInstance=False):
-        assert self._ctx
+        assert self._boto2
         instances = self._getNodesInCluster(nodeType=None, both=True)
         instances.sort(key=lambda x: x.launch_time)
         try:
@@ -517,7 +517,7 @@ class AWSProvisioner(AbstractProvisioner):
                           preemptable=False, tags=leader.tags)
         if wait:
             logger.debug("Waiting for toil_leader to enter 'running' state...")
-            wait_instances_running(self._ctx.ec2, [leader])
+            wait_instances_running(self._boto2.ec2, [leader])
             logger.debug('... toil_leader is running')
             self._waitForIP(leader)
             leaderNode.waitForNode('toil_leader')
@@ -560,13 +560,13 @@ class AWSProvisioner(AbstractProvisioner):
 
     @awsRetry
     def _terminateIDs(self, instanceIDs):
-        assert self._ctx
+        assert self._boto2
         logger.info('Terminating instance(s): %s', instanceIDs)
-        self._ctx.ec2.terminate_instances(instance_ids=instanceIDs)
+        self._boto2.ec2.terminate_instances(instance_ids=instanceIDs)
         logger.info('Instance(s) terminated.')
 
     def _deleteIAMProfiles(self, instances):
-        assert self._ctx
+        assert self._boto2
         instanceProfiles = [x.instance_profile['arn'] for x in instances]
         for profile in instanceProfiles:
             # boto won't look things up by the ARN so we have to parse it to get
@@ -574,11 +574,11 @@ class AWSProvisioner(AbstractProvisioner):
             profileName = profile.rsplit('/')[-1]
 
             # Only delete profiles that were automatically created by Toil.
-            if profileName != self._ctx.to_aws_name(_INSTANCE_PROFILE_ROLE_NAME):
+            if profileName != self._boto2.to_aws_name(_INSTANCE_PROFILE_ROLE_NAME):
                 continue
 
             try:
-                profileResult = self._ctx.iam.get_instance_profile(profileName)
+                profileResult = self._boto2.iam.get_instance_profile(profileName)
             except BotoServerError as e:
                 if e.status == 404:
                     return
@@ -591,33 +591,33 @@ class AWSProvisioner(AbstractProvisioner):
             # this is based off of our 1:1 mapping of profiles to roles
             role = profile['roles']['member']['role_name']
             try:
-                self._ctx.iam.remove_role_from_instance_profile(profileName, role)
+                self._boto2.iam.remove_role_from_instance_profile(profileName, role)
             except BotoServerError as e:
                 if e.status == 404:
                     pass
                 else:
                     raise
-            policyResults = self._ctx.iam.list_role_policies(role)
+            policyResults = self._boto2.iam.list_role_policies(role)
             policyResults = policyResults['list_role_policies_response']
             policyResults = policyResults['list_role_policies_result']
             policies = policyResults['policy_names']
             for policyName in policies:
                 try:
-                    self._ctx.iam.delete_role_policy(role, policyName)
+                    self._boto2.iam.delete_role_policy(role, policyName)
                 except BotoServerError as e:
                     if e.status == 404:
                         pass
                     else:
                         raise
             try:
-                self._ctx.iam.delete_role(role)
+                self._boto2.iam.delete_role(role)
             except BotoServerError as e:
                 if e.status == 404:
                     pass
                 else:
                     raise
             try:
-                self._ctx.iam.delete_instance_profile(profileName)
+                self._boto2.iam.delete_instance_profile(profileName)
             except BotoServerError as e:
                 if e.status == 404:
                     pass
@@ -643,9 +643,20 @@ class AWSProvisioner(AbstractProvisioner):
         return bdm
 
     @awsRetry
+    def _getLaunchTemplatesInCluster(self, nodeType=None, preemptable=False, both=False):
+        """
+        Find all launch templates associated with the cluster.
+        """
+        
+        assert self._boto2
+        allTemplates = self.ec2.describe_launch_templates(filters=[{'tag:toil-cluster': self.clusterName}])
+        
+        
+
+    @awsRetry
     def _getNodesInCluster(self, nodeType=None, preemptable=False, both=False):
-        assert self._ctx
-        allInstances = self._ctx.ec2.get_only_instances(filters={'instance.group-name': self.clusterName})
+        assert self._boto2
+        allInstances = self._boto2.ec2.get_only_instances(filters={'instance.group-name': self.clusterName})
         def instanceFilter(i):
             # filter by type only if nodeType is true
             rightType = not nodeType or i.instance_type == nodeType
@@ -660,26 +671,26 @@ class AWSProvisioner(AbstractProvisioner):
             return filteredInstances
 
     def _getSpotRequestIDs(self):
-        assert self._ctx
-        requests = self._ctx.ec2.get_all_spot_instance_requests()
-        tags = self._ctx.ec2.get_all_tags({'tag:': {'clusterName': self.clusterName}})
+        assert self._boto2
+        requests = self._boto2.ec2.get_all_spot_instance_requests()
+        tags = self._boto2.ec2.get_all_tags({'tag:': {'clusterName': self.clusterName}})
         idsToCancel = [tag.id for tag in tags]
         return [request for request in requests if request.id in idsToCancel]
 
     def _createSecurityGroup(self):
-        assert self._ctx
+        assert self._boto2
         def groupNotFound(e):
             retry = (e.status == 400 and 'does not exist in default VPC' in e.body)
             return retry
         vpcId = None
         if self._vpcSubnet:
-            conn = boto.connect_vpc(region=self._ctx.ec2.region)
+            conn = boto.connect_vpc(region=self._boto2.ec2.region)
             subnets = conn.get_all_subnets(subnet_ids=[self._vpcSubnet])
             if len(subnets) > 0:
                 vpcId = subnets[0].vpc_id
         # security group create/get. ssh + all ports open within the group
         try:
-            web = self._ctx.ec2.create_security_group(self.clusterName,
+            web = self._boto2.ec2.create_security_group(self.clusterName,
                                                      'Toil appliance security group', vpc_id=vpcId)
         except EC2ResponseError as e:
             if e.status == 400 and 'already exists' in e.body:
@@ -701,7 +712,7 @@ class AWSProvisioner(AbstractProvisioner):
                     # We also want to open up UDP, both for user code and for the RealtimeLogger
                     web.authorize(ip_protocol='udp', from_port=0, to_port=65535, src_group=web)
         out = []
-        for sg in self._ctx.ec2.get_all_security_groups():
+        for sg in self._boto2.ec2.get_all_security_groups():
             if sg.name == self.clusterName and (vpcId is None or sg.vpc_id == vpcId):
                 out.append(sg)
         return out
@@ -771,20 +782,20 @@ class AWSProvisioner(AbstractProvisioner):
 
     @awsRetry
     def _getProfileArn(self):
-        assert self._ctx
+        assert self._boto2
         policy = dict(iam_full=self.full_policy('iam'), ec2_full=self.full_policy('ec2'),
                       s3_full=self.full_policy('s3'), sbd_full=self.full_policy('sdb'))
         if self.clusterType == 'kubernetes':
             # We also need autoscaling groups and some other stuff for AWS-Kubernetes integrations.
             # TODO: We use one merged policy for leader and worker, but we could be more specific.
             policy['kubernetes_merged'] = self.kubernetes_policy()
-        iamRoleName = self._ctx.setup_iam_ec2_role(role_name=_INSTANCE_PROFILE_ROLE_NAME, policies=policy)
+        iamRoleName = self._boto2.setup_iam_ec2_role(role_name=_INSTANCE_PROFILE_ROLE_NAME, policies=policy)
 
         try:
-            profile = self._ctx.iam.get_instance_profile(iamRoleName)
+            profile = self._boto2.iam.get_instance_profile(iamRoleName)
         except BotoServerError as e:
             if e.status == 404:
-                profile = self._ctx.iam.create_instance_profile(iamRoleName)
+                profile = self._boto2.iam.create_instance_profile(iamRoleName)
                 profile = profile.create_instance_profile_response.create_instance_profile_result
             else:
                 raise
@@ -800,9 +811,9 @@ class AWSProvisioner(AbstractProvisioner):
             if profile.roles.member.role_name == iamRoleName:
                 return profile_arn
             else:
-                self._ctx.iam.remove_role_from_instance_profile(iamRoleName,
+                self._boto2.iam.remove_role_from_instance_profile(iamRoleName,
                                                                 profile.roles.member.role_name)
         for attempt in old_retry(predicate=lambda err: err.status == 404):
             with attempt:
-                self._ctx.iam.add_role_to_instance_profile(iamRoleName, iamRoleName)
+                self._boto2.iam.add_role_to_instance_profile(iamRoleName, iamRoleName)
         return profile_arn
