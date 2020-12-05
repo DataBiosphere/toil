@@ -23,7 +23,7 @@ import boto.ec2
 from six import iteritems, text_type
 from typing import List, Dict, Any
 from functools import wraps
-from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
+from boto.ec2.blockdevicemapping import BlockDeviceMapping as Boto2BlockDeviceMapping, BlockDeviceType as Boto2BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
 from boto.utils import get_instance_metadata
 from boto.ec2.instance import Instance as Boto2Instance
@@ -31,6 +31,7 @@ from boto.ec2.instance import Instance as Boto2Instance
 from toil.lib.memoize import memoize
 from toil.lib.ec2 import (a_short_time, create_ondemand_instances, create_instances,
                           create_spot_instances, wait_instances_running, wait_transition)
+from toil.lib.ec2nodes import InstanceType
 from toil.lib.misc import truncExpBackoff
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import zoneToRegion, getCurrentAWSZone, getSpotZone
@@ -256,7 +257,10 @@ class AWSProvisioner(AbstractProvisioner):
         # Download credentials
         self._setLeaderWorkerAuthentication(leaderNode)
 
-    def getNodeShape(self, nodeType, preemptable=False):
+    def getNodeShape(self, nodeType: str, preemptable=False) -> Shape:
+        """
+        Get the Shape for the given instance type (e.g. 't2.medium').
+        """
         instanceType = E2Instances[nodeType]
 
         disk = instanceType.disks * instanceType.disk_capacity * 2 ** 30
@@ -287,7 +291,7 @@ class AWSProvisioner(AbstractProvisioner):
         def expectedShutdownErrors(e):
             return e.status == 400 and 'dependent object' in e.body
 
-        def destroyInstances(instances):
+        def destroyInstances(instances: List[Boto2Instance]):
             """
             Similar to _terminateInstances, except that it also cleans up any
             resources associated with the instances (e.g. IAM profiles).
@@ -300,7 +304,7 @@ class AWSProvisioner(AbstractProvisioner):
         # The leader may create more instances while we're terminating the workers.
         vpcId = None
         try:
-            leader = self.getLeader(returnRawInstance=True)
+            leader = self._getLeaderInstance()
             vpcId = leader.vpc_id
             logger.info('Terminating the leader first ...')
             destroyInstances([leader])
@@ -342,10 +346,10 @@ class AWSProvisioner(AbstractProvisioner):
                            'have failed health checks. As a result, the security group & IAM '
                            'roles will not be deleted.')
 
-    def terminateNodes(self, nodes):
+    def terminateNodes(self, nodes : List[Node]):
         self._terminateIDs([x.name for x in nodes])
 
-    def addNodes(self, nodeType, numNodes, preemptable, spotBid=None):
+    def addNodes(self, nodeType, numNodes, preemptable, spotBid=None) -> int:
         assert self._leaderPrivateIP
         if preemptable and not spotBid:
             if self._spotBidsMap and nodeType in self._spotBidsMap:
@@ -416,7 +420,7 @@ class AWSProvisioner(AbstractProvisioner):
         logger.debug('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
 
-    def getProvisionedWorkers(self, nodeType, preemptable):
+    def getProvisionedWorkers(self, nodeType, preemptable) -> List[Node]:
         assert self._leaderPrivateIP
         entireCluster = self._getNodesInCluster(both=True, nodeType=nodeType)
         logger.debug('All nodes in cluster: %s', entireCluster)
@@ -443,7 +447,7 @@ class AWSProvisioner(AbstractProvisioner):
         self._boto2 = Context(availability_zone=self._zone, namespace=self._toNameSpace())
 
     @memoize
-    def _discoverAMI(self):
+    def _discoverAMI(self) -> str:
         """
         :return: The AMI ID (a string like 'ami-0a9a5d2b65cce04eb') for CoreOS
                  or a compatible replacement like Flatcar.
@@ -491,7 +495,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         return ami
 
-    def _toNameSpace(self):
+    def _toNameSpace(self) -> str:
         assert isinstance(self.clusterName, (str, bytes))
         if any((char.isupper() for char in self.clusterName)) or '_' in self.clusterName:
             raise RuntimeError("The cluster name must be lowercase and cannot contain the '_' "
@@ -501,9 +505,9 @@ class AWSProvisioner(AbstractProvisioner):
             namespace = '/' + namespace + '/'
         return namespace.replace('-', '/')
 
-    def getLeader(self, wait=False, returnRawInstance=False) -> Node:
+    def _getLeaderInstance(self) -> Boto2Instance:
         """
-        Get the leader for the cluster as a Toil Node object.
+        Get the Boto 2 instance for the cluster's leader.
         """
         assert self._boto2
         instances = self._getNodesInCluster(nodeType=None, both=True)
@@ -518,6 +522,16 @@ class AWSProvisioner(AbstractProvisioner):
                 'as it is missing the "leader" tag. The safest recovery is to destroy the cluster '
                 'and restart the job. Incorrect Leader ID: %s' % leader.id
             )
+        return leader
+        
+
+    def getLeader(self, wait=False) -> Node:
+        """
+        Get the leader for the cluster as a Toil Node object.
+        """
+        assert self._boto2
+        leader = self._getLeaderInstance()
+        
         leaderNode = Node(publicIP=leader.ip_address, privateIP=leader.private_ip_address,
                           name=leader.id, launchTime=leader.launch_time, nodeType=None,
                           preemptable=False, tags=leader.tags)
@@ -532,17 +546,17 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     @awsRetry
-    def _addTag(cls, instance, key, value):
+    def _addTag(cls, instance: Boto2Instance, key: str, value: str):
         instance.add_tag(key, value)
 
     @classmethod
-    def _addTags(cls, instances, tags):
+    def _addTags(cls, instances: List[Boto2Instance], tags: Dict[str, str]):
         for instance in instances:
             for key, value in iteritems(tags):
                 cls._addTag(instance, key, value)
 
     @classmethod
-    def _waitForIP(cls, instance):
+    def _waitForIP(cls, instance: Boto2Instance):
         """
         Wait until the instances has a public IP address assigned to it.
 
@@ -633,35 +647,47 @@ class AWSProvisioner(AbstractProvisioner):
                     raise
 
     @classmethod
-    def _getBlockDeviceMapping(cls, instanceType, rootVolSize=50):
+    def _getBlockDeviceMapping(cls, instanceType: InstanceType, rootVolSize: int = 50) -> Boto2BlockDeviceMapping:
         # determine number of ephemeral drives via cgcloud-lib (actually this is moved into toil's lib
         bdtKeys = [''] + ['/dev/xvd{}'.format(c) for c in string.ascii_lowercase[1:]]
-        bdm = BlockDeviceMapping()
+        bdm = Boto2BlockDeviceMapping()
         # Change root volume size to allow for bigger Docker instances
-        root_vol = BlockDeviceType(delete_on_termination=True)
+        root_vol = Boto2BlockDeviceType(delete_on_termination=True)
         root_vol.size = rootVolSize
         bdm["/dev/xvda"] = root_vol
         # The first disk is already attached for us so start with 2nd.
         # Disk count is weirdly a float in our instance database, so make it an int here.
         for disk in range(1, int(instanceType.disks) + 1):
-            bdm[bdtKeys[disk]] = BlockDeviceType(
+            bdm[bdtKeys[disk]] = Boto2BlockDeviceType(
                 ephemeral_name='ephemeral{}'.format(disk - 1))  # ephemeral counts start at 0
 
         logger.debug('Device mapping: %s', bdm)
         return bdm
 
     @awsRetry
-    def _getLaunchTemplatesInCluster(self, nodeType=None, preemptable=False, both=False) -> List[str]:
+    def _getLaunchTemplateIDs(self, nodeType=None, preemptable=False, both=False) -> List[str]:
         """
         Find all launch templates associated with the cluster.
         
-        Returns a list of launch template names.
+        Returns a list of launch template IDs.
         """
         
-        assert self._boto2
-        allTemplates = self.ec2.describe_launch_templates(filters=[{'tag:toil-cluster': self.clusterName}])
-        
-        
+        allTemplateIDs = []
+        # Get the first page with no NextToken
+        response = self.ec2.describe_launch_templates(Filters=[{'tag:toil-cluster': self.clusterName}],
+                                                      MaxResults=200)
+        while True:
+            # Process the current page
+            allTemplateIDs += [item['LaunchTemplateId'] for item in response.get('LaunchTemplates', [])]
+            if 'NextToken' in response:
+                # There are more pages. Get the next one, supplying the token.
+                response = self.ec2.describe_launch_templates(Filters=[{'tag:toil-cluster': self.clusterName}],
+                                                              NextToken=response['NextToken'], MaxResults=200)
+            else:
+                # No more pages
+                break
+                
+        return allTemplateIDs
 
     @awsRetry
     def _getNodesInCluster(self, nodeType=None, preemptable=False, both=False) -> List[Boto2Instance]:

@@ -7,7 +7,7 @@ from operator import attrgetter
 from past.builtins import map
 from toil.lib.exceptions import panic
 from toil.lib.retry import old_retry
-from boto.ec2.instance import Instance
+from boto.ec2.instance import Instance as Boto2Instance
 from boto.ec2.spotinstancerequest import SpotInstanceRequest
 from boto.exception import EC2ResponseError
 from boto3.resources.base import ServiceResource
@@ -66,14 +66,14 @@ def wait_transition(resource, from_states, to_state,
         raise UnexpectedResourceState(resource, to_state, state)
 
 
-def wait_instances_running(ec2, instances):
+def wait_instances_running(ec2, instances: Iterator[Boto2Instance]) -> Iterator[Boto2Instance]:
     """
     Wait until no instance in the given iterable is 'pending'. Yield every instance that
     entered the running state as soon as it does.
 
     :param boto.ec2.connection.EC2Connection ec2: the EC2 connection to use for making requests
-    :param Iterator[Instance] instances: the instances to wait on
-    :rtype: Iterator[Instance]
+    :param Iterator[Boto2Instance] instances: the instances to wait on
+    :rtype: Iterator[Boto2Instance]
     """
     running_ids = set()
     other_ids = set()
@@ -182,9 +182,9 @@ def wait_spot_requests_active(ec2, requests, timeout=None, tentative=False):
             cancel()
 
 
-def create_spot_instances(ec2, price, image_id, spec, num_instances=1, timeout=None, tentative=False, tags=None):
+def create_spot_instances(ec2, price, image_id, spec, num_instances=1, timeout=None, tentative=False, tags=None) -> Iterator[List[Boto2Instance]]:
     """
-    :rtype: Iterator[list[Instance]]
+    :rtype: Iterator[List[Boto2Instance]]
     """
     def spotRequestNotFound(e):
         return getattr(e, 'error_code', None) == "InvalidSpotInstanceRequestID.NotFound"
@@ -240,12 +240,12 @@ def inconsistencies_detected(e):
     return 'invalid iam instance profile' in m or 'no associated iam roles' in m
 
 
-def create_ondemand_instances(ec2, image_id, spec, num_instances=1):
+def create_ondemand_instances(ec2, image_id, spec, num_instances=1) -> List[Boto2Instance]:
     """
     Requests the RunInstances EC2 API call but accounts for the race between recently created
     instance profiles, IAM roles and an instance creation that refers to them.
 
-    :rtype: list[Instance]
+    :rtype: List[Boto2Instance]
     """
     instance_type = spec['instance_type']
     log.info('Creating %s instance(s) ... ', instance_type)
@@ -257,6 +257,19 @@ def create_ondemand_instances(ec2, image_id, spec, num_instances=1):
                                      max_count=num_instances,
                                      **spec).instances
 
+
+def prune(bushy: dict) -> dict
+    """
+    Prune entries in the given dict with false-y values.
+    Boto3 may not like None and instead wants no key.
+    """
+    pruned = dict()
+    for key in bushy:
+        if bushy[key]:
+            pruned[key] = bushy[key]
+    return pruned
+    
+    
 
 # TODO: Implement retry_decorator here
 # [5, 5, 10, 20, 20, 20, 20] I don't think we need to retry for an hour... ???
@@ -273,14 +286,17 @@ def create_instances(ec2: ServiceResource,
                      block_device_map: Optional[List[Dict]] = None,
                      instance_profile_arn: Optional[Dict] = None,
                      placement: Optional[Dict] = None,
-                     subnet_id: str = None):
+                     subnet_id: str = None,
+                     tags: Optional[Dict[str, str]] = None) -> List[dict]:
     """
-    Replaces create_ondemand_instances.  Uses boto3.
+    Replaces create_ondemand_instances.  Uses boto3 and returns a list of Boto3 instance dicts.
 
     See "create_instances" (returns a list of ec2.Instance objects):
       https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
     Not to be confused with "run_instances" (same input args; returns a dictionary):
       https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.run_instances
+      
+    Tags, if given, are applied to the instances, and all volumes.
     """
     log.info('Creating %s instance(s) ... ', instance_type)
     for attempt in retry_ec2(retry_for=a_long_time, retry_while=inconsistencies_detected):
@@ -296,11 +312,61 @@ def create_instances(ec2: ServiceResource,
                        'BlockDeviceMappings': block_device_map,
                        'IamInstanceProfile': instance_profile_arn,
                        'SubnetId': subnet_id}
+                       
+            if tags:
+                # Tag everything when we make it.
+                # TODO: just generate tags data once?
+                request['TagSpecifications'] = [{'ResourceType': 'instance', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]},
+                                                {'ResourceType': 'volume', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]}]
 
-            # remove empty args
-            actual_request = dict()
-            for key in request:
-                if request[key]:
-                    actual_request[key] = request[key]
+            return ec2.create_instances(**prune(request))
+            
+def create_launch_template(ec2: ServiceResource,
+                           template_name: str,
+                           image_id: str,
+                           key_name: str,
+                           instance_type: str,
+                           security_group_ids: Optional[List] = None,
+                           user_data: Optional[bytes] = None,
+                           block_device_map: Optional[List[Dict]] = None,
+                           instance_profile_arn: Optional[Dict] = None,
+                           placement: Optional[Dict] = None,
+                           subnet_id: str = None,
+                           tags: Optional[Dict[str, str]] = None) -> str:
+    """
+    Creates a launch template with the given name for launching instances with the given parameters.
+    
+    We only ever use launch template version 1.
 
-            return ec2.create_instances(**actual_request)
+    Internally calls https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html?highlight=create_launch_template#EC2.Client.create_launch_template
+    
+    Returns the ID of the launch template.
+    
+    Tags, if given, are applied to the template itself, all instances, and all volumes.
+    """
+    log.info('Creating launch template for %s instances ... ', instance_type)
+    for attempt in retry_ec2(retry_for=a_long_time, retry_while=inconsistencies_detected):
+        with attempt:
+            template = {'ImageId': image_id,
+                       'KeyName': key_name,
+                       'SecurityGroupIds': security_group_ids,
+                       'InstanceType': instance_type,
+                       'UserData': user_data,
+                       'Placement': placement,
+                       'BlockDeviceMappings': block_device_map,
+                       'IamInstanceProfile': instance_profile_arn,
+                       'SubnetId': subnet_id}
+                       
+            if tags:
+                # Tag everything when we make it.
+                # TODO: just generate tags data once?
+                template['TagSpecifications'] = [{'ResourceType': 'instance', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]},
+                                                 {'ResourceType': 'volume', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]}]
+
+            request = {'LaunchTemplateData': prune(template),
+                       'LaunchTemplateName': template_name}
+                       
+            if tags:
+                request['TagSpecifications'] = [{'ResourceType': 'launch-template', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]}]
+                       
+            return ec2.create_launch_template(LaunchTemplateData=prune(template))
