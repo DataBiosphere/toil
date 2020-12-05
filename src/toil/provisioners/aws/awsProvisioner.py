@@ -21,10 +21,12 @@ import urllib.request
 import boto.ec2
 
 from six import iteritems, text_type
+from typing import List, Dict, Any
 from functools import wraps
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
 from boto.utils import get_instance_metadata
+from boto.ec2.instance import Instance as Boto2Instance
 
 from toil.lib.memoize import memoize
 from toil.lib.ec2 import (a_short_time, create_ondemand_instances, create_instances,
@@ -189,7 +191,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         profileArn = awsEc2ProfileArn or self._getProfileArn()
         # the security group name is used as the cluster identifier
-        sgs = self._createSecurityGroup()
+        createdSGs = self._createSecurityGroups()
         bdm = [
             {
                 'DeviceName': '/dev/xvda',
@@ -210,7 +212,7 @@ class AWSProvisioner(AbstractProvisioner):
                                      image_id=self._discoverAMI(),
                                      num_instances=1,
                                      key_name=self._keyName,
-                                     security_group_ids=[sg.id for sg in sgs] + awsEc2ExtraSecurityGroupIds,
+                                     security_group_ids=createdSGs + awsEc2ExtraSecurityGroupIds,
                                      instance_type=leaderNodeType,
                                      user_data=userData,
                                      block_device_map=bdm,
@@ -243,7 +245,7 @@ class AWSProvisioner(AbstractProvisioner):
         self._leaderPrivateIP = leader.private_ip_address
         self._subnetID = leader.subnet_id
         self._leaderSecurityGroupNames = set()
-        self._leaderSecurityGroupIDs = set([sg.id for sg in sgs] + awsEc2ExtraSecurityGroupIds)
+        self._leaderSecurityGroupIDs = set(createdSGs + awsEc2ExtraSecurityGroupIds)
         self._leaderProfileArn = profileArn
         
         leaderNode = Node(publicIP=leader.public_ip_address, privateIP=leader.private_ip_address,
@@ -290,7 +292,8 @@ class AWSProvisioner(AbstractProvisioner):
             Similar to _terminateInstances, except that it also cleans up any
             resources associated with the instances (e.g. IAM profiles).
             """
-            self._deleteIAMProfiles(instances)
+            instanceProfiles = [x.instance_profile['arn'] for x in instances]
+            self._deleteIAMProfiles(instanceProfiles)
             self._terminateInstances(instances)
 
         # We should terminate the leader first in case a workflow is still running in the cluster.
@@ -498,7 +501,10 @@ class AWSProvisioner(AbstractProvisioner):
             namespace = '/' + namespace + '/'
         return namespace.replace('-', '/')
 
-    def getLeader(self, wait=False, returnRawInstance=False):
+    def getLeader(self, wait=False, returnRawInstance=False) -> Node:
+        """
+        Get the leader for the cluster as a Toil Node object.
+        """
         assert self._boto2
         instances = self._getNodesInCluster(nodeType=None, both=True)
         instances.sort(key=lambda x: x.launch_time)
@@ -550,7 +556,7 @@ class AWSProvisioner(AbstractProvisioner):
                 logger.debug('...got ip')
                 break
 
-    def _terminateInstances(self, instances):
+    def _terminateInstances(self, instances: List[Boto2Instance]):
         instanceIDs = [x.id for x in instances]
         self._terminateIDs(instanceIDs)
         logger.info('... Waiting for instance(s) to shut down...')
@@ -559,16 +565,18 @@ class AWSProvisioner(AbstractProvisioner):
         logger.info('Instance(s) terminated.')
 
     @awsRetry
-    def _terminateIDs(self, instanceIDs):
+    def _terminateIDs(self, instanceIDs: List[str]):
         assert self._boto2
         logger.info('Terminating instance(s): %s', instanceIDs)
         self._boto2.ec2.terminate_instances(instance_ids=instanceIDs)
         logger.info('Instance(s) terminated.')
 
-    def _deleteIAMProfiles(self, instances):
+    def _deleteIAMProfiles(self, profileARNs: List[str]):
+        """
+        Delete the Toil-creared IAM instance profiles named by the given list of ARNs.
+        """
         assert self._boto2
-        instanceProfiles = [x.instance_profile['arn'] for x in instances]
-        for profile in instanceProfiles:
+        for profile in profileARNs:
             # boto won't look things up by the ARN so we have to parse it to get
             # the profile name
             profileName = profile.rsplit('/')[-1]
@@ -643,9 +651,11 @@ class AWSProvisioner(AbstractProvisioner):
         return bdm
 
     @awsRetry
-    def _getLaunchTemplatesInCluster(self, nodeType=None, preemptable=False, both=False):
+    def _getLaunchTemplatesInCluster(self, nodeType=None, preemptable=False, both=False) -> List[str]:
         """
         Find all launch templates associated with the cluster.
+        
+        Returns a list of launch template names.
         """
         
         assert self._boto2
@@ -654,7 +664,10 @@ class AWSProvisioner(AbstractProvisioner):
         
 
     @awsRetry
-    def _getNodesInCluster(self, nodeType=None, preemptable=False, both=False):
+    def _getNodesInCluster(self, nodeType=None, preemptable=False, both=False) -> List[Boto2Instance]:
+        """
+        Get Boto2 instance objects for all nodes in the cluster.
+        """
         assert self._boto2
         allInstances = self._boto2.ec2.get_only_instances(filters={'instance.group-name': self.clusterName})
         def instanceFilter(i):
@@ -670,14 +683,20 @@ class AWSProvisioner(AbstractProvisioner):
         elif both:
             return filteredInstances
 
-    def _getSpotRequestIDs(self):
+    def _getSpotRequestIDs(self) -> List[str]:
+        """
+        Get the IDs of all spot requests associated with the cluster.
+        """
         assert self._boto2
         requests = self._boto2.ec2.get_all_spot_instance_requests()
         tags = self._boto2.ec2.get_all_tags({'tag:': {'clusterName': self.clusterName}})
         idsToCancel = [tag.id for tag in tags]
         return [request for request in requests if request.id in idsToCancel]
 
-    def _createSecurityGroup(self):
+    def _createSecurityGroups(self) -> List[str]:
+        """
+        Create security groups for the cluster. Returns a list of their IDs.
+        """
         assert self._boto2
         def groupNotFound(e):
             retry = (e.status == 400 and 'does not exist in default VPC' in e.body)
@@ -715,12 +734,16 @@ class AWSProvisioner(AbstractProvisioner):
         for sg in self._boto2.ec2.get_all_security_groups():
             if sg.name == self.clusterName and (vpcId is None or sg.vpc_id == vpcId):
                 out.append(sg)
-        return out
+        return [sg.id for sg in out]
 
-    def full_policy(self, resource):
+    def full_policy(self, resource: str) -> dict:
+        """
+        Produce a dict describing the JSON form of a full-access-granting AWS
+        IAM policy for the service with the given name (e.g. 's3').
+        """
         return dict(Version="2012-10-17", Statement=[dict(Effect="Allow", Resource="*", Action=f"{resource}:*")])
 
-    def kubernetes_policy(self):
+    def kubernetes_policy(self) -> dict:
         """
         Get the Kubernetes policy grants not provided by the full grants on EC2
         and IAM. See
@@ -781,7 +804,13 @@ class AWSProvisioner(AbstractProvisioner):
         ])])
 
     @awsRetry
-    def _getProfileArn(self):
+    def _getProfileArn(self) -> str:
+        """
+        Create an IAM role and instance profile that grants needed permissions
+        for cluster leaders and workers.
+        
+        Returns its ARN.
+        """
         assert self._boto2
         policy = dict(iam_full=self.full_policy('iam'), ec2_full=self.full_policy('ec2'),
                       s3_full=self.full_policy('s3'), sbd_full=self.full_policy('sdb'))
