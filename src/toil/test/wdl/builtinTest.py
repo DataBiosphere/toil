@@ -27,6 +27,7 @@ from toil.wdl.wdl_functions import (
     write_map,
     write_tsv,
     wdl_zip,
+    cross,
     WDLPair,
     WDLRuntimeError)
 
@@ -263,6 +264,20 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
         # input with different size should fail.
         self.assertRaises(WDLRuntimeError, wdl_zip, [1, 2, 3], ['a', 'b'])
 
+    def testFn_Cross(self):
+        """Test the wdl built-in functional equivalent of 'cross()'."""
+        left_array = [1, 2, 3]
+        right_array = ['a', 'b']
+        crossed = cross(left_array, right_array)
+        expected_results = [(1, 'a'), (1, 'b'), (2, 'a'), (2, 'b'), (3, 'a'), (3, 'b')]
+
+        self.assertEqual(len(expected_results), len(crossed))
+
+        for index, cross_product in enumerate(crossed):
+            left, right = expected_results[index]
+            self.assertEqual(left, cross_product.left)
+            self.assertEqual(right, cross_product.right)
+
 
 class WdlWorkflowsTest(ToilTest):
     """
@@ -462,6 +477,12 @@ class WdlStandardLibraryWorkflowsTest(WdlWorkflowsTest):
     def test_zip(self):
         self.check_function('zip', cases=['as_input'],
                             expected_result='[{"left":1,"right":"a"},{"left":2,"right":"b"},{"left":3,"right":"c"}]')
+
+    def test_cross(self):
+        self.check_function('cross', cases=['as_input'],
+                            expected_result='[{"left":1,"right":"a"},{"left":1,"right":"b"},'
+                                            '{"left":2,"right":"a"},{"left":2,"right":"b"},'
+                                            '{"left":3,"right":"a"},{"left":3,"right":"b"}]')
 
 
 if __name__ == "__main__":
