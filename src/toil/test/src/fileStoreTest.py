@@ -262,6 +262,7 @@ class hidden(object):
 
             for mutable in True,False:
                 for symlink in True,False:
+                    #with self.subTest(f'Now testing readGlobalFileWith: mutable={mutable} symlink={symlink}'):
                     dstFile = job.fileStore.getLocalTempFile() + str(uuid4())
                     dstFile = job.fileStore.readGlobalFile(fileID, userPath=dstFile, mutable=mutable, symlink=symlink)
                     # Current file owner execute permissions
@@ -278,8 +279,15 @@ class hidden(object):
                 A = Job.wrapJobFn(self._testWriteExportFileCompatibility, executable=executable)
                 with Toil(self.options) as toil:
                     initialPermissions, fileID = toil.start(A)
-                    dstFile = self._createTempDir() + 'out'
-                    toil.exportFile(fileID, 'file://' + dstFile)
+                    attrs = fileID.pack()
+                    repack = fileID.unpack(attrs)
+                    if self.jobStoreType == 'file':
+                        dstFile = self._createTempDir() + 'out'
+                        toil.exportFile(fileID, 'file://' + dstFile)
+                    if self.jobStoreType == 'aws':
+                        print("STARTING aws")
+                        dstFile = 'toil-preserve-file-permissions-tests/c5bb986b-705d-4145-a662-67a2f56bf0a0'
+                        toil.exportFile(fileID, 's3://' + dstFile)
                     currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
 
                     assert initialPermissions == currentPermissions
@@ -301,7 +309,11 @@ class hidden(object):
             Ensures that files imported to the leader preserve their executable permissions
             when they are read by the fileStore
             """
+            print(f"jobStoreType: {self.jobStoreType}")
             with Toil(self.options) as toil:
+                #self.options.jobStore
+                print(f'options.jobStore: {self.options.jobStore}')
+
                 workDir = self._createTempDir()
                 for executable in True, False:
                     srcFile = '%s/%s%s' % (workDir, 'in', str(uuid4()))
@@ -310,20 +322,29 @@ class hidden(object):
                     if executable:
                         os.chmod(srcFile, os.stat(srcFile).st_mode | stat.S_IXUSR)
                     initialPermissions = os.stat(srcFile).st_mode & stat.S_IXUSR
-                    jobStoreFileID = toil.importFile('file://' + srcFile)
+                    if self.jobStoreType == 'file':
+                        jobStoreFileID = toil.importFile('file://' + srcFile)
+                    if self.jobStoreType == 'aws':
+                        print(f"initialPermissions: {initialPermissions}")
+                        print(f'srcFile: {srcFile}')
+                        bucketName = 'toil-preserve-file-permissions-tests'
+                        jobStoreFileID = toil.importFile(f's3://{bucketName}/5235ea21-8e87-492b-9cce-a8c0eafd14c9', executable=executable)
+                        print(f"jobStoreFileID: {jobStoreFileID}")
+                        print(f"jobStoreFileID.executable: {jobStoreFileID.executable}")
                     for mutable in True,False:
                         for symlink in True, False:
-                            dstFile = '%s/%s%s' % (workDir, 'out', str(uuid4()))
-                            A = Job.wrapJobFn(_testImportReadFileCompatibility, fileID=jobStoreFileID, dstFile=dstFile,
-                                                initialPermissions=initialPermissions, mutable=mutable, symlink=symlink)
-                            toil.start(A)
+                            with self.subTest(f'Now testing readGlobalFileWith: mutable={mutable} symlink={symlink}'):
+                                dstFile = '%s/%s%s' % (workDir, 'out', str(uuid4()))
+                                A = Job.wrapJobFn(_testImportReadFileCompatibility, fileID=jobStoreFileID, dstFile=dstFile,
+                                                    initialPermissions=initialPermissions, mutable=mutable, symlink=symlink)
+                                toil.start(A)
 
         @staticmethod
         def _testImportReadFileCompatibility(job, fileID, dstFile, initialPermissions, mutable, symlink):
             dstFile = job.fileStore.readGlobalFile(fileID, mutable=mutable, symlink=symlink)
             currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
 
-            assert initialPermissions == currentPermissions
+            assert initialPermissions == currentPermissions, f'{initialPermissions} == {currentPermissions}'
 
         @staticmethod
         def _writeFileToJobStore(job, isLocalFile, nonLocalDir=None, fileMB=1):
@@ -1316,7 +1337,7 @@ class CachingFileStoreTestWithFileJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'file'
 
 
-@needs_aws_ec2
+#@needs_aws_ec2
 class NonCachingFileStoreTestWithAwsJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'aws'
 
