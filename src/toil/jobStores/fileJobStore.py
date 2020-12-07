@@ -287,7 +287,7 @@ class FileJobStore(AbstractJobStore):
         else:
             atomic_copy(srcPath, destPath)
 
-    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False):
+    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False, executable=False):
         if issubclass(otherCls, FileJobStore):
             if sharedFileName is None:
                 executable = os.stat(url.path).st_mode & stat.S_IXUSR != 0
