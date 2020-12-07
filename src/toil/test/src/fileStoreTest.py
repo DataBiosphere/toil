@@ -1337,7 +1337,7 @@ class CachingFileStoreTestWithFileJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'file'
 
 
-#@needs_aws_ec2
+@needs_aws_ec2
 class NonCachingFileStoreTestWithAwsJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'aws'
 
