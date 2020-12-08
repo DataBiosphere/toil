@@ -946,6 +946,6 @@ def cross(left: List[Any], right: List[Any]) -> List[WDLPair]:
     WDL syntax: Array[Pair[X,Y]] cross(Array[X], Array[Y])
     """
     if not isinstance(left, list) or not isinstance(right, list):
-        raise WDLRuntimeError(f'cross() requires both inputs to be lists!  Not: {type(left)} and {type(right)}')
+        raise WDLRuntimeError(f'cross() requires both inputs to be Array[]!  Not: {type(left)} and {type(right)}')
 
     return list(WDLPair(left=left_val, right=right_val) for left_val in left for right_val in right)

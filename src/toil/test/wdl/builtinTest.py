@@ -251,15 +251,10 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
         """Test the wdl built-in functional equivalent of 'zip()'."""
         left_array = [1, 2, 3]
         right_array = ['a', 'b', 'c']
-        zipped = wdl_zip(left_array, right_array)  # [WDLPair(1, 'a'), WDLPair(2, 'b'), WDLPair(3, 'c')]
+        zipped = wdl_zip(left_array, right_array)
+        expected_results = [WDLPair(1, 'a'), WDLPair(2, 'b'), WDLPair(3, 'c')]
 
-        self.assertEqual(3, len(zipped))
-
-        for index, pair in enumerate(zipped):
-            self.assertIsInstance(pair, WDLPair)
-            # check left and right values
-            self.assertEqual(left_array[index], pair.left)
-            self.assertEqual(right_array[index], pair.right)
+        self.assertEqual(zipped, expected_results)
 
         # input with different size should fail.
         self.assertRaises(WDLRuntimeError, wdl_zip, [1, 2, 3], ['a', 'b'])
@@ -269,14 +264,11 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
         left_array = [1, 2, 3]
         right_array = ['a', 'b']
         crossed = cross(left_array, right_array)
-        expected_results = [(1, 'a'), (1, 'b'), (2, 'a'), (2, 'b'), (3, 'a'), (3, 'b')]
+        expected_results = [WDLPair(1, 'a'), WDLPair(1, 'b'),
+                            WDLPair(2, 'a'), WDLPair(2, 'b'),
+                            WDLPair(3, 'a'), WDLPair(3, 'b')]
 
-        self.assertEqual(len(expected_results), len(crossed))
-
-        for index, cross_product in enumerate(crossed):
-            left, right = expected_results[index]
-            self.assertEqual(left, cross_product.left)
-            self.assertEqual(right, cross_product.right)
+        self.assertEqual(crossed, expected_results)
 
 
 class WdlWorkflowsTest(ToilTest):
