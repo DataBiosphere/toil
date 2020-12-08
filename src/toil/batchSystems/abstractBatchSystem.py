@@ -309,19 +309,17 @@ class BatchSystemSupport(AbstractBatchSystem):
             if requested > available:
                 unit = 'bytes of ' if resource in ('disk', 'memory') else ''
                 context = f' of free space on {self.config.workDir}' if resource == 'disk' else ''
-                if job_name:
-                    if resource == 'disk':
-                        msg = (f'The job {job_name} is requesting {requested} {unit}{resource} for temporary space, '
-                               f'more than the maximum of {available} {unit}{resource}{context} that {batch_system} '
-                               f'was configured with.  Try setting/changing the toil option "--workDir" or changing '
-                               f'the base temporary directory by setting TMPDIR.')
-                    else:
-                        msg = (f'The job {job_name} is requesting {requested} {unit}{resource}, more than the '
-                               f'maximum of {available} {unit}{resource} that {batch_system} was configured with.')
+                R = f'The job {job_name} is r' if job_name else 'R'
+                if resource == 'disk':
+                    msg = (f'{R}equesting {requested} {unit}{resource} for temporary space, '
+                           f'more than the maximum of {available} {unit}{resource}{context} that {batch_system} '
+                           f'was configured with, or enforced by --max{resource.capitalize()}.  Try '
+                           f'setting/changing the toil option "--workDir" or changing the base temporary '
+                           f'directory by setting TMPDIR.')
                 else:
-                    msg = (f'Requesting more {unit}{resource}{context} than either physically available to '
-                           f'{batch_system}, or enforced by --max{resource.capitalize()}. '
-                           f'Requested: {requested}, Available: {available}')
+                    msg = (f'{R}equesting {requested} {unit}{resource}, more than the maximum of '
+                           f'{available} {unit}{resource} that {batch_system} was configured with, '
+                           f'or enforced by --max{resource.capitalize()}.')
                 if detail:
                     msg += detail
 
