@@ -308,14 +308,13 @@ class BatchSystemSupport(AbstractBatchSystem):
             assert requested is not None
             if requested > available:
                 unit = 'bytes of ' if resource in ('disk', 'memory') else ''
-                context = f' of free space on {self.config.workDir}' if resource == 'disk' else ''
                 R = f'The job {job_name} is r' if job_name else 'R'
                 if resource == 'disk':
                     msg = (f'{R}equesting {requested} {unit}{resource} for temporary space, '
-                           f'more than the maximum of {available} {unit}{resource}{context} that {batch_system} '
-                           f'was configured with, or enforced by --max{resource.capitalize()}.  Try '
-                           f'setting/changing the toil option "--workDir" or changing the base temporary '
-                           f'directory by setting TMPDIR.')
+                           f'more than the maximum of {available} {unit}{resource} of free space on '
+                           f'{self.config.workDir} that {batch_system} was configured with, or enforced '
+                           f'by --max{resource.capitalize()}.  Try setting/changing the toil option '
+                           f'"--workDir" or changing the base temporary directory by setting TMPDIR.')
                 else:
                     msg = (f'{R}equesting {requested} {unit}{resource}, more than the maximum of '
                            f'{available} {unit}{resource} that {batch_system} was configured with, '
