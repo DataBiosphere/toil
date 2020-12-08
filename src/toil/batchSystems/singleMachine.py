@@ -39,7 +39,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     give it as they come in, but in parallel.
 
     Uses a single "daddy" thread to manage a fleet of child processes.
-    
+
     Communication with the daddy thread happens via two queues: one queue of
     jobs waiting to be run (the input queue), and one queue of jobs that are
     finished/stopped and need to be returned by getUpdatedBatchJob (the output
@@ -70,7 +70,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     physicalMemory = toil.physicalMemory()
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        
+        self.config = config
         # Limit to the smaller of the user-imposed limit and what we actually
         # have on this machine for each resource. 
         #
@@ -86,7 +86,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 # We have an actually specified limit and not the default
                 log.warning('Not enough memory! User limited to %i bytes but we only have %i bytes.', maxMemory, self.physicalMemory)
             maxMemory = self.physicalMemory
-        self.physicalDisk = toil.physicalDisk(config)
+
+        workdir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
+        self.physicalDisk = toil.physicalDisk(workdir)  # can just config.workDir be used here?
         if maxDisk > self.physicalDisk:
             if maxDisk != sys.maxsize:
                 # We have an actually specified limit and not the default
@@ -493,12 +495,11 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         
         # Don't do our own assertions about job size vs. our configured size.
         # The abstract batch system can handle it.
-        self.checkResourceRequest(jobDesc.memory, cores, jobDesc.disk, name=jobDesc.jobName,
-            detail='Scale is set to {}.'.format(self.scale))
-        
-        self.checkResourceRequest(jobDesc.memory, cores, jobDesc.disk)
-        log.debug("Issuing the command: %s with memory: %i, cores: %i, disk: %i" % (
-            jobDesc.command, jobDesc.memory, cores, jobDesc.disk))
+        self.checkResourceRequest(jobDesc.memory, cores, jobDesc.disk, job_name=jobDesc.jobName,
+                                  detail=f'Scale is set to {self.scale}.')
+
+        log.debug(f"Issuing the command: {jobDesc.command} with "
+                  f"memory: {jobDesc.memory}, cores: {cores}, disk: {jobDesc.disk}")
         with self.jobIndexLock:
             jobID = self.jobIndex
             self.jobIndex += 1

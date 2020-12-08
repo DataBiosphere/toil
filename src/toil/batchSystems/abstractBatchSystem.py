@@ -284,7 +284,7 @@ class BatchSystemSupport(AbstractBatchSystem):
                                                    workflowID=self.config.workflowID,
                                                    cleanWorkDir=self.config.cleanWorkDir)
 
-    def checkResourceRequest(self, memory, cores, disk, name=None, detail=None):
+    def checkResourceRequest(self, memory: int, cores: float, disk: int, job_name: str = '', detail: str = ''):
         """
         Check resource request is not greater than that available or allowed.
 
@@ -294,25 +294,38 @@ class BatchSystemSupport(AbstractBatchSystem):
 
         :param int disk: amount of disk space being requested, in bytes
         
-        :param str name: Name of the job being checked, for generating a useful error report.
+        :param str job_name: Name of the job being checked, for generating a useful error report.
         
         :param str detail: Batch-system-specific message to include in the error.
 
         :raise InsufficientSystemResources: raised when a resource is requested in an amount
                greater than allowed
         """
-        assert memory is not None
-        assert disk is not None
-        assert cores is not None
-        if cores > self.maxCores:
-            raise InsufficientSystemResources('cores', cores, self.maxCores,
-                                              batchSystem=self.__class__.__name__, name=name, detail=detail)
-        if memory > self.maxMemory:
-            raise InsufficientSystemResources('memory', memory, self.maxMemory,
-                                              batchSystem=self.__class__.__name__, name=name, detail=detail)
-        if disk > self.maxDisk:
-            raise InsufficientSystemResources('disk', disk, self.maxDisk,
-                                              batchSystem=self.__class__.__name__, name=name, detail=detail)
+        batch_system = self.__class__.__name__ or 'this batch system'
+        for resource, requested, available in [('cores', cores, self.maxCores),
+                                               ('memory', memory, self.maxMemory),
+                                               ('disk', disk, self.maxDisk)]:
+            assert requested is not None
+            if requested > available:
+                unit = 'bytes of ' if resource in ('disk', 'memory') else ''
+                context = f' of free space on {self.config.workDir}' if resource == 'disk' else ''
+                if job_name:
+                    if resource == 'disk':
+                        msg = (f'The job {job_name} is requesting {requested} {unit}{resource} for temporary space, '
+                               f'more than the maximum of {available} {unit}{resource}{context} that {batch_system} '
+                               f'was configured with.  Try setting/changing the toil option "--workDir" or changing '
+                               f'the base temporary directory by setting TMPDIR.')
+                    else:
+                        msg = (f'The job {job_name} is requesting {requested} {unit}{resource}, more than the '
+                               f'maximum of {available} {unit}{resource} that {batch_system} was configured with.')
+                else:
+                    msg = (f'Requesting more {unit}{resource}{context} than either physically available to '
+                           f'{batch_system}, or enforced by --max{resource.capitalize()}. '
+                           f'Requested: {requested}, Available: {available}')
+                if detail:
+                    msg += detail
+
+                raise InsufficientSystemResources(msg)
 
     def setEnv(self, name, value=None):
         """
@@ -610,52 +623,4 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
 
 
 class InsufficientSystemResources(Exception):
-    """
-    To be raised when a job requests more of a particular resource than is either currently allowed
-    or avaliable
-    """
-    def __init__(self, resource, requested, available, batchSystem=None, name=None, detail=None):
-        """
-        Creates an instance of this exception that indicates which resource is insufficient for current
-        demands, as well as the amount requested and amount actually available.
-
-        :param str resource: string representing the resource type
-
-        :param int|float requested: the amount of the particular resource requested that resulted
-               in this exception
-
-        :param int|float available: amount of the particular resource actually available
-        
-        :param str batchSystem: Name of the batch system class complaining, for
-                   generating a useful error report. If you are using a single machine
-                   batch system for local jobs in another batch system, it is important to
-                   know which one has run out of resources.
-        
-        :param str name: Name of the job being checked, for generating a useful error report.
-        
-        :param str detail: Batch-system-specific message to include in the error.
-        """
-        self.requested = requested
-        self.available = available
-        self.resource = resource
-        self.batchSystem = batchSystem if batchSystem is not None else 'this batch system'
-        self.unit = 'bytes of ' if resource == 'disk' or resource == 'memory' else ''
-        self.name = name
-        self.detail = detail
-
-    def __str__(self):
-        if self.name is not None:
-            phrases = [('The job {} is requesting {} {}{}, more than '
-                        'the maximum of {} {}{} that {} was configured '
-                        'with.'.format(self.name, self.requested, self.unit, self.resource,
-                                       self.available, self.unit, self.resource, self.batchSystem))]
-        else:
-            phrases = [('Requesting more {} than either physically available to {}, or enforced by --max{}. '
-                        'Requested: {}, Available: {}'.format(self.resource, self.batchSystem,
-                                                              self.resource.capitalize(),
-                                                              self.requested, self.available))]
-        
-        if self.detail is not None:
-            phrases.append(self.detail)
-            
-        return ' '.join(phrases)
+    pass
