@@ -1,0 +1,11 @@
+{
+  "crossWorkflow.in_array_1": [
+    1,
+    2,
+    3
+  ],
+  "crossWorkflow.in_array_2": [
+    "a",
+    "b"
+  ]
+}

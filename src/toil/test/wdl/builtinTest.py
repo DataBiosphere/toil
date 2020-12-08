@@ -27,6 +27,7 @@ from toil.wdl.wdl_functions import (
     write_map,
     write_tsv,
     wdl_zip,
+    cross,
     WDLPair,
     WDLRuntimeError)
 
@@ -250,18 +251,24 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
         """Test the wdl built-in functional equivalent of 'zip()'."""
         left_array = [1, 2, 3]
         right_array = ['a', 'b', 'c']
-        zipped = wdl_zip(left_array, right_array)  # [WDLPair(1, 'a'), WDLPair(2, 'b'), WDLPair(3, 'c')]
+        zipped = wdl_zip(left_array, right_array)
+        expected_results = [WDLPair(1, 'a'), WDLPair(2, 'b'), WDLPair(3, 'c')]
 
-        self.assertEqual(3, len(zipped))
-
-        for index, pair in enumerate(zipped):
-            self.assertIsInstance(pair, WDLPair)
-            # check left and right values
-            self.assertEqual(left_array[index], pair.left)
-            self.assertEqual(right_array[index], pair.right)
+        self.assertEqual(zipped, expected_results)
 
         # input with different size should fail.
         self.assertRaises(WDLRuntimeError, wdl_zip, [1, 2, 3], ['a', 'b'])
+
+    def testFn_Cross(self):
+        """Test the wdl built-in functional equivalent of 'cross()'."""
+        left_array = [1, 2, 3]
+        right_array = ['a', 'b']
+        crossed = cross(left_array, right_array)
+        expected_results = [WDLPair(1, 'a'), WDLPair(1, 'b'),
+                            WDLPair(2, 'a'), WDLPair(2, 'b'),
+                            WDLPair(3, 'a'), WDLPair(3, 'b')]
+
+        self.assertEqual(crossed, expected_results)
 
 
 class WdlWorkflowsTest(ToilTest):
@@ -462,6 +469,12 @@ class WdlStandardLibraryWorkflowsTest(WdlWorkflowsTest):
     def test_zip(self):
         self.check_function('zip', cases=['as_input'],
                             expected_result='[{"left":1,"right":"a"},{"left":2,"right":"b"},{"left":3,"right":"c"}]')
+
+    def test_cross(self):
+        self.check_function('cross', cases=['as_input'],
+                            expected_result='[{"left":1,"right":"a"},{"left":1,"right":"b"},'
+                                            '{"left":2,"right":"a"},{"left":2,"right":"b"},'
+                                            '{"left":3,"right":"a"},{"left":3,"right":"b"}]')
 
 
 if __name__ == "__main__":

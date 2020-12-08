@@ -232,5 +232,10 @@ class WDLPair:
     def to_dict(self):
         return {'left': self.left, 'right': self.right}
 
+    def __eq__(self, other):
+        if not isinstance(other, WDLPair):
+            return False
+        return self.left == other.left and self.right == other.right
+
     def __repr__(self):
         return str(self.to_dict())
