@@ -87,8 +87,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 log.warning('Not enough memory! User limited to %i bytes but we only have %i bytes.', maxMemory, self.physicalMemory)
             maxMemory = self.physicalMemory
 
-        workdir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
-        self.physicalDisk = toil.physicalDisk(workdir)  # can just config.workDir be used here?
+        self.physicalDisk = toil.physicalDisk(config.workDir)
         if maxDisk > self.physicalDisk:
             if maxDisk != sys.maxsize:
                 # We have an actually specified limit and not the default
@@ -497,7 +496,6 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # The abstract batch system can handle it.
         self.checkResourceRequest(jobDesc.memory, cores, jobDesc.disk, job_name=jobDesc.jobName,
                                   detail=f'Scale is set to {self.scale}.')
-
         log.debug(f"Issuing the command: {jobDesc.command} with "
                   f"memory: {jobDesc.memory}, cores: {cores}, disk: {jobDesc.disk}")
         with self.jobIndexLock:
