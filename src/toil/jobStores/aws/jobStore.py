@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import stat
 import base64
 import hashlib
 import itertools
@@ -397,20 +395,10 @@ class AWSJobStore(AbstractJobStore):
         log.debug("Created %r.", info)
         return info.fileID
 
-    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False, executable=False):
-        print("IN AWS IMPORTFILE")
+    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False):
         if issubclass(otherCls, AWSJobStore):
-            print("IN issubclass")
-            srcKey = self._getKeyForUrl(url, existing=None)
+            srcKey = self._getKeyForUrl(url, existing=True)
             size = srcKey.size
-            print(f"CHECK_URL: {url}")
-            path = url.scheme + '://' + url.netloc + url.path
-            print(f"path: {path}")
-            print(f"CHECK EXECUTABLE PARAM: {executable}")
-
-            print("AFTER srcKey")
-            print(f"srcKey: {srcKey}")
-            print(f"srcPath: {srcKey.path}")
             try:
                 if sharedFileName is None:
                     info = self.FileInfo.create(srcKey.name)
@@ -424,24 +412,17 @@ class AWSJobStore(AbstractJobStore):
                 info.save()
             finally:
                 srcKey.bucket.connection.close() 
-            return FileID(info.fileID, size, executable) if sharedFileName is None else None
+            return FileID(info.fileID, size) if sharedFileName is None else None
         else:
-            #print(f"CHECKING AWS: {srcKey.path}")
-            print("IN ELSE")
             return super(AWSJobStore, self)._importFile(otherCls, url,
                                                         sharedFileName=sharedFileName)
 
     def _exportFile(self, otherCls, jobStoreFileID, url):
-        print("IN AWS _EXPORTFILE")
-        print(f"otherCls: {otherCls}")
-        print(f"AWS url: {url}")
         if issubclass(otherCls, AWSJobStore):
             dstKey = self._getKeyForUrl(url)
-            print(f"AWS jobStoreFileID.executable: {jobStoreFileID.executable}")
             try:
                 info = self.FileInfo.loadOrFail(jobStoreFileID)
                 info.copyTo(dstKey)
-                print(f"AWS dstKey: {dstKey}")
             finally:
                 dstKey.bucket.connection.close()
         else:
@@ -498,13 +479,8 @@ class AWSJobStore(AbstractJobStore):
         :rtype: Key
         """
         keyName = url.path[1:]
-        bucketName = 'toil-preserve-file-permissions-tests'
-        
-        print("IN getKeyForURL")
-        print(f"url: {url}")
-        #print(f"url.path: {url.path}")
-        print(f"keyName: {keyName}")
-        print(f"bucketName: {bucketName}")
+        bucketName = url.netloc
+
         # Get the bucket's region to avoid a redirect per request
         try:
             with closing(boto.connect_s3()) as s3:
@@ -1328,8 +1304,6 @@ class AWSJobStore(AbstractJobStore):
 
             :param srcKey: The key that will be copied from
             """
-            print("IN copyFrom()")
-            print(f"srcKey: {srcKey}")
             assert srcKey.size is not None
             if srcKey.size <= self.maxInlinedSize():
                 self.content = srcKey.get_contents_as_string()
