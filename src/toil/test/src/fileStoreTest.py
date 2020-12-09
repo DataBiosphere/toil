@@ -1318,19 +1318,19 @@ class CachingFileStoreTestWithFileJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'file'
 
 
-#@needs_aws_ec2
+@needs_aws_ec2
 class NonCachingFileStoreTestWithAwsJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'aws'
 
 
 @slow
-#@needs_aws_ec2
+@needs_aws_ec2
 @pytest.mark.timeout(1000)
 class CachingFileStoreTestWithAwsJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'aws'
 
 
-#@needs_google
+@needs_google
 class NonCachingFileStoreTestWithGoogleJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'google'
 
