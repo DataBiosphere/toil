@@ -343,7 +343,8 @@ class FileJobStore(AbstractJobStore):
         with open(cls._extractPathFromUrl(url), 'rb') as readable:
             shutil.copyfileobj(readable, writable, length=cls.BUFFER_SIZE)
             # Return the number of bytes we read when we reached EOF.
-            return readable.tell()
+            executable = os.stat(readable.name).st_mode & stat.S_IXUSR
+            return readable.tell(), executable
         
 
     @classmethod
