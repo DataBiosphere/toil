@@ -131,6 +131,7 @@ class SynthesizeWDL:
                     from toil.wdl.wdl_functions import length
                     from toil.wdl.wdl_functions import wdl_zip
                     from toil.wdl.wdl_functions import cross
+                    from toil.wdl.wdl_functions import as_pairs
                     import fnmatch
                     import textwrap
                     import subprocess
