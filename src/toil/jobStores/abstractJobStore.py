@@ -11,6 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
+import stat
 import logging
 import pickle
 import re
@@ -265,7 +267,7 @@ class AbstractJobStore(ABC):
         raise RuntimeError("No job store implementation supports %sporting for URL '%s'" %
                            ('ex' if export else 'im', url.geturl()))
 
-    def importFile(self, srcUrl, sharedFileName=None, hardlink=False, executable=False):
+    def importFile(self, srcUrl, sharedFileName=None, hardlink=False):
         """
         Imports the file at the given URL into job store. The ID of the newly imported file is
         returned. If the name of a shared file name is provided, the file will be imported as
@@ -300,11 +302,9 @@ class AbstractJobStore(ABC):
         # subclasses of AbstractJobStore.
         srcUrl = urlparse.urlparse(srcUrl)
         otherCls = self._findJobStoreForUrl(srcUrl)
-        print(f"srcUrl: {srcUrl}")
-        print(f"otherCls: {otherCls}")
-        return self._importFile(otherCls, srcUrl, sharedFileName=sharedFileName, hardlink=hardlink, executable=executable)
+        return self._importFile(otherCls, srcUrl, sharedFileName=sharedFileName, hardlink=hardlink)
 
-    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False, executable=False):
+    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False):
         """
         Import the file at the given URL using the given job store class to retrieve that file.
         See also :meth:`.importFile`. This method applies a generic approach to importing: it
@@ -322,11 +322,9 @@ class AbstractJobStore(ABC):
         :rtype: toil.fileStores.FileID or None
         """
         if sharedFileName is None:
-            print("IN _importFile")
-            print(f'url: {url}')
             with self.writeFileStream() as (writable, jobStoreFileID):
-                size = otherCls._readFromUrl(url, writable)
-                return FileID(jobStoreFileID, size)
+                size, executable = otherCls._readFromUrl(url, writable)
+                return FileID(jobStoreFileID, size, executable)
         else:
             self._requireValidSharedFileName(sharedFileName)
             with self.writeSharedFileStream(sharedFileName) as writable:
@@ -349,10 +347,8 @@ class AbstractJobStore(ABC):
         :param str dstUrl: URL that points to a file or object in the storage mechanism of a
                 supported URL scheme e.g. a blob in an AWS s3 bucket.
         """
-        print("IN AWS EXPORTFILE")
         dstUrl = urlparse.urlparse(dstUrl)
         otherCls = self._findJobStoreForUrl(dstUrl, export=True)
-        print(f"dstUrl: {dstUrl}")
         self._exportFile(otherCls, jobStoreFileID, dstUrl)
 
     def _exportFile(self, otherCls, jobStoreFileID, url):
@@ -385,6 +381,8 @@ class AbstractJobStore(ABC):
         """
         with self.readFileStream(jobStoreFileID) as readable:
             otherCls._writeToUrl(readable, url)
+        if getattr(jobStoreFileID, 'executable', False):
+            os.chmod(url.path, os.stat(url.path).st_mode | stat.S_IXUSR)
 
     @abstractclassmethod
     def getSize(cls, url):
@@ -409,7 +407,7 @@ class AbstractJobStore(ABC):
 
         :param writable: a writable stream
 
-        :return int: returns the size of the file in bytes
+        :return int, bool: the size of the file in bytes, the user executable permission bit
         """
         raise NotImplementedError()
 
