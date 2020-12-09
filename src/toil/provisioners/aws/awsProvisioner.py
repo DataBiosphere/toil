@@ -20,8 +20,8 @@ import logging
 import urllib.request
 import boto.ec2
 
-from six import iteritems, text_type
-from typing import List, Dict, Any
+from six import iteritems
+from typing import List, Dict, Any, Optional
 from functools import wraps
 from boto.ec2.blockdevicemapping import BlockDeviceMapping as Boto2BlockDeviceMapping, BlockDeviceType as Boto2BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
@@ -48,8 +48,9 @@ logging.getLogger("boto").setLevel(logging.CRITICAL)
 _INSTANCE_PROFILE_ROLE_NAME = 'toil'
 # The tag key that specifies the Toil node type ("leader" or "worker") so that
 # leader vs. worker nodes can be robustly identified.
-_TOIL_NODE_TYPE_TAG_KEY = 'ToilNodeType'
-
+_TAG_KEY_TOIL_NODE_TYPE = 'ToilNodeType'
+# The tag that specifies the cluster name on all nodes
+_TAG_KEY_TOIL_CLUSTER_NAME = 'clusterName'
 
 def awsRetryPredicate(e):
     if not isinstance(e, BotoServerError):
@@ -137,12 +138,16 @@ class AWSProvisioner(AbstractProvisioner):
         region = zoneToRegion(self._zone)
         conn = boto.ec2.connect_to_region(region)
         instance = conn.get_all_instances(instance_ids=[instanceMetaData["instance-id"]])[0].instances[0]
+        # The cluster name is the same as the name of the leader.
         self.clusterName = str(instance.tags["Name"])
         self._buildContext()
+        # This is where we will put the workers.
+        # See also: self._vpcSubnet
         self._subnetID = instance.subnet_id
         self._leaderPrivateIP = instanceMetaData['local-ipv4']  # this is PRIVATE IP
         self._keyName = list(instanceMetaData['public-keys'].keys())[0]
         self._tags = self.getLeader().tags
+        # Grab the ARN name of the instance profile (a str) to apply to workers
         self._leaderProfileArn = instanceMetaData['iam']['info']['InstanceProfileArn']
         # The existing metadata API returns a single string if there is one security group, but
         # a list when there are multiple: change the format to always be a list.
@@ -180,32 +185,26 @@ class AWSProvisioner(AbstractProvisioner):
         :return: None
         """
         
+        instanceType = E2Instances[leaderNodeType]
+        
         if self.clusterType == 'kubernetes':
-            if E2Instances[leaderNodeType].cores < 2:
+            if instanceType.cores < 2:
                 # Kubernetes won't run here.
                 raise RuntimeError('Kubernetes requires 2 or more cores, and %s is too small' %
                                    leaderNodeType)
         
         
         self._keyName = keyName
+        # This is where we put the leader
         self._vpcSubnet = vpcSubnet
 
         profileArn = awsEc2ProfileArn or self._getProfileArn()
         # the security group name is used as the cluster identifier
         createdSGs = self._createSecurityGroups()
-        bdm = [
-            {
-                'DeviceName': '/dev/xvda',
-                'Ebs': {
-                    'DeleteOnTermination': True,
-                    'VolumeSize': leaderStorage,
-                    'VolumeType': 'gp2'
-                }
-            },
-        ]
+        bdms = self._getBoto3BlockDeviceMappings(instanceType, rootVolSize=leaderStorage)
 
         userData = self._getCloudConfigUserData('leader')
-        if isinstance(userData, text_type):
+        if isinstance(userData, str):
             # Spot-market provisioning requires bytes for user data.
             # We probably won't have a spot-market leader, but who knows!
             userData = userData.encode('utf-8')
@@ -214,18 +213,21 @@ class AWSProvisioner(AbstractProvisioner):
                                      num_instances=1,
                                      key_name=self._keyName,
                                      security_group_ids=createdSGs + awsEc2ExtraSecurityGroupIds,
-                                     instance_type=leaderNodeType,
+                                     instance_type=instanceType.name,
                                      user_data=userData,
-                                     block_device_map=bdm,
-                                     instance_profile_arn={'Arn': profileArn},
-                                     placement={'AvailabilityZone': self._zone},
+                                     block_device_map=bdms,
+                                     instance_profile_arn=profileArn,
+                                     placement_az=self._zone,
                                      subnet_id=self._vpcSubnet)
 
         # wait for the leader to exist at all
         leader = instances[0]
         leader.wait_until_exists()
 
-        default_tags = {'Name': self.clusterName, 'Owner': owner, _TOIL_NODE_TYPE_TAG_KEY: 'leader'}
+        default_tags = {'Name': self.clusterName,
+                        'Owner': owner,
+                        _TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName,
+                        _TAG_KEY_TOIL_NODE_TYPE: 'leader'}
         default_tags.update(userTags)
         if self.clusterType == 'kubernetes':
             # All nodes need a tag putting them in the cluster.
@@ -244,14 +246,17 @@ class AWSProvisioner(AbstractProvisioner):
         # cluster.
         self._tags = {t['Key']: t['Value'] for t in tags}
         self._leaderPrivateIP = leader.private_ip_address
+        # This is where we will put the workers.
+        # See also: self._vpcSubnet
         self._subnetID = leader.subnet_id
         self._leaderSecurityGroupNames = set()
         self._leaderSecurityGroupIDs = set(createdSGs + awsEc2ExtraSecurityGroupIds)
         self._leaderProfileArn = profileArn
         
         leaderNode = Node(publicIP=leader.public_ip_address, privateIP=leader.private_ip_address,
-                          name=leader.id, launchTime=leader.launch_time, nodeType=leaderNodeType,
-                          preemptable=False, tags=leader.tags)
+                          name=leader.id, launchTime=leader.launch_time,
+                          nodeType=instanceType.name, preemptable=False,
+                          tags=leader.tags)
         leaderNode.waitForNode('toil_leader')
         
         # Download credentials
@@ -357,19 +362,16 @@ class AWSProvisioner(AbstractProvisioner):
             else:
                 raise RuntimeError("No spot bid given for a preemptable node request.")
         instanceType = E2Instances[nodeType]
-        bdm = self._getBlockDeviceMapping(instanceType, rootVolSize=self._nodeStorageOverrides.get(nodeType, self._nodeStorage))
+        bdm = self._getBoto2BlockDeviceMapping(instanceType, rootVolSize=self._nodeStorageOverrides.get(nodeType, self._nodeStorage))
 
         keyPath = self._sseKey if self._sseKey else None
         userData = self._getCloudConfigUserData('worker', keyPath, preemptable)
-        if isinstance(userData, text_type):
+        if isinstance(userData, str):
             # Spot-market provisioning requires bytes for user data.
             userData = userData.encode('utf-8')
-        # Depending on if we enumerated them on the leader or locally, we might
-        # know the required security groups by name, ID, or both.
-        sgs = [sg for sg in self._boto2.ec2.get_all_security_groups() if (sg.name in self._leaderSecurityGroupNames or
-                                                                        sg.id in self._leaderSecurityGroupIDs)]
+        
         kwargs = {'key_name': self._keyName,
-                  'security_group_ids': [sg.id for sg in sgs],
+                  'security_group_ids': self._getSecurityGroupIDs(),
                   'instance_type': instanceType.name,
                   'user_data': userData,
                   'block_device_map': bdm,
@@ -395,7 +397,7 @@ class AWSProvisioner(AbstractProvisioner):
                     instancesLaunched = list(create_spot_instances(ec2=self._boto2.ec2,
                                                                    price=spotBid,
                                                                    image_id=self._discoverAMI(),
-                                                                   tags={'clusterName': self.clusterName},
+                                                                   tags={_TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName},
                                                                    spec=kwargs,
                                                                    num_instances=numNodes,
                                                                    tentative=True)
@@ -407,7 +409,7 @@ class AWSProvisioner(AbstractProvisioner):
             with attempt:
                 wait_instances_running(self._boto2.ec2, instancesLaunched)
 
-        self._tags[_TOIL_NODE_TYPE_TAG_KEY] = 'worker'
+        self._tags[_TAG_KEY_TOIL_NODE_TYPE] = 'worker'
         AWSProvisioner._addTags(instancesLaunched, self._tags)
         if self._sseKey:
             for i in instancesLaunched:
@@ -444,7 +446,7 @@ class AWSProvisioner(AbstractProvisioner):
                     'is set, ec2_region_name is set in the .boto file, or that '
                     'you are running on EC2.')
         logger.debug("Building AWS context in zone %s for cluster %s" % (self._zone, self.clusterName))
-        self._boto2 = Context(availability_zone=self._zone, namespace=self._toNameSpace())
+        self._boto2 = Boto2Context(availability_zone=self._zone, namespace=self._toNameSpace())
 
     @memoize
     def _discoverAMI(self) -> str:
@@ -516,7 +518,7 @@ class AWSProvisioner(AbstractProvisioner):
             leader = instances[0]  # assume leader was launched first
         except IndexError:
             raise NoSuchClusterException(self.clusterName)
-        if (leader.tags.get(_TOIL_NODE_TYPE_TAG_KEY) or 'leader') != 'leader':
+        if (leader.tags.get(_TAG_KEY_TOIL_NODE_TYPE) or 'leader') != 'leader':
             raise InvalidClusterStateException(
                 'Invalid cluster state! The first launched instance appears not to be the leader '
                 'as it is missing the "leader" tag. The safest recovery is to destroy the cluster '
@@ -647,7 +649,7 @@ class AWSProvisioner(AbstractProvisioner):
                     raise
 
     @classmethod
-    def _getBlockDeviceMapping(cls, instanceType: InstanceType, rootVolSize: int = 50) -> Boto2BlockDeviceMapping:
+    def _getBoto2BlockDeviceMapping(cls, instanceType: InstanceType, rootVolSize: int = 50) -> Boto2BlockDeviceMapping:
         # determine number of ephemeral drives via cgcloud-lib (actually this is moved into toil's lib
         bdtKeys = [''] + ['/dev/xvd{}'.format(c) for c in string.ascii_lowercase[1:]]
         bdm = Boto2BlockDeviceMapping()
@@ -663,31 +665,37 @@ class AWSProvisioner(AbstractProvisioner):
 
         logger.debug('Device mapping: %s', bdm)
         return bdm
-
-    @awsRetry
-    def _getLaunchTemplateIDs(self, nodeType=None, preemptable=False, both=False) -> List[str]:
-        """
-        Find all launch templates associated with the cluster.
         
-        Returns a list of launch template IDs.
+    @classmethod
+    def _getBoto3BlockDeviceMappings(cls, instanceType: InstanceType, rootVolSize: int = 50) -> List[dict]:
+        """
+        Get block device mappings for the root volume for a worker.
         """
         
-        allTemplateIDs = []
-        # Get the first page with no NextToken
-        response = self.ec2.describe_launch_templates(Filters=[{'tag:toil-cluster': self.clusterName}],
-                                                      MaxResults=200)
-        while True:
-            # Process the current page
-            allTemplateIDs += [item['LaunchTemplateId'] for item in response.get('LaunchTemplates', [])]
-            if 'NextToken' in response:
-                # There are more pages. Get the next one, supplying the token.
-                response = self.ec2.describe_launch_templates(Filters=[{'tag:toil-cluster': self.clusterName}],
-                                                              NextToken=response['NextToken'], MaxResults=200)
-            else:
-                # No more pages
-                break
-                
-        return allTemplateIDs
+        # Start with the root
+        bdms = [{
+            'DeviceName': '/dev/xvda',
+            'Ebs': {
+                'DeleteOnTermination': True,
+                'VolumeSize': rootVolSize,
+                'VolumeType': 'gp2'
+            }
+        }]
+        
+        # Get all the virtual drives we might have
+        bdtKeys = ['/dev/xvd{}'.format(c) for c in string.ascii_lowercase]
+        
+        # The first disk is already attached for us so start with 2nd.
+        # Disk count is weirdly a float in our instance database, so make it an int here.
+        for disk in range(1, int(instanceType.disks) + 1):
+            # Make a block device mapping to attach the ephemeral disk to a
+            # virtual block device in the VM
+            bdms.append({
+                'DeviceName': bdtKeys[disk],
+                'VirtualName': 'ephemeral{}'.format(disk - 1) # ephemeral counts start at 0
+            })
+        logger.debug('Device mapping: %s', bdms)
+        return bdms
 
     @awsRetry
     def _getNodesInCluster(self, nodeType=None, preemptable=False, both=False) -> List[Boto2Instance]:
@@ -715,7 +723,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
         assert self._boto2
         requests = self._boto2.ec2.get_all_spot_instance_requests()
-        tags = self._boto2.ec2.get_all_tags({'tag:': {'clusterName': self.clusterName}})
+        tags = self._boto2.ec2.get_all_tags({'tag:': {_TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName}})
         idsToCancel = [tag.id for tag in tags]
         return [request for request in requests if request.id in idsToCancel]
 
@@ -761,6 +769,91 @@ class AWSProvisioner(AbstractProvisioner):
             if sg.name == self.clusterName and (vpcId is None or sg.vpc_id == vpcId):
                 out.append(sg)
         return [sg.id for sg in out]
+        
+    @awsRetry
+    def _getSecurityGroupIDs(self) -> List[str]:
+        """
+        Get all the security group IDs to apply to leaders and workers.
+        """
+       
+        # TODO: memoize to save requests.
+       
+        # Depending on if we enumerated them on the leader or locally, we might
+        # know the required security groups by name, ID, or both.
+        sgs = [sg for sg in self._boto2.ec2.get_all_security_groups() 
+               if (sg.name in self._leaderSecurityGroupNames or
+                   sg.id in self._leaderSecurityGroupIDs)]
+        return [sg.id for sg in sgs]
+        
+    @awsRetry
+    def _getLaunchTemplateIDs(self, nodeType=None, preemptable=False, both=False) -> List[str]:
+        """
+        Find all launch templates associated with the cluster.
+        
+        Returns a list of launch template IDs.
+        """
+        
+        # How do we match the right templates?
+        filters = [{'tag:' + _TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName}]
+        
+        allTemplateIDs = []
+        # Get the first page with no NextToken
+        response = self.ec2.describe_launch_templates(Filters=filters,
+                                                      MaxResults=200)
+        while True:
+            # Process the current page
+            allTemplateIDs += [item['LaunchTemplateId'] for item in response.get('LaunchTemplates', [])]
+            if 'NextToken' in response:
+                # There are more pages. Get the next one, supplying the token.
+                response = self.ec2.describe_launch_templates(Filters=filters,
+                                                              NextToken=response['NextToken'], MaxResults=200)
+            else:
+                # No more pages
+                break
+                
+        return allTemplateIDs
+        
+    def _createWorkerLaunchTemplate(self, nodeType: str, preemptable: bool = False) -> str:
+        """
+        Create the launch template for launching worker instances for the cluster.
+        
+        :param nodeType: Type of node to use in the template. May be overridden
+                         by an ASG that uses the template.
+                         
+        :param preemptable: When the node comes up, does it think it is a spot instance?
+        
+        :return: The ID of the template created.
+        """
+        
+        assert self._leaderPrivateIP
+        instanceType = E2Instances[nodeType]
+        rootVolSize=self._nodeStorageOverrides.get(nodeType, self._nodeStorage)
+        bdms = self._getBoto3BlockDeviceMappings(instanceType, rootVolSize=rootVolSize)
+
+        keyPath = self._sseKey if self._sseKey else None
+        userData = self._getCloudConfigUserData('worker', keyPath, preemptable)
+        
+        # The name has the cluster name in it
+        lt_name = f'{self.clusterName}-lt-{nodeType}'
+        if preemptable:
+            lt_name += '-spot'
+            
+        # But really we find it by tag
+        tags = {_TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName}
+        
+
+        return create_launch_template(self.ec2,
+                                      template_name=lt_name,
+                                      image_id=self._discoverAMI(),
+                                      key_name=self._keyName,
+                                      security_group_ids=self._getSecurityGroupIDs(),
+                                      instance_type=instanceType.name,
+                                      user_data=userData,
+                                      block_device_map=bdms,
+                                      instance_profile_arn=self._leaderProfileArn,
+                                      placement_az=self._zone,
+                                      subnet_id=self._subnetID,
+                                      tags=tags)
 
     def full_policy(self, resource: str) -> dict:
         """

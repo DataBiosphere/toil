@@ -282,10 +282,10 @@ def create_instances(ec2: ServiceResource,
                      instance_type: str,
                      num_instances: int = 1,
                      security_group_ids: Optional[List] = None,
-                     user_data: Optional[bytes] = None,
+                     user_data: Optional[Union[str, bytes]] = None,
                      block_device_map: Optional[List[Dict]] = None,
-                     instance_profile_arn: Optional[Dict] = None,
-                     placement: Optional[Dict] = None,
+                     instance_profile_arn: Optional[str] = None,
+                     placement_az: Optional[str] = None,
                      subnet_id: str = None,
                      tags: Optional[Dict[str, str]] = None) -> List[dict]:
     """
@@ -299,8 +299,13 @@ def create_instances(ec2: ServiceResource,
     Tags, if given, are applied to the instances, and all volumes.
     """
     log.info('Creating %s instance(s) ... ', instance_type)
+    
+    if isinstance(user_data, str):
+        user_data = user_data.encode('utf-8')
+    
     for attempt in retry_ec2(retry_for=a_long_time, retry_while=inconsistencies_detected):
         with attempt:
+            
             request = {'ImageId': image_id,
                        'MinCount': num_instances,
                        'MaxCount': num_instances,
@@ -310,8 +315,13 @@ def create_instances(ec2: ServiceResource,
                        'UserData': user_data,
                        'Placement': placement,
                        'BlockDeviceMappings': block_device_map,
-                       'IamInstanceProfile': instance_profile_arn,
                        'SubnetId': subnet_id}
+                       
+            if instance_profile_arn:
+                request['IamInstanceProfile'] = {'Arn': instance_profile_arn}
+                
+            if placement_az:
+                request['Placement'] = {'AvailabilityZone': placement_az}
                        
             if tags:
                 # Tag everything when we make it.
@@ -327,16 +337,16 @@ def create_launch_template(ec2: ServiceResource,
                            key_name: str,
                            instance_type: str,
                            security_group_ids: Optional[List] = None,
-                           user_data: Optional[bytes] = None,
+                           user_data: Optional[Union[str, bytes]] = None,
                            block_device_map: Optional[List[Dict]] = None,
-                           instance_profile_arn: Optional[Dict] = None,
-                           placement: Optional[Dict] = None,
+                           instance_profile_arn: Optional[str] = None,
+                           placement_az: Optional[str] = None,
                            subnet_id: str = None,
                            tags: Optional[Dict[str, str]] = None) -> str:
     """
     Creates a launch template with the given name for launching instances with the given parameters.
     
-    We only ever use launch template version 1.
+    We only ever use launch template version 1 of any launch template.
 
     Internally calls https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html?highlight=create_launch_template#EC2.Client.create_launch_template
     
@@ -345,6 +355,10 @@ def create_launch_template(ec2: ServiceResource,
     Tags, if given, are applied to the template itself, all instances, and all volumes.
     """
     log.info('Creating launch template for %s instances ... ', instance_type)
+    
+    if isinstance(user_data, str):
+        user_data = user_data.encode('utf-8')
+    
     for attempt in retry_ec2(retry_for=a_long_time, retry_while=inconsistencies_detected):
         with attempt:
             template = {'ImageId': image_id,
@@ -352,10 +366,14 @@ def create_launch_template(ec2: ServiceResource,
                        'SecurityGroupIds': security_group_ids,
                        'InstanceType': instance_type,
                        'UserData': user_data,
-                       'Placement': placement,
                        'BlockDeviceMappings': block_device_map,
-                       'IamInstanceProfile': instance_profile_arn,
                        'SubnetId': subnet_id}
+                       
+            if instance_profile_arn:
+                template['IamInstanceProfile'] = {'Arn': instance_profile_arn}
+                
+            if placement_az:
+                template['Placement'] = {'AvailabilityZone': placement_az}
                        
             if tags:
                 # Tag everything when we make it.
