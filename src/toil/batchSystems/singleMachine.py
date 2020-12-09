@@ -88,7 +88,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             maxMemory = self.physicalMemory
 
         workdir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)  # config.workDir may be None; this sets a real directory
-        self.physicalDisk = toil.physicalDisk(workDir)
+        self.physicalDisk = toil.physicalDisk(workdir)
         if maxDisk > self.physicalDisk:
             if maxDisk != sys.maxsize:
                 # We have an actually specified limit and not the default
