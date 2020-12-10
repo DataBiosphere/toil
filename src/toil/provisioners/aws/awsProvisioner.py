@@ -123,6 +123,7 @@ class AWSProvisioner(AbstractProvisioner):
         # establish boto3 clients
         self.session = boto3.Session(region_name=zoneToRegion(self._zone))
         self.ec2 = self.session.resource('ec2')
+        self.autoscaling = self.session.resource('autoscaling')
 
         if clusterName:
             self._buildContext()  # create boto2 context (self._boto2)
@@ -804,7 +805,7 @@ class AWSProvisioner(AbstractProvisioner):
         return [sg.id for sg in sgs]
         
     @awsRetry
-    def _getLaunchTemplateIDs(self, nodeType=None, preemptable=False, both=False) -> List[str]:
+    def _getLaunchTemplateIDs(self) -> List[str]:
         """
         Find all launch templates associated with the cluster.
         
@@ -843,6 +844,8 @@ class AWSProvisioner(AbstractProvisioner):
         :return: The ID of the template created.
         """
         
+        # TODO: If we already have one like this, set its storage and/or remake it.
+        
         assert self._leaderPrivateIP
         instanceType = E2Instances[nodeType]
         rootVolSize=self._nodeStorageOverrides.get(nodeType, self._nodeStorage)
@@ -872,6 +875,38 @@ class AWSProvisioner(AbstractProvisioner):
                                       placement_az=self._zone,
                                       subnet_id=self._subnetID,
                                       tags=tags)
+                                      
+    @awsRetry
+    def _getAutoScalingGroupIDs(self, nodeType=None, preemptable=False, both=False) -> List[str]:
+        """
+        Find all auto-scaling groups associated with the cluster.
+        
+        Returns a list of ASG IDs.
+        """
+        
+        # AWS won't filter ASGs server-side for us in describe_auto_scaling_groups.
+        # So we search instances of applied tags for the ASGs they are on.
+        # The ASGs tagged with our cluster are our ASGs.
+        # The filtering is on different fields of the tag object itself.
+        filters = [{'Name': 'key',
+                    'Values': [_TAG_KEY_TOIL_CLUSTER_NAME]},
+                   {'Name': 'value',
+                    'Values': [self.clusterName]}]
+        
+        matchedASGs = []
+        # Get the first page with no NextToken
+        response = self.autoscaling.describe_tags()
+        while True:
+            # Process the current page
+            matchedASGs += [item['ResourceId'] for item in response.get('Tags', [])]
+            if 'NextToken' in response:
+                # There are more pages. Get the next one, supplying the token.
+                response = self.autoscaling.describe_tags(NextToken=response['NextToken'])
+            else:
+                # No more pages
+                break
+                
+        return matchedASGs
 
     def full_policy(self, resource: str) -> dict:
         """
