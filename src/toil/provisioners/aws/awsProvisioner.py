@@ -146,7 +146,7 @@ class AWSProvisioner(AbstractProvisioner):
         self._subnetID = instance.subnet_id
         self._leaderPrivateIP = instanceMetaData['local-ipv4']  # this is PRIVATE IP
         self._keyName = list(instanceMetaData['public-keys'].keys())[0]
-        self._tags = self.getLeader().tags
+        self._tags = {k: v for k, v in self.getLeader().tags.items() if k != _TAG_KEY_TOIL_NODE_TYPE}
         # Grab the ARN name of the instance profile (a str) to apply to workers
         self._leaderProfileArn = instanceMetaData['iam']['info']['InstanceProfileArn']
         # The existing metadata API returns a single string if there is one security group, but
@@ -244,7 +244,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Remember enough about the leader to let us launch workers in its
         # cluster.
-        self._tags = {t['Key']: t['Value'] for t in tags}
+        self._tags = {t['Key']: t['Value'] for t in tags if t['Key'] != _TAG_KEY_TOIL_NODE_TYPE}
         self._leaderPrivateIP = leader.private_ip_address
         # This is where we will put the workers.
         # See also: self._vpcSubnet
@@ -327,6 +327,24 @@ class AWSProvisioner(AbstractProvisioner):
         if instancesToTerminate:
             vpcId = vpcId or instancesToTerminate[0].vpc_id
             destroyInstances(instancesToTerminate)
+            
+        logger.debug('Deleting launch templates...')
+        removed = False
+        for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
+            with attempt:
+                # We'll set this to True if we don't get a proper response
+                # for some LuanchTemplate.
+                mistake = False
+                for ltID in self._getLaunchTemplateIDs():
+                    response = self.ec2.delete_launch_template(LaunchTemplateId=ltID)
+                    if 'LaunchTemplate' not in response:
+                        mistake = True
+                if not mistake:
+                    # We got all the launch templates this time.
+                    removed = True
+        if removed:
+            logger.debug('... Succesfully deleted launch templates')
+            
         if len(instances) == len(instancesToTerminate):
             logger.debug('Deleting security group...')
             removed = False
@@ -839,9 +857,9 @@ class AWSProvisioner(AbstractProvisioner):
             lt_name += '-spot'
             
         # But really we find it by tag
-        tags = {_TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName}
+        tags = dict(self.tags)
+        tags[_TAG_KEY_TOIL_NODE_TYPE] = 'worker'
         
-
         return create_launch_template(self.ec2,
                                       template_name=lt_name,
                                       image_id=self._discoverAMI(),
