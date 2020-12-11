@@ -783,7 +783,7 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.workDir = tempDir
         from toil import physicalDisk
-        availableDisk = physicalDisk('', toilWorkflowDir=options.workDir)
+        availableDisk = physicalDisk(options.workDir)
         options.batchSystem = self.batchSystemName
 
         counterPath = os.path.join(tempDir, 'counter')

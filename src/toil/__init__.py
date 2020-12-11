@@ -144,7 +144,7 @@ def resolveEntryPoint(entryPoint):
 
 
 @memoize
-def physicalMemory():
+def physicalMemory() -> int:
     """
     >>> n = physicalMemory()
     >>> n > 0
@@ -158,11 +158,8 @@ def physicalMemory():
         return int(subprocess.check_output(['sysctl', '-n', 'hw.memsize']).decode('utf-8').strip())
 
 
-def physicalDisk(config, toilWorkflowDir=None):
-    if toilWorkflowDir is None:
-        from toil.common import Toil
-        toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
-    diskStats = os.statvfs(toilWorkflowDir)
+def physicalDisk(directory: str) -> int:
+    diskStats = os.statvfs(directory)
     return diskStats.f_frsize * diskStats.f_bavail
 
 
