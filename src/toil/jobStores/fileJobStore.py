@@ -348,7 +348,7 @@ class FileJobStore(AbstractJobStore):
         
 
     @classmethod
-    def _writeToUrl(cls, readable, url):
+    def _writeToUrl(cls, readable, url, executable=False):
         """
         Writes the contents of a file to a source (writes readable to url)
         using a ~10Mb buffer.
@@ -358,6 +358,9 @@ class FileJobStore(AbstractJobStore):
         """
         # we use a ~10Mb buffer to improve speed
         atomic_copyobj(readable, cls._extractPathFromUrl(url), length=cls.BUFFER_SIZE)
+        if executable:
+            os.chmod(url.path, os.stat(url.path).st_mode | stat.S_IXUSR)
+
 
     @staticmethod
     def _extractPathFromUrl(url):

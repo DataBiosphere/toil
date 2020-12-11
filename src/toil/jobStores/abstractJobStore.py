@@ -379,10 +379,11 @@ class AbstractJobStore(ABC):
 
         :param urlparse.ParseResult url: The parsed URL of the file to export to.
         """
+        executable = False
         with self.readFileStream(jobStoreFileID) as readable:
-            otherCls._writeToUrl(readable, url)
-        if getattr(jobStoreFileID, 'executable', False):
-            os.chmod(url.path, os.stat(url.path).st_mode | stat.S_IXUSR)
+            if getattr(jobStoreFileID, 'executable', False):
+                executable = jobStoreFileID.executable
+            otherCls._writeToUrl(readable, url, executable)
 
     @abstractclassmethod
     def getSize(cls, url):
@@ -407,7 +408,8 @@ class AbstractJobStore(ABC):
 
         :param writable: a writable stream
 
-        :return int, bool: the size of the file in bytes, the user executable permission bit
+        :return: The size of the file in bytes and whether the executable permission bit is set
+        :rtype: Tuple[int, bool]
         """
         raise NotImplementedError()
 
