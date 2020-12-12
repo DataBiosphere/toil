@@ -1,4 +1,4 @@
-# Copyright (C) 2015 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2020 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,20 +11,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""
-Rsyncs into the toil appliance container running on the leader of the cluster
-"""
+"""Rsyncs into the toil appliance container running on the leader of the cluster."""
 import argparse
 import logging
 
-from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
+from toil.common import parser_with_common_options
+from toil.lib.bioio import setLoggingFromOptions
 from toil.provisioners import clusterFactory
 
 logger = logging.getLogger(__name__)
 
 
 def main():
-    parser = parser_with_common_options(provisioner_options=True)
+    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
     parser.add_argument("--insecure", dest='insecure', action='store_true', required=False,
                         help="Temporarily disable strict host key checking.")
     parser.add_argument("args", nargs=argparse.REMAINDER, help="Arguments to pass to"

@@ -17,11 +17,11 @@ import os
 import sys
 from functools import reduce
 
-from toil.common import Config, Toil, jobStoreLocatorHelp
+from toil.common import Config, Toil, parser_with_common_options
 from toil.job import JobException, ServiceJobDescription
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobStoreException)
-from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
+from toil.lib.bioio import setLoggingFromOptions
 from toil.statsAndLogging import StatsAndLogging
 
 logger = logging.getLogger(__name__)
@@ -68,14 +68,12 @@ class ToilStatus:
         """Takes a list of jobs, finds their log files, and prints them to the terminal."""
         for job in self.jobsToReport:
             if job.logJobStoreFileID is not None:
-                # TODO: This looks intended to be machine-readable, but the format is
-                # unspecified and no escaping is done. But keep these tags around.
-                msg = "LOG_FILE_OF_JOB:%s LOG:" % job
                 with job.getLogFileHandle(self.jobStore) as fH:
-                    msg += StatsAndLogging.formatLogStream(fH)
-                print(msg)
+                    # TODO: This looks intended to be machine-readable, but the format is
+                    #  unspecified and no escaping is done. But keep these tags around.
+                    print(StatsAndLogging.formatLogStream(fH, job_name=f"LOG_FILE_OF_JOB:{job} LOG:"))
             else:
-                print("LOG_FILE_OF_JOB:%s LOG: Job has no log file" % job)
+                print(f"LOG_FILE_OF_JOB: {job} LOG: Job has no log file")
 
     def printJobChildren(self):
         """Takes a list of jobs, and prints their successors."""
@@ -284,10 +282,6 @@ class ToilStatus:
 def main():
     """Reports the state of a Toil workflow."""
     parser = parser_with_common_options()
-    parser.add_argument("jobStore", type=str,
-                        help=f"The location of a job store that holds the information about the "
-                             f"workflow whose status is to be reported on. {jobStoreLocatorHelp}")
-
     parser.add_argument("--failIfNotComplete", action="store_true",
                         help="Return exit value of 1 if toil jobs not all completed. default=%(default)s",
                         default=False)

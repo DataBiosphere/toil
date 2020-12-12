@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ from pymesos import Executor, MesosExecutorDriver, decode_data, encode_data
 from urllib2 import urlopen
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
-from toil.lib.bioio import configure_root_logger, set_log_level
+from toil.statsAndLogging import configure_root_logger, set_log_level
 from toil.lib.expando import Expando
 from toil.lib.threading import cpu_count
 from toil.resource import Resource

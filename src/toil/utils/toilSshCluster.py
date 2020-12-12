@@ -16,14 +16,15 @@ import argparse
 import logging
 import sys
 
-from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
+from toil.common import parser_with_common_options
+from toil.lib.bioio import setLoggingFromOptions
 from toil.provisioners import clusterFactory
 
 logger = logging.getLogger(__name__)
 
 
 def main():
-    parser = parser_with_common_options(provisioner_options=True)
+    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
     parser.add_argument("--insecure", action='store_true',
                         help="Temporarily disable strict host key checking.")
     parser.add_argument("--sshOption", dest='sshOptions', default=[], action='append',

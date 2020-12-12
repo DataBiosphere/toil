@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,13 +28,13 @@ from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
 from toil.batchSystems.options import setOptions as setBatchOptions
-from toil.lib.bioio import add_logging_options, setLoggingFromOptions, root_logger
+from toil.statsAndLogging import add_logging_options, setLoggingFromOptions, root_logger
 from toil.lib.humanize import bytes2human
 from toil.lib.retry import retry
-from toil.provisioners import clusterFactory
+from toil.provisioners import clusterFactory, add_provisioner_options
 from toil.provisioners.aws import checkValidNodeTypes, zoneToRegion
 from toil.realtimeLogger import RealtimeLogger
-from toil.version import dockerRegistry, dockerTag
+from toil.version import dockerRegistry, dockerTag, version
 
 # aim to pack autoscaling jobs within a 30 minute block before provisioning a new node
 defaultTargetTime = 1800
@@ -305,18 +305,37 @@ class Config:
         return self.__dict__.__hash__()
 
 
-jobStoreLocatorHelp = ("A job store holds persistent information about the jobs and files in a "
-                       "workflow. If the workflow is run with a distributed batch system, the job "
-                       "store must be accessible by all worker nodes. Depending on the desired "
-                       "job store implementation, the location should be formatted according to "
-                       "one of the following schemes:\n\n"
-                       "file:<path> where <path> points to a directory on the file systen\n\n"
-                       "aws:<region>:<prefix> where <region> is the name of an AWS region like "
-                       "us-west-2 and <prefix> will be prepended to the names of any top-level "
-                       "AWS resources in use by job store, e.g. S3 buckets.\n\n "
-                       "google:<project_id>:<prefix> TODO: explain\n\n"
-                       "For backwards compatibility, you may also specify ./foo (equivalent to "
-                       "file:./foo or just file:foo) or /bar (equivalent to file:/bar).")
+JOBSTORE_HELP = ("The location of the job store for the workflow.  "
+                 "A job store holds persistent information about the jobs, stats, and files in a "
+                 "workflow. If the workflow is run with a distributed batch system, the job "
+                 "store must be accessible by all worker nodes. Depending on the desired "
+                 "job store implementation, the location should be formatted according to "
+                 "one of the following schemes:\n\n"
+                 "file:<path> where <path> points to a directory on the file systen\n\n"
+                 "aws:<region>:<prefix> where <region> is the name of an AWS region like "
+                 "us-west-2 and <prefix> will be prepended to the names of any top-level "
+                  "AWS resources in use by job store, e.g. S3 buckets.\n\n "
+                  "google:<project_id>:<prefix> TODO: explain\n\n"
+                  "For backwards compatibility, you may also specify ./foo (equivalent to "
+                  "file:./foo or just file:foo) or /bar (equivalent to file:/bar).")
+
+
+def parser_with_common_options(provisioner_options=False, jobstore_option=True):
+    parser = ArgumentParser()
+
+    if provisioner_options:
+        add_provisioner_options(parser)
+
+    if jobstore_option:
+        parser.add_argument('jobStore', type=str, help=JOBSTORE_HELP)
+
+    # always add these
+    add_logging_options(parser)
+    parser.add_argument("--version", action='version', version=version)
+    parser.add_argument("--tempDirRoot", dest="tempDirRoot", type=str, default=tempfile.gettempdir(),
+                        help="Path to where temporary directory containing all temp files are created, "
+                             "by default uses the current working directory as the base.")
+    return parser
 
 
 def addOptions(parser: ArgumentParser, config: Config = Config()):
@@ -335,8 +354,7 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
     addOptionFn = addGroupFn("Toil core options.",
                              "Options to specify the location of the Toil workflow and turn on "
                              "stats collation about the performance of jobs.")
-    addOptionFn('jobStore', type=str,
-                help="The location of the job store for the workflow. " + jobStoreLocatorHelp)
+    addOptionFn('jobStore', type=str, help=JOBSTORE_HELP)
     addOptionFn("--workDir", dest="workDir", default=None,
                 help="Absolute path to directory where temporary files generated during the Toil "
                      "run should be placed. Standard output and error from batch system jobs "

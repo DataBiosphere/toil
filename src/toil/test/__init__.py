@@ -18,6 +18,7 @@ import re
 import shutil
 import signal
 import subprocess
+import random
 import tempfile
 import threading
 import time
@@ -239,6 +240,20 @@ except ImportError:
 else:
     def _mark_test(name, test_item):
         return getattr(pytest.mark, name)(test_item)
+
+
+def get_temp_file(suffix="", rootDir=None):
+    """Returns a string representing a temporary file, that must be manually deleted."""
+    if rootDir is None:
+        handle, tmp_file = tempfile.mkstemp(suffix)
+        os.close(handle)
+        return tmp_file
+    else:
+        alphanumerics = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+        tmp_file = os.path.join(rootDir, f"tmp_{''.join([random.choice(alphanumerics) for _ in range(0, 10)])}{suffix}")
+        open(tmp_file, 'w').close()
+        os.chmod(tmp_file, 0o777)  # Ensure everyone has access to the file.
+        return tmp_file
 
 
 def needs_rsync3(test_item):
@@ -682,27 +697,6 @@ def make_tests(generalMethod, targetClass, **kwargs):
         prms = None
         prmNames = ""
         insertMethodToClass()
-
-
-@contextmanager
-def tempFileContaining(content, suffix=''):
-    """
-    Write a file with the given contents, and keep it on disk as long as the context is active.
-    :param str content: The contents of the file.
-    :param str suffix: The extension to use for the temporary file.
-    """
-    fd, path = tempfile.mkstemp(suffix=suffix)
-    try:
-        encoded = content.encode('utf-8')
-        assert os.write(fd, encoded) == len(encoded)
-    except:
-        os.close(fd)
-        raise
-    else:
-        os.close(fd)
-        yield path
-    finally:
-        os.unlink(path)
 
 
 class ApplianceTestSupport(ToilTest):

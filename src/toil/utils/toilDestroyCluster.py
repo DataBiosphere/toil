@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Terminates the specified cluster and associated resources."""
-from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
+from toil.common import parser_with_common_options
+from toil.lib.bioio import setLoggingFromOptions
 from toil.provisioners import clusterFactory
 
 

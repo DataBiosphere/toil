@@ -16,8 +16,8 @@ import json
 import logging
 from functools import partial
 
-from toil.common import Config, Toil, jobStoreLocatorHelp
-from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
+from toil.common import Config, Toil, parser_with_common_options, JOBSTORE_HELP
+from toil.lib.bioio import setLoggingFromOptions
 from toil.lib.expando import Expando
 
 logger = logging.getLogger(__name__)
@@ -505,9 +505,6 @@ def reportData(tree, options):
 def main():
     """Reports stats on the workflow, use with --stats option to toil."""
     parser = parser_with_common_options()
-    parser.add_argument("jobStore", type=str,
-                        help=f"The location of the job store used by the workflow for which "
-                             f"statistics should be reported. {jobStoreLocatorHelp}")
     parser.add_argument("--outputFile", dest="outputFile", default=None, help="File in which to write results.")
     parser.add_argument("--raw", action="store_true", default=False, help="Return raw json data.")
     parser.add_argument("--pretty", "--human", action="store_true", default=False,

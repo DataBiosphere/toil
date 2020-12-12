@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,26 +11,28 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 import gzip
 import json
 import logging
 import os
 import time
+
+from argparse import ArgumentParser
 from threading import Event, Thread
 
-from toil.lib.bioio import get_total_cpu_time
+from toil.lib.resources import get_total_cpu_time
 from toil.lib.expando import Expando
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
+root_logger = logging.getLogger()
+toil_logger = logging.getLogger('toil')
+
+DEFAULT_LOGLEVEL = logging.INFO
+__loggingFiles = []
 
 
-class StatsAndLogging( object ):
-    """
-    Class manages a thread that aggregates statistics and logging information on a toil run.
-    """
-
+class StatsAndLogging:
+    """A thread to aggregate statistics and logging."""
     def __init__(self, jobStore, config):
         self._stop = Event()
         self._worker = Thread(target=self.statsAndLoggingAggregator,
@@ -38,43 +40,29 @@ class StatsAndLogging( object ):
                               daemon=True)
 
     def start(self):
-        """
-        Start the stats and logging thread.
-        """
+        """Start the stats and logging thread."""
         self._worker.start()
         
     @classmethod
-    def formatLogStream(cls, stream, identifier=None):
+    def formatLogStream(cls, stream, job_name=None):
         """
         Given a stream of text or bytes, and the job name, job itself, or some
         other optional stringifyable identity info for the job, return a big
         text string with the formatted job log, suitable for printing for the
         user.
-        
+
         We don't want to prefix every line of the job's log with our own
         logging info, or we get prefixes wider than any reasonable terminal
         and longer than the messages.
         """
-        
-        lines = []
-        
-        if identifier is not None:
-            if isinstance(identifier, bytes):
-                # Decode the identifier if it is bytes
-                identifier = identifier.decode('utf-8', error='replace')
-            elif not isinstance(identifier, str):
-                # Otherwise just stringify it
-                identifier = str(identifier)
-                
-            lines.append('Log from job %s follows:' % identifier)
-        else:
-            lines.append('Log from job follows:')
-            
-        lines.append('=========>')
-        
+        if isinstance(job_name, bytes):
+            job_name = job_name.decode('utf-8', error='replace')
+
+        lines = [f'Log from job {job_name} follows:', '=========>']
+
         for line in stream:
             if isinstance(line, bytes):
-                line = line.decode('utf-8')
+                line = line.decode('utf-8', error='replace')
             lines.append('\t' + line.rstrip('\n'))
             
         lines.append('<=========')
@@ -86,7 +74,7 @@ class StatsAndLogging( object ):
     def logWithFormatting(cls, jobStoreID, jobLogs, method=logger.debug, message=None):
         if message is not None:
             method(message)
-            
+
         # Format and log the logs, identifying the job with its job store ID.
         method(cls.formatLogStream(jobLogs, jobStoreID))
         
@@ -201,12 +189,75 @@ class StatsAndLogging( object ):
             raise RuntimeError("Stats and logging thread has quit")
 
     def shutdown(self):
-        """
-        Finish up the stats/logging aggregation thread
-        """
+        """Finish up the stats/logging aggregation thread."""
         logger.debug('Waiting for stats and logging collator thread to finish ...')
         startTime = time.time()
         self._stop.set()
         self._worker.join()
         logger.debug('... finished collating stats and logs. Took %s seconds', time.time() - startTime)
         # in addition to cleaning on exceptions, onError should clean if there are any failed jobs
+
+
+def set_log_level(level, set_logger=None):
+    """Sets the root logger level to a given string level (like "INFO")."""
+    level = "CRITICAL" if level.upper() == "OFF" else level.upper()
+    set_logger = set_logger if set_logger else root_logger
+    set_logger.setLevel(level)
+    # There are quite a few cases where we expect AWS requests to fail, but it seems
+    # that boto handles these by logging the error *and* raising an exception. We
+    # don't want to confuse the user with those error messages.
+    logging.getLogger('boto').setLevel(logging.CRITICAL)
+
+
+def add_logging_options(parser: ArgumentParser):
+    """Add logging options to set the global log level."""
+    group = parser.add_argument_group("Logging Options")
+    default_loglevel = logging.getLevelName(DEFAULT_LOGLEVEL)
+
+    levels = ['Critical', 'Error', 'Warning', 'Debug', 'Info']
+    for level in levels:
+        group.add_argument(f"--log{level}", dest="logLevel", default=default_loglevel, action="store_const",
+                           const=level, help=f"Turn on loglevel {level}.  Default: {default_loglevel}.")
+
+    levels += [l.lower() for l in levels] + [l.upper() for l in levels]
+    group.add_argument("--logOff", dest="logLevel", default=default_loglevel,
+                       action="store_const", const="CRITICAL", help="Same as --logCRITICAL.")
+    group.add_argument("--logLevel", dest="logLevel", default=default_loglevel, choices=levels,
+                       help=f"Set the log level. Default: {default_loglevel}.  Options: {levels}.")
+    group.add_argument("--logFile", dest="logFile", help="File to log in.")
+    group.add_argument("--rotatingLogging", dest="logRotating", action="store_true", default=False,
+                       help="Turn on rotating logging, which prevents log files from getting too big.")
+
+
+def configure_root_logger():
+    """
+    Set up the root logger with handlers and formatting.
+
+    Should be called (either by itself or via setLoggingFromOptions) before any
+    entry point tries to log anything, to ensure consistent formatting.
+    """
+    logging.basicConfig(format='[%(asctime)s] [%(threadName)-10s] [%(levelname).1s] [%(name)s] %(message)s',
+                        datefmt='%Y-%m-%dT%H:%M:%S%z')
+    root_logger.setLevel(DEFAULT_LOGLEVEL)
+
+
+def log_to_file(log_file, log_rotation):
+    if log_file and log_file not in __loggingFiles:
+        logger.debug(f"Logging to file '{log_file}'.")
+        __loggingFiles.append(log_file)
+        if log_rotation:
+            handler = logging.handlers.RotatingFileHandler(log_file, maxBytes=1000000, backupCount=1)
+        else:
+            handler = logging.FileHandler(log_file)
+        root_logger.addHandler(handler)
+
+
+def set_logging_from_options(options):
+    configure_root_logger()
+    options.logLevel = options.logLevel or logging.getLevelName(root_logger.getEffectiveLevel())
+    set_log_level(options.logLevel)
+    logger.debug(f"Root logger is at level '{logging.getLevelName(root_logger.getEffectiveLevel())}', "
+                 f"'toil' logger at level '{logging.getLevelName(toil_logger.getEffectiveLevel())}'.")
+
+    # start logging to log file if specified
+    log_to_file(options.logFile, options.logRotating)

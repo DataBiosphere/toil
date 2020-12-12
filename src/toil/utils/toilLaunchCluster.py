@@ -16,7 +16,8 @@ import os
 import logging
 
 from toil import applianceSelf
-from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
+from toil.common import parser_with_common_options
+from toil.lib.bioio import setLoggingFromOptions
 from toil.provisioners import clusterFactory
 from toil.provisioners.aws import checkValidNodeTypes
 
@@ -32,7 +33,7 @@ def createTagsDict(tagList):
 
 
 def main():
-    parser = parser_with_common_options(provisioner_options=True)
+    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
     parser.add_argument("--leaderNodeType", dest="leaderNodeType", required=True,
                         help="Non-preemptable node type to use for the cluster leader.")
     parser.add_argument("--keyPairName", dest='keyPairName',

@@ -16,20 +16,14 @@ import logging
 import os
 import signal
 
-from toil.common import Config, Toil, jobStoreLocatorHelp
-from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
-from toil.version import version
+from toil.common import Config, Toil, parser_with_common_options
+from toil.lib.bioio import setLoggingFromOptions
 
 logger = logging.getLogger(__name__)
 
 
 def main():
     parser = parser_with_common_options()
-
-    parser.add_argument("jobStore", type=str,
-                        help=f"The location of the job store used by the workflow whose jobs should "
-                             f"be killed. {jobStoreLocatorHelp}")
-    parser.add_argument("--version", action='version', version=version)
     options = parser.parse_args()
     setLoggingFromOptions(options)
     config = Config()
@@ -40,7 +34,7 @@ def main():
     if ':' in config.jobStore:
         jobStore = Toil.resumeJobStore(config.jobStore)
         logger.info("Starting routine to kill running jobs in the toil workflow: %s", config.jobStore)
-        # TODO: This behaviour is now broken src: https://github.com/DataBiosphere/toil/commit/a3d65fc8925712221e4cda116d1825d4a1e963a1
+        # TODO: This behaviour is now broken: https://github.com/DataBiosphere/toil/commit/a3d65fc8925712221e4cda116d1825d4a1e963a1
         batchSystem = Toil.createBatchSystem(jobStore.config)  # Should automatically kill existing jobs, so we're good.
         for jobID in batchSystem.getIssuedBatchJobIDs():  # Just in case we do it again.
             batchSystem.killBatchJobs(jobID)

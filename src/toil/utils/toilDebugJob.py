@@ -14,8 +14,8 @@
 """Debug tool for running a toil job locally."""
 import logging
 
-from toil.common import Config, Toil, jobStoreLocatorHelp
-from toil.lib.bioio import parser_with_common_options, setLoggingFromOptions
+from toil.common import Config, Toil, parser_with_common_options, JOBSTORE_HELP
+from toil.lib.bioio import setLoggingFromOptions
 from toil.utils.toilDebugFile import printContentsOfJobStore
 from toil.worker import workerScript
 
@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 def main():
     parser = parser_with_common_options()
     parser.add_argument("jobStore", type=str,
-                        help="The location of the job store used by the workflow." + jobStoreLocatorHelp)
+                        help="The location of the job store used by the workflow." + JOBSTORE_HELP)
     parser.add_argument("jobID", nargs=1, help="The job store id of a job "
                         "within the provided jobstore to run by itself.")
     parser.add_argument("--printJobInfo", nargs=1,

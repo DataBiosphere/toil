@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,11 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-"""
-Implements a real-time UDP-based logging system that user scripts can use for debugging.
-"""
-
+"""Implements a real-time UDP-based logging system that user scripts can use for debugging."""
 import json
 import logging
 import logging.handlers
@@ -24,7 +20,7 @@ import os.path
 import socketserver as SocketServer
 import threading
 
-import toil.lib.bioio
+from toil.statsAndLogging import set_log_level
 from toil.batchSystems.options import getPublicIP
 
 log = logging.getLogger(__name__)
@@ -207,7 +203,7 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
                         cls.logger.setLevel(logging.CRITICAL)
                     else:
                         # Adopt the logging level set on the leader.
-                        toil.lib.bioio.set_log_level(level, cls.logger)
+                        set_log_level(level, cls.logger)
                         try:
                             address = os.environ[cls.envPrefix + 'ADDRESS']
                         except KeyError:

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 import collections
 import copy
 import importlib
@@ -35,13 +33,13 @@ import dill
 from toil.common import Config, Toil, addOptions, safeUnpickleFromStream
 from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
-from toil.lib.bioio import (get_total_cpu_time, get_total_cpu_time_and_memory_usage,
-                            setLoggingFromOptions)
+from toil.lib.resources import get_total_cpu_time, get_total_cpu_time_and_memory_usage
+from toil.statsAndLogging import set_logging_from_options
 from toil.lib.expando import Expando
 from toil.lib.humanize import human2bytes
 from toil.resource import ModuleDescriptor
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
 class JobPromiseConstraintError(RuntimeError):
     """
@@ -755,7 +753,7 @@ class JobDescription(Requirer):
     def getLogFileHandle(self, jobStore):
         """
         Returns a context manager that yields a file handle to the log file.
-        
+
         Assumes logJobStoreFileID is set.
         """
         return jobStore.readFileStream(self.logJobStoreFileID)
@@ -1726,7 +1724,7 @@ class Job:
             :return: The return value of the root job's run function.
             :rtype: Any
             """
-            setLoggingFromOptions(options)
+            set_logging_from_options(options)
             with Toil(options) as toil:
                 if not options.restart:
                     return toil.start(job)

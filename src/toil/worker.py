@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,8 +33,8 @@ from toil.common import Toil, safeUnpickleFromStream
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import CheckpointJobDescription, Job
-from toil.lib.bioio import (configure_root_logger, get_total_cpu_time,
-                            get_total_cpu_time_and_memory_usage, set_log_level)
+from toil.statsAndLogging import configure_root_logger, set_log_level
+from toil.lib.resources import get_total_cpu_time, get_total_cpu_time_and_memory_usage
 from toil.lib.expando import MagicExpando
 
 try:

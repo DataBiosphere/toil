@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,23 +11,44 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 import importlib
 import os
 import subprocess
 import sys
+import tempfile
+
+from contextlib import contextmanager
 from inspect import getsource
 from io import BytesIO
 from textwrap import dedent
 from zipfile import ZipFile
-
 from mock import MagicMock, patch
 
 from toil import inVirtualEnv
 from toil.resource import ModuleDescriptor, Resource, ResourceException
-from toil.test import ToilTest, tempFileContaining, travis_test
+from toil.test import ToilTest, travis_test
 from toil.version import exactPython
+
+
+@contextmanager
+def tempFileContaining(content, suffix=''):
+    """
+    Write a file with the given contents, and keep it on disk as long as the context is active.
+    :param str content: The contents of the file.
+    :param str suffix: The extension to use for the temporary file.
+    """
+    fd, path = tempfile.mkstemp(suffix=suffix)
+    try:
+        encoded = content.encode('utf-8')
+        assert os.write(fd, encoded) == len(encoded)
+    except:
+        os.close(fd)
+        raise
+    else:
+        os.close(fd)
+        yield path
+    finally:
+        os.unlink(path)
 
 
 class ResourceTest(ToilTest):
