@@ -134,14 +134,12 @@ def main():
             raise RuntimeError("List of node types must be the same length as the list of workers.")
 
         for worker_node_type, num_workers in zip(worker_node_types, worker_quantities):
-            parsed_bid = worker_node_type.split(':', 1)
-            preemptible_node = len(worker_node_type) != len(parsed_bid[0])
-
-            if preemptible_node:
-                cluster.addNodes(nodeType=parsed_bid[0],
+            if ':' in worker_node_type:
+                worker_node_type, bid = worker_node_type.split(':', 1)
+                cluster.addNodes(nodeType=worker_node_type,
                                  numNodes=int(num_workers),
                                  preemptable=True,
-                                 spotBid=float(parsed_bid[1]))
+                                 spotBid=float(bid))
             else:
                 cluster.addNodes(nodeType=worker_node_type,
                                  numNodes=int(num_workers),
