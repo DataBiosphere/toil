@@ -55,13 +55,13 @@ class StatsAndLogging:
         and longer than the messages.
         """
         if isinstance(job_name, bytes):
-            job_name = job_name.decode('utf-8', error='replace')
+            job_name = job_name.decode('utf-8', errors='replace')
 
         lines = [f'Log from job {job_name} follows:', '=========>']
 
         for line in stream:
             if isinstance(line, bytes):
-                line = line.decode('utf-8', error='replace')
+                line = line.decode('utf-8', errors='replace')
             lines.append('\t' + line.rstrip('\n'))
             
         lines.append('<=========')

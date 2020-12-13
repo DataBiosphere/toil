@@ -106,8 +106,11 @@ def main():
     options.zone = options.zone or os.environ.get(f'TOIL_{options.provisioner.upper()}_ZONE')
 
     if not options.zone:
-        raise RuntimeError('Please provide a value for --zone or set a default in the TOIL_' +
-                           options.provisioner.upper() + '_ZONE environment variable.')
+        raise RuntimeError(f'Please provide a value for --zone or set a default in the '
+                           f'TOIL_{options.provisioner.upper()}_ZONE environment variable.')
+
+    if (options.nodeTypes or options.workers) and not (options.nodeTypes and options.workers):
+        raise RuntimeError("The --nodeTypes and --workers options must be specified together,")
 
     cluster = cluster_factory(provisioner=options.provisioner,
                               clusterName=options.clusterName,
@@ -124,9 +127,6 @@ def main():
                           awsEc2ProfileArn=options.awsEc2ProfileArn,
                           awsEc2ExtraSecurityGroupIds=options.awsEc2ExtraSecurityGroupIds)
 
-    if (options.nodeTypes or options.workers) and not (options.nodeTypes and options.workers):
-        raise RuntimeError("The --nodeTypes and --workers options must be specified together,")
-
     if worker_node_types:
         worker_quantities = options.workers.split(",") if options.workers else []
 
@@ -135,8 +135,9 @@ def main():
 
         for worker_node_type, num_workers in zip(worker_node_types, worker_quantities):
             parsed_bid = worker_node_type.split(':', 1)
-            if len(worker_node_type) != len(parsed_bid[0]):
-                # preemptible node
+            preemptible_node = len(worker_node_type) != len(parsed_bid[0])
+
+            if preemptible_node:
                 cluster.addNodes(nodeType=parsed_bid[0],
                                  numNodes=int(num_workers),
                                  preemptable=True,
