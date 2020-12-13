@@ -30,8 +30,8 @@ from toil.batchSystems.options import (add_all_batchsystem_options,
                                        set_batchsystem_options)
 from toil.lib.humanize import bytes2human, human2bytes
 from toil.lib.retry import retry
-from toil.provisioners import add_provisioner_options, clusterFactory
-from toil.provisioners.aws import checkValidNodeTypes, zoneToRegion
+from toil.provisioners import add_provisioner_options, cluster_factory, check_valid_node_types
+from toil.provisioners.aws import zone_to_region
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import (add_logging_options,
                                   root_logger,
@@ -74,7 +74,7 @@ class Config:
         # Autoscaling options
         self.provisioner = None
         self.nodeTypes = []
-        checkValidNodeTypes(self.provisioner, self.nodeTypes)
+        check_valid_node_types(self.provisioner, self.nodeTypes)
         self.nodeOptions = None
         self.minNodes = None
         self.maxNodes = [10]
@@ -885,12 +885,12 @@ class Toil(object):
         if self.config.provisioner is None:
             self._provisioner = None
         else:
-            self._provisioner = clusterFactory(provisioner=self.config.provisioner,
-                                               clusterName=None,
-                                               zone=None, # read from instance meta-data
-                                               nodeStorage=self.config.nodeStorage,
-                                               nodeStorageOverrides=self.config.nodeStorageOverrides,
-                                               sseKey=self.config.sseKey)
+            self._provisioner = cluster_factory(provisioner=self.config.provisioner,
+                                                clusterName=None,
+                                                zone=None,  # read from instance meta-data
+                                                nodeStorage=self.config.nodeStorage,
+                                                nodeStorageOverrides=self.config.nodeStorageOverrides,
+                                                sseKey=self.config.sseKey)
             self._provisioner.setAutoscaledNodeTypes(self.config.nodeTypes)
 
     @classmethod
@@ -1187,7 +1187,7 @@ class ToilMetrics:
             if provisioner._zone is not None:
                 if provisioner.cloud == 'aws':
                     # Remove AZ name
-                    region = zoneToRegion(provisioner._zone)
+                    region = zone_to_region(provisioner._zone)
                 else:
                     region = provisioner._zone
 

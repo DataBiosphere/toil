@@ -13,7 +13,7 @@
 # limitations under the License.
 """Terminates the specified cluster and associated resources."""
 from toil.common import parser_with_common_options
-from toil.provisioners import clusterFactory
+from toil.provisioners import cluster_factory
 from toil.statsAndLogging import set_logging_from_options
 
 
@@ -21,7 +21,7 @@ def main():
     parser = parser_with_common_options(provisioner_options=True)
     options = parser.parse_args()
     set_logging_from_options(options)
-    cluster = clusterFactory(provisioner=options.provisioner,
-                             clusterName=options.clusterName,
-                             zone=options.zone)
+    cluster = cluster_factory(provisioner=options.provisioner,
+                              clusterName=options.clusterName,
+                              zone=options.zone)
     cluster.destroyCluster()

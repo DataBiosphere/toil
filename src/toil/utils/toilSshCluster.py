@@ -17,7 +17,7 @@ import logging
 import sys
 
 from toil.common import parser_with_common_options
-from toil.provisioners import clusterFactory
+from toil.provisioners import cluster_factory
 from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
@@ -32,9 +32,9 @@ def main():
     parser.add_argument('args', nargs=argparse.REMAINDER)
     options = parser.parse_args()
     set_logging_from_options(options)
-    cluster = clusterFactory(provisioner=options.provisioner,
-                             clusterName=options.clusterName,
-                             zone=options.zone)
+    cluster = cluster_factory(provisioner=options.provisioner,
+                              clusterName=options.clusterName,
+                              zone=options.zone)
     command = options.args if options.args else ['bash']
     cluster.getLeader().sshAppliance(*command, strict=not options.insecure, tty=sys.stdin.isatty(),
                                      sshOptions=options.sshOptions)

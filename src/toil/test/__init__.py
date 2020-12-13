@@ -38,7 +38,7 @@ from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
 from toil.lib.iterables import concat
 from toil.lib.memoize import memoize
 from toil.lib.threading import ExceptionalThread, cpu_count
-from toil.provisioners.aws import runningOnEC2
+from toil.provisioners.aws import running_on_ec2
 from toil.version import distVersion
 
 logging.basicConfig(level=logging.DEBUG)
@@ -102,7 +102,7 @@ class ToilTest(unittest.TestCase):
         Use us-west-2 unless running on EC2, in which case use the region in which
         the instance is located
         """
-        return cls._region() if runningOnEC2() else 'us-west-2'
+        return cls._region() if running_on_ec2() else 'us-west-2'
 
     @classmethod
     def _availabilityZone(cls):
@@ -284,7 +284,7 @@ def needs_aws_s3(test_item):
     except ImportError:
         return unittest.skip("Install Toil with the 'aws' extra to include this test.")(test_item)
 
-    if not (boto_credentials or os.path.exists(os.path.expanduser('~/.aws/credentials')) or runningOnEC2()):
+    if not (boto_credentials or os.path.exists(os.path.expanduser('~/.aws/credentials')) or running_on_ec2()):
         return unittest.skip("Configure AWS credentials to include this test.")(test_item)
     return test_item
 

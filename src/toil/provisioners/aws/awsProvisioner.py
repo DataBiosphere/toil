@@ -38,7 +38,7 @@ from toil.lib.misc import truncExpBackoff
 from toil.lib.retry import old_retry
 from toil.provisioners import NoSuchClusterException
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
-from toil.provisioners.aws import getCurrentAWSZone, getSpotZone, zoneToRegion
+from toil.provisioners.aws import get_current_aws_zone, getSpotZone, zone_to_region
 from toil.provisioners.node import Node
 
 logger = logging.getLogger(__name__)
@@ -107,10 +107,10 @@ class AWSProvisioner(AbstractProvisioner):
         super(AWSProvisioner, self).__init__(clusterName, zone, nodeStorage, nodeStorageOverrides)
         self.cloud = 'aws'
         self._sseKey = sseKey
-        self._zone = zone if zone else getCurrentAWSZone()
+        self._zone = zone if zone else get_current_aws_zone()
 
         # establish boto3 clients
-        self.session = boto3.Session(region_name=zoneToRegion(self._zone))
+        self.session = boto3.Session(region_name=zone_to_region(self._zone))
         self.ec2 = self.session.resource('ec2')
 
         if clusterName:
@@ -124,7 +124,7 @@ class AWSProvisioner(AbstractProvisioner):
         is the leader.
         """
         instanceMetaData = get_instance_metadata()
-        region = zoneToRegion(self._zone)
+        region = zone_to_region(self._zone)
         conn = boto.ec2.connect_to_region(region)
         instance = conn.get_all_instances(instance_ids=[instanceMetaData["instance-id"]])[0].instances[0]
         self.clusterName = str(instance.tags["Name"])
@@ -346,7 +346,7 @@ class AWSProvisioner(AbstractProvisioner):
                                                                   spec=kwargs, num_instances=numNodes)
                 else:
                     logger.debug('Launching %s preemptable nodes', numNodes)
-                    kwargs['placement'] = getSpotZone(spotBid, instanceType.name, self._ctx)
+                    kwargs['placement'] = get_current_aws_zone(spotBid, instanceType.name, self._ctx)
                     # force generator to evaluate
                     instancesLaunched = list(create_spot_instances(ec2=self._ctx.ec2,
                                                                    price=spotBid,
@@ -392,7 +392,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     def _buildContext(self):
         if self._zone is None:
-            self._zone = getCurrentAWSZone()
+            self._zone = get_current_aws_zone()
             if self._zone is None:
                 raise RuntimeError(
                     'Could not determine availability zone. Ensure that one of the following '
@@ -423,7 +423,7 @@ class AWSProvisioner(AbstractProvisioner):
         JSON_FEED_URL = 'https://stable.release.flatcar-linux.net/amd64-usr/current/flatcar_production_ami_all.json'
         
         # What region do we care about?
-        region = zoneToRegion(self._zone)
+        region = zone_to_region(self._zone)
         
         for attempt in old_retry(predicate=lambda e: True):
             # Until we get parseable JSON

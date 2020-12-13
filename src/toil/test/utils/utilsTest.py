@@ -23,13 +23,15 @@ import uuid
 import pytest
 from mock import patch
 
+pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
+sys.path.insert(0, pkg_root)  # noqa
+
 import toil
-import toil.test.sort.sort
 from toil import resolveEntryPoint
 from toil.common import Config, Toil
 from toil.job import Job
 from toil.lib.bioio import getTempFile, system
-from toil.provisioners import clusterFactory
+from toil.provisioners import cluster_factory
 from toil.test import (ToilTest,
                        integrative,
                        needs_aws_ec2,
@@ -42,12 +44,6 @@ from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.utils.toilStatus import ToilStatus
 from toil.version import python
-
-pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
-sys.path.insert(0, pkg_root)  # noqa
-
-
-
 
 logger = logging.getLogger(__name__)
 
@@ -74,13 +70,22 @@ class UtilsTest(ToilTest):
             self.correctSort = fileHandle.readlines()
             self.correctSort.sort()
 
-        self.sort_workflow_cmd = [python, '-m', 'toil.test.sort.sort',
-                                  'file:' + self.toilDir,
-                                  '--clean=never',
-                                  '--numLines=1', '--lineLength=1']
-        
-        self.restart_sort_workflow_cmd = [python, '-m', 'toil.test.sort.restart_sort',
-                                  'file:' + self.toilDir]
+        self.sort_workflow_cmd = [
+            python,
+            '-m',
+            'toil.test.sort.sort',
+            f'file:{self.toilDir}',
+            '--clean=never',
+            '--numLines=1',
+            '--lineLength=1'
+        ]
+
+        self.restart_sort_workflow_cmd = [
+            python,
+            '-m',
+            'toil.test.sort.restart_sort',
+            f'file:{self.toilDir}'
+        ]
 
     def tearDown(self):
         if os.path.exists(self.tempDir):
@@ -144,7 +149,7 @@ class UtilsTest(ToilTest):
                     '--leaderNodeType=m3.medium', '--keyPairName=' + keyName, clusterName,
                     '--provisioner=aws', '--zone=us-west-2a', '--logLevel=DEBUG'])
 
-            cluster = clusterFactory(provisioner='aws', clusterName=clusterName)
+            cluster = cluster_factory(provisioner='aws', clusterName=clusterName)
             leader = cluster.getLeader()
 
             # check that the leader carries the appropriate tags

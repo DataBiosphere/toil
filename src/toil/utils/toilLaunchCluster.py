@@ -16,9 +16,9 @@ import logging
 import os
 
 from toil import applianceSelf
+from toil.statsAndLogging import set_logging_from_options
 from toil.common import parser_with_common_options
-from toil.provisioners import clusterFactory
-from toil.provisioners.aws import checkValidNodeTypes
+from toil.provisioners import cluster_factory, check_valid_node_types
 
 logger = logging.getLogger(__name__)
 
@@ -93,34 +93,12 @@ def main():
     options = parser.parse_args()
     set_logging_from_options(options)
     tags = createTagsDict(options.tags) if options.tags else dict()
-    checkValidNodeTypes(options.provisioner, options.nodeTypes)
-    checkValidNodeTypes(options.provisioner, options.leaderNodeType)
+
+    worker_node_types = options.nodeTypes.split(',') if options.nodeTypes else []
+    check_valid_node_types(options.provisioner, worker_node_types + [options.leaderNodeType])
 
     # checks the validity of TOIL_APPLIANCE_SELF before proceeding
     applianceSelf(forceDockerAppliance=options.forceDockerAppliance)
-
-    spotBids = []
-    nodeTypes = []
-    preemptableNodeTypes = []
-    numNodes = []
-    numPreemptableNodes = []
-    if (options.nodeTypes or options.workers) and not (options.nodeTypes and options.workers):
-        raise RuntimeError("The --nodeTypes and --workers options must be specified together,")
-    if options.nodeTypes:
-        nodeTypesList = options.nodeTypes.split(",")
-        numWorkersList = options.workers.split(",")
-        if not len(nodeTypesList) == len(numWorkersList):
-            raise RuntimeError("List of node types must be the same length as the list of workers.")
-        for nodeTypeStr, num in zip(nodeTypesList, numWorkersList):
-            parsedBid = nodeTypeStr.split(':', 1)
-            if len(nodeTypeStr) != len(parsedBid[0]):
-                #Is a preemptable node
-                preemptableNodeTypes.append(parsedBid[0])
-                spotBids.append(float(parsedBid[1]))
-                numPreemptableNodes.append(int(num))
-            else:
-                nodeTypes.append(nodeTypeStr)
-                numNodes.append(int(num))
 
     owner = options.owner or options.keyPairName or 'toil'
 
@@ -131,10 +109,10 @@ def main():
         raise RuntimeError('Please provide a value for --zone or set a default in the TOIL_' +
                            options.provisioner.upper() + '_ZONE environment variable.')
 
-    cluster = clusterFactory(provisioner=options.provisioner,
-                             clusterName=options.clusterName,
-                             zone=options.zone,
-                             nodeStorage=options.nodeStorage)
+    cluster = cluster_factory(provisioner=options.provisioner,
+                              clusterName=options.clusterName,
+                              zone=options.zone,
+                              nodeStorage=options.nodeStorage)
 
     cluster.launchCluster(leaderNodeType=options.leaderNodeType,
                           leaderStorage=options.leaderStorage,
@@ -146,8 +124,24 @@ def main():
                           awsEc2ProfileArn=options.awsEc2ProfileArn,
                           awsEc2ExtraSecurityGroupIds=options.awsEc2ExtraSecurityGroupIds)
 
-    for nodeType, workers in zip(nodeTypes, numNodes):
-        cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=False)
-    for nodeType, workers, spotBid in zip(preemptableNodeTypes, numPreemptableNodes, spotBids):
-        cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=True,
-                         spotBid=spotBid)
+    if (options.nodeTypes or options.workers) and not (options.nodeTypes and options.workers):
+        raise RuntimeError("The --nodeTypes and --workers options must be specified together,")
+
+    if worker_node_types:
+        worker_quantities = options.workers.split(",") if options.workers else []
+
+        if not len(worker_node_types) == len(worker_quantities):
+            raise RuntimeError("List of node types must be the same length as the list of workers.")
+
+        for worker_node_type, num_workers in zip(worker_node_types, worker_quantities):
+            parsed_bid = worker_node_type.split(':', 1)
+            if len(worker_node_type) != len(parsed_bid[0]):
+                # preemptible node
+                cluster.addNodes(nodeType=parsed_bid[0],
+                                 numNodes=int(num_workers),
+                                 preemptable=True,
+                                 spotBid=float(parsed_bid[1]))
+            else:
+                cluster.addNodes(nodeType=worker_node_type,
+                                 numNodes=int(num_workers),
+                                 preemptable=False)

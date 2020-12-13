@@ -42,6 +42,7 @@ from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
 
+
 class JobPromiseConstraintError(RuntimeError):
     """
     Represents a problem where a job is being asked to promise its return
@@ -98,6 +99,7 @@ class TemporaryID:
         
     def __ne__(self, other):
         return not isinstance(other, TemporaryID) or self._value != other._value
+
 
 class Requirer:
     """
@@ -2654,6 +2656,7 @@ class EncapsulatedJob(Job):
         assert self.encapsulatedJob is not None
         return self.encapsulatedJob.getUserScript()
 
+
 class ServiceHostJob(Job):
     """
     Job that runs a service. Used internally by Toil. Users should subclass Service instead of using this.
@@ -2793,7 +2796,7 @@ class ServiceHostJob(Job):
         return self.serviceModule
 
 
-class Promise():
+class Promise:
     """
     References a return value from a :meth:`toil.job.Job.run` or
     :meth:`toil.job.Job.Service.start` method as a *promise* before the method itself is run.
@@ -2865,7 +2868,7 @@ class Promise():
             return value
 
 
-class PromisedRequirement():
+class PromisedRequirement:
     def __init__(self, valueOrCallable, *args):
         """
         Class for dynamically allocating job function resource requirements involving
@@ -2923,7 +2926,7 @@ class PromisedRequirement():
         return False
 
 
-class UnfulfilledPromiseSentinel():
+class UnfulfilledPromiseSentinel:
     """This should be overwritten by a proper promised value. Throws an
     exception when unpickled."""
     def __init__(self, fulfillingJobName, unpickled):
