@@ -63,6 +63,7 @@ py37_cwl_v1.0:
     - mypy --ignore-missing-imports --no-strict-optional $(pwd)/src/toil/cwl/cwltoil.py  # make this a separate linting stage
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test
+    - make test tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testCwlexample
 
 py37_cwl_v1.1:
   stage: main_tests
@@ -114,6 +115,7 @@ py37_main:
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - make test tests=src/toil/test/src
     - make test tests=src/toil/test/utils
+    - make test tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testDocker
 
 py37_appliance_build:
   stage: basic_tests
