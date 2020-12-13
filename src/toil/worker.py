@@ -209,13 +209,13 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         for e in environment["PYTHONPATH"].split(':'):
             if e != '':
                 sys.path.append(e)
-                
+
     toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
 
     ##########################################
     #Setup the temporary directories.
     ##########################################
-        
+
     # Dir to put all this worker's temp files in.
     localWorkerTempDir = tempfile.mkdtemp(dir=toilWorkflowDir)
     os.chmod(localWorkerTempDir, 0o755)

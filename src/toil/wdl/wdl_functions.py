@@ -937,3 +937,15 @@ def wdl_zip(left: List[Any], right: List[Any]) -> List[WDLPair]:
 
     return list(WDLPair(left=left_val, right=right_val) for left_val, right_val in zip(left, right))
 
+
+def cross(left: List[Any], right: List[Any]) -> List[WDLPair]:
+    """
+    Return the cross product of the two arrays. Array[Y][1] appears before
+    Array[X][1] in the output.
+
+    WDL syntax: Array[Pair[X,Y]] cross(Array[X], Array[Y])
+    """
+    if not isinstance(left, list) or not isinstance(right, list):
+        raise WDLRuntimeError(f'cross() requires both inputs to be Array[]!  Not: {type(left)} and {type(right)}')
+
+    return list(WDLPair(left=left_val, right=right_val) for left_val in left for right_val in right)
