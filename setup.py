@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
-from importlib.machinery import SourceFileLoader
+import imp
 from tempfile import NamedTemporaryFile
 
 from setuptools import find_packages, setup
@@ -162,9 +162,16 @@ def import_version():
             f.write(version_template.expand_())
 
     # Unfortunately, we can't use a straight import here because that would also load the stuff
-    # defined in src/toil/__init__.py which imports modules from external dependencies that may
+    # defined in "src/toil/__init__.py" which imports modules from external dependencies that may
     # yet to be installed when setup.py is invoked.
-    return SourceFileLoader('toil.version', path='src/toil/version.py').load_module()
+    #
+    # This is also the reason we cannot switch from the "deprecated" imp library
+    # and use:
+    #     from importlib.machinery import SourceFileLoader
+    #     return SourceFileLoader('toil.version', path='src/toil/version.py').load_module()
+    #
+    # Because SourceFileLoader will error and load "src/toil/__init__.py" .
+    return imp.load_source('toil.version', 'src/toil/version.py')
 
 
 version = import_version()
