@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import logging
 
 from toil.job import CheckpointJobDescription, JobDescription
@@ -19,7 +18,7 @@ from toil.job import CheckpointJobDescription, JobDescription
 logger = logging.getLogger(__name__)
 
 
-class ToilState():
+class ToilState:
     """
     Holds the leader's scheduling information that does not need to be
     persisted back to the JobStore (such as information on completed and

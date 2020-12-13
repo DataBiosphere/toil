@@ -23,6 +23,7 @@ from toil.test.mesos import helloWorld
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+
 class RegularLogTest(ToilTest):
 
     def setUp(self):
