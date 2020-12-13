@@ -13,7 +13,6 @@
 # limitations under the License.
 import os
 import imp
-from tempfile import NamedTemporaryFile
 
 from setuptools import find_packages, setup
 
