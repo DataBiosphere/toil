@@ -38,9 +38,7 @@ from toil.lib.misc import truncExpBackoff
 from toil.lib.retry import old_retry
 from toil.provisioners import NoSuchClusterException
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
-from toil.provisioners.aws import (get_current_aws_zone,
-                                   getSpotZone,
-                                   zone_to_region)
+from toil.provisioners.aws import get_current_aws_zone, zone_to_region
 from toil.provisioners.node import Node
 
 logger = logging.getLogger(__name__)
