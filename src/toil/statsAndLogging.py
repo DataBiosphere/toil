@@ -18,6 +18,7 @@ import os
 import time
 from argparse import ArgumentParser
 from threading import Event, Thread
+from typing import Optional, Union, TextIO, BinaryIO
 
 from toil.lib.expando import Expando
 from toil.lib.resources import get_total_cpu_time
@@ -43,7 +44,7 @@ class StatsAndLogging:
         self._worker.start()
         
     @classmethod
-    def formatLogStream(cls, stream, job_name=None):
+    def formatLogStream(cls, stream: Union[TextIO, BinaryIO], job_name: Optional[str] = None):
         """
         Given a stream of text or bytes, and the job name, job itself, or some
         other optional stringifyable identity info for the job, return a big
@@ -54,9 +55,6 @@ class StatsAndLogging:
         logging info, or we get prefixes wider than any reasonable terminal
         and longer than the messages.
         """
-        if isinstance(job_name, bytes):
-            job_name = job_name.decode('utf-8', errors='replace')
-
         lines = [f'Log from job "{job_name}" follows:', '=========>']
 
         for line in stream:
@@ -115,10 +113,8 @@ class StatsAndLogging:
         fullName = createName(path, mainFileName, extension, failed)
         with writeFn(fullName, 'wb') as f:
             for l in jobLogList:
-                try:
+                if isinstance(l, bytes):
                     l = l.decode('utf-8')
-                except AttributeError:
-                    pass
                 if not l.endswith('\n'):
                     l += '\n'
                 f.write(l.encode('utf-8'))
