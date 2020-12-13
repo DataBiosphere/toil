@@ -57,7 +57,7 @@ class StatsAndLogging:
         if isinstance(job_name, bytes):
             job_name = job_name.decode('utf-8', errors='replace')
 
-        lines = [f'Log from job {job_name} follows:', '=========>']
+        lines = [f'Log from job "{job_name}" follows:', '=========>']
 
         for line in stream:
             if isinstance(line, bytes):
