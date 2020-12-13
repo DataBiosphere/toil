@@ -158,7 +158,7 @@ def import_version():
     if not os.path.exists('src/toil/version.py'):
         # Use the template to generate src/toil/version.py
         import version_template
-        with NamedTemporaryFile('src/toil/version.py', 'w') as f:
+        with open('src/toil/version.py', 'w') as f:
             f.write(version_template.expand_())
 
     # Unfortunately, we can't use a straight import here because that would also load the stuff
