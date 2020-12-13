@@ -32,7 +32,7 @@ from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
 # protected by annotations.
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
-from toil.batchSystems.parasolTestSupport import ParasolTestSupport
+from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config
 from toil.job import Job, JobDescription

@@ -22,7 +22,7 @@ from uuid import uuid4
 
 from toil import resolveEntryPoint
 from toil.batchSystems.mesos.test import MesosTestSupport
-from toil.batchSystems.parasolTestSupport import ParasolTestSupport
+from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.common import Toil
 from toil.job import Job
 from toil.jobStores.abstractJobStore import (JobStoreExistsException,
