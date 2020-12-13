@@ -32,6 +32,7 @@ from urllib.request import Request, urlopen
 
 import pytest
 from stubserver import FTPStubServer
+
 from toil.common import Config, Toil
 from toil.fileStores import FileID
 from toil.job import Job, JobDescription, TemporaryID
@@ -41,8 +42,13 @@ from toil.jobStores.fileJobStore import FileJobStore
 from toil.lib.exceptions import panic
 from toil.lib.memoize import memoize
 from toil.statsAndLogging import StatsAndLogging
-from toil.test import (ToilTest, make_tests, needs_aws_s3, needs_encryption,
-                       needs_google, slow, travis_test)
+from toil.test import (ToilTest,
+                       make_tests,
+                       needs_aws_s3,
+                       needs_encryption,
+                       needs_google,
+                       slow,
+                       travis_test)
 
 # noinspection PyPackageRequirements
 # (installed by `make prepare`)

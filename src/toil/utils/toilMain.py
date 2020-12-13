@@ -31,9 +31,15 @@ def main():
 
 def loadModules():
     # noinspection PyUnresolvedReferences
-    from toil.utils import (toilClean, toilDebugFile, toilDebugJob,  # noqa
-                            toilDestroyCluster, toilKill, toilLaunchCluster,
-                            toilRsyncCluster, toilSshCluster, toilStats,
+    from toil.utils import (toilClean,  # noqa
+                            toilDebugFile,
+                            toilDebugJob,
+                            toilDestroyCluster,
+                            toilKill,
+                            toilLaunchCluster,
+                            toilRsyncCluster,
+                            toilSshCluster,
+                            toilStats,
                             toilStatus)
     return {"-".join([i.lower() for i in re.findall('[A-Z][^A-Z]*', name)]): module for name, module in locals().items()}
 

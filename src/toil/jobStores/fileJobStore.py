@@ -31,7 +31,9 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchFileException,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
-from toil.lib.misc import (AtomicFileCreate, atomic_copy, atomic_copyobj,
+from toil.lib.misc import (AtomicFileCreate,
+                           atomic_copy,
+                           atomic_copyobj,
                            robust_rmtree)
 
 logger = logging.getLogger(__name__)

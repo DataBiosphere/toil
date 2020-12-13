@@ -25,8 +25,9 @@ from threading import Condition, Event, Lock, Thread
 
 import toil
 from toil import worker as toil_worker
-from toil.batchSystems.abstractBatchSystem import (
-    EXIT_STATUS_UNAVAILABLE_VALUE, BatchSystemSupport, UpdatedBatchJobInfo)
+from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
+                                                   BatchSystemSupport,
+                                                   UpdatedBatchJobInfo)
 from toil.common import Toil
 from toil.lib.threading import cpu_count
 

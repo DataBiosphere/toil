@@ -18,8 +18,13 @@ from abc import abstractmethod
 from uuid import uuid4
 
 import pytest
-from toil.test import (ToilTest, integrative, needs_appliance, needs_google,
-                       slow, timeLimit)
+
+from toil.test import (ToilTest,
+                       integrative,
+                       needs_appliance,
+                       needs_google,
+                       slow,
+                       timeLimit)
 from toil.version import exactPython
 
 log = logging.getLogger(__name__)

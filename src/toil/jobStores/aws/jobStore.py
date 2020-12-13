@@ -35,19 +35,27 @@ from boto.exception import S3CreateError, S3ResponseError, SDBResponseError
 
 import toil.lib.encryption as encryption
 from toil.fileStores import FileID
-from toil.jobStores.abstractJobStore import (
-    AbstractJobStore, ConcurrentFileModificationException,
-    JobStoreExistsException, NoSuchFileException, NoSuchJobException,
-    NoSuchJobStoreException)
-from toil.jobStores.aws.utils import (SDBHelper, bucket_location_to_region,
-                                      chunkedFileUpload, copyKeyMultipart,
+from toil.jobStores.abstractJobStore import (AbstractJobStore,
+                                             ConcurrentFileModificationException,
+                                             JobStoreExistsException,
+                                             NoSuchFileException,
+                                             NoSuchJobException,
+                                             NoSuchJobStoreException)
+from toil.jobStores.aws.utils import (SDBHelper,
+                                      bucket_location_to_region,
+                                      chunkedFileUpload,
+                                      copyKeyMultipart,
                                       fileSizeAndTime,
                                       monkeyPatchSdbConnection,
                                       no_such_sdb_domain,
-                                      region_to_bucket_location, retry_s3,
-                                      retry_sdb, retryable_s3_errors,
-                                      sdb_unavailable, uploadFromPath)
-from toil.jobStores.utils import (ReadablePipe, ReadableTransformingPipe,
+                                      region_to_bucket_location,
+                                      retry_s3,
+                                      retry_sdb,
+                                      retryable_s3_errors,
+                                      sdb_unavailable,
+                                      uploadFromPath)
+from toil.jobStores.utils import (ReadablePipe,
+                                  ReadableTransformingPipe,
                                   WritablePipe)
 from toil.lib.compatibility import compat_bytes, compat_plain
 from toil.lib.ec2nodes import EC2Regions

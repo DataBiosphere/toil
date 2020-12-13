@@ -22,8 +22,11 @@ import types
 from ssl import SSLError
 
 import boto3
-from boto.exception import (BotoServerError, S3CopyError, S3CreateError,
-                            S3ResponseError, SDBResponseError)
+from boto.exception import (BotoServerError,
+                            S3CopyError,
+                            S3CreateError,
+                            S3ResponseError,
+                            SDBResponseError)
 from botocore.exceptions import ClientError
 
 from toil.lib.compatibility import compat_bytes, compat_oldstr

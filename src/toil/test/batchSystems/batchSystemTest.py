@@ -37,10 +37,19 @@ from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config
 from toil.job import Job, JobDescription
 from toil.lib.threading import cpu_count
-from toil.test import (ToilTest, needs_aws_s3, needs_fetchable_appliance,
-                       needs_gridengine, needs_htcondor, needs_kubernetes,
-                       needs_lsf, needs_mesos, needs_parasol, needs_slurm,
-                       needs_torque, slow, travis_test)
+from toil.test import (ToilTest,
+                       needs_aws_s3,
+                       needs_fetchable_appliance,
+                       needs_gridengine,
+                       needs_htcondor,
+                       needs_kubernetes,
+                       needs_lsf,
+                       needs_mesos,
+                       needs_parasol,
+                       needs_slurm,
+                       needs_torque,
+                       slow,
+                       travis_test)
 
 logger = logging.getLogger(__name__)
 

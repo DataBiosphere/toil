@@ -33,7 +33,8 @@ from toil.lib.retry import retry
 from toil.provisioners import add_provisioner_options, clusterFactory
 from toil.provisioners.aws import checkValidNodeTypes, zoneToRegion
 from toil.realtimeLogger import RealtimeLogger
-from toil.statsAndLogging import (add_logging_options, root_logger,
+from toil.statsAndLogging import (add_logging_options,
+                                  root_logger,
                                   set_logging_from_options)
 from toil.version import dockerRegistry, dockerTag, version
 

@@ -231,7 +231,7 @@ PYSOURCES=$(shell find src -name '*.py') setup.py version_template.py
 # Linting and code style related targets
 ## sorting imports using isort: https://github.com/timothycrosley/isort
 sort_imports: $(PYSOURCES)
-	isort $^
+	isort -m VERTICAL $^
 
 remove_unused_imports: $(PYSOURCES)
 	autoflake --in-place --remove-all-unused-imports $^

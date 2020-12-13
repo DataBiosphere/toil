@@ -40,9 +40,10 @@ import urllib3
 from kubernetes.client.rest import ApiException
 
 from toil import applianceSelf
-from toil.batchSystems.abstractBatchSystem import (
-    EXIT_STATUS_UNAVAILABLE_VALUE, BatchJobExitReason,
-    BatchSystemCleanupSupport, UpdatedBatchJobInfo)
+from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
+                                                   BatchJobExitReason,
+                                                   BatchSystemCleanupSupport,
+                                                   UpdatedBatchJobInfo)
 from toil.common import Toil
 from toil.lib.humanize import human2bytes
 from toil.lib.retry import ErrorCondition, retry

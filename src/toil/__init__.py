@@ -428,7 +428,8 @@ def logProcessContext(config):
 
 try:
     from boto import provider
-    from botocore.credentials import (JSONFileCache, RefreshableCredentials,
+    from botocore.credentials import (JSONFileCache,
+                                      RefreshableCredentials,
                                       create_credential_resolver)
     from botocore.session import Session
 

@@ -31,9 +31,12 @@ import addict
 from pymesos import MesosSchedulerDriver, Scheduler, decode_data, encode_data
 
 from toil import resolveEntryPoint
-from toil.batchSystems.abstractBatchSystem import (
-    EXIT_STATUS_UNAVAILABLE_VALUE, AbstractScalableBatchSystem,
-    BatchJobExitReason, BatchSystemLocalSupport, NodeInfo, UpdatedBatchJobInfo)
+from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
+                                                   AbstractScalableBatchSystem,
+                                                   BatchJobExitReason,
+                                                   BatchSystemLocalSupport,
+                                                   NodeInfo,
+                                                   UpdatedBatchJobInfo)
 from toil.batchSystems.mesos import JobQueue, MesosShape, TaskData, ToilJob
 from toil.lib.memoize import strict_bool
 

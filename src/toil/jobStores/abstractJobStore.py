@@ -27,7 +27,8 @@ from requests.exceptions import HTTPError
 
 from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
-from toil.job import (CheckpointJobDescription, JobException,
+from toil.job import (CheckpointJobDescription,
+                      JobException,
                       ServiceJobDescription)
 from toil.lib.memoize import memoize
 from toil.lib.misc import WriteWatchingStream

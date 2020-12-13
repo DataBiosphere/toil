@@ -20,9 +20,9 @@ import tempfile
 import time
 import uuid
 
+import pytest
 from mock import patch
 
-import pytest
 import toil
 import toil.test.sort.sort
 from toil import resolveEntryPoint
@@ -30,8 +30,14 @@ from toil.common import Config, Toil
 from toil.job import Job
 from toil.lib.bioio import getTempFile, system
 from toil.provisioners import clusterFactory
-from toil.test import (ToilTest, integrative, needs_aws_ec2, needs_cwl,
-                       needs_docker, needs_rsync3, slow, travis_test)
+from toil.test import (ToilTest,
+                       integrative,
+                       needs_aws_ec2,
+                       needs_cwl,
+                       needs_docker,
+                       needs_rsync3,
+                       slow,
+                       travis_test)
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.utils.toilStatus import ToilStatus

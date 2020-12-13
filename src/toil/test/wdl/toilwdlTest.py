@@ -10,12 +10,22 @@ import toil.wdl.wdl_parser as wdl_parser
 from toil.test import ToilTest, needs_docker, needs_java, slow
 from toil.version import exactPython
 from toil.wdl.wdl_analysis import AnalyzeWDL
-from toil.wdl.wdl_functions import (abspath_file, basename, combine_dicts,
-                                    defined, generate_docker_bashscript_file,
-                                    glob, parse_cores, parse_disk,
-                                    parse_memory, process_and_read_file,
-                                    process_infile, process_outfile, read_csv,
-                                    read_tsv, select_first, size)
+from toil.wdl.wdl_functions import (abspath_file,
+                                    basename,
+                                    combine_dicts,
+                                    defined,
+                                    generate_docker_bashscript_file,
+                                    glob,
+                                    parse_cores,
+                                    parse_disk,
+                                    parse_memory,
+                                    process_and_read_file,
+                                    process_infile,
+                                    process_outfile,
+                                    read_csv,
+                                    read_tsv,
+                                    select_first,
+                                    size)
 from toil.wdl.wdl_synthesis import SynthesizeWDL
 
 

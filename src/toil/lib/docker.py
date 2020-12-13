@@ -10,7 +10,9 @@ from shlex import quote
 import requests
 
 import docker
-from docker.errors import (ContainerError, ImageNotFound, NotFound,
+from docker.errors import (ContainerError,
+                           ImageNotFound,
+                           NotFound,
                            create_api_error_from_http_exception)
 from docker.utils.socket import consume_socket_output, demux_adaptor
 

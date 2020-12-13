@@ -19,6 +19,7 @@ import os
 import time
 
 import htcondor
+
 from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
 

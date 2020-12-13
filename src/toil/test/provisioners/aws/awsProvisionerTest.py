@@ -21,10 +21,15 @@ from textwrap import dedent
 from uuid import uuid4
 
 import pytest
+
 from toil.provisioners import clusterFactory
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-from toil.test import (ToilTest, integrative, needs_appliance, needs_aws_ec2,
-                       slow, timeLimit)
+from toil.test import (ToilTest,
+                       integrative,
+                       needs_appliance,
+                       needs_aws_ec2,
+                       slow,
+                       timeLimit)
 from toil.version import exactPython
 
 log = logging.getLogger(__name__)

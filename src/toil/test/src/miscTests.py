@@ -21,8 +21,11 @@ from uuid import uuid4
 
 from toil.common import getNodeID
 from toil.lib.exceptions import panic, raise_
-from toil.lib.misc import (AtomicFileCreate, CalledProcessErrorStderr,
-                           atomic_install, atomic_tmp_file, call_command)
+from toil.lib.misc import (AtomicFileCreate,
+                           CalledProcessErrorStderr,
+                           atomic_install,
+                           atomic_tmp_file,
+                           call_command)
 from toil.test import ToilTest, slow, travis_test
 
 log = logging.getLogger(__name__)

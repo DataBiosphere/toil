@@ -14,8 +14,11 @@
 import logging
 import subprocess
 
-from toil.statsAndLogging import (DEFAULT_LOGLEVEL, logger, root_logger,
-                                  set_logging_from_options, toil_logger)
+from toil.statsAndLogging import (DEFAULT_LOGLEVEL,
+                                  logger,
+                                  root_logger,
+                                  set_logging_from_options,
+                                  toil_logger)
 from toil.test import get_temp_file
 
 

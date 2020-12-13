@@ -29,10 +29,20 @@ from toil.jobStores.abstractJobStore import (JobStoreExistsException,
                                              NoSuchJobStoreException)
 from toil.leader import FailedJobsException
 from toil.lib.bioio import root_logger
-from toil.test import (ToilTest, needs_aws_ec2, needs_google, needs_gridengine,
-                       needs_mesos, needs_parasol, needs_torque, slow)
-from toil.test.sort.sort import (copySubRangeOfFile, getMidPoint, main,
-                                 makeFileToSort, merge, sort)
+from toil.test import (ToilTest,
+                       needs_aws_ec2,
+                       needs_google,
+                       needs_gridengine,
+                       needs_mesos,
+                       needs_parasol,
+                       needs_torque,
+                       slow)
+from toil.test.sort.sort import (copySubRangeOfFile,
+                                 getMidPoint,
+                                 main,
+                                 makeFileToSort,
+                                 merge,
+                                 sort)
 
 logger = logging.getLogger(__name__)
 

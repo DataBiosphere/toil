@@ -15,7 +15,8 @@ from contextlib import closing
 from typing import Callable
 
 from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
-                                        BATCH_SYSTEMS, DEFAULT_BATCH_SYSTEM)
+                                        BATCH_SYSTEMS,
+                                        DEFAULT_BATCH_SYSTEM)
 from toil.lib.threading import cpu_count
 
 

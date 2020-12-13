@@ -32,8 +32,10 @@ from toil.common import Config, defaultTargetTime
 from toil.job import JobDescription
 from toil.lib.humanize import human2bytes as h2b
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
-from toil.provisioners.clusterScaler import (BinPackedFit, ClusterScaler,
-                                             NodeReservation, ScalerThread)
+from toil.provisioners.clusterScaler import (BinPackedFit,
+                                             ClusterScaler,
+                                             NodeReservation,
+                                             ScalerThread)
 from toil.provisioners.node import Node
 from toil.test import ToilTest, slow, travis_test
 
