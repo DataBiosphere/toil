@@ -1548,9 +1548,7 @@ class AWSJobStore(AbstractJobStore):
                 try:
                     domain.delete()
                 except SDBResponseError as e:
-                    if no_such_sdb_domain(e):
-                        pass
-                    else:
+                    if not no_such_sdb_domain(e):
                         raise
 
     def _delete_bucket(self, b):

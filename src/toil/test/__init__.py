@@ -44,6 +44,14 @@ from toil.version import distVersion
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+# suppress the loggers of all other packages (e.g. 'requests_oauthlib', 'google', 'boto', 'websocket', 'oauthlib', etc.)
+top_level_loggers = set()
+for pkg_logger in logging.Logger.manager.loggerDict.keys():
+    top_level_logger = pkg_logger.split('.')[0] if '.' in pkg_logger else pkg_logger
+    if top_level_logger not in top_level_loggers and top_level_logger not in ('toil', '__init__'):
+        top_level_loggers.add(top_level_logger)
+        logging.getLogger(top_level_logger).setLevel(logging.CRITICAL)
+
 
 class ToilTest(unittest.TestCase):
     """
