@@ -1118,7 +1118,6 @@ class AWSJobStore(AbstractJobStore):
             """
             Update a checksum in progress from _start_checksum with new data.
             """
-            logger.debug('Updating checksum with %d bytes', len(data))
             checksum_in_progress[1].update(data)
         
         def _finish_checksum(self, checksum_in_progress):
@@ -1128,7 +1127,7 @@ class AWSJobStore(AbstractJobStore):
             """
             
             result_hash = checksum_in_progress[1].hexdigest()
-            
+
             logger.debug('Completed checksum with hash %s vs. expected %s', result_hash, checksum_in_progress[2])
             
             if checksum_in_progress[2] is not None:
@@ -1179,6 +1178,7 @@ class AWSJobStore(AbstractJobStore):
                     else:
                         # We will compute a checksum
                         hasher = info._start_checksum()
+                        logger.debug('Updating checksum with %d bytes', len(buf))
                         info._update_checksum(hasher, buf)
                     
                         headers = info._s3EncryptionHeaders()
