@@ -28,6 +28,9 @@ from urllib.request import urlretrieve
 import psutil
 import pytest
 
+pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
+sys.path.insert(0, pkg_root)  # noqa
+
 from toil.test import (ToilTest,
                        needs_aws_s3,
                        needs_cwl,
@@ -39,10 +42,6 @@ from toil.test import (ToilTest,
                        needs_slurm,
                        needs_torque,
                        slow)
-
-pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
-sys.path.insert(0, pkg_root)  # noqa
-
 
 log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 3600

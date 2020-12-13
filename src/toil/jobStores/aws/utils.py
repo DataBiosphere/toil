@@ -29,7 +29,7 @@ from boto.exception import (BotoServerError,
                             SDBResponseError)
 from botocore.exceptions import ClientError
 
-from toil.lib.compatibility import compat_bytes, compat_oldstr
+from toil.lib.compatibility import compat_bytes, compat_bytes
 from toil.lib.exceptions import panic
 from toil.lib.retry import old_retry
 
@@ -265,11 +265,11 @@ def copyKeyMultipart(srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, ds
     :return: The version of the copied file (or None if versioning is not enabled for dstBucket).
     """
     s3 = boto3.resource('s3')
-    dstBucket = s3.Bucket(compat_oldstr(dstBucketName))
-    dstObject = dstBucket.Object(compat_oldstr(dstKeyName))
-    copySource = {'Bucket': compat_oldstr(srcBucketName), 'Key': compat_oldstr(srcKeyName)}
+    dstBucket = s3.Bucket(compat_bytes(dstBucketName))
+    dstObject = dstBucket.Object(compat_bytes(dstKeyName))
+    copySource = {'Bucket': compat_bytes(srcBucketName), 'Key': compat_bytes(srcKeyName)}
     if srcKeyVersion is not None:
-        copySource['VersionId'] = compat_oldstr(srcKeyVersion)
+        copySource['VersionId'] = compat_bytes(srcKeyVersion)
 
     # The boto3 functions don't allow passing parameters as None to
     # indicate they weren't provided. So we have to do a bit of work

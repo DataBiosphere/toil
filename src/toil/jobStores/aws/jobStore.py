@@ -57,7 +57,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
 from toil.jobStores.utils import (ReadablePipe,
                                   ReadableTransformingPipe,
                                   WritablePipe)
-from toil.lib.compatibility import compat_bytes, compat_plain
+from toil.lib.compatibility import compat_bytes, compat_bytes
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.exceptions import panic
 from toil.lib.memoize import strict_bool
@@ -1315,11 +1315,11 @@ class AWSJobStore(AbstractJobStore):
             if srcKey.size <= self.maxInlinedSize():
                 self.content = srcKey.get_contents_as_string()
             else:
-                self.version = copyKeyMultipart(srcBucketName=compat_plain(srcKey.bucket.name),
-                                                srcKeyName=compat_plain(srcKey.name),
-                                                srcKeyVersion=compat_plain(srcKey.version_id),
-                                                dstBucketName=compat_plain(self.outer.filesBucket.name),
-                                                dstKeyName=compat_plain(self._fileID),
+                self.version = copyKeyMultipart(srcBucketName=compat_bytes(srcKey.bucket.name),
+                                                srcKeyName=compat_bytes(srcKey.name),
+                                                srcKeyVersion=compat_bytes(srcKey.version_id),
+                                                dstBucketName=compat_bytes(self.outer.filesBucket.name),
+                                                dstKeyName=compat_bytes(self._fileID),
                                                 sseAlgorithm='AES256',
                                                 sseKey=self._getSSEKey())
 
@@ -1342,11 +1342,11 @@ class AWSJobStore(AbstractJobStore):
                         srcKey = self.outer.filesBucket.get_key(compat_bytes(self.fileID))
                     srcKey.version_id = self.version
                     with attempt:
-                        copyKeyMultipart(srcBucketName=compat_plain(srcKey.bucket.name),
-                                         srcKeyName=compat_plain(srcKey.name),
-                                         srcKeyVersion=compat_plain(srcKey.version_id),
-                                         dstBucketName=compat_plain(dstKey.bucket.name),
-                                         dstKeyName=compat_plain(dstKey.name),
+                        copyKeyMultipart(srcBucketName=compat_bytes(srcKey.bucket.name),
+                                         srcKeyName=compat_bytes(srcKey.name),
+                                         srcKeyVersion=compat_bytes(srcKey.version_id),
+                                         dstBucketName=compat_bytes(dstKey.bucket.name),
+                                         dstKeyName=compat_bytes(dstKey.name),
                                          copySourceSseAlgorithm='AES256',
                                          copySourceSseKey=self._getSSEKey())
             else:
