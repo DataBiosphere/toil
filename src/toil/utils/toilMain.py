@@ -31,8 +31,8 @@ def main():
 
 def loadModules():
     # noinspection PyUnresolvedReferences
-    from toil.utils import toilClean  # noqa
-    from toil.utils import (toilDebugFile,
+    from toil.utils import (toilClean,
+                            toilDebugFile,
                             toilDebugJob,
                             toilDestroyCluster,
                             toilKill,

@@ -23,12 +23,12 @@ from toil.statsAndLogging import set_logging_from_options
 logger = logging.getLogger(__name__)
 
 
-def createTagsDict(tagList):
-    tagsDict = dict()
-    for tag in tagList:
+def create_tags_dict(tags: list) -> dict:
+    tags_dict = dict()
+    for tag in tags:
         key, value = tag.split('=')
-        tagsDict[key] = value
-    return tagsDict
+        tags_dict[key] = value
+    return tags_dict
 
 
 def main():
@@ -92,9 +92,10 @@ def main():
                              "the extra security groups do not have the same name as the cluster name.")
     options = parser.parse_args()
     set_logging_from_options(options)
-    tags = createTagsDict(options.tags) if options.tags else dict()
+    tags = create_tags_dict(options.tags) if options.tags else dict()
 
     worker_node_types = options.nodeTypes.split(',') if options.nodeTypes else []
+    worker_quantities = options.workers.split(',') if options.workers else []
     check_valid_node_types(options.provisioner, worker_node_types + [options.leaderNodeType])
 
     # checks the validity of TOIL_APPLIANCE_SELF before proceeding
@@ -110,7 +111,10 @@ def main():
                            f'TOIL_{options.provisioner.upper()}_ZONE environment variable.')
 
     if (options.nodeTypes or options.workers) and not (options.nodeTypes and options.workers):
-        raise RuntimeError("The --nodeTypes and --workers options must be specified together,")
+        raise RuntimeError("The --nodeTypes and --workers options must be specified together.")
+
+    if not len(worker_node_types) == len(worker_quantities):
+        raise RuntimeError("List of node types must be the same length as the list of workers.")
 
     cluster = cluster_factory(provisioner=options.provisioner,
                               clusterName=options.clusterName,
@@ -127,20 +131,14 @@ def main():
                           awsEc2ProfileArn=options.awsEc2ProfileArn,
                           awsEc2ExtraSecurityGroupIds=options.awsEc2ExtraSecurityGroupIds)
 
-    if worker_node_types:
-        worker_quantities = options.workers.split(",") if options.workers else []
-
-        if not len(worker_node_types) == len(worker_quantities):
-            raise RuntimeError("List of node types must be the same length as the list of workers.")
-
-        for worker_node_type, num_workers in zip(worker_node_types, worker_quantities):
-            if ':' in worker_node_type:
-                worker_node_type, bid = worker_node_type.split(':', 1)
-                cluster.addNodes(nodeType=worker_node_type,
-                                 numNodes=int(num_workers),
-                                 preemptable=True,
-                                 spotBid=float(bid))
-            else:
-                cluster.addNodes(nodeType=worker_node_type,
-                                 numNodes=int(num_workers),
-                                 preemptable=False)
+    for worker_node_type, num_workers in zip(worker_node_types, worker_quantities):
+        if ':' in worker_node_type:
+            worker_node_type, bid = worker_node_type.split(':', 1)
+            cluster.addNodes(nodeType=worker_node_type,
+                             numNodes=int(num_workers),
+                             preemptable=True,
+                             spotBid=float(bid))
+        else:
+            cluster.addNodes(nodeType=worker_node_type,
+                             numNodes=int(num_workers),
+                             preemptable=False)
