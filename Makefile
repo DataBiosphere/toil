@@ -234,12 +234,12 @@ sort_imports: $(PYSOURCES)
 	isort -m VERTICAL $^
 	make format
 
-format: $(wildcard src/toil/cwl/*.py)
-	black $^
-
 remove_unused_imports: $(PYSOURCES)
 	autoflake --in-place --remove-all-unused-imports $^
 	make format
+
+format: $(wildcard src/toil/cwl/*.py)
+	black $^
 
 mypy:
 	mypy --ignore-missing-imports --no-strict-optional \

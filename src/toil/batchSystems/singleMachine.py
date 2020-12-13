@@ -582,7 +582,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         setOption("scale", default=1)
 
 
-class Info(object):
+class Info:
     """
     Record for a running job.
 
@@ -598,7 +598,7 @@ class Info(object):
         self.killIntended = killIntended
 
 
-class ResourcePool(object):
+class ResourcePool:
     """
     Represents an integral amount of a resource (such as memory bytes).
 

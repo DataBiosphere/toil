@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import json
 import logging
 import os
@@ -26,11 +25,11 @@ import sys
 import threading
 import time
 import traceback
-
 import addict
 import psutil
+
 from pymesos import Executor, MesosExecutorDriver, decode_data, encode_data
-from urllib2 import urlopen
+from urllib.request import urlopen
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.lib.expando import Expando
