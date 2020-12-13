@@ -16,7 +16,7 @@ import argparse
 import logging
 
 from toil.common import parser_with_common_options
-from toil.lib.bioio import setLoggingFromOptions
+from toil.statsAndLogging import set_logging_from_options
 from toil.provisioners import clusterFactory
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ def main():
                         "\nOr, to download a file from the remote:, `toil rsync-cluster"
                         " -p aws test-cluster :example.py .`")
     options = parser.parse_args()
-    setLoggingFromOptions(options)
+    set_logging_from_options(options)
     cluster = clusterFactory(provisioner=options.provisioner,
                              clusterName=options.clusterName,
                              zone=options.zone)

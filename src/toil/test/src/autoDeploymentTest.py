@@ -1,4 +1,4 @@
-# coding=utf-8
+import time
 import logging
 import subprocess
 from contextlib import contextmanager
@@ -7,7 +7,7 @@ from toil.lib.iterables import concat
 from toil.test import ApplianceTestSupport, needs_appliance, needs_mesos, slow
 from toil.version import exactPython
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @needs_mesos
@@ -245,13 +245,8 @@ class AutoDeploymentTest(ApplianceTestSupport):
         """
         with self._venvApplianceCluster() as (leader, worker):
             def userScript():
-                import logging
-                import time
-
                 from toil.common import Toil
                 from toil.job import Job
-
-                log = logging.getLogger(__name__)
 
                 def root(rootJob):
                     def nullFile():

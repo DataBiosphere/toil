@@ -16,8 +16,8 @@ import fnmatch
 import logging
 import os.path
 
-from toil.common import Config, Toil, parser_with_common_options, JOBSTORE_HELP
-from toil.lib.bioio import setLoggingFromOptions
+from toil.common import Config, Toil, parser_with_common_options
+from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
 
@@ -96,11 +96,7 @@ def printContentsOfJobStore(jobStorePath, nameOfJob=None):
 
 
 def main():
-    parser = parser_with_common_options()
-    parser.add_argument("jobStore",
-                        type=str,
-                        help="The location of the job store used by the workflow." +
-                             JOBSTORE_HELP)
+    parser = parser_with_common_options(jobstore_option=True)
     parser.add_argument("--localFilePath",
                         nargs=1,
                         help="Location to which to copy job store files.")
@@ -120,7 +116,7 @@ def main():
 
     # Load the jobStore
     options = parser.parse_args()
-    setLoggingFromOptions(options)
+    set_logging_from_options(options)
     config = Config()
     config.setOptions(options)
     jobStore = Toil.resumeJobStore(config.jobStore)

@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 import base64
 import hashlib
 import itertools
@@ -65,12 +63,12 @@ botocore_session.get_component('credential_provider').get_provider('assume-role'
 boto3_session = boto3.Session(botocore_session=botocore_session)
 s3_boto3_resource = boto3_session.resource('s3')
 s3_boto3_client = boto3_session.client('s3')
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+
 
 class ChecksumError(Exception):
-    """
-    Raised when a download from AWS does not contain the correct data.
-    """
+    """Raised when a download from AWS does not contain the correct data."""
+
 
 class AWSJobStore(AbstractJobStore):
     """
@@ -118,8 +116,8 @@ class AWSJobStore(AbstractJobStore):
         if '--' in namePrefix:
             raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain "
                              "%s." % (namePrefix, self.nameSeparator))
-        log.debug("Instantiating %s for region %s and name prefix '%s'",
-                  self.__class__, region, namePrefix)
+        logger.debug("Instantiating %s for region %s and name prefix '%s'",
+                     self.__class__, region, namePrefix)
         self.locator = locator
         self.region = region
         self.namePrefix = namePrefix
@@ -137,7 +135,7 @@ class AWSJobStore(AbstractJobStore):
         try:
             self._bind(create=True)
         except:
-            with panic(log):
+            with panic(logger):
                 self.destroy()
         else:
             super(AWSJobStore, self).initialize(config)
@@ -251,7 +249,7 @@ class AWSJobStore(AbstractJobStore):
             assert self.fileExists(item["overlargeID"])
             # This is an overlarge job, download the actual attributes
             # from the file store
-            log.debug("Loading overlarge job from S3.")
+            logger.debug("Loading overlarge job from S3.")
             with self.readFileStream(item["overlargeID"]) as fh:
                 binary = fh.read()
         else:
@@ -293,8 +291,8 @@ class AWSJobStore(AbstractJobStore):
 
     def assignID(self, jobDescription):
         jobStoreID = self._newJobID()
-        log.debug("Assigning ID to job %s for '%s'",
-                  jobStoreID, '<no command>' if jobDescription.command is None else jobDescription.command)
+        logger.debug("Assigning ID to job %s for '%s'",
+                     jobStoreID, '<no command>' if jobDescription.command is None else jobDescription.command)
         jobDescription.jobStoreID = jobStoreID
 
     def create(self, jobDescription):
@@ -333,11 +331,11 @@ class AWSJobStore(AbstractJobStore):
         job = self._awsJobFromItem(item)
         if job is None:
             raise NoSuchJobException(jobStoreID)
-        log.debug("Loaded job %s", jobStoreID)
+        logger.debug("Loaded job %s", jobStoreID)
         return job
 
     def update(self, jobDescription):
-        log.debug("Updating job %s", jobDescription.jobStoreID)
+        logger.debug("Updating job %s", jobDescription.jobStoreID)
         item = self._awsJobToItem(jobDescription)
         for attempt in retry_sdb():
             with attempt:
@@ -347,7 +345,7 @@ class AWSJobStore(AbstractJobStore):
 
     def delete(self, jobStoreID):
         # remove job and replace with jobStoreId.
-        log.debug("Deleting job %s", jobStoreID)
+        logger.debug("Deleting job %s", jobStoreID)
 
         # If the job is overlarge, delete its file from the filestore
         item = None
@@ -356,7 +354,7 @@ class AWSJobStore(AbstractJobStore):
                 item = self.jobsDomain.get_attributes(compat_bytes(jobStoreID), consistent_read=True)
         self._checkItem(item)
         if item["overlargeID"]:
-            log.debug("Deleting job from filestore")
+            logger.debug("Deleting job from filestore")
             self.deleteFile(item["overlargeID"])
         for attempt in retry_sdb():
             with attempt:
@@ -370,7 +368,7 @@ class AWSJobStore(AbstractJobStore):
                         self.filesDomain.name, jobStoreID)))
         assert items is not None
         if items:
-            log.debug("Deleting %d file(s) associated with job %s", len(items), jobStoreID)
+            logger.debug("Deleting %d file(s) associated with job %s", len(items), jobStoreID)
             n = self.itemsPerBatchDelete
             batches = [items[i:i + n] for i in range(0, len(items), n)]
             for batch in batches:
@@ -393,7 +391,7 @@ class AWSJobStore(AbstractJobStore):
             # Empty
             pass
         info.save()
-        log.debug("Created %r.", info)
+        logger.debug("Created %r.", info)
         return info.fileID
 
     def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False):
@@ -458,11 +456,11 @@ class AWSJobStore(AbstractJobStore):
             except:
                 canDetermineSize = False
             if canDetermineSize and fileSize > (5 * 1000 * 1000):  # only use multipart when file is above 5 mb
-                log.debug("Uploading %s with size %s, will use multipart uploading", dstKey.name, fileSize)
+                logger.debug("Uploading %s with size %s, will use multipart uploading", dstKey.name, fileSize)
                 chunkedFileUpload(readable=readable, bucket=dstKey.bucket, fileID=dstKey.name, file_size=fileSize)
             else:
                 # we either don't know the size, or the size is small
-                log.debug("Can not use multipart uploading for %s, uploading whole file at once", dstKey.name)
+                logger.debug("Can not use multipart uploading for %s, uploading whole file at once", dstKey.name)
                 dstKey.set_contents_from_string(readable.read())
         finally:
             dstKey.bucket.connection.close()
@@ -527,7 +525,7 @@ class AWSJobStore(AbstractJobStore):
         info = self.FileInfo.create(jobStoreID if cleanup else None)
         info.upload(localFilePath, not self.config.disableJobStoreChecksumVerification)
         info.save()
-        log.debug("Wrote %r of from %r", info, localFilePath)
+        logger.debug("Wrote %r of from %r", info, localFilePath)
         return info.fileID
 
     @contextmanager
@@ -536,7 +534,7 @@ class AWSJobStore(AbstractJobStore):
         with info.uploadStream() as writable:
             yield writable, info.fileID
         info.save()
-        log.debug("Wrote %r.", info)
+        logger.debug("Wrote %r.", info)
 
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=None):
@@ -547,13 +545,13 @@ class AWSJobStore(AbstractJobStore):
         with info.uploadStream() as writable:
             yield writable
         info.save()
-        log.debug("Wrote %r for shared file %r.", info, sharedFileName)
+        logger.debug("Wrote %r for shared file %r.", info, sharedFileName)
 
     def updateFile(self, jobStoreFileID, localFilePath):
         info = self.FileInfo.loadOrFail(jobStoreFileID)
         info.upload(localFilePath, not self.config.disableJobStoreChecksumVerification)
         info.save()
-        log.debug("Wrote %r from path %r.", info, localFilePath)
+        logger.debug("Wrote %r from path %r.", info, localFilePath)
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
@@ -561,7 +559,7 @@ class AWSJobStore(AbstractJobStore):
         with info.uploadStream() as writable:
             yield writable
         info.save()
-        log.debug("Wrote %r from stream.", info)
+        logger.debug("Wrote %r from stream.", info)
 
     def fileExists(self, jobStoreFileID):
         return self.FileInfo.exists(jobStoreFileID)
@@ -574,13 +572,13 @@ class AWSJobStore(AbstractJobStore):
 
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
         info = self.FileInfo.loadOrFail(jobStoreFileID)
-        log.debug("Reading %r into %r.", info, localFilePath)
+        logger.debug("Reading %r into %r.", info, localFilePath)
         info.download(localFilePath, not self.config.disableJobStoreChecksumVerification)
 
     @contextmanager
     def readFileStream(self, jobStoreFileID):
         info = self.FileInfo.loadOrFail(jobStoreFileID)
-        log.debug("Reading %r into stream.", info)
+        logger.debug("Reading %r into stream.", info)
         with info.downloadStream() as readable:
             yield readable
 
@@ -589,14 +587,14 @@ class AWSJobStore(AbstractJobStore):
         self._requireValidSharedFileName(sharedFileName)
         jobStoreFileID = self._sharedFileID(sharedFileName)
         info = self.FileInfo.loadOrFail(jobStoreFileID, customName=sharedFileName)
-        log.debug("Reading %r for shared file %r into stream.", info, sharedFileName)
+        logger.debug("Reading %r for shared file %r into stream.", info, sharedFileName)
         with info.downloadStream() as readable:
             yield readable
 
     def deleteFile(self, jobStoreFileID):
         info = self.FileInfo.load(jobStoreFileID)
         if info is None:
-            log.debug("File %s does not exist, skipping deletion.", jobStoreFileID)
+            logger.debug("File %s does not exist, skipping deletion.", jobStoreFileID)
         else:
             info.delete()
 
@@ -703,7 +701,7 @@ class AWSJobStore(AbstractJobStore):
         """
         assert self.minBucketNameLen <= len(bucket_name) <= self.maxBucketNameLen
         assert self.bucketNameRe.match(bucket_name)
-        log.debug("Binding to job store bucket '%s'.", bucket_name)
+        logger.debug("Binding to job store bucket '%s'.", bucket_name)
 
         def bucket_creation_pending(e):
             # https://github.com/BD2KGenomics/toil/issues/955
@@ -722,9 +720,9 @@ class AWSJobStore(AbstractJobStore):
                 except S3ResponseError as e:
                     if e.error_code == 'NoSuchBucket':
                         bucketExisted = False
-                        log.debug("Bucket '%s' does not exist.", bucket_name)
+                        logger.debug("Bucket '%s' does not exist.", bucket_name)
                         if create:
-                            log.debug("Creating bucket '%s'.", bucket_name)
+                            logger.debug("Creating bucket '%s'.", bucket_name)
                             location = region_to_bucket_location(self.region)
                             bucket = self.s3.create_bucket(bucket_name, location=location)
                             # It is possible for create_bucket to return but
@@ -757,7 +755,7 @@ class AWSJobStore(AbstractJobStore):
                     # consistent?
                     time.sleep(1)
                     while self._getBucketVersioning(bucket) != True:
-                        log.warning("Waiting for versioning activation on bucket '%s'...", bucket_name)
+                        logger.warning("Waiting for versioning activation on bucket '%s'...", bucket_name)
                         time.sleep(1)
                 elif check_versioning_consistency:
                     # now test for versioning consistency
@@ -768,9 +766,9 @@ class AWSJobStore(AbstractJobStore):
                     elif bucket_versioning is None:
                         assert False, 'Cannot use a bucket with versioning suspended'
                 if bucketExisted:
-                    log.debug("Using pre-existing job store bucket '%s'.", bucket_name)
+                    logger.debug("Using pre-existing job store bucket '%s'.", bucket_name)
                 else:
-                    log.debug("Created new job store bucket '%s' with versioning state %s.", bucket_name, str(versioning))
+                    logger.debug("Created new job store bucket '%s' with versioning state %s.", bucket_name, str(versioning))
 
                 return bucket
 
@@ -790,7 +788,7 @@ class AWSJobStore(AbstractJobStore):
         :raises SDBResponseError: If `block` is True and the domain still doesn't exist after the
                 retry timeout expires.
         """
-        log.debug("Binding to job store domain '%s'.", domain_name)
+        logger.debug("Binding to job store domain '%s'.", domain_name)
         retryargs = dict(predicate=lambda e: no_such_sdb_domain(e) or sdb_unavailable(e))
         if not block:
             retryargs['timeout'] = 15
@@ -1104,7 +1102,7 @@ class AWSJobStore(AbstractJobStore):
             
             wrapped = getattr(hashlib, algorithm)()
             
-            log.debug('Starting %s checksum to match %s', algorithm, expected)
+            logger.debug('Starting %s checksum to match %s', algorithm, expected)
             
             return (algorithm, wrapped, expected)
             
@@ -1112,7 +1110,7 @@ class AWSJobStore(AbstractJobStore):
             """
             Update a checksum in progress from _start_checksum with new data.
             """
-            log.debug('Updating checksum with %d bytes', len(data))
+            logger.debug('Updating checksum with %d bytes', len(data))
             checksum_in_progress[1].update(data)
         
         def _finish_checksum(self, checksum_in_progress):
@@ -1123,7 +1121,7 @@ class AWSJobStore(AbstractJobStore):
             
             result_hash = checksum_in_progress[1].hexdigest()
             
-            log.debug('Completed checksum with hash %s vs. expected %s', result_hash, checksum_in_progress[2])
+            logger.debug('Completed checksum with hash %s vs. expected %s', result_hash, checksum_in_progress[2])
             
             if checksum_in_progress[2] is not None:
                 # We expected a particular hash
@@ -1166,7 +1164,7 @@ class AWSJobStore(AbstractJobStore):
                     assert isinstance(buf, bytes)
                     
                     if allowInlining and len(buf) <= info.maxInlinedSize():
-                        log.debug('Inlining content of %d bytes', len(buf))
+                        logger.debug('Inlining content of %d bytes', len(buf))
                         info.content = buf
                         # There will be no checksum
                         info.checksum = ''
@@ -1178,7 +1176,7 @@ class AWSJobStore(AbstractJobStore):
                         headers = info._s3EncryptionHeaders()
                         for attempt in retry_s3():
                             with attempt:
-                                log.debug('Starting multipart upload')
+                                logger.debug('Starting multipart upload')
                                 upload = store.filesBucket.initiate_multipart_upload(
                                     key_name=compat_bytes(info.fileID),
                                     headers=headers)
@@ -1186,7 +1184,7 @@ class AWSJobStore(AbstractJobStore):
                             for part_num in itertools.count():
                                 for attempt in retry_s3():
                                     with attempt:
-                                        log.debug('Uploading part %d of %d bytes', part_num + 1, len(buf))
+                                        logger.debug('Uploading part %d of %d bytes', part_num + 1, len(buf))
                                         upload.upload_part_from_file(fp=BytesIO(buf),
                                                                      # part numbers are 1-based
                                                                      part_num=part_num + 1,
@@ -1200,14 +1198,14 @@ class AWSJobStore(AbstractJobStore):
                                     break
                                 info._update_checksum(hasher, buf)
                         except:
-                            with panic(log=log):
+                            with panic(log=logger):
                                 for attempt in retry_s3():
                                     with attempt:
                                         upload.cancel_upload()
                         else:
 
                             while store._getBucketVersioning(store.filesBucket) != True:
-                                log.warning('Versioning does not appear to be enabled yet. Deferring multipart upload completion...')
+                                logger.warning('Versioning does not appear to be enabled yet. Deferring multipart upload completion...')
                                 time.sleep(1)
                                 
                             # Save the checksum
@@ -1215,18 +1213,18 @@ class AWSJobStore(AbstractJobStore):
 
                             for attempt in retry_s3():
                                 with attempt:
-                                    log.debug('Attempting to complete upload...')
+                                    logger.debug('Attempting to complete upload...')
                                     completed = upload.complete_upload()
-                                    log.debug('Completed upload object of type %s: %s', str(type(completed)), repr(completed))
+                                    logger.debug('Completed upload object of type %s: %s', str(type(completed)), repr(completed))
                                     info.version = completed.version_id
-                                    log.debug('Completed upload with version %s', str(info.version))
+                                    logger.debug('Completed upload with version %s', str(info.version))
 
                             if info.version is None:
                                 # Somehow we don't know the version. Try and get it.
                                 for attempt in retry_s3(predicate=lambda e: retryable_s3_errors(e) or isinstance(e, AssertionError)):
                                     with attempt:
                                         key = store.filesBucket.get_key(compat_bytes(info.fileID), headers=headers)
-                                        log.warning('Loaded key for upload with no version and got version %s', str(key.version_id))
+                                        logger.warning('Loaded key for upload with no version and got version %s', str(key.version_id))
                                         info.version = key.version_id
                                         assert info.version is not None
 
@@ -1239,7 +1237,7 @@ class AWSJobStore(AbstractJobStore):
                     assert isinstance(buf, bytes)
                     dataLength = len(buf)
                     if allowInlining and dataLength <= info.maxInlinedSize():
-                        log.debug('Inlining content of %d bytes', len(buf))
+                        logger.debug('Inlining content of %d bytes', len(buf))
                         info.content = buf
                         # There will be no checksum
                         info.checksum = ''
@@ -1254,17 +1252,17 @@ class AWSJobStore(AbstractJobStore):
                         headers = info._s3EncryptionHeaders()
 
                         while store._getBucketVersioning(store.filesBucket) != True:
-                            log.warning('Versioning does not appear to be enabled yet. Deferring single part upload...')
+                            logger.warning('Versioning does not appear to be enabled yet. Deferring single part upload...')
                             time.sleep(1)
                             
                         
 
                         for attempt in retry_s3():
                             with attempt:
-                                log.debug('Uploading single part of %d bytes', dataLength)
+                                logger.debug('Uploading single part of %d bytes', dataLength)
                                 assert dataLength == key.set_contents_from_file(fp=buf,
                                                                                 headers=headers)
-                                log.debug('Upload received version %s', str(key.version_id))
+                                logger.debug('Upload received version %s', str(key.version_id))
                         info.version = key.version_id
 
                         if info.version is None:
@@ -1272,7 +1270,7 @@ class AWSJobStore(AbstractJobStore):
                             for attempt in retry_s3(predicate=lambda e: retryable_s3_errors(e) or isinstance(e, AssertionError)):
                                 with attempt:
                                     key.reload()
-                                    log.warning('Reloaded key with no version and got version %s', str(key.version_id))
+                                    logger.warning('Reloaded key with no version and got version %s', str(key.version_id))
                                     info.version = key.version_id
                                     assert info.version is not None
 
@@ -1284,7 +1282,7 @@ class AWSJobStore(AbstractJobStore):
                 yield writable
 
             if not pipe.reader_done:
-                log.debug('Version: {} Content: {}'.format(self.version, self.content))
+                logger.debug('Version: {} Content: {}'.format(self.version, self.content))
                 raise RuntimeError('Escaped context manager without written data being read!')
 
             # We check our work to make sure we have exactly one of embedded
@@ -1292,11 +1290,11 @@ class AWSJobStore(AbstractJobStore):
 
             if self.content is None:
                 if not bool(self.version):
-                    log.debug('Version: {} Content: {}'.format(self.version, self.content))
+                    logger.debug('Version: {} Content: {}'.format(self.version, self.content))
                     raise RuntimeError('No content added and no version created')
             else:
                 if bool(self.version):
-                    log.debug('Version: {} Content: {}'.format(self.version, self.content))
+                    logger.debug('Version: {} Content: {}'.format(self.version, self.content))
                     raise RuntimeError('Content added and version created')
 
         def copyFrom(self, srcKey):

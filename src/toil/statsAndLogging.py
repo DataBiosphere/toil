@@ -233,8 +233,8 @@ def configure_root_logger():
     """
     Set up the root logger with handlers and formatting.
 
-    Should be called (either by itself or via setLoggingFromOptions) before any
-    entry point tries to log anything, to ensure consistent formatting.
+    Should be called before any entry point tries to log anything,
+    to ensure consistent formatting.
     """
     logging.basicConfig(format='[%(asctime)s] [%(threadName)-10s] [%(levelname).1s] [%(name)s] %(message)s',
                         datefmt='%Y-%m-%dT%H:%M:%S%z')

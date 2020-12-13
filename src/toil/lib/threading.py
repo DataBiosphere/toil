@@ -29,7 +29,7 @@ import psutil
 from toil.lib.exceptions import raise_
 from toil.lib.misc import robust_rmtree
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ExceptionalThread(threading.Thread):
@@ -107,14 +107,14 @@ def cpu_count():
     # Get the fallback answer of all the CPUs on the machine
     total_machine_size = psutil.cpu_count(logical=True)
 
-    log.debug('Total machine size: %d cores', total_machine_size) 
+    logger.debug('Total machine size: %d cores', total_machine_size)
 
     try:
         with open('/sys/fs/cgroup/cpu/cpu.cfs_quota_us', 'r') as stream:
             # Read the quota
             quota = int(stream.read())
 
-        log.debug('CPU quota: %d', quota)
+        logger.debug('CPU quota: %d', quota)
 
         if quota == -1:
             # Assume we can use the whole machine
@@ -124,21 +124,21 @@ def cpu_count():
             # Read the period in which we are allowed to burn the quota
             period = int(stream.read())
 
-        log.debug('CPU quota period: %d', period)
+        logger.debug('CPU quota period: %d', period)
 
         # The thread count is how many multiples of a wall clcok period we can burn in that period.
         cgroup_size = int(math.ceil(float(quota)/float(period)))
 
-        log.debug('Cgroup size in cores: %d', cgroup_size)
+        logger.debug('Cgroup size in cores: %d', cgroup_size)
 
     except:
         # We can't actually read these cgroup fields. Maybe we are a mac or something.
-        log.debug('Could not inspect cgroup: %s', traceback.format_exc())
+        logger.debug('Could not inspect cgroup: %s', traceback.format_exc())
         cgroup_size = float('inf')
 
     # Return the smaller of the actual thread count and the cgroup's limit, minimum 1.
     result = max(1, min(cgroup_size, total_machine_size))
-    log.debug('cpu_count: %s', str(result))
+    logger.debug('cpu_count: %s', str(result))
     # Make sure to remember it for the next call
     setattr(cpu_count, 'result', result)
     return result
@@ -320,7 +320,7 @@ def global_mutex(workDir, mutex):
     # Define a filename
     lock_filename = os.path.join(workDir, 'toil-mutex-' + mutex)
     
-    log.debug('PID %d acquiring mutex %s', os.getpid(), lock_filename)
+    logger.debug('PID %d acquiring mutex %s', os.getpid(), lock_filename)
     
     # We can't just create/open and lock a file, because when we clean up
     # there's a race where someone can open the file before we unlink it and
@@ -356,12 +356,12 @@ def global_mutex(workDir, mutex):
    
     try:
         # When we have it, do the thing we are protecting.
-        log.debug('PID %d now holds mutex %s', os.getpid(), lock_filename)
+        logger.debug('PID %d now holds mutex %s', os.getpid(), lock_filename)
         yield
     finally:
         # Delete it while we still own it, so we can't delete it from out from
         # under someone else who thinks they are holding it.
-        log.debug('PID %d releasing mutex %s', os.getpid(), lock_filename)
+        logger.debug('PID %d releasing mutex %s', os.getpid(), lock_filename)
         os.unlink(lock_filename)
         fcntl.lockf(fd, fcntl.LOCK_UN)
         # Note that we are unlinking it and then unlocking it; a lot of people
@@ -426,7 +426,7 @@ class LastProcessStandingArena:
         You may not enter the arena again before leaving it.
         """
        
-        log.debug('Joining arena %s', self.lockfileDir)
+        logger.debug('Joining arena %s', self.lockfileDir)
        
         # Make sure we're not in it already.
         assert self.lockfileName is None
@@ -448,7 +448,7 @@ class LastProcessStandingArena:
             
             # Now we're properly in, so release the global mutex
             
-        log.debug('Now in arena %s', self.lockfileDir)
+        logger.debug('Now in arena %s', self.lockfileDir)
         
     def leave(self):
         """
@@ -468,7 +468,7 @@ class LastProcessStandingArena:
         assert self.lockfileName is not None
         assert self.lockfileFD is not None
         
-        log.debug('Leaving arena %s', self.lockfileDir)
+        logger.debug('Leaving arena %s', self.lockfileDir)
         
         with global_mutex(self.workDir, self.mutex):
             # Now nobody else should also be trying to join or leave.
@@ -504,20 +504,20 @@ class LastProcessStandingArena:
             else:
                 # Nothing alive was found. Nobody will come in while we hold
                 # the global mutex, so we are the Last Process Standing.
-                log.debug('We are the Last Process Standing in arena %s', self.lockfileDir)
+                logger.debug('We are the Last Process Standing in arena %s', self.lockfileDir)
                 yield True
                 
                 try:
                     # Delete the arena directory so as to leave nothing behind.
                     os.rmdir(self.lockfileDir)
                 except:
-                    log.warning('Could not clean up arena %s completely: %s',
-                                self.lockfileDir, traceback.format_exc())
+                    logger.warning('Could not clean up arena %s completely: %s',
+                                   self.lockfileDir, traceback.format_exc())
             
             # Now we're done, whether we were the last one or not, and can
             # release the mutex.
             
-        log.debug('Now out of arena %s', self.lockfileDir)
+        logger.debug('Now out of arena %s', self.lockfileDir)
 
 
         

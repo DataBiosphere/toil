@@ -16,14 +16,14 @@ import json
 import logging
 from functools import partial
 
-from toil.common import Config, Toil, parser_with_common_options, JOBSTORE_HELP
-from toil.lib.bioio import setLoggingFromOptions
+from toil.common import Config, Toil, parser_with_common_options
+from toil.statsAndLogging import set_logging_from_options
 from toil.lib.expando import Expando
 
 logger = logging.getLogger(__name__)
 
 
-class ColumnWidths(object):
+class ColumnWidths:
     """
     Convenience object that stores the width of columns for printing. Helps make things pretty.
     """
@@ -502,26 +502,29 @@ def reportData(tree, options):
     print(out_str)
 
 
-def main():
-    """Reports stats on the workflow, use with --stats option to toil."""
-    parser = parser_with_common_options()
+category_choices = ["time", "clock", "wait", "memory"]
+sort_category_choices = ["time", "clock", "wait", "memory", "alpha", "count"]
+sort_field_choices = ['min', 'med', 'ave', 'max', 'total']
+
+
+def add_stats_options(parser):
     parser.add_argument("--outputFile", dest="outputFile", default=None, help="File in which to write results.")
     parser.add_argument("--raw", action="store_true", default=False, help="Return raw json data.")
     parser.add_argument("--pretty", "--human", action="store_true", default=False,
                         help="if not raw, prettify the numbers to be human readable.")
     parser.add_argument("--sortReverse", "--reverseSort", default=False, action="store_true", help="Reverse sort.")
-
-    category_choices = ["time", "clock", "wait", "memory"]
     parser.add_argument("--categories", default=','.join(category_choices), type=str,
                         help=f"Comma separated list of any of the following: {category_choices}.")
-
-    sort_category_choices = ["time", "clock", "wait", "memory", "alpha", "count"]
     parser.add_argument("--sortCategory", default="time", choices=sort_category_choices,
                         help=f"How to sort job categories.  Choices: {sort_category_choices}. Default: time.")
-
-    sort_field_choices = ['min', 'med', 'ave', 'max', 'total']
     parser.add_argument("--sortField", default="med", choices=sort_field_choices,
                         help=f"How to sort job fields.  Choices: {sort_field_choices}. Default: med.")
+
+
+def main():
+    """Reports stats on the workflow, use with --stats option to toil."""
+    parser = parser_with_common_options()
+    add_stats_options(parser)
     options = parser.parse_args()
 
     for c in options.categories.split(","):
@@ -529,7 +532,7 @@ def main():
             raise ValueError(f'{c} not in {category_choices}!')
     options.categories = [x.strip().lower() for x in options.categories.split(",")]
 
-    setLoggingFromOptions(options)
+    set_logging_from_options(options)
     config = Config()
     config.setOptions(options)
     jobStore = Toil.resumeJobStore(config.jobStore)

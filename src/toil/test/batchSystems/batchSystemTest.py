@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import fcntl
 import itertools
 import logging
@@ -43,7 +42,7 @@ from toil.test import (ToilTest, needs_aws_s3, needs_fetchable_appliance,
                        needs_lsf, needs_mesos, needs_parasol, needs_slurm,
                        needs_torque, slow, travis_test)
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 # How many cores should be utilized by this test. The test will fail if the running system
 # doesn't have at least that many cores.
@@ -180,7 +179,7 @@ class hidden(object):
 
             jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             jobID, exitStatus, wallTime = jobUpdateInfo.jobID, jobUpdateInfo.exitStatus, jobUpdateInfo.wallTime
-            log.info('Third job completed: {} {} {}'.format(jobID, exitStatus, wallTime))
+            logger.info('Third job completed: {} {} {}'.format(jobID, exitStatus, wallTime))
 
             # Since the first two jobs were killed, the only job in the updated jobs queue should
             # be job 3. If the first two jobs were (incorrectly) added to the queue, this will
@@ -268,7 +267,7 @@ class hidden(object):
             # prevent an endless loop, give it a few tries
             for it in range(tries):
                 running = self.batchSystem.getRunningBatchJobIDs()
-                log.info('Running jobs now: {}'.format(running))
+                logger.info('Running jobs now: {}'.format(running))
                 runningIDs = list(running.keys())
                 if len(runningIDs) == numJobs:
                     break
@@ -540,7 +539,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                             bs.shutdown()
                         concurrentTasks, maxConcurrentTasks = getCounters(self.counterPath)
                         self.assertEqual(concurrentTasks, 0)
-                        log.info('maxCores: {maxCores}, '
+                        logger.info('maxCores: {maxCores}, '
                                  'coresPerJob: {coresPerJob}, '
                                  'load: {load}'.format(**locals()))
                         # This is the key assertion:
@@ -557,7 +556,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
         Job.Runner.startToil(Job.wrapJobFn(parentJob, self.scriptCommand()), options)
         with open(self.counterPath, 'r+') as f:
             s = f.read()
-        log.info('Counter is %s', s)
+        logger.info('Counter is %s', s)
         self.assertEqual(getCounters(self.counterPath), (0, 3))
 
 
@@ -939,12 +938,12 @@ def count(delta, file_path):
         fcntl.flock(fd, fcntl.LOCK_EX)
         try:
             s = os.read(fd, 10)
-            value, maxValue = list(map(int, s.decode('utf-8').split(',')))
+            value, maxValue = [int(i) for i in s.decode('utf-8').split(',')]
             value += delta
             if value > maxValue: maxValue = value
             os.lseek(fd, 0, 0)
             os.ftruncate(fd, 0)
-            os.write(fd, ','.join(map(str, (value, maxValue))).encode('utf-8'))
+            os.write(fd, f'{value},{maxValue}'.encode('utf-8'))
         finally:
             fcntl.flock(fd, fcntl.LOCK_UN)
     finally:
@@ -954,8 +953,7 @@ def count(delta, file_path):
 
 def getCounters(path):
     with open(path, 'r+') as f:
-        s = f.read()
-        concurrentTasks, maxConcurrentTasks = list(map(int, s.split(',')))
+        concurrentTasks, maxConcurrentTasks = [int(i) for i in f.read().split(',')]
     return concurrentTasks, maxConcurrentTasks
 
 

@@ -28,7 +28,7 @@ from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
 from toil.batchSystems.options import setOptions as setBatchOptions
-from toil.statsAndLogging import add_logging_options, setLoggingFromOptions, root_logger
+from toil.statsAndLogging import add_logging_options, set_logging_from_options, root_logger
 from toil.lib.humanize import bytes2human
 from toil.lib.retry import retry
 from toil.provisioners import clusterFactory, add_provisioner_options
@@ -314,10 +314,10 @@ JOBSTORE_HELP = ("The location of the job store for the workflow.  "
                  "file:<path> where <path> points to a directory on the file systen\n\n"
                  "aws:<region>:<prefix> where <region> is the name of an AWS region like "
                  "us-west-2 and <prefix> will be prepended to the names of any top-level "
-                  "AWS resources in use by job store, e.g. S3 buckets.\n\n "
-                  "google:<project_id>:<prefix> TODO: explain\n\n"
-                  "For backwards compatibility, you may also specify ./foo (equivalent to "
-                  "file:./foo or just file:foo) or /bar (equivalent to file:/bar).")
+                 "AWS resources in use by job store, e.g. S3 buckets.\n\n "
+                 "google:<project_id>:<prefix> TODO: explain\n\n"
+                 "For backwards compatibility, you may also specify ./foo (equivalent to "
+                 "file:./foo or just file:foo) or /bar (equivalent to file:/bar).")
 
 
 def parser_with_common_options(provisioner_options=False, jobstore_option=True):
@@ -334,7 +334,7 @@ def parser_with_common_options(provisioner_options=False, jobstore_option=True):
     parser.add_argument("--version", action='version', version=version)
     parser.add_argument("--tempDirRoot", dest="tempDirRoot", type=str, default=tempfile.gettempdir(),
                         help="Path to where temporary directory containing all temp files are created, "
-                             "by default uses the current working directory as the base.")
+                             "by default generates a fresh tmp dir with 'tempfile.gettempdir()'.")
     return parser
 
 
@@ -768,7 +768,7 @@ class Toil(object):
         consolidate the derived configuration with the one from the previous invocation of the
         workflow.
         """
-        setLoggingFromOptions(self.options)
+        set_logging_from_options(self.options)
         config = Config()
         config.setOptions(self.options)
         jobStore = self.getJobStore(config.jobStore)

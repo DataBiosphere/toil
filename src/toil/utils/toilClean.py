@@ -14,27 +14,25 @@
 """Delete a job store used by a previous Toil workflow invocation."""
 import logging
 
-from toil.common import Toil, parser_with_common_options, JOBSTORE_HELP
+from toil.common import Toil, parser_with_common_options
 from toil.jobStores.abstractJobStore import NoSuchJobStoreException
-from toil.lib.bioio import setLoggingFromOptions
+from toil.statsAndLogging import set_logging_from_options
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def main():
-    parser = parser_with_common_options()
-    parser.add_argument("jobStore", type=str,
-                        help=f"The location of the job store to delete.\n{JOBSTORE_HELP}")
+    parser = parser_with_common_options(jobstore_option=True)
 
     options = parser.parse_args()
-    setLoggingFromOptions(options)
+    set_logging_from_options(options)
     try:
         jobstore = Toil.getJobStore(options.jobStore)
         jobstore.resume()
         jobstore.destroy()
-        log.info(f"Successfully deleted the job store: {options.jobStore}")
+        logger.info(f"Successfully deleted the job store: {options.jobStore}")
     except NoSuchJobStoreException:
-        log.info(f"Failed to delete the job store: {options.jobStore} is non-existent.")
+        logger.info(f"Failed to delete the job store: {options.jobStore} is non-existent.")
     except:
-        log.info(f"Failed to delete the job store: {options.jobStore}")
+        logger.info(f"Failed to delete the job store: {options.jobStore}")
         raise

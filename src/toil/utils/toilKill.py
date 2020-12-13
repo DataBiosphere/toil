@@ -17,7 +17,7 @@ import os
 import signal
 
 from toil.common import Config, Toil, parser_with_common_options
-from toil.lib.bioio import setLoggingFromOptions
+from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 def main():
     parser = parser_with_common_options()
     options = parser.parse_args()
-    setLoggingFromOptions(options)
+    set_logging_from_options(options)
     config = Config()
     config.setOptions(options)
     config.jobStore = config.jobStore[5:] if config.jobStore.startswith('file:') else config.jobStore

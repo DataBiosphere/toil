@@ -34,7 +34,7 @@ from toil.lib.memoize import strict_bool
 from toil.lib.retry import ErrorCondition, retry
 from toil.version import exactPython
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash'))):
@@ -291,10 +291,10 @@ class DirectoryResource(Resource):
                             fullPath = os.path.join(dirName, fileName)
                             zipFile.write(fullPath, os.path.relpath(fullPath, rootDir))
                         except IOError:
-                            log.critical('Cannot access and read the file at path: %s' % fullPath)
+                            logger.critical('Cannot access and read the file at path: %s' % fullPath)
                             sys.exit(1)
         else:
-            log.critical("Couldn't package the directory at %s for hot deployment. Would recommend to create a \
+            logger.critical("Couldn't package the directory at %s for hot deployment. Would recommend to create a \
                 subdirectory (ie %s/MYDIR_HERE/)" % (path, path))
             sys.exit(1)
         bytesIO.seek(0)
@@ -390,11 +390,11 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         if not extension in ('.py', '.pyc'):
             raise Exception('The name of a user script/module must end in .py or .pyc.')
         if name == '__main__':
-            log.debug("Discovering real name of module")
+            logger.debug("Discovering real name of module")
             # User script/module was invoked as the main program
             if module.__package__:
                 # Invoked as a module via python -m foo.bar
-                log.debug("Script was invoked as a module")
+                logger.debug("Script was invoked as a module")
                 name = [filePath.pop()]
                 for package in reversed(module.__package__.split('.')):
                     dirPathTail = filePath.pop()
@@ -419,7 +419,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             dirPath = os.path.abspath(os.path.sep.join(filePath))
         absPrefix = os.path.abspath(sys.prefix)
         inVenv = inVirtualEnv()
-        log.debug("Module dir is %s, our prefix is %s, virtualenv: %s", dirPath, absPrefix, inVenv)
+        logger.debug("Module dir is %s, our prefix is %s, virtualenv: %s", dirPath, absPrefix, inVenv)
         if not os.path.isdir(dirPath):
             raise Exception('Bad directory path %s for module %s. Note that hot-deployment does not support .egg-link files yet, or scripts located in the root directory.' % (dirPath, name))
         fromVirtualEnv = inVenv and dirPath.startswith(absPrefix)
@@ -490,7 +490,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         :rtype: toil.resource.Resource
         """
         if not self._runningOnWorker():
-            log.warning('The localize() method should only be invoked on a worker.')
+            logger.warning('The localize() method should only be invoked on a worker.')
         resource = Resource.lookup(self._resourcePath)
         if resource is None:
             return self
@@ -510,7 +510,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         try:
             mainModule = sys.modules['__main__']
         except KeyError:
-            log.warning('Cannot determine main program module.')
+            logger.warning('Cannot determine main program module.')
             return False
         else:
             # If __file__ is not a valid attribute, it's because
@@ -597,7 +597,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         try:
             return importlib.import_module(module.name)
         except ImportError:
-            log.error('Failed to import user module %r from sys.path (%r).', module, sys.path)
+            logger.error('Failed to import user module %r from sys.path (%r).', module, sys.path)
             raise
 
 

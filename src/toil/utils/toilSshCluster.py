@@ -17,7 +17,7 @@ import logging
 import sys
 
 from toil.common import parser_with_common_options
-from toil.lib.bioio import setLoggingFromOptions
+from toil.statsAndLogging import set_logging_from_options
 from toil.provisioners import clusterFactory
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ def main():
                         help="Pass an additional option to the SSH command.")
     parser.add_argument('args', nargs=argparse.REMAINDER)
     options = parser.parse_args()
-    setLoggingFromOptions(options)
+    set_logging_from_options(options)
     cluster = clusterFactory(provisioner=options.provisioner,
                              clusterName=options.clusterName,
                              zone=options.zone)

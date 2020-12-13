@@ -42,7 +42,7 @@ from toil.provisioners.aws import runningOnEC2
 from toil.version import distVersion
 
 logging.basicConfig(level=logging.DEBUG)
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ToilTest(unittest.TestCase):
@@ -89,12 +89,12 @@ class ToilTest(unittest.TestCase):
         super(ToilTest, cls).tearDownClass()
 
     def setUp(self):
-        log.info("Setting up %s ...", self.id())
+        logger.info("Setting up %s ...", self.id())
         super(ToilTest, self).setUp()
 
     def tearDown(self):
         super(ToilTest, self).tearDown()
-        log.info("Tore down %s", self.id())
+        logger.info("Tore down %s", self.id())
 
     @classmethod
     def awsRegion(cls):
@@ -206,7 +206,7 @@ class ToilTest(unittest.TestCase):
         :return: The output of the process' stdout if capture=True was passed, None otherwise.
         """
         args = list(concat(command, args))
-        log.info('Running %r', args)
+        logger.info('Running %r', args)
         capture = kwargs.pop('capture', False)
         _input = kwargs.pop('input', None)
         if capture:
@@ -771,7 +771,7 @@ class ApplianceTestSupport(ToilTest):
                                    ['--volume=%s:%s' % mount for mount in self.mounts.items()],
                                    image,
                                    self._containerCommand()))
-                log.info('Running %r', args)
+                logger.info('Running %r', args)
                 self.popen = subprocess.Popen(args)
             self.start()
             self.__wait_running()
@@ -791,7 +791,7 @@ class ApplianceTestSupport(ToilTest):
             return False  # don't swallow exception
 
         def __wait_running(self):
-            log.info("Waiting for %s container process to appear. "
+            logger.info("Waiting for %s container process to appear. "
                      "Expect to see 'Error: No such image or container'.", self._getRole())
             while self.isAlive():
                 try:
@@ -826,7 +826,7 @@ class ApplianceTestSupport(ToilTest):
 
         def tryRun(self):
             self.popen.wait()
-            log.info('Exiting %s', self.__class__.__name__)
+            logger.info('Exiting %s', self.__class__.__name__)
 
         def runOnAppliance(self, *args, **kwargs):
             # Check if thread is still alive. Note that ExceptionalThread.join raises the
