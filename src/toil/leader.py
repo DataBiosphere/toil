@@ -63,11 +63,6 @@ logger = logging.getLogger( __name__ )
 ###############################################################################
 
 
-
-####################################################
-# Exception thrown by the Leader class when one or more jobs fails
-####################################################
-
 class FailedJobsException(Exception):
     def __init__(self, jobStoreLocator, failedJobs, jobStore):
         self.msg = "The job store '%s' contains %i failed jobs" % (jobStoreLocator, len(failedJobs))
@@ -86,13 +81,13 @@ class FailedJobsException(Exception):
         super().__init__()
         self.jobStoreLocator = jobStoreLocator
         self.numberOfFailedJobs = len(failedJobs)
-    
+
     def __str__(self):
         """
         Stringify the exception, including the message.
         """
         return self.msg
-    
+
 
 ####################################################
 ##Following class represents the leader

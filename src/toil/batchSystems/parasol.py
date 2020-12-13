@@ -366,4 +366,3 @@ class ParasolBatchSystem(BatchSystemSupport):
         from toil.common import iC
         setOption("parasolCommand", None, None, 'parasol')
         setOption("parasolMaxBatches", int, iC(1), 10000)
-        

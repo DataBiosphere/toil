@@ -62,7 +62,7 @@ class JobPromiseConstraintError(RuntimeError):
         else:
             # Write a full error message
             super().__init__(f"Job {promisingJob.description} cannot promise its return value to non-successor {recipientJob.description}")
-            
+
 
 class TemporaryID:
     """

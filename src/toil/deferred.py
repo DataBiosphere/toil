@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import fcntl
 import logging
 import os
@@ -26,6 +25,7 @@ from toil.realtimeLogger import RealtimeLogger
 from toil.resource import ModuleDescriptor
 
 logger = logging.getLogger(__name__)
+
 
 class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name module')):
     """
@@ -341,8 +341,3 @@ class DeferredFunctionManager(object):
                 # Now close it. This closes the backing file descriptor. See
                 # <https://stackoverflow.com/a/24984929>
                 fileObj.close()
-
-                
-                
-
-         

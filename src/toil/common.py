@@ -25,11 +25,11 @@ from argparse import ArgumentParser
 import requests
 
 from toil import logProcessContext, lookupEnvVar
-from toil.batchSystems.options import addOptions as addBatchOptions
-from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
-from toil.batchSystems.options import setOptions as setBatchOptions
+from toil.batchSystems.options import add_all_batchsystem_options
+from toil.batchSystems.options import set_batchsystem_config_defaults
+from toil.batchSystems.options import set_batchsystem_options
 from toil.statsAndLogging import add_logging_options, set_logging_from_options, root_logger
-from toil.lib.humanize import bytes2human
+from toil.lib.humanize import bytes2human, human2bytes
 from toil.lib.retry import retry
 from toil.provisioners import clusterFactory, add_provisioner_options
 from toil.provisioners.aws import checkValidNodeTypes, zoneToRegion
@@ -67,7 +67,7 @@ class Config:
         self.restart = False
 
         # Batch system options
-        setDefaultBatchOptions(self)
+        set_batchsystem_config_defaults(self)
 
         # Autoscaling options
         self.provisioner = None
@@ -135,24 +135,18 @@ class Config:
 
     def setOptions(self, options):
         """Creates a config object from the options object."""
-        from toil.lib.humanize import human2bytes
-        def setOption(varName, parsingFn=None, checkFn=None, default=None):
-            # If options object has the option "varName" specified
-            # then set the "varName" attrib to this value in the config object
-            x = getattr(options, varName, None)
-            if x is None:
-                x = default
+        def setOption(option_name, parsingFn=None, checkFn=None, default=None):
+            option_value = getattr(options, option_name, default)
 
-            if x is not None:
+            if option_value is not None:
                 if parsingFn is not None:
-                    x = parsingFn(x)
+                    option_value = parsingFn(option_value)
                 if checkFn is not None:
                     try:
-                        checkFn(x)
+                        checkFn(option_value)
                     except AssertionError:
-                        raise RuntimeError("The %s option has an invalid value: %s"
-                                           % (varName, x))
-                setattr(self, varName, x)
+                        raise RuntimeError(f"The {option_name} option has an invalid value: {option_value}")
+                setattr(self, option_name, option_value)
 
         # Function to parse integer from string expressed in different formats
         h2b = lambda x: human2bytes(str(x))
@@ -199,7 +193,7 @@ class Config:
 
         # Batch system options
         setOption("batchSystem")
-        setBatchOptions(self, setOption)
+        set_batchsystem_options(self.batchSystem, setOption)
         setOption("disableAutoDeployment")
         setOption("scale", float, fC(0.0))
         setOption("parasolCommand")
@@ -218,18 +212,15 @@ class Config:
         setOption("maxNodes", parseIntList)
         setOption("targetTime", int)
         if self.targetTime <= 0:
-            raise RuntimeError('targetTime (%s) must be a positive integer!'
-                               '' % self.targetTime)
+            raise RuntimeError(f'targetTime ({self.targetTime}) must be a positive integer!')
         setOption("betaInertia", float)
         if not 0.0 <= self.betaInertia <= 0.9:
-            raise RuntimeError('betaInertia (%f) must be between 0.0 and 0.9!'
-                               '' % self.betaInertia)
+            raise RuntimeError(f'betaInertia ({self.betaInertia}) must be between 0.0 and 0.9!')
         setOption("scaleInterval", float)
         setOption("metrics")
         setOption("preemptableCompensation", float)
         if not 0.0 <= self.preemptableCompensation <= 1.0:
-            raise RuntimeError('preemptableCompensation (%f) must be between 0.0 and 1.0!'
-                               '' % self.preemptableCompensation)
+            raise RuntimeError(f'preemptableCompensation ({self.preemptableCompensation}) must be between 0.0 and 1.0!')
         setOption("nodeStorage", int)
 
         def checkNodeStorageOverrides(nodeStorageOverrides):
@@ -410,7 +401,7 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
     addOptionFn("--statePollingWait", dest="statePollingWait", default=1, type=int,
                 help=("Time, in seconds, to wait before doing a scheduler query for job state. "
                       "Return cached results if within the waiting period."))
-    addBatchOptions(addOptionFn, config)
+    add_all_batchsystem_options(addOptionFn, config)
 
     #
     # Auto scaling options
@@ -1337,9 +1328,6 @@ class ToilMetrics:
             self.nodeExporterProc.kill()
 
 
-# Nested functions can't have doctests so we have to make this global
-
-
 def parseSetEnv(l):
     """
     Parses a list of strings of the form "NAME=VALUE" or just "NAME" into a dictionary. Strings
@@ -1403,7 +1391,7 @@ def cacheDirName(workflowID):
     """
     :return: Name of the cache directory.
     """
-    return 'cache-' + workflowID
+    return f'cache-{workflowID}'
 
 
 def getDirSizeRecursively(dirPath):
@@ -1451,6 +1439,7 @@ def getFileSystemSize(dirPath):
     freeSpace = diskStats.f_frsize * diskStats.f_bavail
     diskSize = diskStats.f_frsize * diskStats.f_blocks
     return freeSpace, diskSize
+
 
 def safeUnpickleFromStream(stream):
     string = stream.read()
