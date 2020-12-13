@@ -25,15 +25,16 @@ from argparse import ArgumentParser
 import requests
 
 from toil import logProcessContext, lookupEnvVar
-from toil.batchSystems.options import add_all_batchsystem_options
-from toil.batchSystems.options import set_batchsystem_config_defaults
-from toil.batchSystems.options import set_batchsystem_options
-from toil.statsAndLogging import add_logging_options, set_logging_from_options, root_logger
+from toil.batchSystems.options import (add_all_batchsystem_options,
+                                       set_batchsystem_config_defaults,
+                                       set_batchsystem_options)
 from toil.lib.humanize import bytes2human, human2bytes
 from toil.lib.retry import retry
-from toil.provisioners import clusterFactory, add_provisioner_options
+from toil.provisioners import add_provisioner_options, clusterFactory
 from toil.provisioners.aws import checkValidNodeTypes, zoneToRegion
 from toil.realtimeLogger import RealtimeLogger
+from toil.statsAndLogging import (add_logging_options, root_logger,
+                                  set_logging_from_options)
 from toil.version import dockerRegistry, dockerTag, version
 
 # aim to pack autoscaling jobs within a 30 minute block before provisioning a new node

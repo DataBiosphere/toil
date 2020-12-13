@@ -33,9 +33,10 @@ from toil.common import Toil, safeUnpickleFromStream
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import CheckpointJobDescription, Job
-from toil.statsAndLogging import configure_root_logger, set_log_level
-from toil.lib.resources import get_total_cpu_time, get_total_cpu_time_and_memory_usage
 from toil.lib.expando import MagicExpando
+from toil.lib.resources import (get_total_cpu_time,
+                                get_total_cpu_time_and_memory_usage)
+from toil.statsAndLogging import configure_root_logger, set_log_level
 
 try:
     from toil.cwl.cwltoil import CWL_INTERNAL_JOBS

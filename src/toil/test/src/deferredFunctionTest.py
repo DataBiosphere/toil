@@ -336,4 +336,3 @@ class _deleteMethods(object):
         os.remove(nonLocalFile)
         if nlf is not None:
             os.remove(nlf)
-

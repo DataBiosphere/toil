@@ -14,11 +14,11 @@
 import datetime
 import logging
 import os
+import random
 import re
 import shutil
 import signal
 import subprocess
-import random
 import tempfile
 import threading
 import time

@@ -264,4 +264,3 @@ class NonCachingFileStore(AbstractFileStore):
         :param dir_: The workflow directory that will contain all the individual worker directories.
         """
         cls._removeDeadJobs(dir_, batchSystemShutdown=True)
-

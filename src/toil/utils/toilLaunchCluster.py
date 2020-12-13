@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Launches a toil leader instance with the specified provisioner."""
-import os
 import logging
+import os
 
 from toil import applianceSelf
 from toil.common import parser_with_common_options
-from toil.statsAndLogging import
 from toil.provisioners import clusterFactory
 from toil.provisioners.aws import checkValidNodeTypes
 

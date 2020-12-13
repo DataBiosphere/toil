@@ -1,16 +1,17 @@
 import os
 import re
 import shutil
+import subprocess
 import sys
 import unittest
+
+from toil.test import ToilTest, needs_cwl
+from toil.version import python
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
-import subprocess
 
-from toil.test import ToilTest, needs_cwl
-from toil.version import python
 
 
 class ToilDocumentationTest(ToilTest):

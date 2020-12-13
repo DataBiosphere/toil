@@ -44,10 +44,10 @@ from toil.batchSystems.abstractBatchSystem import (
     EXIT_STATUS_UNAVAILABLE_VALUE, BatchJobExitReason,
     BatchSystemCleanupSupport, UpdatedBatchJobInfo)
 from toil.common import Toil
-from toil.statsAndLogging import configure_root_logger, set_log_level
 from toil.lib.humanize import human2bytes
 from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
+from toil.statsAndLogging import configure_root_logger, set_log_level
 
 logger = logging.getLogger(__name__)
 retryable_kubernetes_errors = [urllib3.exceptions.MaxRetryError,
@@ -1146,5 +1146,3 @@ def executor():
         Resource.cleanSystem()
         logger.debug('Shutting down')
         sys.exit(exit_code)
-
-

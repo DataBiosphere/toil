@@ -16,14 +16,8 @@ import os
 
 import toil.wdl.wdl_parser as wdl_parser
 from toil.wdl.wdl_functions import heredoc_wdl
-from toil.wdl.wdl_types import (
-    WDLType,
-    WDLCompoundType,
-    WDLFileType,
-    WDLArrayType,
-    WDLPairType,
-    WDLMapType
-)
+from toil.wdl.wdl_types import (WDLArrayType, WDLCompoundType, WDLFileType,
+                                WDLMapType, WDLPairType, WDLType)
 
 wdllogger = logging.getLogger(__name__)
 

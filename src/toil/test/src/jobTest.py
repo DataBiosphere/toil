@@ -18,7 +18,6 @@ import random
 import unittest
 
 import pytest
-
 from toil.common import Toil
 from toil.job import Job, JobFunctionWrappingJob, JobGraphDeadlockException
 from toil.leader import FailedJobsException

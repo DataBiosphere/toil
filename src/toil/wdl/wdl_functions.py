@@ -24,10 +24,7 @@ import uuid
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.wdl.wdl_types import (
-    WDLFile,
-    WDLPair
-)
+from toil.wdl.wdl_types import WDLFile, WDLPair
 
 wdllogger = logging.getLogger(__name__)
 

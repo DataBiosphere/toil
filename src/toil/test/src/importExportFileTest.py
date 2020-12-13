@@ -111,4 +111,3 @@ class RestartingJob(Job):
                     with fileStore.writeGlobalFileStream() as (fo, outputFileID):
                         fo.write((fi.read().decode('utf-8') + 'World!').encode('utf-8'))
                         return outputFileID
-

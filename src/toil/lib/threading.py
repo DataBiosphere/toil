@@ -518,8 +518,3 @@ class LastProcessStandingArena:
             # release the mutex.
             
         logger.debug('Now out of arena %s', self.lockfileDir)
-
-
-        
-        
-

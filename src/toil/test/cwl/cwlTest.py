@@ -26,14 +26,15 @@ from io import StringIO
 from urllib.request import urlretrieve
 
 import psutil
+
 import pytest
+from toil.test import (ToilTest, needs_aws_s3, needs_cwl, needs_docker,
+                       needs_gridengine, needs_lsf, needs_mesos, needs_parasol,
+                       needs_slurm, needs_torque, slow)
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
-from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
-                       needs_mesos, needs_parasol, needs_gridengine, needs_slurm,
-                       needs_torque, needs_aws_s3)
 
 log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 3600

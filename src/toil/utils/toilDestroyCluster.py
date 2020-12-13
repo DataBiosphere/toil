@@ -13,8 +13,8 @@
 # limitations under the License.
 """Terminates the specified cluster and associated resources."""
 from toil.common import parser_with_common_options
-from toil.statsAndLogging import set_logging_from_options
 from toil.provisioners import clusterFactory
+from toil.statsAndLogging import set_logging_from_options
 
 
 def main():

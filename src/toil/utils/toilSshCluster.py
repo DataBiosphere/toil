@@ -17,8 +17,8 @@ import logging
 import sys
 
 from toil.common import parser_with_common_options
-from toil.statsAndLogging import set_logging_from_options
 from toil.provisioners import clusterFactory
+from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
 

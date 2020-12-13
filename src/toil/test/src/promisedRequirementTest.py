@@ -235,4 +235,3 @@ class MesosPromisedRequirementsTest(hidden.AbstractPromisedRequirementsTest, Mes
 
     def tearDown(self):
         self._stopMesos()
-

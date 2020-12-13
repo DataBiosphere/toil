@@ -32,7 +32,6 @@ from urllib.request import Request, urlopen
 
 import pytest
 from stubserver import FTPStubServer
-
 from toil.common import Config, Toil
 from toil.fileStores import FileID
 from toil.job import Job, JobDescription, TemporaryID

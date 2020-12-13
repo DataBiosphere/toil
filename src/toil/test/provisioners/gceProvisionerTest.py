@@ -18,7 +18,6 @@ from abc import abstractmethod
 from uuid import uuid4
 
 import pytest
-
 from toil.test import (ToilTest, integrative, needs_appliance, needs_google,
                        slow, timeLimit)
 from toil.version import exactPython
@@ -340,4 +339,3 @@ class GCERestartTest(AbstractGCEAutoscaleTest):
     @integrative
     def testAutoScaledCluster(self):
         self._test()
-

@@ -16,12 +16,11 @@ import json
 import logging
 import os
 import time
-
 from argparse import ArgumentParser
 from threading import Event, Thread
 
-from toil.lib.resources import get_total_cpu_time
 from toil.lib.expando import Expando
+from toil.lib.resources import get_total_cpu_time
 
 logger = logging.getLogger(__name__)
 root_logger = logging.getLogger()

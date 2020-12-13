@@ -24,26 +24,27 @@ import pickle
 import sys
 import time
 
+import enlighten
+
 from toil import resolveEntryPoint
+from toil.batchSystems import DeadlockException
+from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
+from toil.common import Toil, ToilMetrics
+from toil.job import CheckpointJobDescription, ServiceJobDescription
+from toil.jobStores.abstractJobStore import NoSuchJobException
 from toil.lib.humanize import bytes2human
+from toil.lib.throttle import LocalThrottle
+from toil.provisioners.clusterScaler import ScalerThread
+from toil.serviceManager import ServiceManager
+from toil.statsAndLogging import StatsAndLogging
+from toil.toilState import ToilState
 
 try:
     from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
 except ImportError:
     # CWL extra not installed
     CWL_INTERNAL_JOBS = ()
-import enlighten
 
-from toil.batchSystems import DeadlockException
-from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
-from toil.common import Toil, ToilMetrics
-from toil.job import CheckpointJobDescription, ServiceJobDescription
-from toil.jobStores.abstractJobStore import NoSuchJobException
-from toil.lib.throttle import LocalThrottle
-from toil.provisioners.clusterScaler import ScalerThread
-from toil.serviceManager import ServiceManager
-from toil.statsAndLogging import StatsAndLogging
-from toil.toilState import ToilState
 
 logger = logging.getLogger( __name__ )
 

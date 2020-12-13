@@ -129,4 +129,3 @@ class MagicExpando(Expando):
             child = self.__class__( )
             self[name] = child
             return child
-

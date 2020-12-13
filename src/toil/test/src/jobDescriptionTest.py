@@ -97,4 +97,3 @@ class JobDescriptionTest(ToilTest):
         # empty list. Nothing left to do!
         j.filterSuccessors(lambda jID: jID != 'followOn')
         self.assertEqual(j.nextSuccessors(), None)
-        

@@ -19,16 +19,16 @@ import sys
 import time
 import traceback
 from threading import Event, Thread
+from unittest import skipIf
 
+from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.job import Job
+from toil.leader import DeadlockException, FailedJobsException
 from toil.lib.bioio import getTempFile
 from toil.test import ToilTest, slow
 
 logger = logging.getLogger( __name__ )
-from unittest import skipIf
 
-from toil.batchSystems.singleMachine import SingleMachineBatchSystem
-from toil.leader import DeadlockException, FailedJobsException
 
 
 class JobServiceTest(ToilTest):
@@ -369,5 +369,3 @@ def fnTest(strings, outputFile):
     """
     with open(outputFile, 'w') as fH:
         fH.write(" ".join(strings))
-    
-

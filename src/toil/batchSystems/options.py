@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 import socket
 from contextlib import closing
+from typing import Callable
 
 from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
                                         BATCH_SYSTEMS, DEFAULT_BATCH_SYSTEM)
 from toil.lib.threading import cpu_count
-
-from typing import Callable
 
 
 def getPublicIP():

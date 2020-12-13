@@ -21,8 +21,7 @@ from toil.common import Config, Toil, parser_with_common_options
 from toil.job import JobException, ServiceJobDescription
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobStoreException)
-from toil.statsAndLogging import set_logging_from_options
-from toil.statsAndLogging import StatsAndLogging
+from toil.statsAndLogging import StatsAndLogging, set_logging_from_options
 
 logger = logging.getLogger(__name__)
 

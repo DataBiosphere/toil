@@ -14,20 +14,15 @@
 import logging
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
-import uuid
-
-import pytest
-
-pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
-sys.path.insert(0, pkg_root)  # noqa
-
-import subprocess
 import time
+import uuid
 
 from mock import patch
 
+import pytest
 import toil
 import toil.test.sort.sort
 from toil import resolveEntryPoint
@@ -41,6 +36,12 @@ from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.utils.toilStatus import ToilStatus
 from toil.version import python
+
+pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
+sys.path.insert(0, pkg_root)  # noqa
+
+
+
 
 logger = logging.getLogger(__name__)
 

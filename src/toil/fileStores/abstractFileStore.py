@@ -511,6 +511,3 @@ class AbstractFileStore(ABC):
                directories from the node.
         """
         raise NotImplementedError()
-
-
-

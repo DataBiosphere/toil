@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import base64
-import boto3
 import bz2
 import errno
 import itertools
@@ -22,15 +21,14 @@ import socket
 import types
 from ssl import SSLError
 
+import boto3
+from boto.exception import (BotoServerError, S3CopyError, S3CreateError,
+                            S3ResponseError, SDBResponseError)
+from botocore.exceptions import ClientError
+
 from toil.lib.compatibility import compat_bytes, compat_oldstr
 from toil.lib.exceptions import panic
 from toil.lib.retry import old_retry
-from boto.exception import (SDBResponseError,
-                            BotoServerError,
-                            S3ResponseError,
-                            S3CreateError,
-                            S3CopyError)
-from botocore.exceptions import ClientError
 
 log = logging.getLogger(__name__)
 

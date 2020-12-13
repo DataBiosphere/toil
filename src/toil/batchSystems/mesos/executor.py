@@ -26,17 +26,17 @@ import sys
 import threading
 import time
 import traceback
+from urllib2 import urlopen
 
 import addict
 import psutil
 from pymesos import Executor, MesosExecutorDriver, decode_data, encode_data
-from urllib2 import urlopen
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
-from toil.statsAndLogging import configure_root_logger, set_log_level
 from toil.lib.expando import Expando
 from toil.lib.threading import cpu_count
 from toil.resource import Resource
+from toil.statsAndLogging import configure_root_logger, set_log_level
 
 log = logging.getLogger(__name__)
 
@@ -306,4 +306,3 @@ def main():
     exit_value = 0 if (driver_result is None or driver_result == 'DRIVER_STOPPED') else 1
     assert len(executor.runningTasks) == 0
     sys.exit(exit_value)
-

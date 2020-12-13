@@ -20,8 +20,8 @@ import os.path
 import socketserver as SocketServer
 import threading
 
-from toil.statsAndLogging import set_log_level
 from toil.batchSystems.options import getPublicIP
+from toil.statsAndLogging import set_log_level
 
 logger = logging.getLogger(__name__)
 

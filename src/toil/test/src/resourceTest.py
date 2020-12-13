@@ -16,12 +16,12 @@ import os
 import subprocess
 import sys
 import tempfile
-
 from contextlib import contextmanager
 from inspect import getsource
 from io import BytesIO
 from textwrap import dedent
 from zipfile import ZipFile
+
 from mock import MagicMock, patch
 
 from toil import inVirtualEnv

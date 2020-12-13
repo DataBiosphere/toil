@@ -1,6 +1,6 @@
-import time
 import logging
 import subprocess
+import time
 from contextlib import contextmanager
 
 from toil.lib.iterables import concat

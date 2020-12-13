@@ -33,11 +33,12 @@ import dill
 from toil.common import Config, Toil, addOptions, safeUnpickleFromStream
 from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
-from toil.lib.resources import get_total_cpu_time, get_total_cpu_time_and_memory_usage
-from toil.statsAndLogging import set_logging_from_options
 from toil.lib.expando import Expando
 from toil.lib.humanize import human2bytes
+from toil.lib.resources import (get_total_cpu_time,
+                                get_total_cpu_time_and_memory_usage)
 from toil.resource import ModuleDescriptor
+from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
 
