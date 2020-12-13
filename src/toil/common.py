@@ -30,7 +30,9 @@ from toil.batchSystems.options import (add_all_batchsystem_options,
                                        set_batchsystem_options)
 from toil.lib.humanize import bytes2human, human2bytes
 from toil.lib.retry import retry
-from toil.provisioners import add_provisioner_options, cluster_factory, check_valid_node_types
+from toil.provisioners import (add_provisioner_options,
+                               check_valid_node_types,
+                               cluster_factory)
 from toil.provisioners.aws import zone_to_region
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import (add_logging_options,

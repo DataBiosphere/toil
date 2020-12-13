@@ -232,12 +232,14 @@ PYSOURCES=$(shell find src -name '*.py') setup.py version_template.py
 ## sorting imports using isort: https://github.com/timothycrosley/isort
 sort_imports: $(PYSOURCES)
 	isort -m VERTICAL $^
-
-remove_unused_imports: $(PYSOURCES)
-	autoflake --in-place --remove-all-unused-imports $^
+	make format
 
 format: $(wildcard src/toil/cwl/*.py)
 	black $^
+
+remove_unused_imports: $(PYSOURCES)
+	autoflake --in-place --remove-all-unused-imports $^
+	make format
 
 mypy:
 	mypy --ignore-missing-imports --no-strict-optional \

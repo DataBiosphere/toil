@@ -29,19 +29,21 @@ import sys
 import tempfile
 import urllib
 import uuid
-from typing import (Any,
-                    Dict,
-                    Iterator,
-                    List,
-                    Mapping,
-                    MutableMapping,
-                    MutableSequence,
-                    Text,
-                    TextIO,
-                    Tuple,
-                    TypeVar,
-                    Union,
-                    cast)
+from typing import (
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    Text,
+    TextIO,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+)
 from urllib import parse as urlparse
 
 import cwltool.builder
@@ -58,23 +60,29 @@ from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mutation import MutationManager
 from cwltool.pathmapper import MapperEnt, PathMapper, downloadHttpFile
-from cwltool.process import (Process,
-                             add_sizes,
-                             compute_checksums,
-                             fill_in_defaults,
-                             shortname)
+from cwltool.process import (
+    Process,
+    add_sizes,
+    compute_checksums,
+    fill_in_defaults,
+    shortname,
+)
 from cwltool.secrets import SecretStore
-from cwltool.software_requirements import (DependenciesConfiguration,
-                                           get_container_from_software_requirements)
-from cwltool.utils import (CWLObjectType,
-                           CWLOutputAtomType,
-                           adjustDirObjs,
-                           adjustFileObjs,
-                           aslist,
-                           convert_pathsep_to_unix,
-                           get_listing,
-                           normalizeFilesDirs,
-                           visit_class)
+from cwltool.software_requirements import (
+    DependenciesConfiguration,
+    get_container_from_software_requirements,
+)
+from cwltool.utils import (
+    CWLObjectType,
+    CWLOutputAtomType,
+    adjustDirObjs,
+    adjustFileObjs,
+    aslist,
+    convert_pathsep_to_unix,
+    get_listing,
+    normalizeFilesDirs,
+    visit_class,
+)
 from ruamel.yaml.comments import CommentedMap
 from schema_salad import validate
 from schema_salad.schema import Names
@@ -84,8 +92,7 @@ from toil.common import Config, Toil, addOptions
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job
-from toil.jobStores.abstractJobStore import (NoSuchFileException,
-                                             NoSuchJobStoreException)
+from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobStoreException
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
