@@ -1,11 +1,14 @@
 image: quay.io/vgteam/vg_ci_prebake:latest
 # Note that we must run in a privileged container for our internal Docker daemon to come up.
 
+variables:
+  SUPPRESS_EXOTIC_LOGGING: "True"
+  PYTHONIOENCODING: "utf-8"
+
 before_script:
   - startdocker || true
   - docker info
   - cat /etc/hosts
-  - export PYTHONIOENCODING=utf-8
   - mkdir -p ~/.kube && cp "$GITLAB_SECRET_FILE_KUBE_CONFIG" ~/.kube/config
   - mkdir -p ~/.aws && cp "$GITLAB_SECRET_FILE_AWS_CREDENTIALS" ~/.aws/credentials
 
@@ -111,6 +114,7 @@ py37_main:
   stage: basic_tests
   script:
     - pwd
+    - export SUPPRESS_EXOTIC_LOGGING=True
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - make test tests=src/toil/test/src
