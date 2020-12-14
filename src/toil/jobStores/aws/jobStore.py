@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+import os
 import base64
 import hashlib
 import itertools
@@ -31,6 +31,7 @@ from io import BytesIO
 import boto3
 import boto.s3
 import boto.sdb
+import boto.s3.connection
 import botocore.credentials
 import botocore.session
 from boto.exception import S3CreateError, S3ResponseError, SDBResponseError
@@ -412,7 +413,7 @@ class AWSJobStore(AbstractJobStore):
                 info.copyFrom(srcKey)
                 info.save()
             finally:
-                srcKey.bucket.connection.close() 
+                srcKey.bucket.connection.close()
             return FileID(info.fileID, size) if sharedFileName is None else None
         else:
             return super(AWSJobStore, self)._importFile(otherCls, url,
@@ -482,19 +483,34 @@ class AWSJobStore(AbstractJobStore):
         keyName = url.path[1:]
         bucketName = url.netloc
 
+        botoargs = {}
+        host = os.environ.get('BOTO_HOST', None)
+        if host:
+            botoargs['host'] = host
+        port = os.environ.get('BOTO_PORT', None)
+        if port:
+            botoargs['port'] = int(port)
+        is_secure = os.environ.get('BOTO_SECURE', True)
+        if is_secure == 'False':
+            is_secure = False
+            botoargs['is_secure'] = is_secure
+        calling_format = os.environ.get('BOTO_CALLING_FORMAT', None)
+        if calling_format == 'OrdinaryCallingFormat':
+            botoargs['calling_format'] = boto.s3.connection.OrdinaryCallingFormat()
+
         # Get the bucket's region to avoid a redirect per request
         try:
-            with closing(boto.connect_s3()) as s3:
+            with closing(boto.connect_s3(**botoargs)) as s3:
                 location = s3.get_bucket(bucketName).get_location()
                 region = bucket_location_to_region(location)
         except S3ResponseError as e:
             if e.error_code == 'AccessDenied':
-                s3 = boto.connect_s3()
+                s3 = boto.connect_s3(**botoargs)
             else:
                 raise
         else:
             # Note that caller is responsible for closing the connection
-            s3 = boto.s3.connect_to_region(region)
+            s3 = boto.s3.connect_to_region(region, **botoargs)
 
         try:
             bucket = s3.get_bucket(bucketName)
@@ -1084,57 +1100,57 @@ class AWSJobStore(AbstractJobStore):
             """
             Get a hasher that can be used with _update_checksum and
             _finish_checksum.
-            
+
             If to_match is set, it is a precomputed checksum which we expect
             the result to match.
-            
+
             The right way to compare checksums is to feed in the checksum to be
             matched, so we can see its algorithm, instead of getting a new one
             and comparing. If a checksum to match is fed in, _finish_checksum()
             will raise a ChecksumError if it isn't matched.
             """
-            
+
             # If we have an expexted result it will go here.
             expected = None
-            
+
             if to_match is not None:
                 parts = to_match.split('$')
                 algorithm = parts[0]
                 expected = parts[1]
-            
+
             wrapped = getattr(hashlib, algorithm)()
-            
+
             log.debug('Starting %s checksum to match %s', algorithm, expected)
-            
+
             return (algorithm, wrapped, expected)
-            
+
         def _update_checksum(self, checksum_in_progress, data):
             """
             Update a checksum in progress from _start_checksum with new data.
             """
             log.debug('Updating checksum with %d bytes', len(data))
             checksum_in_progress[1].update(data)
-        
+
         def _finish_checksum(self, checksum_in_progress):
             """
             Complete a checksum in progress from _start_checksum and return the
             checksum result string.
             """
-            
+
             result_hash = checksum_in_progress[1].hexdigest()
-            
+
             log.debug('Completed checksum with hash %s vs. expected %s', result_hash, checksum_in_progress[2])
-            
+
             if checksum_in_progress[2] is not None:
                 # We expected a particular hash
                 if result_hash != checksum_in_progress[2]:
                     raise ChecksumError('Checksum mismatch. Expected: %s Actual: %s' %
                         (checksum_in_progress[2], result_hash))
-                    
+
             return '$'.join([checksum_in_progress[0], result_hash])
-            
-            
-        
+
+
+
         def _get_file_checksum(self, localFilePath, to_match=None):
             with open(localFilePath, 'rb') as f:
                 hasher = self._start_checksum(to_match=to_match)
@@ -1164,7 +1180,7 @@ class AWSJobStore(AbstractJobStore):
                     # Get the first block of data we want to put
                     buf = readable.read(store.partSize)
                     assert isinstance(buf, bytes)
-                    
+
                     if allowInlining and len(buf) <= info.maxInlinedSize():
                         log.debug('Inlining content of %d bytes', len(buf))
                         info.content = buf
@@ -1174,7 +1190,7 @@ class AWSJobStore(AbstractJobStore):
                         # We will compute a checksum
                         hasher = info._start_checksum()
                         info._update_checksum(hasher, buf)
-                    
+
                         headers = info._s3EncryptionHeaders()
                         for attempt in retry_s3():
                             with attempt:
@@ -1191,7 +1207,7 @@ class AWSJobStore(AbstractJobStore):
                                                                      # part numbers are 1-based
                                                                      part_num=part_num + 1,
                                                                      headers=headers)
-                                
+
                                 # Get the next block of data we want to put
                                 buf = readable.read(info.outer.partSize)
                                 assert isinstance(buf, bytes)
@@ -1209,7 +1225,7 @@ class AWSJobStore(AbstractJobStore):
                             while store._getBucketVersioning(store.filesBucket) != True:
                                 log.warning('Versioning does not appear to be enabled yet. Deferring multipart upload completion...')
                                 time.sleep(1)
-                                
+
                             # Save the checksum
                             info.checksum = info._finish_checksum(hasher)
 
@@ -1248,7 +1264,7 @@ class AWSJobStore(AbstractJobStore):
                         hasher = info._start_checksum()
                         info._update_checksum(hasher, buf)
                         info.checksum = info._finish_checksum(hasher)
-                        
+
                         key = store.filesBucket.new_key(key_name=compat_bytes(info.fileID))
                         buf = BytesIO(buf)
                         headers = info._s3EncryptionHeaders()
@@ -1256,8 +1272,8 @@ class AWSJobStore(AbstractJobStore):
                         while store._getBucketVersioning(store.filesBucket) != True:
                             log.warning('Versioning does not appear to be enabled yet. Deferring single part upload...')
                             time.sleep(1)
-                            
-                        
+
+
 
                         for attempt in retry_s3():
                             with attempt:
@@ -1360,7 +1376,7 @@ class AWSJobStore(AbstractJobStore):
                             key.get_contents_to_filename(tmpPath,
                                                          version_id=self.version,
                                                          headers=headers)
-                                                         
+
                         if verifyChecksum and self.checksum:
                             try:
                                 # This automatically compares the result and matches the algorithm.
@@ -1391,16 +1407,16 @@ class AWSJobStore(AbstractJobStore):
                                                          version_id=info.version)
                     else:
                         assert False
-            
+
             class HashingPipe(ReadableTransformingPipe):
                 """
                 Class which checksums all the data read through it. If it
                 reaches EOF and the checksum isn't correct, raises
                 ChecksumError.
-                
+
                 Assumes info actually has a checksum.
                 """
-            
+
                 def transform(self, readable, writable):
                     hasher = info._start_checksum(to_match=info.checksum)
                     contents = readable.read(1024 * 1024)
@@ -1417,7 +1433,7 @@ class AWSJobStore(AbstractJobStore):
                     # Finish checksumming and verify.
                     info._finish_checksum(hasher)
                     # Now stop so EOF happens in the output.
-                    
+
             with DownloadPipe() as readable:
                 if verifyChecksum and self.checksum:
                     # Interpose a pipe to check the hash
