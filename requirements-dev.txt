@@ -1,5 +1,5 @@
 mock
-pytest==45.3.0
+pytest
 pytest-cov
 stubserver
 pytest-timeout
