@@ -198,9 +198,11 @@ def set_log_level(level, set_logger=None):
     level = "CRITICAL" if level.upper() == "OFF" else level.upper()
     set_logger = set_logger if set_logger else root_logger
     set_logger.setLevel(level)
-    # Suppress any random loggers introduced by libraries we use.
-    # Especially boto/boto3.  They print too much.  -__-
-    suppress_exotic_logging(__name__)
+
+    if os.environ.get('SUPPRESS_EXOTIC_LOGGING'):
+        # Suppress any random loggers introduced by libraries we use.
+        # Especially boto/boto3.  They print too much.  -__-
+        suppress_exotic_logging(__name__)
 
 
 def add_logging_options(parser: ArgumentParser):
