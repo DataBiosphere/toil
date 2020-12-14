@@ -33,7 +33,7 @@ from toil.lib.ec2 import (a_short_time,
                           wait_instances_running,
                           wait_transition)
 from toil.lib.generatedEC2Lists import E2Instances
-from toil.lib.memoize import less_strict_bool, memoize
+from toil.lib.memoize import memoize
 from toil.lib.misc import truncExpBackoff
 from toil.lib.retry import old_retry
 from toil.provisioners import NoSuchClusterException
@@ -69,7 +69,7 @@ def awsRetryPredicate(e):
 def awsFilterImpairedNodes(nodes, ec2):
     # if TOIL_AWS_NODE_DEBUG is set don't terminate nodes with
     # failing status checks so they can be debugged
-    nodeDebug = less_strict_bool(os.environ.get('TOIL_AWS_NODE_DEBUG'))
+    nodeDebug = os.environ.get('TOIL_AWS_NODE_DEBUG') in ('True', 'TRUE', 'true', True)
     if not nodeDebug:
         return nodes
     nodeIDs = [node.id for node in nodes]
@@ -78,7 +78,7 @@ def awsFilterImpairedNodes(nodes, ec2):
     healthyNodes = [node for node in nodes if statusMap.get(node.id, None) != 'impaired']
     impairedNodes = [node.id for node in nodes if statusMap.get(node.id, None) == 'impaired']
     logger.warning('TOIL_AWS_NODE_DEBUG is set and nodes %s have failed EC2 status checks so '
-                'will not be terminated.', ' '.join(impairedNodes))
+                   'will not be terminated.', ' '.join(impairedNodes))
     return healthyNodes
 
 

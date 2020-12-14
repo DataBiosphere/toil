@@ -14,6 +14,7 @@
 import imp
 import os
 
+from tempfile import NamedTemporaryFile
 from setuptools import find_packages, setup
 
 
@@ -157,8 +158,9 @@ def import_version():
     if not os.path.exists('src/toil/version.py'):
         # Use the template to generate src/toil/version.py
         import version_template
-        with open('src/toil/version.py', 'w') as f:
+        with NamedTemporaryFile(mode='w', dir='src/toil', prefix='version.py.', delete=False) as f:
             f.write(version_template.expand_())
+        os.rename(f.name, 'src/toil/version.py')
 
     # Unfortunately, we can't use a straight import here because that would also load the stuff
     # defined in "src/toil/__init__.py" which imports modules from external dependencies that may

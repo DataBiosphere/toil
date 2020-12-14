@@ -37,7 +37,7 @@ def system(command):
 # Used by cactus; now a wrapper and not used in Toil.
 # TODO: Remove from cactus and then remove from Toil.
 def getLogLevelString(logger=None):
-    logger.warning('Deprecated toil method.  Please call "logging.getLevelName" directly.')
+    root_logger.warning('Deprecated toil method.  Please call "logging.getLevelName" directly.')
     if logger is None:
         logger = root_logger
     return logging.getLevelName(logger.getEffectiveLevel())

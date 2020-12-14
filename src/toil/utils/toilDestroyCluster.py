@@ -18,7 +18,7 @@ from toil.statsAndLogging import set_logging_from_options
 
 
 def main():
-    parser = parser_with_common_options(provisioner_options=True)
+    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
     options = parser.parse_args()
     set_logging_from_options(options)
     cluster = cluster_factory(provisioner=options.provisioner,

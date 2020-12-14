@@ -199,10 +199,9 @@ def set_log_level(level, set_logger=None):
     set_logger = set_logger if set_logger else root_logger
     set_logger.setLevel(level)
 
-    if os.environ.get('SUPPRESS_EXOTIC_LOGGING'):
-        # Suppress any random loggers introduced by libraries we use.
-        # Especially boto/boto3.  They print too much.  -__-
-        suppress_exotic_logging(__name__)
+    # Suppress any random loggers introduced by libraries we use.
+    # Especially boto/boto3.  They print too much.  -__-
+    suppress_exotic_logging(__name__)
 
 
 def add_logging_options(parser: ArgumentParser):
@@ -269,10 +268,10 @@ def suppress_exotic_logging(local_logger):
     except for the list declared in "always_suppress".
 
     This is important because some packages, particularly boto3, are not always instantiated yet in the
-    environment, and so we create the logger and set the level preemptively.
+    environment when this is run, and so we create the logger and set the level preemptively.
     """
     never_suppress = ['toil', '__init__', '__main__', 'toil-rt', 'cwltool']
-    always_suppress = ['boto3', 'boto']  # ensure we suppress even before instantiated
+    always_suppress = ['boto3', 'boto', 'botocore']  # ensure we suppress even before instantiated
 
     top_level_loggers = list()
     for pkg_logger in list(logging.Logger.manager.loggerDict.keys()) + always_suppress:
@@ -283,4 +282,4 @@ def suppress_exotic_logging(local_logger):
             if top_level_logger not in top_level_loggers + never_suppress:
                 top_level_loggers.append(top_level_logger)
                 logging.getLogger(top_level_logger).setLevel(logging.CRITICAL)
-    logger.info(f'Suppressing the following loggers: {set(top_level_loggers)}')
+    logger.debug(f'Suppressing the following loggers: {set(top_level_loggers)}')
