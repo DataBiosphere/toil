@@ -43,7 +43,7 @@ testingIsAutomatic = True
 logger = logging.getLogger(__name__)
 
 
-class hidden(object):
+class hidden:
     """
     Hiding the abstract test classes from the Unittest loader so it can be inherited in different
     test suites for the different job stores.

@@ -16,9 +16,11 @@ class ToilDocumentationTest(ToilTest):
     """Tests for scripts in the toil tutorials."""
     @classmethod
     def setUpClass(cls):
+        super(ToilTest, cls).setUpClass()
         cls.directory = os.path.dirname(os.path.abspath(__file__))
 
     def tearDown(self):
+        super(ToilTest, self).tearDown()
         # src/toil/test/docs/scripts/cwlExampleFiles/sample_1_output.txt
         output_files = ["sample_1_output.txt", "sample_2_output.txt", "sample_3_output.txt"]
         for output in output_files:
@@ -107,28 +109,32 @@ class ToilDocumentationTest(ToilTest):
 
     @travis_test
     def testMultiplejobs(self):
-        self.checkExpectedPattern("tutorial_multiplejobs.py", "Hello world, I have a message: first.*Hello world, I have a message: "
-                                         "second or third.*Hello world, I have a message: second or third.*Hello world,"
-                                         " I have a message: last")
+        self.checkExpectedPattern("tutorial_multiplejobs.py",
+                                  "Hello world, I have a message: first.*Hello world, I have a message: "
+                                  "second or third.*Hello world, I have a message: second or third.*Hello world,"
+                                  " I have a message: last")
 
     @travis_test
     def testMultiplejobs2(self):
-        self.checkExpectedPattern("tutorial_multiplejobs2.py", "Hello world, I have a message: first.*Hello world, I have a message: "
-                                         "second or third.*Hello world, I have a message: second or third.*Hello world,"
-                                         " I have a message: last")
+        self.checkExpectedPattern("tutorial_multiplejobs2.py",
+                                  "Hello world, I have a message: first.*Hello world, I have a message: "
+                                  "second or third.*Hello world, I have a message: second or third.*Hello world,"
+                                  " I have a message: last")
 
     @travis_test
     def testMultiplejobs3(self):
-        self.checkExpectedPattern("tutorial_multiplejobs3.py", "Hello world, I have a message: first.*Hello world, I have a message: "
-                                         "second or third.*Hello world, I have a message: second or third.*Hello world,"
-                                         " I have a message: last")
+        self.checkExpectedPattern("tutorial_multiplejobs3.py",
+                                  "Hello world, I have a message: first.*Hello world, I have a message: "
+                                  "second or third.*Hello world, I have a message: second or third.*Hello world,"
+                                  " I have a message: last")
 
     @travis_test
     def testPromises2(self):
-        self.checkExpectedOut("tutorial_promises2.py", "['00000', '00001', '00010', '00011', '00100', '00101', '00110', '00111', '01000',"
-                      " '01001', '01010', '01011', '01100', '01101', '01110', '01111', '10000', '10001', "
-                      "'10010', '10011', '10100', '10101', '10110', '10111', '11000', '11001', '11010', "
-                      "'11011', '11100', '11101', '11110', '11111']")
+        self.checkExpectedOut("tutorial_promises2.py",
+                              "['00000', '00001', '00010', '00011', '00100', '00101', '00110', '00111',"
+                              " '01000', '01001', '01010', '01011', '01100', '01101', '01110', '01111',"
+                              " '10000', '10001', '10010', '10011', '10100', '10101', '10110', '10111',"
+                              " '11000', '11001', '11010', '11011', '11100', '11101', '11110', '11111']")
 
     @travis_test
     def testQuickstart(self):

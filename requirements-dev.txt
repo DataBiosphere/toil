@@ -1,0 +1,16 @@
+mock
+pytest
+pytest-cov
+stubserver
+pytest-timeout
+setuptools
+sphinx
+cwltest
+mypy
+flake8
+flake8-bugbear
+black
+isort
+pydocstyle
+autoflake
+isort

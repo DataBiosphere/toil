@@ -105,7 +105,7 @@ class AbstractJobStore(ABC):
     """
     Represents the physical storage for the jobs and files in a Toil workflow.
     
-    JobStores are responsible for storing :class:`toil.job.JobDescription`s
+    JobStores are responsible for storing :class:`toil.job.JobDescription`
     (which relate jobs to each other) and files.
     
     Actual :class:`toil.job.Job` objects are stored in files, referenced by
@@ -113,8 +113,7 @@ class AbstractJobStore(ABC):
     in JobDescriptions and not full, executable Jobs.
     
     To actually get ahold of a :class:`toil.job.Job`, use
-    :meth:`toil.job.Job.loadJob` with a JobStore and the relevant
-    JobDescription.
+    :meth:`toil.job.Job.loadJob` with a JobStore and the relevant JobDescription.
     """
 
     def __init__(self):
