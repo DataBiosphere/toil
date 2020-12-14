@@ -202,7 +202,7 @@ check_build_reqs:
 		|| ( printf "$(red)Build requirements are missing. Run 'make prepare' to install them.$(normal)\n" ; false )
 
 prepare: check_venv
-	pip install --upgrade --no-cache -r requirements-dev.txt
+	pip install -r requirements-dev.txt
 
 check_venv:
 	@python -c 'import sys, os; sys.exit( int( 0 if "VIRTUAL_ENV" in os.environ else 1 ) )' \
