@@ -233,7 +233,7 @@ class MesosExecutor(Executor):
 
 def main():
     configure_root_logger()
-    set_log_level("DEBUG")
+    set_log_level("INFO")
 
     if not os.environ.get("MESOS_AGENT_ENDPOINT"):
         # Some Mesos setups in our tests somehow lack this variable. Provide a

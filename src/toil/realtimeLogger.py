@@ -184,7 +184,7 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
     def getLogger(cls):
         """
         Get the logger that logs real-time to the leader.
-        
+
         Note that if the returned logger is used on the leader, you will see the message twice,
         since it still goes to the normal log handlers, too.
         """

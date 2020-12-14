@@ -1096,7 +1096,7 @@ def executor():
     configure_root_logger()
     set_log_level("DEBUG")
     logger.debug("Starting executor")
-    
+
     # If we don't manage to run the child, what should our exit code be?
     exit_code = EXIT_STATUS_UNAVAILABLE_VALUE
 

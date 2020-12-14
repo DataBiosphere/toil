@@ -198,10 +198,9 @@ def set_log_level(level, set_logger=None):
     level = "CRITICAL" if level.upper() == "OFF" else level.upper()
     set_logger = set_logger if set_logger else root_logger
     set_logger.setLevel(level)
-    # There are quite a few cases where we expect AWS requests to fail, but it seems
-    # that boto handles these by logging the error *and* raising an exception. We
-    # don't want to confuse the user with those error messages.
-    logging.getLogger('boto').setLevel(logging.CRITICAL)
+    # Suppress any random loggers introduced by libraries we use.
+    # Especially boto/boto3.  They print too much.  -__-
+    suppress_exotic_logging(__name__)
 
 
 def add_logging_options(parser: ArgumentParser):
@@ -256,3 +255,30 @@ def set_logging_from_options(options):
 
     # start logging to log file if specified
     log_to_file(options.logFile, options.logRotating)
+
+
+def suppress_exotic_logging(local_logger):
+    """
+    Attempts to suppress the loggers of all non-Toil packages by setting them to CRITICAL.
+
+    For example: 'requests_oauthlib', 'google', 'boto', 'websocket', 'oauthlib', etc.
+
+    This will only suppress loggers that have already been instantiated and can be seen in the environment,
+    except for the list declared in "always_suppress".
+
+    This is important because some packages, particularly boto3, are not always instantiated yet in the
+    environment, and so we create the logger and set the level preemptively.
+    """
+    never_suppress = ['toil', '__init__', '__main__', 'toil-rt', 'cwltool']
+    always_suppress = ['boto3', 'boto']  # ensure we suppress even before instantiated
+
+    top_level_loggers = list()
+    for pkg_logger in list(logging.Logger.manager.loggerDict.keys()) + always_suppress:
+        if pkg_logger != local_logger:
+            # many sub-loggers may exist, like "boto.a", "boto.b", "boto.c"; we only want the top_level: "boto"
+            top_level_logger = pkg_logger.split('.')[0] if '.' in pkg_logger else pkg_logger
+
+            if top_level_logger not in top_level_loggers + never_suppress:
+                top_level_loggers.append(top_level_logger)
+                logging.getLogger(top_level_logger).setLevel(logging.CRITICAL)
+    logger.info(f'Suppressing the following loggers: {set(top_level_loggers)}')
