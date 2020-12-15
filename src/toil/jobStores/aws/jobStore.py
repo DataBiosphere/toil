@@ -484,19 +484,17 @@ class AWSJobStore(AbstractJobStore):
         bucketName = url.netloc
 
         botoargs = {}
-        host = os.environ.get('BOTO_HOST', None)
+        botoargs['calling_format'] = boto.s3.connection.OrdinaryCallingFormat()
+        host = os.environ.get('TOIL_S3_HOST', None)
         if host:
             botoargs['host'] = host
-        port = os.environ.get('BOTO_PORT', None)
+        port = os.environ.get('TOIL_S3_PORT', None)
         if port:
             botoargs['port'] = int(port)
-        is_secure = os.environ.get('BOTO_SECURE', True)
+        is_secure = os.environ.get('TOIL_S3_USE_SSL', True)
         if is_secure == 'False':
             is_secure = False
             botoargs['is_secure'] = is_secure
-        calling_format = os.environ.get('BOTO_CALLING_FORMAT', None)
-        if calling_format == 'OrdinaryCallingFormat':
-            botoargs['calling_format'] = boto.s3.connection.OrdinaryCallingFormat()
 
         # Get the bucket's region to avoid a redirect per request
         try:
