@@ -127,8 +127,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 return (None, None)
 
             job = dict()
-            for line in values:
-                logger.debug(f"{args[0]} output {line}")
+            for item in values:
+                logger.debug(f"{args[0]} output {item}")
 
                 # Output is in the form of many key=value pairs, multiple pairs on each line
                 # and multiple lines in the output. Each pair is pulled out of each line and

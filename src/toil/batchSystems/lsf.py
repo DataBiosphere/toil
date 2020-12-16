@@ -289,7 +289,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     logger.error("Could not parse bjobs output: {}".format(bjobs_output_str))
                 if 'RECORDS' in bjobs_dict:
                     bjobs_records = bjobs_dict['RECORDS']
-            if bjobs_records == None:
+            if bjobs_records is None:
                 logger.error("Could not find bjobs output json in: {}".format(bjobs_output_str))
 
             return bjobs_records
@@ -355,8 +355,8 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 if items[mem_index] != '-' and MemoryString(items[mem_index]) > maxMEM:
                     maxMEM = MemoryString(items[mem_index])
 
-        if maxCPU == 0 or maxMEM == 0:
-            raise RuntimeError("lshosts returns null ncpus or maxmem info")
+        if maxCPU == 0 or maxMEM == MemoryString("0"):
+                raise RuntimeError("lshosts returns null ncpus or maxmem info")
 
         logger.debug("Got the maxMEM: {}".format(maxMEM))
         logger.debug("Got the maxCPU: {}".format(maxCPU))

@@ -526,7 +526,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             if jobID in self.runningJobs:
                 info = self.runningJobs[jobID]
                 info.killIntended = True
-                if info.popen != None:
+                if info.popen is not None:
                     log.debug('Send kill to PID %s', info.popen.pid)
                     info.popen.kill()
                     log.debug('Sent kill to PID %s', info.popen.pid)
