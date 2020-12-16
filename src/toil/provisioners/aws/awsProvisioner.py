@@ -314,22 +314,39 @@ class AWSProvisioner(AbstractProvisioner):
             vpcId = leader.vpc_id
             logger.info('Terminating the leader first ...')
             destroyInstances([leader])
-            logger.info('Now terminating any remaining workers ...')
         except (NoSuchClusterException, InvalidClusterStateException):
             # It's ok if the leader is not found. We'll terminate any remaining
             # instances below anyway.
             pass
 
+        logger.debug('Deleting autoscaling groups ...')
+        removed = False
+        for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
+            with attempt:
+                for asgName in self._getAutoScalingGroupNames():
+                    # We wait for the instances to terminate (ForceDelete=False)
+                    self.ec2.delete_auto_scaling_group(AutoScalingGroupName=asgName, ForceDelete=False)
+                    removed = True
+        if removed:
+            logger.debug('... Succesfully deleted autoscaling groups')
+            
+        # Do the workers after the ASGs because some may belong to ASGs
+        logger.info('Terminating any remaining workers ...')
+        removed = False
         instances = self._getNodesInCluster(nodeType=None, both=True)
         spotIDs = self._getSpotRequestIDs()
         if spotIDs:
             self._boto2.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
+            removed = True
         instancesToTerminate = awsFilterImpairedNodes(instances, self._boto2.ec2)
         if instancesToTerminate:
             vpcId = vpcId or instancesToTerminate[0].vpc_id
             destroyInstances(instancesToTerminate)
-            
-        logger.debug('Deleting launch templates...')
+            removed = True
+        if removed:
+            logger.debug('... Succesfully terminated workers')
+        
+        logger.debug('Deleting launch templates ...')
         removed = False
         for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
             with attempt:
@@ -347,7 +364,7 @@ class AWSProvisioner(AbstractProvisioner):
             logger.debug('... Succesfully deleted launch templates')
             
         if len(instances) == len(instancesToTerminate):
-            logger.debug('Deleting security group...')
+            logger.debug('Deleting security group ...')
             removed = False
             for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                 with attempt:
@@ -877,11 +894,11 @@ class AWSProvisioner(AbstractProvisioner):
                                       tags=tags)
                                       
     @awsRetry
-    def _getAutoScalingGroupIDs(self, nodeType=None, preemptable=False, both=False) -> List[str]:
+    def _getAutoScalingGroupNames(self, nodeType=None, preemptable=False, both=False) -> List[str]:
         """
         Find all auto-scaling groups associated with the cluster.
         
-        Returns a list of ASG IDs.
+        Returns a list of ASG IDs. ASG IDs and AASG names are the same things.
         """
         
         # AWS won't filter ASGs server-side for us in describe_auto_scaling_groups.
