@@ -158,72 +158,8 @@ class UtilsTest(ToilTest):
             tags = {'key1': 'value1', 'key2': 'value2', 'key3': 'value3', 'Name': clusterName, 'Owner': keyName}
             for key in tags:
                 self.assertEqual(tags[key], leader.tags.get(key))
-
-            # TODO: The following no longer runs programmatically.  Fix and then uncomment.
-            # # Test strict host key checking
-            # # Doesn't work when run locally.
-            # if keyName == 'jenkins@jenkins-master':
-            #     try:
-            #         leader.sshAppliance(strict=True)
-            #     except RuntimeError:
-            #         pass
-            #     else:
-            #         self.fail("Host key verification passed where it should have failed")
-            #
-            # # Add the host key to known_hosts so that the rest of the tests can
-            # # pass without choking on the verification prompt.
-            # leader.sshAppliance('bash', strict=True, sshOptions=['-oStrictHostKeyChecking=no'])
-            #
-            # system([self.toilMain, 'ssh-cluster', '--provisioner=aws', clusterName])
-            #
-            # testStrings = ["'foo'",
-            #                '"foo"',
-            #                '  foo',
-            #                '$PATH',
-            #                '"',
-            #                "'",
-            #                '\\',
-            #                '| cat',
-            #                '&& cat',
-            #                '; cat']
-            # for test in testStrings:
-            #     logger.debug('Testing SSH with special string: %s', test)
-            #     compareTo = "import sys; assert sys.argv[1]==%r" % test
-            #     leader.sshAppliance(python, '-', test, input=compareTo)
-            #
-            # try:
-            #     leader.sshAppliance('nonsenseShouldFail')
-            # except RuntimeError:
-            #     pass
-            # else:
-            #     self.fail('The remote command failed silently where it should have raised an error')
-            #
-            # leader.sshAppliance(python, '-c', "import os; assert os.environ['TOIL_WORKDIR']=='/var/lib/toil'")
-            #
-            # # `toil rsync-cluster`
-            # # Testing special characters - string.punctuation
-            # fname = r'!"#$%&\'()*+,-.;<=>:\ ?@[\\]^_`{|}~'
-            # testData = os.urandom(3 * (10**6))
-            # with tempfile.NamedTemporaryFile(suffix=fname) as tmpFile:
-            #     relpath = os.path.basename(tmpFile.name)
-            #     tmpFile.write(testData)
-            #     tmpFile.flush()
-            #     # Upload file to leader
-            #     leader.coreRsync(args=[tmpFile.name, ":"])
-            #     # Ensure file exists
-            #     leader.sshAppliance("test", "-e", relpath)
-            # tmpDir = tempfile.mkdtemp()
-            # # Download the file again and make sure it's the same file
-            # # `--protect-args` needed because remote bash chokes on special characters
-            # leader.coreRsync(args=["--protect-args", ":" + relpath, tmpDir])
-            # with open(os.path.join(tmpDir, relpath), "r") as f:
-            #     self.assertEqual(f.read(), testData, "Downloaded file does not match original file")
         finally:
             system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
-            # try:
-            #     shutil.rmtree(tmpDir)
-            # except NameError:
-            #     pass
 
     @slow
     def testUtilsSort(self):
