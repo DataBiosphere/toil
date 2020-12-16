@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import logging
 import math
 import os
@@ -25,8 +24,9 @@ from threading import Condition, Event, Lock, Thread
 
 import toil
 from toil import worker as toil_worker
-from toil.batchSystems.abstractBatchSystem import (
-    EXIT_STATUS_UNAVAILABLE_VALUE, BatchSystemSupport, UpdatedBatchJobInfo)
+from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
+                                                   BatchSystemSupport,
+                                                   UpdatedBatchJobInfo)
 from toil.common import Toil
 from toil.lib.threading import cpu_count
 
@@ -582,7 +582,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         setOption("scale", default=1)
 
 
-class Info(object):
+class Info:
     """
     Record for a running job.
 
@@ -598,7 +598,7 @@ class Info(object):
         self.killIntended = killIntended
 
 
-class ResourcePool(object):
+class ResourcePool:
     """
     Represents an integral amount of a resource (such as memory bytes).
 

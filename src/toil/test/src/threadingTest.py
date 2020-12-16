@@ -135,4 +135,3 @@ def _testLastProcessStandingTask(scope, arena_name, number):
     except:
         traceback.print_exc()
         return False
-

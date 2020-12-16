@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,8 +32,10 @@ from toil.common import Config, defaultTargetTime
 from toil.job import JobDescription
 from toil.lib.humanize import human2bytes as h2b
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
-from toil.provisioners.clusterScaler import (BinPackedFit, ClusterScaler,
-                                             NodeReservation, ScalerThread)
+from toil.provisioners.clusterScaler import (BinPackedFit,
+                                             ClusterScaler,
+                                             NodeReservation,
+                                             ScalerThread)
 from toil.provisioners.node import Node
 from toil.test import ToilTest, slow, travis_test
 

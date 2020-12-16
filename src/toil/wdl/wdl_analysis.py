@@ -17,17 +17,14 @@ import os
 from collections import OrderedDict
 
 import toil.wdl.wdl_parser as wdl_parser
-
-from toil.wdl.wdl_types import (
-    WDLStringType,
-    WDLIntType,
-    WDLFloatType,
-    WDLBooleanType,
-    WDLFileType,
-    WDLArrayType,
-    WDLPairType,
-    WDLMapType
-)
+from toil.wdl.wdl_types import (WDLArrayType,
+                                WDLBooleanType,
+                                WDLFileType,
+                                WDLFloatType,
+                                WDLIntType,
+                                WDLMapType,
+                                WDLPairType,
+                                WDLStringType)
 
 wdllogger = logging.getLogger(__name__)
 

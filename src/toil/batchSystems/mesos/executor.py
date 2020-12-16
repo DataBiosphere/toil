@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import json
 import logging
 import os
@@ -26,17 +25,17 @@ import sys
 import threading
 import time
 import traceback
-
 import addict
 import psutil
+
 from pymesos import Executor, MesosExecutorDriver, decode_data, encode_data
-from urllib2 import urlopen
+from urllib.request import urlopen
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
-from toil.lib.bioio import configureRootLogger, setLogLevel
 from toil.lib.expando import Expando
 from toil.lib.threading import cpu_count
 from toil.resource import Resource
+from toil.statsAndLogging import configure_root_logger, set_log_level
 
 log = logging.getLogger(__name__)
 
@@ -233,8 +232,8 @@ class MesosExecutor(Executor):
 
 
 def main():
-    configureRootLogger()
-    setLogLevel("DEBUG")
+    configure_root_logger()
+    set_log_level("INFO")
 
     if not os.environ.get("MESOS_AGENT_ENDPOINT"):
         # Some Mesos setups in our tests somehow lack this variable. Provide a
@@ -306,4 +305,3 @@ def main():
     exit_value = 0 if (driver_result is None or driver_result == 'DRIVER_STOPPED') else 1
     assert len(executor.runningTasks) == 0
     sys.exit(exit_value)
-

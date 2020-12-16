@@ -1,4 +1,4 @@
-# Copyright (C) 2018-2020 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,14 +16,12 @@ import os
 
 import toil.wdl.wdl_parser as wdl_parser
 from toil.wdl.wdl_functions import heredoc_wdl
-from toil.wdl.wdl_types import (
-    WDLType,
-    WDLCompoundType,
-    WDLFileType,
-    WDLArrayType,
-    WDLPairType,
-    WDLMapType
-)
+from toil.wdl.wdl_types import (WDLArrayType,
+                                WDLCompoundType,
+                                WDLFileType,
+                                WDLMapType,
+                                WDLPairType,
+                                WDLType)
 
 wdllogger = logging.getLogger(__name__)
 

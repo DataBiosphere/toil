@@ -335,32 +335,29 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         cpu_index = None
         mem_index = None
         for i in range(num_columns):
-                if items[i] == 'ncpus':
-                        cpu_index = i
-                elif items[i] == 'maxmem':
-                        mem_index = i
+            if items[i] == 'ncpus':
+                cpu_index = i
+            elif items[i] == 'maxmem':
+                mem_index = i
 
         if cpu_index is None or mem_index is None:
-                raise RuntimeError("lshosts command does not return ncpus or maxmem "
-                             "columns")
+            raise RuntimeError("lshosts command does not return ncpus or maxmem columns")
 
         maxCPU = 0
         maxMEM = MemoryString("0")
         for line in stdout.split('\n')[1:]:
             items = line.strip().split()
-            if not items:
-                continue
-            if len(items) < num_columns:
-                raise RuntimeError("lshosts output has a varying number of "
-                             "columns")
-            if items[cpu_index] != '-' and int(items[cpu_index]) > int(maxCPU):
-                maxCPU = int(items[cpu_index])
-            if (items[mem_index] != '-' and
-                MemoryString(items[mem_index]) > maxMEM):
-                maxMEM = MemoryString(items[mem_index])
+            if items:
+                if len(items) < num_columns:
+                    raise RuntimeError("lshosts output has a varying number of columns")
+                if items[cpu_index] != '-' and int(items[cpu_index]) > int(maxCPU):
+                    maxCPU = int(items[cpu_index])
+                if items[mem_index] != '-' and MemoryString(items[mem_index]) > maxMEM:
+                    maxMEM = MemoryString(items[mem_index])
 
         if maxCPU == 0 or maxMEM == MemoryString("0"):
                 raise RuntimeError("lshosts returns null ncpus or maxmem info")
+
         logger.debug("Got the maxMEM: {}".format(maxMEM))
         logger.debug("Got the maxCPU: {}".format(maxCPU))
 

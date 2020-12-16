@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2019 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,10 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import os
 
-__all__ = ['fileStore', 'nonCachingFileStore', 'cachingFileStore', 'FileID']
+
+def make_public_dir(dirName: str) -> str:
+    """Makes a given subdirectory if it doesn't already exist, making sure it is public."""
+    if not os.path.exists(dirName):
+        os.mkdir(dirName)
+        os.chmod(dirName, 0o777)
+    return dirName
 
 
 class FileID(str):
