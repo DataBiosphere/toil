@@ -24,6 +24,17 @@ from src.toil.lib.generatedEC2Lists import regionDict
 # put us-west-2 first as our default test region; that way anything with a universal region shows there
 regions = ['us-west-2'] + [region for region in regionDict if region != 'us-west-2']
 
+# never show these buckets; never offer to delete them; never forget
+absolutely_do_not_delete_these_buckets = ['318423852362-cgcloud',
+                                          'aws-config20201211232942693800000001',
+                                          'cgl-pipeline',
+                                          'cgl-rnaseq-recompute-fixed-toil',
+                                          'toil-cloudtrail-bucket',
+                                          'toil-cwl-infra-test-bucket-dont-delete',
+                                          'toil-datasets',
+                                          'toil-no-location-bucket-dont-delete',
+                                          'toil-preserve-file-permissions-tests']
+
 
 def contains_uuid(string):
     """
@@ -115,12 +126,13 @@ def find_sdb_domains_to_cleanup(include_all, matching):
 def find_buckets_in_region(s3_resource, include_all, matching):
     buckets_to_cleanup = []
     for bucket in s3_resource.buckets.all():
-        if matching:
-            for m in matching:
-                if m in bucket.name:
-                    buckets_to_cleanup.append(bucket.name)
-        elif matches(bucket.name) or include_all:
-            buckets_to_cleanup.append(bucket.name)
+        if bucket.name not in absolutely_do_not_delete_these_buckets:
+            if matching:
+                for m in matching:
+                    if m in bucket.name:
+                        buckets_to_cleanup.append(bucket.name)
+            elif matches(bucket.name) or include_all:
+                buckets_to_cleanup.append(bucket.name)
     return buckets_to_cleanup
 
 
@@ -153,7 +165,7 @@ def main(argv):
                         help="Only return resources containing the comma-delimited keywords.  "
                              "For example, adding --matching='hello,goodbye' would return any "
                              "buckets or domains that include either 'hello' or 'goodbye'.")
-    parser.set_defaults(view_only=False, include_all=False, skip_buckets=False, skip_sdb=False, matching=[])
+    parser.set_defaults(view_only=False, include_all=False, skip_buckets=False, skip_sdb=False, matching='')
 
     options = parser.parse_args(argv)
 
