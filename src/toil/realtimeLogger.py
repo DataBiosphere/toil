@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,11 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-"""
-Implements a real-time UDP-based logging system that user scripts can use for debugging.
-"""
-
+"""Implements a real-time UDP-based logging system that user scripts can use for debugging."""
 import json
 import logging
 import logging.handlers
@@ -24,10 +20,10 @@ import os.path
 import socketserver as SocketServer
 import threading
 
-import toil.lib.bioio
 from toil.batchSystems.options import getPublicIP
+from toil.statsAndLogging import set_log_level
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class LoggingDatagramHandler(SocketServer.BaseRequestHandler):
@@ -68,7 +64,7 @@ class LoggingDatagramHandler(SocketServer.BaseRequestHandler):
         else:
             # Log level filtering should have been done on the remote end. The handle() method
             # skips it on this end.
-            log.handle(record)
+            logger.handle(record)
 
 
 class JSONDatagramHandler(logging.handlers.DatagramHandler):
@@ -135,7 +131,7 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
             if cls.initialized == 0:
                 cls.initialized += 1
                 if level:
-                    log.info('Starting real-time logging.')
+                    logger.info('Starting real-time logging.')
                     # Start up the logging server
                     cls.loggingServer = SocketServer.ThreadingUDPServer(
                             server_address=('0.0.0.0', 0),
@@ -158,10 +154,10 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
                     _setEnv('ADDRESS', '%s:%i' % (ip, port))
                     _setEnv('LEVEL', level)
                 else:
-                    log.debug('Real-time logging disabled')
+                    logger.debug('Real-time logging disabled')
             else:
                 if level:
-                    log.warning('Ignoring nested request to start real-time logging')
+                    logger.warning('Ignoring nested request to start real-time logging')
 
     @classmethod
     def _stopLeader(cls):
@@ -173,11 +169,11 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
             cls.initialized -= 1
             if cls.initialized == 0:
                 if cls.loggingServer:
-                    log.info('Stopping real-time logging server.')
+                    logger.info('Stopping real-time logging server.')
                     cls.loggingServer.shutdown()
                     cls.loggingServer = None
                 if cls.serverThread:
-                    log.info('Joining real-time logging server thread.')
+                    logger.info('Joining real-time logging server thread.')
                     cls.serverThread.join()
                     cls.serverThread = None
                 for k in list(os.environ.keys()):
@@ -188,7 +184,7 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
     def getLogger(cls):
         """
         Get the logger that logs real-time to the leader.
-        
+
         Note that if the returned logger is used on the leader, you will see the message twice,
         since it still goes to the normal log handlers, too.
         """
@@ -207,7 +203,7 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
                         cls.logger.setLevel(logging.CRITICAL)
                     else:
                         # Adopt the logging level set on the leader.
-                        toil.lib.bioio.setLogLevel(level, cls.logger)
+                        set_log_level(level, cls.logger)
                         try:
                             address = os.environ[cls.envPrefix + 'ADDRESS']
                         except KeyError:

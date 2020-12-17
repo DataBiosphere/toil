@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import pytest
 from toil.common import Toil
 from toil.job import Job, JobFunctionWrappingJob, JobGraphDeadlockException
 from toil.leader import FailedJobsException
-from toil.lib.bioio import getTempFile
+from toil.test import get_temp_file
 from toil.test import ToilTest, slow, travis_test
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ class JobTest(ToilTest):
           
         Follow on is marked by ->
         """
-        outFile = getTempFile(rootDir=self._createTempDir())
+        outFile = get_temp_file(rootDir=self._createTempDir())
         try:
 
             # Create the jobs
@@ -95,7 +95,7 @@ class JobTest(ToilTest):
           
         Follow on is marked by ->
         """
-        outFile = getTempFile(rootDir=self._createTempDir())
+        outFile = get_temp_file(rootDir=self._createTempDir())
         try:
 
             # Create the jobs

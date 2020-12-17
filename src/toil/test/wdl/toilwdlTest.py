@@ -7,30 +7,26 @@ import zipfile
 from urllib.request import urlretrieve
 
 import toil.wdl.wdl_parser as wdl_parser
-from toil.test import ToilTest, needs_docker, slow
+from toil.test import ToilTest, needs_docker, needs_java, slow
 from toil.version import exactPython
 from toil.wdl.wdl_analysis import AnalyzeWDL
+from toil.wdl.wdl_functions import (abspath_file,
+                                    basename,
+                                    combine_dicts,
+                                    defined,
+                                    generate_docker_bashscript_file,
+                                    glob,
+                                    parse_cores,
+                                    parse_disk,
+                                    parse_memory,
+                                    process_and_read_file,
+                                    process_infile,
+                                    process_outfile,
+                                    read_csv,
+                                    read_tsv,
+                                    select_first,
+                                    size)
 from toil.wdl.wdl_synthesis import SynthesizeWDL
-from toil.wdl.wdl_functions import generate_docker_bashscript_file
-from toil.wdl.wdl_functions import select_first
-from toil.wdl.wdl_functions import size
-from toil.wdl.wdl_functions import glob
-from toil.wdl.wdl_functions import process_and_read_file
-from toil.wdl.wdl_functions import process_infile
-from toil.wdl.wdl_functions import process_outfile
-from toil.wdl.wdl_functions import abspath_file
-from toil.wdl.wdl_functions import combine_dicts
-from toil.wdl.wdl_functions import parse_memory
-from toil.wdl.wdl_functions import parse_cores
-from toil.wdl.wdl_functions import parse_disk
-from toil.wdl.wdl_functions import defined
-from toil.wdl.wdl_functions import read_tsv
-from toil.wdl.wdl_functions import read_csv
-from toil.wdl.wdl_functions import basename
-from toil.test import ToilTest, slow, needs_docker, needs_java
-import zipfile
-import shutil
-import uuid
 
 
 class ToilWdlIntegrationTest(ToilTest):

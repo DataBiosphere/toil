@@ -1,6 +1,6 @@
 """Implemented support for Common Workflow Language (CWL) for Toil."""
 # Copyright (C) 2015 Curoverse, Inc
-# Copyright (C) 2016-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 # Copyright (C) 2019-2020 Seven Bridges
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -55,6 +55,7 @@ import cwltool.main
 import cwltool.provenance
 import cwltool.resolver
 import cwltool.stdfsaccess
+import schema_salad.ref_resolver
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mutation import MutationManager
@@ -72,8 +73,8 @@ from cwltool.software_requirements import (
     get_container_from_software_requirements,
 )
 from cwltool.utils import (
-    CWLOutputAtomType,
     CWLObjectType,
+    CWLOutputAtomType,
     adjustDirObjs,
     adjustFileObjs,
     aslist,
@@ -86,7 +87,6 @@ from ruamel.yaml.comments import CommentedMap
 from schema_salad import validate
 from schema_salad.schema import Names
 from schema_salad.sourceline import SourceLine
-import schema_salad.ref_resolver
 
 from toil.common import Config, Toil, addOptions
 from toil.fileStores import FileID

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,7 +27,8 @@ from requests.exceptions import HTTPError
 
 from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
-from toil.job import (CheckpointJobDescription, JobException,
+from toil.job import (CheckpointJobDescription,
+                      JobException,
                       ServiceJobDescription)
 from toil.lib.memoize import memoize
 from toil.lib.misc import WriteWatchingStream
@@ -104,7 +105,7 @@ class AbstractJobStore(ABC):
     """
     Represents the physical storage for the jobs and files in a Toil workflow.
     
-    JobStores are responsible for storing :class:`toil.job.JobDescription`s
+    JobStores are responsible for storing :class:`toil.job.JobDescription`
     (which relate jobs to each other) and files.
     
     Actual :class:`toil.job.Job` objects are stored in files, referenced by
@@ -112,8 +113,7 @@ class AbstractJobStore(ABC):
     in JobDescriptions and not full, executable Jobs.
     
     To actually get ahold of a :class:`toil.job.Job`, use
-    :meth:`toil.job.Job.loadJob` with a JobStore and the relevant
-    JobDescription.
+    :meth:`toil.job.Job.loadJob` with a JobStore and the relevant JobDescription.
     """
 
     def __init__(self):

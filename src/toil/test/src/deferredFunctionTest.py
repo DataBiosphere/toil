@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,23 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 import os
 import signal
 import time
+import psutil
 from abc import ABCMeta
 from uuid import uuid4
 
-from toil.fileStores.cachingFileStore import CachingFileStore
 from toil.job import Job
 from toil.leader import FailedJobsException
 from toil.lib.threading import cpu_count
 from toil.test import ToilTest, slow, travis_test
 
-# Some tests take too long on the AWS jobstore and are unquitable for CI.  They can be
-# be run during manual tests by setting this to False.
-testingIsAutomatic = True
 
 class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
     """
@@ -295,12 +290,13 @@ def _testNewJobsCanHandleOtherJobDeaths_B(job, files):
         time.sleep(0.5)
     # Get the pid of _testNewJobsCanHandleOtherJobDeaths_A and wait for it to truly be dead.
     with open(files[1], 'r') as fileHandle:
-        meeseeksPID = int(fileHandle.read())
-    while CachingFileStore._pidExists(meeseeksPID):
+        pid = int(fileHandle.read())
+    assert pid > 0
+    while psutil.pid_exists(pid):
         time.sleep(0.5)
     # Now that we are convinced that_testNewJobsCanHandleOtherJobDeaths_A has died, we can
     # spawn the next job
-    return None
+
 
 def _testNewJobsCanHandleOtherJobDeaths_C(job, files, expectedResult):
     """
@@ -336,4 +332,3 @@ class _deleteMethods(object):
         os.remove(nonLocalFile)
         if nlf is not None:
             os.remove(nlf)
-

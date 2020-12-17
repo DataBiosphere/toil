@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ import shutil
 from abc import ABC, abstractmethod
 from collections import namedtuple
 from contextlib import contextmanager
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
                                         DEFAULT_BATCH_SYSTEM)
@@ -408,7 +408,7 @@ class BatchSystemLocalSupport(BatchSystemSupport):
         self.localBatch = BATCH_SYSTEM_FACTORY_REGISTRY[DEFAULT_BATCH_SYSTEM]()(
                 config, config.maxLocalJobs, maxMemory, maxDisk)
 
-    def handleLocalJob(self, jobDesc):  # type: (JobDescription) -> Optional[int]
+    def handleLocalJob(self, jobDesc):  # type: (Any) -> Optional[int]
         """
         To be called by issueBatchJobs.
 

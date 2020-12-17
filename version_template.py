@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """This script is a template for src/toil/version.py. Running it without arguments echoes all
 globals, i.e. module attributes. Constant assignments will be echoed verbatim while callables
 will be invoked and their result echoed as an assignment using the function name as the left-hand
@@ -29,7 +28,7 @@ import the expand_ function and invoke it directly with either no or exactly one
 #  - don't import even standard modules at global scope without renaming them
 #    to have leading/trailing underscores
 
-baseVersion = '5.1.0a1'
+baseVersion = '5.2.0a1'
 cgcloudVersion = '1.6.0a1.dev393'
 
 

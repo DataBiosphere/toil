@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,7 +31,9 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchFileException,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
-from toil.lib.misc import (AtomicFileCreate, atomic_copy, atomic_copyobj,
+from toil.lib.misc import (AtomicFileCreate,
+                           atomic_copy,
+                           atomic_copyobj,
                            robust_rmtree)
 
 logger = logging.getLogger(__name__)

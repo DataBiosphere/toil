@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -42,8 +42,13 @@ from toil.jobStores.fileJobStore import FileJobStore
 from toil.lib.exceptions import panic
 from toil.lib.memoize import memoize
 from toil.statsAndLogging import StatsAndLogging
-from toil.test import (ToilTest, make_tests, needs_aws_s3, needs_encryption,
-                       needs_google, slow, travis_test)
+from toil.test import (ToilTest,
+                       make_tests,
+                       needs_aws_s3,
+                       needs_encryption,
+                       needs_google,
+                       slow,
+                       travis_test)
 
 # noinspection PyPackageRequirements
 # (installed by `make prepare`)
