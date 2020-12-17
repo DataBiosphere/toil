@@ -6,7 +6,7 @@ Convenience script to clean up extraneous test buckets and/or sbd domains that t
 
 Manually requires the user to inspect and submit "yes" or "y" to delete buckets/domains.
 
-Failing or canceled tests may miss clean up, and leftovers test buckets and sdb domains can build up.
+Failing or canceled tests may miss clean up, and leftover test buckets and sdb domains can build up.
 Run this script occasionally or when needed (there are limits to the number of buckets/domains we can have and we
 can hit those limits).
 """
