@@ -1,4 +1,4 @@
-# Copyright (C) 2015 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,10 +22,14 @@ from uuid import uuid4
 
 import pytest
 
-from toil.provisioners import clusterFactory
+from toil.provisioners import cluster_factory
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-from toil.test import (ToilTest, integrative, needs_appliance, needs_aws_ec2,
-                       slow, timeLimit)
+from toil.test import (ToilTest,
+                       integrative,
+                       needs_appliance,
+                       needs_aws_ec2,
+                       slow,
+                       timeLimit)
 from toil.version import exactPython
 
 log = logging.getLogger(__name__)
@@ -117,7 +121,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.launchCluster()
         # get the leader so we know the IP address - we don't need to wait since create cluster
         # already insures the leader is running
-        self.cluster = clusterFactory(provisioner='aws', clusterName=self.clusterName)
+        self.cluster = cluster_factory(provisioner='aws', clusterName=self.clusterName)
         self.leader = self.cluster.getLeader()
         self.sshUtil(['mkdir', '-p', self.scriptDir])  # hot deploy doesn't seem permitted to work in normal /tmp or /home
 
@@ -246,7 +250,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
                                      '--nodeTypes', ",".join(self.instanceTypes), '-w', ",".join(self.numWorkers), '--nodeStorage', str(self.requestedLeaderStorage)])
 
-        self.cluster = clusterFactory(provisioner='aws', clusterName=self.clusterName)
+        self.cluster = cluster_factory(provisioner='aws', clusterName=self.clusterName)
         nodes = self.cluster._getNodesInCluster(both=True)
         nodes.sort(key=lambda x: x.launch_time)
         # assuming that leader is first
@@ -343,7 +347,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
         with open(tempfile_path, 'w') as f:
             # use appliance ssh method instead of sshutil so we can specify input param
             f.write(script)
-        cluster = clusterFactory(provisioner='aws', clusterName=self.clusterName)
+        cluster = cluster_factory(provisioner='aws', clusterName=self.clusterName)
         leader = cluster.getLeader()
         self.sshUtil(['mkdir', '-p', self.scriptDir])  # hot deploy doesn't seem permitted to work in normal /tmp or /home
         leader.injectFile(tempfile_path, self.scriptName, 'toil_leader')
@@ -413,7 +417,7 @@ class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
 
         script = dedent('\n'.join(getsource(userScript).split('\n')[1:]))
         # use appliance ssh method instead of sshutil so we can specify input param
-        cluster = clusterFactory(provisioner='aws', clusterName=self.clusterName)
+        cluster = cluster_factory(provisioner='aws', clusterName=self.clusterName)
         leader = cluster.getLeader()
         leader.sshAppliance('tee', '/home/userScript.py', input=script)
 
@@ -422,4 +426,3 @@ class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
         command = ['/home/venv/bin/python', '/home/userScript.py']
         command.extend(toilOptions)
         self.sshUtil(command)
-

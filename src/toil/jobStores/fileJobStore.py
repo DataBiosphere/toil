@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-# standard library
 import errno
 import logging
 import os
@@ -27,7 +25,6 @@ import time
 import uuid
 from contextlib import contextmanager
 
-# toil dependencies
 from toil.fileStores import FileID
 from toil.job import TemporaryID
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
@@ -35,11 +32,12 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchFileException,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
-from toil.lib.bioio import absSymPath
-from toil.lib.misc import (AtomicFileCreate, atomic_copy, atomic_copyobj,
+from toil.lib.misc import (AtomicFileCreate,
+                           atomic_copy,
+                           atomic_copyobj,
                            robust_rmtree)
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
 
 class FileJobStore(AbstractJobStore):
@@ -71,7 +69,7 @@ class FileJobStore(AbstractJobStore):
                            subdirectories
         """
         super(FileJobStore, self).__init__()
-        self.jobStoreDir = absSymPath(path)
+        self.jobStoreDir = os.path.abspath(path)
         logger.debug("Path to job store directory is '%s'.", self.jobStoreDir)
 
         # Directory where actual job files go, and their job-associated temp files

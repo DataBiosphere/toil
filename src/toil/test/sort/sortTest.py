@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,19 +22,29 @@ from uuid import uuid4
 
 from toil import resolveEntryPoint
 from toil.batchSystems.mesos.test import MesosTestSupport
-from toil.batchSystems.parasolTestSupport import ParasolTestSupport
+from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.common import Toil
 from toil.job import Job
 from toil.jobStores.abstractJobStore import (JobStoreExistsException,
                                              NoSuchJobStoreException)
 from toil.leader import FailedJobsException
-from toil.lib.bioio import getLogLevelString
-from toil.test import (ToilTest, needs_aws_ec2, needs_google, needs_gridengine,
-                       needs_mesos, needs_parasol, needs_torque, slow)
-from toil.test.sort.sort import (copySubRangeOfFile, getMidPoint, main,
-                                 makeFileToSort, merge, sort)
+from toil.lib.bioio import root_logger
+from toil.test import (ToilTest,
+                       needs_aws_ec2,
+                       needs_google,
+                       needs_gridengine,
+                       needs_mesos,
+                       needs_parasol,
+                       needs_torque,
+                       slow)
+from toil.test.sort.sort import (copySubRangeOfFile,
+                                 getMidPoint,
+                                 main,
+                                 makeFileToSort,
+                                 merge,
+                                 sort)
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 defaultLineLen = int(os.environ.get('TOIL_TEST_SORT_LINE_LEN', 10))
 defaultLines = int(os.environ.get('TOIL_TEST_SORT_LINES', 10))
@@ -94,7 +104,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             try:
                 # Specify options
                 options = Job.Runner.getDefaultOptions(jobStoreLocator)
-                options.logLevel = getLogLevelString()
+                options.logLevel = logging.getLevelName(root_logger.getEffectiveLevel())
                 options.retryCount = retryCount
                 options.batchSystem = batchSystem
                 options.clean = "never"
@@ -234,8 +244,6 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         finally:
             self._stopParasol()
 
-    # The following functions test the functions in the test
-
     testNo = 5
 
     def testSort(self):
@@ -292,19 +300,16 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 sorted_contents = f.read()
             fileSize = os.path.getsize(self.inputFile)
             midPoint = getMidPoint(self.inputFile, 0, fileSize)
-            print("the mid point is %i of a file of %i bytes" % (midPoint, fileSize))
+            print(f"The mid point is {midPoint} of a file of {fileSize} bytes.")
             assert midPoint < fileSize
             assert sorted_contents[midPoint] == '\n'
             assert midPoint >= 0
 
-    # Support methods
-
     def _awsJobStore(self):
-        return 'aws:%s:sort-test-%s' % (self.awsRegion(), uuid4())
+        return f'aws:{self.awsRegion()}:sort-test-{uuid4()}'
 
     def _googleJobStore(self):
-        projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
-        return 'google:%s:sort-test-%s' % (projectID, str(uuid4()))
+        return f'google:{os.getenv("TOIL_GOOGLE_PROJECTID")}:sort-test-{uuid4()}'
 
     def _loadFile(self, path):
         with open(path, 'r') as f:

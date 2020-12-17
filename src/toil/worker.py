@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,9 +33,10 @@ from toil.common import Toil, safeUnpickleFromStream
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import CheckpointJobDescription, Job
-from toil.lib.bioio import (configureRootLogger, getTotalCpuTime,
-                            getTotalCpuTimeAndMemoryUsage, setLogLevel)
 from toil.lib.expando import MagicExpando
+from toil.lib.resources import (get_total_cpu_time,
+                                get_total_cpu_time_and_memory_usage)
+from toil.statsAndLogging import configure_root_logger, set_log_level
 
 try:
     from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
@@ -130,8 +131,8 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     :return int: 1 if a job failed, or 0 if all jobs succeeded
     """
     
-    configureRootLogger()
-    setLogLevel(config.logLevel)
+    configure_root_logger()
+    set_log_level(config.logLevel)
 
     ##########################################
     #Create the worker killer, if requested
@@ -209,13 +210,13 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         for e in environment["PYTHONPATH"].split(':'):
             if e != '':
                 sys.path.append(e)
-                
+
     toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
 
     ##########################################
     #Setup the temporary directories.
     ##########################################
-        
+
     # Dir to put all this worker's temp files in.
     localWorkerTempDir = tempfile.mkdtemp(dir=toilWorkflowDir)
     os.chmod(localWorkerTempDir, 0o755)
@@ -350,7 +351,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         ##########################################
         
         if config.stats:
-            startClock = getTotalCpuTime()
+            startClock = get_total_cpu_time()
 
         startTime = time.time()
         while True:
@@ -478,7 +479,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         #Finish up the stats
         ##########################################
         if config.stats:
-            totalCPUTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
+            totalCPUTime, totalMemoryUsage = get_total_cpu_time_and_memory_usage()
             statsDict.workers.time = str(time.time() - startTime)
             statsDict.workers.clock = str(totalCPUTime - startClock)
             statsDict.workers.memory = str(totalMemoryUsage)

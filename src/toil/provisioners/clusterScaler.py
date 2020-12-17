@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 import json
 import logging
 import os
@@ -30,6 +28,7 @@ from toil.lib.throttle import throttle
 from toil.provisioners.abstractProvisioner import Shape
 
 logger = logging.getLogger(__name__)
+
 
 class BinPackedFit(object):
     """

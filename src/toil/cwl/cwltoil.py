@@ -1,6 +1,6 @@
 """Implemented support for Common Workflow Language (CWL) for Toil."""
 # Copyright (C) 2015 Curoverse, Inc
-# Copyright (C) 2016-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 # Copyright (C) 2019-2020 Seven Bridges
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -55,6 +55,7 @@ import cwltool.main
 import cwltool.provenance
 import cwltool.resolver
 import cwltool.stdfsaccess
+import schema_salad.ref_resolver
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mutation import MutationManager
@@ -72,8 +73,8 @@ from cwltool.software_requirements import (
     get_container_from_software_requirements,
 )
 from cwltool.utils import (
-    CWLOutputAtomType,
     CWLObjectType,
+    CWLOutputAtomType,
     adjustDirObjs,
     adjustFileObjs,
     aslist,
@@ -86,7 +87,6 @@ from ruamel.yaml.comments import CommentedMap
 from schema_salad import validate
 from schema_salad.schema import Names
 from schema_salad.sourceline import SourceLine
-import schema_salad.ref_resolver
 
 from toil.common import Config, Toil, addOptions
 from toil.fileStores import FileID
@@ -1201,6 +1201,11 @@ class CWLJob(Job):
             toil_get_file, file_store, index, existing
         )
 
+        # TODO: Pass in a real builder here so that cwltool's builder is built with Toil's fs_access?
+        #  see: https://github.com/common-workflow-language/cwltool/blob/78fe9d41ee5a44f8725dfbd7028e4a5ee42949cf/cwltool/builder.py#L474
+        # self.builder.outdir = outdir
+        # runtime_context.builder = self.builder
+
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
 
@@ -1699,7 +1704,15 @@ def visitSteps(
             visitSteps(step.embedded_tool, op)
 
 
-def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> list:
+def rm_unprocessed_secondary_files(job_params: Any) -> None:
+    if isinstance(job_params, list):
+        for j in job_params:
+            rm_unprocessed_secondary_files(j)
+    if isinstance(job_params, dict) and "secondaryFiles" in job_params:
+        job_params["secondaryFiles"] = filtered_secondary_files(job_params)
+
+
+def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
     """
     Remove unprocessed secondary files.
 
@@ -1723,13 +1736,16 @@ def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> list
     # remove secondary files still containing interpolated strings
     for sf in unfiltered_secondary_files["secondaryFiles"]:
         sf_bn = sf.get("basename", "")
+        sf_loc = sf.get("location", "")
         if ("$(" not in sf_bn) and ("${" not in sf_bn):
-            intermediate_secondary_files.append(sf)
+            if ("$(" not in sf_loc) and ("${" not in sf_loc):
+                intermediate_secondary_files.append(sf)
     # remove secondary files that are not present in the filestore
     # i.e. 'file://' only gets converted to 'toilfs:' upon a successful import
     for sf in intermediate_secondary_files:
         sf_loc = sf.get("location", "")
-        if sf_loc.startswith("toilfs:"):
+        # directories aren't imported, so don't worry about them
+        if sf_loc.startswith("toilfs:") or sf.get("class", "") == "Directory":
             final_secondary_files.append(sf)
     return final_secondary_files
 
@@ -2030,8 +2046,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     outdir = os.path.abspath(options.outdir)
     tmp_outdir_prefix = os.path.abspath(options.tmp_outdir_prefix)
 
-    fileindex = {}  # type: ignore
-    existing = {}  # type: ignore
+    fileindex = dict()  # type: ignore
+    existing = dict()  # type: ignore
     conf_file = getattr(options, "beta_dependency_resolvers_configuration", None)
     use_conda_dependencies = getattr(options, "beta_conda_dependencies", None)
     job_script_provider = None
@@ -2213,14 +2229,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
             visitSteps(tool, import_files)
 
-            for job_name in initialized_job_order:
-                if isinstance(initialized_job_order[job_name], list):
-                    for job_params in cast(List, initialized_job_order[job_name]):
-                        if isinstance(job_params, dict):
-                            if "secondaryFiles" in job_params:
-                                job_params[
-                                    "secondaryFiles"
-                                ] = remove_unprocessed_secondary_files(job_params)
+            for job_name, job_params in initialized_job_order.items():
+                rm_unprocessed_secondary_files(job_params)
 
             try:
                 wf1, _ = makeJob(

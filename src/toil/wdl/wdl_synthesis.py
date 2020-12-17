@@ -1,4 +1,4 @@
-# Copyright (C) 2018-2020 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,6 +16,12 @@ import os
 
 import toil.wdl.wdl_parser as wdl_parser
 from toil.wdl.wdl_functions import heredoc_wdl
+from toil.wdl.wdl_types import (WDLArrayType,
+                                WDLCompoundType,
+                                WDLFileType,
+                                WDLMapType,
+                                WDLPairType,
+                                WDLType)
 
 wdllogger = logging.getLogger(__name__)
 
@@ -77,10 +83,17 @@ class SynthesizeWDL:
                     from toil.common import Toil
                     from toil.lib.docker import apiDockerCall
                     from toil.wdl.wdl_types import WDLType
+                    from toil.wdl.wdl_types import WDLStringType
+                    from toil.wdl.wdl_types import WDLIntType
+                    from toil.wdl.wdl_types import WDLFloatType
+                    from toil.wdl.wdl_types import WDLBooleanType
+                    from toil.wdl.wdl_types import WDLFileType
+                    from toil.wdl.wdl_types import WDLArrayType
                     from toil.wdl.wdl_types import WDLPairType
                     from toil.wdl.wdl_types import WDLMapType
+                    from toil.wdl.wdl_types import WDLFile
+                    from toil.wdl.wdl_types import WDLPair
                     from toil.wdl.wdl_functions import generate_docker_bashscript_file
-                    from toil.wdl.wdl_functions import parse_value_from_type
                     from toil.wdl.wdl_functions import generate_stdout_file
                     from toil.wdl.wdl_functions import select_first
                     from toil.wdl.wdl_functions import sub
@@ -114,6 +127,8 @@ class SynthesizeWDL:
                     from toil.wdl.wdl_functions import wdl_range
                     from toil.wdl.wdl_functions import transpose
                     from toil.wdl.wdl_functions import length
+                    from toil.wdl.wdl_functions import wdl_zip
+                    from toil.wdl.wdl_functions import cross
                     import fnmatch
                     import textwrap
                     import subprocess
@@ -198,20 +213,12 @@ class SynthesizeWDL:
                     if json_expressn is not None:
                         var_expressn['value'] = json_expressn
 
-                    # empty string
-                    if not var_expressn['value'] and (var_type in ('String', 'File')):
-                        main_section += '        {} = ""\n'.format(var)
-                    # None
-                    elif var_expressn['value'] is None and not (var_type in ('String', 'File')):
-                        main_section += '        {} = None\n'.format(var)
-                    # file or compound types
-                    elif var_type in ('File', 'Pair', 'Map'):
-                        parsed_value = 'parse_value_from_type({}, var_type={}, file_store=fileStore)'.format(
-                            var_expressn['value'], repr(var_type))
-                        main_section += '        {} = {}\n'.format(var, parsed_value)
-                    # normal declaration
-                    else:
-                        main_section += '        {} = {}\n'.format(var, var_expressn['value'])
+                    main_section += '        {} = {}.create(\n                {})\n'\
+                        .format(var, self.write_declaration_type(var_type), var_expressn['value'])
+
+                    # import filepath into jobstore
+                    if self.needs_file_import(var_type) and var_expressn['value']:
+                        main_section += '        {} = process_infile({}, fileStore)\n'.format(var, var)
 
         return main_section
 
@@ -657,6 +664,7 @@ class SynthesizeWDL:
         if 'inputs' in self.tasks_dictionary[job]:
             for i in self.tasks_dictionary[job]['inputs']:
                 var = i[0]
+                var_type = i[1]
                 var_expressn = i[2]
                 json_expressn = self.json_var(task=job, var=var)
 
@@ -664,10 +672,14 @@ class SynthesizeWDL:
                 # whatever is in the wdl file
                 if json_expressn is not None:
                     var_expressn = json_expressn
-                if var_expressn is None:
-                    var_expressn = var
 
-                fn_section += '        self.id_{} = {}\n'.format(var, var_expressn)
+                if var_expressn is None:
+                    # declarations from workflow
+                    fn_section += '        self.id_{} = {}\n'.format(var, var)
+                else:
+                    # declarations from a WDL or JSON file
+                    fn_section += '        self.id_{} = {}.create(\n                {})\n'\
+                        .format(var, self.write_declaration_type(var_type), var_expressn)
 
         fn_section += heredoc_wdl('''
 
@@ -688,20 +700,18 @@ class SynthesizeWDL:
             for i in self.tasks_dictionary[job]['inputs']:
                 var = i[0]
                 var_type = i[1]
-                docker_bool = str(self.needsdocker(job))
-                # file or compound types
-                if var_type in ('File', 'Pair', 'Map'):
-                    args = ', '.join([f'self.id_{var}',
-                                      f'var_type={repr(var_type)}',
-                                      'read_in_file=True',
-                                      'file_store=fileStore',
-                                      'cwd=_toil_wdl_internal__current_working_dir',
-                                      'temp_dir=tempDir',
-                                      f'docker={docker_bool}'])
 
-                    # inputs may be parsed again if they are from the workflow, but this time we need
-                    # to read the input files to our tempDir.
-                    fn_section += '        {} = parse_value_from_type({})\n'.format(var, args)
+                docker_bool = str(self.needsdocker(job))
+
+                if self.needs_file_import(var_type):
+                    args = ', '.join(
+                        [
+                            f'abspath_file(self.id_{var}, _toil_wdl_internal__current_working_dir)',
+                            'tempDir',
+                            'fileStore',
+                            f'docker={docker_bool}'
+                        ])
+                    fn_section += '        {} = process_and_read_file({})\n'.format(var, args)
                 else:
                     fn_section += '        {} = self.id_{}\n'.format(var, var)
 
@@ -731,6 +741,50 @@ class SynthesizeWDL:
                     return self.json_dict[identifier]
 
         return None
+
+    def needs_file_import(self, var_type: WDLType) -> bool:
+        """
+        Check if the given type contains a File type. A return value of True
+        means that the value with this type has files to import.
+        """
+        if isinstance(var_type, WDLFileType):
+            return True
+
+        if isinstance(var_type, WDLCompoundType):
+            if isinstance(var_type, WDLArrayType):
+                return self.needs_file_import(var_type.element)
+            elif isinstance(var_type, WDLPairType):
+                return self.needs_file_import(var_type.left) or self.needs_file_import(var_type.right)
+            elif isinstance(var_type, WDLMapType):
+                return self.needs_file_import(var_type.key) or self.needs_file_import(var_type.value)
+            else:
+                raise NotImplementedError
+        return False
+
+    def write_declaration_type(self, var_type: WDLType):
+        """
+        Return a string that preserves the construction of the given WDL type
+        so it can be passed into the compiled script.
+        """
+        section = var_type.__class__.__name__ + '('  # e.g.: 'WDLIntType('
+
+        if isinstance(var_type, WDLCompoundType):
+            if isinstance(var_type, WDLArrayType):
+                section += self.write_declaration_type(var_type.element)
+            elif isinstance(var_type, WDLPairType):
+                section += self.write_declaration_type(var_type.left) + ', '
+                section += self.write_declaration_type(var_type.right)
+            elif isinstance(var_type, WDLMapType):
+                section += self.write_declaration_type(var_type.key) + ', '
+                section += self.write_declaration_type(var_type.value)
+            else:
+                raise ValueError(var_type)
+
+        if var_type.optional:
+            if isinstance(var_type, WDLCompoundType):
+                section += ', '
+            section += 'optional=True'
+        return section + ')'
 
     def write_function_bashscriptline(self, job):
         '''
@@ -801,7 +855,7 @@ class SynthesizeWDL:
         if 'raw_commandline' in self.tasks_dictionary[job]:
             for cmd in self.tasks_dictionary[job]['raw_commandline']:
                 if not cmd.startswith("r'''"):
-                    cmd = 'str({i} if not isinstance({i}, tuple) else process_and_read_file({i}, tempDir, fileStore)).strip("{nl}")'.format(i=cmd, nl=r"\n")
+                    cmd = 'str({i} if not isinstance({i}, WDLFile) else process_and_read_file({i}, tempDir, fileStore)).strip("{nl}")'.format(i=cmd, nl=r"\n")
                 fn_section = fn_section + heredoc_wdl('''
                         try:
                             # Intended to deal with "optional" inputs that may not exist
@@ -867,17 +921,17 @@ class SynthesizeWDL:
                 output_type = output[1]
                 output_value = output[2]
 
-                if output_type == 'File':
+                if self.needs_file_import(output_type):
                     nonglob_dict = {
                         "output_name": output_name,
+                        "output_type": self.write_declaration_type(output_type),
                         "expression": output_value,
-                        "out_dir": self.output_directory,
-                        "output_type": output_type}
+                        "out_dir": self.output_directory}
 
                     nonglob_template = heredoc_wdl('''
-                        # output-type: {output_type}
-                        output_filename = {expression}
-                        {output_name} = process_outfile(output_filename, fileStore, tempDir, '{out_dir}')
+                        {output_name} = {output_type}.create(
+                            {expression}, output=True)
+                        {output_name} = process_outfile({output_name}, fileStore, tempDir, '{out_dir}')
                     ''', nonglob_dict, indent='        ')[1:]
                     fn_section += nonglob_template
                     return_values.append(output_name)

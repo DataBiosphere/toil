@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,9 +31,12 @@ import addict
 from pymesos import MesosSchedulerDriver, Scheduler, decode_data, encode_data
 
 from toil import resolveEntryPoint
-from toil.batchSystems.abstractBatchSystem import (
-    EXIT_STATUS_UNAVAILABLE_VALUE, AbstractScalableBatchSystem,
-    BatchJobExitReason, BatchSystemLocalSupport, NodeInfo, UpdatedBatchJobInfo)
+from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
+                                                   AbstractScalableBatchSystem,
+                                                   BatchJobExitReason,
+                                                   BatchSystemLocalSupport,
+                                                   NodeInfo,
+                                                   UpdatedBatchJobInfo)
 from toil.batchSystems.mesos import JobQueue, MesosShape, TaskData, ToilJob
 from toil.lib.memoize import strict_bool
 
