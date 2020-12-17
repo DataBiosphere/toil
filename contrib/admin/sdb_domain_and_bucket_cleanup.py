@@ -25,15 +25,15 @@ from src.toil.lib.generatedEC2Lists import regionDict
 regions = ['us-west-2'] + [region for region in regionDict if region != 'us-west-2']
 
 # never show these buckets; never offer to delete them; never forget
-absolutely_do_not_delete_these_buckets = ['318423852362-cgcloud',
-                                          'aws-config20201211232942693800000001',
-                                          'cgl-pipeline',
-                                          'cgl-rnaseq-recompute-fixed-toil',
-                                          'toil-cloudtrail-bucket',
-                                          'toil-cwl-infra-test-bucket-dont-delete',
-                                          'toil-datasets',
-                                          'toil-no-location-bucket-dont-delete',
-                                          'toil-preserve-file-permissions-tests']
+absolutely_do_not_delete_these_buckets = ['318423852362-cgcloud',  # not sure what this is
+                                          'aws-config20201211232942693800000001',  # AWS logging; ask Erich?
+                                          'cgl-pipeline',  # something important?
+                                          'cgl-rnaseq-recompute-fixed-toil',  # the 20,000 toil-rna-seq recompute data
+                                          'toil-cloudtrail-bucket',  # also AWS logging... ?; ask Erich
+                                          'toil-cwl-infra-test-bucket-dont-delete',  # test infra; never delete
+                                          'toil-datasets',  # test infra; never delete
+                                          'toil-no-location-bucket-dont-delete',  # test infra; never delete
+                                          'toil-preserve-file-permissions-tests']  # test infra; never delete
 
 
 def contains_uuid(string):
