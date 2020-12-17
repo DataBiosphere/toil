@@ -21,7 +21,7 @@ sys.path.insert(0, pkg_root)  # noqa
 
 from src.toil.lib.generatedEC2Lists import regionDict
 
-# put us-west-2 first as our default test region; that way anything with a universal region shows here
+# put us-west-2 first as our default test region; that way anything with a universal region shows there
 regions = ['us-west-2'] + [region for region in regionDict if region != 'us-west-2']
 
 
@@ -67,20 +67,23 @@ def matches(resource_name):
         if contains_toil_test_patterns(resource_name):
             return resource_name
 
+    if resource_name.startswith('import-export-test-'):
+        return resource_name
 
-def find_buckets_to_cleanup(include_all=False):
+
+def find_buckets_to_cleanup(include_all, matching):
     buckets = dict()
     for region in regions:
         print(f'\n[{region}] Buckets:')
         try:
             s3_resource = boto3.resource('s3', region_name=region)
-            buckets_in_region = find_buckets_in_region(s3_resource, include_all)
+            buckets_in_region = find_buckets_in_region(s3_resource, include_all, matching)
             new_buckets = [b for b in buckets_in_region if b not in buckets]
             print('    ' + '\n    '.join(new_buckets))
             for bucket in new_buckets:
                 buckets[bucket] = region
         except Exception as e:
-            # occurs with botocore.exceptions.ClientError
+            # Occurs with botocore.exceptions.ClientError.
             if 'Your account is not signed up for the S3 service' in str(e):
                 print('    Your account is not signed up for the S3 service in this region.')
             else:
@@ -88,73 +91,99 @@ def find_buckets_to_cleanup(include_all=False):
     return buckets
 
 
-def find_sdb_domains_to_cleanup(include_all):
+def find_sdb_domains_to_cleanup(include_all, matching):
     sdb_domains = dict()
     for region in regions:
         print(f'\n[{region}] SimpleDB Domains:')
         try:
             sdb_client = boto3.client('sdb', region_name=region)
-            domains_in_region = find_sdb_domains_in_region(sdb_client, include_all)
+            domains_in_region = find_sdb_domains_in_region(sdb_client, include_all, matching)
             new_domains = [b for b in domains_in_region if b not in sdb_domains]
             print('    ' + '\n    '.join(new_domains))
             for sdb_domain in new_domains:
                 sdb_domains[sdb_domain] = region
         except Exception as e:
-            # occurs with botocore.exceptions.ClientError
-            if 'Your account is not signed up for the S3 service' in str(e):
-                print('    Your account is not signed up for the S3 service in this region.')
+            # Occurs with botocore.exceptions.SSLError in regions that don't support SDB.
+            # Don't hard-code supported regions, just in case AWS changes these, in order to avoid blind spots.
+            if 'SSL validation failed' in str(e):
+                print('    SimpleDB is not offered in this region.')
             else:
                 print(f'    An error occurred in this region: {e}')
     return sdb_domains
 
 
-def find_buckets_in_region(s3_resource, include_all):
+def find_buckets_in_region(s3_resource, include_all, matching):
     buckets_to_cleanup = []
     for bucket in s3_resource.buckets.all():
-        if matches(bucket.name) or include_all:
+        if matching:
+            for m in matching:
+                if m in bucket.name:
+                    buckets_to_cleanup.append(bucket.name)
+        elif matches(bucket.name) or include_all:
             buckets_to_cleanup.append(bucket.name)
     return buckets_to_cleanup
 
 
-def find_sdb_domains_in_region(sdb_client, include_all):
+def find_sdb_domains_in_region(sdb_client, include_all, matching):
     sdb_domains_to_cleanup = []
     for sdb_domain in sdb_client.list_domains().get('DomainNames', []):
-        if matches(sdb_domain) or include_all:
+        if matching:
+            for m in matching:
+                if m in sdb_domain:
+                    sdb_domains_to_cleanup.append(sdb_domain)
+        elif matches(sdb_domain) or include_all:
             sdb_domains_to_cleanup.append(sdb_domain)
     return sdb_domains_to_cleanup
 
 
 def main(argv):
-    parser = argparse.ArgumentParser(description='View and/or clean up leftover test cruft in the AWS Toil Account.')
+    parser = argparse.ArgumentParser(
+        description='View and/or clean up s3 buckets and/or sdb domains in an AWS Account.')
+
     parser.add_argument("--include-all", dest='include_all', action='store_true', required=False,
-                        help="Don't filter based on buckets/domains that look like test objects.")
-    parser.add_argument("--view", action='store_true', required=False,
+                        help="Don't filter based on buckets/domains that look like test objects.  "
+                             "List everything in the account.")
+    parser.add_argument("--view-only", dest='view_only', action='store_true', required=False,
                         help="Don't ask to delete.  Just view everything.")
-    parser.set_defaults(view=False, include_all=False)
+    parser.add_argument("--skip-buckets", dest='skip_buckets', action='store_true', required=False,
+                        help="Skip doing anything with buckets.")
+    parser.add_argument("--skip-sdb", dest='skip_sdb', action='store_true', required=False,
+                        help="Skip doing anything with SimpleDB domains.")
+    parser.add_argument("--matching", dest='matching', type=str, required=False,
+                        help="Only return resources containing the comma-delimited keywords.  "
+                             "For example, adding --matching='hello,goodbye' would return any "
+                             "buckets or domains that include either 'hello' or 'goodbye'.")
+    parser.set_defaults(view_only=False, include_all=False, skip_buckets=False, skip_sdb=False, matching=[])
 
     options = parser.parse_args(argv)
 
     account_name = boto3.client('iam').list_account_aliases()['AccountAliases'][0]
     print(f'Now running for AWS account: {account_name}.')
 
-    buckets = find_buckets_to_cleanup(options.include_all)
-    sdb_domains = find_sdb_domains_to_cleanup(options.include_all)
+    matching = [m.strip() for m in options.matching.split(',') if m.strip()]
 
-    if options.view:
-        exit()
+    if matching and options.include_all:
+        raise ValueError('Cannot filter on matching patterns AND include everything.  Please specify either '
+                         '"--view-only" or "--matching", but not both.')
 
-    response = input(f'Do you wish to delete these buckets in account: {account_name}?  (Y)es (N)o: ')
-    if response.lower() in ('y', 'yes'):
-        print('\nOkay, now deleting...')
-        for bucket, region in buckets.items():
-            delete_s3_bucket(bucket, region)
+    if not options.skip_buckets:
+        buckets = find_buckets_to_cleanup(options.include_all, matching)
+        if not options.view_only:
+            response = input(f'Do you wish to delete these buckets in account: {account_name}?  (Y)es (N)o: ')
+            if response.lower() in ('y', 'yes'):
+                print('\nOkay, now deleting...')
+                for bucket, region in buckets.items():
+                    delete_s3_bucket(bucket, region)
 
-    response = input(f'Do you wish to delete these SDB domains in account: {account_name}?  (Y)es (N)o: ')
-    if response.lower() in ('y', 'yes'):
-        print('\nOkay, now deleting...')
-        for sdb_domain, region in sdb_domains.items():
-            sdb_client = boto3.client('sdb', region_name=region)
-            sdb_client.delete_domain(DomainName=sdb_domain)
+    if not options.skip_sdb:
+        sdb_domains = find_sdb_domains_to_cleanup(options.include_all, matching)
+        if not options.view_only:
+            response = input(f'Do you wish to delete these SDB domains in account: {account_name}?  (Y)es (N)o: ')
+            if response.lower() in ('y', 'yes'):
+                print('\nOkay, now deleting...')
+                for sdb_domain, region in sdb_domains.items():
+                    sdb_client = boto3.client('sdb', region_name=region)
+                    sdb_client.delete_domain(DomainName=sdb_domain)
 
 
 if __name__ == '__main__':
