@@ -93,7 +93,7 @@ class CWLv10Test(ToilTest):
         self.workDir = os.path.join(self.cwlSpec, 'v1.0')
         # The latest cwl git commit hash from https://github.com/common-workflow-language/common-workflow-language.
         # Update it to get the latest tests.
-        testhash = '40fcfc01812046f012acf5153cc955ee848e69e3'  # Date:   Tue Jan 21 07:36:37 2020 +0100
+        testhash = '6a955874ade22080b8ef962b4e0d6e408112c1ef'  # Date:   Tue Dec 16 2020 8:43pm PST
         url = 'https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip' % testhash
         if not os.path.exists(self.cwlSpec):
             urlretrieve(url, 'spec.zip')
@@ -369,7 +369,7 @@ class CWLv11Test(ToilTest):
         cls.test_yaml = os.path.join(cls.cwlSpec, 'conformance_tests.yaml')
         # TODO: Use a commit zip in case someone decides to rewrite master's history?
         url = 'https://github.com/common-workflow-language/cwl-v1.1.git'
-        commit = 'a22b7580c6b50e77c0a181ca59d3828dd5c69143'
+        commit = '664835e83eb5e57eee18a04ce7b05fb9d70d77b7'
         p = subprocess.Popen(f'git clone {url} {cls.cwlSpec} && cd {cls.cwlSpec} && git checkout {commit}', shell=True)
         p.communicate()
 
@@ -404,7 +404,7 @@ class CWLv12Test(ToilTest):
         cls.test_yaml = os.path.join(cls.cwlSpec, 'conformance_tests.yaml')
         # TODO: Use a commit zip in case someone decides to rewrite master's history?
         url = 'https://github.com/common-workflow-language/cwl-v1.2.git'
-        commit = '9c6898993d13c644034535555c1da8ff98b10968'
+        commit = '8c3fd9d9f0209a51c5efacb1c7bc02a1164688d6'
         p = subprocess.Popen(f'git clone {url} {cls.cwlSpec} && cd {cls.cwlSpec} && git checkout {commit}', shell=True)
         p.communicate()
 
