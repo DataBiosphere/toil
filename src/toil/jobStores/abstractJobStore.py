@@ -1158,4 +1158,4 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
 
             # Do the download
             shutil.copyfileobj(readable, counter)
-            return size[0]
+            return size[0], False
