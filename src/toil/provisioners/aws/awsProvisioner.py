@@ -30,7 +30,8 @@ from boto.ec2.instance import Instance as Boto2Instance
 
 from toil.lib.memoize import memoize
 from toil.lib.ec2 import (a_short_time, create_ondemand_instances, create_instances,
-                          create_spot_instances, wait_instances_running, wait_transition)
+                          create_spot_instances, create_launch_template, create_auto_scaling_group,
+                          wait_instances_running, wait_transition)
 from toil.lib.ec2nodes import InstanceType
 from toil.lib.misc import truncExpBackoff
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
@@ -51,6 +52,10 @@ _INSTANCE_PROFILE_ROLE_NAME = 'toil'
 _TAG_KEY_TOIL_NODE_TYPE = 'ToilNodeType'
 # The tag that specifies the cluster name on all nodes
 _TAG_KEY_TOIL_CLUSTER_NAME = 'clusterName'
+# How much storage on the root volume is expected to go to overhead and be
+# unavailable to jobs when the node comes up?
+# TODO: measure
+_STORAGE_ROOT_OVERHEAD_GIGS = 4
 
 def awsRetryPredicate(e):
     if not isinstance(e, BotoServerError):
@@ -877,7 +882,7 @@ class AWSProvisioner(AbstractProvisioner):
             lt_name += '-spot'
             
         # But really we find it by tag
-        tags = dict(self.tags)
+        tags = dict(self._tags)
         tags[_TAG_KEY_TOIL_NODE_TYPE] = 'worker'
         
         return create_launch_template(self.ec2,
@@ -888,17 +893,15 @@ class AWSProvisioner(AbstractProvisioner):
                                       instance_type=instanceType.name,
                                       user_data=userData,
                                       block_device_map=bdms,
-                                      instance_profile_arn=self._leaderProfileArn,
-                                      placement_az=self._zone,
-                                      subnet_id=self._subnetID,
+                                      instance_profile_arn=self._leaderProfileArn
                                       tags=tags)
                                       
     @awsRetry
-    def _getAutoScalingGroupNames(self, nodeType=None, preemptable=False, both=False) -> List[str]:
+    def _getAutoScalingGroupNames(self) -> List[str]:
         """
         Find all auto-scaling groups associated with the cluster.
         
-        Returns a list of ASG IDs. ASG IDs and AASG names are the same things.
+        Returns a list of ASG IDs. ASG IDs and ASG names are the same things.
         """
         
         # AWS won't filter ASGs server-side for us in describe_auto_scaling_groups.
@@ -924,6 +927,71 @@ class AWSProvisioner(AbstractProvisioner):
                 break
                 
         return matchedASGs
+    
+    def _createWorkerAutoScalingGroup(self,
+                                      launch_template_id: str,
+                                      instance_types: List[str],
+                                      max_size: int) -> str:
+        """
+        Create an autoscaling group.
+        
+        :param launch_template_id: ID of the launch template to use.
+        :param instance_types: Names of instance types to use. Must have
+               at least one. Needed here to calculate the ephemeral storage
+               provided. The instance type used to create the launch template
+               must be present, for correct storage space calculation.
+        :param max_size: Maximum number of instances to scale to.
+        
+        :return: the unique autoscaling group name.
+        
+        TODO: allow overriding launch template and pooling.
+        """
+        
+        assert self._leaderPrivateIP
+        
+        assert len(instance_types) >= 1
+        
+        # Find the minimum storage any instance in the group will provide.
+        # For each, we look at the root volume size we would assign it if it were the type used to make the template.
+        # TODO: Work out how to apply each instance type's root volume size override independently when they're all in a pool.
+        storage_gigs = []
+        for instance_type in instance_types:
+            spec = E2Instances[instance_type]
+            spec_gigs = spec.disks * spec.disk_capacity
+            rootVolSize = self._nodeStorageOverrides.get(nodeType, self._nodeStorage)
+            storage_gigs.append(max(rootVolSize - _STORAGE_ROOT_OVERHEAD_GIGS, spec_gigs))
+        # Get the min storage we expect to see, but not less than 0.
+        min_gigs = max(min(storage_gigs), 0)
+        
+        # Make tags. These are just for the ASG, not for the node.
+        # If are a Kubernetes cluster, this includes the tag for membership.
+        tags = dict(self._tags)
+        
+        # We tag the ASG with the Toil type, although nothing cares.
+        tags[_TAG_KEY_TOIL_NODE_TYPE] = 'worker'
+        
+        if self.clusterType == 'kubernetes':
+            # We also need to tag it with Kubernetes autoscaler info (empty tags)
+            tags['k8s.io/cluster-autoscaler/' + self.clusterName] = ''
+            assert(self.clusterName != 'enabled')
+            tags['k8s.io/cluster-autoscaler/enabled'] = ''
+            tags['k8s.io/cluster-autoscaler/node-template/resources/ephemeral-storage'] = f'{min_gigs}G' 
+            
+        # Now we need to make up a unique name
+        # TODO: can we make this more semantic without risking collisions? Maybe count up in memory?
+        asg_name = 'asg-' + uuid.uuid4()
+        
+        create_auto_scaling_group(self.autoscaling,
+                                  asg_name=asg_name,
+                                  launch_template_id=launch_template_id,
+                                  vpc_subnets=[self._subnetID],
+                                  min_size=0,
+                                  max_size=max_size,
+                                  instance_types=instance_types,
+                                  tags=tags)
+        
+        return asg_name
+        
 
     def full_policy(self, resource: str) -> dict:
         """

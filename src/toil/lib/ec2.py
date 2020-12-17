@@ -341,7 +341,7 @@ def create_launch_template(ec2: ServiceResource,
                            block_device_map: Optional[List[Dict]] = None,
                            instance_profile_arn: Optional[str] = None,
                            placement_az: Optional[str] = None,
-                           subnet_id: str = None,
+                           subnet_id: Optional[str] = None,
                            tags: Optional[Dict[str, str]] = None) -> str:
     """
     Creates a launch template with the given name for launching instances with the given parameters.
@@ -362,12 +362,12 @@ def create_launch_template(ec2: ServiceResource,
     for attempt in retry_ec2(retry_for=a_long_time, retry_while=inconsistencies_detected):
         with attempt:
             template = {'ImageId': image_id,
-                       'KeyName': key_name,
-                       'SecurityGroupIds': security_group_ids,
-                       'InstanceType': instance_type,
-                       'UserData': user_data,
-                       'BlockDeviceMappings': block_device_map,
-                       'SubnetId': subnet_id}
+                        'KeyName': key_name,
+                        'SecurityGroupIds': security_group_ids,
+                        'InstanceType': instance_type,
+                        'UserData': user_data,
+                        'BlockDeviceMappings': block_device_map,
+                        'SubnetId': subnet_id}
                        
             if instance_profile_arn:
                 template['IamInstanceProfile'] = {'Arn': instance_profile_arn}
@@ -388,3 +388,71 @@ def create_launch_template(ec2: ServiceResource,
                 request['TagSpecifications'] = [{'ResourceType': 'launch-template', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]}]
                        
             return ec2.create_launch_template(LaunchTemplateData=prune(template))
+            
+def create_auto_scaling_group(autoscaling: ServiceResource,
+                              asg_name: str,
+                              launch_template_id: str,
+                              vpc_subnets: List[str],
+                              min_size: int = 0,
+                              max_size: int = 0,
+                              instance_types: Optional[List[string]] = None,
+                              spot_bid: Optional[float] = None,
+                              spot_cheapest: bool = False,
+                              tags: Optional[Dict[str, str]] = None) -> None
+
+    """
+    Create a new Auto Scaling Group with the given name (which is also its
+    unique identifier).
+    
+    :param vpc_subnets: One or more subnet IDs to place instances in the group
+           into. Determine the availability zone(s) instances will launch into.
+    :param instance_types: Use a pool over the given instance types, instead of
+           the type given in the launch template. For on-demand groups, this is
+           a prioritized list. For spot groups, we let AWS balance according to
+           spot_strategy. Must be 20 types or shorter.
+    :param spot_bid: If set, the ASG will be a spot market ASG. Bid is in
+           dollars per instance hour. All instance types in the group are bid on
+           equivalently.
+    :param spot_cheapest: If true, use the cheapest spot instances available out
+           of instance_types, instead of the spot instances that minimize
+           eviction probability.
+    :param tags: Tags to apply to the ASG only. Tags for the instances should
+           be added to the launch template instead.
+    
+    
+    The default version of the launch template is used.
+    """
+    
+    if instance_types is None:
+        instance_types = []
+    
+    if instance_types is not None and len(instance_types) > 20:
+        raise RuntimeError(f"Too many instance types ({len(instance_types)}) in group; AWS supports only 20.")
+        
+    if len(vpc_subnets) == 0:
+        raise RuntimeError("No VPC subnets specified to launch into; not clear where to put instances")
+    
+    for attempt in retry_ec2(retry_for=a_long_time, retry_while=inconsistencies_detected):
+        with attempt:
+            # We always write the ASG with a MixedInstancesPolicy even when we have only one type.
+            mip = {'LaunchTemplate': {'LaunchTemplateSpecification': {'LaunchTemplateId': launch_template_id, 'Version': '$Default'},
+                                      'Overrides': [{'InstanceType': t} for t in instance_types]}}
+            
+            if spot_bid is not None:
+                # Ask for spot instances by saying everything above base capacity of 0 should be spot.
+                mip['InstancesDistribution'] = {'OnDemandPercentageAboveBaseCapacity': 0,
+                                                'SpotAllocationStrategy': 'capacity-optimized' if not spot_cheapest else 'lowest-price',
+                                                'SpotMaxPrice': str(spot_bid)}
+            
+            asg = {'AutoScalingGroupName': asg_name,
+                   'MixedInstancesPolicy': prune(mip),
+                   'MinSize': min_size,
+                   'MaxSize': max_size,
+                   'VPCZoneIdentifier': ','.join(vpc_subnets)}
+                       
+            if tags:
+                # Tag the ASG itself.
+                asg['Tags'] = [{'Key': k, 'Value': v, } for k, v in tags.items()]
+
+            # Don't prune the ASG because MinSize and MaxSize are required and may be 0.
+            autoscaling.create_auto_scaling_group(**asg)
