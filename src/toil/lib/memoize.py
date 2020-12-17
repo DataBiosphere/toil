@@ -65,32 +65,6 @@ def sync_memoize(f):
     return new_f
 
 
-def properties(obj):
-    """
-    Returns a dictionary with one entry per attribute of the given object. The key being the
-    attribute name and the value being the attribute value. Attributes starting in two
-    underscores will be ignored. This function is an alternative to vars() which only returns
-    instance variables, not properties. Note that methods are returned as well but the value in
-    the dictionary is the method, not the return value of the method.
-
-    >>> class Foo():
-    ...     def __init__(self):
-    ...         self.var = 1
-    ...     @property
-    ...     def prop(self):
-    ...         return self.var + 1
-    ...     def meth(self):
-    ...         return self.var + 2
-    >>> foo = Foo()
-    >>> properties(foo) == {'var': 1, 'prop': 2, 'meth': foo.meth}
-    True
-
-    Note how the entry for prop is not a bound method (i.e. the getter) but a the return value of
-    that getter.
-    """
-    return dict((attr, getattr(obj, attr)) for attr in dir(obj) if not attr.startswith('__'))
-
-
 def rfc3339_datetime_re(anchor=True):
     """
     Returns a regular expression for syntactic validation of ISO date-times, RFC-3339 date-times
@@ -184,13 +158,3 @@ def strict_bool(s):
         return False
     else:
         raise ValueError(s)
-
-
-def less_strict_bool(x):
-    """Idempotent and None-safe version of strict_bool."""
-    if x is None:
-        return False
-    elif x is True or x is False:
-        return x
-    else:
-        return strict_bool(x)
