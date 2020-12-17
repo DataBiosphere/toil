@@ -34,7 +34,9 @@ from toil.lib.ec2 import (a_short_time, create_ondemand_instances, create_instan
                           wait_instances_running, wait_transition)
 from toil.lib.ec2nodes import InstanceType
 from toil.lib.misc import truncExpBackoff
-from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
+from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
+                                                   Shape,
+                                                   ManagedNodesNotSupportedException)
 from toil.provisioners.aws import zoneToRegion, getCurrentAWSZone, getSpotZone
 from toil.provisioners.aws.boto2Context import Boto2Context
 from toil.lib.retry import old_retry
@@ -462,7 +464,28 @@ class AWSProvisioner(AbstractProvisioner):
                 node.coreRsync([self._sseKey, ':' + self._sseKey], applianceName='toil_worker')
         logger.debug('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
-
+        
+    def addManagedNodes(self, nodeType, maxNodes, preemptable, spotBid=None) -> None:
+        
+        if self.clusterType != 'kubernetes':
+            raise ManagedNodesNotSupportedException("Managed nodes only supported for Kubernetes clusters")
+        
+        assert self._leaderPrivateIP
+        if preemptable and not spotBid:
+            if self._spotBidsMap and nodeType in self._spotBidsMap:
+                spotBid = self._spotBidsMap[nodeType]
+            else:
+                raise RuntimeError("No spot bid given for a preemptable node request.")
+        if spotBid and not preemptable:
+            raise RuntimeError("Spot bid given for a non-preemptable node request.")
+                
+        # TODO: We assume we only ever do this once per node type...
+        
+        # Make the template
+        launch_template_id = self._createWorkerLaunchTemplate(nodeType, preemptable=preemptable)
+        # Make the ASG
+        self._createWorkerAutoScalingGroup(launch_template_id, [nodeType], maxNodes, spot_bid=spotBid)
+        
     def getProvisionedWorkers(self, nodeType, preemptable) -> List[Node]:
         assert self._leaderPrivateIP
         entireCluster = self._getNodesInCluster(both=True, nodeType=nodeType)
@@ -931,7 +954,8 @@ class AWSProvisioner(AbstractProvisioner):
     def _createWorkerAutoScalingGroup(self,
                                       launch_template_id: str,
                                       instance_types: List[str],
-                                      max_size: int) -> str:
+                                      max_size: int,
+                                      spot_bid: Optional[float] = None) -> str:
         """
         Create an autoscaling group.
         
@@ -941,6 +965,7 @@ class AWSProvisioner(AbstractProvisioner):
                provided. The instance type used to create the launch template
                must be present, for correct storage space calculation.
         :param max_size: Maximum number of instances to scale to.
+        :param spot_bid: Make this a spot ASG with the given bid.
         
         :return: the unique autoscaling group name.
         

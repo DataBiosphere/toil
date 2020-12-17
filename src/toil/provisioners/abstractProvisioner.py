@@ -31,6 +31,16 @@ from toil.provisioners.node import Node
 a_short_time = 5
 logger = logging.getLogger(__name__)
 
+class ManagedNodesNotSupportedException(RuntimeError):
+    """
+    Raised when attempting to add managed nodes (which autoscale up and down by
+    themselves, without the provisioner doing the work) to a provisioner that
+    does not support them.
+    
+    Polling with this and try/except is the Right Way to check if managed nodes
+    are available from a provisioner.
+    """
+    pass
 
 @total_ordering
 class Shape(object):
@@ -317,6 +327,23 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         :return: number of nodes successfully added
         """
         raise NotImplementedError
+        
+    
+    def addManagedNodes(self, nodeType, maxNodes, preemptable, spotBid=None) -> None:
+        """
+        Add a group of managed nodes of the given type, up to the given maximum.
+        The nodes will automatically be launched and termianted depending on cluster load.
+        
+        Raises ManagedNodesNotSupportedException if the provisioner
+        implementation or cluster configuration can't have managed nodes.
+        
+        :param maxNodes: The maximum number of nodes to scale to
+        :param preemptable: whether or not the nodes will be preemptable
+        :param spotBid: The bid for preemptable nodes if applicable (this can be set in config, also).
+        """
+        
+        # Not available by default
+        raise ManagedNodesNotSupportedException("Managed nodes not supported by this provisioner")
 
     @abstractmethod
     def terminateNodes(self, nodes):
