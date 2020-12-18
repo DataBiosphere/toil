@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import base64
-import boto3
 import bz2
 import errno
 import itertools
@@ -22,15 +21,17 @@ import socket
 import types
 from ssl import SSLError
 
-from toil.lib.compatibility import compat_bytes, compat_oldstr
+import boto3
+from boto.exception import (BotoServerError,
+                            S3CopyError,
+                            S3CreateError,
+                            S3ResponseError,
+                            SDBResponseError)
+from botocore.exceptions import ClientError
+
+from toil.lib.compatibility import compat_bytes, compat_bytes
 from toil.lib.exceptions import panic
 from toil.lib.retry import old_retry
-from boto.exception import (SDBResponseError,
-                            BotoServerError,
-                            S3ResponseError,
-                            S3CreateError,
-                            S3CopyError)
-from botocore.exceptions import ClientError
 
 log = logging.getLogger(__name__)
 
@@ -264,11 +265,11 @@ def copyKeyMultipart(srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, ds
     :return: The version of the copied file (or None if versioning is not enabled for dstBucket).
     """
     s3 = boto3.resource('s3')
-    dstBucket = s3.Bucket(compat_oldstr(dstBucketName))
-    dstObject = dstBucket.Object(compat_oldstr(dstKeyName))
-    copySource = {'Bucket': compat_oldstr(srcBucketName), 'Key': compat_oldstr(srcKeyName)}
+    dstBucket = s3.Bucket(compat_bytes(dstBucketName))
+    dstObject = dstBucket.Object(compat_bytes(dstKeyName))
+    copySource = {'Bucket': compat_bytes(srcBucketName), 'Key': compat_bytes(srcKeyName)}
     if srcKeyVersion is not None:
-        copySource['VersionId'] = compat_oldstr(srcKeyVersion)
+        copySource['VersionId'] = compat_bytes(srcKeyVersion)
 
     # The boto3 functions don't allow passing parameters as None to
     # indicate they weren't provided. So we have to do a bit of work

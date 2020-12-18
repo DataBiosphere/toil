@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -137,4 +137,3 @@ class RestartingJob(Job):
                     with fileStore.writeGlobalFileStream() as (fo, outputFileID):
                         fo.write((fi.read().decode('utf-8') + 'World!').encode('utf-8'))
                         return outputFileID
-

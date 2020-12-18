@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 import collections
 import copy
 import importlib
@@ -35,13 +33,15 @@ import dill
 from toil.common import Config, Toil, addOptions, safeUnpickleFromStream
 from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
-from toil.lib.bioio import (getTotalCpuTime, getTotalCpuTimeAndMemoryUsage,
-                            setLoggingFromOptions)
 from toil.lib.expando import Expando
 from toil.lib.humanize import human2bytes
+from toil.lib.resources import (get_total_cpu_time,
+                                get_total_cpu_time_and_memory_usage)
 from toil.resource import ModuleDescriptor
+from toil.statsAndLogging import set_logging_from_options
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
+
 
 class JobPromiseConstraintError(RuntimeError):
     """
@@ -64,7 +64,7 @@ class JobPromiseConstraintError(RuntimeError):
         else:
             # Write a full error message
             super().__init__(f"Job {promisingJob.description} cannot promise its return value to non-successor {recipientJob.description}")
-            
+
 
 class TemporaryID:
     """
@@ -99,6 +99,7 @@ class TemporaryID:
         
     def __ne__(self, other):
         return not isinstance(other, TemporaryID) or self._value != other._value
+
 
 class Requirer:
     """
@@ -755,7 +756,7 @@ class JobDescription(Requirer):
     def getLogFileHandle(self, jobStore):
         """
         Returns a context manager that yields a file handle to the log file.
-        
+
         Assumes logJobStoreFileID is set.
         """
         return jobStore.readFileStream(self.logJobStoreFileID)
@@ -1726,7 +1727,7 @@ class Job:
             :return: The return value of the root job's run function.
             :rtype: Any
             """
-            setLoggingFromOptions(options)
+            set_logging_from_options(options)
             with Toil(options) as toil:
                 if not options.restart:
                     return toil.start(job)
@@ -2289,7 +2290,7 @@ class Job:
         """
         if stats is not None:
             startTime = time.time()
-            startClock = getTotalCpuTime()
+            startClock = get_total_cpu_time()
         baseDir = os.getcwd()
 
         yield
@@ -2313,7 +2314,7 @@ class Job:
             os.chdir(baseDir)
         # Finish up the stats
         if stats is not None:
-            totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
+            totalCpuTime, totalMemoryUsage = get_total_cpu_time_and_memory_usage()
             stats.jobs.append(
                 Expando(
                     time=str(time.time() - startTime),
@@ -2655,6 +2656,7 @@ class EncapsulatedJob(Job):
         assert self.encapsulatedJob is not None
         return self.encapsulatedJob.getUserScript()
 
+
 class ServiceHostJob(Job):
     """
     Job that runs a service. Used internally by Toil. Users should subclass Service instead of using this.
@@ -2794,7 +2796,7 @@ class ServiceHostJob(Job):
         return self.serviceModule
 
 
-class Promise():
+class Promise:
     """
     References a return value from a :meth:`toil.job.Job.run` or
     :meth:`toil.job.Job.Service.start` method as a *promise* before the method itself is run.
@@ -2866,7 +2868,7 @@ class Promise():
             return value
 
 
-class PromisedRequirement():
+class PromisedRequirement:
     def __init__(self, valueOrCallable, *args):
         """
         Class for dynamically allocating job function resource requirements involving
@@ -2924,7 +2926,7 @@ class PromisedRequirement():
         return False
 
 
-class UnfulfilledPromiseSentinel():
+class UnfulfilledPromiseSentinel:
     """This should be overwritten by a proper promised value. Throws an
     exception when unpickled."""
     def __init__(self, fulfillingJobName, unpickled):

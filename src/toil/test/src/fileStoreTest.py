@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -45,7 +45,7 @@ testingIsAutomatic = True
 logger = logging.getLogger(__name__)
 
 
-class hidden(object):
+class hidden:
     """
     Hiding the abstract test classes from the Unittest loader so it can be inherited in different
     test suites for the different job stores.
@@ -108,7 +108,7 @@ class hidden(object):
             Write a couple of files to the jobstore.  Delete a couple of them.  Read back written
             and locally deleted files.
             """
-            
+
             class WatchingHandler(logging.Handler):
                 """
                 A logging handler that watches for a certain substring and
@@ -121,11 +121,11 @@ class hidden(object):
                 def emit(self, record):
                     if self.match in record.getMessage():
                         self.seen = True
-            
+
             handler = WatchingHandler("cats.txt")
-            
+
             logging.getLogger().addHandler(handler)
-            
+
             F = Job.wrapJobFn(self._accessAndFail,
                               disk='100M')
             try:
@@ -133,11 +133,11 @@ class hidden(object):
             except FailedJobsException:
                 # We expect this.
                 pass
-            
+
             logging.getLogger().removeHandler(handler)
-            
+
             assert handler.seen, "Downloaded file name not found in logs of failing Toil run"
-            
+
         @staticmethod
         def _accessAndFail(job):
             with job.fileStore.writeGlobalFileStream() as (stream, fileID):
@@ -147,7 +147,7 @@ class hidden(object):
             with job.fileStore.readGlobalFileStream(fileID) as stream2:
                 pass
             raise RuntimeError("I do not like this file")
-            
+
 
         # Test filestore operations.  This is a slightly less intense version of the cache specific
         # test `testReturnFileSizes`
@@ -182,7 +182,7 @@ class hidden(object):
             # Remember it actually should be local
             localFileIDs.add(fsId)
             logger.info('Now have local file: %s', fsId)
-            
+
             i = 0
             while i <= numIters:
                 randVal = random.random()
@@ -503,7 +503,7 @@ class hidden(object):
                                     is created.
             :param int fileMB: Size of the created file in MB
             :param bool expectAsyncUpload: Whether we expect the upload to hit
-                                           the job store later(T) or immediately(F) 
+                                           the job store later(T) or immediately(F)
             """
             cls = hidden.AbstractNonCachingFileStoreTest
             fsID, testFile = cls._writeFileToJobStore(job, isLocalFile, nonLocalDir, fileMB)
@@ -531,7 +531,7 @@ class hidden(object):
             if not isLocalFile:
                 # Make sure it isn't cached if we don't want it to be
                 assert not job.fileStore.fileIsCached(fsID), "File uploaded from non-local-temp directory %s should not be cached" % nonLocalDir
-            
+
             return fsID
 
         @staticmethod
@@ -550,7 +550,7 @@ class hidden(object):
             newTotalMB, changing the maximum cache disk space allowed for the
             run.
 
-            :param int newTotalMB: New total cache disk space limit in MB. 
+            :param int newTotalMB: New total cache disk space limit in MB.
             """
 
             # Convert to bytes and pass on to the actual cache
@@ -639,7 +639,7 @@ class hidden(object):
             job.fileStore.logToMaster('Copy 2 ID: {}'.format(fsID))
 
             hidden.AbstractCachingFileStoreTest._readFromJobStoreWithoutAssertions(job, fsID)
-            
+
             job.fileStore.logToMaster('Writing copy 3 and returning ID')
             return job.fileStore.writeGlobalFile(testFile.name)
 
@@ -656,7 +656,7 @@ class hidden(object):
             job.fileStore.readGlobalFile(fsID)
 
         # writeGlobalFile tests
-        
+
         @travis_test
         def testWriteNonLocalFileToJobStore(self):
             """
@@ -667,7 +667,7 @@ class hidden(object):
             A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=False,
                               nonLocalDir=workdir)
             Job.Runner.startToil(A, self.options)
-        
+
         @travis_test
         def testWriteLocalFileToJobStore(self):
             """
@@ -678,7 +678,7 @@ class hidden(object):
             Job.Runner.startToil(A, self.options)
 
         # readGlobalFile tests
-        
+
         @travis_test
         def testReadCacheMissFileFromJobStoreWithoutCachingReadFile(self):
             """
@@ -686,7 +686,7 @@ class hidden(object):
             cache the read file.  Ensure the number of links on the file are appropriate.
             """
             self._testCacheMissFunction(cacheReadFile=False)
-        
+
         @travis_test
         def testReadCacheMissFileFromJobStoreWithCachingReadFile(self):
             """
@@ -753,7 +753,7 @@ class hidden(object):
                 return None
             else:
                 return outfile
-        
+
         @travis_test
         def testReadCachHitFileFromJobStore(self):
             """
@@ -905,7 +905,7 @@ class hidden(object):
             """
             Write a couple of files to the jobstore. Delete a couple of them.
             Read back written and locally deleted files. Ensure that after
-            every step that the cache is in a valid state. 
+            every step that the cache is in a valid state.
             """
             self.options.retryCount = 20
             self.options.badWorker = 0.5
@@ -922,10 +922,10 @@ class hidden(object):
         def _returnFileTestFn(job, jobDisk, initialCachedSize, nonLocalDir, numIters=100):
             """
             Aux function for jobCacheTest.testReturnFileSizes Conduct numIters operations and ensure
-            the cache has the right amount of data in it at all times. 
+            the cache has the right amount of data in it at all times.
 
             Track the cache calculations even thought they won't be used in filejobstore
-            
+
             Assumes nothing is evicted from the cache.
 
             :param float jobDisk: The value of disk passed to this job.
@@ -935,7 +935,7 @@ class hidden(object):
             work_dir = job.fileStore.getLocalTempDir()
             writtenFiles = {}  # fsID: (size, isLocal)
             # fsid: local/mutable/immutable for all operations that should make local files as tracked by the FileStore
-            localFileIDs = collections.defaultdict(list)  
+            localFileIDs = collections.defaultdict(list)
             # Add one file for the sake of having something in the job store
             writeFileSize = random.randint(0, 30)
             jobDisk -= writeFileSize * 1024 * 1024
@@ -1064,9 +1064,9 @@ class hidden(object):
             else:
                 RealtimeLogger.info('Caching is free; %d bytes are used and %d bytes would be expected if caching were not free', used, cached)
                 assert used == 0, 'Cache should have nothing in it, but actually has %d bytes used' % used
-            
+
             jobUnused = job.fileStore.getCacheUnusedJobRequirement()
-            
+
             assert jobUnused == jobDisk, 'Job should have %d bytes of disk for non-FileStore use but the FileStore reports %d' % (jobDisk, jobUnused)
 
         # Testing the resumability of a failed worker
@@ -1091,7 +1091,7 @@ class hidden(object):
             """
             This is the aux function for the controlled failed worker test.  It does a couple of
             cache operations, fails, then checks whether the new worker starts with the expected
-            value, and whether it computes cache statistics correctly. 
+            value, and whether it computes cache statistics correctly.
 
             :param float jobDisk: Disk space supplied for this job
             :param str testDir: Testing directory
@@ -1179,7 +1179,7 @@ class hidden(object):
                     outfile = testFile.name
                 else:
                     break
-        
+
         @travis_test
         def testDeleteLocalFile(self):
             """
@@ -1255,7 +1255,7 @@ class hidden(object):
             """
             self.options.retryCount = 0
             self.options.disableChaining = True
-            
+
             # Make a file
             parent = Job.wrapJobFn(self._createUncachedFileStream)
             # Now make a bunch of children fight over it
@@ -1297,7 +1297,7 @@ class hidden(object):
 
             readStart = datetime.datetime.now()
             logger.debug('Begin read at %s', str(readStart))
-            
+
             localPath = job.fileStore.readGlobalFile(fileID, cache=True, mutable=True)
 
             readEnd = datetime.datetime.now()
@@ -1306,7 +1306,7 @@ class hidden(object):
             with open(localPath, 'rb') as fh:
                 text = fh.read().decode('utf-8').strip()
             logger.debug('Got file contents: %s', text)
-                
+
 
 
 class NonCachingFileStoreTestWithFileJobStore(hidden.AbstractNonCachingFileStoreTest):

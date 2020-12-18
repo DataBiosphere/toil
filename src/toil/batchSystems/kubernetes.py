@@ -1,4 +1,4 @@
-# Copyright (C) 2019 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """
 Batch system for running Toil workflows on Kubernetes.
 
@@ -40,14 +39,15 @@ import urllib3
 from kubernetes.client.rest import ApiException
 
 from toil import applianceSelf
-from toil.batchSystems.abstractBatchSystem import (
-    EXIT_STATUS_UNAVAILABLE_VALUE, BatchJobExitReason,
-    BatchSystemCleanupSupport, UpdatedBatchJobInfo)
+from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
+                                                   BatchJobExitReason,
+                                                   BatchSystemCleanupSupport,
+                                                   UpdatedBatchJobInfo)
 from toil.common import Toil
-from toil.lib.bioio import configureRootLogger, setLogLevel
 from toil.lib.humanize import human2bytes
 from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
+from toil.statsAndLogging import configure_root_logger, set_log_level
 
 logger = logging.getLogger(__name__)
 retryable_kubernetes_errors = [urllib3.exceptions.MaxRetryError,
@@ -1093,10 +1093,10 @@ def executor():
 
     """
 
-    configureRootLogger()
-    setLogLevel("DEBUG")
+    configure_root_logger()
+    set_log_level("DEBUG")
     logger.debug("Starting executor")
-    
+
     # If we don't manage to run the child, what should our exit code be?
     exit_code = EXIT_STATUS_UNAVAILABLE_VALUE
 
@@ -1146,5 +1146,3 @@ def executor():
         Resource.cleanSystem()
         logger.debug('Shutting down')
         sys.exit(exit_code)
-
-

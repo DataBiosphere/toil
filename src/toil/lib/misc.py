@@ -6,7 +6,6 @@ import subprocess
 import sys
 import uuid
 from contextlib import contextmanager
-from math import sqrt
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +193,7 @@ class CalledProcessErrorStderr(subprocess.CalledProcessError):
     """Version of CalledProcessError that include stderr in the error message if it is set"""
 
     def __str__(self):
-        if (self.returncode and (self.returncode < 0)) or (self.stderr is None):
+        if (self.returncode < 0) or (self.stderr is None):
             return str(super())
         else:
             err = self.stderr if isinstance(self.stderr, str) else self.stderr.decode("ascii", errors="replace")

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,11 +28,11 @@ from requests.exceptions import HTTPError
 
 from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
-from toil.job import (CheckpointJobDescription, JobException,
+from toil.job import (CheckpointJobDescription,
+                      JobException,
                       ServiceJobDescription)
 from toil.lib.memoize import memoize
 from toil.lib.misc import WriteWatchingStream
-from toil.lib.objects import abstractclassmethod
 from toil.lib.retry import ErrorCondition, retry
 
 logger = logging.getLogger(__name__)
@@ -106,7 +106,7 @@ class AbstractJobStore(ABC):
     """
     Represents the physical storage for the jobs and files in a Toil workflow.
     
-    JobStores are responsible for storing :class:`toil.job.JobDescription`s
+    JobStores are responsible for storing :class:`toil.job.JobDescription`
     (which relate jobs to each other) and files.
     
     Actual :class:`toil.job.Job` objects are stored in files, referenced by
@@ -114,8 +114,7 @@ class AbstractJobStore(ABC):
     in JobDescriptions and not full, executable Jobs.
     
     To actually get ahold of a :class:`toil.job.Job`, use
-    :meth:`toil.job.Job.loadJob` with a JobStore and the relevant
-    JobDescription.
+    :meth:`toil.job.Job.loadJob` with a JobStore and the relevant JobDescription.
     """
 
     def __init__(self):
@@ -384,7 +383,8 @@ class AbstractJobStore(ABC):
                 executable = jobStoreFileID.executable
             otherCls._writeToUrl(readable, url, executable)
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def getSize(cls, url):
         """
         Get the size in bytes of the file at the given URL, or None if it cannot be obtained.
@@ -394,7 +394,8 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def _readFromUrl(cls, url, writable):
         """
         Reads the contents of the object at the specified location and writes it to the given
@@ -412,7 +413,8 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError()
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def _writeToUrl(cls, readable, url):
         """
         Reads the contents of the given readable stream and writes it to the object at the
@@ -427,7 +429,8 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError()
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def _supportsUrl(cls, url, export=False):
         """
         Returns True if the job store supports the URL's scheme.

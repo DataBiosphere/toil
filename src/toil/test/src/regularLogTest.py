@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ from toil.test.mesos import helloWorld
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
 
 class RegularLogTest(ToilTest):
 
@@ -60,7 +61,7 @@ class RegularLogTest(ToilTest):
                                               '--clean=always',
                                               '--logLevel=info'], stderr=subprocess.STDOUT)
         assert helloWorld.childMessage in toilOutput.decode('utf-8')
-    
+
     @travis_test
     def testWriteLogs(self):
         subprocess.check_call([sys.executable,

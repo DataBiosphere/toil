@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -42,8 +42,13 @@ from toil.jobStores.fileJobStore import FileJobStore
 from toil.lib.exceptions import panic
 from toil.lib.memoize import memoize
 from toil.statsAndLogging import StatsAndLogging
-from toil.test import (ToilTest, make_tests, needs_aws_s3, needs_encryption,
-                       needs_google, slow, travis_test)
+from toil.test import (ToilTest,
+                       make_tests,
+                       needs_aws_s3,
+                       needs_encryption,
+                       needs_google,
+                       slow,
+                       travis_test)
 
 # noinspection PyPackageRequirements
 # (installed by `make prepare`)
@@ -1120,6 +1125,23 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
             self.assertTrue(fileID.endswith(os.path.basename(path)))
         finally:
             os.unlink(path)
+
+    def test_jobstore_init_preserves_symlink_path(self):
+        """Test that if we provide a fileJobStore with a symlink to a directory, it doesn't de-reference it."""
+        dir_symlinked_to_original_filestore = None
+        original_filestore = None
+        try:
+            original_filestore = self._createExternalStore()
+            dir_symlinked_to_original_filestore = f'{original_filestore}-am-i-real'
+            os.symlink(original_filestore, dir_symlinked_to_original_filestore)
+            filejobstore_using_symlink = FileJobStore(dir_symlinked_to_original_filestore, fanOut=2)
+            self.assertEqual(dir_symlinked_to_original_filestore, filejobstore_using_symlink.jobStoreDir)
+        finally:
+            if dir_symlinked_to_original_filestore and os.path.exists(dir_symlinked_to_original_filestore):
+                os.unlink(dir_symlinked_to_original_filestore)
+            if original_filestore and os.path.exists(original_filestore):
+                shutil.rmtree(original_filestore)
+
 
 @needs_google
 class GoogleJobStoreTest(AbstractJobStoreTest.Test):

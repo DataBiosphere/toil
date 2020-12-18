@@ -1,0 +1,12 @@
+{
+  "zipWorkflow.in_array_1": [
+    1,
+    2,
+    3
+  ],
+  "zipWorkflow.in_array_2": [
+    "a",
+    "b",
+    "c"
+  ]
+}

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 # Copyright (C) 2015 Curoverse, Inc
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,9 +31,17 @@ import pytest
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
-from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
-                       needs_mesos, needs_parasol, needs_gridengine, needs_slurm,
-                       needs_torque, needs_aws_s3)
+from toil.test import (ToilTest,
+                       needs_aws_s3,
+                       needs_cwl,
+                       needs_docker,
+                       needs_gridengine,
+                       needs_lsf,
+                       needs_mesos,
+                       needs_parasol,
+                       needs_slurm,
+                       needs_torque,
+                       slow)
 
 log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 3600
