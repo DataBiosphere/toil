@@ -95,13 +95,13 @@ def matches(resource_name):
         return resource_name
 
 
-def find_buckets_to_cleanup(include_all, matching):
+def find_buckets_to_cleanup(include_all, match):
     buckets = dict()
     for region in regions:
         print(f'\n[{region}] Buckets:')
         try:
             s3_resource = boto3.resource('s3', region_name=region)
-            buckets_in_region = find_buckets_in_region(s3_resource, include_all, matching)
+            buckets_in_region = find_buckets_in_region(s3_resource, include_all, match)
             new_buckets = [b for b in buckets_in_region if b not in buckets]
             print('    ' + '\n    '.join(new_buckets))
             for bucket in new_buckets:
@@ -115,13 +115,13 @@ def find_buckets_to_cleanup(include_all, matching):
     return buckets
 
 
-def find_sdb_domains_to_cleanup(include_all, matching):
+def find_sdb_domains_to_cleanup(include_all, match):
     sdb_domains = dict()
     for region in regions:
         print(f'\n[{region}] SimpleDB Domains:')
         try:
             sdb_client = boto3.client('sdb', region_name=region)
-            domains_in_region = find_sdb_domains_in_region(sdb_client, include_all, matching)
+            domains_in_region = find_sdb_domains_in_region(sdb_client, include_all, match)
             new_domains = [b for b in domains_in_region if b not in sdb_domains]
             print('    ' + '\n    '.join(new_domains))
             for sdb_domain in new_domains:
@@ -136,13 +136,13 @@ def find_sdb_domains_to_cleanup(include_all, matching):
     return sdb_domains
 
 
-def find_iam_roles_to_cleanup(include_all, matching):
+def find_iam_roles_to_cleanup(include_all, match):
     iam_roles = dict()
     for region in regions:
         print(f'\n[{region}] IAM Roles:')
         try:
             iam_client = boto3.client('iam', region_name=region)
-            roles_in_region = find_iam_roles_in_region(iam_client, include_all, matching)
+            roles_in_region = find_iam_roles_in_region(iam_client, include_all, match)
 
             new_roles = [b for b in roles_in_region if b not in iam_roles]
             print('    ' + '\n    '.join(new_roles))
@@ -153,14 +153,14 @@ def find_iam_roles_to_cleanup(include_all, matching):
     return iam_roles
 
 
-def find_instance_profile_names_to_cleanup(include_all, matching):
+def find_instance_profile_names_to_cleanup(include_all, match):
     instance_profiles = dict()
     for region in regions:
         print(f'\n[{region}] IAM Instance Profiles:')
         try:
             iam_resource = boto3.resource('iam', region_name=region)
             iam_client = boto3.client('iam')
-            instance_profiles_in_region = find_instance_profile_names_in_region(iam_client, include_all, matching)
+            instance_profiles_in_region = find_instance_profile_names_in_region(iam_client, include_all, match)
 
             new_instance_profiles = [b for b in instance_profiles_in_region if b not in instance_profiles]
             for new_profile in new_instance_profiles:
@@ -177,12 +177,12 @@ def find_instance_profile_names_to_cleanup(include_all, matching):
     return instance_profiles
 
 
-def find_buckets_in_region(s3_resource, include_all, matching):
+def find_buckets_in_region(s3_resource, include_all, match):
     buckets_to_cleanup = []
     for bucket in s3_resource.buckets.all():
         if bucket.name not in absolutely_do_not_delete_these_buckets:
-            if matching:
-                for m in matching:
+            if match:
+                for m in match:
                     if m in bucket.name:
                         buckets_to_cleanup.append(bucket.name)
             elif matches(bucket.name) or include_all:
@@ -190,13 +190,13 @@ def find_buckets_in_region(s3_resource, include_all, matching):
     return buckets_to_cleanup
 
 
-def find_sdb_domains_in_region(sdb_client, include_all, matching):
+def find_sdb_domains_in_region(sdb_client, include_all, match):
     sdb_domains_to_cleanup = []
     paginator = sdb_client.get_paginator('list_domains')
     for sdb_domains in paginator.paginate():
         for sdb_domain in sdb_domains.get('DomainNames', []):
-            if matching:
-                for m in matching:
+            if match:
+                for m in match:
                     if m in sdb_domain:
                         sdb_domains_to_cleanup.append(sdb_domain)
             elif matches(sdb_domain) or include_all:
@@ -204,14 +204,14 @@ def find_sdb_domains_in_region(sdb_client, include_all, matching):
     return sdb_domains_to_cleanup
 
 
-def find_iam_roles_in_region(iam_client, include_all, matching):
+def find_iam_roles_in_region(iam_client, include_all, match):
     iam_roles_to_cleanup = []
     paginator = iam_client.get_paginator('list_roles')
     for iam_roles in paginator.paginate():
         for iam_role in iam_roles.get('Roles', []):
             iam_role = iam_role['RoleName']
-            if matching:
-                for m in matching:
+            if match:
+                for m in match:
                     if m in iam_role:
                         iam_roles_to_cleanup.append(iam_role)
             elif matches(iam_role) or include_all:
@@ -219,14 +219,14 @@ def find_iam_roles_in_region(iam_client, include_all, matching):
     return iam_roles_to_cleanup
 
 
-def find_instance_profile_names_in_region(iam_client, include_all, matching):
+def find_instance_profile_names_in_region(iam_client, include_all, match):
     instance_profiles_to_cleanup = []
     paginator = iam_client.get_paginator('list_instance_profiles')
     for instance_profiles in paginator.paginate():
         for instance_profile in instance_profiles.get('InstanceProfiles', []):
             instance_profile = instance_profile['InstanceProfileName']
-            if matching:
-                for m in matching:
+            if match:
+                for m in match:
                     if m in instance_profile:
                         instance_profiles_to_cleanup.append(instance_profile)
             elif matches(instance_profile) or include_all:
@@ -254,31 +254,31 @@ def main(argv):
     parser.add_argument("--skip-iam-roles", dest='skip_iam_roles',
                         action='store_true', required=False,
                         help="Skip doing anything with IAM roles.")
-    parser.add_argument("--skip-iam-instance_profiles", dest='skip_iam_instance_profiles',
+    parser.add_argument("--skip-iam-instance-profiles", dest='skip_iam_instance_profiles',
                         action='store_true', required=False,
                         help="Skip doing anything with IAM roles.")
-    parser.add_argument("--matching", dest='matching',
+    parser.add_argument("--match", dest='match',
                         type=str, required=False, default='',
                         help="Only return resources containing the comma-delimited keywords.  "
-                             "For example, adding --matching='hello,goodbye' would return any "
+                             "For example, adding --match='hello,goodbye' would return any "
                              "buckets or domains that include either 'hello' or 'goodbye'.")
     parser.add_argument("--regions", dest='regions',
                         type=str, required=False, default='all',
                         help="Only return resources in the regions (comma-delimited).  "
                              "For example, adding --regions='us-west-2,us-east-1' will "
                              "only act resources in those two regions.")
-    # parser.set_defaults(view_only=False, include_all=False, skip_buckets=False, skip_sdb=False, matching='')
+    # parser.set_defaults(view_only=False, include_all=False, skip_buckets=False, skip_sdb=False, match='')
 
     options = parser.parse_args(argv)
 
     account_name = boto3.client('iam').list_account_aliases()['AccountAliases'][0]
     print(f'\n\nNow running for AWS account: {account_name}.')
 
-    matching = [m.strip() for m in options.matching.split(',') if m.strip()]
+    match = [m.strip() for m in options.match.split(',') if m.strip()]
 
-    if matching and options.include_all:
-        raise ValueError('Cannot filter on matching patterns AND include everything.  Please specify either '
-                         '"--view-only" or "--matching", but not both.')
+    if match and options.include_all:
+        raise ValueError('Cannot filter on match patterns AND include everything.  Please specify either '
+                         '"--view-only" or "--match", but not both.')
 
     if options.regions and options.regions != 'all':
         options.regions = [r.strip() for r in options.regions.split(',') if r.strip()]
@@ -288,68 +288,81 @@ def main(argv):
                 regions.remove(region)
 
     if not options.skip_buckets:
-        buckets = find_buckets_to_cleanup(options.include_all, matching)
+        buckets = find_buckets_to_cleanup(options.include_all, match)
         if not options.view_only:
-            response = input(f'\nDo you wish to delete these buckets in account: {account_name}?  (Y)es (N)o: ')
-            if response.lower() in ('y', 'yes'):
-                print('\nOkay, now deleting...')
-                for bucket, region in buckets.items():
-                    delete_s3_bucket(bucket, region)
+            if not buckets:
+                print('Nothing to be done.')
+            else:
+                response = input(f'\nDo you wish to delete these buckets in account: {account_name}?  (Y)es (N)o: ')
+                if response.lower() in ('y', 'yes'):
+                    print('\nOkay, now deleting...')
+                    for bucket, region in buckets.items():
+                        delete_s3_bucket(bucket, region)
+                    print('S3 Bucket Deletions Successful.')
 
     if not options.skip_sdb:
-        sdb_domains = find_sdb_domains_to_cleanup(options.include_all, matching)
+        sdb_domains = find_sdb_domains_to_cleanup(options.include_all, match)
         if not options.view_only:
-            response = input(f'\nDo you wish to delete these SDB domains in account: {account_name}?  (Y)es (N)o: ')
-            if response.lower() in ('y', 'yes'):
-                print('\nOkay, now deleting...')
-                for sdb_domain, region in sdb_domains.items():
-                    sdb_client = boto3.client('sdb', region_name=region)
-                    sdb_client.delete_domain(DomainName=sdb_domain)
+            if not sdb_domains:
+                print('Nothing to be done.')
+            else:
+                response = input(f'\nDo you wish to delete these SDB domains in account: {account_name}?  (Y)es (N)o: ')
+                if response.lower() in ('y', 'yes'):
+                    print('\nOkay, now deleting...')
+                    for sdb_domain, region in sdb_domains.items():
+                        sdb_client = boto3.client('sdb', region_name=region)
+                        sdb_client.delete_domain(DomainName=sdb_domain)
+                    print('SimpleDB Domain Deletions Successful.')
 
     if not options.skip_iam_instance_profiles:
-        instance_profile_names = find_instance_profile_names_to_cleanup(options.include_all, matching)
+        instance_profile_names = find_instance_profile_names_to_cleanup(options.include_all, match)
         if not options.view_only:
-            response = input(f'\nDo you wish to delete these IAM instance profiles names in account: {account_name}?  (Y)es (N)o: ')
-            if response.lower() in ('y', 'yes'):
-                print('\nOkay, now deleting...')
-                for instance_profile_name, (region, roles) in instance_profile_names.items():
-                    print(instance_profile_name, (region, roles))
-                    iam_resource = boto3.resource('iam', region_name=region)
-                    instance_profile = iam_resource.InstanceProfile(instance_profile_name)
-                    for role in instance_profile.roles:
-                        print(f'Now dissociating role: {role.name} from instance profile {instance_profile_name}')
-                        instance_profile.remove_role(RoleName=role.name)
-                    instance_profile.delete()
-                    print(f'Instance profile {instance_profile_name} successfully deleted.')
-                print('Instance Profile Deletions Successful.')
+            if not instance_profile_names:
+                print('Nothing to be done.')
+            else:
+                response = input(f'\nDo you wish to delete these IAM instance profiles names in account: {account_name}?  (Y)es (N)o: ')
+                if response.lower() in ('y', 'yes'):
+                    print('\nOkay, now deleting...')
+                    for instance_profile_name, (region, roles) in instance_profile_names.items():
+                        print(instance_profile_name, (region, roles))
+                        iam_resource = boto3.resource('iam', region_name=region)
+                        instance_profile = iam_resource.InstanceProfile(instance_profile_name)
+                        for role in instance_profile.roles:
+                            print(f'Now dissociating role: {role.name} from instance profile {instance_profile_name}')
+                            instance_profile.remove_role(RoleName=role.name)
+                        instance_profile.delete()
+                        print(f'Instance profile {instance_profile_name} successfully deleted.')
+                    print('Instance Profile Deletions Successful.')
 
     if not options.skip_iam_roles:
-        iam_roles = find_iam_roles_to_cleanup(options.include_all, matching)
+        iam_roles = find_iam_roles_to_cleanup(options.include_all, match)
         if not options.view_only:
-            response = input(f'\nDo you wish to delete these IAM roles in account: {account_name}?  (Y)es (N)o: ')
-            if response.lower() in ('y', 'yes'):
-                print('\nOkay, now deleting...')
+            if not iam_roles:
+                print('Nothing to be done.')
+            else:
+                response = input(f'\nDo you wish to delete these IAM roles in account: {account_name}?  (Y)es (N)o: ')
+                if response.lower() in ('y', 'yes'):
+                    print('\nOkay, now deleting...')
 
-                # couldn't find an easy way to remove inline policies with boto3; use boto
-                boto_iam_connection = IAMConnection()
+                    # couldn't find an easy way to remove inline policies with boto3; use boto
+                    boto_iam_connection = IAMConnection()
 
-                for iam_role, region in iam_roles.items():
-                    iam_client = boto3.client('iam', region_name=region)
-                    iam_resource = boto3.resource('iam')
-                    role = iam_resource.Role(iam_role)
-                    # normal policies
-                    for attached_policy in role.attached_policies.all():
-                        print(f'Now dissociating policy: {attached_policy.name} from role {role.name}')
-                        role.detach_policy(PolicyName=attached_policy.name)
-                    # inline policies
-                    for attached_policy in role.policies.all():
-                        print(f'Deleting inline policy: {attached_policy.name} from role {role.name}')
-                        # couldn't find an easy way to remove inline policies with boto3; use boto
-                        boto_iam_connection.delete_role_policy(role.name, attached_policy.name)
-                    iam_client.delete_role(RoleName=iam_role)
-                    print(f'Role {iam_role} successfully deleted.')
-
-                print('Role Deletions Successful.')
+                    for iam_role, region in iam_roles.items():
+                        iam_client = boto3.client('iam', region_name=region)
+                        iam_resource = boto3.resource('iam', region_name=region)
+                        role = iam_resource.Role(iam_role)
+                        # normal policies
+                        for attached_policy in role.attached_policies.all():
+                            print(f'Now dissociating policy: {attached_policy.name} from role {role.name}')
+                            role.detach_policy(PolicyName=attached_policy.name)
+                        # inline policies
+                        for attached_policy in role.policies.all():
+                            print(f'Deleting inline policy: {attached_policy.name} from role {role.name}')
+                            # couldn't find an easy way to remove inline policies with boto3; use boto
+                            boto_iam_connection.delete_role_policy(role.name, attached_policy.name)
+                        iam_client.delete_role(RoleName=iam_role)
+                        print(f'Role {iam_role} successfully deleted.')
+                    print('Role Deletions Successful.')
 
 
 if __name__ == '__main__':
