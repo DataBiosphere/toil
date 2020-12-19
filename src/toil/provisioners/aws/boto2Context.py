@@ -120,7 +120,7 @@ class Boto2Context(object):
         >>> Boto2Context('us-west-1b', namespace=namespace).namespace == namespace
         True
         """
-        super(Context, self).__init__()
+        super().__init__()
 
         self.__iam = None
         self.__vpc = None

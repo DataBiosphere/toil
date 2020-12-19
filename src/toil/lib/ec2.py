@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 
 from typing import Optional, List, Dict, Union, Iterable
@@ -10,6 +11,7 @@ from boto.ec2.instance import Instance as Boto2Instance
 from boto.ec2.spotinstancerequest import SpotInstanceRequest
 from boto.exception import EC2ResponseError
 from boto3.resources.base import ServiceResource
+from botocore.client import BaseClient
 
 a_short_time = 5
 a_long_time = 60 * 60
@@ -286,7 +288,7 @@ def prune(bushy: dict) -> dict:
 # InvalidGroup.NotFound
 # OR
 # 'invalid iam instance profile' in m.lower() or 'no associated iam roles' in m.lower()
-def create_instances(ec2: ServiceResource,
+def create_instances(ec2_service: ServiceResource,
                      image_id: str,
                      key_name: str,
                      instance_type: str,
@@ -338,9 +340,9 @@ def create_instances(ec2: ServiceResource,
                 request['TagSpecifications'] = [{'ResourceType': 'instance', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]},
                                                 {'ResourceType': 'volume', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]}]
 
-            return ec2.create_instances(**prune(request))
+            return ec2_service.create_instances(**prune(request))
             
-def create_launch_template(ec2: ServiceResource,
+def create_launch_template(ec2_client: BaseClient,
                            template_name: str,
                            image_id: str,
                            key_name: str,
@@ -396,9 +398,9 @@ def create_launch_template(ec2: ServiceResource,
             if tags:
                 request['TagSpecifications'] = [{'ResourceType': 'launch-template', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]}]
                        
-            return ec2.create_launch_template(LaunchTemplateData=prune(template))
+            return ec2_client.create_launch_template(LaunchTemplateData=prune(template))
             
-def create_auto_scaling_group(autoscaling: ServiceResource,
+def create_auto_scaling_group(autoscaling_client: BaseClient,
                               asg_name: str,
                               launch_template_id: str,
                               vpc_subnets: List[str],
@@ -464,4 +466,4 @@ def create_auto_scaling_group(autoscaling: ServiceResource,
                 asg['Tags'] = [{'Key': k, 'Value': v, } for k, v in tags.items()]
 
             # Don't prune the ASG because MinSize and MaxSize are required and may be 0.
-            autoscaling.create_auto_scaling_group(**asg)
+            autoscaling_client.create_auto_scaling_group(**asg)

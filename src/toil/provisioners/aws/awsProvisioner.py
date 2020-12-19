@@ -130,8 +130,10 @@ class AWSProvisioner(AbstractProvisioner):
 
         # establish boto3 clients
         self.session = boto3.Session(region_name=zone_to_region(self._zone))
-        self.ec2 = self.session.resource('ec2')
-        self.autoscaling = self.session.resource('autoscaling')
+        # Boto3 splits functionality between a "service" and a "client" for the same AWS aspect.
+        self.ec2_resource = self.session.resource('ec2')
+        self.ec2_client = self.session.client('ec2')
+        self.autoscaling_client = self.session.client('autoscaling')
 
         if clusterName:
             self._buildContext()  # create boto2 context (self._boto2)
@@ -217,7 +219,7 @@ class AWSProvisioner(AbstractProvisioner):
             # Spot-market provisioning requires bytes for user data.
             # We probably won't have a spot-market leader, but who knows!
             userData = userData.encode('utf-8')
-        instances = create_instances(self.ec2,
+        instances = create_instances(self.ec2_service,
                                      image_id=self._discoverAMI(),
                                      num_instances=1,
                                      key_name=self._keyName,
@@ -303,7 +305,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
         assert self._boto2
         def expectedShutdownErrors(e):
-            return e.status == 400 and 'dependent object' in e.body
+            return getattr(e, 'status', None) == 400 and 'dependent object' in getattr(e, 'body', '')
 
         def destroyInstances(instances: List[Boto2Instance]):
             """
@@ -333,7 +335,7 @@ class AWSProvisioner(AbstractProvisioner):
             with attempt:
                 for asgName in self._getAutoScalingGroupNames():
                     # We wait for the instances to terminate (ForceDelete=False)
-                    self.ec2.delete_auto_scaling_group(AutoScalingGroupName=asgName, ForceDelete=False)
+                    self.autoscaling_client.delete_auto_scaling_group(AutoScalingGroupName=asgName, ForceDelete=False)
                     removed = True
         if removed:
             logger.debug('... Succesfully deleted autoscaling groups')
@@ -362,12 +364,14 @@ class AWSProvisioner(AbstractProvisioner):
                 # for some LuanchTemplate.
                 mistake = False
                 for ltID in self._getLaunchTemplateIDs():
-                    response = self.ec2.delete_launch_template(LaunchTemplateId=ltID)
+                    response = self.ec2_client.delete_launch_template(LaunchTemplateId=ltID)
                     if 'LaunchTemplate' not in response:
                         mistake = True
-                if not mistake:
-                    # We got all the launch templates this time.
-                    removed = True
+                    else:
+                        removed = True
+        if mistake:
+            # We missed something
+            removed = False
         if removed:
             logger.debug('... Succesfully deleted launch templates')
             
@@ -859,18 +863,18 @@ class AWSProvisioner(AbstractProvisioner):
         """
         
         # How do we match the right templates?
-        filters = [{'tag:' + _TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName}]
+        filters = [{'Name': 'tag:' + _TAG_KEY_TOIL_CLUSTER_NAME, 'Values': [self.clusterName]}]
         
         allTemplateIDs = []
         # Get the first page with no NextToken
-        response = self.ec2.describe_launch_templates(Filters=filters,
-                                                      MaxResults=200)
+        response = self.ec2_client.describe_launch_templates(Filters=filters,
+                                                             MaxResults=200)
         while True:
             # Process the current page
             allTemplateIDs += [item['LaunchTemplateId'] for item in response.get('LaunchTemplates', [])]
             if 'NextToken' in response:
                 # There are more pages. Get the next one, supplying the token.
-                response = self.ec2.describe_launch_templates(Filters=filters,
+                response = self.ec2_client.describe_launch_templates(Filters=filters,
                                                               NextToken=response['NextToken'], MaxResults=200)
             else:
                 # No more pages
@@ -909,7 +913,7 @@ class AWSProvisioner(AbstractProvisioner):
         tags = dict(self._tags)
         tags[_TAG_KEY_TOIL_NODE_TYPE] = 'worker'
         
-        return create_launch_template(self.ec2,
+        return create_launch_template(self.ec2_client,
                                       template_name=lt_name,
                                       image_id=self._discoverAMI(),
                                       key_name=self._keyName,
@@ -939,13 +943,13 @@ class AWSProvisioner(AbstractProvisioner):
         
         matchedASGs = []
         # Get the first page with no NextToken
-        response = self.autoscaling.describe_tags()
+        response = self.autoscaling_client.describe_tags()
         while True:
             # Process the current page
             matchedASGs += [item['ResourceId'] for item in response.get('Tags', [])]
             if 'NextToken' in response:
                 # There are more pages. Get the next one, supplying the token.
-                response = self.autoscaling.describe_tags(NextToken=response['NextToken'])
+                response = self.autoscaling_client.describe_tags(NextToken=response['NextToken'])
             else:
                 # No more pages
                 break
@@ -1007,7 +1011,7 @@ class AWSProvisioner(AbstractProvisioner):
         # TODO: can we make this more semantic without risking collisions? Maybe count up in memory?
         asg_name = 'asg-' + uuid.uuid4()
         
-        create_auto_scaling_group(self.autoscaling,
+        create_auto_scaling_group(self.autoscaling_client,
                                   asg_name=asg_name,
                                   launch_template_id=launch_template_id,
                                   vpc_subnets=[self._subnetID],
