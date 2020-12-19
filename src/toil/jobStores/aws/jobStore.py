@@ -59,12 +59,13 @@ from toil.jobStores.aws.utils import (SDBHelper,
 from toil.jobStores.utils import (ReadablePipe,
                                   ReadableTransformingPipe,
                                   WritablePipe)
-from toil.lib.compatibility import compat_bytes, compat_bytes
+from toil.lib.compatibility import compat_bytes
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.exceptions import panic
 from toil.lib.memoize import strict_bool
 from toil.lib.misc import AtomicFileCreate
 from toil.lib.objects import InnerClass
+from toil.lib.retry import retry
 
 # Make sure to use credential caching when talking to Amazon via boto3
 # See https://github.com/boto/botocore/pull/1338/
@@ -1532,6 +1533,9 @@ class AWSJobStore(AbstractJobStore):
             with attempt:
                 return bucket_location_to_region(bucket.get_location())
 
+    # TODO: Make this retry more specific?
+    #  example: https://github.com/DataBiosphere/toil/issues/3378
+    @retry()
     def destroy(self):
         # FIXME: Destruction of encrypted stores only works after initialize() or .resume()
         # See https://github.com/BD2KGenomics/toil/issues/1041
