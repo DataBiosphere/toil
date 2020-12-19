@@ -288,7 +288,7 @@ def prune(bushy: dict) -> dict:
 # InvalidGroup.NotFound
 # OR
 # 'invalid iam instance profile' in m.lower() or 'no associated iam roles' in m.lower()
-def create_instances(ec2_service: ServiceResource,
+def create_instances(ec2_resource: ServiceResource,
                      image_id: str,
                      key_name: str,
                      instance_type: str,
@@ -340,7 +340,7 @@ def create_instances(ec2_service: ServiceResource,
                 request['TagSpecifications'] = [{'ResourceType': 'instance', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]},
                                                 {'ResourceType': 'volume', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]}]
 
-            return ec2_service.create_instances(**prune(request))
+            return ec2_resource.create_instances(**prune(request))
             
 def create_launch_template(ec2_client: BaseClient,
                            template_name: str,
@@ -367,8 +367,9 @@ def create_launch_template(ec2_client: BaseClient,
     """
     log.info('Creating launch template for %s instances ... ', instance_type)
     
-    if isinstance(user_data, str):
-        user_data = user_data.encode('utf-8')
+    if isinstance(user_data, bytes):
+        # Boto3 insists on a str here.
+        user_data = user_data.decode('utf-8')
     
     for attempt in retry_ec2(retry_for=a_long_time, retry_while=inconsistencies_detected):
         with attempt:
@@ -398,7 +399,7 @@ def create_launch_template(ec2_client: BaseClient,
             if tags:
                 request['TagSpecifications'] = [{'ResourceType': 'launch-template', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]}]
                        
-            return ec2_client.create_launch_template(LaunchTemplateData=prune(template))
+            return ec2_client.create_launch_template(**request)
             
 def create_auto_scaling_group(autoscaling_client: BaseClient,
                               asg_name: str,

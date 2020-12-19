@@ -130,7 +130,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         # establish boto3 clients
         self.session = boto3.Session(region_name=zone_to_region(self._zone))
-        # Boto3 splits functionality between a "service" and a "client" for the same AWS aspect.
+        # Boto3 splits functionality between a "resource" and a "client" for the same AWS aspect.
         self.ec2_resource = self.session.resource('ec2')
         self.ec2_client = self.session.client('ec2')
         self.autoscaling_client = self.session.client('autoscaling')
@@ -219,7 +219,7 @@ class AWSProvisioner(AbstractProvisioner):
             # Spot-market provisioning requires bytes for user data.
             # We probably won't have a spot-market leader, but who knows!
             userData = userData.encode('utf-8')
-        instances = create_instances(self.ec2_service,
+        instances = create_instances(self.ec2_resource,
                                      image_id=self._discoverAMI(),
                                      num_instances=1,
                                      key_name=self._keyName,
