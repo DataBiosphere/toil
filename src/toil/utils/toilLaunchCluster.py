@@ -69,14 +69,14 @@ def main():
                              "used. For the aws provisioner this is the name of an EC2 instance "
                              "type followed by a colon and the price in dollar to bid for a spot "
                              "instance, for example 'c3.8xlarge:0.42'. Must also provide the "
-                             "--workers or --maxWorkers arguments to specify how many workers of "
+                             "--workers or --managedWorkers arguments to specify how many workers of "
                              "each node type to create.")
     parser.add_argument("-w", "--workers", dest='workers', default=None, type=str,
                         help="Comma-separated list of the number of workers of each node type to "
                              "launch alongside the leader when the cluster is created. This can be "
                              "useful if running toil without auto-scaling but with need of more "
                              "hardware support")
-    parser.add_argument("-W", "--maxWorkers", dest='maxWorkers', default=None, type=str,
+    parser.add_argument("-W", "--managedWorkers", dest='managedWorkers', default=None, type=str,
                         help="Comma-separated list of one number per node type in --nodeTypes. "
                              "The cluster will automatically deploy workers of that type, when "
                              "needed, up to the given limit.")
@@ -116,8 +116,8 @@ def main():
     # This holds how many to limit autoscaling to when using managed nodes scaled by the cluster
     managedNodeCounts = [] 
    
-    if (config.nodeTypes or (config.maxWorkers or config.workers)) and not (config.nodeTypes and (config.maxWorkers or config.workers)):
-        raise RuntimeError("The --nodeTypes option requires one of --workers or --maxWorkers, and visa versa.")
+    if (config.nodeTypes or (config.managedWorkers or config.workers)) and not (config.nodeTypes and (config.managedWorkers or config.workers)):
+        raise RuntimeError("The --nodeTypes option requires one of --workers or --managedWorkers, and visa versa.")
     if config.nodeTypes:
         for nodeTypeStr in config.nodeTypes.split(","):
             parsedBid = nodeTypeStr.split(':', 1)
@@ -133,11 +133,11 @@ def main():
             if not len(parsedNodeTypes) == len(numWorkersList):
                 raise RuntimeError("List of worker counts must be the same length as the list of node types.")
             fixedNodeCounts = [int(x) for x in numWorkersList]
-        if config.maxWorkers:
-            maxWorkersList = config.workers.split(",")
-            if not len(parsedNodeTypes) == len(maxWorkersList):
+        if config.managedWorkers:
+            managedWorkersList = config.workers.split(",")
+            if not len(parsedNodeTypes) == len(managedWorkersList):
                 raise RuntimeError("List of max worker counts must be the same length as the list of node types.")
-            managedNodeCounts = [int(x) for x in maxWorkersList]
+            managedNodeCounts = [int(x) for x in managedWorkersList]
 
     owner = config.owner or config.keyPairName or 'toil'
 
