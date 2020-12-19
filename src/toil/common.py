@@ -27,7 +27,7 @@ import subprocess
 from toil import pickle
 from toil import logProcessContext
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
-from toil.lib.ec2 import zoneToRegion
+from toil.lib.ec2 import zone_to_region
 from toil.realtimeLogger import RealtimeLogger
 from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
@@ -1185,7 +1185,7 @@ class ToilMetrics:
             if provisioner._zone is not None:
                 if provisioner.cloud == 'aws':
                     # Remove AZ name
-                    region = zoneToRegion(provisioner._zone)
+                    region = zone_to_region(provisioner._zone)
                 else:
                     region = provisioner._zone
 

@@ -32,7 +32,7 @@ from boto.ec2.instance import Instance as Boto2Instance
 from toil.lib.memoize import memoize
 from toil.lib.ec2 import (a_short_time, create_ondemand_instances, create_instances,
                           create_spot_instances, create_launch_template, create_auto_scaling_group,
-                          wait_instances_running, wait_transition, zoneToRegion)
+                          wait_instances_running, wait_transition, zone_to_region)
 from toil.lib.ec2nodes import InstanceType
 from toil.lib.misc import truncExpBackoff
 from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
@@ -129,7 +129,7 @@ class AWSProvisioner(AbstractProvisioner):
     
 
         # establish boto3 clients
-        self.session = boto3.Session(region_name=zoneToRegion(self._zone))
+        self.session = boto3.Session(region_name=zone_to_region(self._zone))
         self.ec2 = self.session.resource('ec2')
         self.autoscaling = self.session.resource('autoscaling')
 
@@ -144,7 +144,7 @@ class AWSProvisioner(AbstractProvisioner):
         is the leader.
         """
         instanceMetaData = get_instance_metadata()
-        region = zoneToRegion(self._zone)
+        region = zone_to_region(self._zone)
         conn = boto.ec2.connect_to_region(region)
         instance = conn.get_all_instances(instance_ids=[instanceMetaData["instance-id"]])[0].instances[0]
         # The cluster name is the same as the name of the leader.
@@ -534,7 +534,7 @@ class AWSProvisioner(AbstractProvisioner):
         JSON_FEED_URL = 'https://stable.release.flatcar-linux.net/amd64-usr/current/flatcar_production_ami_all.json'
         
         # What region do we care about?
-        region = zoneToRegion(self._zone)
+        region = zone_to_region(self._zone)
         
         for attempt in old_retry(predicate=lambda e: True):
             # Until we get parseable JSON

@@ -22,7 +22,7 @@ from boto.iam.connection import IAMConnection
 from boto.utils import get_instance_metadata
 
 from toil.lib.memoize import memoize
-from toil.lib.ec2 import UserError, zoneToRegion
+from toil.lib.ec2 import UserError, zone_to_region
 
 log = logging.getLogger(__name__)
 
@@ -129,7 +129,7 @@ class Boto2Context(object):
         self.__sqs = None
 
         self.availability_zone = availability_zone
-        self.region = zoneToRegion(self.availability_zone)
+        self.region = zone_to_region(self.availability_zone)
 
         if namespace is None:
             raise ValueError('Need namespace')
