@@ -69,13 +69,17 @@ def main():
                              "used. For the aws provisioner this is the name of an EC2 instance "
                              "type followed by a colon and the price in dollar to bid for a spot "
                              "instance, for example 'c3.8xlarge:0.42'. Must also provide the "
-                             "--workers argument to specify how many workers of each node type "
-                             "to create.")
+                             "--workers or --maxWorkers arguments to specify how many workers of "
+                             "each node type to create.")
     parser.add_argument("-w", "--workers", dest='workers', default=None, type=str,
                         help="Comma-separated list of the number of workers of each node type to "
                              "launch alongside the leader when the cluster is created. This can be "
                              "useful if running toil without auto-scaling but with need of more "
                              "hardware support")
+    parser.add_argument("-W", "--maxWorkers", dest='maxWorkers', default=None, type=str,
+                        help="Comma-separated list of one number per node type in --nodeTypes. "
+                             "The cluster will automatically deploy workers of that type, when "
+                             "needed, up to the given limit.")
     parser.add_argument("--leaderStorage", dest='leaderStorage', type=int, default=50,
                         help="Specify the size (in gigabytes) of the root volume for the leader "
                              "instance.  This is an EBS volume.")
@@ -103,29 +107,37 @@ def main():
 
     # checks the validity of TOIL_APPLIANCE_SELF before proceeding
     applianceSelf(forceDockerAppliance=config.forceDockerAppliance)
-
-    spotBids = []
-    nodeTypes = []
-    preemptableNodeTypes = []
-    numNodes = []
-    numPreemptableNodes = []
-    if (config.nodeTypes or config.workers) and not (config.nodeTypes and config.workers):
-        raise RuntimeError("The --nodeTypes and --workers options must be specified together,")
+   
+    # This holds (instance type name, bid or None) tuples for each node type.
+    # No bid means non-preemptable
+    parsedNodeTypes = []
+    # This holds how many of each kind of node to make (or bid on) explicitly at cluster startup
+    fixedNodeCounts = []
+    # This holds how many to limit autoscaling to when using managed nodes scaled by the cluster
+    managedNodeCounts = [] 
+   
+    if (config.nodeTypes or (config.maxWorkers or config.workers)) and not (config.nodeTypes and (config.maxWorkers or config.workers)):
+        raise RuntimeError("The --nodeTypes option requires one of --workers or --maxWorkers, and visa versa.")
     if config.nodeTypes:
-        nodeTypesList = config.nodeTypes.split(",")
-        numWorkersList = config.workers.split(",")
-        if not len(nodeTypesList) == len(numWorkersList):
-            raise RuntimeError("List of node types must be the same length as the list of workers.")
-        for nodeTypeStr, num in zip(nodeTypesList, numWorkersList):
+        for nodeTypeStr in config.nodeTypes.split(","):
             parsedBid = nodeTypeStr.split(':', 1)
             if len(nodeTypeStr) != len(parsedBid[0]):
                 #Is a preemptable node
-                preemptableNodeTypes.append(parsedBid[0])
-                spotBids.append(float(parsedBid[1]))
-                numPreemptableNodes.append(int(num))
+                parsedNodeTypes.append((parsedBid[0], float(parsedBid[1])))
             else:
+                parsedNodeTypes.append((nodeTypeStr, None))
                 nodeTypes.append(nodeTypeStr)
-                numNodes.append(int(num))
+                
+        if config.workers:
+            numWorkersList = config.workers.split(",")
+            if not len(parsedNodeTypes) == len(numWorkersList):
+                raise RuntimeError("List of worker counts must be the same length as the list of node types.")
+            fixedNodeCounts = [int(x) for x in numWorkersList]
+        if config.maxWorkers:
+            maxWorkersList = config.workers.split(",")
+            if not len(parsedNodeTypes) == len(maxWorkersList):
+                raise RuntimeError("List of max worker counts must be the same length as the list of node types.")
+            managedNodeCounts = [int(x) for x in maxWorkersList]
 
     owner = config.owner or config.keyPairName or 'toil'
 
@@ -152,9 +164,27 @@ def main():
                           awsEc2ProfileArn=config.awsEc2ProfileArn,
                           awsEc2ExtraSecurityGroupIds=config.awsEc2ExtraSecurityGroupIds)
 
-    for nodeType, workers in zip(nodeTypes, numNodes):
-        cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=False)
-    for nodeType, workers, spotBid in zip(preemptableNodeTypes, numPreemptableNodes, spotBids):
-        cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=True,
-                         spotBid=spotBid)
+    for typeNum, count in enumerate(fixedNodeCounts):
+        # For each batch of workers to make at startup
+        wanted = parsedNodeTypes[typeNum]
+        if wanted[1] is None:
+            # Make non-spot instances
+            cluster.addNodes(nodeType=wanted[0], numNodes=count, preemptable=False)
+        else:
+            # We have a spot bid
+            cluster.addNodes(nodeType=wanted[0], numNodes=count, preemptable=True,
+                             spotBid=wanted[1])
+                             
+    for typeNum, count in enumerate(managedNodeCounts):
+        # For each batch of workers to dynamically scale
+        wanted = parsedNodeTypes[typeNum]
+        if wanted[1] is None:
+            # Make non-spot instances
+            cluster.addManagedNodes(nodeType=wanted[0], numNodes=count, preemptable=False)
+        else:
+            # Bid at the given price.
+            cluster.addManagedNodes(nodeType=wanted[0], numNodes=count, preemptable=True,
+                                    spotBid=wanted[1])
+            
+        
 
