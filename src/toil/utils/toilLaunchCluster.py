@@ -125,8 +125,8 @@ def main():
                 #Is a preemptable node
                 parsedNodeTypes.append((parsedBid[0], float(parsedBid[1])))
             else:
+                # Is a normal node
                 parsedNodeTypes.append((nodeTypeStr, None))
-                nodeTypes.append(nodeTypeStr)
                 
         if config.workers:
             numWorkersList = config.workers.split(",")
@@ -166,6 +166,9 @@ def main():
 
     for typeNum, count in enumerate(fixedNodeCounts):
         # For each batch of workers to make at startup
+        if count == 0:
+            # Don't want any
+            continue
         wanted = parsedNodeTypes[typeNum]
         if wanted[1] is None:
             # Make non-spot instances
@@ -177,6 +180,9 @@ def main():
                              
     for typeNum, count in enumerate(managedNodeCounts):
         # For each batch of workers to dynamically scale
+        if count == 0:
+            # Don't want any
+            continue
         wanted = parsedNodeTypes[typeNum]
         if wanted[1] is None:
             # Make non-spot instances

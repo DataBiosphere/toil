@@ -1,8 +1,7 @@
 import logging
 import time
 
-from typing import Optional, List, Dict
-from collections import Iterator
+from typing import Optional, List, Dict, Union, Iterable
 from operator import attrgetter
 from past.builtins import map
 from toil.lib.exceptions import panic
@@ -66,14 +65,14 @@ def wait_transition(resource, from_states, to_state,
         raise UnexpectedResourceState(resource, to_state, state)
 
 
-def wait_instances_running(ec2, instances: Iterator[Boto2Instance]) -> Iterator[Boto2Instance]:
+def wait_instances_running(ec2, instances: Iterable[Boto2Instance]) -> Iterable[Boto2Instance]:
     """
     Wait until no instance in the given iterable is 'pending'. Yield every instance that
     entered the running state as soon as it does.
 
     :param boto.ec2.connection.EC2Connection ec2: the EC2 connection to use for making requests
-    :param Iterator[Boto2Instance] instances: the instances to wait on
-    :rtype: Iterator[Boto2Instance]
+    :param Iterable[Boto2Instance] instances: the instances to wait on
+    :rtype: Iterable[Boto2Instance]
     """
     running_ids = set()
     other_ids = set()
@@ -102,20 +101,19 @@ def wait_instances_running(ec2, instances: Iterator[Boto2Instance]) -> Iterator[
                 instances = ec2.get_only_instances(list(pending_ids))
 
 
-def wait_spot_requests_active(ec2, requests, timeout=None, tentative=False):
+def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], timeout: float = None, tentative: bool = False) -> Iterable[List[SpotInstanceRequest]]:
     """
     Wait until no spot request in the given iterator is in the 'open' state or, optionally,
     a timeout occurs. Yield spot requests as soon as they leave the 'open' state.
 
-    :param Iterator[SpotInstanceRequest] requests:
+    :param requests: The requests to wait on.
 
-    :param float timeout: Maximum time in seconds to spend waiting or None to wait forever. If a
+    :param timeout: Maximum time in seconds to spend waiting or None to wait forever. If a
     timeout occurs, the remaining open requests will be cancelled.
 
-    :param bool tentative: if True, give up on a spot request at the earliest indication of it
+    :param tentative: if True, give up on a spot request at the earliest indication of it
     not being fulfilled immediately
 
-    :rtype: Iterator[list[SpotInstanceRequest]]
     """
 
     if timeout is not None:
@@ -182,9 +180,9 @@ def wait_spot_requests_active(ec2, requests, timeout=None, tentative=False):
             cancel()
 
 
-def create_spot_instances(ec2, price, image_id, spec, num_instances=1, timeout=None, tentative=False, tags=None) -> Iterator[List[Boto2Instance]]:
+def create_spot_instances(ec2, price, image_id, spec, num_instances=1, timeout=None, tentative=False, tags=None) -> Iterable[List[Boto2Instance]]:
     """
-    :rtype: Iterator[List[Boto2Instance]]
+    Create instances on the spot market.
     """
     def spotRequestNotFound(e):
         return getattr(e, 'error_code', None) == "InvalidSpotInstanceRequestID.NotFound"
@@ -258,7 +256,7 @@ def create_ondemand_instances(ec2, image_id, spec, num_instances=1) -> List[Boto
                                      **spec).instances
 
 
-def prune(bushy: dict) -> dict
+def prune(bushy: dict) -> dict:
     """
     Prune entries in the given dict with false-y values.
     Boto3 may not like None and instead wants no key.
@@ -313,7 +311,6 @@ def create_instances(ec2: ServiceResource,
                        'SecurityGroupIds': security_group_ids,
                        'InstanceType': instance_type,
                        'UserData': user_data,
-                       'Placement': placement,
                        'BlockDeviceMappings': block_device_map,
                        'SubnetId': subnet_id}
                        
@@ -395,10 +392,10 @@ def create_auto_scaling_group(autoscaling: ServiceResource,
                               vpc_subnets: List[str],
                               min_size: int = 0,
                               max_size: int = 0,
-                              instance_types: Optional[List[string]] = None,
+                              instance_types: Optional[List[str]] = None,
                               spot_bid: Optional[float] = None,
                               spot_cheapest: bool = False,
-                              tags: Optional[Dict[str, str]] = None) -> None
+                              tags: Optional[Dict[str, str]] = None) -> None:
 
     """
     Create a new Auto Scaling Group with the given name (which is also its

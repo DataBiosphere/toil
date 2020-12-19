@@ -18,6 +18,7 @@ import json
 import boto3
 import logging
 import urllib.request
+import uuid
 import boto.ec2
 
 from six import iteritems
@@ -41,7 +42,7 @@ from toil.provisioners.aws import zoneToRegion, getCurrentAWSZone, getSpotZone
 from toil.provisioners.aws.boto2Context import Boto2Context
 from toil.lib.retry import old_retry
 from toil.lib.memoize import less_strict_bool
-from toil.provisioners import NoSuchClusterException
+from toil.provisioners import NoSuchClusterException, ClusterTypeNotSupportedException
 from toil.provisioners.node import Node
 from toil.lib.generatedEC2Lists import E2Instances
 
@@ -608,7 +609,7 @@ class AWSProvisioner(AbstractProvisioner):
             self._waitForIP(leader)
             leaderNode.waitForNode('toil_leader')
 
-        return leader if returnRawInstance else leaderNode
+        return leaderNode
 
     @classmethod
     @awsRetry
@@ -916,7 +917,7 @@ class AWSProvisioner(AbstractProvisioner):
                                       instance_type=instanceType.name,
                                       user_data=userData,
                                       block_device_map=bdms,
-                                      instance_profile_arn=self._leaderProfileArn
+                                      instance_profile_arn=self._leaderProfileArn,
                                       tags=tags)
                                       
     @awsRetry
@@ -983,7 +984,7 @@ class AWSProvisioner(AbstractProvisioner):
         for instance_type in instance_types:
             spec = E2Instances[instance_type]
             spec_gigs = spec.disks * spec.disk_capacity
-            rootVolSize = self._nodeStorageOverrides.get(nodeType, self._nodeStorage)
+            rootVolSize = self._nodeStorageOverrides.get(instance_type, self._nodeStorage)
             storage_gigs.append(max(rootVolSize - _STORAGE_ROOT_OVERHEAD_GIGS, spec_gigs))
         # Get the min storage we expect to see, but not less than 0.
         min_gigs = max(min(storage_gigs), 0)
