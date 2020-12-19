@@ -134,7 +134,7 @@ def main():
                 raise RuntimeError("List of worker counts must be the same length as the list of node types.")
             fixedNodeCounts = [int(x) for x in numWorkersList]
         if config.managedWorkers:
-            managedWorkersList = config.workers.split(",")
+            managedWorkersList = config.managedWorkers.split(",")
             if not len(parsedNodeTypes) == len(managedWorkersList):
                 raise RuntimeError("List of max worker counts must be the same length as the list of node types.")
             managedNodeCounts = [int(x) for x in managedWorkersList]

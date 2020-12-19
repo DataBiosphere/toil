@@ -22,7 +22,7 @@ from boto.iam.connection import IAMConnection
 from boto.utils import get_instance_metadata
 
 from toil.lib.memoize import memoize
-from toil.lib.ec2 import UserError
+from toil.lib.ec2 import UserError, zoneToRegion
 
 log = logging.getLogger(__name__)
 
@@ -33,8 +33,6 @@ class Boto2Context(object):
     
     Also performs namespacing to keep clusters isolated.
     """
-    availability_zone_re = re.compile(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$')
-
     name_prefix_re = re.compile(r'^(/([0-9a-zA-Z.-][_0-9a-zA-Z.-]*))*')
     name_re = re.compile(name_prefix_re.pattern + '/?$')
     namespace_re = re.compile(name_prefix_re.pattern + '/$')
@@ -131,11 +129,7 @@ class Boto2Context(object):
         self.__sqs = None
 
         self.availability_zone = availability_zone
-        m = self.availability_zone_re.match(availability_zone)
-        if not m:
-            raise ValueError("Can't extract region from availability zone '%s'"
-                             % availability_zone)
-        self.region = m.group(1)
+        self.region = zoneToRegion(self.availability_zone)
 
         if namespace is None:
             raise ValueError('Need namespace')

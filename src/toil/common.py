@@ -27,12 +27,13 @@ import subprocess
 from toil import pickle
 from toil import logProcessContext
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
+from toil.lib.ec2 import zoneToRegion
 from toil.realtimeLogger import RealtimeLogger
 from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
 from toil.batchSystems.options import setOptions as setBatchOptions
 from toil.provisioners import clusterFactory
-from toil.provisioners.aws import checkValidNodeTypes, zoneToRegion
+from toil.provisioners.aws import checkValidNodeTypes 
 from toil import lookupEnvVar
 from toil.version import dockerRegistry, dockerTag
 

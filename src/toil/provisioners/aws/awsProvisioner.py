@@ -32,13 +32,13 @@ from boto.ec2.instance import Instance as Boto2Instance
 from toil.lib.memoize import memoize
 from toil.lib.ec2 import (a_short_time, create_ondemand_instances, create_instances,
                           create_spot_instances, create_launch_template, create_auto_scaling_group,
-                          wait_instances_running, wait_transition)
+                          wait_instances_running, wait_transition, zoneToRegion)
 from toil.lib.ec2nodes import InstanceType
 from toil.lib.misc import truncExpBackoff
 from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
                                                    Shape,
                                                    ManagedNodesNotSupportedException)
-from toil.provisioners.aws import zoneToRegion, getCurrentAWSZone, getSpotZone
+from toil.provisioners.aws import getCurrentAWSZone, getSpotZone
 from toil.provisioners.aws.boto2Context import Boto2Context
 from toil.lib.retry import old_retry
 from toil.lib.memoize import less_strict_bool

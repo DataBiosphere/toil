@@ -42,6 +42,18 @@ class UnexpectedResourceState(Exception):
             (resource, to_state, state))
 
 
+# This regex matches AWS availability zones.
+availability_zone_re = re.compile(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$')
+
+def zoneToRegion(zone: str):
+    """Get a region (e.g. us-west-2) from a zone (e.g. us-west-1c)."""
+    m = availability_zone_re.match(zone)
+    if not m:
+        raise ValueError("Can't extract region from availability zone '%s'"
+                         % availability_zone)
+    return m.group(1)
+
+
 def wait_transition(resource, from_states, to_state,
                     state_getter=attrgetter('state')):
     """

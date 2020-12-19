@@ -42,14 +42,6 @@ def runningOnEC2():
         return True
     except URLError:
         return False
-
-
-def zoneToRegion(zone: str):
-    """Get a region (e.g. us-west-2) from a zone (e.g. us-west-1c)."""
-    from toil.lib.context import Context
-    return Context.availability_zone_re.match(zone).group(1)
-
-
 def getSpotZone(spotBid, nodeType, ctx):
     return _getCurrentAWSZone(spotBid, nodeType, ctx)
 
