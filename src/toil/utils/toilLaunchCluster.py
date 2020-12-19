@@ -186,10 +186,10 @@ def main():
         wanted = parsedNodeTypes[typeNum]
         if wanted[1] is None:
             # Make non-spot instances
-            cluster.addManagedNodes(nodeType=wanted[0], numNodes=count, preemptable=False)
+            cluster.addManagedNodes(nodeType=wanted[0], maxNodes=count, preemptable=False)
         else:
             # Bid at the given price.
-            cluster.addManagedNodes(nodeType=wanted[0], numNodes=count, preemptable=True,
+            cluster.addManagedNodes(nodeType=wanted[0], maxNodes=count, preemptable=True,
                                     spotBid=wanted[1])
             
         
