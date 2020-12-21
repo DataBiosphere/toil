@@ -57,9 +57,8 @@ class FileID(str):
         """
         Unpack the result of pack() into a FileID object.
         """
-
-        # Separate each part of fileID
-        vals = packedFileStoreID.split(':')
+        # Only separate twice in case the FileID itself has colons in it
+        vals = packedFileStoreID.split(':', 2)
         # Break up the packed value
         size = int(vals[0])
         executable = bool(vals[1])
