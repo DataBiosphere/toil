@@ -248,7 +248,7 @@ class hidden:
         @staticmethod
         def _testWriteReadGlobalFilePermissions(job, executable):
             workDir = job.fileStore.getLocalTempDir()
-            srcFile = '%s/%s%s' % (workDir, 'in', str(uuid4()))
+            srcFile = f'{workDir}/in{uuid4()}'
             with open(srcFile, 'w') as f:
                 f.write('Hello')
 

@@ -312,9 +312,10 @@ class FileJobStore(AbstractJobStore):
             if self.moveExports:
                 self._move_and_linkback(srcPath, destPath)
             else:
-                atomic_copy(srcPath, destPath)
-            if getattr(jobStoreFileID, 'executable', False):
-                os.chmod(destPath, os.stat(destPath).st_mode | stat.S_IXUSR)
+                executable = False
+                if getattr(jobStoreFileID, 'executable', False):
+                    executable = jobStoreFileID.executable
+                atomic_copy(srcPath, destPath, executable=executable)
         else:
             super(FileJobStore, self)._defaultExportFile(otherCls, jobStoreFileID, url)
 
@@ -355,9 +356,8 @@ class FileJobStore(AbstractJobStore):
         :param object readable: An open file object to read from.
         """
         # we use a ~10Mb buffer to improve speed
-        atomic_copyobj(readable, cls._extractPathFromUrl(url), length=cls.BUFFER_SIZE)
-        if executable:
-            os.chmod(url.path, os.stat(url.path).st_mode | stat.S_IXUSR)
+        atomic_copyobj(readable, cls._extractPathFromUrl(url), length=cls.BUFFER_SIZE,
+                        executable=executable)
 
 
     @staticmethod
