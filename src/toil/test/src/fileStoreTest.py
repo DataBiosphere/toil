@@ -324,7 +324,7 @@ class hidden:
             dstFile = job.fileStore.readGlobalFile(fileID, mutable=mutable, symlink=symlink)
             currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
 
-            assert initialPermissions == currentPermissions, f'{initialPermissions} == {currentPermissions}'
+            assert initialPermissions == currentPermissions
 
         @staticmethod
         def _writeFileToJobStore(job, isLocalFile, nonLocalDir=None, fileMB=1):
