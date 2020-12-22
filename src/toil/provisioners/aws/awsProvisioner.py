@@ -380,10 +380,8 @@ class AWSProvisioner(AbstractProvisioner):
         logger.debug('Deleting IAM roles ...')
         removed = False
         for role_name in self._getRoleNames():
-            logger.info('IAM role: %s', role_name)
             # TODO: factor out into a delete function
             for profile_name in self._getRoleInstanceProfileNames(role_name):
-                logger.info('On instance profile: %s', profile_name)
                 
                 if role_name == profile_name:
                     # We should have a role and a profile with the same name
@@ -398,7 +396,6 @@ class AWSProvisioner(AbstractProvisioner):
                         with attempt:
                             self.iam_client.remove_role_from_instance_profile(InstanceProfileName=profile_name,
                                                                               RoleName=role_name)
-                            logger.info('Cut connection')
                    
                     # TODO: add ability to find and clean up dead profiles if
                     # we get interrupted here.
@@ -406,11 +403,9 @@ class AWSProvisioner(AbstractProvisioner):
                     for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                         with attempt:
                             self.iam_client.delete_instance_profile(InstanceProfileName=profile_name)
-                            logger.info('Deleted instance profile: %s', profile_name)
                             
             # We also need to drop all inline policies
             for policy_name in self._getRoleInlinePolicyNames(role_name):
-                logger.info('Inline policy: %s', policy_name)
                 for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                     with attempt:
                         self.iam_client.delete_role_policy(PolicyName=policy_name,
