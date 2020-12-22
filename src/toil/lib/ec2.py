@@ -14,6 +14,7 @@ from boto3 import Session
 from boto3.resources.base import ServiceResource
 from botocore.client import BaseClient
 from botocore.credentials import JSONFileCache
+from botocore.exceptions import ClientError
 from botocore.session import get_session
 
 
@@ -267,9 +268,18 @@ def create_spot_instances(ec2, price, image_id, spec, num_instances=1, timeout=N
 
 
 def inconsistencies_detected(e):
-    if getattr(e, 'code', None) == 'InvalidGroup.NotFound':
-        return True
-    m = getattr(e, 'error_message', '').lower()
+    if isinstance(e, ClientError):
+        # Boto3 error
+        if e.response['Error']['Code'] == 'InvalidGroup.NotFound':
+            return True
+        # This is where boto3 keeps messages
+        m = err.response['Error']['Message']
+    else:
+        # Maybe a boto2 error?
+        if getattr(e, 'code', None) == 'InvalidGroup.NotFound':
+            return True
+        # This is where boto2 keeps messages
+        m = getattr(e, 'error_message', '').lower()
     return 'invalid iam instance profile' in m or 'no associated iam roles' in m
 
 

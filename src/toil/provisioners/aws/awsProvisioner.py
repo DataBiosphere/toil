@@ -135,6 +135,7 @@ class AWSProvisioner(AbstractProvisioner):
         self.ec2_resource = self.session.resource('ec2')
         self.ec2_client = self.session.client('ec2')
         self.autoscaling_client = self.session.client('autoscaling')
+        self.iam_client = self.session.client('iam')
 
         if clusterName:
             self._buildContext()  # create boto2 context (self._boto2)
@@ -210,7 +211,7 @@ class AWSProvisioner(AbstractProvisioner):
         # This is where we put the leader
         self._vpcSubnet = vpcSubnet
 
-        profileArn = awsEc2ProfileArn or self._getProfileArn()
+        profileArn = awsEc2ProfileArn or self._createProfileArn()
         # the security group name is used as the cluster identifier
         createdSGs = self._createSecurityGroups()
         bdms = self._getBoto3BlockDeviceMappings(instanceType, rootVolSize=leaderStorage)
@@ -375,6 +376,52 @@ class AWSProvisioner(AbstractProvisioner):
             removed = False
         if removed:
             logger.debug('... Succesfully deleted launch templates')
+            
+        logger.debug('Deleting IAM roles ...')
+        removed = False
+        for role_name in self._getRoleNames():
+            logger.info('IAM role: %s', role_name)
+            # TODO: factor out into a delete function
+            for profile_name in self._getRoleInstanceProfileNames(role_name):
+                logger.info('On instance profile: %s', profile_name)
+                
+                if role_name == profile_name:
+                    # We should have a role and a profile with the same name
+                    # that we created. If we have any other profiles, someone
+                    # has messed with our deployment and we should probably
+                    # fail.
+                    
+                    # We can't delete either the role or the profile while they
+                    # are attached.
+                   
+                    for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
+                        with attempt:
+                            self.iam_client.remove_role_from_instance_profile(InstanceProfileName=profile_name,
+                                                                              RoleName=role_name)
+                            logger.info('Cut connection')
+                   
+                    # TODO: add ability to find and clean up dead profiles if
+                    # we get interrupted here.
+                   
+                    for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
+                        with attempt:
+                            self.iam_client.delete_instance_profile(InstanceProfileName=profile_name)
+                            logger.info('Deleted instance profile: %s', profile_name)
+                            
+            # We also need to drop all inline policies
+            for policy_name in self._getRoleInlinePolicyNames(role_name):
+                logger.info('Inline policy: %s', policy_name)
+                for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
+                    with attempt:
+                        self.iam_client.delete_role_policy(PolicyName=policy_name,
+                                                           RoleName=role_name)
+            
+            for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
+                with attempt:
+                    self.iam_client.delete_role(RoleName=role_name)
+                    removed = True
+        if removed:
+            logger.debug('... Succesfully deleted IAM roles')
             
         if len(instances) == len(instancesToTerminate):
             logger.debug('Deleting security group ...')
@@ -1022,8 +1069,99 @@ class AWSProvisioner(AbstractProvisioner):
                                   tags=tags)
         
         return asg_name
+       
+    @awsRetry
+    def _getRoleNames(self) -> List[str]:
+        """
+        Get all the roles belonging to the cluster, as names.
+        """
         
-
+        # TODO: When we drop boto2 and the Boto2Context, keep track of which
+        # roles are ours ourselves.
+        return [role['role_name'] for role in self._boto2.local_roles()]
+        
+    @awsRetry
+    def _getRoleInstanceProfileNames(self, role_name: str) -> List[str]:
+        """
+        Get all the instance profiles with the IAM role with the given name.
+        
+        Returns instance profile names.
+        """
+        
+        allProfiles = []
+        
+        response = self.iam_client.list_instance_profiles_for_role(RoleName=role_name,
+                                                                   MaxItems=200)
+        while True:
+            # Process the current page
+            allProfiles += [item['InstanceProfileName'] for item in response.get('InstanceProfiles', [])]
+            if 'IsTruncated' in response and response['IsTruncated']:
+                # There are more pages. Get the next one, supplying the marker.
+                response = self.iam_client.list_instance_profiles_for_role(RoleName=role_name,
+                                                                           MaxItems=200,
+                                                                           Marker=response['Marker'])
+            else:
+                # No more pages
+                break
+                
+        return allProfiles
+        
+    @awsRetry
+    def _getRolePolicyArns(self, role_name: str) -> List[str]:
+        """
+        Get all the policies attached to the IAM role with the given name.
+        
+        These do not include inline policies on the role.
+        
+        Returns policy ARNs.
+        """
+        
+        # TODO: we don't currently use attached policies.
+        
+        allPolicies = []
+        
+        response = self.iam_client.list_attached_role_policies(RoleName=role_name,
+                                                               MaxItems=200)
+        while True:
+            # Process the current page
+            allPolicies += [item['PolicyArn'] for item in response.get('AttachedPolicies', [])]
+            if 'IsTruncated' in response and response['IsTruncated']:
+                # There are more pages. Get the next one, supplying the marker.
+                response = self.iam_client.list_attached_role_policies(RoleName=role_name,
+                                                                       MaxItems=200,
+                                                                       Marker=response['Marker'])
+            else:
+                # No more pages
+                break
+                
+        return allPolicies
+        
+    @awsRetry
+    def _getRoleInlinePolicyNames(self, role_name: str) -> List[str]:
+        """
+        Get all the policies inline in the given IAM role.
+        Returns policy names.
+        """
+        
+        allPolicies = []
+        
+        response = self.iam_client.list_role_policies(RoleName=role_name,
+                                                      MaxItems=200)
+        while True:
+            # Process the current page
+            allPolicies += response.get('PolicyNames', [])
+            if 'IsTruncated' in response and response['IsTruncated']:
+                # There are more pages. Get the next one, supplying the marker.
+                response = self.iam_client.list_role_policies(RoleName=role_name,
+                                                              MaxItems=200,
+                                                              Marker=response['Marker'])
+            else:
+                # No more pages
+                break
+                
+        return allPolicies
+    
+        
     def full_policy(self, resource: str) -> dict:
         """
         Produce a dict describing the JSON form of a full-access-granting AWS
@@ -1092,10 +1230,11 @@ class AWSProvisioner(AbstractProvisioner):
         ])])
 
     @awsRetry
-    def _getProfileArn(self) -> str:
+    def _createProfileArn(self) -> str:
         """
         Create an IAM role and instance profile that grants needed permissions
-        for cluster leaders and workers.
+        for cluster leaders and workers. Naming is handled by the Boto2Context
+        and is specific to the cluster.
         
         Returns its ARN.
         """
