@@ -37,6 +37,7 @@ from typing import (
     Mapping,
     MutableMapping,
     MutableSequence,
+    Optional,
     Text,
     TextIO,
     Tuple,
@@ -564,8 +565,12 @@ class ToilPathMapper(PathMapper):
         staged: bool = False,
     ) -> None:
         """Iterate over a CWL object, resolving File and Directory path references."""
+        stagedir = cast(Optional[str], obj.get("dirname")) or stagedir
         tgt = convert_pathsep_to_unix(
-            os.path.join(stagedir, cast(str, obj["basename"]))
+            os.path.join(
+                stagedir,
+                cast(str, obj["basename"]),
+            )
         )
         if obj["location"] in self._pathmap:
             return
@@ -579,7 +584,7 @@ class ToilPathMapper(PathMapper):
                 resolved, tgt, "WritableDirectory" if copy else "Directory", staged
             )
 
-            if location.startswith("file://") and not self.stage_listing:
+            if location.startswith("file://"):
                 staged = False
 
             self.visitlisting(
@@ -598,7 +603,6 @@ class ToilPathMapper(PathMapper):
                     cast(str, obj["contents"]),
                     tgt,
                     "CreateWritableFile" if copy else "CreateFile",
-                    # "CreateFile",  # TODO: Allow "WritableFile" here; see base class
                     staged,
                 )
             else:
