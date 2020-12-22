@@ -358,7 +358,7 @@ class AWSProvisioner(AbstractProvisioner):
         if removed:
             logger.debug('... Succesfully terminated workers')
         
-        logger.debug('Deleting launch templates ...')
+        logger.info('Deleting launch templates ...')
         removed = False
         for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
             with attempt:
@@ -377,49 +377,52 @@ class AWSProvisioner(AbstractProvisioner):
         if removed:
             logger.debug('... Succesfully deleted launch templates')
             
-        logger.debug('Deleting IAM roles ...')
-        removed = False
-        for role_name in self._getRoleNames():
-            # TODO: factor out into a delete function
-            for profile_name in self._getRoleInstanceProfileNames(role_name):
-                
-                if role_name == profile_name:
-                    # We should have a role and a profile with the same name
-                    # that we created. If we have any other profiles, someone
-                    # has messed with our deployment and we should probably
-                    # fail.
+        
+        if len(instances) == len(instancesToTerminate):
+            # All nodes are gone now.
+            
+            logger.info('Deleting IAM roles ...')
+            removed = False
+            for role_name in self._getRoleNames():
+                # TODO: factor out into a delete function
+                for profile_name in self._getRoleInstanceProfileNames(role_name):
                     
-                    # We can't delete either the role or the profile while they
-                    # are attached.
-                   
+                    if role_name == profile_name:
+                        # We should have a role and a profile with the same name
+                        # that we created. If we have any other profiles, someone
+                        # has messed with our deployment and we should probably
+                        # fail.
+                        
+                        # We can't delete either the role or the profile while they
+                        # are attached.
+                       
+                        for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
+                            with attempt:
+                                self.iam_client.remove_role_from_instance_profile(InstanceProfileName=profile_name,
+                                                                                  RoleName=role_name)
+                       
+                        # TODO: add ability to find and clean up dead profiles if
+                        # we get interrupted here.
+                       
+                        for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
+                            with attempt:
+                                self.iam_client.delete_instance_profile(InstanceProfileName=profile_name)
+                                
+                # We also need to drop all inline policies
+                for policy_name in self._getRoleInlinePolicyNames(role_name):
                     for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                         with attempt:
-                            self.iam_client.remove_role_from_instance_profile(InstanceProfileName=profile_name,
-                                                                              RoleName=role_name)
-                   
-                    # TODO: add ability to find and clean up dead profiles if
-                    # we get interrupted here.
-                   
-                    for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
-                        with attempt:
-                            self.iam_client.delete_instance_profile(InstanceProfileName=profile_name)
-                            
-            # We also need to drop all inline policies
-            for policy_name in self._getRoleInlinePolicyNames(role_name):
+                            self.iam_client.delete_role_policy(PolicyName=policy_name,
+                                                               RoleName=role_name)
+                
                 for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                     with attempt:
-                        self.iam_client.delete_role_policy(PolicyName=policy_name,
-                                                           RoleName=role_name)
+                        self.iam_client.delete_role(RoleName=role_name)
+                        removed = True
+            if removed:
+                logger.debug('... Succesfully deleted IAM roles')
             
-            for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
-                with attempt:
-                    self.iam_client.delete_role(RoleName=role_name)
-                    removed = True
-        if removed:
-            logger.debug('... Succesfully deleted IAM roles')
-            
-        if len(instances) == len(instancesToTerminate):
-            logger.debug('Deleting security group ...')
+            logger.info('Deleting security group ...')
             removed = False
             for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                 with attempt:

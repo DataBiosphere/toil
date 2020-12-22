@@ -523,6 +523,7 @@ class Boto2Context(object):
     def setup_iam_ec2_role(self, role_name, policies):
         aws_role_name = self.to_aws_name(role_name)
         try:
+            log.debug('Creating IAM role...')
             self.iam.create_role(aws_role_name, assume_role_policy_document=json.dumps({
                 "Version": "2012-10-17",
                 "Statement": [{
@@ -530,8 +531,10 @@ class Boto2Context(object):
                     "Principal": {"Service": ["ec2.amazonaws.com"]},
                     "Action": ["sts:AssumeRole"]}
                 ]}))
+            log.debug('Created new IAM role')
         except BotoServerError as e:
             if e.status == 409 and e.error_code == 'EntityAlreadyExists':
+                log.debug('IAM role already exists. Reusing.')
                 pass
             else:
                 raise

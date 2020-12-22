@@ -268,6 +268,7 @@ def create_spot_instances(ec2, price, image_id, spec, num_instances=1, timeout=N
 
 
 def inconsistencies_detected(e):
+    log.info('Inspecting error: %s %s', type(e), e)
     if isinstance(e, ClientError):
         # Boto3 error
         if e.response['Error']['Code'] == 'InvalidGroup.NotFound':
@@ -279,7 +280,8 @@ def inconsistencies_detected(e):
         if getattr(e, 'code', None) == 'InvalidGroup.NotFound':
             return True
         # This is where boto2 keeps messages
-        m = getattr(e, 'error_message', '').lower()
+        m = getattr(e, 'error_message', '')
+    m = m.lower()
     return 'invalid iam instance profile' in m or 'no associated iam roles' in m
 
 
