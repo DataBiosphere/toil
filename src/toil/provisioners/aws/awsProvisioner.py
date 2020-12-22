@@ -1060,7 +1060,7 @@ class AWSProvisioner(AbstractProvisioner):
             
         # Now we need to make up a unique name
         # TODO: can we make this more semantic without risking collisions? Maybe count up in memory?
-        asg_name = 'asg-' + str(uuid.uuid4())
+        asg_name = 'toil-' + str(uuid.uuid4())
         
         create_auto_scaling_group(self.autoscaling_client,
                                   asg_name=asg_name,
@@ -1069,6 +1069,7 @@ class AWSProvisioner(AbstractProvisioner):
                                   min_size=0,
                                   max_size=max_size,
                                   instance_types=instance_types,
+                                  spot_bid=spot_bid,
                                   tags=tags)
         
         return asg_name
