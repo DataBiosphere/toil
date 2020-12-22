@@ -584,7 +584,7 @@ class ToilPathMapper(PathMapper):
                 resolved, tgt, "WritableDirectory" if copy else "Directory", staged
             )
 
-            if location.startswith("file://"):  # and not self.stage_listing
+            if location.startswith("file://"):
                 staged = False
 
             self.visitlisting(
