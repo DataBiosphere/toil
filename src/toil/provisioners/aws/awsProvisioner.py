@@ -191,7 +191,7 @@ class AWSProvisioner(AbstractProvisioner):
         :param owner: Resources will be tagged with this owner string.
         :param keyName: The ssh key to use to access the leader node.
         :param botoPath: The path to the boto credentials directory.
-        :param userTags: Optionally provided user tags to put on the leader.
+        :param userTags: Optionally provided user tags to put on the cluster.
         :param vpcSubnet: Optionally specify the VPC subnet.
         :param awsEc2ProfileArn: Optionally provide the profile ARN.
         :param awsEc2ExtraSecurityGroupIds: Optionally provide additional security group IDs.
@@ -217,10 +217,23 @@ class AWSProvisioner(AbstractProvisioner):
         bdms = self._getBoto3BlockDeviceMappings(instanceType, rootVolSize=leaderStorage)
 
         userData = self._getCloudConfigUserData('leader')
-        if isinstance(userData, str):
-            # Spot-market provisioning requires bytes for user data.
-            # We probably won't have a spot-market leader, but who knows!
-            userData = userData.encode('utf-8')
+            
+        # Make up the tags
+        self._tags = {'Name': self.clusterName,
+                      'Owner': owner,
+                      'realOwner': owner,
+                      _TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName}
+        self._tags.update(userTags)
+        
+        # Make tags for the leader specifically
+        leader_tags = dict(self._tags)
+        leader_tags[_TAG_KEY_TOIL_NODE_TYPE] = 'leader'
+        
+        if self.clusterType == 'kubernetes':
+            # All nodes need a tag putting them in the cluster.
+            # This tag needs to be on there before the a leader can finish its startup.
+            default_tags['kubernetes.io/cluster/' + self.clusterName] = ''
+            
         instances = create_instances(self.ec2_resource,
                                      image_id=self._discoverAMI(),
                                      num_instances=1,
@@ -231,33 +244,18 @@ class AWSProvisioner(AbstractProvisioner):
                                      block_device_map=bdms,
                                      instance_profile_arn=profileArn,
                                      placement_az=self._zone,
-                                     subnet_id=self._vpcSubnet)
+                                     subnet_id=self._vpcSubnet,
+                                     tags=leader_tags)
 
         # wait for the leader to exist at all
         leader = instances[0]
         leader.wait_until_exists()
-
-        default_tags = {'Name': self.clusterName,
-                        'Owner': owner,
-                        _TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName,
-                        _TAG_KEY_TOIL_NODE_TYPE: 'leader'}
-        default_tags.update(userTags)
-        if self.clusterType == 'kubernetes':
-            # All nodes need a tag putting them in the cluster.
-            # This tag needs to be on there before the a leader can finish its startup.
-            default_tags['kubernetes.io/cluster/' + self.clusterName] = ''
-
-        tags = []
-        for user_key, user_value in default_tags.items():
-            tags.append({'Key': user_key, 'Value': user_value})
-        leader.create_tags(Tags=tags)
         
         # Don't go on until the leader is started
         leader.wait_until_running()
 
         # Remember enough about the leader to let us launch workers in its
         # cluster.
-        self._tags = {t['Key']: t['Value'] for t in tags if t['Key'] != _TAG_KEY_TOIL_NODE_TYPE}
         self._leaderPrivateIP = leader.private_ip_address
         # This is where we will put the workers.
         # See also: self._vpcSubnet
