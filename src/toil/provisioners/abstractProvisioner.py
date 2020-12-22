@@ -635,7 +635,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
                 -v /tmp:/tmp \\
                 -v /opt:/opt \\
                 -v /etc/kubernetes:/etc/kubernetes \\
-                -v /etc/kubernetes/admin.conf:/root/.kube/config
+                -v /etc/kubernetes/admin.conf:/root/.kube/config \\
                 --name=toil_{role} \\
                 {applianceSelf()} \\
                 {entryPointArgs}

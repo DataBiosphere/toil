@@ -223,17 +223,18 @@ class AWSProvisioner(AbstractProvisioner):
                       'Owner': owner,
                       'realOwner': owner,
                       _TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName}
+
+        if self.clusterType == 'kubernetes':
+            # All nodes need a tag putting them in the cluster.
+            # This tag needs to be on there before the a leader can finish its startup.
+            self._tags['kubernetes.io/cluster/' + self.clusterName] = ''
+
         self._tags.update(userTags)
-        
+
         # Make tags for the leader specifically
         leader_tags = dict(self._tags)
         leader_tags[_TAG_KEY_TOIL_NODE_TYPE] = 'leader'
         
-        if self.clusterType == 'kubernetes':
-            # All nodes need a tag putting them in the cluster.
-            # This tag needs to be on there before the a leader can finish its startup.
-            default_tags['kubernetes.io/cluster/' + self.clusterName] = ''
-            
         instances = create_instances(self.ec2_resource,
                                      image_id=self._discoverAMI(),
                                      num_instances=1,
@@ -254,6 +255,12 @@ class AWSProvisioner(AbstractProvisioner):
         # Don't go on until the leader is started
         leader.wait_until_running()
 
+        # Now reload it to make sure all the IPs are set.
+        leader.reload()
+
+        if leader.public_ip_address is None:
+            raise RuntimeError("AWS did not assign a public IP to the cluster leader! Leader is lost!")
+
         # Remember enough about the leader to let us launch workers in its
         # cluster.
         self._leaderPrivateIP = leader.private_ip_address
@@ -263,7 +270,7 @@ class AWSProvisioner(AbstractProvisioner):
         self._leaderSecurityGroupNames = set()
         self._leaderSecurityGroupIDs = set(createdSGs + awsEc2ExtraSecurityGroupIds)
         self._leaderProfileArn = profileArn
-        
+
         leaderNode = Node(publicIP=leader.public_ip_address, privateIP=leader.private_ip_address,
                           name=leader.id, launchTime=leader.launch_time,
                           nodeType=instanceType.name, preemptable=False,
@@ -334,8 +341,8 @@ class AWSProvisioner(AbstractProvisioner):
         for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
             with attempt:
                 for asgName in self._getAutoScalingGroupNames():
-                    # We wait for the instances to terminate (ForceDelete=False)
-                    self.autoscaling_client.delete_auto_scaling_group(AutoScalingGroupName=asgName, ForceDelete=False)
+                    # We delete the group and all the instances via ForceDelete.
+                    self.autoscaling_client.delete_auto_scaling_group(AutoScalingGroupName=asgName, ForceDelete=True)
                     removed = True
         if removed:
             logger.debug('... Succesfully deleted autoscaling groups')

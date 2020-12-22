@@ -188,7 +188,7 @@ class Node(object):
         :return: the number of unsuccessful attempts to connect to the port before a the first
         success
         """
-        logger.debug('Waiting for ssh port to open...')
+        logger.debug('Waiting for ssh port on %s to open...', self.effectiveIP)
         for i in count():
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             try:
