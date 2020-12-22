@@ -243,6 +243,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
               mem: number of bytes of memory needed
               jobID: ID number of the job
             """
+            bsubMem = []
             if mem:
                 if per_core_reservation():
                     mem = float(mem)/1024**3/math.ceil(cpu)
@@ -253,11 +254,11 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     mem_resource = parse_memory_resource(mem)
                     mem_limit = parse_memory_limit(mem)
 
-                bsubMem = ['-R', 'select[mem > {m}] '
-                           'rusage[mem={m}]'.format(m=mem_resource),
-                           '-M', str(mem_limit)]
-            else:
-                bsubMem = []
+                if mem > 0:
+                    bsubMem = ['-R', 'select[mem > {m}] '
+                               'rusage[mem={m}]'.format(m=mem_resource),
+                               '-M', str(mem_limit)]
+                
             bsubCpu = [] if cpu is None else ['-n', str(math.ceil(cpu))]
             bsubline = ["bsub", "-cwd", ".", "-J", "toil_job_{}".format(jobID)]
             bsubline.extend(bsubMem)

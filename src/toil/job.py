@@ -742,7 +742,7 @@ class JobDescription(Requirer):
             self.memory = self.memory * 2
             logger.warning("We have doubled the memory of the failed job %s to %s bytes due to doubleMem flag",
                            self, self.memory)
-        if self.memory < self._config.defaultMemory:
+        elif self.memory < self._config.defaultMemory:
             self.memory = self._config.defaultMemory
             logger.warning("We have increased the default memory of the failed job %s to %s bytes",
                            self, self.memory)
