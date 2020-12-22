@@ -261,8 +261,7 @@ class hidden:
 
             for mutable in True,False:
                 for symlink in True,False:
-                    #with self.subTest(f'Now testing readGlobalFileWith: mutable={mutable} symlink={symlink}'):
-                    dstFile = job.fileStore.getLocalTempFile() + str(uuid4())
+                    dstFile = job.fileStore.getLocalTempDir() + str(uuid4())
                     dstFile = job.fileStore.readGlobalFile(fileID, userPath=dstFile, mutable=mutable, symlink=symlink)
                     # Current file owner execute permissions
                     currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
