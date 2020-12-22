@@ -602,24 +602,35 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         We assume the pod has only one container, as Toil's pods do.
 
+        If the metrics service is not working, we treat the pod as not being
+        stuck OOM.
+
         :param kubernetes.client.V1Pod podObject: a Kubernetes pod with one
                                        container to check up on.
         :param int minFreeBytes: Minimum free bytes to not be OOM.
 
-        :return: True if the pod is OOM, false otherwise.
+        :return: True if the pod is OOM, False otherwise.
         :rtype: bool
         """
 
         # Compose a query to get just the pod we care about
         query = 'metadata.name=' + podObject.metadata.name
 
-        # Look for it
-        # TODO: When the Kubernetes Python API actually wraps the metrics API, switch to that
-        response = self._try_kubernetes(self._api('customObjects').\
-                list_namespaced_custom_object, 
-                'metrics.k8s.io', 'v1beta1',
-                self.namespace, 'pods',
-                field_selector=query)
+        # Look for it, but manage our own exceptions
+        try:
+            # TODO: When the Kubernetes Python API actually wraps the metrics API, switch to that
+            response = self._api('customObjects').list_namespaced_custom_object('metrics.k8s.io', 'v1beta1',
+                                                                                self.namespace, 'pods',
+                                                                                field_selector=query)
+        except Exception as e:
+            if type(e) in retryable_kubernetes_errors:
+                # This is the sort of error we would expect from an overloaded
+                # Kubernetes or a dead metrics service.
+                # We can't tell that the pod is stuck, so say that it isn't.
+                logger.warning("Could not query metrics service: %s", e)
+                return False
+            else:
+                raise
 
         # Pull out the items
         items = response.get('items', [])
