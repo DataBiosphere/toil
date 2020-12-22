@@ -124,7 +124,7 @@ def atomic_copy(src_path, dest_path, executable=False):
     with AtomicFileCreate(dest_path) as dest_path_tmp:
         shutil.copyfile(src_path, dest_path_tmp)
         if executable:
-            os.chmod(dest_path, os.stat(dest_path).st_mode | stat.S_IXUSR)
+            os.chmod(dest_path_tmp, os.stat(dest_path_tmp).st_mode | stat.S_IXUSR)
 
 def atomic_copyobj(src_fh, dest_path, length=16384, executable=False):
     """Copy an open file using posix atomic creations semantics."""
