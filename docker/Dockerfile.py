@@ -106,7 +106,9 @@ print(heredoc('''
         ./mconfig && \
         cd ./builddir && \
         make -j4 && \
-        make install
+        make install && \
+        cd && \
+        rm -Rf $(go env GOPATH)
     
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh
@@ -157,8 +159,15 @@ print(heredoc('''
     ENV TOIL_APPLIANCE_SELF {applianceSelf}
 
     RUN mkdir /var/lib/toil
-
     ENV TOIL_WORKDIR /var/lib/toil
+
+    # We want to get binaries mounted in from the environemnt on Toil-managed Kubernetes
+    env PATH /opt/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+    # We want to pick the right Python when the user runs it
+    RUN rm /usr/bin/python3 && rm /usr/bin/python && \
+        ln -s /usr/bin/{python} /usr/bin/python3 && \
+        ln -s /usr/bin/python3 /usr/bin/python
 
     # This component changes most frequently and keeping it last maximizes Docker cache hits.
     COPY {sdistName} .
@@ -166,8 +175,8 @@ print(heredoc('''
     RUN rm {sdistName}
 
     # We intentionally inherit the default ENTRYPOINT and CMD from the base image, to the effect
-    # that the running appliance just gives you a shell. To start the Mesos master or slave
-    # daemons, the user # should override the entrypoint via --entrypoint.
+    # that the running appliance just gives you a shell. To start the Mesos daemons, the user
+    # should override the entrypoint via --entrypoint.
 
     RUN echo '[ ! -z "$TERM" -a -r /etc/motd ] && cat /etc/motd' >> /etc/bash.bashrc \
         && printf '{motd}' > /etc/motd
