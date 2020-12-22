@@ -273,7 +273,7 @@ def inconsistencies_detected(e):
         if e.response['Error']['Code'] == 'InvalidGroup.NotFound':
             return True
         # This is where boto3 keeps messages
-        m = err.response['Error']['Message']
+        m = e.response['Error']['Message']
     else:
         # Maybe a boto2 error?
         if getattr(e, 'code', None) == 'InvalidGroup.NotFound':
