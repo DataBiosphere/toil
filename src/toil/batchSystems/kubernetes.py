@@ -726,13 +726,13 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     runtime = slow_down((termination.completion_time - termination.start_time).total_seconds())
                     result = UpdatedBatchJobInfo(jobID=jobID, exitStatus=exitCode, wallTime=runtime, exitReason=exitReason)
 
-                    if (ExiReason == BatchJobExitReason.FAILED) or (jobObject.status.finished == totalPods):
+                    if (exitReason == BatchJobExitReason.FAILED) or (jobObject.status.finished == totalPods):
                         # Cleanup if job is all finished or there was a pod that failed
                         self._try_kubernetes(self._api('batch').delete_namespaced_job, 
                                             jobObject.metadata.name,
                                             self.namespace,
                                             propagation_policy='Foreground')
-                        self._waitForJobDeath(jobOjbect.metadata.name)
+                        self._waitForJobDeath(jobObject.metadata.name)
                         return result
                     continue
                 else:
