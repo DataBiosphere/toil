@@ -14,9 +14,12 @@
 """
 Terminates the specified cluster and associated resources
 """
+import logging
 from toil.provisioners import clusterFactory
 from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions
+
+logger = logging.getLogger(__name__)
 
 def main():
     parser = getBasicOptionParser()
@@ -26,3 +29,5 @@ def main():
                              clusterName=config.clusterName,
                              zone=config.zone)
     cluster.destroyCluster()
+
+    logger.info('Cluster is now gone.')

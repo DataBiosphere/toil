@@ -191,6 +191,8 @@ def main():
             # Bid at the given price.
             cluster.addManagedNodes(nodeType=wanted[0], maxNodes=count, preemptable=True,
                                     spotBid=wanted[1])
+
+    logger.info('Cluster created successfully.')
             
         
 

@@ -406,7 +406,7 @@ def create_launch_template(ec2_client: BaseClient,
     
     if isinstance(user_data, str):
         # Make sure we have bytes
-        user_data = user_data.decode('utf-8')
+        user_data = user_data.encode('utf-8')
         
     # Then base64 and decode back to str.
     user_data = b64encode(user_data).decode('utf-8')
@@ -439,7 +439,7 @@ def create_launch_template(ec2_client: BaseClient,
             if tags:
                 request['TagSpecifications'] = [{'ResourceType': 'launch-template', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]}]
                        
-            return ec2_client.create_launch_template(**request)
+            return ec2_client.create_launch_template(**request)['LaunchTemplate']['LaunchTemplateId']
             
 def create_auto_scaling_group(autoscaling_client: BaseClient,
                               asg_name: str,
