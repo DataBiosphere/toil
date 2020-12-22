@@ -221,7 +221,6 @@ class AWSProvisioner(AbstractProvisioner):
         # Make up the tags
         self._tags = {'Name': self.clusterName,
                       'Owner': owner,
-                      'realOwner': owner,
                       _TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName}
 
         if self.clusterType == 'kubernetes':
