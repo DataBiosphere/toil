@@ -249,7 +249,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     mem_resource = parse_memory_resource(mem)
                     mem_limit = parse_memory_limit(mem)
                 else:
-                    mem = float(mem) // 1024**3
+                    mem = float(mem) / 1024**3
                     mem_resource = parse_memory_resource(mem)
                     mem_limit = parse_memory_limit(mem)
 
