@@ -7,6 +7,7 @@ from operator import attrgetter
 from past.builtins import map
 from toil.lib.exceptions import panic
 from toil.lib.retry import old_retry
+from base64 import b64encode
 from boto.ec2.instance import Instance as Boto2Instance
 from boto.ec2.spotinstancerequest import SpotInstanceRequest
 from boto.exception import EC2ResponseError
@@ -73,8 +74,7 @@ def zone_to_region(zone: str):
     """Get a region (e.g. us-west-2) from a zone (e.g. us-west-1c)."""
     m = availability_zone_re.match(zone)
     if not m:
-        raise ValueError("Can't extract region from availability zone '%s'"
-                         % availability_zone)
+        raise ValueError(f"Can't extract region from availability zone '{zone}'")
     return m.group(1)
 
 
@@ -390,19 +390,26 @@ def create_launch_template(ec2_client: BaseClient,
     """
     Creates a launch template with the given name for launching instances with the given parameters.
     
-    We only ever use launch template version 1 of any launch template.
+    We only ever use the default version of any launch template.
 
     Internally calls https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html?highlight=create_launch_template#EC2.Client.create_launch_template
     
-    Returns the ID of the launch template.
+    :param tags: Tags, if given, are applied to the template itself, all instances, and all volumes.
+    :param user_data: non-base64-encoded user data to pass to the instances.
     
-    Tags, if given, are applied to the template itself, all instances, and all volumes.
+    
+    :return: the ID of the launch template.
+    
+    
     """
     log.info('Creating launch template for %s instances ... ', instance_type)
     
-    if isinstance(user_data, bytes):
-        # Boto3 insists on a str here.
+    if isinstance(user_data, str):
+        # Make sure we have bytes
         user_data = user_data.decode('utf-8')
+        
+    # Then base64 and decode back to str.
+    user_data = b64encode(user_data).decode('utf-8')
     
     for attempt in retry_ec2(retry_for=a_long_time, retry_while=inconsistencies_detected):
         with attempt:
