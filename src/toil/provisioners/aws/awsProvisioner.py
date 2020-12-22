@@ -32,7 +32,8 @@ from boto.ec2.instance import Instance as Boto2Instance
 from toil.lib.memoize import memoize
 from toil.lib.ec2 import (a_short_time, create_ondemand_instances, create_instances,
                           create_spot_instances, create_launch_template, create_auto_scaling_group,
-                          wait_instances_running, wait_transition, zone_to_region)
+                          establish_boto3_session, wait_instances_running, wait_transition,
+                          zone_to_region)
 from toil.lib.ec2nodes import InstanceType
 from toil.lib.misc import truncExpBackoff
 from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
@@ -129,7 +130,7 @@ class AWSProvisioner(AbstractProvisioner):
     
 
         # establish boto3 clients
-        self.session = boto3.Session(region_name=zone_to_region(self._zone))
+        self.session = establish_boto3_session(region_name=zone_to_region(self._zone))
         # Boto3 splits functionality between a "resource" and a "client" for the same AWS aspect.
         self.ec2_resource = self.session.resource('ec2')
         self.ec2_client = self.session.client('ec2')

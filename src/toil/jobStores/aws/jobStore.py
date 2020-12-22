@@ -70,13 +70,10 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       uploadFromPath, chunkedFileUpload, fileSizeAndTime)
 from toil.jobStores.utils import WritablePipe, ReadablePipe, ReadableTransformingPipe
 import toil.lib.encryption as encryption
+from toil.lib.ec2 import establish_boto3_session
 from toil.lib.ec2nodes import EC2Regions
 
-# Make sure to use credential caching when talking to Amazon via boto3
-# See https://github.com/boto/botocore/pull/1338/
-botocore_session = botocore.session.get_session()
-botocore_session.get_component('credential_provider').get_provider('assume-role').cache = botocore.credentials.JSONFileCache()
-boto3_session = boto3.Session(botocore_session=botocore_session)
+boto3_session = establish_boto3_session()
 s3_boto3_resource = boto3_session.resource('s3')
 s3_boto3_client = boto3_session.client('s3')
 log = logging.getLogger(__name__)

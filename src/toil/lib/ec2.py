@@ -10,8 +10,13 @@ from toil.lib.retry import old_retry
 from boto.ec2.instance import Instance as Boto2Instance
 from boto.ec2.spotinstancerequest import SpotInstanceRequest
 from boto.exception import EC2ResponseError
+from boto3 import Session
 from boto3.resources.base import ServiceResource
 from botocore.client import BaseClient
+from botocore.credentials import JSONFileCache
+from botocore.session import get_session
+
+
 
 a_short_time = 5
 a_long_time = 60 * 60
@@ -43,6 +48,22 @@ class UnexpectedResourceState(Exception):
             "Expected state of %s to be '%s' but got '%s'" %
             (resource, to_state, state))
 
+def establish_boto3_session(region_name: Optional[str] = None) -> Session:
+    """
+    This is the One True Place where Boto3 sessions should be established, and
+    prepares them with the nexessary credential caching.
+
+    :param region_name: If given, the session will be associated with the given AWS region.
+    """
+
+    # Make sure to use credential caching when talking to Amazon via boto3
+    # See https://github.com/boto/botocore/pull/1338/
+    # And https://github.com/boto/botocore/commit/2dae76f52ae63db3304b5933730ea5efaaaf2bfc
+
+    botocore_session = get_session()
+    botocore_session.get_component('credential_provider').get_provider('assume-role').cache = JSONFileCache()
+
+    return Session(botocore_session=botocore_session, region_name=region_name)
 
 # This regex matches AWS availability zones.
 availability_zone_re = re.compile(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$')
