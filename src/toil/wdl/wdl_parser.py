@@ -42,13 +42,11 @@
 # See the Hermes repository: http://github.com/scottfrazer/hermes
 #
 ################################################################################
-import sys
-import os
-import re
 import base64
-import argparse
-from builtins import chr
+import re
 from collections import OrderedDict
+
+
 # Common Code #
 def parse_tree_string(parsetree, indent=None, b64_source=True, indent_level=0, debug=False):
     indent_str = (' ' * indent * indent_level) if indent else ''

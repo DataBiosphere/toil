@@ -12,20 +12,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-from builtins import str
-
-import sys
-import os
 import logging
-import time
 import math
-
-from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
+import os
+import time
 
 import htcondor
-import classad
+
+from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
 
 logger = logging.getLogger(__name__)
 

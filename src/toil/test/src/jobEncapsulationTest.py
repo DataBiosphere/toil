@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,11 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
 import os
 
-from toil.lib.bioio import getTempFile
 from toil.job import Job
+from toil.test import get_temp_file
 from toil.test import ToilTest, travis_test
 from toil.test.src.jobTest import fn1Test
 
@@ -32,7 +31,7 @@ class JobEncapsulationTest(ToilTest):
         class.
         """
         # Temporary file
-        outFile = getTempFile(rootDir=self._createTempDir())
+        outFile = get_temp_file(rootDir=self._createTempDir())
         try:
             # Encapsulate a job graph
             a = Job.wrapJobFn(encapsulatedJobFn, "A", outFile, name="a")

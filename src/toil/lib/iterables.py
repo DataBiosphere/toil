@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,13 +14,7 @@
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
 
-from __future__ import absolute_import
-from builtins import map
-from builtins import object
-try:
-    from itertools import zip_longest
-except:
-    from itertools import izip_longest as zip_longest
+
 
 def flatten( iterables ):
     """ Flatten an iterable, except for string elements. """
@@ -50,7 +44,6 @@ class concat(object):
 
     Note that concat() flattens (or chains) all iterable arguments into a single result iterable:
 
-    >>> from builtins import range
     >>> list( concat( 1, range( 2, 4 ), 4 ) )
     [1, 2, 3, 4]
 
@@ -59,7 +52,6 @@ class concat(object):
 
     If you want to prevent that flattening for an iterable argument, wrap it in concat():
 
-    >>> from builtins import range
     >>> list( concat( 1, concat( range( 2, 4 ) ), 4 ) )
     [1, range(2, 4), 4]
 

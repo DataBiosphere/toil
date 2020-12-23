@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,29 +13,32 @@
 # limitations under the License.
 import logging
 import os
+import pickle
 import re
+import subprocess
 import sys
 import tempfile
 import time
 import uuid
-import requests
 from argparse import ArgumentParser
 
-from toil.lib.humanize import bytes2human
+import requests
+
+from toil import logProcessContext, lookupEnvVar
+from toil.batchSystems.options import (add_all_batchsystem_options,
+                                       set_batchsystem_config_defaults,
+                                       set_batchsystem_options)
+from toil.lib.humanize import bytes2human, human2bytes
 from toil.lib.retry import retry
-import subprocess
-from toil import pickle
-from toil import logProcessContext
-from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
-from toil.lib.ec2 import zone_to_region
+from toil.provisioners import (add_provisioner_options,
+                               check_valid_node_types,
+                               cluster_factory)
+from toil.provisioners.aws import zone_to_region
 from toil.realtimeLogger import RealtimeLogger
-from toil.batchSystems.options import addOptions as addBatchOptions
-from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
-from toil.batchSystems.options import setOptions as setBatchOptions
-from toil.provisioners import clusterFactory
-from toil.provisioners.aws import checkValidNodeTypes 
-from toil import lookupEnvVar
-from toil.version import dockerRegistry, dockerTag
+from toil.statsAndLogging import (add_logging_options,
+                                  root_logger,
+                                  set_logging_from_options)
+from toil.version import dockerRegistry, dockerTag, version
 
 # aim to pack autoscaling jobs within a 30 minute block before provisioning a new node
 defaultTargetTime = 1800
@@ -53,7 +56,7 @@ class Config:
         finished sucessfully and its job store has been clean up."""
         self.workflowAttemptNumber = None
         self.jobStore = None
-        self.logLevel = getLogLevelString()
+        self.logLevel = logging.getLevelName(root_logger.getEffectiveLevel())
         self.workDir = None
         self.noStdOutErr = False
         self.stats = False
@@ -68,12 +71,12 @@ class Config:
         self.restart = False
 
         # Batch system options
-        setDefaultBatchOptions(self)
+        set_batchsystem_config_defaults(self)
 
         # Autoscaling options
         self.provisioner = None
         self.nodeTypes = []
-        checkValidNodeTypes(self.provisioner, self.nodeTypes)
+        check_valid_node_types(self.provisioner, self.nodeTypes)
         self.nodeOptions = None
         self.minNodes = None
         self.maxNodes = [10]
@@ -136,24 +139,18 @@ class Config:
 
     def setOptions(self, options):
         """Creates a config object from the options object."""
-        from toil.lib.humanize import human2bytes
-        def setOption(varName, parsingFn=None, checkFn=None, default=None):
-            # If options object has the option "varName" specified
-            # then set the "varName" attrib to this value in the config object
-            x = getattr(options, varName, None)
-            if x is None:
-                x = default
+        def setOption(option_name, parsingFn=None, checkFn=None, default=None):
+            option_value = getattr(options, option_name, default)
 
-            if x is not None:
+            if option_value is not None:
                 if parsingFn is not None:
-                    x = parsingFn(x)
+                    option_value = parsingFn(option_value)
                 if checkFn is not None:
                     try:
-                        checkFn(x)
+                        checkFn(option_value)
                     except AssertionError:
-                        raise RuntimeError("The %s option has an invalid value: %s"
-                                           % (varName, x))
-                setattr(self, varName, x)
+                        raise RuntimeError(f"The {option_name} option has an invalid value: {option_value}")
+                setattr(self, option_name, option_value)
 
         # Function to parse integer from string expressed in different formats
         h2b = lambda x: human2bytes(str(x))
@@ -200,7 +197,7 @@ class Config:
 
         # Batch system options
         setOption("batchSystem")
-        setBatchOptions(self, setOption)
+        set_batchsystem_options(self.batchSystem, setOption)
         setOption("disableAutoDeployment")
         setOption("scale", float, fC(0.0))
         setOption("parasolCommand")
@@ -219,18 +216,15 @@ class Config:
         setOption("maxNodes", parseIntList)
         setOption("targetTime", int)
         if self.targetTime <= 0:
-            raise RuntimeError('targetTime (%s) must be a positive integer!'
-                               '' % self.targetTime)
+            raise RuntimeError(f'targetTime ({self.targetTime}) must be a positive integer!')
         setOption("betaInertia", float)
         if not 0.0 <= self.betaInertia <= 0.9:
-            raise RuntimeError('betaInertia (%f) must be between 0.0 and 0.9!'
-                               '' % self.betaInertia)
+            raise RuntimeError(f'betaInertia ({self.betaInertia}) must be between 0.0 and 0.9!')
         setOption("scaleInterval", float)
         setOption("metrics")
         setOption("preemptableCompensation", float)
         if not 0.0 <= self.preemptableCompensation <= 1.0:
-            raise RuntimeError('preemptableCompensation (%f) must be between 0.0 and 1.0!'
-                               '' % self.preemptableCompensation)
+            raise RuntimeError(f'preemptableCompensation ({self.preemptableCompensation}) must be between 0.0 and 1.0!')
         setOption("nodeStorage", int)
 
         def checkNodeStorageOverrides(nodeStorageOverrides):
@@ -306,29 +300,56 @@ class Config:
         return self.__dict__.__hash__()
 
 
-jobStoreLocatorHelp = ("A job store holds persistent information about the jobs and files in a "
-                       "workflow. If the workflow is run with a distributed batch system, the job "
-                       "store must be accessible by all worker nodes. Depending on the desired "
-                       "job store implementation, the location should be formatted according to "
-                       "one of the following schemes:\n\n"
-                       "file:<path> where <path> points to a directory on the file systen\n\n"
-                       "aws:<region>:<prefix> where <region> is the name of an AWS region like "
-                       "us-west-2 and <prefix> will be prepended to the names of any top-level "
-                       "AWS resources in use by job store, e.g. S3 buckets.\n\n "
-                       "google:<project_id>:<prefix> TODO: explain\n\n"
-                       "For backwards compatibility, you may also specify ./foo (equivalent to "
-                       "file:./foo or just file:foo) or /bar (equivalent to file:/bar).")
+JOBSTORE_HELP = ("The location of the job store for the workflow.  "
+                 "A job store holds persistent information about the jobs, stats, and files in a "
+                 "workflow. If the workflow is run with a distributed batch system, the job "
+                 "store must be accessible by all worker nodes. Depending on the desired "
+                 "job store implementation, the location should be formatted according to "
+                 "one of the following schemes:\n\n"
+                 "file:<path> where <path> points to a directory on the file systen\n\n"
+                 "aws:<region>:<prefix> where <region> is the name of an AWS region like "
+                 "us-west-2 and <prefix> will be prepended to the names of any top-level "
+                 "AWS resources in use by job store, e.g. S3 buckets.\n\n "
+                 "google:<project_id>:<prefix> TODO: explain\n\n"
+                 "For backwards compatibility, you may also specify ./foo (equivalent to "
+                 "file:./foo or just file:foo) or /bar (equivalent to file:/bar).")
 
 
-def _addOptions(addGroupFn, config):
+def parser_with_common_options(provisioner_options=False, jobstore_option=True):
+    parser = ArgumentParser()
+
+    if provisioner_options:
+        add_provisioner_options(parser)
+
+    if jobstore_option:
+        parser.add_argument('jobStore', type=str, help=JOBSTORE_HELP)
+
+    # always add these
+    add_logging_options(parser)
+    parser.add_argument("--version", action='version', version=version)
+    parser.add_argument("--tempDirRoot", dest="tempDirRoot", type=str, default=tempfile.gettempdir(),
+                        help="Path to where temporary directory containing all temp files are created, "
+                             "by default generates a fresh tmp dir with 'tempfile.gettempdir()'.")
+    return parser
+
+
+def addOptions(parser: ArgumentParser, config: Config = Config()):
+    if not isinstance(parser, ArgumentParser):
+        raise ValueError(f"Unanticipated class: {parser.__class__}.  Must be: argparse.ArgumentParser.")
+
+    def addGroupFn(group_title, group_description):
+        return parser.add_argument_group(group_title, group_description).add_argument
+
+    add_logging_options(parser)
+    parser.register("type", "bool", parseBool)  # Custom type for arg=True/False.
+
     #
     # Core options
     #
-    addOptionFn = addGroupFn("toil core options",
+    addOptionFn = addGroupFn("Toil core options.",
                              "Options to specify the location of the Toil workflow and turn on "
                              "stats collation about the performance of jobs.")
-    addOptionFn('jobStore', type=str,
-                help="The location of the job store for the workflow. " + jobStoreLocatorHelp)
+    addOptionFn('jobStore', type=str, help=JOBSTORE_HELP)
     addOptionFn("--workDir", dest="workDir", default=None,
                 help="Absolute path to directory where temporary files generated during the Toil "
                      "run should be placed. Standard output and error from batch system jobs "
@@ -378,14 +399,13 @@ def _addOptions(addGroupFn, config):
     #
     # Batch system options
     #
-
     addOptionFn = addGroupFn("toil options for specifying the batch system",
                              "Allows the specification of the batch system, and arguments to the "
                              "batch system/big batch system (see below).")
     addOptionFn("--statePollingWait", dest="statePollingWait", default=1, type=int,
                 help=("Time, in seconds, to wait before doing a scheduler query for job state. "
                       "Return cached results if within the waiting period."))
-    addBatchOptions(addOptionFn, config)
+    add_all_batchsystem_options(addOptionFn, config)
 
     #
     # Auto scaling options
@@ -650,23 +670,6 @@ def parseBool(val):
     else:
         raise RuntimeError("Could not interpret \"%s\" as a boolean value" % val)
 
-def addOptions(parser, config=Config()):
-    """
-    Adds toil options to a parser object, either optparse or argparse.
-    """
-    # Wrapper function that allows toil to be used with both the optparse and
-    # argparse option parsing modules
-    addLoggingOptions(parser)  # This adds the logging stuff.
-    if isinstance(parser, ArgumentParser):
-        def addGroup(headingString, bodyString):
-            return parser.add_argument_group(headingString, bodyString).add_argument
-
-        parser.register("type", "bool", parseBool)  # Custom type for arg=True/False.
-        _addOptions(addGroup, config)
-    else:
-        raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting "
-                           "argparse.ArgumentParser" % parser.__class__)
-
 
 def getNodeID():
     """
@@ -760,7 +763,7 @@ class Toil(object):
         consolidate the derived configuration with the one from the previous invocation of the
         workflow.
         """
-        setLoggingFromOptions(self.options)
+        set_logging_from_options(self.options)
         config = Config()
         config.setOptions(self.options)
         jobStore = self.getJobStore(config.jobStore)
@@ -788,11 +791,11 @@ class Toil(object):
             if (exc_type is not None and self.config.clean == "onError" or
                             exc_type is None and self.config.clean == "onSuccess" or
                         self.config.clean == "always"):
-    
-                try:           
+
+                try:
                     if self.config.restart and not self._inRestart:
                         pass
-                    else:      
+                    else:
                         self._jobStore.destroy()
                         logger.info("Successfully deleted the job store: %s" % str(self._jobStore))
                 except:
@@ -884,12 +887,12 @@ class Toil(object):
         if self.config.provisioner is None:
             self._provisioner = None
         else:
-            self._provisioner = clusterFactory(provisioner=self.config.provisioner,
-                                               clusterName=None,
-                                               zone=None, # read from instance meta-data
-                                               nodeStorage=self.config.nodeStorage,
-                                               nodeStorageOverrides=self.config.nodeStorageOverrides,
-                                               sseKey=self.config.sseKey)
+            self._provisioner = cluster_factory(provisioner=self.config.provisioner,
+                                                clusterName=None,
+                                                zone=None,  # read from instance meta-data
+                                                nodeStorage=self.config.nodeStorage,
+                                                nodeStorageOverrides=self.config.nodeStorageOverrides,
+                                                sseKey=self.config.sseKey)
             self._provisioner.setAutoscaledNodeTypes(self.config.nodeTypes)
 
     @classmethod
@@ -992,7 +995,8 @@ class Toil(object):
                     with self._jobStore.writeSharedFileStream('userScript') as f:
                         pickle.dump(userScript, f, protocol=pickle.HIGHEST_PROTOCOL)
                 else:
-                    from toil.batchSystems.singleMachine import SingleMachineBatchSystem
+                    from toil.batchSystems.singleMachine import \
+                        SingleMachineBatchSystem
                     if not isinstance(self._batchSystem, SingleMachineBatchSystem):
                         logger.warning('Batch system does not support auto-deployment. The user '
                                     'script %s will have to be present at the same location on '
@@ -1328,9 +1332,6 @@ class ToilMetrics:
             self.nodeExporterProc.kill()
 
 
-# Nested functions can't have doctests so we have to make this global
-
-
 def parseSetEnv(l):
     """
     Parses a list of strings of the form "NAME=VALUE" or just "NAME" into a dictionary. Strings
@@ -1394,7 +1395,7 @@ def cacheDirName(workflowID):
     """
     :return: Name of the cache directory.
     """
-    return 'cache-' + workflowID
+    return f'cache-{workflowID}'
 
 
 def getDirSizeRecursively(dirPath):
@@ -1420,7 +1421,7 @@ def getDirSizeRecursively(dirPath):
     # The call: 'du -s /some/path' should give the number of 512-byte blocks
     # allocated with the environment variable: BLOCKSIZE='512' set, and we
     # multiply this by 512 to return the filesize in bytes.
-    
+
     try:
         return int(subprocess.check_output(['du', '-s', dirPath],
                                            env=dict(os.environ, BLOCKSIZE='512')).decode('utf-8').split()[0]) * 512
@@ -1442,6 +1443,7 @@ def getFileSystemSize(dirPath):
     freeSpace = diskStats.f_frsize * diskStats.f_bavail
     diskSize = diskStats.f_frsize * diskStats.f_blocks
     return freeSpace, diskSize
+
 
 def safeUnpickleFromStream(stream):
     string = stream.read()

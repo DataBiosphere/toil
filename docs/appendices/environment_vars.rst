@@ -40,7 +40,7 @@ There are several environment variables that affect the way Toil runs.
 +----------------------------------+----------------------------------------------------+
 | KUBE_WATCH_ENABLED               | A boolean variable that allows for users           |
 |                                  | to utilize kubernetes watch stream feature         |
-|                                  | intead of polling for running jobs. Default        | 
+|                                  | intead of polling for running jobs. Default        |
 |                                  | value is set to False.                             |
 +----------------------------------+----------------------------------------------------+
 | TOIL_APPLIANCE_SELF              | The fully qualified reference for the Toil         |
@@ -147,5 +147,14 @@ There are several environment variables that affect the way Toil runs.
 |                                  | such as private docker authentication for the Toil |
 |                                  | appliance itself (i.e. from TOIL_APPLIANCE_SELF).  |
 +----------------------------------+----------------------------------------------------+
-
+| TOIL_S3_HOST                     | the IP address or hostname to use for connecting   |
+|                                  | to S3. Example: ``TOIL_S3_HOST=127.0.0.1``         |
++----------------------------------+----------------------------------------------------+
+| TOIL_S3_PORT                     | a port number to use for connecting to S3.         |
+|                                  | Example: ``TOIL_S3_PORT=9001``                     |
++----------------------------------+----------------------------------------------------+
+| TOIL_S3_USE_SSL                  | enable or disable the usage of SSL for connecting  |
+|                                  | to S3 (``True`` by default).                       |
+|                                  | Example: ``TOIL_S3_USE_SSL=False``                 |
++----------------------------------+----------------------------------------------------+
 .. _standard temporary directory: https://docs.python.org/3/library/tempfile.html#tempfile.gettempdir

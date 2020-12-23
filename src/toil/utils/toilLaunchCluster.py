@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,30 +11,28 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""
-Launches a toil leader instance with the specified provisioner.
-"""
+"""Launches a toil leader instance with the specified provisioner."""
 import logging
-from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
-from toil.utils import addBasicProvisionerOptions, getZoneFromEnv
-from toil.provisioners import clusterFactory
-from toil.provisioners.aws import checkValidNodeTypes
+import os
+
 from toil import applianceSelf
+from toil.common import parser_with_common_options
+from toil.provisioners import check_valid_node_types, cluster_factory
+from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
 
 
-def createTagsDict(tagList):
-    tagsDict = dict()
-    for tag in tagList:
+def create_tags_dict(tags: list) -> dict:
+    tags_dict = dict()
+    for tag in tags:
         key, value = tag.split('=')
-        tagsDict[key] = value
-    return tagsDict
+        tags_dict[key] = value
+    return tags_dict
 
 
 def main():
-    parser = getBasicOptionParser()
-    parser = addBasicProvisionerOptions(parser)
+    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
     parser.add_argument("-T", "--clusterType", dest="clusterType",
                         choices=['mesos', 'kubernetes'], default='mesos',
                         help="Cluster scheduler to use.")
@@ -99,14 +97,16 @@ def main():
                         help="Any additional security groups to attach to EC2 instances. Note that a security group "
                              "with its name equal to the cluster name will always be created, thus ensure that "
                              "the extra security groups do not have the same name as the cluster name.")
-    config = parseBasicOptions(parser)
-    tags = createTagsDict(config.tags) if config.tags else dict()
-    checkValidNodeTypes(config.provisioner, config.nodeTypes)
-    checkValidNodeTypes(config.provisioner, config.leaderNodeType)
+    options = parser.parse_args()
+    set_logging_from_options(options)
+    tags = create_tags_dict(options.tags) if options.tags else dict()
 
+    worker_node_types = options.nodeTypes.split(',') if options.nodeTypes else []
+    worker_quantities = options.workers.split(',') if options.workers else []
+    check_valid_node_types(options.provisioner, worker_node_types + [options.leaderNodeType])
 
     # checks the validity of TOIL_APPLIANCE_SELF before proceeding
-    applianceSelf(forceDockerAppliance=config.forceDockerAppliance)
+    applianceSelf(forceDockerAppliance=options.forceDockerAppliance)
    
     # This holds (instance type name, bid or None) tuples for each node type.
     # No bid means non-preemptable
@@ -139,30 +139,33 @@ def main():
                 raise RuntimeError("List of max worker counts must be the same length as the list of node types.")
             managedNodeCounts = [int(x) for x in managedWorkersList]
 
-    owner = config.owner or config.keyPairName or 'toil'
+    owner = options.owner or options.keyPairName or 'toil'
 
     # Check to see if the user specified a zone. If not, see if one is stored in an environment variable.
-    config.zone = config.zone or getZoneFromEnv(config.provisioner)
+    options.zone = options.zone or os.environ.get(f'TOIL_{options.provisioner.upper()}_ZONE')
 
-    if not config.zone:
-        raise RuntimeError('Please provide a value for --zone or set a default in the TOIL_' +
-                           config.provisioner.upper() + '_ZONE environment variable.')
+    if not options.zone:
+        raise RuntimeError(f'Please provide a value for --zone or set a default in the '
+                           f'TOIL_{options.provisioner.upper()}_ZONE environment variable.')
 
-    cluster = clusterFactory(provisioner=config.provisioner,
-                             clusterName=config.clusterName,
-                             clusterType=config.clusterType,
-                             zone=config.zone,
-                             nodeStorage=config.nodeStorage)
+    if (options.nodeTypes or options.workers) and not (options.nodeTypes and options.workers):
+        raise RuntimeError("The --nodeTypes and --workers options must be specified together.")
 
-    cluster.launchCluster(leaderNodeType=config.leaderNodeType,
-                          leaderStorage=config.leaderStorage,
+    cluster = cluster_factory(provisioner=options.provisioner,
+                              clusterName=options.clusterName,
+                              clusterType=config.clusterType,
+                              zone=options.zone,
+                              nodeStorage=options.nodeStorage)
+
+    cluster.launchCluster(leaderNodeType=options.leaderNodeType,
+                          leaderStorage=options.leaderStorage,
                           owner=owner,
-                          keyName=config.keyPairName,
-                          botoPath=config.botoPath,
+                          keyName=options.keyPairName,
+                          botoPath=options.botoPath,
                           userTags=tags,
-                          vpcSubnet=config.vpcSubnet,
-                          awsEc2ProfileArn=config.awsEc2ProfileArn,
-                          awsEc2ExtraSecurityGroupIds=config.awsEc2ExtraSecurityGroupIds)
+                          vpcSubnet=options.vpcSubnet,
+                          awsEc2ProfileArn=options.awsEc2ProfileArn,
+                          awsEc2ExtraSecurityGroupIds=options.awsEc2ExtraSecurityGroupIds)
 
     for typeNum, count in enumerate(fixedNodeCounts):
         # For each batch of workers to make at startup
@@ -193,6 +196,6 @@ def main():
                                     spotBid=wanted[1])
 
     logger.info('Cluster created successfully.')
-            
-        
+
+
 

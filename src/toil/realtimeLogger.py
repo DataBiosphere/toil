@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,29 +11,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-"""
-Implements a real-time UDP-based logging system that user scripts can use for debugging.
-"""
-
-from __future__ import absolute_import
-from future import standard_library
-standard_library.install_aliases()
-from builtins import object
-from builtins import super
-import os
-import os.path
+"""Implements a real-time UDP-based logging system that user scripts can use for debugging."""
 import json
 import logging
 import logging.handlers
+import os
+import os.path
+import socketserver as SocketServer
 import threading
-from six.moves import socketserver as SocketServer
-from future.utils import with_metaclass
 
-import toil.lib.bioio
 from toil.batchSystems.options import getPublicIP
+from toil.statsAndLogging import set_log_level
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class LoggingDatagramHandler(SocketServer.BaseRequestHandler):
@@ -74,7 +64,7 @@ class LoggingDatagramHandler(SocketServer.BaseRequestHandler):
         else:
             # Log level filtering should have been done on the remote end. The handle() method
             # skips it on this end.
-            log.handle(record)
+            logger.handle(record)
 
 
 class JSONDatagramHandler(logging.handlers.DatagramHandler):
@@ -103,7 +93,7 @@ class RealtimeLoggerMetaclass(type):
         return getattr(self.getLogger(), name)
 
 
-class RealtimeLogger(with_metaclass(RealtimeLoggerMetaclass, object)):
+class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
     """
     Provides a logger that logs over UDP to the leader. To use in a Toil job, do:
 
@@ -141,7 +131,7 @@ class RealtimeLogger(with_metaclass(RealtimeLoggerMetaclass, object)):
             if cls.initialized == 0:
                 cls.initialized += 1
                 if level:
-                    log.info('Starting real-time logging.')
+                    logger.info('Starting real-time logging.')
                     # Start up the logging server
                     cls.loggingServer = SocketServer.ThreadingUDPServer(
                             server_address=('0.0.0.0', 0),
@@ -164,10 +154,10 @@ class RealtimeLogger(with_metaclass(RealtimeLoggerMetaclass, object)):
                     _setEnv('ADDRESS', '%s:%i' % (ip, port))
                     _setEnv('LEVEL', level)
                 else:
-                    log.debug('Real-time logging disabled')
+                    logger.debug('Real-time logging disabled')
             else:
                 if level:
-                    log.warning('Ignoring nested request to start real-time logging')
+                    logger.warning('Ignoring nested request to start real-time logging')
 
     @classmethod
     def _stopLeader(cls):
@@ -179,11 +169,11 @@ class RealtimeLogger(with_metaclass(RealtimeLoggerMetaclass, object)):
             cls.initialized -= 1
             if cls.initialized == 0:
                 if cls.loggingServer:
-                    log.info('Stopping real-time logging server.')
+                    logger.info('Stopping real-time logging server.')
                     cls.loggingServer.shutdown()
                     cls.loggingServer = None
                 if cls.serverThread:
-                    log.info('Joining real-time logging server thread.')
+                    logger.info('Joining real-time logging server thread.')
                     cls.serverThread.join()
                     cls.serverThread = None
                 for k in list(os.environ.keys()):
@@ -194,7 +184,7 @@ class RealtimeLogger(with_metaclass(RealtimeLoggerMetaclass, object)):
     def getLogger(cls):
         """
         Get the logger that logs real-time to the leader.
-        
+
         Note that if the returned logger is used on the leader, you will see the message twice,
         since it still goes to the normal log handlers, too.
         """
@@ -213,7 +203,7 @@ class RealtimeLogger(with_metaclass(RealtimeLoggerMetaclass, object)):
                         cls.logger.setLevel(logging.CRITICAL)
                     else:
                         # Adopt the logging level set on the leader.
-                        toil.lib.bioio.setLogLevel(level, cls.logger)
+                        set_log_level(level, cls.logger)
                         try:
                             address = os.environ[cls.envPrefix + 'ADDRESS']
                         except KeyError:

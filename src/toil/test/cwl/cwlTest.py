@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 # Copyright (C) 2015 Curoverse, Inc
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,27 +13,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
+import logging
 import os
+import re
+import shutil
+import subprocess
 import sys
 import unittest
-import re
-import logging
-import shutil
-import zipfile
-import pytest
 import uuid
-import psutil
-import subprocess
-from urllib.request import urlretrieve
+import zipfile
 from io import StringIO
+from urllib.request import urlretrieve
+
+import psutil
+import pytest
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
-from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
-                       needs_mesos, needs_parasol, needs_gridengine, needs_slurm,
-                       needs_torque)
-
+from toil.test import (ToilTest,
+                       needs_aws_s3,
+                       needs_cwl,
+                       needs_docker,
+                       needs_gridengine,
+                       needs_lsf,
+                       needs_mesos,
+                       needs_parasol,
+                       needs_slurm,
+                       needs_torque,
+                       slow)
 
 log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 3600
@@ -85,7 +93,7 @@ class CWLv10Test(ToilTest):
         self.workDir = os.path.join(self.cwlSpec, 'v1.0')
         # The latest cwl git commit hash from https://github.com/common-workflow-language/common-workflow-language.
         # Update it to get the latest tests.
-        testhash = '40fcfc01812046f012acf5153cc955ee848e69e3'  # Date:   Tue Jan 21 07:36:37 2020 +0100
+        testhash = '6a955874ade22080b8ef962b4e0d6e408112c1ef'  # Date:   Tue Dec 16 2020 8:43pm PST
         url = 'https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip' % testhash
         if not os.path.exists(self.cwlSpec):
             urlretrieve(url, 'spec.zip')
@@ -136,6 +144,7 @@ class CWLv10Test(ToilTest):
                   input_location,
                   self._expected_download_output(self.outDir))
 
+    @needs_aws_s3
     def test_s3_as_secondary_file(self):
         from toil.cwl import cwltoil
         st = StringIO()
@@ -159,6 +168,7 @@ class CWLv10Test(ToilTest):
     def test_run_revsort_debug_worker(self):
         self.revsort('revsort.cwl', self._debug_worker_tester)
 
+    @needs_aws_s3
     def test_run_s3(self):
         self.download('download_s3.json', self._tester)
 
@@ -359,7 +369,7 @@ class CWLv11Test(ToilTest):
         cls.test_yaml = os.path.join(cls.cwlSpec, 'conformance_tests.yaml')
         # TODO: Use a commit zip in case someone decides to rewrite master's history?
         url = 'https://github.com/common-workflow-language/cwl-v1.1.git'
-        commit = 'a22b7580c6b50e77c0a181ca59d3828dd5c69143'
+        commit = '664835e83eb5e57eee18a04ce7b05fb9d70d77b7'
         p = subprocess.Popen(f'git clone {url} {cls.cwlSpec} && cd {cls.cwlSpec} && git checkout {commit}', shell=True)
         p.communicate()
 
@@ -380,9 +390,7 @@ class CWLv11Test(ToilTest):
         run_conformance_tests(workDir=self.cwlSpec,
                               yml=self.test_yaml,
                               caching=caching,
-                              batchSystem=batchSystem,
-                              # TODO: we do not currently pass test: 236
-                              selected_tests='1-235,237-253')
+                              batchSystem=batchSystem)
 
 @needs_cwl
 class CWLv12Test(ToilTest):
@@ -396,7 +404,7 @@ class CWLv12Test(ToilTest):
         cls.test_yaml = os.path.join(cls.cwlSpec, 'conformance_tests.yaml')
         # TODO: Use a commit zip in case someone decides to rewrite master's history?
         url = 'https://github.com/common-workflow-language/cwl-v1.2.git'
-        commit = '9c6898993d13c644034535555c1da8ff98b10968'
+        commit = '8c3fd9d9f0209a51c5efacb1c7bc02a1164688d6'
         p = subprocess.Popen(f'git clone {url} {cls.cwlSpec} && cd {cls.cwlSpec} && git checkout {commit}', shell=True)
         p.communicate()
 
@@ -414,9 +422,7 @@ class CWLv12Test(ToilTest):
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance(self, batchSystem=None, caching=False):
-        # TODO: we do not currently pass tests: 237 (offset from other versions), 307, 309, 310, 311, 330, 331, 332
         run_conformance_tests(workDir=self.cwlSpec,
                               yml=self.test_yaml,
                               caching=caching,
-                              batchSystem=batchSystem,
-                              selected_tests='1-236,238-306,308,312-329,333-336')
+                              batchSystem=batchSystem)

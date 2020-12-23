@@ -1,4 +1,4 @@
-# Copyright (C) 2017 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,5 +18,6 @@ collect_ignore = []
 
 try:
     import toil.wdl.wdl_parser
+    print(toil.wdl.wdl_parser.__file__)  # keep this import from being removed
 except ImportError:
     collect_ignore.append("toilwdl.py")

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,30 +11,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-"""
-Reports statistical data about a given Toil workflow.
-"""
-
-from __future__ import absolute_import, print_function
-from __future__ import division
-from builtins import str
-from builtins import range
-from past.utils import old_div
-from builtins import object
-from functools import partial
-import logging
+"""Reports statistical data about a given Toil workflow."""
 import json
-from toil.lib.bioio import getBasicOptionParser
-from toil.lib.bioio import parseBasicOptions
-from toil.common import Toil, jobStoreLocatorHelp, Config
-from toil.version import version
+import logging
+from functools import partial
+
+from toil.common import Config, Toil, parser_with_common_options
 from toil.lib.expando import Expando
+from toil.statsAndLogging import set_logging_from_options
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
 
-class ColumnWidths(object):
+class ColumnWidths:
     """
     Convenience object that stores the width of columns for printing. Helps make things pretty.
     """
@@ -62,93 +51,30 @@ class ColumnWidths(object):
             for f in self.fields:
                 print('%s %s %d' % (c, f, self.getWidth(c, f)))
 
-def initializeOptions(parser):
-    parser.add_argument("jobStore", type=str,
-                        help="The location of the job store used by the workflow for which "
-                             "statistics should be reported. " + jobStoreLocatorHelp)
-    parser.add_argument("--outputFile", dest="outputFile", default=None,
-                      help="File in which to write results")
-    parser.add_argument("--raw", action="store_true", default=False,
-                      help="output the raw json data.")
-    parser.add_argument("--pretty", "--human", action="store_true", default=False,
-                      help=("if not raw, prettify the numbers to be "
-                            "human readable."))
-    parser.add_argument("--categories",
-                      help=("comma separated list from [time, clock, wait, "
-                            "memory]"))
-    parser.add_argument("--sortCategory", default="time",
-                      help=("how to sort Job list. may be from [alpha, "
-                            "time, clock, wait, memory, count]. "
-                            "default=%(default)s"))
-    parser.add_argument("--sortField", default="med",
-                      help=("how to sort Job list. may be from [min, "
-                            "med, ave, max, total]. "
-                            "default=%(default)s"))
-    parser.add_argument("--sortReverse", "--reverseSort", default=False,
-                      action="store_true",
-                      help="reverse sort order.")
-    parser.add_argument("--version", action='version', version=version)
-
-def checkOptions(options, parser):
-    """ Check options, throw parser.error() if something goes wrong
-    """
-
-    if options.jobStore == None:
-        parser.error("Specify --jobStore")
-    defaultCategories = ["time", "clock", "wait", "memory"]
-    if options.categories is None:
-        options.categories = defaultCategories
-    else:
-        options.categories = [x.lower() for x in options.categories.split(",")]
-    for c in options.categories:
-        if c not in defaultCategories:
-            parser.error("Unknown category %s. Must be from %s"
-                         % (c, str(defaultCategories)))
-    extraSort = ["count", "alpha"]
-    if options.sortCategory is not None:
-        if (options.sortCategory not in defaultCategories and
-            options.sortCategory not in extraSort):
-            parser.error("Unknown --sortCategory %s. Must be from %s"
-                         % (options.sortCategory,
-                            str(defaultCategories + extraSort)))
-    sortFields = ["min", "med", "ave", "max", "total"]
-    if options.sortField is not None:
-        if (options.sortField not in sortFields):
-            parser.error("Unknown --sortField %s. Must be from %s"
-                         % (options.sortField, str(sortFields)))
-
-def printJson(elem):
-    """ Return a JSON formatted string
-    """
-    prettyString = json.dumps(elem, indent=4, separators=(',',': '))
-    return prettyString
 
 def padStr(s, field=None):
-    """ Pad the begining of a string with spaces, if necessary.
-    """
-    if field is None:
+    """Pad the beginning of a string with spaces, if necessary."""
+    if field is None or len(s) >= field:
         return s
     else:
-      if len(s) >= field:
-          return s
-      else:
-          return " " * (field - len(s)) + s
+        return " " * (field - len(s)) + s
+
 
 def prettyMemory(k, field=None, isBytes=False):
-    """ Given input k as kilobytes, return a nicely formatted string.
-    """
+    """Given input k as kilobytes, return a nicely formatted string."""
     if isBytes:
         k /= 1024
     if k < 1024:
         return padStr("%gK" % k, field)
     if k < (1024 * 1024):
-        return padStr("%.1fM" % (old_div(k, 1024.0)), field)
+        return padStr("%.1fM" % (k / 1024.0), field)
     if k < (1024 * 1024 * 1024):
         return padStr("%.1fG" % (k / 1024.0 / 1024.0), field)
     if k < (1024 * 1024 * 1024 * 1024):
         return padStr("%.1fT" % (k / 1024.0 / 1024.0 / 1024.0), field)
     if k < (1024 * 1024 * 1024 * 1024 * 1024):
         return padStr("%.1fP" % (k / 1024.0 / 1024.0 / 1024.0 / 1024.0), field)
+
 
 def prettyTime(t, field=None):
     """ Given input t as seconds, return a nicely formatted string.
@@ -158,53 +84,49 @@ def prettyTime(t, field=None):
     if t < 120:
         return padStr("%ds" % t, field)
     if t < 120 * 60:
-        m = floor(old_div(t, 60.))
+        m = floor(t / 60.)
         s = t % 60
         return padStr("%dm%ds" % (m, s), field)
     if t < 25 * 60 * 60:
         h = floor(t / 60. / 60.)
-        m = floor(old_div((t - (h * 60. * 60.)), 60.))
+        m = floor((t - (h * 60. * 60.)) / 60.)
         s = t % 60
         return padStr("%dh%gm%ds" % (h, m, s), field)
     if t < 7 * 24 * 60 * 60:
         d = floor(t / 24. / 60. / 60.)
         h = floor((t - (d * 24. * 60. * 60.)) / 60. / 60.)
-        m = floor(old_div((t
+        m = floor((t
                    - (d * 24. * 60. * 60.)
-                   - (h * 60. * 60.)), 60.))
+                   - (h * 60. * 60.)) / 60.)
         s = t % 60
         dPlural = pluralDict[d > 1]
         return padStr("%dday%s%dh%dm%ds" % (d, dPlural, h, m, s), field)
     w = floor(t / 7. / 24. / 60. / 60.)
     d = floor((t - (w * 7 * 24 * 60 * 60)) / 24. / 60. / 60.)
-    h = floor((t
-                 - (w * 7. * 24. * 60. * 60.)
+    h = floor((t - (w * 7. * 24. * 60. * 60.)
                  - (d * 24. * 60. * 60.))
-                / 60. / 60.)
-    m = floor(old_div((t
-                 - (w * 7. * 24. * 60. * 60.)
+              / 60. / 60.)
+    m = floor((t - (w * 7. * 24. * 60. * 60.)
                  - (d * 24. * 60. * 60.)
-                 - (h * 60. * 60.)), 60.))
+                 - (h * 60. * 60.)) / 60.)
     s = t % 60
     wPlural = pluralDict[w > 1]
     dPlural = pluralDict[d > 1]
     return padStr("%dweek%s%dday%s%dh%dm%ds" % (w, wPlural, d,
                                                 dPlural, h, m, s), field)
 
+
 def reportTime(t, options, field=None):
-    """ Given t seconds, report back the correct format as string.
-    """
+    """Given t seconds, report back the correct format as string."""
     if options.pretty:
         return prettyTime(t, field=field)
-    else:
-        if field is not None:
-            return "%*.2f" % (field, t)
-        else:
-            return "%.2f" % t
+    elif field is not None:
+        return "%*.2f" % (field, t)
+    return "%.2f" % t
+
 
 def reportMemory(k, options, field=None, isBytes=False):
-    """ Given k kilobytes, report back the correct format as string.
-    """
+    """Given k kilobytes, report back the correct format as string."""
     if options.pretty:
         return prettyMemory(int(k), field=field, isBytes=isBytes)
     else:
@@ -215,24 +137,11 @@ def reportMemory(k, options, field=None, isBytes=False):
         else:
             return "%dK" % int(k)
 
-def reportNumber(n, options, field=None):
-    """ Given n an integer, report back the correct format as string.
-    """
-    if field is not None:
-        return "%*g" % (field, n)
-    else:
-        return "%g" % n
 
-def refineData(root, options):
-    """ walk down from the root and gather up the important bits.
-    """
-    worker = root.worker
-    job = root.jobs
-    jobTypesTree = root.job_types
-    jobTypes = []
-    for childName in jobTypesTree:
-        jobTypes.append(jobTypesTree[childName])
-    return root, worker, job, jobTypes
+def reportNumber(n, field=None):
+    """Given n an integer, report back the correct format as string."""
+    return "%*g" % (field, n) if field else "%g" % n
+
 
 def sprintTag(key, tag, options, columnWidths=None):
     """ Generate a pretty-print ready string from a JTTag().
@@ -241,7 +150,7 @@ def sprintTag(key, tag, options, columnWidths=None):
         columnWidths = ColumnWidths()
     header = "  %7s " % decorateTitle("Count", options)
     sub_header = "  %7s " % "n"
-    tag_str = "  %s" % reportNumber(tag.total_number, options, field=7)
+    tag_str = f"  {reportNumber(n=tag.total_number, field=7)}"
     out_str = ""
     if key == "job":
         out_str += " %-12s | %7s%7s%7s%7s\n" % ("Worker Jobs", "min",
@@ -249,7 +158,7 @@ def sprintTag(key, tag, options, columnWidths=None):
         worker_str = "%s| " % (" " * 14)
         for t in [tag.min_number_per_worker, tag.median_number_per_worker,
                   tag.average_number_per_worker, tag.max_number_per_worker]:
-            worker_str += reportNumber(t, options, field=7)
+            worker_str += reportNumber(n=t, field=7)
         out_str += worker_str + "\n"
     if "time" in options.categories:
         header += "| %*s " % (columnWidths.title("time"),
@@ -342,22 +251,17 @@ def decorateSubHeader(title, columnWidths, options):
         s += " "
         return s
 
+
 def get(tree, name):
-    """ Return a float value attribute NAME from TREE.
-    """
-    if name in tree:
-        value = tree[name]
-    else:
-        return float("nan")
+    """Return a float value attribute NAME from TREE."""
     try:
-        a = float(value)
+        return float(tree.get(name, "nan"))
     except ValueError:
-        a = float("nan")
-    return a
+        return float("nan")
+
 
 def sortJobs(jobTypes, options):
-    """ Return a jobTypes all sorted.
-    """
+    """Return a jobTypes all sorted."""
     longforms = {"med": "median",
                  "ave": "average",
                  "min": "min",
@@ -382,15 +286,15 @@ def sortJobs(jobTypes, options):
         return sorted(jobTypes, key=lambda tag: tag.total_number,
                       reverse=options.sortReverse)
 
+
 def reportPrettyData(root, worker, job, job_types, options):
-    """ print the important bits out.
-    """
+    """Print the important bits out."""
     out_str = "Batch System: %s\n" % root.batch_system
     out_str += ("Default Cores: %s  Default Memory: %s\n"
                 "Max Cores: %s\n" % (
-        reportNumber(get(root, "default_cores"), options),
+        reportNumber(n=get(root, "default_cores")),
         reportMemory(get(root, "default_memory"), options, isBytes=True),
-        reportNumber(get(root, "max_cores"), options),
+        reportNumber(n=get(root, "max_cores")),
         ))
     out_str += ("Total Clock: %s  Total Runtime: %s\n" % (
         reportTime(get(root, "total_clock"), options),
@@ -407,6 +311,7 @@ def reportPrettyData(root, worker, job, job_types, options):
         out_str += sprintTag(t.name, t, options, columnWidths=columnWidths)
     return out_str
 
+
 def computeColumnWidths(job_types, worker, job, options):
     """ Return a ColumnWidths() object with the correct max widths.
     """
@@ -416,6 +321,7 @@ def computeColumnWidths(job_types, worker, job, options):
     updateColumnWidths(worker, cw, options)
     updateColumnWidths(job, cw, options)
     return cw
+
 
 def updateColumnWidths(tag, cw, options):
     """ Update the column width attributes for this tag's fields.
@@ -438,6 +344,7 @@ def updateColumnWidths(tag, cw, options):
                 if len(s) >= cw.getWidth(category, field):
                     # this string is larger than max, width must be increased
                     cw.setWidth(category, field, len(s) + 1)
+
 
 def buildElement(element, items, itemName):
     """ Create an element for output.
@@ -477,28 +384,29 @@ def buildElement(element, items, itemName):
     element[itemName]=Expando(
         total_number=float(len(items)),
         total_time=float(sum(itemTimes)),
-        median_time=float(itemTimes[old_div(len(itemTimes),2)]),
-        average_time=float(old_div(sum(itemTimes),len(itemTimes))),
+        median_time=float(itemTimes[len(itemTimes) // 2]),
+        average_time=float(sum(itemTimes) / len(itemTimes)),
         min_time=float(min(itemTimes)),
         max_time=float(max(itemTimes)),
         total_clock=float(sum(itemClocks)),
-        median_clock=float(itemClocks[old_div(len(itemClocks),2)]),
-        average_clock=float(old_div(sum(itemClocks),len(itemClocks))),
+        median_clock=float(itemClocks[len(itemClocks) // 2]),
+        average_clock=float(sum(itemClocks) / len(itemClocks)),
         min_clock=float(min(itemClocks)),
         max_clock=float(max(itemClocks)),
         total_wait=float(sum(itemWaits)),
-        median_wait=float(itemWaits[old_div(len(itemWaits),2)]),
-        average_wait=float(old_div(sum(itemWaits),len(itemWaits))),
+        median_wait=float(itemWaits[len(itemWaits) // 2]),
+        average_wait=float(sum(itemWaits) / len(itemWaits)),
         min_wait=float(min(itemWaits)),
         max_wait=float(max(itemWaits)),
         total_memory=float(sum(itemMemory)),
-        median_memory=float(itemMemory[old_div(len(itemMemory),2)]),
-        average_memory=float(old_div(sum(itemMemory),len(itemMemory))),
+        median_memory=float(itemMemory[len(itemMemory) // 2]),
+        average_memory=float(sum(itemMemory) / len(itemMemory)),
         min_memory=float(min(itemMemory)),
         max_memory=float(max(itemMemory)),
         name=itemName
     )
     return element[itemName]
+
 
 def createSummary(element, containingItems, containingItemName, getFn):
     itemCounts = [len(getFn(containingItem)) for
@@ -506,8 +414,8 @@ def createSummary(element, containingItems, containingItemName, getFn):
     itemCounts.sort()
     if len(itemCounts) == 0:
         itemCounts.append(0)
-    element["median_number_per_%s" % containingItemName] = itemCounts[old_div(len(itemCounts), 2)]
-    element["average_number_per_%s" % containingItemName] = old_div(float(sum(itemCounts)), len(itemCounts))
+    element["median_number_per_%s" % containingItemName] = itemCounts[len(itemCounts) // 2]
+    element["average_number_per_%s" % containingItemName] = float(sum(itemCounts) / len(itemCounts))
     element["min_number_per_%s" % containingItemName] = min(itemCounts)
     element["max_number_per_%s" % containingItemName] = max(itemCounts)
 
@@ -579,13 +487,13 @@ def processData(config, stats):
     collatedStatsTag.name = "collatedStatsTag"
     return collatedStatsTag
 
+
 def reportData(tree, options):
     # Now dump it all out to file
     if options.raw:
-        out_str = printJson(tree)
+        out_str = json.dumps(tree, indent=4, separators=(',', ': '))
     else:
-        root, worker, job, job_types = refineData(tree, options)
-        out_str = reportPrettyData(root, worker, job, job_types, options)
+        out_str = reportPrettyData(tree, tree.worker, tree.jobs, tree.job_types.values(), options)
     if options.outputFile is not None:
         fileHandle = open(options.outputFile, "w")
         fileHandle.write(out_str)
@@ -593,13 +501,38 @@ def reportData(tree, options):
     # Now dump onto the screen
     print(out_str)
 
+
+category_choices = ["time", "clock", "wait", "memory"]
+sort_category_choices = ["time", "clock", "wait", "memory", "alpha", "count"]
+sort_field_choices = ['min', 'med', 'ave', 'max', 'total']
+
+
+def add_stats_options(parser):
+    parser.add_argument("--outputFile", dest="outputFile", default=None, help="File in which to write results.")
+    parser.add_argument("--raw", action="store_true", default=False, help="Return raw json data.")
+    parser.add_argument("--pretty", "--human", action="store_true", default=False,
+                        help="if not raw, prettify the numbers to be human readable.")
+    parser.add_argument("--sortReverse", "--reverseSort", default=False, action="store_true", help="Reverse sort.")
+    parser.add_argument("--categories", default=','.join(category_choices), type=str,
+                        help=f"Comma separated list of any of the following: {category_choices}.")
+    parser.add_argument("--sortCategory", default="time", choices=sort_category_choices,
+                        help=f"How to sort job categories.  Choices: {sort_category_choices}. Default: time.")
+    parser.add_argument("--sortField", default="med", choices=sort_field_choices,
+                        help=f"How to sort job fields.  Choices: {sort_field_choices}. Default: med.")
+
+
 def main():
-    """ Reports stats on the workflow, use with --stats option to toil.
-    """
-    parser = getBasicOptionParser()
-    initializeOptions(parser)
-    options = parseBasicOptions(parser)
-    checkOptions(options, parser)
+    """Reports stats on the workflow, use with --stats option to toil."""
+    parser = parser_with_common_options()
+    add_stats_options(parser)
+    options = parser.parse_args()
+
+    for c in options.categories.split(","):
+        if c.strip() not in category_choices:
+            raise ValueError(f'{c} not in {category_choices}!')
+    options.categories = [x.strip().lower() for x in options.categories.split(",")]
+
+    set_logging_from_options(options)
     config = Config()
     config.setOptions(options)
     jobStore = Toil.resumeJobStore(config.jobStore)

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
 import os
 from argparse import ArgumentParser
+
 from toil.common import Toil
 from toil.job import Job, JobDescription, TemporaryID
 from toil.test import ToilTest, travis_test
+
 
 class JobDescriptionTest(ToilTest):
     
@@ -96,4 +97,3 @@ class JobDescriptionTest(ToilTest):
         # empty list. Nothing left to do!
         j.filterSuccessors(lambda jID: jID != 'followOn')
         self.assertEqual(j.nextSuccessors(), None)
-        

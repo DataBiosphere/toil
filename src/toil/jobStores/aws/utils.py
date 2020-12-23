@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,28 +11,27 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from past.utils import old_div
 import base64
 import bz2
+import errno
+import itertools
+import logging
 import os
 import socket
-import logging
 import types
-import itertools
-import errno
-
 from ssl import SSLError
-from six import iteritems
 
-from toil.lib.exceptions import panic
-from toil.lib.compatibility import compat_oldstr, compat_bytes, USING_PYTHON2
-from toil.lib.retry import old_retry
-from boto.exception import (SDBResponseError,
-                            BotoServerError,
-                            S3ResponseError,
-                            S3CreateError,
-                            S3CopyError)
 import boto3
+from boto.exception import (BotoServerError,
+                            S3CopyError,
+                            S3CreateError,
+                            S3ResponseError,
+                            SDBResponseError)
+from botocore.exceptions import ClientError
+
+from toil.lib.compatibility import compat_bytes, compat_bytes
+from toil.lib.exceptions import panic
+from toil.lib.retry import old_retry
 
 log = logging.getLogger(__name__)
 
@@ -85,9 +84,7 @@ class SDBHelper(object):
 
     maxAttributesPerItem = 256
     maxValueSize = 1024
-    # in python2 1 / 2 == 0, in python 3 1 / 2 == 0.5
-    # old_div implents the python2 behavior in both 2 & 3
-    maxRawValueSize = old_div(maxValueSize * 3, 4)
+    maxRawValueSize = maxValueSize * 3 // 4
     # Just make sure we don't have a problem with padding or integer truncation:
     assert len(base64.b64encode(b' ' * maxRawValueSize)) == 1024
     assert len(base64.b64encode(b' ' * (1 + maxRawValueSize))) > 1024
@@ -158,14 +155,11 @@ class SDBHelper(object):
         :rtype: (str|None,int)
         :return: the binary data and the number of chunks it was composed from
         """
-        chunks = [(int(k), v) for k, v in iteritems(attributes) if cls._isValidChunkName(k)]
+        chunks = [(int(k), v) for k, v in attributes.items() if cls._isValidChunkName(k)]
         chunks.sort()
         numChunks = int(attributes[u'numChunks'])
         if numChunks:
-            if USING_PYTHON2:
-                serializedJob = b''.join(v for k, v in chunks)
-            else:
-                serializedJob = b''.join(v.encode() for k, v in chunks)
+            serializedJob = b''.join(v.encode() for k, v in chunks)
             compressed = base64.b64decode(serializedJob)
             if compressed[0] == b'C'[0]:
                 binary = bz2.decompress(compressed[1:])
@@ -178,7 +172,6 @@ class SDBHelper(object):
         return binary, numChunks
 
 
-from boto.sdb.connection import SDBConnection
 
 
 def fileSizeAndTime(localFilePath):
@@ -272,11 +265,11 @@ def copyKeyMultipart(srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, ds
     :return: The version of the copied file (or None if versioning is not enabled for dstBucket).
     """
     s3 = boto3.resource('s3')
-    dstBucket = s3.Bucket(compat_oldstr(dstBucketName))
-    dstObject = dstBucket.Object(compat_oldstr(dstKeyName))
-    copySource = {'Bucket': compat_oldstr(srcBucketName), 'Key': compat_oldstr(srcKeyName)}
+    dstBucket = s3.Bucket(compat_bytes(dstBucketName))
+    dstObject = dstBucket.Object(compat_bytes(dstKeyName))
+    copySource = {'Bucket': compat_bytes(srcBucketName), 'Key': compat_bytes(srcKeyName)}
     if srcKeyVersion is not None:
-        copySource['VersionId'] = compat_oldstr(srcKeyVersion)
+        copySource['VersionId'] = compat_bytes(srcKeyVersion)
 
     # The boto3 functions don't allow passing parameters as None to
     # indicate they weren't provided. So we have to do a bit of work
@@ -379,7 +372,8 @@ def retryable_s3_errors(e):
             or (isinstance(e, BotoServerError) and e.status == 500)
             # Throttling response sometimes received on bucket creation
             or (isinstance(e, BotoServerError) and e.status == 503 and e.code == 'SlowDown')
-            or (isinstance(e, S3CopyError) and 'try again' in e.message))
+            or (isinstance(e, S3CopyError) and 'try again' in e.message)
+            or (isinstance(e, ClientError) and 'BucketNotEmpty' in str(e)))
 
 
 def retry_s3(delays=default_delays, timeout=default_timeout, predicate=retryable_s3_errors):

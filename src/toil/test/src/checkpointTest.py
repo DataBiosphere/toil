@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2017 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
 from toil.job import Job
-from toil.test import ToilTest, slow, travis_test
-from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
+from toil.leader import FailedJobsException
+from toil.test import ToilTest, slow, travis_test
+
 
 class CheckpointTest(ToilTest):
     

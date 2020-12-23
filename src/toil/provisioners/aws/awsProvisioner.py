@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,17 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
-import time
-import string
 import json
-import boto3
 import logging
+import os
+import string
+import time
 import urllib.request
 import uuid
+
+import boto3
 import boto.ec2
 
-from six import iteritems
 from typing import List, Dict, Any, Optional
 from functools import wraps
 from boto.ec2.blockdevicemapping import BlockDeviceMapping as Boto2BlockDeviceMapping, BlockDeviceType as Boto2BlockDeviceType
@@ -29,23 +29,30 @@ from boto.exception import BotoServerError, EC2ResponseError
 from boto.utils import get_instance_metadata
 from boto.ec2.instance import Instance as Boto2Instance
 
-from toil.lib.memoize import memoize
-from toil.lib.ec2 import (a_short_time, create_ondemand_instances, create_instances,
-                          create_spot_instances, create_launch_template, create_auto_scaling_group,
-                          establish_boto3_session, wait_instances_running, wait_transition,
+from toil.lib.context import Context
+from toil.lib.ec2 import (a_short_time,
+                          create_auto_scaling_group,
+                          create_instances,
+                          create_launch_template,
+                          create_ondemand_instances,
+                          create_spot_instances,
+                          establish_boto3_session,
+                          wait_instances_running,
+                          wait_transition,
                           zone_to_region)
 from toil.lib.ec2nodes import InstanceType
+from toil.lib.generatedEC2Lists import E2Instances
+from toil.lib.memoize import memoize
 from toil.lib.misc import truncExpBackoff
+from toil.lib.retry import old_retry
+from toil.provisioners import (NoSuchClusterException,
+                               ClusterTypeNotSupportedException)
 from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
                                                    Shape,
                                                    ManagedNodesNotSupportedException)
-from toil.provisioners.aws import getCurrentAWSZone, getSpotZone
+from toil.provisioners.aws import get_current_aws_zone, zone_to_region
 from toil.provisioners.aws.boto2Context import Boto2Context
-from toil.lib.retry import old_retry
-from toil.lib.memoize import less_strict_bool
-from toil.provisioners import NoSuchClusterException, ClusterTypeNotSupportedException
 from toil.provisioners.node import Node
-from toil.lib.generatedEC2Lists import E2Instances
 
 logger = logging.getLogger(__name__)
 logging.getLogger("boto").setLevel(logging.CRITICAL)
@@ -80,7 +87,7 @@ def awsRetryPredicate(e):
 def awsFilterImpairedNodes(nodes, ec2):
     # if TOIL_AWS_NODE_DEBUG is set don't terminate nodes with
     # failing status checks so they can be debugged
-    nodeDebug = less_strict_bool(os.environ.get('TOIL_AWS_NODE_DEBUG'))
+    nodeDebug = os.environ.get('TOIL_AWS_NODE_DEBUG') in ('True', 'TRUE', 'true', True)
     if not nodeDebug:
         return nodes
     nodeIDs = [node.id for node in nodes]
@@ -89,7 +96,7 @@ def awsFilterImpairedNodes(nodes, ec2):
     healthyNodes = [node for node in nodes if statusMap.get(node.id, None) != 'impaired']
     impairedNodes = [node.id for node in nodes if statusMap.get(node.id, None) == 'impaired']
     logger.warning('TOIL_AWS_NODE_DEBUG is set and nodes %s have failed EC2 status checks so '
-                'will not be terminated.', ' '.join(impairedNodes))
+                   'will not be terminated.', ' '.join(impairedNodes))
     return healthyNodes
 
 
@@ -120,7 +127,7 @@ class AWSProvisioner(AbstractProvisioner):
         super(AWSProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
         self.cloud = 'aws'
         self._sseKey = sseKey
-        self._zone = zone if zone else getCurrentAWSZone()
+        self._zone = zone if zone else get_current_aws_zone()
         
         if zone is None:
             # Can't proceed without a real zone
@@ -490,7 +497,7 @@ class AWSProvisioner(AbstractProvisioner):
                                                                   spec=kwargs, num_instances=numNodes)
                 else:
                     logger.debug('Launching %s preemptable nodes', numNodes)
-                    kwargs['placement'] = getSpotZone(spotBid, instanceType.name, self._boto2)
+                    kwargs['placement'] = get_current_aws_zone(spotBid, instanceType.name, self._boto2)
                     # force generator to evaluate
                     instancesLaunched = list(create_spot_instances(ec2=self._boto2.ec2,
                                                                    price=spotBid,
@@ -557,7 +564,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     def _buildContext(self):
         if self._zone is None:
-            self._zone = getCurrentAWSZone()
+            self._zone = get_current_aws_zone()
             if self._zone is None:
                 raise RuntimeError(
                     'Could not determine availability zone. Ensure that one of the following '
@@ -673,7 +680,7 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _addTags(cls, instances: List[Boto2Instance], tags: Dict[str, str]):
         for instance in instances:
-            for key, value in iteritems(tags):
+            for key, value in tags.items():
                 cls._addTag(instance, key, value)
 
     @classmethod

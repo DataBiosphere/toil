@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,20 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import, print_function
-from __future__ import division
-from builtins import range
-from builtins import object
-from past.utils import old_div
-import os
 import logging
+import os
 import time
-import toil.test.batchSystems.batchSystemTest as batchSystemTest
 
-from toil.job import Job
-from toil.job import PromisedRequirement
-from toil.test import needs_mesos, slow, travis_test
+import toil.test.batchSystems.batchSystemTest as batchSystemTest
 from toil.batchSystems.mesos.test import MesosTestSupport
+from toil.job import Job, PromisedRequirement
+from toil.test import needs_mesos, slow, travis_test
 
 log = logging.getLogger(__name__)
 
@@ -56,7 +50,7 @@ class hidden(object):
                                      cores=1, memory='1M', disk='1M')
                 values = Job.Runner.startToil(root, self.getOptions(tempDir))
                 maxValue = max(values)
-                self.assertEqual(maxValue, old_div(self.cpuCount, coresPerJob))
+                self.assertEqual(maxValue, self.cpuCount // coresPerJob)
 
         @slow
         def testConcurrencyStatic(self):
@@ -80,7 +74,7 @@ class hidden(object):
                                                 disk='1M'))
                 Job.Runner.startToil(root, self.getOptions(tempDir))
                 _, maxValue = batchSystemTest.getCounters(counterPath)
-                self.assertEqual(maxValue, old_div(self.cpuCount, coresPerJob))
+                self.assertEqual(maxValue, self.cpuCount // coresPerJob)
 
         def getOptions(self, tempDir, caching=True):
             options = super(hidden.AbstractPromisedRequirementsTest, self).getOptions(tempDir)
@@ -241,4 +235,3 @@ class MesosPromisedRequirementsTest(hidden.AbstractPromisedRequirementsTest, Mes
 
     def tearDown(self):
         self._stopMesos()
-

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,32 +11,28 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import shutil
-import re
-import pickle
 import logging
-from abc import ABCMeta, abstractmethod
-from contextlib import contextmanager, closing
+import pickle
+import re
+import shutil
+import urllib.parse as urlparse
+from abc import ABC, ABCMeta, abstractmethod
+from contextlib import closing, contextmanager
 from datetime import timedelta
-from uuid import uuid4
-from requests.exceptions import HTTPError
 from http.client import BadStatusLine
+from urllib.request import urlopen
+from uuid import uuid4
 
-# Python 3 compatibility imports
-from six import itervalues
-from six.moves.urllib.request import urlopen
-import six.moves.urllib.parse as urlparse
-
-from toil.lib.retry import retry, ErrorCondition
+from requests.exceptions import HTTPError
 
 from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
-from toil.job import JobException, CheckpointJobDescription, ServiceJobDescription
+from toil.job import (CheckpointJobDescription,
+                      JobException,
+                      ServiceJobDescription)
 from toil.lib.memoize import memoize
 from toil.lib.misc import WriteWatchingStream
-from toil.lib.objects import abstractclassmethod
-from future.utils import with_metaclass
-
+from toil.lib.retry import ErrorCondition, retry
 
 logger = logging.getLogger(__name__)
 
@@ -105,11 +101,11 @@ class JobStoreExistsException(Exception):
             "the job store with 'toil clean' to start the workflow from scratch." % locator)
 
 
-class AbstractJobStore(with_metaclass(ABCMeta, object)):
+class AbstractJobStore(ABC):
     """
     Represents the physical storage for the jobs and files in a Toil workflow.
     
-    JobStores are responsible for storing :class:`toil.job.JobDescription`s
+    JobStores are responsible for storing :class:`toil.job.JobDescription`
     (which relate jobs to each other) and files.
     
     Actual :class:`toil.job.Job` objects are stored in files, referenced by
@@ -117,8 +113,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     in JobDescriptions and not full, executable Jobs.
     
     To actually get ahold of a :class:`toil.job.Job`, use
-    :meth:`toil.job.Job.loadJob` with a JobStore and the relevant
-    JobDescription.
+    :meth:`toil.job.Job.loadJob` with a JobStore and the relevant JobDescription.
     """
 
     def __init__(self):
@@ -381,7 +376,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         with self.readFileStream(jobStoreFileID) as readable:
             otherCls._writeToUrl(readable, url)
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def getSize(cls, url):
         """
         Get the size in bytes of the file at the given URL, or None if it cannot be obtained.
@@ -391,7 +387,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def _readFromUrl(cls, url, writable):
         """
         Reads the contents of the object at the specified location and writes it to the given
@@ -408,7 +405,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError()
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def _writeToUrl(cls, readable, url):
         """
         Reads the contents of the given readable stream and writes it to the object at the
@@ -423,7 +421,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError()
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def _supportsUrl(cls, url, export=False):
         """
         Returns True if the job store supports the URL's scheme.
@@ -509,7 +508,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
         def getJobDescriptions():
             if jobCache is not None:
-                return itervalues(jobCache)
+                return jobCache.values()
             else:
                 return self.jobs()
 
@@ -1109,7 +1108,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
             raise ValueError("Not a valid shared file name: '%s'." % sharedFileName)
 
 
-class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
+class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     @classmethod
     def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() in ('http', 'https', 'ftp') and not export

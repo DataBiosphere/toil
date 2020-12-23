@@ -1,15 +1,12 @@
-from builtins import range
-import errno
 import logging
 import multiprocessing
 import os
 import random
-import tempfile
 import time
 import traceback
 from functools import partial
 
-from toil.lib.threading import global_mutex, LastProcessStandingArena, cpu_count
+from toil.lib.threading import LastProcessStandingArena, global_mutex
 from toil.test import ToilTest, travis_test
 
 log = logging.getLogger(__name__)
@@ -138,4 +135,3 @@ def _testLastProcessStandingTask(scope, arena_name, number):
     except:
         traceback.print_exc()
         return False
-

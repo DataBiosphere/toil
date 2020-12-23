@@ -12,12 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
-import os
 import logging
+import os
 from collections import OrderedDict
 
 import toil.wdl.wdl_parser as wdl_parser
-from toil.wdl.wdl_types import WDLPairType, WDLMapType
+from toil.wdl.wdl_types import (WDLArrayType,
+                                WDLBooleanType,
+                                WDLFileType,
+                                WDLFloatType,
+                                WDLIntType,
+                                WDLMapType,
+                                WDLPairType,
+                                WDLStringType)
 
 wdllogger = logging.getLogger(__name__)
 
@@ -617,7 +624,7 @@ class AnalyzeWDL:
         Types are: Boolean, Float, Int, File, String, Array[subtype],
                     Pair[subtype, subtype], and Map[subtype, subtype].
         OptionalTypes are: Boolean?, Float?, Int?, File?, String?, Array[subtype]?,
-                            Pair[subtype, subtype]?, and Map[subtype, subtype].
+                            Pair[subtype, subtype]?, and Map[subtype, subtype]?.
 
         Python is not typed, so we don't need typing except to identify type: "File",
         which Toil needs to import, so we recursively travel down to the innermost
@@ -628,41 +635,53 @@ class AnalyzeWDL:
         preserved, which will allow us to import files appropriately.
 
         :param typeAST:
-        :return:
+        :return: a WDLType instance
         """
-        # TODO: represent all WDL types as WDLType subclasses, even terminal ones.
-
         if isinstance(typeAST, wdl_parser.Terminal):
-            return typeAST.source_string
+            if typeAST.source_string == 'String':
+                return WDLStringType()
+            elif typeAST.source_string == 'Int':
+                return WDLIntType()
+            elif typeAST.source_string == 'Float':
+                return WDLFloatType()
+            elif typeAST.source_string == 'Boolean':
+                return WDLBooleanType()
+            elif typeAST.source_string == 'File':
+                return WDLFileType()
+            else:
+                raise NotImplementedError
+
         elif isinstance(typeAST, wdl_parser.Ast):
             if typeAST.name == 'Type':
                 subtype = typeAST.attr('subtype')
+                optional = False
             elif typeAST.name == 'OptionalType':
                 subtype = typeAST.attr('innerType')
+                optional = True
             else:
                 raise NotImplementedError
 
             if isinstance(subtype, wdl_parser.AstList):
                 # we're looking at a compound type
-                name = self.parse_declaration_type(typeAST.attr('name'))
+                name = typeAST.attr('name').source_string
                 elements = [self.parse_declaration_type(element) for element in subtype]
 
                 if name == 'Array':
-                    # for arrays, recursively travel down to the innermost type
-                    return self.parse_declaration_type(subtype)
+                    return WDLArrayType(elements[0], optional=optional)
                 if name == 'Pair':
-                    return WDLPairType(*elements)
+                    return WDLPairType(*elements, optional=optional)
                 elif name == 'Map':
-                    return WDLMapType(*elements)
+                    return WDLMapType(*elements, optional=optional)
                 else:
                     raise NotImplementedError
-
-            return self.parse_declaration_type(subtype)
-
-        elif isinstance(typeAST, wdl_parser.AstList):
-            for ast in typeAST:
-                # TODO only ever seen one element lists.
-                return self.parse_declaration_type(ast)
+            else:
+                # either a primitive optional type OR deeply recursive types
+                # TODO: add tests #3331
+                wdl_type = self.parse_declaration_type(subtype)
+                wdl_type.optional = optional
+                return wdl_type
+        else:
+            raise NotImplementedError
 
     def parse_declaration_expressn(self, expressionAST, es, output_expressn=False):
         """

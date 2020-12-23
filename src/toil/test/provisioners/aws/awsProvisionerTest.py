@@ -1,4 +1,4 @@
-# Copyright (C) 2015 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
 # limitations under the License.
 import logging
 import os
+import subprocess
 import time
 from abc import abstractmethod
 from inspect import getsource
@@ -20,15 +21,16 @@ from textwrap import dedent
 from uuid import uuid4
 
 import pytest
-from builtins import next
-from builtins import range
-from builtins import str
 
-import subprocess
-from toil.provisioners import clusterFactory
+from toil.provisioners import cluster_factory
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
+from toil.test import (ToilTest,
+                       integrative,
+                       needs_appliance,
+                       needs_aws_ec2,
+                       slow,
+                       timeLimit)
 from toil.version import exactPython
-from toil.test import needs_aws_ec2, integrative, ToilTest, needs_appliance, timeLimit, slow
 
 log = logging.getLogger(__name__)
 
@@ -119,7 +121,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.launchCluster()
         # get the leader so we know the IP address - we don't need to wait since create cluster
         # already insures the leader is running
-        self.cluster = clusterFactory(provisioner='aws', clusterName=self.clusterName)
+        self.cluster = cluster_factory(provisioner='aws', clusterName=self.clusterName)
         self.leader = self.cluster.getLeader()
         self.sshUtil(['mkdir', '-p', self.scriptDir])  # hot deploy doesn't seem permitted to work in normal /tmp or /home
 
@@ -242,12 +244,13 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         self.requestedNodeStorage = 20
 
     def launchCluster(self):
-        from toil.lib.ec2 import wait_instances_running
         from boto.ec2.blockdevicemapping import BlockDeviceType
+
+        from toil.lib.ec2 import wait_instances_running
         self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
                                      '--nodeTypes', ",".join(self.instanceTypes), '-w', ",".join(self.numWorkers), '--nodeStorage', str(self.requestedLeaderStorage)])
 
-        self.cluster = clusterFactory(provisioner='aws', clusterName=self.clusterName)
+        self.cluster = cluster_factory(provisioner='aws', clusterName=self.clusterName)
         nodes = self.cluster._getNodesInCluster(both=True)
         nodes.sort(key=lambda x: x.launch_time)
         # assuming that leader is first
@@ -323,9 +326,10 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
 
     def _getScript(self):
         def restartScript():
-            from toil.job import Job
             import argparse
             import os
+
+            from toil.job import Job
 
             def f0(job):
                 if 'FAIL' in os.environ:
@@ -343,7 +347,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
         with open(tempfile_path, 'w') as f:
             # use appliance ssh method instead of sshutil so we can specify input param
             f.write(script)
-        cluster = clusterFactory(provisioner='aws', clusterName=self.clusterName)
+        cluster = cluster_factory(provisioner='aws', clusterName=self.clusterName)
         leader = cluster.getLeader()
         self.sshUtil(['mkdir', '-p', self.scriptDir])  # hot deploy doesn't seem permitted to work in normal /tmp or /home
         leader.injectFile(tempfile_path, self.scriptName, 'toil_leader')
@@ -390,8 +394,8 @@ class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
 
     def _getScript(self):
         def userScript():
-            from toil.job import Job
             from toil.common import Toil
+            from toil.job import Job
 
             # Because this is the only job in the pipeline and because it is preemptable,
             # there will be no non-preemptable jobs. The non-preemptable scaler will therefore
@@ -413,7 +417,7 @@ class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
 
         script = dedent('\n'.join(getsource(userScript).split('\n')[1:]))
         # use appliance ssh method instead of sshutil so we can specify input param
-        cluster = clusterFactory(provisioner='aws', clusterName=self.clusterName)
+        cluster = cluster_factory(provisioner='aws', clusterName=self.clusterName)
         leader = cluster.getLeader()
         leader.sshAppliance('tee', '/home/userScript.py', input=script)
 
@@ -422,4 +426,3 @@ class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
         command = ['/home/venv/bin/python', '/home/userScript.py']
         command.extend(toilOptions)
         self.sshUtil(command)
-

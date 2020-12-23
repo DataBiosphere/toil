@@ -1,6 +1,6 @@
 """Implemented support for Common Workflow Language (CWL) for Toil."""
 # Copyright (C) 2015 Curoverse, Inc
-# Copyright (C) 2016-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 # Copyright (C) 2019-2020 Seven Bridges
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,8 +29,22 @@ import sys
 import tempfile
 import urllib
 import uuid
-from typing import (Any, Dict, Iterator, List, Mapping, MutableMapping,
-                    MutableSequence, Text, TextIO, Tuple, TypeVar, Union, cast)
+from typing import (
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    Optional,
+    Text,
+    TextIO,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+)
 from urllib import parse as urlparse
 
 import cwltool.builder
@@ -42,20 +56,34 @@ import cwltool.main
 import cwltool.provenance
 import cwltool.resolver
 import cwltool.stdfsaccess
-import cwltool.workflow
 import schema_salad.ref_resolver
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mutation import MutationManager
 from cwltool.pathmapper import MapperEnt, PathMapper, downloadHttpFile
-from cwltool.process import (Process, add_sizes, compute_checksums,
-                             fill_in_defaults, shortname)
+from cwltool.process import (
+    Process,
+    add_sizes,
+    compute_checksums,
+    fill_in_defaults,
+    shortname,
+)
 from cwltool.secrets import SecretStore
 from cwltool.software_requirements import (
-    DependenciesConfiguration, get_container_from_software_requirements)
-from cwltool.utils import (CWLObjectType, adjustDirObjs, adjustFileObjs,
-                           aslist, convert_pathsep_to_unix, get_listing,
-                           normalizeFilesDirs, visit_class)
+    DependenciesConfiguration,
+    get_container_from_software_requirements,
+)
+from cwltool.utils import (
+    CWLObjectType,
+    CWLOutputAtomType,
+    adjustDirObjs,
+    adjustFileObjs,
+    aslist,
+    convert_pathsep_to_unix,
+    get_listing,
+    normalizeFilesDirs,
+    visit_class,
+)
 from ruamel.yaml.comments import CommentedMap
 from schema_salad import validate
 from schema_salad.schema import Names
@@ -65,8 +93,7 @@ from toil.common import Config, Toil, addOptions
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job
-from toil.jobStores.abstractJobStore import (NoSuchFileException,
-                                             NoSuchJobStoreException)
+from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobStoreException
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
@@ -102,8 +129,6 @@ def cwltoil_was_removed():
 class UnresolvedDict(dict):
     """Tag to indicate a dict contains promises that must be resolved."""
 
-    pass
-
 
 class SkipNull:
     """
@@ -113,8 +138,6 @@ class SkipNull:
     The CWL 1.2 specification calls for treating this the exactly the same as a
     null value.
     """
-
-    pass
 
 
 def filter_skip_null(name: str, value: Any) -> Any:
@@ -481,6 +504,17 @@ def resolve_dict_w_promises(
             result[k] = v.do_eval(inputs=first_pass_results)
         else:
             result[k] = first_pass_results[k]
+
+    # '_:' prefixed file paths are a signal to cwltool to create folders in place
+    # rather than copying them, so we make them here
+    for entry in result:
+        if isinstance(result[entry], dict):
+            location = result[entry].get("location")
+            if location:
+                if location.startswith("_:file://"):
+                    local_dir_path = location[len("_:file://") :]
+                    os.makedirs(local_dir_path, exist_ok=True)
+                    result[entry]["location"] = local_dir_path
     return result
 
 
@@ -531,8 +565,12 @@ class ToilPathMapper(PathMapper):
         staged: bool = False,
     ) -> None:
         """Iterate over a CWL object, resolving File and Directory path references."""
+        stagedir = cast(Optional[str], obj.get("dirname")) or stagedir
         tgt = convert_pathsep_to_unix(
-            os.path.join(stagedir, cast(str, obj["basename"]))
+            os.path.join(
+                stagedir,
+                cast(str, obj["basename"]),
+            )
         )
         if obj["location"] in self._pathmap:
             return
@@ -546,7 +584,7 @@ class ToilPathMapper(PathMapper):
                 resolved, tgt, "WritableDirectory" if copy else "Directory", staged
             )
 
-            if location.startswith("file://") and not self.stage_listing:
+            if location.startswith("file://"):
                 staged = False
 
             self.visitlisting(
@@ -565,7 +603,6 @@ class ToilPathMapper(PathMapper):
                     cast(str, obj["contents"]),
                     tgt,
                     "CreateWritableFile" if copy else "CreateFile",
-                    # "CreateFile",  # TODO: Allow "WritableFile" here; see base class
                     staged,
                 )
             else:
@@ -658,6 +695,31 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         except NoSuchFileException:
             return False
 
+    def realpath(self, path: str) -> str:
+        if path.startswith("toilfs:"):
+            # import the file and make it available locally if it exists
+            path = self._abs(path)
+        elif path.startswith("_:"):
+            return path
+        return os.path.realpath(path)
+
+    def listdir(self, fn: str) -> List[str]:
+        directory = self._abs(fn)
+        if fn.startswith("_:file://"):
+            directory = fn[len("_:file://") :]
+            if os.path.isdir(directory):
+                return [
+                    cwltool.stdfsaccess.abspath(urllib.parse.quote(entry), fn)
+                    for entry in os.listdir(directory)
+                ]
+            else:
+                return []
+        else:
+            return [
+                cwltool.stdfsaccess.abspath(urllib.parse.quote(entry), fn)
+                for entry in os.listdir(self._abs(directory))
+            ]
+
     def _abs(self, path: str) -> str:
         """
         Return a local absolute path for a file (no schema).
@@ -672,11 +734,15 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             logger.debug("Need to download file to get a local absolute path.")
             destination = self.file_store.readGlobalFile(FileID.unpack(path[7:]))
             logger.debug("Downloaded %s to %s", path, destination)
-            assert os.path.exists(destination)
-            return destination
+            if not os.path.exists(destination):
+                raise RuntimeError(
+                    f"{destination} does not exist after filestore import."
+                )
+        elif path.startswith("_:file://"):
+            destination = path
         else:
-            result = super(ToilFsAccess, self)._abs(path)
-            return result
+            destination = super(ToilFsAccess, self)._abs(path)
+        return destination
 
 
 def toil_get_file(
@@ -812,6 +878,18 @@ def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> str:
     """Wrap writeGlobalFile to accept file:// URIs."""
     fileuri = fileuri if ":/" in fileuri else f"file://{fileuri}"
     return file_store.writeGlobalFile(schema_salad.ref_resolver.uri_file_path(fileuri))
+
+
+def remove_empty_listings(rec: CWLObjectType) -> None:
+    if rec.get("class") != "Directory":
+        finddirs = []  # type: List[CWLObjectType]
+        visit_class(rec, ("Directory",), finddirs.append)
+        for f in finddirs:
+            remove_empty_listings(f)
+        return
+    if "listing" in rec and rec["listing"] == []:
+        del rec["listing"]
+        return
 
 
 class ResolveIndirect(Job):
@@ -1092,6 +1170,11 @@ class CWLJob(Job):
             if not found:
                 cwljob.pop(inp_id)
 
+        adjustDirObjs(
+            cwljob,
+            functools.partial(remove_empty_listings),
+        )
+
         # Exports temporary directory for batch systems that reset TMPDIR
         os.environ["TMPDIR"] = os.path.realpath(file_store.getLocalTempDir())
         outdir = os.path.join(file_store.getLocalTempDir(), "out")
@@ -1121,6 +1204,11 @@ class CWLJob(Job):
         runtime_context.toil_get_file = functools.partial(  # type: ignore
             toil_get_file, file_store, index, existing
         )
+
+        # TODO: Pass in a real builder here so that cwltool's builder is built with Toil's fs_access?
+        #  see: https://github.com/common-workflow-language/cwltool/blob/78fe9d41ee5a44f8725dfbd7028e4a5ee42949cf/cwltool/builder.py#L474
+        # self.builder.outdir = outdir
+        # runtime_context.builder = self.builder
 
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
@@ -1620,7 +1708,15 @@ def visitSteps(
             visitSteps(step.embedded_tool, op)
 
 
-def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> list:
+def rm_unprocessed_secondary_files(job_params: Any) -> None:
+    if isinstance(job_params, list):
+        for j in job_params:
+            rm_unprocessed_secondary_files(j)
+    if isinstance(job_params, dict) and "secondaryFiles" in job_params:
+        job_params["secondaryFiles"] = filtered_secondary_files(job_params)
+
+
+def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
     """
     Remove unprocessed secondary files.
 
@@ -1644,13 +1740,16 @@ def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> list
     # remove secondary files still containing interpolated strings
     for sf in unfiltered_secondary_files["secondaryFiles"]:
         sf_bn = sf.get("basename", "")
+        sf_loc = sf.get("location", "")
         if ("$(" not in sf_bn) and ("${" not in sf_bn):
-            intermediate_secondary_files.append(sf)
+            if ("$(" not in sf_loc) and ("${" not in sf_loc):
+                intermediate_secondary_files.append(sf)
     # remove secondary files that are not present in the filestore
     # i.e. 'file://' only gets converted to 'toilfs:' upon a successful import
     for sf in intermediate_secondary_files:
         sf_loc = sf.get("location", "")
-        if sf_loc.startswith("toilfs:"):
+        # directories aren't imported, so don't worry about them
+        if sf_loc.startswith("toilfs:") or sf.get("class", "") == "Directory":
             final_secondary_files.append(sf)
     return final_secondary_files
 
@@ -1695,7 +1794,13 @@ def determine_load_listing(tool: ToilCommandLineTool):
         if load_listing_req
         else "no_listing"
     )
-    load_listing = tool.tool.get("loadListing") or load_listing_tool_req
+    load_listing = tool.tool.get("loadListing", None) or load_listing_tool_req
+
+    listing_choices = ("no_listing", "shallow_listing", "deep_listing")
+    if load_listing not in listing_choices:
+        raise ValueError(
+            f'Unknown loadListing specified: "{load_listing}".  Valid choices: {listing_choices}'
+        )
     return load_listing
 
 
@@ -1945,8 +2050,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     outdir = os.path.abspath(options.outdir)
     tmp_outdir_prefix = os.path.abspath(options.tmp_outdir_prefix)
 
-    fileindex = {}  # type: ignore
-    existing = {}  # type: ignore
+    fileindex = dict()  # type: ignore
+    existing = dict()  # type: ignore
     conf_file = getattr(options, "beta_dependency_resolvers_configuration", None)
     use_conda_dependencies = getattr(options, "beta_conda_dependencies", None)
     job_script_provider = None
@@ -2046,31 +2151,6 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             fs_access = cwltool.stdfsaccess.StdFsAccess(options.basedir)
             fill_in_defaults(tool.tool["inputs"], initialized_job_order, fs_access)
 
-            def path_to_loc(obj):
-                if "location" not in obj and "path" in obj:
-                    obj["location"] = obj["path"]
-                    del obj["path"]
-
-            def import_files(inner_tool):
-                visit_class(inner_tool, ("File", "Directory"), path_to_loc)
-                visit_class(
-                    inner_tool, ("File",), functools.partial(add_sizes, fs_access)
-                )
-                normalizeFilesDirs(inner_tool)
-
-                adjustFileObjs(
-                    inner_tool,
-                    functools.partial(
-                        uploadFile,
-                        toil.importFile,
-                        fileindex,
-                        existing,
-                        skip_broken=True,
-                    ),
-                )  # actually import files into the jobstore
-
-            import_files(tool.tool)
-
             for inp in tool.tool["inputs"]:
 
                 def set_secondary(fileobj):
@@ -2104,6 +2184,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             runtime_context.no_match_user = options.no_match_user
             runtime_context.no_read_only = options.no_read_only
             runtime_context.basedir = options.basedir
+            runtime_context.move_outputs = "move"
 
             # We instantiate an early builder object here to populate indirect
             # secondaryFile references using cwltool's library because we need
@@ -2123,20 +2204,37 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 discover_secondaryFiles=True,
             )
 
+            def path_to_loc(obj):
+                if "location" not in obj and "path" in obj:
+                    obj["location"] = obj["path"]
+                    del obj["path"]
+
+            def import_files(inner_tool):
+                visit_class(inner_tool, ("File", "Directory"), path_to_loc)
+                visit_class(
+                    inner_tool, ("File",), functools.partial(add_sizes, fs_access)
+                )
+                normalizeFilesDirs(inner_tool)
+
+                adjustFileObjs(
+                    inner_tool,
+                    functools.partial(
+                        uploadFile,
+                        toil.importFile,
+                        fileindex,
+                        existing,
+                        skip_broken=True,
+                    ),
+                )
+
             # files with the 'file://' uri are imported into the jobstore and
             # changed to 'toilfs:'
             import_files(initialized_job_order)
 
             visitSteps(tool, import_files)
 
-            for job_name in initialized_job_order:
-                if isinstance(initialized_job_order[job_name], list):
-                    for job_params in cast(List, initialized_job_order[job_name]):
-                        if isinstance(job_params, dict):
-                            if "secondaryFiles" in job_params:
-                                job_params[
-                                    "secondaryFiles"
-                                ] = remove_unprocessed_secondary_files(job_params)
+            for job_name, job_params in initialized_job_order.items():
+                rm_unprocessed_secondary_files(job_params)
 
             try:
                 wf1, _ = makeJob(

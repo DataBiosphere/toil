@@ -1,33 +1,34 @@
 import json
-import unittest
 import os
-import subprocess
 import shutil
+import subprocess
+import unittest
 import uuid
-from typing import Optional, List
+from typing import List, Optional
 
-from toil.wdl.wdl_functions import sub
-from toil.wdl.wdl_functions import ceil
-from toil.wdl.wdl_functions import floor
-from toil.wdl.wdl_functions import read_lines
-from toil.wdl.wdl_functions import read_tsv
-from toil.wdl.wdl_functions import read_json
-from toil.wdl.wdl_functions import read_map
-from toil.wdl.wdl_functions import read_int
-from toil.wdl.wdl_functions import read_string
-from toil.wdl.wdl_functions import read_float
-from toil.wdl.wdl_functions import read_boolean
-from toil.wdl.wdl_functions import write_lines
-from toil.wdl.wdl_functions import write_tsv
-from toil.wdl.wdl_functions import write_json
-from toil.wdl.wdl_functions import write_map
-from toil.wdl.wdl_functions import transpose
-from toil.wdl.wdl_functions import length
-
-from toil.wdl.wdl_functions import WDLPair
-
-from toil.version import exactPython
 from toil.test import ToilTest
+from toil.version import exactPython
+from toil.wdl.wdl_functions import (WDLPair,
+                                    WDLRuntimeError,
+                                    ceil,
+                                    cross,
+                                    floor,
+                                    length,
+                                    read_boolean,
+                                    read_float,
+                                    read_int,
+                                    read_json,
+                                    read_lines,
+                                    read_map,
+                                    read_string,
+                                    read_tsv,
+                                    sub,
+                                    transpose,
+                                    wdl_zip,
+                                    write_json,
+                                    write_lines,
+                                    write_map,
+                                    write_tsv)
 
 
 class WdlStandardLibraryFunctionsTest(ToilTest):
@@ -245,6 +246,28 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
         self.assertEqual(3, length(['a', 'b', 'c']))
         self.assertEqual(0, length([]))
 
+    def testFn_Zip(self):
+        """Test the wdl built-in functional equivalent of 'zip()'."""
+        left_array = [1, 2, 3]
+        right_array = ['a', 'b', 'c']
+        zipped = wdl_zip(left_array, right_array)
+        expected_results = [WDLPair(1, 'a'), WDLPair(2, 'b'), WDLPair(3, 'c')]
+
+        self.assertEqual(zipped, expected_results)
+
+        # input with different size should fail.
+        self.assertRaises(WDLRuntimeError, wdl_zip, [1, 2, 3], ['a', 'b'])
+
+    def testFn_Cross(self):
+        """Test the wdl built-in functional equivalent of 'cross()'."""
+        left_array = [1, 2, 3]
+        right_array = ['a', 'b']
+        crossed = cross(left_array, right_array)
+        expected_results = [WDLPair(1, 'a'), WDLPair(1, 'b'),
+                            WDLPair(2, 'a'), WDLPair(2, 'b'),
+                            WDLPair(3, 'a'), WDLPair(3, 'b')]
+
+        self.assertEqual(crossed, expected_results)
 
 
 class WdlWorkflowsTest(ToilTest):
@@ -441,6 +464,16 @@ class WdlStandardLibraryWorkflowsTest(WdlWorkflowsTest):
         # length() should not work with Map[X, Y].
         self.check_function('length', cases=['as_input_with_map'],
                             expected_exception='WDLRuntimeError')
+
+    def test_zip(self):
+        self.check_function('zip', cases=['as_input'],
+                            expected_result='[{"left":1,"right":"a"},{"left":2,"right":"b"},{"left":3,"right":"c"}]')
+
+    def test_cross(self):
+        self.check_function('cross', cases=['as_input'],
+                            expected_result='[{"left":1,"right":"a"},{"left":1,"right":"b"},'
+                                            '{"left":2,"right":"a"},{"left":2,"right":"b"},'
+                                            '{"left":3,"right":"a"},{"left":3,"right":"b"}]')
 
 
 if __name__ == "__main__":

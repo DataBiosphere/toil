@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,32 +11,24 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-from __future__ import division
-
-from future import standard_library
-standard_library.install_aliases()
-from builtins import str
-from builtins import map
-from builtins import object
 import json
 import logging
 import os
 import time
 from collections import defaultdict
+from itertools import islice
 
+from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
+                                                   NodeInfo)
+from toil.common import defaultTargetTime
+from toil.job import ServiceJobDescription
 from toil.lib.retry import old_retry
 from toil.lib.threading import ExceptionalThread
 from toil.lib.throttle import throttle
-from itertools import islice
-
-from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, NodeInfo
 from toil.provisioners.abstractProvisioner import Shape
-from toil.job import ServiceJobDescription
-from toil.common import defaultTargetTime
 
 logger = logging.getLogger(__name__)
+
 
 class BinPackedFit(object):
     """
@@ -725,7 +717,6 @@ class ClusterScaler(object):
                 continue
             else:
                 logger.debug("Did not find %s in %spreemptable static nodes", node.privateIP, prefix)
-                pass
             nodesToTerminate.append((node, nodeInfo))
         # Sort nodes by number of workers and time left in billing cycle
         nodesToTerminate.sort(key=lambda node_nodeInfo: (

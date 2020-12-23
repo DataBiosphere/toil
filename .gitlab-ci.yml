@@ -1,11 +1,14 @@
 image: quay.io/vgteam/vg_ci_prebake:latest
 # Note that we must run in a privileged container for our internal Docker daemon to come up.
 
+variables:
+  PYTHONIOENCODING: "utf-8"
+  DEBIAN_FRONTEND: "noninteractive"
+
 before_script:
   - startdocker || true
   - docker info
   - cat /etc/hosts
-  - export PYTHONIOENCODING=utf-8
   - mkdir -p ~/.kube && cp "$GITLAB_SECRET_FILE_KUBE_CONFIG" ~/.kube/config
   - mkdir -p ~/.aws && cp "$GITLAB_SECRET_FILE_AWS_CREDENTIALS" ~/.aws/credentials
 
@@ -37,7 +40,7 @@ py36_appliance_build:
   stage: basic_tests
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata jq
+    - apt update && apt install -y tzdata jq
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && pip install pycparser && make develop extras=[all] && pip install htcondor awscli==1.16.272
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
     - python setup_gitlab_docker.py
@@ -49,7 +52,7 @@ py37_batch_systems:
   stage: main_tests
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata jq python3.7 python3.7-dev
+    - apt update && apt install -y tzdata jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     - make test tests=src/toil/test/batchSystems/batchSystemTest.py
     - make test tests=src/toil/test/mesos/MesosDataStructuresTest.py
@@ -58,41 +61,46 @@ py37_cwl_v1.0:
   stage: main_tests
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata jq python3.7 python3.7-dev
+    - apt update && apt install -y tzdata jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[cwl,aws]
     - mypy --ignore-missing-imports --no-strict-optional $(pwd)/src/toil/cwl/cwltoil.py  # make this a separate linting stage
+    - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test
+    - make test tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testCwlexample
 
 py37_cwl_v1.1:
   stage: main_tests
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata jq python3.7 python3.7-dev
+    - apt update && apt install -y tzdata jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[cwl,aws]
+    - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv11Test
 
 py37_cwl_v1.2:
   stage: main_tests
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata jq python3.7 python3.7-dev
+    - apt update && apt install -y tzdata jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[cwl,aws]
+    - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv12Test
 
 py37_wdl:
   stage: main_tests
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata jq python3.7 python3.7-dev
+    - apt update && apt install -y tzdata jq python3.7 python3.7-dev default-jre
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all]
-    - make test tests=src/toil/test/wdl/toilwdlTest.py
+    - which java &> /dev/null || { echo >&2 "Java is not installed.  Install java to run these tests."; exit 1; }
+    - make test tests=src/toil/test/wdl/toilwdlTest.py  # needs java (default-jre) to run "GATK.jar"
     - make test tests=src/toil/test/wdl/builtinTest.py
 
 py37_jobstore_and_provisioning:
   stage: main_tests
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata jq python3.7 python3.7-dev
+    - apt update && apt install -y tzdata jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - make test tests=src/toil/test/jobStores/jobStoreTest.py
     - make test tests=src/toil/test/sort/sortTest.py
@@ -106,16 +114,17 @@ py37_main:
   stage: basic_tests
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata jq python3.7 python3.7-dev
+    - apt update && apt install -y tzdata jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - make test tests=src/toil/test/src
     - make test tests=src/toil/test/utils
+#    - make test tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testDocker
 
 py37_appliance_build:
   stage: basic_tests
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata jq python3.7 python3.7-dev
+    - apt update && apt install -y tzdata jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && pip install pycparser && make develop extras=[all] && pip install htcondor awscli==1.16.272
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
     - python setup_gitlab_docker.py
@@ -125,7 +134,7 @@ py37_integration:
   stage: integration
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata jq python3.7 python3.7-dev
+    - apt update && apt install -y tzdata jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     - export TOIL_TEST_INTEGRATIVE=True
     - export TOIL_AWS_KEYNAME=id_rsa
@@ -139,7 +148,7 @@ py37_provisioner_integration:
   stage: integration
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata awscli jq python3.7 python3.7-dev
+    - apt update && apt install -y tzdata awscli jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     - python setup_gitlab_ssh.py && chmod 400 /root/.ssh/id_rsa
     - echo $'Host *\n    AddressFamily inet' > /root/.ssh/config
@@ -151,6 +160,7 @@ py37_provisioner_integration:
     - make push_docker
     - make test tests=src/toil/test/sort/sortTest.py
     - make test tests=src/toil/test/provisioners/clusterScalerTest.py
+    - make test tests=src/toil/test/utils/utilsTest.py::UtilsTest::testAWSProvisionerUtils
     # - python -m pytest --duration=0 -s -r s src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSRestartTest::testAutoScaledCluster
     # - python -m pytest -s src/toil/test/provisioners/aws/awsProvisionerTest.py
     # - python -m pytest -s src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
@@ -160,7 +170,7 @@ py38_main:
   stage: basic_tests
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata jq python3.8 python3.8-dev
+    - apt update && apt install -y tzdata jq python3.8 python3.8-dev
     - virtualenv -p python3.8 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - make test tests=src/toil/test/src
     - make test tests=src/toil/test/utils
@@ -169,7 +179,7 @@ py38_appliance_build:
   stage: basic_tests
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata jq python3.8 python3.8-dev
+    - apt update && apt install -y tzdata jq python3.8 python3.8-dev
     - virtualenv -p python3.8 venv && . venv/bin/activate && make prepare && pip install pycparser && make develop extras=[all] && pip install htcondor awscli==1.16.272
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
     - python setup_gitlab_docker.py
@@ -180,7 +190,7 @@ py37_cactus_integration:
   stage: integration
   script:
     - set -e
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata awscli jq python3.7 python3.7-dev
+    - apt update && apt install -y tzdata awscli jq python3.7 python3.7-dev
     - virtualenv --system-site-packages --python python3.7 venv
     - . venv/bin/activate
     - pip install .[aws,kubernetes]
@@ -195,7 +205,7 @@ py37_cactus_integration:
     - git clone https://github.com/ComparativeGenomicsToolkit/cactus.git --recursive
     - cd cactus
     - git fetch origin
-    - git checkout 12de39de78e784bff1cff5bc022c16e95ded692b
+    - git checkout aae80945f16ad6bedbbc3cb7eeabdb901577c7bd
     - git submodule update --init --recursive
     - pip install --upgrade setuptools pip
     - pip install --upgrade .

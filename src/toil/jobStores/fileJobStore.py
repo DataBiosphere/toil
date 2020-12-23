@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,40 +11,32 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-# python 2/3 compatibility
-from __future__ import absolute_import
-from builtins import range
-
-# standard library
-from contextlib import contextmanager
-import logging
-import random
-import shutil
-import os
-import re
-import tempfile
-import stat
 import errno
+import logging
+import os
+import pickle
+import random
+import re
+import shutil
+import stat
+import tempfile
 import time
 import uuid
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
+from contextlib import contextmanager
 
-# toil dependencies
 from toil.fileStores import FileID
-from toil.lib.bioio import absSymPath
-from toil.lib.misc import robust_rmtree, AtomicFileCreate, atomic_copy, atomic_copyobj
+from toil.job import TemporaryID
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             NoSuchJobException,
-                                             NoSuchFileException,
                                              JobStoreExistsException,
+                                             NoSuchFileException,
+                                             NoSuchJobException,
                                              NoSuchJobStoreException)
-from toil.job import JobDescription, TemporaryID
+from toil.lib.misc import (AtomicFileCreate,
+                           atomic_copy,
+                           atomic_copyobj,
+                           robust_rmtree)
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
 
 class FileJobStore(AbstractJobStore):
@@ -76,7 +68,7 @@ class FileJobStore(AbstractJobStore):
                            subdirectories
         """
         super(FileJobStore, self).__init__()
-        self.jobStoreDir = absSymPath(path)
+        self.jobStoreDir = os.path.abspath(path)
         logger.debug("Path to job store directory is '%s'.", self.jobStoreDir)
 
         # Directory where actual job files go, and their job-associated temp files

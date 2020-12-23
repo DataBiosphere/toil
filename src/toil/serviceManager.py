@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,19 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
 
-from builtins import map
-from builtins import object
 import logging
 import time
-
-from threading import Thread, Event
 from queue import Empty, Queue
+from threading import Event, Thread
 
 from toil.job import ServiceJobDescription
-from toil.lib.throttle import throttle, LocalThrottle
-
+from toil.lib.throttle import LocalThrottle, throttle
 
 logger = logging.getLogger( __name__ )
 

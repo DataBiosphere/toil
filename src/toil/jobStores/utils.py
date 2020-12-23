@@ -1,17 +1,13 @@
-from builtins import object
-import codecs
+import errno
 import logging
 import os
-import errno
-from abc import ABCMeta
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 
 from toil.lib.threading import ExceptionalThread
-from future.utils import with_metaclass
 
 log = logging.getLogger(__name__)
 
-class WritablePipe(with_metaclass(ABCMeta, object)):
+class WritablePipe(ABC):
     """
     An object-oriented wrapper for os.pipe. Clients should subclass it, implement
     :meth:`.readFrom` to consume the readable end of the pipe, then instantiate the class as a
@@ -131,7 +127,7 @@ class WritablePipe(with_metaclass(ABCMeta, object)):
                 os.close(readable_fh)
 
 
-class ReadablePipe(with_metaclass(ABCMeta, object)):
+class ReadablePipe(ABC):
     """
     An object-oriented wrapper for os.pipe. Clients should subclass it, implement
     :meth:`.writeTo` to place data into the writable end of the pipe, then instantiate the class
@@ -291,6 +287,3 @@ class ReadableTransformingPipe(ReadablePipe):
     
     def writeTo(self, writable):
         self.transform(self.source, writable)
-    
-    
-

@@ -1,4 +1,4 @@
-# Copyright (C) 2015 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,24 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-from __future__ import division
-from builtins import str
-from past.utils import old_div
 import logging
-import os
-from pipes import quote
-import time
 import math
-import sys
+import os
 import shlex
-import xml.etree.ElementTree as ET
 import tempfile
-from toil.lib.misc import call_command, CalledProcessErrorStderr
+import time
+from pipes import quote
+from queue import Empty
 
-from toil.batchSystems import MemoryString
-from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem, UpdatedBatchJobInfo
+from toil.batchSystems.abstractGridEngineBatchSystem import (AbstractGridEngineBatchSystem,
+                                                             UpdatedBatchJobInfo)
+from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +104,6 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                 self.currentjobs -= {self.jobIDs[item.jobID]}
             except Empty:
                 logger.debug("getUpdatedBatchJob: Job queue is empty")
-                pass
             else:
                 return UpdatedBatchJobInfo(jobID=jobID, exitStatus=retcode, wallTime=None, exitReason=None)
 
@@ -164,8 +157,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
             reqline = list()
             if mem is not None:
-                memStr = str(old_div(mem, 1024)) + 'K'
-                reqline.append('mem=' + memStr)
+                reqline.append('mem={}K'.format(mem // 1024))
 
             if cpu is not None and math.ceil(cpu) > 1:
                 reqline.append('nodes=1:ppn=' + str(int(math.ceil(cpu))))
