@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 """
-sdb_domain_and_bucket_domain.py
+cleanup_aws_resources.py
 
-Convenience script to clean up extraneous test buckets and/or sbd domains that testing may have left behind.
+Convenience script to clean up extraneous test buckets, sbd domains, instance profiles, and/or roles
+that testing may have left behind.
 
 Manually requires the user to inspect and submit "yes" or "y" to delete buckets/domains.
 
