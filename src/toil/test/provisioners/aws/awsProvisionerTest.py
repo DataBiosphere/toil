@@ -23,6 +23,7 @@ from uuid import uuid4
 import pytest
 
 from toil.provisioners import cluster_factory
+from toil.provisioners.aws import get_current_aws_zone
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from toil.test import (ToilTest,
                        integrative,
@@ -59,17 +60,27 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.numWorkers = ['2']
         self.numSamples = 2
         self.spotBid = 0.15
+        self.zone = get_current_aws_zone()
+        assert self.zone is not None, "Could not determine AWS availability zone to test in; is TOIL_AWS_ZONE set?"
 
     def setUp(self):
         super(AbstractAWSAutoscaleTest, self).setUp()
 
+    def destroyCluster(self):
+        """
+        Destroy the cluster we built, if it exists.
+        
+        Succeeds if the cluster does not currently exist.
+        """
+        subprocess.check_call(['toil', 'destroy-cluster', '-p=aws', '-z', self.zone, self.clusterName])
+
     def tearDown(self):
         super(AbstractAWSAutoscaleTest, self).tearDown()
-        subprocess.check_call(['toil', 'destroy-cluster', '-p=aws', self.clusterName])
+        self.destroyCluster()
         subprocess.check_call(['toil', 'clean', self.jobStore])
 
     def sshUtil(self, command):
-        cmd = ['toil', 'ssh-cluster', '--insecure', '-p=aws', self.clusterName] + command
+        cmd = ['toil', 'ssh-cluster', '--insecure', '-p=aws', '-z', self.zone, self.clusterName] + command
         log.debug("Running %s.", str(cmd))
         p = subprocess.Popen(cmd, stderr=-1, stdout=-1)
         o, e = p.communicate()
@@ -77,12 +88,21 @@ class AbstractAWSAutoscaleTest(ToilTest):
         log.debug('\n\nSTDERR: ' + e.decode("utf-8"))
 
     def rsyncUtil(self, src, dest):
-        subprocess.check_call(['toil', 'rsync-cluster', '--insecure', '-p=aws', self.clusterName] + [src, dest])
+        subprocess.check_call(['toil', 'rsync-cluster', '--insecure', '-p=aws', '-z', self.zone, self.clusterName] + [src, dest])
 
     def createClusterUtil(self, args=None):
         args = [] if args is None else args
-        subprocess.check_call(['toil', 'launch-cluster', '-p=aws', '-z=us-west-2a', f'--keyPairName={self.keyName}',
-                               '--leaderNodeType=t2.medium', self.clusterName] + args)
+        
+        # Make sure that destroy works before we create.
+        self.destroyCluster()
+        try:
+            # Try creating the cluster
+            subprocess.check_call(['toil', 'launch-cluster', '-p=aws', '-z', self.zone, f'--keyPairName={self.keyName}',
+                                   '--leaderNodeType=t2.medium', self.clusterName] + args)
+        except:
+            # Make sure to destroy the cluster if building it fails
+            self.destroyCluster()
+            raise
 
     def getMatchingRoles(self):
         return list(self.cluster._boto2.local_roles())

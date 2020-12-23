@@ -199,7 +199,7 @@ class AbstractProvisioner(ABC):
         
         :param leader: Node to operate on, if not the current machine.
         
-        :return Public key.
+        :return: Public key, without the "ssh-rsa" part.
         """
         
         # To work locally or remotely we need to do all our setup work as one
@@ -226,6 +226,9 @@ class AbstractProvisioner(ABC):
                 
                 with open(localFile) as f:
                     leaderPublicKey = f.read()
+                    
+                # Drop the key type and keep just the key data
+                leaderPublicKey=leaderPublicKey.split(' ')[1]
         
         # confirm it really is an RSA public key
         assert leaderPublicKey.startswith('AAAAB3NzaC1yc2E'), leaderPublicKey

@@ -24,6 +24,9 @@ def main():
     parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
     options = parser.parse_args()
     set_logging_from_options(options)
+    
+    logger.info('Destroying cluster %s', options.clusterName)
+    
     cluster = cluster_factory(provisioner=options.provisioner,
                               clusterName=options.clusterName,
                               zone=options.zone)

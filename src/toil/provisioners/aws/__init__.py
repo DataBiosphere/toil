@@ -49,17 +49,15 @@ def get_current_aws_region():
 
 
 def get_current_aws_zone(spotBid=None, nodeType=None, ctx=None):
-    try:
-        import boto
-        from boto.utils import get_instance_metadata
-    except ImportError:
-        return None
-
     zone = os.environ.get('TOIL_AWS_ZONE', None)
     if not zone and running_on_ec2():
         try:
+            import boto
+            from boto.utils import get_instance_metadata
             zone = get_instance_metadata()['placement']['availability-zone']
         except KeyError:
+            pass
+        except ImportError:
             pass
     if not zone and spotBid:
         # if spot bid is present, all the other parameters must be as well
@@ -68,9 +66,13 @@ def get_current_aws_zone(spotBid=None, nodeType=None, ctx=None):
         # choice based on the spot history
         return optimize_spot_bid(ctx=ctx, instance_type=nodeType, spot_bid=float(spotBid))
     if not zone:
-        zone = boto.config.get('Boto', 'ec2_region_name')
-        if zone is not None:
-            zone += 'a'  # derive an availability zone in the region
+        try:
+            import boto
+            zone = boto.config.get('Boto', 'ec2_region_name')
+            if zone is not None:
+                zone += 'a'  # derive an availability zone in the region
+        except ImportError:
+            pass
 
     return zone
 

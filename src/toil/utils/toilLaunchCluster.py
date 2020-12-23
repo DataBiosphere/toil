@@ -148,6 +148,8 @@ def main():
         raise RuntimeError(f'Please provide a value for --zone or set a default in the '
                            f'TOIL_{options.provisioner.upper()}_ZONE environment variable.')
 
+    logger.info('Creating cluster %s...', options.clusterName)
+
     cluster = cluster_factory(provisioner=options.provisioner,
                               clusterName=options.clusterName,
                               clusterType=options.clusterType,
