@@ -260,7 +260,7 @@ class hidden:
 
             for mutable in True,False:
                 for symlink in True,False:
-                    dstFile = job.fileStore.getLocalTempFile() + str(uuid4())
+                    dstFile = job.fileStore.getLocalTempFileName()
                     job.fileStore.readGlobalFile(fileID, userPath=dstFile, mutable=mutable, symlink=symlink)
                     # Current file owner execute permissions
                     currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
@@ -276,7 +276,7 @@ class hidden:
                 A = Job.wrapJobFn(self._testWriteExportFileCompatibility, executable=executable)
                 with Toil(self.options) as toil:
                     initialPermissions, fileID = toil.start(A)
-                    dstFile = self._createTempDir() + 'out'
+                    dstFile = os.path.join(self._createTempDir(), str(uuid4()))
                     toil.exportFile(fileID, 'file://' + dstFile)
                     currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
 
@@ -301,7 +301,7 @@ class hidden:
             with Toil(self.options) as toil:
                 workDir = self._createTempDir()
                 for executable in True, False:
-                    srcFile = f'{workDir}/{uuid4()}'
+                    srcFile = os.path.join(workDir, str(uuid4()))
                     with open(srcFile, 'w') as f:
                         f.write('Hello')
                     if executable:
@@ -311,7 +311,7 @@ class hidden:
                     for mutable in True,False:
                         for symlink in True, False:
                             with self.subTest(f'Now testing readGlobalFileWith: mutable={mutable} symlink={symlink}'):
-                                dstFile = f'{workDir}/{uuid4()}'
+                                dstFile = os.path.join(workDir, str(uuid4()))
                                 A = Job.wrapJobFn(_testImportReadFileCompatibility, fileID=jobStoreFileID, dstFile=dstFile,
                                                     initialPermissions=initialPermissions, mutable=mutable, symlink=symlink)
                                 toil.start(A)

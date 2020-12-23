@@ -131,8 +131,8 @@ def atomic_copyobj(src_fh, dest_path, length=16384, executable=False):
     with AtomicFileCreate(dest_path) as dest_path_tmp:
         with open(dest_path_tmp, 'wb') as dest_path_fh:
             shutil.copyfileobj(src_fh, dest_path_fh, length=length)
-            if executable:
-                os.chmod(dest_path_fh.name, os.stat(dest_path_fh.name).st_mode | stat.S_IXUSR)
+        if executable:
+            os.chmod(dest_path_tmp, os.stat(dest_path_tmp).st_mode | stat.S_IXUSR)
 
 
 class WriteWatchingStream(object):
