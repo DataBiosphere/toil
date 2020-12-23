@@ -746,6 +746,20 @@ class AbstractProvisioner(ABC):
         # waiting for kubeadm to configure it.
         
     
+    def getKubernetesAutoscalerSetupCommands(self, values: Dict[str, str]) -> str:
+        """
+        Return Bash commands that set up the Kubernetes cluster autoscaler for
+        provisioning from the environment supported by this provisioner.
+
+        Should only be implemented if Kubernetes clusters are supported.
+
+        :param values: Contains definitions of cluster variables, like
+                       AUTOSCALER_VERSION and CLUSTER_NAME.
+
+        :returns: Bash snippet
+        """
+        raise NotImplementedError()
+    
     def addKubernetesLeader(self, config: InstanceConfiguration):
         """
         Add services to configure as a Kubernetes leader, if Kubernetes is already set to be installed.
@@ -806,15 +820,7 @@ class AbstractProvisioner(ABC):
             kubectl apply -f https://raw.githubusercontent.com/kontena/kubelet-rubber-stamp/release/{RUBBER_STAMP_VERSION}/deploy/role_binding.yaml
             kubectl apply -f https://raw.githubusercontent.com/kontena/kubelet-rubber-stamp/release/{RUBBER_STAMP_VERSION}/deploy/operator.yaml
 
-            # Set up autoscaler
-            curl -sSL https://raw.githubusercontent.com/kubernetes/autoscaler/cluster-autoscaler-{AUTOSCALER_VERSION}/cluster-autoscaler/cloudprovider/aws/examples/cluster-autoscaler-run-on-master.yaml | \\
-                sed "s|--nodes={{{{ node_asg_min }}}}:{{{{ node_asg_max }}}}:{{{{ name }}}}|--node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/{CLUSTER_NAME}|" | \\
-                sed 's|kubernetes.io/role: master|node-role.kubernetes.io/master: ""|' | \\
-                sed 's|operator: "Equal"|operator: "Exists"|' | \\
-                sed '/value: "true"/d' | \\
-                sed 's|path: "/etc/ssl/certs/ca-bundle.crt"|path: "/usr/share/ca-certificates/ca-certificates.crt"|' | \\
-                kubectl apply -f -
-
+            '''.format(**values) + self.getKubernetesAutoscalerSetupCommands(values) + textwrap.dedent('''\
             # Set up metrics server, which needs serverTLSBootstrap and rubber stamp, and insists on running on a worker
             curl -sSL https://github.com/kubernetes-sigs/metrics-server/releases/download/{METRICS_API_VERSION}/components.yaml | \\
                 sed 's/          - --secure-port=4443/          - --secure-port=4443\\n          - --kubelet-preferred-address-types=Hostname/' | \\

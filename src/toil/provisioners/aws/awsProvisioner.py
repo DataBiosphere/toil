@@ -16,6 +16,7 @@ import logging
 import os
 import socket
 import string
+import textwrap
 import time
 import urllib.request
 import uuid
@@ -292,6 +293,22 @@ class AWSProvisioner(AbstractProvisioner):
         
         # Download credentials
         self._setLeaderWorkerAuthentication(leaderNode)
+        
+    @abstractmethod
+    def getKubernetesAutoscalerSetupCommands(self, values: Dict[str, str]) -> str:
+        """
+        Get the Bash commands necessary to configure the Kubernetes Cluster Autoscaler for AWS.
+        """
+        
+        return textwrap.dedent('''\
+            curl -sSL https://raw.githubusercontent.com/kubernetes/autoscaler/cluster-autoscaler-{AUTOSCALER_VERSION}/cluster-autoscaler/cloudprovider/aws/examples/cluster-autoscaler-run-on-master.yaml | \\
+                sed "s|--nodes={{{{ node_asg_min }}}}:{{{{ node_asg_max }}}}:{{{{ name }}}}|--node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/{CLUSTER_NAME}|" | \\
+                sed 's|kubernetes.io/role: master|node-role.kubernetes.io/master: ""|' | \\
+                sed 's|operator: "Equal"|operator: "Exists"|' | \\
+                sed '/value: "true"/d' | \\
+                sed 's|path: "/etc/ssl/certs/ca-bundle.crt"|path: "/usr/share/ca-certificates/ca-certificates.crt"|' | \\
+                kubectl apply -f -
+            ''').format(**values)
 
     def getNodeShape(self, nodeType: str, preemptable=False) -> Shape:
         """
