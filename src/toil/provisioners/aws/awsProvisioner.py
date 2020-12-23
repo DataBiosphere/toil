@@ -37,6 +37,10 @@ from toil.lib.ec2 import (a_short_time,
                           create_ondemand_instances,
                           create_spot_instances,
                           establish_boto3_session,
+                          get_error_body,
+                          get_error_code,
+                          get_error_message,
+                          get_error_status,
                           wait_instances_running,
                           wait_transition,
                           zone_to_region)
@@ -73,36 +77,20 @@ def awsRetryPredicate(e):
         # Could be a DNS outage:
         # socket.gaierror: [Errno -2] Name or service not known
         return True
-    if not isinstance(e, BotoServerError):
-        return False
     # boto/AWS gives multiple messages for the same error...
-    if e.status == 503 and 'Request limit exceeded' in e.body:
+    if get_error_status(e) == 503 and 'Request limit exceeded' in get_error_body(e):
         return True
-    elif e.status == 400 and 'Rate exceeded' in e.body:
+    elif get_error_status(e) == 400 and 'Rate exceeded' in get_error_body(e):
         return True
-    elif e.status == 400 and 'NotFound' in e.body:
+    elif get_error_status(e) == 400 and 'NotFound' in get_error_body(e):
         # EC2 can take a while to propagate instance IDs to all servers.
         return True
-    elif e.status == 400 and e.error_code == 'Throttling':
+    elif get_error_status(e) == 400 and get_error_code(e) == 'Throttling':
         return True
     return False
-
-
-def awsFilterImpairedNodes(nodes, ec2):
-    # if TOIL_AWS_NODE_DEBUG is set don't terminate nodes with
-    # failing status checks so they can be debugged
-    nodeDebug = os.environ.get('TOIL_AWS_NODE_DEBUG') in ('True', 'TRUE', 'true', True)
-    if not nodeDebug:
-        return nodes
-    nodeIDs = [node.id for node in nodes]
-    statuses = ec2.get_all_instance_status(instance_ids=nodeIDs)
-    statusMap = {status.id: status.instance_status for status in statuses}
-    healthyNodes = [node for node in nodes if statusMap.get(node.id, None) != 'impaired']
-    impairedNodes = [node.id for node in nodes if statusMap.get(node.id, None) == 'impaired']
-    logger.warning('TOIL_AWS_NODE_DEBUG is set and nodes %s have failed EC2 status checks so '
-                   'will not be terminated.', ' '.join(impairedNodes))
-    return healthyNodes
-
+    
+def expectedShutdownErrors(e):
+    return get_error_status(e) == 400 and 'dependent object' in get_error_body(e)
 
 def awsRetry(f):
     """
@@ -119,6 +107,21 @@ def awsRetry(f):
                 return f(*args, **kwargs)
     return wrapper
 
+
+def awsFilterImpairedNodes(nodes, ec2):
+    # if TOIL_AWS_NODE_DEBUG is set don't terminate nodes with
+    # failing status checks so they can be debugged
+    nodeDebug = os.environ.get('TOIL_AWS_NODE_DEBUG') in ('True', 'TRUE', 'true', True)
+    if not nodeDebug:
+        return nodes
+    nodeIDs = [node.id for node in nodes]
+    statuses = ec2.get_all_instance_status(instance_ids=nodeIDs)
+    statusMap = {status.id: status.instance_status for status in statuses}
+    healthyNodes = [node for node in nodes if statusMap.get(node.id, None) != 'impaired']
+    impairedNodes = [node.id for node in nodes if statusMap.get(node.id, None) == 'impaired']
+    logger.warning('TOIL_AWS_NODE_DEBUG is set and nodes %s have failed EC2 status checks so '
+                   'will not be terminated.', ' '.join(impairedNodes))
+    return healthyNodes
 
 class InvalidClusterStateException(Exception):
     pass
@@ -321,17 +324,6 @@ class AWSProvisioner(AbstractProvisioner):
         Terminate instances and delete the profile and security group.
         """
         assert self._boto2
-        def expectedShutdownErrors(e):
-            return getattr(e, 'status', None) == 400 and 'dependent object' in getattr(e, 'body', '')
-
-        def destroyInstances(instances: List[Boto2Instance]):
-            """
-            Similar to _terminateInstances, except that it also cleans up any
-            resources associated with the instances (e.g. IAM profiles).
-            """
-            instanceProfiles = [x.instance_profile['arn'] for x in instances]
-            self._deleteIAMProfiles(instanceProfiles)
-            self._terminateInstances(instances)
 
         # We should terminate the leader first in case a workflow is still running in the cluster.
         # The leader may create more instances while we're terminating the workers.
@@ -340,7 +332,7 @@ class AWSProvisioner(AbstractProvisioner):
             leader = self._getLeaderInstance()
             vpcId = leader.vpc_id
             logger.info('Terminating the leader first ...')
-            destroyInstances([leader])
+            self._terminateInstances([leader])
         except (NoSuchClusterException, InvalidClusterStateException):
             # It's ok if the leader is not found. We'll terminate any remaining
             # instances below anyway.
@@ -368,7 +360,7 @@ class AWSProvisioner(AbstractProvisioner):
         instancesToTerminate = awsFilterImpairedNodes(instances, self._boto2.ec2)
         if instancesToTerminate:
             vpcId = vpcId or instancesToTerminate[0].vpc_id
-            destroyInstances(instancesToTerminate)
+            self._terminateInstances(instancesToTerminate)
             removed = True
         if removed:
             logger.debug('... Succesfully terminated workers')
@@ -397,45 +389,8 @@ class AWSProvisioner(AbstractProvisioner):
             # All nodes are gone now.
             
             logger.info('Deleting IAM roles ...')
-            removed = False
-            for role_name in self._getRoleNames():
-                # TODO: factor out into a delete function
-                for profile_name in self._getRoleInstanceProfileNames(role_name):
-                    
-                    if role_name == profile_name:
-                        # We should have a role and a profile with the same name
-                        # that we created. If we have any other profiles, someone
-                        # has messed with our deployment and we should probably
-                        # fail.
-                        
-                        # We can't delete either the role or the profile while they
-                        # are attached.
-                       
-                        for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
-                            with attempt:
-                                self.iam_client.remove_role_from_instance_profile(InstanceProfileName=profile_name,
-                                                                                  RoleName=role_name)
-                       
-                        # TODO: add ability to find and clean up dead profiles if
-                        # we get interrupted here.
-                       
-                        for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
-                            with attempt:
-                                self.iam_client.delete_instance_profile(InstanceProfileName=profile_name)
-                                
-                # We also need to drop all inline policies
-                for policy_name in self._getRoleInlinePolicyNames(role_name):
-                    for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
-                        with attempt:
-                            self.iam_client.delete_role_policy(PolicyName=policy_name,
-                                                               RoleName=role_name)
-                
-                for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
-                    with attempt:
-                        self.iam_client.delete_role(RoleName=role_name)
-                        removed = True
-            if removed:
-                logger.debug('... Succesfully deleted IAM roles')
+            self._deleteRoles(self._getRoleNames())
+            self._deleteInstanceProfiles(self._getInstanceProfileNames())
             
             logger.info('Deleting security group ...')
             removed = False
@@ -718,66 +673,46 @@ class AWSProvisioner(AbstractProvisioner):
         logger.info('Instance(s) terminated.')
 
     @awsRetry
-    def _deleteIAMProfiles(self, profileARNs: List[str]):
+    def _deleteRoles(self, names: List[str]):
         """
-        Delete the Toil-creared IAM instance profiles named by the given list of ARNs.
+        Delete all the given named IAM roles.
+        Detatches but does not delete associated instance profiles.
         """
-        assert self._boto2
-        for profile in profileARNs:
-            # boto won't look things up by the ARN so we have to parse it to get
-            # the profile name
-            profileName = profile.rsplit('/')[-1]
 
-            # Only delete profiles that were automatically created by Toil.
-            if profileName != self._boto2.to_aws_name(_INSTANCE_PROFILE_ROLE_NAME):
-                continue
+        for role_name in names:
+            for profile_name in self._getRoleInstanceProfileNames(role_name):
+                # We can't delete either the role or the profile while they
+                # are attached.
 
-            try:
-                profileResult = self._boto2.iam.get_instance_profile(profileName)
-            except BotoServerError as e:
-                if e.status == 404:
-                    return
-                else:
-                    raise
-            # wade through EC2 response object to get what we want
-            profileResult = profileResult['get_instance_profile_response']
-            profileResult = profileResult['get_instance_profile_result']
-            profile = profileResult['instance_profile']
-            # this is based off of our 1:1 mapping of profiles to roles
-            role = profile['roles']['member']['role_name']
-            try:
-                self._boto2.iam.remove_role_from_instance_profile(profileName, role)
-            except BotoServerError as e:
-                if e.status == 404:
-                    pass
-                else:
-                    raise
-            policyResults = self._boto2.iam.list_role_policies(role)
-            policyResults = policyResults['list_role_policies_response']
-            policyResults = policyResults['list_role_policies_result']
-            policies = policyResults['policy_names']
-            for policyName in policies:
-                try:
-                    self._boto2.iam.delete_role_policy(role, policyName)
-                except BotoServerError as e:
-                    if e.status == 404:
-                        pass
-                    else:
-                        raise
-            try:
-                self._boto2.iam.delete_role(role)
-            except BotoServerError as e:
-                if e.status == 404:
-                    pass
-                else:
-                    raise
-            try:
-                self._boto2.iam.delete_instance_profile(profileName)
-            except BotoServerError as e:
-                if e.status == 404:
-                    pass
-                else:
-                    raise
+                for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
+                    with attempt:
+                        self.iam_client.remove_role_from_instance_profile(InstanceProfileName=profile_name,
+                                                                          RoleName=role_name)
+            # We also need to drop all inline policies
+            for policy_name in self._getRoleInlinePolicyNames(role_name):
+                for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
+                    with attempt:
+                        self.iam_client.delete_role_policy(PolicyName=policy_name,
+                                                           RoleName=role_name)
+
+            for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
+                with attempt:
+                    self.iam_client.delete_role(RoleName=role_name)
+                    logger.debug('... Succesfully deleted IAM role %s', role_name)
+
+    
+    @awsRetry
+    def _deleteInstanceProfiles(self, names: List[str]):
+        """
+        Delete all the given named IAM instance profiles.
+        All roles must already be detached.
+        """
+        
+        for profile_name in names:
+            for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
+                with attempt:
+                    self.iam_client.delete_instance_profile(InstanceProfileName=profile_name)
+                    logger.debug('... Succesfully deleted instance profile %s', profile_name)
 
     @classmethod
     def _getBoto2BlockDeviceMapping(cls, instanceType: InstanceType, rootVolSize: int = 50) -> Boto2BlockDeviceMapping:
@@ -1094,7 +1029,17 @@ class AWSProvisioner(AbstractProvisioner):
         # TODO: When we drop boto2 and the Boto2Context, keep track of which
         # roles are ours ourselves.
         return [role['role_name'] for role in self._boto2.local_roles()]
+    
+    @awsRetry
+    def _getInstanceProfileNames(self) -> List[str]:
+        """
+        Get all the instance profiles belonging to the cluster, as names.
+        """
         
+        # TODO: When we drop boto2 and the Boto2Context, keep track of which
+        # instance profiles are ours ourselves.
+        return [profile['instance_profile_name'] for profile in self._boto2.local_instance_profiles()]
+    
     @awsRetry
     def _getRoleInstanceProfileNames(self, role_name: str) -> List[str]:
         """

@@ -112,7 +112,7 @@ Use-cases covered currently:
 
 1. Retrying on a normal error, like a KeyError.
 2. Retrying on HTTP error codes (use ErrorCondition).
-3. Retrying on boto's specific status errors, like "BucketNotFound" (use ErrorCondition).
+3. Retrying on boto 3's specific status errors, like "BucketNotFound" (use ErrorCondition).
 4. Retrying when an error message contains a certain phrase (use ErrorCondition).
 5. Explicitly NOT retrying on a condition (use ErrorCondition).
 

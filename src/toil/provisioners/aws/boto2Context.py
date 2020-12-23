@@ -587,3 +587,9 @@ class Boto2Context(object):
 
     def _get_all_roles(self):
         return self._pager(self.iam.list_roles, 'roles')
+
+    def local_instance_profiles(self):
+        return [p for p in self._get_all_instance_profiles() if self.try_contains_aws_name(p.instance_profile_name)]
+
+    def _get_all_instance_profiles(self):
+        return self._pager(self.iam.list_instance_profiles, 'instance_profiles')

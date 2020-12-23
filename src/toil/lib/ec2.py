@@ -3,12 +3,12 @@ import logging
 import re
 import time
 from operator import attrgetter
-from typing import Dict, Iterable, List, Union, Optional
+from typing import Any, Dict, Iterable, List, Union, Optional
 
 from base64 import b64encode
 from boto.ec2.instance import Instance as Boto2Instance
 from boto.ec2.spotinstancerequest import SpotInstanceRequest
-from boto.exception import EC2ResponseError
+from boto.exception import BotoServerError
 from boto3 import Session
 from boto3.resources.base import ServiceResource
 from botocore.client import BaseClient
@@ -32,33 +32,85 @@ class UserError(RuntimeError):
             UserError, self).__init__(
             message if cause is None else cause.message)
 
-
-def not_found(e):
+def get_error_code(e: Union[ClientError, BotoServerError, Any]) -> str:
+    """
+    Get the error code name from a Boto 2 or 3 error, or compatible types.
+    
+    Returns empty string for other errors.
+    """
     if hasattr(e, 'error_code'):
         # A Boto 2 error
-        code = e.error_code
+        return e.error_code
+    if hasattr(e, 'code'):
+        # A (different?) Boto 2 error
+        return e.code
     elif hasattr(e, 'response'):
         # A Boto 3 error
-        code = e.response['Error']['Code']
+        return e.response['Error']['Code']
     else:
-        # Something else
+        return ''
+    
+def get_error_message(e: Union[ClientError, BotoServerError, Any]) -> str:
+    """
+    Get the error message string from a Boto 2 or 3 error, or compatible types.
+    """
+    if hasattr(e, 'error_message'):
+        # A Boto 2 error
+        return e.error_message
+    elif hasattr(e, 'response'):
+        # A Boto 3 error
+        return e.response['Error']['Message']
+    else:
+        return ''
+
+def get_error_status(e: Union[ClientError, BotoServerError, Any]) -> int:
+    """
+    Get the HTTP status code from a Boto 2 or 3 error, or compatible types.
+    
+    Returns 0 from other errors.
+    """
+    
+    if hasattr(e, 'status'):
+        # A Boto 2 error
+        return e.status
+    elif hasattr(e, 'response'):
+        # A Boto 3 error
+        return e.response['ResponseMetadata']['HTTPStatusCode']
+    else:
+        return 0
+        
+def get_error_body(e: Union[ClientError, BotoServerError, Any]) -> str:
+    """
+    Gets the body from a Boto 2 or 3 error, or compatible types.
+    
+    Returns the code and message if the error does not have a body.
+    
+    Returns the empty string for other types.
+    """
+    
+    if hasattr(e, 'body'):
+        # A Boto 2 error
+        if isinstance(e.body, bytes):
+            # Decode the body first
+            return e.body.decode('utf-8')
+        else:
+            return e.body
+    else:
+        # Anything else
+        return f'{get_error_code(e)}: {get_error_message(e)}'
+        
+
+def not_found(e):
+    try:
+        return get_error_code(e).endswith('.NotFound')
+    except ValueError:
+        # Not the right kind of error
         return False
-    return code.endswith('.NotFound')
     
 def inconsistencies_detected(e):
-    if isinstance(e, ClientError):
-        # Boto3 error
-        if e.response['Error']['Code'] == 'InvalidGroup.NotFound':
-            return True
-        # This is where boto3 keeps messages
-        m = e.response['Error']['Message']
-    else:
-        # Maybe a boto2 error?
-        if getattr(e, 'code', None) == 'InvalidGroup.NotFound':
-            return True
-        # This is where boto2 keeps messages
-        m = getattr(e, 'error_message', '')
-    m = m.lower()
+    if get_error_code(e) == 'InvalidGroup.NotFound':
+        return True
+    m = get_error_message(e).lower()
     matches = ('invalid iam instance profile' in m) or ('no associated iam roles' in m)
     return matches
 
@@ -193,8 +245,7 @@ def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], time
         ec2.cancel_spot_instance_requests(list(open_ids))
 
     def spot_request_not_found(e):
-        error_code = 'InvalidSpotInstanceRequestID.NotFound'
-        return isinstance(e, EC2ResponseError) and e.error_code == error_code
+        return get_error_code(e) == 'InvalidSpotInstanceRequestID.NotFound'
 
     try:
         while True:
