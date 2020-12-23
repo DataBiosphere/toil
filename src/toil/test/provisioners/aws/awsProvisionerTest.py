@@ -63,9 +63,6 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.zone = get_current_aws_zone()
         assert self.zone is not None, "Could not determine AWS availability zone to test in; is TOIL_AWS_ZONE set?"
 
-    def setUp(self):
-        super(AbstractAWSAutoscaleTest, self).setUp()
-
     def destroyCluster(self):
         """
         Destroy the cluster we built, if it exists.
@@ -74,7 +71,14 @@ class AbstractAWSAutoscaleTest(ToilTest):
         """
         subprocess.check_call(['toil', 'destroy-cluster', '-p=aws', '-z', self.zone, self.clusterName])
 
+    def setUp(self):
+        super(AbstractAWSAutoscaleTest, self).setUp()
+        # Make sure that destroy works before we create any clusters.
+        # If this fails, no tests will run.
+        self.destroyCluster()
+
     def tearDown(self):
+        # Note that teardown will run even if the test crashes.
         super(AbstractAWSAutoscaleTest, self).tearDown()
         self.destroyCluster()
         subprocess.check_call(['toil', 'clean', self.jobStore])
@@ -93,16 +97,10 @@ class AbstractAWSAutoscaleTest(ToilTest):
     def createClusterUtil(self, args=None):
         args = [] if args is None else args
         
-        # Make sure that destroy works before we create.
-        self.destroyCluster()
-        try:
-            # Try creating the cluster
-            subprocess.check_call(['toil', 'launch-cluster', '-p=aws', '-z', self.zone, f'--keyPairName={self.keyName}',
-                                   '--leaderNodeType=t2.medium', self.clusterName] + args)
-        except:
-            # Make sure to destroy the cluster if building it fails
-            self.destroyCluster()
-            raise
+        # Try creating the cluster
+        subprocess.check_call(['toil', 'launch-cluster', '-p=aws', '-z', self.zone, f'--keyPairName={self.keyName}',
+                               '--leaderNodeType=t2.medium', self.clusterName] + args)
+        # If we fail, tearDown will destroy the cluster.
 
     def getMatchingRoles(self):
         return list(self.cluster._boto2.local_roles())
