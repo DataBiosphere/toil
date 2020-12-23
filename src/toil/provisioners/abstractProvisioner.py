@@ -11,9 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import configparser
 import logging
 import os.path
 import subprocess
+import tempfile
 import textwrap
 import yaml
 from abc import ABC, abstractmethod
