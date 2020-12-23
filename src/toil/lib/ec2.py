@@ -37,7 +37,34 @@ class UserError(RuntimeError):
 
 
 def not_found(e):
-    return e.error_code.endswith('.NotFound')
+    if hasattr(e, 'error_code'):
+        # A Boto 2 error
+        code = e.error_code
+    elif hasattr(e, 'response'):
+        # A Boto 3 error
+        code = e.response['Error']['Code']
+    else:
+        # Something else
+        return False
+    return code.endswith('.NotFound')
+    
+def inconsistencies_detected(e):
+    log.info('Inspecting error: %s %s', type(e), e)
+    if isinstance(e, ClientError):
+        # Boto3 error
+        if e.response['Error']['Code'] == 'InvalidGroup.NotFound':
+            return True
+        # This is where boto3 keeps messages
+        m = e.response['Error']['Message']
+    else:
+        # Maybe a boto2 error?
+        if getattr(e, 'code', None) == 'InvalidGroup.NotFound':
+            return True
+        # This is where boto2 keeps messages
+        m = getattr(e, 'error_message', '')
+    m = m.lower()
+    return 'invalid iam instance profile' in m or 'no associated iam roles' in m
+
 
 
 def retry_ec2(t=a_short_time, retry_for=10 * a_short_time, retry_while=not_found):
@@ -267,24 +294,6 @@ def create_spot_instances(ec2, price, image_id, spec, num_instances=1, timeout=N
             raise RuntimeError(message)
     if num_other:
         log.warning('%i request(s) entered a state other than active.', num_other)
-
-
-def inconsistencies_detected(e):
-    log.info('Inspecting error: %s %s', type(e), e)
-    if isinstance(e, ClientError):
-        # Boto3 error
-        if e.response['Error']['Code'] == 'InvalidGroup.NotFound':
-            return True
-        # This is where boto3 keeps messages
-        m = e.response['Error']['Message']
-    else:
-        # Maybe a boto2 error?
-        if getattr(e, 'code', None) == 'InvalidGroup.NotFound':
-            return True
-        # This is where boto2 keeps messages
-        m = getattr(e, 'error_message', '')
-    m = m.lower()
-    return 'invalid iam instance profile' in m or 'no associated iam roles' in m
 
 
 def create_ondemand_instances(ec2, image_id, spec, num_instances=1) -> List[Boto2Instance]:
