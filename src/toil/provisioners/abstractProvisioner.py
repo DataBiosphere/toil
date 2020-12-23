@@ -833,7 +833,7 @@ class AbstractProvisioner(ABC):
             kubectl apply -f https://raw.githubusercontent.com/kontena/kubelet-rubber-stamp/release/{RUBBER_STAMP_VERSION}/deploy/role_binding.yaml
             kubectl apply -f https://raw.githubusercontent.com/kontena/kubelet-rubber-stamp/release/{RUBBER_STAMP_VERSION}/deploy/operator.yaml
 
-            '''.format(**values) + self.getKubernetesAutoscalerSetupCommands(values) + textwrap.dedent('''\
+            ''').format(**values) + self.getKubernetesAutoscalerSetupCommands(values) + textwrap.dedent('''\
             # Set up metrics server, which needs serverTLSBootstrap and rubber stamp, and insists on running on a worker
             curl -sSL https://github.com/kubernetes-sigs/metrics-server/releases/download/{METRICS_API_VERSION}/components.yaml | \\
                 sed 's/          - --secure-port=4443/          - --secure-port=4443\\n          - --kubelet-preferred-address-types=Hostname/' | \\
