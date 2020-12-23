@@ -14,6 +14,7 @@
 import json
 import logging
 import os
+import socket
 import string
 import time
 import urllib.request
@@ -68,6 +69,10 @@ _TAG_KEY_TOIL_CLUSTER_NAME = 'clusterName'
 _STORAGE_ROOT_OVERHEAD_GIGS = 4
 
 def awsRetryPredicate(e):
+    if isinstance(socket.gaierror):
+        # Could be a DNS outage:
+        # socket.gaierror: [Errno -2] Name or service not known
+        return True
     if not isinstance(e, BotoServerError):
         return False
     # boto/AWS gives multiple messages for the same error...
@@ -712,6 +717,7 @@ class AWSProvisioner(AbstractProvisioner):
         self._boto2.ec2.terminate_instances(instance_ids=instanceIDs)
         logger.info('Instance(s) terminated.')
 
+    @awsRetry
     def _deleteIAMProfiles(self, profileARNs: List[str]):
         """
         Delete the Toil-creared IAM instance profiles named by the given list of ARNs.
