@@ -247,8 +247,7 @@ class hidden:
 
         @staticmethod
         def _testWriteReadGlobalFilePermissions(job, executable):
-            workDir = job.fileStore.getLocalTempDir()
-            srcFile = f'{workDir}/in{uuid4()}'
+            srcFile = job.fileStore.getLocalTempFile()
             with open(srcFile, 'w') as f:
                 f.write('Hello')
 
@@ -261,8 +260,8 @@ class hidden:
 
             for mutable in True,False:
                 for symlink in True,False:
-                    dstFile = job.fileStore.getLocalTempDir() + str(uuid4())
-                    dstFile = job.fileStore.readGlobalFile(fileID, userPath=dstFile, mutable=mutable, symlink=symlink)
+                    dstFile = job.fileStore.getLocalTempFile() + str(uuid4())
+                    job.fileStore.readGlobalFile(fileID, userPath=dstFile, mutable=mutable, symlink=symlink)
                     # Current file owner execute permissions
                     currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
 
@@ -285,8 +284,7 @@ class hidden:
 
         @staticmethod
         def _testWriteExportFileCompatibility(job, executable):
-            workDir = job.fileStore.getLocalTempDir()
-            srcFile = '%s/%s%s' % (workDir, 'in', str(uuid4()))
+            srcFile = job.fileStore.getLocalTempFile()
             with open(srcFile, 'w') as f:
                 f.write('Hello')
             if executable:
@@ -303,7 +301,7 @@ class hidden:
             with Toil(self.options) as toil:
                 workDir = self._createTempDir()
                 for executable in True, False:
-                    srcFile = '%s/%s%s' % (workDir, 'in', str(uuid4()))
+                    srcFile = f'{workDir}/{uuid4()}'
                     with open(srcFile, 'w') as f:
                         f.write('Hello')
                     if executable:
@@ -313,7 +311,7 @@ class hidden:
                     for mutable in True,False:
                         for symlink in True, False:
                             with self.subTest(f'Now testing readGlobalFileWith: mutable={mutable} symlink={symlink}'):
-                                dstFile = '%s/%s%s' % (workDir, 'out', str(uuid4()))
+                                dstFile = f'{workDir}/{uuid4()}'
                                 A = Job.wrapJobFn(_testImportReadFileCompatibility, fileID=jobStoreFileID, dstFile=dstFile,
                                                     initialPermissions=initialPermissions, mutable=mutable, symlink=symlink)
                                 toil.start(A)
