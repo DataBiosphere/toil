@@ -17,13 +17,10 @@ import os
 import re
 import sys
 
-from boto.iam.connection import IAMConnection
-
-client = boto3.client('iam')
-
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
+from src.toil.lib.aws.utils import delete_iam_role, delete_iam_instance_profile, delete_s3_bucket, delete_sdb_domain
 from src.toil.lib.generatedEC2Lists import regionDict
 
 # put us-west-2 first as our default test region; that way anything with a universal region shows there
@@ -67,23 +64,6 @@ def contains_num_only_uuid(string):
 
 def contains_toil_test_patterns(string):
     return contains_uuid(string) or contains_num_only_uuid(string) or contains_uuid_with_underscores(string)
-
-
-def delete_s3_bucket(bucket, region):
-    print('==============================================')
-    print(f'Deleting s3 bucket in {region}: {bucket}')
-    print('==============================================')
-    s3_client = boto3.client('s3', region_name=region)
-    s3_resource = boto3.resource('s3', region_name=region)
-
-    paginator = s3_client.get_paginator('list_object_versions')
-    for response in paginator.paginate(Bucket=bucket):
-        versions = response.get('Versions', []) + response.get('DeleteMarkers', [])
-        for version in versions:
-            print(f"    Deleting {version['Key']} version {version['VersionId']}")
-            s3_client.delete_object(Bucket=bucket, Key=version['Key'], VersionId=version['VersionId'])
-    s3_resource.Bucket(bucket).delete()
-    print(f'\n * Deleted s3 bucket successfully: {bucket}\n\n')
 
 
 def matches(resource_name):
@@ -171,7 +151,7 @@ def find_instance_profile_names_to_cleanup(include_all, match):
                     print('       - ' + f'\n       - '.join(associated_roles) + '\n')
                 else:
                     print('       - No roles found to be associated.\n')
-                instance_profiles[new_profile] = (region, associated_roles)
+                instance_profiles[new_profile] = region
         except Exception as e:
             print(f'    An error occurred in this region: {e}')
     return instance_profiles
@@ -310,8 +290,7 @@ def main(argv):
                 if response.lower() in ('y', 'yes'):
                     print('\nOkay, now deleting...')
                     for sdb_domain, region in sdb_domains.items():
-                        sdb_client = boto3.client('sdb', region_name=region)
-                        sdb_client.delete_domain(DomainName=sdb_domain)
+                        delete_sdb_domain(sdb_domain, region)
                     print('SimpleDB Domain Deletions Successful.')
 
     if not options.skip_iam_instance_profiles:
@@ -323,15 +302,8 @@ def main(argv):
                 response = input(f'\nDo you wish to delete these IAM instance profiles names in account: {account_name}?  (Y)es (N)o: ')
                 if response.lower() in ('y', 'yes'):
                     print('\nOkay, now deleting...')
-                    for instance_profile_name, (region, roles) in instance_profile_names.items():
-                        print(instance_profile_name, (region, roles))
-                        iam_resource = boto3.resource('iam', region_name=region)
-                        instance_profile = iam_resource.InstanceProfile(instance_profile_name)
-                        for role in instance_profile.roles:
-                            print(f'Now dissociating role: {role.name} from instance profile {instance_profile_name}')
-                            instance_profile.remove_role(RoleName=role.name)
-                        instance_profile.delete()
-                        print(f'Instance profile {instance_profile_name} successfully deleted.')
+                    for instance_profile_name, region in instance_profile_names.items():
+                        delete_iam_instance_profile(instance_profile_name, region)
                     print('Instance Profile Deletions Successful.')
 
     if not options.skip_iam_roles:
@@ -343,25 +315,8 @@ def main(argv):
                 response = input(f'\nDo you wish to delete these IAM roles in account: {account_name}?  (Y)es (N)o: ')
                 if response.lower() in ('y', 'yes'):
                     print('\nOkay, now deleting...')
-
-                    # couldn't find an easy way to remove inline policies with boto3; use boto
-                    boto_iam_connection = IAMConnection()
-
                     for iam_role, region in iam_roles.items():
-                        iam_client = boto3.client('iam', region_name=region)
-                        iam_resource = boto3.resource('iam', region_name=region)
-                        role = iam_resource.Role(iam_role)
-                        # normal policies
-                        for attached_policy in role.attached_policies.all():
-                            print(f'Now dissociating policy: {attached_policy.name} from role {role.name}')
-                            role.detach_policy(PolicyName=attached_policy.name)
-                        # inline policies
-                        for attached_policy in role.policies.all():
-                            print(f'Deleting inline policy: {attached_policy.name} from role {role.name}')
-                            # couldn't find an easy way to remove inline policies with boto3; use boto
-                            boto_iam_connection.delete_role_policy(role.name, attached_policy.name)
-                        iam_client.delete_role(RoleName=iam_role)
-                        print(f'Role {iam_role} successfully deleted.')
+                        delete_iam_role(iam_role, region)
                     print('Role Deletions Successful.')
 
 

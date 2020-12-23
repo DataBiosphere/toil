@@ -10,6 +10,11 @@ from contextlib import contextmanager
 logger = logging.getLogger(__name__)
 
 
+def printq(msg, quiet: bool):
+    if not quiet:
+        print(msg)
+
+
 def robust_rmtree(path):
     """
     Robustly tries to delete paths.
