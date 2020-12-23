@@ -136,17 +136,14 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self._getScript()
 
         toilOptions = [self.jobStore,
-                       '--batchSystem=mesos',
                        '--workDir=/var/lib/toil',
                        '--clean=always',
                        '--retryCount=2',
                        '--clusterStats=/tmp/t/',
                        '--logDebug',
-                       '--logFile=/tmp/t/sort.log',
-                       '--provisioner=aws']
-
-        toilOptions.extend(['--nodeTypes=' + ",".join(self.instanceTypes),
-                            '--maxNodes=' + ",".join(self.numWorkers)])
+                       '--logFile=/tmp/t/sort.log'
+                       ]
+        
         if preemptableJobs:
             toilOptions.extend(['--defaultPreemptable'])
 
@@ -200,6 +197,9 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         os.unlink(fileToSort)
 
     def _runScript(self, toilOptions):
+        toilOptions.extend(['--provisioner=aws', '--batchSystem=mesos',
+                            '--nodeTypes=' + ",".join(self.instanceTypes),
+                            '--maxNodes=' + ",".join(self.numWorkers)])
         runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile', '--sseKey=/home/sortFile']
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
@@ -248,7 +248,9 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
 
         from toil.lib.ec2 import wait_instances_running
         self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
-                                     '--nodeTypes', ",".join(self.instanceTypes), '-w', ",".join(self.numWorkers), '--nodeStorage', str(self.requestedLeaderStorage)])
+                                     '--nodeTypes', ",".join(self.instanceTypes),
+                                     '-w', ",".join(self.numWorkers),
+                                     '--nodeStorage', str(self.requestedLeaderStorage)])
 
         self.cluster = cluster_factory(provisioner='aws', clusterName=self.clusterName)
         nodes = self.cluster._getNodesInCluster(both=True)
@@ -267,9 +269,41 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         self.assertGreaterEqual(rootVolume.size, self.requestedNodeStorage)
 
     def _runScript(self, toilOptions):
+        # Autoscale even though we have static nodes
+        toilOptions.extend(['--provisioner=aws', '--batchSystem=mesos',
+                            '--nodeTypes=' + ",".join(self.instanceTypes),
+                            '--maxNodes=' + ",".join(self.numWorkers)])
         runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
+        
+@integrative
+@pytest.mark.timeout(1200)
+class AWSManagedAutoscaleTest(AWSAutoscaleTest):
+    """Runs the tests on a self-scaling Kubernetes cluster."""
+    def __init__(self, name):
+        super().__init__(name)
+        self.requestedNodeStorage = 20
+
+    def launchCluster(self):
+        from boto.ec2.blockdevicemapping import BlockDeviceType
+
+        from toil.lib.ec2 import wait_instances_running
+        self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
+                                     '--nodeTypes', ",".join(self.instanceTypes),
+                                     '--managedWorkers', ",".join(self.numWorkers),
+                                     '--nodeStorage', str(self.requestedLeaderStorage),
+                                     '--clusterType', 'kubernetes'])
+
+        self.cluster = cluster_factory(provisioner='aws', clusterName=self.clusterName)
+
+    def _runScript(self, toilOptions):
+        # Don't use the provisioner, and use Kubernetes instead of Mesos
+        toilOptions.extend(['--batchSystem=kubernetes'])
+        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']
+        runCommand.extend(toilOptions)
+        self.sshUtil(runCommand)
+
 
 
 @integrative
@@ -295,6 +329,9 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
         #Set memory requirements so that sort jobs can be run
         # on small instances, but merge jobs must be run on large
         # instances
+        toilOptions.extend(['--provisioner=aws', '--batchSystem=mesos',
+                            '--nodeTypes=' + ",".join(self.instanceTypes),
+                            '--maxNodes=' + ",".join(self.numWorkers)])
         runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/s3am/bin/asadmin', '--sortMemory=0.6G', '--mergeMemory=3.0G']
         runCommand.extend(toilOptions)
         runCommand.append('--sseKey=/home/keyFile')
@@ -355,6 +392,10 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
             os.remove(tempfile_path)
 
     def _runScript(self, toilOptions):
+        # Use the provisioner in the workflow
+        toilOptions.extend(['--provisioner=aws', '--batchSystem=mesos',
+                            '--nodeTypes=' + ",".join(self.instanceTypes),
+                            '--maxNodes=' + ",".join(self.numWorkers)])
         # clean = onSuccess
         disallowedOptions = ['--clean=always', '--retryCount=2']
         newOptions = [option for option in toilOptions if option not in disallowedOptions]
@@ -422,6 +463,9 @@ class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
         leader.sshAppliance('tee', '/home/userScript.py', input=script)
 
     def _runScript(self, toilOptions):
+        toilOptions.extend(['--provisioner=aws', '--batchSystem=mesos',
+                            '--nodeTypes=' + ",".join(self.instanceTypes),
+                            '--maxNodes=' + ",".join(self.numWorkers)])
         toilOptions.extend(['--preemptableCompensation=1.0'])
         command = ['/home/venv/bin/python', '/home/userScript.py']
         command.extend(toilOptions)
