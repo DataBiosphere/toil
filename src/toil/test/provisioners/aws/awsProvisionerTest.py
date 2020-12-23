@@ -62,6 +62,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.spotBid = 0.15
         self.zone = get_current_aws_zone()
         assert self.zone is not None, "Could not determine AWS availability zone to test in; is TOIL_AWS_ZONE set?"
+        self.scriptDir = '/tmp/t/'
 
     def destroyCluster(self):
         """
@@ -139,7 +140,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.launchCluster()
         # get the leader so we know the IP address - we don't need to wait since create cluster
         # already insures the leader is running
-        self.cluster = cluster_factory(provisioner='aws', clusterName=self.clusterName)
+        self.cluster = cluster_factory(provisioner='aws', zone=self.zone, clusterName=self.clusterName)
         self.leader = self.cluster.getLeader()
         self.sshUtil(['mkdir', '-p', self.scriptDir])  # hot deploy doesn't seem permitted to work in normal /tmp or /home
 
@@ -270,7 +271,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
                                      '-w', ",".join(self.numWorkers),
                                      '--nodeStorage', str(self.requestedLeaderStorage)])
 
-        self.cluster = cluster_factory(provisioner='aws', clusterName=self.clusterName)
+        self.cluster = cluster_factory(provisioner='aws', zone=self.zone, clusterName=self.clusterName)
         nodes = self.cluster._getNodesInCluster(both=True)
         nodes.sort(key=lambda x: x.launch_time)
         # assuming that leader is first
@@ -313,7 +314,7 @@ class AWSManagedAutoscaleTest(AWSAutoscaleTest):
                                      '--nodeStorage', str(self.requestedLeaderStorage),
                                      '--clusterType', 'kubernetes'])
 
-        self.cluster = cluster_factory(provisioner='aws', clusterName=self.clusterName)
+        self.cluster = cluster_factory(provisioner='aws', zone=self.zone, clusterName=self.clusterName)
 
     def _runScript(self, toilOptions):
         # Don't use the provisioner, and use Kubernetes instead of Mesos
@@ -375,7 +376,6 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
         super(AWSRestartTest, self).setUp()
         self.instanceTypes = ['t2.small']
         self.numWorkers = ['1']
-        self.scriptDir = '/tmp/t/'
         self.scriptName = self.scriptDir + 'restartScript.py'
         self.jobStore = 'aws:%s:restart-%s' % (self.awsRegion(), uuid4())
 
@@ -402,7 +402,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
         with open(tempfile_path, 'w') as f:
             # use appliance ssh method instead of sshutil so we can specify input param
             f.write(script)
-        cluster = cluster_factory(provisioner='aws', clusterName=self.clusterName)
+        cluster = cluster_factory(provisioner='aws', zone=self.zone, clusterName=self.clusterName)
         leader = cluster.getLeader()
         self.sshUtil(['mkdir', '-p', self.scriptDir])  # hot deploy doesn't seem permitted to work in normal /tmp or /home
         leader.injectFile(tempfile_path, self.scriptName, 'toil_leader')
@@ -476,7 +476,7 @@ class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
 
         script = dedent('\n'.join(getsource(userScript).split('\n')[1:]))
         # use appliance ssh method instead of sshutil so we can specify input param
-        cluster = cluster_factory(provisioner='aws', clusterName=self.clusterName)
+        cluster = cluster_factory(provisioner='aws', zone=self.zone, clusterName=self.clusterName)
         leader = cluster.getLeader()
         leader.sshAppliance('tee', '/home/userScript.py', input=script)
 
