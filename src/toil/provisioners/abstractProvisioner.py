@@ -20,7 +20,7 @@ import textwrap
 import yaml
 from abc import ABC, abstractmethod
 from functools import total_ordering
-from typing import Dict
+from typing import Dict, Optional
 
 from toil import applianceSelf, customDockerInitCmd, customInitCmd
 from toil.provisioners.node import Node
