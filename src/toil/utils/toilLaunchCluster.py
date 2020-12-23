@@ -116,10 +116,10 @@ def main():
     # This holds how many to limit autoscaling to when using managed nodes scaled by the cluster
     managedNodeCounts = [] 
    
-    if (config.nodeTypes or (config.managedWorkers or config.workers)) and not (config.nodeTypes and (config.managedWorkers or config.workers)):
+    if (options.nodeTypes or (options.managedWorkers or options.workers)) and not (options.nodeTypes and (options.managedWorkers or options.workers)):
         raise RuntimeError("The --nodeTypes option requires one of --workers or --managedWorkers, and visa versa.")
-    if config.nodeTypes:
-        for nodeTypeStr in config.nodeTypes.split(","):
+    if options.nodeTypes:
+        for nodeTypeStr in options.nodeTypes.split(","):
             parsedBid = nodeTypeStr.split(':', 1)
             if len(nodeTypeStr) != len(parsedBid[0]):
                 #Is a preemptable node
@@ -128,13 +128,13 @@ def main():
                 # Is a normal node
                 parsedNodeTypes.append((nodeTypeStr, None))
                 
-        if config.workers:
-            numWorkersList = config.workers.split(",")
+        if options.workers:
+            numWorkersList = options.workers.split(",")
             if not len(parsedNodeTypes) == len(numWorkersList):
                 raise RuntimeError("List of worker counts must be the same length as the list of node types.")
             fixedNodeCounts = [int(x) for x in numWorkersList]
-        if config.managedWorkers:
-            managedWorkersList = config.managedWorkers.split(",")
+        if options.managedWorkers:
+            managedWorkersList = options.managedWorkers.split(",")
             if not len(parsedNodeTypes) == len(managedWorkersList):
                 raise RuntimeError("List of max worker counts must be the same length as the list of node types.")
             managedNodeCounts = [int(x) for x in managedWorkersList]
@@ -148,12 +148,9 @@ def main():
         raise RuntimeError(f'Please provide a value for --zone or set a default in the '
                            f'TOIL_{options.provisioner.upper()}_ZONE environment variable.')
 
-    if (options.nodeTypes or options.workers) and not (options.nodeTypes and options.workers):
-        raise RuntimeError("The --nodeTypes and --workers options must be specified together.")
-
     cluster = cluster_factory(provisioner=options.provisioner,
                               clusterName=options.clusterName,
-                              clusterType=config.clusterType,
+                              clusterType=options.clusterType,
                               zone=options.zone,
                               nodeStorage=options.nodeStorage)
 

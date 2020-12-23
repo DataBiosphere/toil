@@ -159,21 +159,31 @@ class ErrorCondition:
 
     ErrorCondition events may be used to define errors in more detail to determine whether to retry.
 
-    :param error: An Exception (required)
+    :param error: An Exception class to restrict to. Must be specified if error_codes is used.
     :param error_codes: Numeric error codes (e.g. 404, 500, etc.) that must match to be retried
         (optional; defaults to not checking).
     :param boto_error_codes: Human-readable error codes (e.g. "BucketNotFound", "ClientError", etc.) that
-        are specific to boto and must match to be retried (optional; defaults to not checking).
+        are specific to Boto 3 and must match to be retried (optional; defaults to not checking).
     :param error_message_must_include: A string that must be in the error message to be retried
         (optional; defaults to not checking)
     :param retry_on_this_condition: This can be set to False to always error on this condition.
     """
     def __init__(self,
-                 error: Any,
+                 error: Optional[Any] = None,
                  error_codes: List[int] = None,
                  boto_error_codes: List[str] = None,
                  error_message_must_include: str = None,
                  retry_on_this_condition: bool = True):
+                 
+        if error is None:
+            if boto_error_codes:
+                # Default to the base Boto 3 error
+                error = botocore.exceptions.ClientError
+            else:
+                # Default to base Exception
+                error = Exception
+            
+                 
         self.error = error
         self.error_codes = error_codes
         self.boto_error_codes = boto_error_codes
@@ -185,7 +195,7 @@ class ErrorCondition:
                 raise NotImplementedError(f'Unknown error type used with error_codes: {error}')
 
         if self.boto_error_codes:
-            if not isinstance(error, botocore.exceptions.ClientError):
+            if not issubclass(error, botocore.exceptions.ClientError):
                 raise NotImplementedError(f'Unknown error type used with boto_error_codes: {error}')
 
 
@@ -286,21 +296,23 @@ def return_status_code(e):
 def meets_error_message_condition(e: Exception, error_message: Optional[str]):
     if error_message:
         if kubernetes:
-            if isinstance(e, kubernetes.client.rest.ApiException) or isinstance(sqlite3.OperationalError):
+            if isinstance(e, kubernetes.client.rest.ApiException):
                 return error_message in str(e)
-
+        
         if botocore:
             if isinstance(e, botocore.exceptions.ClientError):
-                return error_message in e.msg
-
+                return error_message in str(e)
+        
         if isinstance(e, http.client.HTTPException) or isinstance(e, urllib3.exceptions.HTTPError):
             return error_message in e.reason
-        elif isinstance(sqlite3.OperationalError):
+        elif isinstance(e, sqlite3.OperationalError):
             return error_message in str(e)
         elif isinstance(e, urllib.error.HTTPError):
             return error_message in e.msg
         elif isinstance(e, requests.exceptions.HTTPError):
             return error_message in e.raw
+        elif hasattr(e, 'msg'):
+            return error_message in e.msg
         else:
             return error_message in traceback.format_exc()
     else:  # there is no error message, so the user is not expecting it to be present

@@ -29,7 +29,6 @@ from boto.exception import BotoServerError, EC2ResponseError
 from boto.utils import get_instance_metadata
 from boto.ec2.instance import Instance as Boto2Instance
 
-from toil.lib.context import Context
 from toil.lib.ec2 import (a_short_time,
                           create_auto_scaling_group,
                           create_instances,
