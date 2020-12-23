@@ -42,7 +42,7 @@ class AWSProvisionerBenchTest(ToilTest):
     
     def testAMIFinding(self):
         for zone in ['us-west-2a', 'eu-central-1a', 'sa-east-1b']:
-            provisioner = AWSProvisioner('fakename', zone, 10000, None, None)
+            provisioner = AWSProvisioner('fakename', 'mesos', zone, 10000, None, None)
             ami = provisioner._discoverAMI()
             # Make sure we got an AMI and it looks plausible
             assert(ami.startswith('ami-'))
