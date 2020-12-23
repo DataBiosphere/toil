@@ -660,7 +660,9 @@ class AbstractProvisioner(ABC):
             AUTOSCALER_VERSION="1.19.0",
             # Version of metrics service to install for `kubectl top nodes`
             METRICS_API_VERSION="v0.3.7",
-            CLUSTER_NAME=self.clusterName
+            CLUSTER_NAME=self.clusterName,
+            # YAML line that tells the Kubelet to use a cloud provider, if we need one.
+            CLOUD_PROVIDER_SPEC='cloud-provider: ' + self.getKubernetesCloudProvider() if self.getKubernetesCloudProvider() else ''
         )
         
     def addKubernetesServices(self, config: InstanceConfiguration):
@@ -759,6 +761,17 @@ class AbstractProvisioner(ABC):
         :returns: Bash snippet
         """
         raise NotImplementedError()
+        
+    def getKubernetesCloudProvider(self) -> Optional[str]:
+        """
+        Return the Kubernetes cloud provider (for example, 'aws'), to pass to
+        the kubelets in a Kubernetes cluster provisioned using this provisioner.
+        
+        Defaults to None if not overridden.
+
+        :returns: Cloud provider name, or None
+        """
+        return None
     
     def addKubernetesLeader(self, config: InstanceConfiguration):
         """
@@ -774,7 +787,7 @@ class AbstractProvisioner(ABC):
             nodeRegistration:
               kubeletExtraArgs:
                 volume-plugin-dir: "/opt/libexec/kubernetes/kubelet-plugins/volume/exec/"
-                cloud-provider: aws
+                {CLOUD_PROVIDER_SPEC}
             ---
             apiVersion: kubeadm.k8s.io/v1beta2
             kind: ClusterConfiguration
@@ -791,7 +804,7 @@ class AbstractProvisioner(ABC):
             serverTLSBootstrap: true
             rotateCertificates: true
             cgroupDriver: systemd
-            '''))
+            '''.format(**values)))
             
         # Make a script to apply that and the other cluster components
         # Note that we're escaping {{thing}} as {{{{thing}}}} because we need to match mustaches in a yaml we hack up.
@@ -880,7 +893,7 @@ class AbstractProvisioner(ABC):
             WantedBy=multi-user.target
             '''))
     
-    def addKubernetesWorker(self, config: InstanceConfiguration, authVars: Dict[str, str]):
+    def addKubernetesWorker(self, config: InstanceConfiguration, authVars: Dict[str, str], preemptable: bool = False):
         """
         Add services to configure as a Kubernetes worker, if Kubernetes is
         already set to be installed.
@@ -890,10 +903,17 @@ class AbstractProvisioner(ABC):
         
         :param config: The configuration to add services to
         :param authVars: Dict with authentication info
+        :param preemptable: Whether the worker should be labeled as preemptable or not
         """
         
         # Collect one combined set of auth and general settings.
         values = dict(**self.getKubernetesValues(), **authVars)
+        
+        # Mark the node as preemptable if it is.
+        # TODO: We use the same label that EKS uses here, because nothing is standardized.
+        # This won't be quite appropriate as we aren't on EKS and we might not
+        # even be on AWS, but the batch system should understand it.
+        values['WORKER_LABEL_SPEC'] = 'node-labels: "eks.amazonaws.com/capacityType=SPOT"' if preemptable else ''
         
         # Kubeadm worker configuration
         config.addFile("/home/core/kubernetes-worker.yml", permissions="0644", content=textwrap.dedent('''\
@@ -902,7 +922,8 @@ class AbstractProvisioner(ABC):
             nodeRegistration:
               kubeletExtraArgs:
                 volume-plugin-dir: "/opt/libexec/kubernetes/kubelet-plugins/volume/exec/"
-                cloud-provider: aws
+                {CLOUD_PROVIDER_SPEC}
+                {WORKER_LABEL_SPEC}
             discovery:
               bootstrapToken:
                 apiServerEndpoint: {JOIN_ENDPOINT}
@@ -982,7 +1003,7 @@ class AbstractProvisioner(ABC):
                 # TODO: this puts sufficient info to fake a malicious worker
                 # into the worker config, which probably is accessible by
                 # anyone in the cloud account.
-                self.addKubernetesWorker(config, self._leaderWorkerAuthentication)
+                self.addKubernetesWorker(config, self._leaderWorkerAuthentication, preemptable=preemptable)
             
         # Make it into a string for CloudConfig
         return config.toCloudConfig()

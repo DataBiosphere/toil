@@ -425,9 +425,32 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             pod_spec = kubernetes.client.V1PodSpec(containers=[container],
                                                    volumes=volumes,
                                                    restart_policy="Never")
+                                                   
+            if not jobDesc.preemptable:
+                # We need to add some selector stuff to keep the job off of
+                # nodes that might be preempted.
+                
+                # There's no labeling standard, so we use the one that EKS uses.
+                # Toil-managed Kubernetes clusters also use this label.
+                preemptable_label = "eks.amazonaws.com/capacityType"
+                preemptable_value = "SPOT"
+                
+                non_spot = [kubernetes.client.V1NodeSelectorRequirement(key=preemptable_label,
+                                                                        operator='NotIn',
+                                                                        values=[preemptable_value])]
+                unspecified = [kubernetes.client.V1NodeSelectorRequirement(key=preemptable_label,
+                                                                           operator='DoesNotExist')]
+                # These are OR'd
+                node_selector_terms = [kubernetes.client.V1NodeSelectorTerm(match_expressions=non_spot),
+                                       kubernetes.client.V1NodeSelectorTerm(match_expressions=unspecified)]
+                node_selector = kubernetes.client.V1NodeSelector(node_selector_terms=node_selector_terms)
+                node_affinity = kubernetes.client.V1NodeAffinity(required_during_scheduling_ignored_during_execution=node_selector)
+                
+                pod_spec.affinity = kubernetes.client.V1Affinity(node_affinity=node_affinity)
+                
             # Make metadata to label the job/pod with info.
             metadata = kubernetes.client.V1ObjectMeta(name=jobName,
-                                                    labels={"toil_run": self.runID})
+                                                      labels={"toil_run": self.runID})
             
             # Wrap the spec in a template
             template = kubernetes.client.V1PodTemplateSpec(spec=pod_spec, metadata=metadata)
