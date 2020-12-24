@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
 import logging
 import pickle
 import re
@@ -268,7 +269,8 @@ class AbstractJobStore(ABC):
         """
         Imports the file at the given URL into job store. The ID of the newly imported file is
         returned. If the name of a shared file name is provided, the file will be imported as
-        such and None is returned.
+        such and None is returned. If an executable file on the local filesystem is uploaded, its
+        executability will be preserved when it is downloaded.
 
         Currently supported schemes are:
 
@@ -319,8 +321,8 @@ class AbstractJobStore(ABC):
         """
         if sharedFileName is None:
             with self.writeFileStream() as (writable, jobStoreFileID):
-                size = otherCls._readFromUrl(url, writable)
-                return FileID(jobStoreFileID, size)
+                size, executable = otherCls._readFromUrl(url, writable)
+                return FileID(jobStoreFileID, size, executable)
         else:
             self._requireValidSharedFileName(sharedFileName)
             with self.writeSharedFileStream(sharedFileName) as writable:
@@ -329,7 +331,9 @@ class AbstractJobStore(ABC):
 
     def exportFile(self, jobStoreFileID, dstUrl):
         """
-        Exports file to destination pointed at by the destination URL.
+        Exports file to destination pointed at by the destination URL. The exported file will be
+        executable if and only if it was originally uploaded from an executable file on the
+        local filesystem.
 
         Refer to :meth:`.AbstractJobStore.importFile` documentation for currently supported URL schemes.
 
@@ -373,8 +377,11 @@ class AbstractJobStore(ABC):
 
         :param urlparse.ParseResult url: The parsed URL of the file to export to.
         """
+        executable = False
         with self.readFileStream(jobStoreFileID) as readable:
-            otherCls._writeToUrl(readable, url)
+            if getattr(jobStoreFileID, 'executable', False):
+                executable = jobStoreFileID.executable
+            otherCls._writeToUrl(readable, url, executable)
 
     @classmethod
     @abstractmethod
@@ -401,7 +408,8 @@ class AbstractJobStore(ABC):
 
         :param writable: a writable stream
 
-        :return int: returns the size of the file in bytes
+        :return: The size of the file in bytes and whether the executable permission bit is set
+        :rtype: Tuple[int, bool]
         """
         raise NotImplementedError()
 
@@ -1152,4 +1160,4 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
 
             # Do the download
             shutil.copyfileobj(readable, counter)
-            return size[0]
+            return size[0], False

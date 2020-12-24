@@ -205,6 +205,9 @@ class AbstractFileStore(ABC):
         it will become a local copy of the file, eligible for deletion by
         :func:`toil.fileStores.abstractFileStore.AbstractFileStore.deleteLocalFile`.
 
+        If an executable file on the local filesystem is uploaded, its executability will
+        be preserved when it is downloaded again.
+
         :param string localFileName: The path to the local file to upload. The
                last path component (basename of the file) will remain 
                associated with the file in the file store, if supported by the
@@ -295,7 +298,9 @@ class AbstractFileStore(ABC):
         Makes the file associated with fileStoreID available locally. If mutable is True,
         then a copy of the file will be created locally so that the original is not modified
         and does not change the file for other jobs. If mutable is False, then a link can
-        be created to the file, saving disk resources.
+        be created to the file, saving disk resources. The file that is downloaded will be 
+        executable if and only if it was originally uploaded from an executable file on the
+        local filesystem.
 
         If a user path is specified, it is used as the destination. If a user path isn't
         specified, the file is stored in the local temp directory with an encoded name.

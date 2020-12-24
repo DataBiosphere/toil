@@ -453,10 +453,10 @@ class AWSJobStore(AbstractJobStore):
             srcKey.get_contents_to_file(writable)
         finally:
             srcKey.bucket.connection.close()
-        return srcKey.size
+        return srcKey.size, False
 
     @classmethod
-    def _writeToUrl(cls, readable, url):
+    def _writeToUrl(cls, readable, url, executable=False):
         dstKey = cls._getKeyForUrl(url)
         try:
             canDetermineSize = True
