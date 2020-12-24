@@ -41,6 +41,7 @@ CONFORMANCE_TEST_TIMEOUT = 3600
 def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selected_tests=None):
     try:
         cmd = ['cwltest',
+               '--verbose',
                '--tool=toil-cwl-runner',
                f'--test={yml}',
                '--timeout=2400',
