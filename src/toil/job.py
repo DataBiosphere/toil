@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,55 +11,37 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import, print_function
-
-from future import standard_library
-standard_library.install_aliases()
-from builtins import zip
-from builtins import map
-from builtins import str
 import collections
 import copy
-import enum
 import importlib
 import inspect
 import itertools
 import logging
 import os
+import pickle
 import shutil
-import sys
-import time
-import dill
 import tempfile
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
+import time
+import uuid
 from abc import ABCMeta, abstractmethod
-from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from contextlib import contextmanager
 from io import BytesIO
-import uuid
 
-# Python 3 compatibility imports
-from six import iteritems, string_types
+import dill
 
-from toil.lib.expando import Expando
-from toil.lib.humanize import human2bytes
-
-from toil.common import Toil, addOptions, safeUnpickleFromStream, Config
+from toil.common import Config, Toil, addOptions, safeUnpickleFromStream
 from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
-from toil.lib.bioio import (setLoggingFromOptions,
-                            getTotalCpuTimeAndMemoryUsage,
-                            getTotalCpuTime)
+from toil.lib.expando import Expando
+from toil.lib.humanize import human2bytes
+from toil.lib.resources import (get_total_cpu_time,
+                                get_total_cpu_time_and_memory_usage)
 from toil.resource import ModuleDescriptor
-from future.utils import with_metaclass
+from toil.statsAndLogging import set_logging_from_options
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
+
 
 class JobPromiseConstraintError(RuntimeError):
     """
@@ -82,7 +64,7 @@ class JobPromiseConstraintError(RuntimeError):
         else:
             # Write a full error message
             super().__init__(f"Job {promisingJob.description} cannot promise its return value to non-successor {recipientJob.description}")
-            
+
 
 class TemporaryID:
     """
@@ -117,6 +99,7 @@ class TemporaryID:
         
     def __ne__(self, other):
         return not isinstance(other, TemporaryID) or self._value != other._value
+
 
 class Requirer:
     """
@@ -724,7 +707,6 @@ class JobDescription(Requirer):
         
         :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: The job store we are being placed into
         """
-        pass
     
     def setupJobAfterFailure(self, exitReason=None):
         """
@@ -740,7 +722,7 @@ class JobDescription(Requirer):
         
         # Avoid potential circular imports
         from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
-        
+
         # Old version of this function used to take a config. Make sure that isn't happening.
         assert not isinstance(exitReason, Config), "Passing a Config as an exit reason"
         # Make sure we have an assigned config.
@@ -774,7 +756,7 @@ class JobDescription(Requirer):
     def getLogFileHandle(self, jobStore):
         """
         Returns a context manager that yields a file handle to the log file.
-        
+
         Assumes logJobStoreFileID is set.
         """
         return jobStore.readFileStream(self.logJobStoreFileID)
@@ -1141,7 +1123,6 @@ class Job:
         :return: The return value of the function can be passed to other jobs by means of
                  :func:`toil.job.Job.rv`.
         """
-        pass
         
     def _jobGraphsJoined(self, other):
         """
@@ -1746,14 +1727,14 @@ class Job:
             :return: The return value of the root job's run function.
             :rtype: Any
             """
-            setLoggingFromOptions(options)
+            set_logging_from_options(options)
             with Toil(options) as toil:
                 if not options.restart:
                     return toil.start(job)
                 else:
                     return toil.restart()
 
-    class Service(with_metaclass(ABCMeta, Requirer)):
+    class Service(Requirer, metaclass=ABCMeta):
         """
         Abstract class used to define the interface to a service.
         
@@ -1791,7 +1772,6 @@ class Job:
             :returns: An object describing how to access the service. The object must be pickleable
                       and will be used by jobs to access the service (see :func:`toil.job.Job.addService`).
             """
-            pass
 
         @abstractmethod
         def stop(self, job):
@@ -1802,7 +1782,6 @@ class Job:
                                      Can be used to register deferred functions, or to access 
                                      the fileStore for creating temporary files.
             """
-            pass
 
         def check(self):
             """
@@ -1813,7 +1792,6 @@ class Job:
                 and considered a success. Important point: if the service job exits due to a failure, it should raise a
                 RuntimeError, not return False!
             """
-            pass
 
     ####################################################
     #Private functions
@@ -1888,7 +1866,7 @@ class Job:
         """
         Sets the values for promises using the return values from this job's run() function.
         """
-        for path, promiseFileStoreIDs in iteritems(self._rvs):
+        for path, promiseFileStoreIDs in self._rvs.items():
             if not path:
                 # Note that its possible for returnValues to be a promise, not an actual return
                 # value. This is the case if the job returns a promise from another job. In
@@ -2312,7 +2290,7 @@ class Job:
         """
         if stats is not None:
             startTime = time.time()
-            startClock = getTotalCpuTime()
+            startClock = get_total_cpu_time()
         baseDir = os.getcwd()
 
         yield
@@ -2336,7 +2314,7 @@ class Job:
             os.chdir(baseDir)
         # Finish up the stats
         if stats is not None:
-            totalCpuTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
+            totalCpuTime, totalMemoryUsage = get_total_cpu_time_and_memory_usage()
             stats.jobs.append(
                 Expando(
                     time=str(time.time() - startTime),
@@ -2437,10 +2415,7 @@ class FunctionWrappingJob(Job):
         """
         # Use the user-specified requirements, if specified, else grab the default argument
         # from the function, if specified, else default to None
-        if sys.version_info >= (3, 0):
-            argSpec = inspect.getfullargspec(userFunction)
-        else:
-            argSpec = inspect.getargspec(userFunction)
+        argSpec = inspect.getfullargspec(userFunction)
 
         if argSpec.defaults is None:
             argDict = {}
@@ -2459,7 +2434,7 @@ class FunctionWrappingJob(Job):
                     # ... and finally fall back to a default value.
                     value = default
             # Optionally, convert strings with metric or binary prefixes.
-            if dehumanize and isinstance(value, string_types):
+            if dehumanize and isinstance(value, str):
                 value = human2bytes(value)
             return value
 
@@ -2681,6 +2656,7 @@ class EncapsulatedJob(Job):
         assert self.encapsulatedJob is not None
         return self.encapsulatedJob.getUserScript()
 
+
 class ServiceHostJob(Job):
     """
     Job that runs a service. Used internally by Toil. Users should subclass Service instead of using this.
@@ -2820,7 +2796,7 @@ class ServiceHostJob(Job):
         return self.serviceModule
 
 
-class Promise():
+class Promise:
     """
     References a return value from a :meth:`toil.job.Job.run` or
     :meth:`toil.job.Job.Service.start` method as a *promise* before the method itself is run.
@@ -2892,7 +2868,7 @@ class Promise():
             return value
 
 
-class PromisedRequirement():
+class PromisedRequirement:
     def __init__(self, valueOrCallable, *args):
         """
         Class for dynamically allocating job function resource requirements involving
@@ -2950,7 +2926,7 @@ class PromisedRequirement():
         return False
 
 
-class UnfulfilledPromiseSentinel():
+class UnfulfilledPromiseSentinel:
     """This should be overwritten by a proper promised value. Throws an
     exception when unpickled."""
     def __init__(self, fulfillingJobName, unpickled):

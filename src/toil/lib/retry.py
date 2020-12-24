@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -119,20 +119,19 @@ Use-cases covered currently:
 If new functionality is needed, it's currently best practice in Toil to add
 functionality to the ErrorCondition itself rather than making a new custom retry method.
 """
-import time
 import copy
 import functools
+import http.client
 import logging
+import sqlite3
+import time
 import traceback
+import urllib.error
+from contextlib import contextmanager
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 import requests.exceptions
-import http.client
-import urllib.error
 import urllib3.exceptions
-import sqlite3
-
-from contextlib import contextmanager
-from typing import List, Optional, Tuple, Callable, Any, Union
 
 SUPPORTED_HTTP_ERRORS = [http.client.HTTPException,
                          urllib.error.HTTPError,
@@ -151,7 +150,7 @@ try:
 except ModuleNotFoundError:
     botocore = None
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ErrorCondition:
@@ -258,7 +257,7 @@ def retry(intervals: Optional[List] = None,
                             raise
 
                     interval = intervals_remaining.pop(0)
-                    log.debug(f"Error in {func}: {e}. Retrying after {interval} s...")
+                    logger.debug(f"Error in {func}: {e}. Retrying after {interval} s...")
                     time.sleep(interval)
         return call
     return decorate
@@ -425,7 +424,7 @@ def old_retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: Fals
                 yield
             except Exception as e:
                 if time.time( ) + delay < expiration and predicate( e ):
-                    log.info( 'Got %s, trying again in %is.', e, delay )
+                    logger.info('Got %s, trying again in %is.', e, delay)
                     time.sleep( delay )
                 else:
                     raise

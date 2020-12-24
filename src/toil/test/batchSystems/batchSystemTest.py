@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,57 +11,47 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-from __future__ import division
-from builtins import map
-from builtins import str
-from builtins import range
-from builtins import object
-from past.utils import old_div
+import fcntl
+import itertools
+import logging
+import os
+import subprocess
+import sys
+import tempfile
+import time
 from abc import ABCMeta, abstractmethod
 from fractions import Fraction
 from inspect import getsource
-import logging
-import os
-import fcntl
-import itertools
-import tempfile
 from textwrap import dedent
-import time
-import sys
-import subprocess
 from unittest import skipIf
 
-from toil.common import Config
+from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
+                                                   InsufficientSystemResources)
 # Don't import any batch systems here that depend on extras
 # in order to import properly. Import them later, in tests 
 # protected by annotations.
 from toil.batchSystems.mesos.test import MesosTestSupport
-from toil.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
+from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
-from toil.batchSystems.abstractBatchSystem import (InsufficientSystemResources,
-                                                   BatchSystemSupport)
+from toil.common import Config
 from toil.job import Job, JobDescription
 from toil.lib.threading import cpu_count
 from toil.test import (ToilTest,
                        needs_aws_s3,
-                       needs_lsf,
-                       needs_kubernetes,
                        needs_fetchable_appliance,
+                       needs_gridengine,
+                       needs_htcondor,
+                       needs_kubernetes,
+                       needs_lsf,
                        needs_mesos,
                        needs_parasol,
-                       needs_gridengine,
                        needs_slurm,
                        needs_torque,
-                       needs_htcondor,
                        slow,
-                       tempFileContaining,
                        travis_test)
-from future.utils import with_metaclass
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 # How many cores should be utilized by this test. The test will fail if the running system
 # doesn't have at least that many cores.
@@ -80,7 +70,7 @@ class hidden(object):
     http://stackoverflow.com/questions/1323455/python-unit-test-with-base-and-sub-class#answer-25695512
     """
 
-    class AbstractBatchSystemTest(with_metaclass(ABCMeta, ToilTest)):
+    class AbstractBatchSystemTest(ToilTest, metaclass=ABCMeta):
         """
         A base test case with generic tests that every batch system should pass.
 
@@ -198,7 +188,7 @@ class hidden(object):
 
             jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             jobID, exitStatus, wallTime = jobUpdateInfo.jobID, jobUpdateInfo.exitStatus, jobUpdateInfo.wallTime
-            log.info('Third job completed: {} {} {}'.format(jobID, exitStatus, wallTime))
+            logger.info('Third job completed: {} {} {}'.format(jobID, exitStatus, wallTime))
 
             # Since the first two jobs were killed, the only job in the updated jobs queue should
             # be job 3. If the first two jobs were (incorrectly) added to the queue, this will
@@ -286,14 +276,14 @@ class hidden(object):
             # prevent an endless loop, give it a few tries
             for it in range(tries):
                 running = self.batchSystem.getRunningBatchJobIDs()
-                log.info('Running jobs now: {}'.format(running))
+                logger.info('Running jobs now: {}'.format(running))
                 runningIDs = list(running.keys())
                 if len(runningIDs) == numJobs:
                     break
                 time.sleep(1)
             return runningIDs
 
-    class AbstractBatchSystemJobTest(with_metaclass(ABCMeta, ToilTest)):
+    class AbstractBatchSystemJobTest(ToilTest, metaclass=ABCMeta):
         """
         An abstract base class for batch system tests that use a full Toil workflow rather
         than using the batch system directly.
@@ -350,7 +340,7 @@ class hidden(object):
                                                 cores=coresPerJob, memory='1M', disk='1Mi'))
                 Job.Runner.startToil(root, options)
                 _, maxValue = getCounters(counterPath)
-                self.assertEqual(maxValue, old_div(self.cpuCount, coresPerJob))
+                self.assertEqual(maxValue, self.cpuCount // coresPerJob)
 
     class AbstractGridEngineBatchSystemTest(AbstractBatchSystemTest):
         """
@@ -472,7 +462,10 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
         self.counterPath = writeTempFile('0,0')
 
         def script():
-            import os, sys, fcntl, time
+            import fcntl
+            import os
+            import sys
+            import time
             def count(delta):
                 """
                 Adjust the first integer value in a file by the given amount. If the result
@@ -555,11 +548,11 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                             bs.shutdown()
                         concurrentTasks, maxConcurrentTasks = getCounters(self.counterPath)
                         self.assertEqual(concurrentTasks, 0)
-                        log.info('maxCores: {maxCores}, '
+                        logger.info('maxCores: {maxCores}, '
                                  'coresPerJob: {coresPerJob}, '
                                  'load: {load}'.format(**locals()))
                         # This is the key assertion:
-                        expectedMaxConcurrentTasks = min(old_div(maxCores, coresPerJob), jobs)
+                        expectedMaxConcurrentTasks = min(maxCores // coresPerJob, jobs)
                         self.assertEqual(maxConcurrentTasks, expectedMaxConcurrentTasks)
                         resetCounters(self.counterPath)
 
@@ -572,7 +565,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
         Job.Runner.startToil(Job.wrapJobFn(parentJob, self.scriptCommand()), options)
         with open(self.counterPath, 'r+') as f:
             s = f.read()
-        log.info('Counter is %s', s)
+        logger.info('Counter is %s', s)
         self.assertEqual(getCounters(self.counterPath), (0, 3))
 
 
@@ -798,7 +791,7 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.workDir = tempDir
         from toil import physicalDisk
-        availableDisk = physicalDisk('', toilWorkflowDir=options.workDir)
+        availableDisk = physicalDisk(options.workDir)
         options.batchSystem = self.batchSystemName
 
         counterPath = os.path.join(tempDir, 'counter')
@@ -810,9 +803,9 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
         # Physically, we're asking for 50% of disk and 50% of disk + 500bytes in the two jobs. The
         # batchsystem should not allow the 2 child jobs to run concurrently.
         root.addChild(Job.wrapFn(measureConcurrency, counterPath, self.sleepTime, cores=1,
-                                    memory='1M', disk=old_div(availableDisk,2)))
+                                    memory='1M', disk=availableDisk // 2))
         root.addChild(Job.wrapFn(measureConcurrency, counterPath, self.sleepTime, cores=1,
-                                 memory='1M', disk=(old_div(availableDisk, 2)) + 500))
+                                 memory='1M', disk=(availableDisk // 2) + 500))
         Job.Runner.startToil(root, options)
         _, maxValue = getCounters(counterPath)
         self.assertEqual(maxValue, 1)
@@ -848,15 +841,15 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
 
         # Should block off 50% of memory while waiting for it's 3 cores
         firstJobChild = Job.wrapFn(_resourceBlockTestAuxFn, outFile=outFile, sleepTime=0,
-                                   writeVal='fJC', cores=3, memory=int(old_div(availableMemory,2)), disk='1M')
+                                   writeVal='fJC', cores=3, memory=int(availableMemory // 2), disk='1M')
 
         # These two shouldn't be able to run before B because there should be only
         # (50% of memory - 1M) available (firstJobChild should be blocking 50%)
         secondJobChild = Job.wrapFn(_resourceBlockTestAuxFn, outFile=outFile, sleepTime=5,
-                                    writeVal='sJC', cores=2, memory=int(old_div(availableMemory,1.5)),
+                                    writeVal='sJC', cores=2, memory=int(availableMemory // 1.5),
                                     disk='1M')
         secondJobGrandChild = Job.wrapFn(_resourceBlockTestAuxFn, outFile=outFile, sleepTime=5,
-                                         writeVal='sJGC', cores=2, memory=int(old_div(availableMemory,1.5)),
+                                         writeVal='sJGC', cores=2, memory=int(availableMemory // 1.5),
                                          disk='1M')
 
         root.addChild(blocker)
@@ -954,12 +947,12 @@ def count(delta, file_path):
         fcntl.flock(fd, fcntl.LOCK_EX)
         try:
             s = os.read(fd, 10)
-            value, maxValue = list(map(int, s.decode('utf-8').split(',')))
+            value, maxValue = [int(i) for i in s.decode('utf-8').split(',')]
             value += delta
             if value > maxValue: maxValue = value
             os.lseek(fd, 0, 0)
             os.ftruncate(fd, 0)
-            os.write(fd, ','.join(map(str, (value, maxValue))).encode('utf-8'))
+            os.write(fd, f'{value},{maxValue}'.encode('utf-8'))
         finally:
             fcntl.flock(fd, fcntl.LOCK_UN)
     finally:
@@ -969,8 +962,7 @@ def count(delta, file_path):
 
 def getCounters(path):
     with open(path, 'r+') as f:
-        s = f.read()
-        concurrentTasks, maxConcurrentTasks = list(map(int, s.split(',')))
+        concurrentTasks, maxConcurrentTasks = [int(i) for i in f.read().split(',')]
     return concurrentTasks, maxConcurrentTasks
 
 

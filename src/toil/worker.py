@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,40 +11,33 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, print_function
-from future import standard_library
-standard_library.install_aliases()
-from builtins import str
-from builtins import map
-from builtins import filter
 import argparse
 import base64
-from contextlib import contextmanager
+import copy
+import json
+import logging
 import os
 import pickle
-import sys
-import copy
 import random
-import json
-import tempfile
-import traceback
-import time
+import shutil
 import signal
 import socket
-import logging
-import shutil
+import sys
+import tempfile
+import time
+import traceback
+from contextlib import contextmanager
 
-from toil.lib.compatibility import USING_PYTHON2
-from toil.lib.expando import MagicExpando
-from toil.common import Toil, safeUnpickleFromStream
-from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil import logProcessContext
-from toil.job import Job, CheckpointJobDescription
-from toil.lib.bioio import configureRootLogger
-from toil.lib.bioio import setLogLevel
-from toil.lib.bioio import getTotalCpuTime
-from toil.lib.bioio import getTotalCpuTimeAndMemoryUsage
+from toil.common import Toil, safeUnpickleFromStream
 from toil.deferred import DeferredFunctionManager
+from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.job import CheckpointJobDescription, Job
+from toil.lib.expando import MagicExpando
+from toil.lib.resources import (get_total_cpu_time,
+                                get_total_cpu_time_and_memory_usage)
+from toil.statsAndLogging import configure_root_logger, set_log_level
+
 try:
     from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
 except ImportError:
@@ -138,8 +131,8 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     :return int: 1 if a job failed, or 0 if all jobs succeeded
     """
     
-    configureRootLogger()
-    setLogLevel(config.logLevel)
+    configure_root_logger()
+    set_log_level(config.logLevel)
 
     ##########################################
     #Create the worker killer, if requested
@@ -217,13 +210,13 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         for e in environment["PYTHONPATH"].split(':'):
             if e != '':
                 sys.path.append(e)
-                
+
     toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
 
     ##########################################
     #Setup the temporary directories.
     ##########################################
-        
+
     # Dir to put all this worker's temp files in.
     localWorkerTempDir = tempfile.mkdtemp(dir=toilWorkflowDir)
     os.chmod(localWorkerTempDir, 0o755)
@@ -358,7 +351,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         ##########################################
         
         if config.stats:
-            startClock = getTotalCpuTime()
+            startClock = get_total_cpu_time()
 
         startTime = time.time()
         while True:
@@ -486,7 +479,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         #Finish up the stats
         ##########################################
         if config.stats:
-            totalCPUTime, totalMemoryUsage = getTotalCpuTimeAndMemoryUsage()
+            totalCPUTime, totalMemoryUsage = get_total_cpu_time_and_memory_usage()
             statsDict.workers.time = str(time.time() - startTime)
             statsDict.workers.clock = str(totalCPUTime - startClock)
             statsDict.workers.memory = str(totalMemoryUsage)

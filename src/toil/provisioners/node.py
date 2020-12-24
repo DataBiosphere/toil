@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,15 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from past.builtins import map
-from builtins import object
-from itertools import count
+import datetime
 import logging
 import pipes
 import socket
-import datetime
-import time
 import subprocess
+import time
+from itertools import count
+
 from toil.lib.memoize import parse_iso_utc
 
 a_short_time = 5

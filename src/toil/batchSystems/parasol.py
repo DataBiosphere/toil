@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,31 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
-from builtins import next
-from builtins import str
-from past.utils import old_div
-from future.utils import listitems
 import logging
 import os
 import re
-import sys
 import subprocess
+import sys
 import tempfile
 import time
+from queue import Empty, Queue
+from shutil import which
 from threading import Thread
 
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
-from six import itervalues
-
-from toil.lib.iterables import concat
-from shutil import which
-
-from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, UpdatedBatchJobInfo
-from toil.lib.bioio import getTempFile
+from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
+                                                   UpdatedBatchJobInfo)
 from toil.common import Toil
+from toil.test import get_temp_file
+from toil.lib.iterables import concat
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +130,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         self.checkResourceRequest(jobDesc.memory, jobDesc.cores, jobDesc.disk)
 
         MiB = 1 << 20
-        truncatedMemory = (old_div(jobDesc.memory, MiB)) * MiB
+        truncatedMemory = jobDesc.memory // MiB * MiB
         # Look for a batch for jobs with these resource requirements, with
         # the memory rounded down to the nearest megabyte. Rounding down
         # meams the new job can't ever decrease the memory requirements
@@ -149,7 +140,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         try:
             results = self.resultsFiles[(truncatedMemory, jobDesc.cores)]
         except KeyError:
-            results = getTempFile(rootDir=self.parasolResultsDir)
+            results = get_temp_file(rootDir=self.parasolResultsDir)
             self.resultsFiles[(truncatedMemory, jobDesc.cores)] = results
 
         # Prefix the command with environment overrides, optionally looking them up from the
@@ -197,7 +188,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         return super(ParasolBatchSystem, self).setEnv(name, value)
 
     def __environment(self):
-        return (k + '=' + (os.environ[k] if v is None else v) for k, v in listitems(self.environment))
+        return (k + '=' + (os.environ[k] if v is None else v) for k, v in list(self.environment.items()))
 
     def killBatchJobs(self, jobIDs):
         """Kills the given jobs, represented as Job ids, then checks they are dead by checking
@@ -242,7 +233,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         created by other users.
         """
         issuedJobs = set()
-        for resultsFile in itervalues(self.resultsFiles):
+        for resultsFile in self.resultsFiles.values():
             issuedJobs.update(self.getJobIDsForResultsFile(resultsFile))
 
         return list(issuedJobs)
@@ -352,7 +343,7 @@ class ParasolBatchSystem(BatchSystemSupport):
 
     def shutdown(self):
         self.killBatchJobs(self.getIssuedBatchJobIDs())  # cleanup jobs
-        for results in itervalues(self.resultsFiles):
+        for results in self.resultsFiles.values():
             exitValue = self._runParasol(['-results=' + results, 'clear', 'sick'],
                                          autoRetry=False)[0]
             if exitValue is not None:
@@ -375,4 +366,3 @@ class ParasolBatchSystem(BatchSystemSupport):
         from toil.common import iC
         setOption("parasolCommand", None, None, 'parasol')
         setOption("parasolMaxBatches", int, iC(1), 10000)
-        

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,18 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
 import os
-from toil.lib.bioio import getTempFile
+
 from toil.common import Toil, ToilContextManagerException
 from toil.job import Job
+from toil.test import get_temp_file
 from toil.test import ToilTest, slow
 
 
 @slow
 class ToilContextManagerTest(ToilTest):
     def setUp(self):
-        self.exportPath = getTempFile()
+        self.exportPath = get_temp_file()
 
     def tearDown(self):
         os.remove(self.exportPath)

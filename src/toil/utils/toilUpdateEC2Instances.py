@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,35 +11,29 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""
-Updates Toil's internal list of EC2 instance types.
-"""
-from __future__ import absolute_import
+"""Updates Toil's internal list of EC2 instance types."""
 import logging
 import socket
+
 from toil.lib.ec2nodes import updateStaticEC2Instances
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
 
-def internetConnection():
-    """
-    Returns True if there is an internet connection present, and False otherwise.
-
-    :return:
-    """
+def internet_connection() -> bool:
+    """Returns True if there is an internet connection present, and False otherwise."""
     try:
         socket.create_connection(("www.stackoverflow.com", 80))
         return True
     except OSError:
-        pass
-    return False
+        return False
 
 
 def main():
-    if not internetConnection():
+    if not internet_connection():
         raise RuntimeError('No internet.  Updating the EC2 Instance list requires internet.')
     updateStaticEC2Instances()
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     main()

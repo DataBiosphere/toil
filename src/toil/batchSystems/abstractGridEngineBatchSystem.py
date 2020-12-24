@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,24 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-
-from builtins import str
-from datetime import datetime
 import logging
 import time
-from threading import Thread, Lock
 from abc import ABCMeta, abstractmethod
+from datetime import datetime
+from queue import Empty, Queue
+from threading import Lock, Thread
 
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
-from future.utils import with_metaclass
-
+from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
+                                                   BatchSystemCleanupSupport,
+                                                   UpdatedBatchJobInfo)
 from toil.lib.misc import CalledProcessErrorStderr
-from toil.lib.objects import abstractclassmethod
-
-from toil.batchSystems.abstractBatchSystem import BatchSystemCleanupSupport, UpdatedBatchJobInfo, BatchJobExitReason
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +32,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     standard HPC cluster. By default auto-deployment is not implemented.
     """
 
-    class Worker(with_metaclass(ABCMeta, Thread)):
+    class Worker(Thread, metaclass=ABCMeta):
 
         def __init__(self, newJobsQueue, updatedJobsQueue, killQueue,
                      killedJobsQueue, boss):
@@ -425,7 +418,8 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         time.sleep(sleeptime)
         return sleeptime
 
-    @abstractclassmethod
+    @classmethod
+    @abstractmethod
     def obtainSystemConstants(cls):
         """
         Returns the max. memory and max. CPU for the system

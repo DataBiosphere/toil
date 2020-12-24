@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from contextlib import contextmanager
 import errno
 import hashlib
 import logging
@@ -19,20 +18,19 @@ import os
 import re
 import shutil
 import sqlite3
-import sys
 import tempfile
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
-from toil.lib.bioio import makePublicDir
-from toil.lib.humanize import bytes2human
-from toil.lib.misc import robust_rmtree, atomic_copy, atomic_copyobj
-from toil.lib.retry import retry, ErrorCondition
-from toil.lib.threading import get_process_name, process_name_exists
+from toil.fileStores import FileID, make_public_dir
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.fileStores import FileID
+from toil.lib.humanize import bytes2human
+from toil.lib.misc import atomic_copy, atomic_copyobj, robust_rmtree
+from toil.lib.retry import ErrorCondition, retry
+from toil.lib.threading import get_process_name, process_name_exists
 
 logger = logging.getLogger(__name__)
 
@@ -698,7 +696,6 @@ class CachingFileStore(AbstractFileStore):
                 # Probably already deleted
                 logger.debug('File already gone: %s', filePath)
                 # Still need to mark it as deleted
-                pass
 
             # Whether we deleted the file or just found out that it is gone, we
             # need to take credit for deleting it so that we remove it from the
@@ -977,7 +974,7 @@ class CachingFileStore(AbstractFileStore):
         # Create a working directory for the job
         startingDir = os.getcwd()
         # Move self.localTempDir from the worker directory set up in __init__ to a per-job directory.
-        self.localTempDir = makePublicDir(os.path.join(self.localTempDir, str(uuid.uuid4())))
+        self.localTempDir = make_public_dir(os.path.join(self.localTempDir, str(uuid.uuid4())))
         # Check the status of all jobs on this node. If there are jobs that started and died before
         # cleaning up their presence from the database, clean them up ourselves.
         self._removeDeadJobs(self.workDir, self.con)

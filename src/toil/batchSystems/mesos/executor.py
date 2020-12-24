@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,41 +11,31 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-from future import standard_library
-standard_library.install_aliases()
-from builtins import str
+import json
+import logging
 import os
 import os.path
+import pickle
 import random
-import socket
+import resource
 import signal
+import socket
+import subprocess
 import sys
 import threading
-import logging
-import psutil
-import traceback
 import time
-import json
-import resource
-import subprocess
-
-try:
-    from urllib2 import urlopen
-except ImportError:
-    from urllib.request import urlopen
-
+import traceback
 import addict
-from pymesos import MesosExecutorDriver, Executor, decode_data, encode_data
+import psutil
 
-from toil import pickle
-from toil.lib.bioio import configureRootLogger
-from toil.lib.bioio import setLogLevel
+from pymesos import Executor, MesosExecutorDriver, decode_data, encode_data
+from urllib.request import urlopen
+
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.lib.expando import Expando
 from toil.lib.threading import cpu_count
-from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.resource import Resource
+from toil.statsAndLogging import configure_root_logger, set_log_level
 
 log = logging.getLogger(__name__)
 
@@ -242,8 +232,8 @@ class MesosExecutor(Executor):
 
 
 def main():
-    configureRootLogger()
-    setLogLevel("DEBUG")
+    configure_root_logger()
+    set_log_level("INFO")
 
     if not os.environ.get("MESOS_AGENT_ENDPOINT"):
         # Some Mesos setups in our tests somehow lack this variable. Provide a
@@ -257,7 +247,7 @@ def main():
         try:
             urlopen("http://%s/logging/toggle?level=1&duration=15mins" % os.environ["MESOS_AGENT_ENDPOINT"]).read()
             log.debug("Toggled agent log level")
-        except Exception as e:
+        except Exception:
             log.debug("Failed to toggle agent log level")
         
     # Parse the agent state
@@ -279,7 +269,7 @@ def main():
                 try:
                     for line in open(os.path.join(dirpath, filename)):
                         log.debug(line.rstrip())
-                except Exception as e:
+                except Exception:
                     log.debug("Failed to read file")
                     
     # Mesos can also impose rlimit limits, including on things that really
@@ -315,4 +305,3 @@ def main():
     exit_value = 0 if (driver_result is None or driver_result == 'DRIVER_STOPPED') else 1
     assert len(executor.runningTasks) == 0
     sys.exit(exit_value)
-

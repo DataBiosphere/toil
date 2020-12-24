@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,40 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-
 import errno
 import logging
 import os
 import re
-import requests
 import socket
+import subprocess
 import sys
 import time
 from datetime import datetime
+
+import requests
 from pytz import timezone
+
 from docker.errors import ImageNotFound
 from toil.lib.memoize import memoize
 from toil.lib.retry import retry
 from toil.version import currentCommit
-
-# subprocess32 is a backport of python3's subprocess module for use on Python2,
-# and includes many reliability bug fixes relevant on POSIX platforms.
-if os.name == 'posix' and sys.version_info[0] < 3:
-    import subprocess32 as subprocess
-else:
-    import subprocess
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-try:
-    from urllib import urlretrieve
-except ImportError:
-    from urllib.request import urlretrieve
 
 log = logging.getLogger(__name__)
 
@@ -159,7 +142,7 @@ def resolveEntryPoint(entryPoint):
 
 
 @memoize
-def physicalMemory():
+def physicalMemory() -> int:
     """
     >>> n = physicalMemory()
     >>> n > 0
@@ -173,11 +156,8 @@ def physicalMemory():
         return int(subprocess.check_output(['sysctl', '-n', 'hw.memsize']).decode('utf-8').strip())
 
 
-def physicalDisk(config, toilWorkflowDir=None):
-    if toilWorkflowDir is None:
-        from toil.common import Toil
-        toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
-    diskStats = os.statvfs(toilWorkflowDir)
+def physicalDisk(directory: str) -> int:
+    diskStats = os.statvfs(directory)
     return diskStats.f_frsize * diskStats.f_bavail
 
 
@@ -448,8 +428,10 @@ def logProcessContext(config):
 
 try:
     from boto import provider
+    from botocore.credentials import (JSONFileCache,
+                                      RefreshableCredentials,
+                                      create_credential_resolver)
     from botocore.session import Session
-    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache
 
     cache_path = '~/.cache/aws/cached_temporary_credentials'
     datetime_format = "%Y-%m-%dT%H:%M:%SZ"  # incidentally the same as the format used by AWS
@@ -700,4 +682,3 @@ try:
 
 except ImportError:
     pass
-

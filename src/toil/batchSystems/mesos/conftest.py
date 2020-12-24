@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 collect_ignore = []
 
 try:
-    import pymesos
+    import pymesos  # noqa: F401
 except ImportError:
     collect_ignore.append("batchSystem.py")
     collect_ignore.append("executor.py")

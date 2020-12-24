@@ -17,31 +17,27 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
-from __future__ import absolute_import
-from __future__ import division
-from builtins import str
-from builtins import range
-from past.utils import old_div
+import json
 import logging
 import math
-from toil.lib.misc import call_command
 import os
-import json
 import re
+import subprocess
+from datetime import datetime
 from random import randint
 
 from dateutil.parser import parse
 from dateutil.tz import tzlocal
-from datetime import datetime
 
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 from toil.batchSystems.abstractGridEngineBatchSystem import \
-        AbstractGridEngineBatchSystem
-from toil.batchSystems.lsfHelper import (parse_memory_resource,
+    AbstractGridEngineBatchSystem
+from toil.batchSystems.lsfHelper import (check_lsf_json_output_supported,
                                          parse_memory_limit,
-                                         per_core_reservation,
-                                         check_lsf_json_output_supported)
+                                         parse_memory_resource,
+                                         per_core_reservation)
+from toil.lib.misc import call_command
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +112,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             if '.' in lsfJobID:
                 job, task = lsfJobID.split('.', 1)
 
+            self.parseMaxMem(job)
             # first try bjobs to find out job state
             if check_lsf_json_output_supported:
                 args = ["bjobs", "-json", "-o",
@@ -252,7 +249,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     mem_resource = parse_memory_resource(mem)
                     mem_limit = parse_memory_limit(mem)
                 else:
-                    mem = old_div(float(mem), 1024**3)
+                    mem = float(mem) / 1024**3
                     mem_resource = parse_memory_resource(mem)
                     mem_limit = parse_memory_limit(mem)
 
@@ -292,10 +289,38 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     logger.error("Could not parse bjobs output: {}".format(bjobs_output_str))
                 if 'RECORDS' in bjobs_dict:
                     bjobs_records = bjobs_dict['RECORDS']
-            if bjobs_records == None:
+            if bjobs_records is None:
                 logger.error("Could not find bjobs output json in: {}".format(bjobs_output_str))
 
             return bjobs_records
+
+        def parseMaxMem(self, jobID):
+            """
+            Parse the maximum memory from job.
+
+            params:
+            jobID: ID number of the job
+            """
+            memargs = ["bjobs", "-l", str(jobID)]
+            try:
+                bjobs = subprocess.check_output(memargs, universal_newlines=True)
+                memregex = r"MAX MEM: (.*?);"
+                meminfo = re.search(memregex, bjobs)
+                s = " ".join(bjobs.split())
+                command = re.search(r"Command <(.*?)>", s)
+                if meminfo:
+                    if not command:
+                        logger.info("Cannot Parse Max Memory Due to Missing Command String: %s", bjobs)
+                    else:
+                        logger.info("[job ID %s, Command %s] the maximum memory used was: %s",
+                                    str(jobID), command.group(1), meminfo.group(1))
+                else:
+                    logger.debug("[job ID %s] Unable to collect maximum memory usage: %s",
+                                 str(jobID), bjobs)
+                return meminfo
+            except subprocess.CalledProcessError as err:
+                logger.debug("[job ID %s] Unable to collect maximum memory usage: %s",
+                             str(jobID), str(err))
 
     def getWaitDuration(self):
         """We give LSF a second to catch its breath (in seconds)"""
@@ -310,32 +335,29 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         cpu_index = None
         mem_index = None
         for i in range(num_columns):
-                if items[i] == 'ncpus':
-                        cpu_index = i
-                elif items[i] == 'maxmem':
-                        mem_index = i
+            if items[i] == 'ncpus':
+                cpu_index = i
+            elif items[i] == 'maxmem':
+                mem_index = i
 
         if cpu_index is None or mem_index is None:
-                raise RuntimeError("lshosts command does not return ncpus or maxmem "
-                             "columns")
+            raise RuntimeError("lshosts command does not return ncpus or maxmem columns")
 
         maxCPU = 0
         maxMEM = MemoryString("0")
         for line in stdout.split('\n')[1:]:
             items = line.strip().split()
-            if not items:
-                continue
-            if len(items) < num_columns:
-                raise RuntimeError("lshosts output has a varying number of "
-                             "columns")
-            if items[cpu_index] != '-' and int(items[cpu_index]) > int(maxCPU):
-                maxCPU = int(items[cpu_index])
-            if (items[mem_index] != '-' and
-                MemoryString(items[mem_index]) > maxMEM):
-                maxMEM = MemoryString(items[mem_index])
+            if items:
+                if len(items) < num_columns:
+                    raise RuntimeError("lshosts output has a varying number of columns")
+                if items[cpu_index] != '-' and int(items[cpu_index]) > int(maxCPU):
+                    maxCPU = int(items[cpu_index])
+                if items[mem_index] != '-' and MemoryString(items[mem_index]) > maxMEM:
+                    maxMEM = MemoryString(items[mem_index])
 
-        if maxCPU is 0 or maxMEM is 0:
+        if maxCPU == 0 or maxMEM == MemoryString("0"):
                 raise RuntimeError("lshosts returns null ncpus or maxmem info")
+
         logger.debug("Got the maxMEM: {}".format(maxMEM))
         logger.debug("Got the maxCPU: {}".format(maxCPU))
 

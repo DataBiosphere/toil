@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,41 +15,36 @@
 """
 The leader script (of the leader/worker pair) for running jobs.
 """
-from __future__ import absolute_import
-from __future__ import division
 
-from future import standard_library
-standard_library.install_aliases()
-from builtins import str
-from builtins import object
-from builtins import super
 import base64
+import glob
 import logging
-import time
 import os
 import pickle
 import sys
-import glob
+import time
 
-from toil.lib.humanize import bytes2human
+import enlighten
+
 from toil import resolveEntryPoint
+from toil.batchSystems import DeadlockException
+from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
+from toil.common import Toil, ToilMetrics
+from toil.job import CheckpointJobDescription, ServiceJobDescription
+from toil.jobStores.abstractJobStore import NoSuchJobException
+from toil.lib.humanize import bytes2human
+from toil.lib.throttle import LocalThrottle
+from toil.provisioners.clusterScaler import ScalerThread
+from toil.serviceManager import ServiceManager
+from toil.statsAndLogging import StatsAndLogging
+from toil.toilState import ToilState
+
 try:
     from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
 except ImportError:
     # CWL extra not installed
     CWL_INTERNAL_JOBS = ()
-from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
-from toil.jobStores.abstractJobStore import NoSuchJobException
-from toil.batchSystems import DeadlockException
-from toil.lib.throttle import LocalThrottle
-from toil.provisioners.clusterScaler import ScalerThread
-from toil.serviceManager import ServiceManager
-from toil.statsAndLogging import StatsAndLogging
-from toil.job import Job, JobDescription, ServiceJobDescription, CheckpointJobDescription
-from toil.toilState import ToilState
-from toil.common import Toil, ToilMetrics
 
-import enlighten
 
 logger = logging.getLogger( __name__ )
 
@@ -69,11 +64,6 @@ logger = logging.getLogger( __name__ )
 ###############################################################################
 
 
-
-####################################################
-# Exception thrown by the Leader class when one or more jobs fails
-####################################################
-
 class FailedJobsException(Exception):
     def __init__(self, jobStoreLocator, failedJobs, jobStore):
         self.msg = "The job store '%s' contains %i failed jobs" % (jobStoreLocator, len(failedJobs))
@@ -92,13 +82,13 @@ class FailedJobsException(Exception):
         super().__init__()
         self.jobStoreLocator = jobStoreLocator
         self.numberOfFailedJobs = len(failedJobs)
-    
+
     def __str__(self):
         """
         Stringify the exception, including the message.
         """
         return self.msg
-    
+
 
 ####################################################
 ##Following class represents the leader

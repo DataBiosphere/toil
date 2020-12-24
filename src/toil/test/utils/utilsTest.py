@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,36 +11,39 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-from builtins import str
-import os
-import sys
-import uuid
-import shutil
-import tempfile
-import pytest
 import logging
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import uuid
+
+import pytest
+from mock import patch
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
-import time
-import psutil
-
 import toil
-import toil.test.sort.sort
-import subprocess
 from toil import resolveEntryPoint
+from toil.common import Config, Toil
 from toil.job import Job
-from toil.utils.toilStatus import ToilStatus
-from toil.lib.bioio import getTempFile, system
-from toil.test import ToilTest, needs_aws_ec2, needs_rsync3, integrative, slow, needs_cwl, needs_docker, travis_test
+from toil.lib.bioio import system
+from toil.test import (ToilTest,
+                       integrative,
+                       needs_aws_ec2,
+                       needs_cwl,
+                       needs_docker,
+                       needs_rsync3,
+                       slow,
+                       travis_test,
+                       get_temp_file)
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
-from toil.common import Toil, Config
-from toil.provisioners import clusterFactory
+from toil.utils.toilStatus import ToilStatus
 from toil.version import python
-from mock import patch
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +57,7 @@ class UtilsTest(ToilTest):
     def setUp(self):
         super(UtilsTest, self).setUp()
         self.tempDir = self._createTempDir()
-        self.tempFile = getTempFile(rootDir=self.tempDir)
+        self.tempFile = get_temp_file(rootDir=self.tempDir)
         self.outputFile = 'someSortedStuff.txt'
         self.toilDir = os.path.join(self.tempDir, "jobstore")
         self.assertFalse(os.path.exists(self.toilDir))
@@ -67,13 +70,22 @@ class UtilsTest(ToilTest):
             self.correctSort = fileHandle.readlines()
             self.correctSort.sort()
 
-        self.sort_workflow_cmd = [python, '-m', 'toil.test.sort.sort',
-                                  'file:' + self.toilDir,
-                                  '--clean=never',
-                                  '--numLines=1', '--lineLength=1']
-        
-        self.restart_sort_workflow_cmd = [python, '-m', 'toil.test.sort.restart_sort',
-                                  'file:' + self.toilDir]
+        self.sort_workflow_cmd = [
+            python,
+            '-m',
+            'toil.test.sort.sort',
+            f'file:{self.toilDir}',
+            '--clean=never',
+            '--numLines=1',
+            '--lineLength=1'
+        ]
+
+        self.restart_sort_workflow_cmd = [
+            python,
+            '-m',
+            'toil.test.sort.restart_sort',
+            f'file:{self.toilDir}'
+        ]
 
     def tearDown(self):
         if os.path.exists(self.tempDir):
@@ -125,89 +137,29 @@ class UtilsTest(ToilTest):
         :return:
         """
         # TODO: Run these for the other clouds.
-        clusterName = 'cluster-utils-test' + str(uuid.uuid4())
-        keyName = os.getenv('TOIL_AWS_KEYNAME')
+        clusterName = f'cluster-utils-test{uuid.uuid4()}'
+        keyName = os.getenv('TOIL_AWS_KEYNAME').strip() or 'id_rsa'
 
         try:
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
+            aws_provisioner = AWSProvisioner.__module__
+            logger.debug(f"Found AWSProvisioner: {aws_provisioner}.")
 
             # launch master with an assortment of custom tags
             system([self.toilMain, 'launch-cluster', '-t', 'key1=value1', '-t', 'key2=value2', '--tag', 'key3=value3',
                     '--leaderNodeType=m3.medium', '--keyPairName=' + keyName, clusterName,
                     '--provisioner=aws', '--zone=us-west-2a', '--logLevel=DEBUG'])
 
-            cluster = clusterFactory(provisioner='aws', clusterName=clusterName)
+            from toil.provisioners import cluster_factory
+            cluster = toil.provisioners.cluster_factory(provisioner='aws', clusterName=clusterName)
             leader = cluster.getLeader()
 
             # check that the leader carries the appropriate tags
             tags = {'key1': 'value1', 'key2': 'value2', 'key3': 'value3', 'Name': clusterName, 'Owner': keyName}
             for key in tags:
                 self.assertEqual(tags[key], leader.tags.get(key))
-
-            # Test strict host key checking
-            # Doesn't work when run locally.
-            if keyName == 'jenkins@jenkins-master':
-                try:
-                    leader.sshAppliance(strict=True)
-                except RuntimeError:
-                    pass
-                else:
-                    self.fail("Host key verification passed where it should have failed")
-
-            # Add the host key to known_hosts so that the rest of the tests can
-            # pass without choking on the verification prompt.
-            leader.sshAppliance('bash', strict=True, sshOptions=['-oStrictHostKeyChecking=no'])
-
-            system([self.toilMain, 'ssh-cluster', '--provisioner=aws', clusterName])
-
-            testStrings = ["'foo'",
-                           '"foo"',
-                           '  foo',
-                           '$PATH',
-                           '"',
-                           "'",
-                           '\\',
-                           '| cat',
-                           '&& cat',
-                           '; cat']
-            for test in testStrings:
-                logger.debug('Testing SSH with special string: %s', test)
-                compareTo = "import sys; assert sys.argv[1]==%r" % test
-                leader.sshAppliance(python, '-', test, input=compareTo)
-
-            try:
-                leader.sshAppliance('nonsenseShouldFail')
-            except RuntimeError:
-                pass
-            else:
-                self.fail('The remote command failed silently where it should have raised an error')
-
-            leader.sshAppliance(python, '-c', "import os; assert os.environ['TOIL_WORKDIR']=='/var/lib/toil'")
-
-            # `toil rsync-cluster`
-            # Testing special characters - string.punctuation
-            fname = r'!"#$%&\'()*+,-.;<=>:\ ?@[\\]^_`{|}~'
-            testData = os.urandom(3 * (10**6))
-            with tempfile.NamedTemporaryFile(suffix=fname) as tmpFile:
-                relpath = os.path.basename(tmpFile.name)
-                tmpFile.write(testData)
-                tmpFile.flush()
-                # Upload file to leader
-                leader.coreRsync(args=[tmpFile.name, ":"])
-                # Ensure file exists
-                leader.sshAppliance("test", "-e", relpath)
-            tmpDir = tempfile.mkdtemp()
-            # Download the file again and make sure it's the same file
-            # `--protect-args` needed because remote bash chokes on special characters
-            leader.coreRsync(args=["--protect-args", ":" + relpath, tmpDir])
-            with open(os.path.join(tmpDir, relpath), "r") as f:
-                self.assertEqual(f.read(), testData, "Downloaded file does not match original file")
         finally:
             system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
-            try:
-                shutil.rmtree(tmpDir)
-            except NameError:
-                pass
 
     @slow
     def testUtilsSort(self):
@@ -406,7 +358,7 @@ class UtilsTest(ToilTest):
         # Make sure it printed some kind of complaint about the missing command.
         args, kwargs = mock_print.call_args
         self.assertIn('invalidcommand', args[0])
-    
+
     def testRestartAttribute(self):
         """
         Test that the job store is only destroyed when we observe a succcessful workflow run.
@@ -429,7 +381,7 @@ class UtilsTest(ToilTest):
 
         # Check the job store is destroyed after calling restart()
         self.assertFalse(os.path.exists(self.toilDir))
-        
+
 
 def printUnicodeCharacter():
     # We want to get a unicode character to stdout but we can't print it directly because of

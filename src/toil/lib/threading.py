@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,10 +13,6 @@
 # limitations under the License.
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
-
-from __future__ import absolute_import
-from future.utils import raise_
-from builtins import range
 import atexit
 import fcntl
 import logging
@@ -27,24 +23,13 @@ import tempfile
 import threading
 import traceback
 from contextlib import contextmanager
-from threading import BoundedSemaphore
 
 import psutil
 
+from toil.lib.exceptions import raise_
 from toil.lib.misc import robust_rmtree
 
-log = logging.getLogger(__name__)
-
-class BoundedEmptySemaphore( BoundedSemaphore ):
-    """
-    A bounded semaphore that is initially empty.
-    """
-
-    def __init__( self, value=1, verbose=None ):
-        super( BoundedEmptySemaphore, self ).__init__( value, verbose )
-        for i in range( value ):
-            # Empty out the semaphore
-            assert self.acquire( blocking=False )
+logger = logging.getLogger(__name__)
 
 
 class ExceptionalThread(threading.Thread):
@@ -76,43 +61,24 @@ class ExceptionalThread(threading.Thread):
     AssertionError
 
     """
-
     exc_info = None
 
-    def run( self ):
+    def run(self):
         try:
-            self.tryRun( )
+            self.tryRun()
         except:
-            self.exc_info = sys.exc_info( )
+            self.exc_info = sys.exc_info()
             raise
 
-    def tryRun( self ):
-        super( ExceptionalThread, self ).run( )
+    def tryRun(self):
+        super(ExceptionalThread, self).run()
 
-    def join( self, *args, **kwargs ):
-        super( ExceptionalThread, self ).join( *args, **kwargs )
-        if not self.is_alive( ) and self.exc_info is not None:
-            type, value, traceback = self.exc_info
+    def join(self, *args, **kwargs):
+        super(ExceptionalThread, self).join(*args, **kwargs)
+        if not self.is_alive() and self.exc_info is not None:
+            exc_type, exc_value, traceback = self.exc_info
             self.exc_info = None
-            raise_(type, value, traceback)
-
-
-# noinspection PyPep8Naming
-class defaultlocal(threading.local):
-    """
-    Thread local storage with default values for each field in each thread
-
-    >>>
-    >>> l = defaultlocal( foo=42 )
-    >>> def f(): print(l.foo)
-    >>> t = threading.Thread(target=f)
-    >>> t.start() ; t.join()
-    42
-    """
-
-    def __init__( self, **kwargs ):
-        super( defaultlocal, self ).__init__( )
-        self.__dict__.update( kwargs )
+            raise_(exc_type, exc_value, traceback)
 
 
 def cpu_count():
@@ -141,14 +107,14 @@ def cpu_count():
     # Get the fallback answer of all the CPUs on the machine
     total_machine_size = psutil.cpu_count(logical=True)
 
-    log.debug('Total machine size: %d cores', total_machine_size) 
+    logger.debug('Total machine size: %d cores', total_machine_size)
 
     try:
         with open('/sys/fs/cgroup/cpu/cpu.cfs_quota_us', 'r') as stream:
             # Read the quota
             quota = int(stream.read())
 
-        log.debug('CPU quota: %d', quota)
+        logger.debug('CPU quota: %d', quota)
 
         if quota == -1:
             # Assume we can use the whole machine
@@ -158,21 +124,21 @@ def cpu_count():
             # Read the period in which we are allowed to burn the quota
             period = int(stream.read())
 
-        log.debug('CPU quota period: %d', period)
+        logger.debug('CPU quota period: %d', period)
 
         # The thread count is how many multiples of a wall clcok period we can burn in that period.
         cgroup_size = int(math.ceil(float(quota)/float(period)))
 
-        log.debug('Cgroup size in cores: %d', cgroup_size)
+        logger.debug('Cgroup size in cores: %d', cgroup_size)
 
     except:
         # We can't actually read these cgroup fields. Maybe we are a mac or something.
-        log.debug('Could not inspect cgroup: %s', traceback.format_exc())
+        logger.debug('Could not inspect cgroup: %s', traceback.format_exc())
         cgroup_size = float('inf')
 
     # Return the smaller of the actual thread count and the cgroup's limit, minimum 1.
     result = max(1, min(cgroup_size, total_machine_size))
-    log.debug('cpu_count: %s', str(result))
+    logger.debug('cpu_count: %s', str(result))
     # Make sure to remember it for the next call
     setattr(cpu_count, 'result', result)
     return result
@@ -279,6 +245,7 @@ def get_process_name(workDir):
         # TODO: we leave the file open forever. We might need that in order for
         # it to stay locked while we are alive.
 
+
 def process_name_exists(workDir, name):
     """
     Return true if the process named by the given name (from process_name) exists, and false otherwise.
@@ -353,7 +320,7 @@ def global_mutex(workDir, mutex):
     # Define a filename
     lock_filename = os.path.join(workDir, 'toil-mutex-' + mutex)
     
-    log.debug('PID %d acquiring mutex %s', os.getpid(), lock_filename)
+    logger.debug('PID %d acquiring mutex %s', os.getpid(), lock_filename)
     
     # We can't just create/open and lock a file, because when we clean up
     # there's a race where someone can open the file before we unlink it and
@@ -389,12 +356,12 @@ def global_mutex(workDir, mutex):
    
     try:
         # When we have it, do the thing we are protecting.
-        log.debug('PID %d now holds mutex %s', os.getpid(), lock_filename)
+        logger.debug('PID %d now holds mutex %s', os.getpid(), lock_filename)
         yield
     finally:
         # Delete it while we still own it, so we can't delete it from out from
         # under someone else who thinks they are holding it.
-        log.debug('PID %d releasing mutex %s', os.getpid(), lock_filename)
+        logger.debug('PID %d releasing mutex %s', os.getpid(), lock_filename)
         os.unlink(lock_filename)
         fcntl.lockf(fd, fcntl.LOCK_UN)
         # Note that we are unlinking it and then unlocking it; a lot of people
@@ -459,7 +426,7 @@ class LastProcessStandingArena:
         You may not enter the arena again before leaving it.
         """
        
-        log.debug('Joining arena %s', self.lockfileDir)
+        logger.debug('Joining arena %s', self.lockfileDir)
        
         # Make sure we're not in it already.
         assert self.lockfileName is None
@@ -481,7 +448,7 @@ class LastProcessStandingArena:
             
             # Now we're properly in, so release the global mutex
             
-        log.debug('Now in arena %s', self.lockfileDir)
+        logger.debug('Now in arena %s', self.lockfileDir)
         
     def leave(self):
         """
@@ -501,7 +468,7 @@ class LastProcessStandingArena:
         assert self.lockfileName is not None
         assert self.lockfileFD is not None
         
-        log.debug('Leaving arena %s', self.lockfileDir)
+        logger.debug('Leaving arena %s', self.lockfileDir)
         
         with global_mutex(self.workDir, self.mutex):
             # Now nobody else should also be trying to join or leave.
@@ -537,23 +504,17 @@ class LastProcessStandingArena:
             else:
                 # Nothing alive was found. Nobody will come in while we hold
                 # the global mutex, so we are the Last Process Standing.
-                log.debug('We are the Last Process Standing in arena %s', self.lockfileDir)
+                logger.debug('We are the Last Process Standing in arena %s', self.lockfileDir)
                 yield True
                 
                 try:
                     # Delete the arena directory so as to leave nothing behind.
                     os.rmdir(self.lockfileDir)
                 except:
-                    log.warning('Could not clean up arena %s completely: %s',
-                                self.lockfileDir, traceback.format_exc())
-                    pass
+                    logger.warning('Could not clean up arena %s completely: %s',
+                                   self.lockfileDir, traceback.format_exc())
             
             # Now we're done, whether we were the last one or not, and can
             # release the mutex.
             
-        log.debug('Now out of arena %s', self.lockfileDir)
-
-
-        
-        
-
+        logger.debug('Now out of arena %s', self.lockfileDir)

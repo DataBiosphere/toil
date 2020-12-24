@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,33 +11,35 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
-import time
-import string
 import json
-import boto3
 import logging
+import os
+import string
+import time
 import urllib.request
-import boto.ec2
-
-from six import iteritems, text_type
 from functools import wraps
+
+import boto3
+import boto.ec2
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
 from boto.utils import get_instance_metadata
 
-from toil.lib.memoize import memoize
-from toil.lib.ec2 import (a_short_time, create_ondemand_instances, create_instances,
-                          create_spot_instances, wait_instances_running, wait_transition)
-from toil.lib.misc import truncExpBackoff
-from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
-from toil.provisioners.aws import zoneToRegion, getCurrentAWSZone, getSpotZone
 from toil.lib.context import Context
-from toil.lib.retry import old_retry
-from toil.lib.memoize import less_strict_bool
-from toil.provisioners import NoSuchClusterException
-from toil.provisioners.node import Node
+from toil.lib.ec2 import (a_short_time,
+                          create_instances,
+                          create_ondemand_instances,
+                          create_spot_instances,
+                          wait_instances_running,
+                          wait_transition)
 from toil.lib.generatedEC2Lists import E2Instances
+from toil.lib.memoize import memoize
+from toil.lib.misc import truncExpBackoff
+from toil.lib.retry import old_retry
+from toil.provisioners import NoSuchClusterException
+from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
+from toil.provisioners.aws import get_current_aws_zone, zone_to_region
+from toil.provisioners.node import Node
 
 logger = logging.getLogger(__name__)
 logging.getLogger("boto").setLevel(logging.CRITICAL)
@@ -67,7 +69,7 @@ def awsRetryPredicate(e):
 def awsFilterImpairedNodes(nodes, ec2):
     # if TOIL_AWS_NODE_DEBUG is set don't terminate nodes with
     # failing status checks so they can be debugged
-    nodeDebug = less_strict_bool(os.environ.get('TOIL_AWS_NODE_DEBUG'))
+    nodeDebug = os.environ.get('TOIL_AWS_NODE_DEBUG') in ('True', 'TRUE', 'true', True)
     if not nodeDebug:
         return nodes
     nodeIDs = [node.id for node in nodes]
@@ -76,7 +78,7 @@ def awsFilterImpairedNodes(nodes, ec2):
     healthyNodes = [node for node in nodes if statusMap.get(node.id, None) != 'impaired']
     impairedNodes = [node.id for node in nodes if statusMap.get(node.id, None) == 'impaired']
     logger.warning('TOIL_AWS_NODE_DEBUG is set and nodes %s have failed EC2 status checks so '
-                'will not be terminated.', ' '.join(impairedNodes))
+                   'will not be terminated.', ' '.join(impairedNodes))
     return healthyNodes
 
 
@@ -105,10 +107,10 @@ class AWSProvisioner(AbstractProvisioner):
         super(AWSProvisioner, self).__init__(clusterName, zone, nodeStorage, nodeStorageOverrides)
         self.cloud = 'aws'
         self._sseKey = sseKey
-        self._zone = zone if zone else getCurrentAWSZone()
+        self._zone = zone if zone else get_current_aws_zone()
 
         # establish boto3 clients
-        self.session = boto3.Session(region_name=zoneToRegion(self._zone))
+        self.session = boto3.Session(region_name=zone_to_region(self._zone))
         self.ec2 = self.session.resource('ec2')
 
         if clusterName:
@@ -122,7 +124,7 @@ class AWSProvisioner(AbstractProvisioner):
         is the leader.
         """
         instanceMetaData = get_instance_metadata()
-        region = zoneToRegion(self._zone)
+        region = zone_to_region(self._zone)
         conn = boto.ec2.connect_to_region(region)
         instance = conn.get_all_instances(instance_ids=[instanceMetaData["instance-id"]])[0].instances[0]
         self.clusterName = str(instance.tags["Name"])
@@ -181,7 +183,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         self._masterPublicKey = 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded' # dummy key
         userData = self._getCloudConfigUserData('leader', self._masterPublicKey)
-        if isinstance(userData, text_type):
+        if isinstance(userData, str):
             # Spot-market provisioning requires bytes for user data.
             # We probably won't have a spot-market leader, but who knows!
             userData = userData.encode('utf-8')
@@ -318,7 +320,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         keyPath = self._sseKey if self._sseKey else None
         userData = self._getCloudConfigUserData('worker', self._masterPublicKey, keyPath, preemptable)
-        if isinstance(userData, text_type):
+        if isinstance(userData, str):
             # Spot-market provisioning requires bytes for user data.
             userData = userData.encode('utf-8')
         sgs = [sg for sg in self._ctx.ec2.get_all_security_groups() if sg.name in self._leaderSecurityGroupNames]
@@ -344,7 +346,7 @@ class AWSProvisioner(AbstractProvisioner):
                                                                   spec=kwargs, num_instances=numNodes)
                 else:
                     logger.debug('Launching %s preemptable nodes', numNodes)
-                    kwargs['placement'] = getSpotZone(spotBid, instanceType.name, self._ctx)
+                    kwargs['placement'] = get_current_aws_zone(spotBid, instanceType.name, self._ctx)
                     # force generator to evaluate
                     instancesLaunched = list(create_spot_instances(ec2=self._ctx.ec2,
                                                                    price=spotBid,
@@ -390,7 +392,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     def _buildContext(self):
         if self._zone is None:
-            self._zone = getCurrentAWSZone()
+            self._zone = get_current_aws_zone()
             if self._zone is None:
                 raise RuntimeError(
                     'Could not determine availability zone. Ensure that one of the following '
@@ -421,7 +423,7 @@ class AWSProvisioner(AbstractProvisioner):
         JSON_FEED_URL = 'https://stable.release.flatcar-linux.net/amd64-usr/current/flatcar_production_ami_all.json'
         
         # What region do we care about?
-        region = zoneToRegion(self._zone)
+        region = zone_to_region(self._zone)
         
         for attempt in old_retry(predicate=lambda e: True):
             # Until we get parseable JSON
@@ -493,7 +495,7 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _addTags(cls, instances, tags):
         for instance in instances:
-            for key, value in iteritems(tags):
+            for key, value in tags.items():
                 cls._addTag(instance, key, value)
 
     @classmethod

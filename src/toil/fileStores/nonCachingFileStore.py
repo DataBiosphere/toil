@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,38 +11,25 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import, print_function
-
-from future import standard_library
-
-standard_library.install_aliases()
-from builtins import map
-from builtins import str
-from collections import defaultdict
-from contextlib import contextmanager
-import dill
 import errno
 import fcntl
 import logging
 import os
-import sys
 import uuid
+from collections import defaultdict
+from contextlib import contextmanager
 
+import dill
+
+from toil.common import getDirSizeRecursively, getFileSystemSize
+from toil.fileStores import FileID, make_public_dir
+from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.lib.humanize import bytes2human
 from toil.lib.misc import robust_rmtree
 from toil.lib.threading import get_process_name, process_name_exists
-from toil.lib.humanize import bytes2human
-from toil.common import getDirSizeRecursively, getFileSystemSize
-from toil.lib.bioio import makePublicDir
-from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.fileStores import FileID
 
 logger = logging.getLogger(__name__)
 
-if sys.version_info[0] < 3:
-    # Define a usable FileNotFoundError as will be raised by os.oprn on a
-    # nonexistent parent directory.
-    FileNotFoundError = OSError
 
 class NonCachingFileStore(AbstractFileStore):
     def __init__(self, jobStore, jobDesc, localTempDir, waitForPreviousCommit):
@@ -55,7 +42,7 @@ class NonCachingFileStore(AbstractFileStore):
     def open(self, job):
         jobReqs = job.disk
         startingDir = os.getcwd()
-        self.localTempDir = makePublicDir(os.path.join(self.localTempDir, str(uuid.uuid4())))
+        self.localTempDir = make_public_dir(os.path.join(self.localTempDir, str(uuid.uuid4())))
         self._removeDeadJobs(self.workDir)
         self.jobStateFile = self._createJobStateFile()
         freeSpace, diskSize = getFileSystemSize(self.localTempDir)
@@ -175,7 +162,6 @@ class NonCachingFileStore(AbstractFileStore):
         Cleanup function that is run when destroying the class instance.  Nothing to do since there
         are no async write events.
         """
-        pass
 
     @classmethod
     def _removeDeadJobs(cls, nodeInfo, batchSystemShutdown=False):
@@ -278,4 +264,3 @@ class NonCachingFileStore(AbstractFileStore):
         :param dir_: The workflow directory that will contain all the individual worker directories.
         """
         cls._removeDeadJobs(dir_, batchSystemShutdown=True)
-

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,13 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from future.utils import with_metaclass
-from abc import ABCMeta, abstractmethod
-from functools import total_ordering
 import logging
 import os.path
-
 import subprocess
+from abc import ABC, abstractmethod
+from functools import total_ordering
+
 from toil import applianceSelf, customDockerInitCmd, customInitCmd
 
 a_short_time = 5
@@ -98,7 +97,7 @@ class Shape(object):
              self.preemptable))
 
 
-class AbstractProvisioner(with_metaclass(ABCMeta, object)):
+class AbstractProvisioner(ABC):
     """
     An abstract base class to represent the interface for provisioning worker nodes to use in a
     Toil cluster.

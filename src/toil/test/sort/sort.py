@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,16 +14,11 @@
 
 """A demonstration of toil. Sorts the lines of a file into ascending order by doing a parallel merge sort.
 """
-from __future__ import absolute_import
-from __future__ import division
-from builtins import range
-from past.utils import old_div
-from argparse import ArgumentParser
 import codecs
 import os
 import random
-import logging
 import shutil
+from argparse import ArgumentParser
 
 from toil.common import Toil
 from toil.job import Job
@@ -168,7 +163,7 @@ def getMidPoint(file, fileStart, fileEnd):
     Returns an int i such that fileStart <= i < fileEnd
     """
     with open(file, 'r') as f:
-        midPoint = old_div((fileStart + fileEnd), 2)
+        midPoint = (fileStart + fileEnd) // 2
         assert midPoint >= fileStart
         f.seek(midPoint)
         line = f.readline()

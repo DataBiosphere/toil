@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,57 +12,47 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
-
-from future import standard_library
-
-standard_library.install_aliases()
-from builtins import range
-from builtins import str
-from past.utils import old_div
-from builtins import object
-import socketserver
-import pytest
 import hashlib
+import http
 import logging
-import threading
 import os
-import sys
 import shutil
+import socketserver
 import tempfile
+import threading
 import time
+import urllib.parse as urlparse
 import uuid
-from stubserver import FTPStubServer
-from abc import abstractmethod, ABCMeta
+from abc import ABCMeta, abstractmethod
+from io import StringIO
 from itertools import chain, islice
+from queue import Queue
 from threading import Thread
-from six.moves.queue import Queue
-from six.moves import SimpleHTTPServer, StringIO
-from six import iteritems
-import six.moves.urllib.parse as urlparse
-from six.moves.urllib.request import urlopen, Request
+from urllib.request import Request, urlopen
 
-from toil.lib.memoize import memoize
-from toil.lib.exceptions import panic
-# noinspection PyPackageRequirements
-# (installed by `make prepare`)
+import pytest
+from stubserver import FTPStubServer
 
 from toil.common import Config, Toil
 from toil.fileStores import FileID
 from toil.job import Job, JobDescription, TemporaryID
-from toil.jobStores.abstractJobStore import (NoSuchJobException,
-                                             NoSuchFileException)
+from toil.jobStores.abstractJobStore import (NoSuchFileException,
+                                             NoSuchJobException)
 from toil.jobStores.fileJobStore import FileJobStore
+from toil.lib.exceptions import panic
+from toil.lib.memoize import memoize
 from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
+                       make_tests,
                        needs_aws_s3,
                        needs_encryption,
-                       make_tests,
                        needs_google,
-                       travis_test,
-                       slow)
-from future.utils import with_metaclass
+                       slow,
+                       travis_test)
+
+# noinspection PyPackageRequirements
+# (installed by `make prepare`)
+
 
 # Need googleRetry decorator even if google is not available, so make one up.
 # Unconventional use of decorator to determine if google is enabled by seeing if
@@ -88,7 +78,7 @@ class AbstractJobStoreTest(object):
     http://stackoverflow.com/questions/1323455/python-unit-test-with-base-and-sub-class#answer-25695512
     """
 
-    class Test(with_metaclass(ABCMeta, ToilTest)):
+    class Test(ToilTest, metaclass=ABCMeta):
         @classmethod
         def setUpClass(cls):
             super(AbstractJobStoreTest.Test, cls).setUpClass()
@@ -373,9 +363,7 @@ class AbstractJobStoreTest(object):
             jobstore1 = self.jobstore_initialized
             jobstore2 = self.jobstore_resumed_noconfig
 
-            bar = 'bar'
-            if sys.version_info >= (3, 0):
-                bar = b'bar'
+            bar = b'bar'
 
             with jobstore1.writeSharedFileStream('foo') as f:
                 f.write(bar)
@@ -409,13 +397,9 @@ class AbstractJobStoreTest(object):
             # Check file exists
             self.assertTrue(jobstore2.fileExists(fileOne))
             self.assertTrue(jobstore1.fileExists(fileOne))
-            one = 'one'
-            two = 'two'
-            three = 'three'
-            if sys.version_info >= (3, 0):
-                one = b'one'
-                two = b'two'
-                three = b'three'
+            one = b'one'
+            two = b'two'
+            three = b'three'
             # ... write to the file on jobstore2, ...
             with jobstore2.updateFileStream(fileOne) as f:
                 f.write(one)
@@ -626,7 +610,7 @@ class AbstractJobStoreTest(object):
 
         @classmethod
         def cleanUpExternalStores(cls):
-            for test, store in iteritems(cls.externalStoreCache):
+            for test, store in cls.externalStoreCache.items():
                 logger.debug('Cleaning up external store for %s.', test)
                 test._cleanUpExternalStore(store)
 
@@ -989,9 +973,7 @@ class AbstractJobStoreTest(object):
                 # but this gives us a lot of extra room just to be sure.
 
                 # python 3 requires self.fileContents to be a bytestring
-                a = 'a'
-                if sys.version_info >= (3, 0):
-                    a = b'a'
+                a = b'a'
                 f.write(a * 300000)
             with self.jobstore_initialized.readFileStream(fileID) as f:
                 self.assertEqual(f.read(1), a)
@@ -1050,7 +1032,7 @@ class AbstractJobStoreTest(object):
 
 class AbstractEncryptedJobStoreTest(object):
     # noinspection PyAbstractClass
-    class Test(with_metaclass(ABCMeta, AbstractJobStoreTest.Test)):
+    class Test(AbstractJobStoreTest.Test, metaclass=ABCMeta):
         """
         A test of job stores that use encryption
         """
@@ -1144,6 +1126,23 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
         finally:
             os.unlink(path)
 
+    def test_jobstore_init_preserves_symlink_path(self):
+        """Test that if we provide a fileJobStore with a symlink to a directory, it doesn't de-reference it."""
+        dir_symlinked_to_original_filestore = None
+        original_filestore = None
+        try:
+            original_filestore = self._createExternalStore()
+            dir_symlinked_to_original_filestore = f'{original_filestore}-am-i-real'
+            os.symlink(original_filestore, dir_symlinked_to_original_filestore)
+            filejobstore_using_symlink = FileJobStore(dir_symlinked_to_original_filestore, fanOut=2)
+            self.assertEqual(dir_symlinked_to_original_filestore, filejobstore_using_symlink.jobStoreDir)
+        finally:
+            if dir_symlinked_to_original_filestore and os.path.exists(dir_symlinked_to_original_filestore):
+                os.unlink(dir_symlinked_to_original_filestore)
+            if original_filestore and os.path.exists(original_filestore):
+                shutil.rmtree(original_filestore)
+
+
 @needs_google
 class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
@@ -1210,9 +1209,10 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         failed to be created.  We simulate a failed jobstore bucket creation by using a bucket in a
         different region with the same name.
         """
-        from boto.sdb import connect_to_region
-        from boto.s3.connection import Location, S3Connection
         from boto.exception import S3ResponseError
+        from boto.s3.connection import Location, S3Connection
+        from boto.sdb import connect_to_region
+
         from toil.jobStores.aws.jobStore import BucketLocationConflictException
         from toil.jobStores.aws.utils import retry_s3
         externalAWSLocation = Location.USWest
@@ -1270,7 +1270,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         jobstore = self.jobstore_initialized
         for encrypted in (True, False):
             n = AWSJobStore.FileInfo.maxInlinedSize()
-            sizes = (1, old_div(n, 2), n - 1, n, n + 1, 2 * n)
+            sizes = (1, n // 2, n - 1, n, n + 1, 2 * n)
             for size in chain(sizes, islice(reversed(sizes), 1)):
                 s = os.urandom(size)
                 with jobstore.writeSharedFileStream('foo') as f:
@@ -1317,6 +1317,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def _createExternalStore(self):
         import boto.s3
+
         from toil.jobStores.aws.utils import region_to_bucket_location
         s3 = boto.s3.connect_to_region(self.awsRegion())
         try:
@@ -1336,6 +1337,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def _largeLogEntrySize(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
+
         # So we get into the else branch of reader() in uploadStream(multiPart=False):
         return AWSJobStore.FileInfo.maxBinarySize() * 2
 
@@ -1366,7 +1368,7 @@ class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Te
     pass
 
 
-class StubHttpRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
+class StubHttpRequestHandler(http.server.SimpleHTTPRequestHandler):
     fileContents = 'A good programmer looks both ways before crossing a one-way street'
 
     def do_GET(self):
@@ -1374,9 +1376,7 @@ class StubHttpRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         self.send_header("Content-type", "text/plain")
         self.send_header("Content-length", len(self.fileContents))
         self.end_headers()
-        # python 3 requires self.fileContents to be a bytestring
-        if sys.version_info >= (3, 0):
-            self.fileContents = self.fileContents.encode('utf-8')
+        self.fileContents = self.fileContents.encode('utf-8')
         self.wfile.write(self.fileContents)
 
 
