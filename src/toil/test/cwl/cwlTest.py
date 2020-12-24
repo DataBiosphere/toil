@@ -36,7 +36,7 @@ from toil.test import (ToilTest,
                        needs_cwl,
                        needs_docker,
                        needs_gridengine,
-                       needs_kubernetes
+                       needs_kubernetes,
                        needs_lsf,
                        needs_mesos,
                        needs_parasol,
