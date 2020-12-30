@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import logging
 import pickle
 import re
@@ -23,12 +22,14 @@ from datetime import timedelta
 from http.client import BadStatusLine
 from urllib.request import urlopen
 from uuid import uuid4
-
+from typing import Set, Iterable, List, Union
 from requests.exceptions import HTTPError
 
 from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
 from toil.job import (CheckpointJobDescription,
+                      JobDescription,
+                      TemporaryID,
                       JobException,
                       ServiceJobDescription)
 from toil.lib.memoize import memoize
@@ -484,12 +485,14 @@ class AbstractJobStore(ABC):
             logger.warning("Cleaning jobStore recursively. This may be slow.")
 
         # Functions to get and check the existence of jobs, using the jobCache if present
-        def get_jobs_reachable_from_root():
-            """Traverse the job graph from the root job and return a flattened list of all active jobs."""
-            def successors_with_jobs(job_descriptions: list):
+        def get_jobs_reachable_from_root() -> Set[Union[TemporaryID, str]]:
+            """Traverse the job graph from the root job and return a flattened set of all active jobstore IDs."""
+            logger.debug("Checking job graph connectivity...")
+
+            def successors_with_jobs(job_descriptions: List[JobDescription]) -> Iterable[JobDescription]:
                 """
                 For a list of job description objects, this will iterate each job description object's stack
-                of connected jobs and yield any that have an active job and have not yet been added to
+                of connected jobs and yield any that have both an active job and have not yet been added to
                 reachable_from_root.
                 """
                 for job_description in job_descriptions:
@@ -498,25 +501,27 @@ class AbstractJobStore(ABC):
                             if successor_jobstore_id not in reachable_from_root and haveJob(successor_jobstore_id):
                                 yield getJobDescription(successor_jobstore_id)
 
-            logger.debug("Checking job graph connectivity...")
             # Iterate from the root JobDescription and collate all jobs that are reachable from it.
             # All other jobs returned by self.jobs() are orphaned and can be removed.
             root_job_description = self.loadRootJob()
             reachable_from_root = {root_job_description.jobStoreID}
-            jobs_with_stacks_to_traverse = [root_job_description]
 
-            while jobs_with_stacks_to_traverse:
-                new_jobs_with_stacks_to_traverse = []  # Reset.
-                for successor_job_description in successors_with_jobs(jobs_with_stacks_to_traverse):
+            # unprocessed means it might have successor jobs we need to add
+            unprocessed_job_descriptions = [root_job_description]
+
+            while unprocessed_job_descriptions:
+                new_job_descriptions_to_process = []  # Reset.
+                for successor_job_description in successors_with_jobs(unprocessed_job_descriptions):
                     reachable_from_root.add(successor_job_description.jobStoreID)
-                    new_jobs_with_stacks_to_traverse.append(successor_job_description)
+                    new_job_descriptions_to_process.append(successor_job_description)
 
                     # Traverse service jobs connected with this job.
                     for service_jobstore_id in successor_job_description.services:
                         if haveJob(service_jobstore_id):
                             assert service_jobstore_id not in reachable_from_root  # Necessary?
                             reachable_from_root.add(service_jobstore_id)
-                jobs_with_stacks_to_traverse = new_jobs_with_stacks_to_traverse  # Refresh until none left.
+
+                unprocessed_job_descriptions = new_job_descriptions_to_process  # Refresh until none left.
             logger.debug(f"{len(reachable_from_root)} jobs reachable from root.")
             return reachable_from_root
 
