@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import copy
 import logging
 import pickle
 import re
@@ -486,49 +485,6 @@ class AbstractJobStore(ABC):
             logger.warning("Cleaning jobStore recursively. This may be slow.")
 
         # Functions to get and check the existence of jobs, using the jobCache if present
-        def get_jobs_reachable_from_root() -> Set[Union[TemporaryID, str]]:
-            """Traverse the job graph from the root job and return a flattened set of all active jobstore IDs."""
-            logger.debug("Checking job graph connectivity...")
-
-            def successors(job_descriptions: List[JobDescription]) -> Iterable[JobDescription]:
-                """
-                For a list of job description objects, this will iterate each job description object's stack
-                of connected jobs and yield any that have both an active job and have not yet been added to
-                reachable_from_root.
-                """
-                for job_description in job_descriptions:
-                    for jobs in job_description.stack:
-                        for successor_jobstore_id in jobs:
-                            if successor_jobstore_id not in reachable_from_root and haveJob(successor_jobstore_id):
-                                yield getJobDescription(successor_jobstore_id)
-
-            # Iterate from the root JobDescription and collate all jobs that are reachable from it.
-            # All other jobs returned by self.jobs() are orphaned and can be removed later.
-            root_job_description = self.loadRootJob()
-            reachable_from_root = {root_job_description.jobStoreID}
-            for service_jobstore_id in root_job_description.services:
-                if haveJob(service_jobstore_id):
-                    reachable_from_root.add(service_jobstore_id)
-
-            # unprocessed means it might have successor jobs we need to add
-            unprocessed_job_descriptions = [root_job_description]
-
-            while unprocessed_job_descriptions:
-                new_job_descriptions_to_process = []  # Reset.
-                for successor_job_description in successors(unprocessed_job_descriptions):
-                    reachable_from_root.add(successor_job_description.jobStoreID)
-                    new_job_descriptions_to_process.append(successor_job_description)
-
-                    # Traverse service jobs connected with this job.
-                    for service_jobstore_id in successor_job_description.services:
-                        if haveJob(service_jobstore_id):
-                            assert service_jobstore_id not in reachable_from_root  # Necessary?
-                            reachable_from_root.add(service_jobstore_id)
-
-                unprocessed_job_descriptions = copy.deepcopy(new_job_descriptions_to_process)
-            logger.debug(f"{len(reachable_from_root)} jobs reachable from root.")
-            return reachable_from_root
-
         def getJobDescription(jobId):
             if jobCache is not None:
                 try:
@@ -563,6 +519,49 @@ class AbstractJobStore(ABC):
                 return jobCache.values()
             else:
                 return self.jobs()
+
+        def get_jobs_reachable_from_root() -> Set[Union[TemporaryID, str]]:
+            """
+            Traverse the job graph from the root job and return a flattened set of all active jobstore IDs.
+
+            Note: Jobs returned by self.jobs(), but not this function, are orphaned, and can be removed as dead jobs.
+            """
+            def successors(job_descriptions: List[JobDescription]) -> Iterable[JobDescription]:
+                """
+                For a list of job description objects, this will iterate each job description object's stack
+                of connected jobs and yield any that have both an active job and have not yet been added to
+                reachable_from_root.
+                """
+                for job_description in job_descriptions:
+                    for jobs in job_description.stack:
+                        for successor_jobstore_id in jobs:
+                            if successor_jobstore_id not in reachable_from_root and haveJob(successor_jobstore_id):
+                                yield getJobDescription(successor_jobstore_id)
+
+            def add_to_reachable_from_root(job_description: JobDescription) -> None:
+                """Add this job's jobstore ID, and any dependent service job's jobstore IDs."""
+                reachable_from_root.add(job_description.jobStoreID)
+                for service_jobstore_id in job_description.services:
+                    if haveJob(service_jobstore_id):
+                        reachable_from_root.add(service_jobstore_id)
+
+            # Iterate from the root JobDescription and collate all jobs that are reachable from it.
+            root_job_description = self.loadRootJob()
+            reachable_from_root = set()
+            add_to_reachable_from_root(root_job_description)
+
+            # unprocessed means it might have successor jobs we need to add.
+            unprocessed_job_descriptions = [root_job_description]
+
+            while unprocessed_job_descriptions:
+                new_job_descriptions_to_process = []  # Reset.
+                for successor_job_description in successors(unprocessed_job_descriptions):
+                    add_to_reachable_from_root(successor_job_description)
+                    new_job_descriptions_to_process.append(successor_job_description)
+                unprocessed_job_descriptions = new_job_descriptions_to_process
+
+            logger.debug(f"{len(reachable_from_root)} jobs reachable from root.")
+            return reachable_from_root
 
         reachableFromRoot = get_jobs_reachable_from_root()
 
