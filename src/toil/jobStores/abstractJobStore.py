@@ -520,38 +520,39 @@ class AbstractJobStore(ABC):
             else:
                 return self.jobs()
 
+        logger.debug("Checking job graph connectivity...")
         # Iterate from the root JobDescription and collate all jobs that are reachable from it
         # All other jobs returned by self.jobs() are orphaned and can be removed
-        reachableFromRoot = set()
+        root_job_description = self.loadRootJob()
+        reachableFromRoot = {root_job_description.jobStoreID}
+        jobs_with_stacks_to_traverse = [root_job_description]
+        while jobs_with_stacks_to_traverse:
+            new_jobs_with_stacks_to_traverse = []
+            for job_description in jobs_with_stacks_to_traverse:
+                for jobs in job_description.stack:
+                    for successor_jobstore_id in jobs:
+                        if successor_jobstore_id not in reachableFromRoot and haveJob(successor_jobstore_id):
+                            successor_job_description = getJobDescription(successor_jobstore_id)
+                            if successor_job_description.jobStoreID not in reachableFromRoot:
+                                reachableFromRoot.add(successor_job_description.jobStoreID)
+                                new_jobs_with_stacks_to_traverse.append(successor_job_description)
+                                # Traverse service jobs
+                                for service_jobstore_id in successor_job_description.services:
+                                    if haveJob(service_jobstore_id):
+                                        assert service_jobstore_id not in reachableFromRoot  # is this necessary?
+                                        reachableFromRoot.add(service_jobstore_id)
+            jobs_with_stacks_to_traverse = new_jobs_with_stacks_to_traverse
 
-        def getConnectedJobs(jobDescription):
-            if jobDescription.jobStoreID in reachableFromRoot:
-                return
-            reachableFromRoot.add(jobDescription.jobStoreID)
-            # Traverse jobs in stack
-            for jobs in jobDescription.stack:
-                for successorJobStoreID in jobs:
-                    if (successorJobStoreID not in reachableFromRoot
-                        and haveJob(successorJobStoreID)):
-                        getConnectedJobs(getJobDescription(successorJobStoreID))
-            # Traverse service jobs
-            for serviceJobStoreID in jobDescription.services:
-                if haveJob(serviceJobStoreID):
-                    assert serviceJobStoreID not in reachableFromRoot
-                    reachableFromRoot.add(serviceJobStoreID)
-
-        logger.debug("Checking job graph connectivity...")
-        getConnectedJobs(self.loadRootJob())
         logger.debug("%d jobs reachable from root." % len(reachableFromRoot))
 
         # Cleanup jobs that are not reachable from the root, and therefore orphaned
+        # TODO: Avoid reiterating reachableFromRoot (which may be very large)
         jobsToDelete = [x for x in getJobDescriptions() if x.jobStoreID not in reachableFromRoot]
         for jobDescription in jobsToDelete:
             # clean up any associated files before deletion
             for fileID in jobDescription.filesToDelete:
                 # Delete any files that should already be deleted
-                logger.warning("Deleting file '%s'. It is marked for deletion but has not yet been "
-                            "removed.", fileID)
+                logger.warning(f"Deleting file '{fileID}'. It is marked for deletion but has not yet been removed.")
                 self.deleteFile(fileID)
             # Delete the job from us and the cache
             deleteJob(jobDescription.jobStoreID)
