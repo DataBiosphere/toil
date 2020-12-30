@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import copy
 import logging
 import pickle
 import re
@@ -489,7 +490,7 @@ class AbstractJobStore(ABC):
             """Traverse the job graph from the root job and return a flattened set of all active jobstore IDs."""
             logger.debug("Checking job graph connectivity...")
 
-            def successors_with_jobs(job_descriptions: List[JobDescription]) -> Iterable[JobDescription]:
+            def successors(job_descriptions: List[JobDescription]) -> Iterable[JobDescription]:
                 """
                 For a list of job description objects, this will iterate each job description object's stack
                 of connected jobs and yield any that have both an active job and have not yet been added to
@@ -502,16 +503,19 @@ class AbstractJobStore(ABC):
                                 yield getJobDescription(successor_jobstore_id)
 
             # Iterate from the root JobDescription and collate all jobs that are reachable from it.
-            # All other jobs returned by self.jobs() are orphaned and can be removed.
+            # All other jobs returned by self.jobs() are orphaned and can be removed later.
             root_job_description = self.loadRootJob()
             reachable_from_root = {root_job_description.jobStoreID}
+            for service_jobstore_id in root_job_description.services:
+                if haveJob(service_jobstore_id):
+                    reachable_from_root.add(service_jobstore_id)
 
             # unprocessed means it might have successor jobs we need to add
             unprocessed_job_descriptions = [root_job_description]
 
             while unprocessed_job_descriptions:
                 new_job_descriptions_to_process = []  # Reset.
-                for successor_job_description in successors_with_jobs(unprocessed_job_descriptions):
+                for successor_job_description in successors(unprocessed_job_descriptions):
                     reachable_from_root.add(successor_job_description.jobStoreID)
                     new_job_descriptions_to_process.append(successor_job_description)
 
@@ -521,7 +525,7 @@ class AbstractJobStore(ABC):
                             assert service_jobstore_id not in reachable_from_root  # Necessary?
                             reachable_from_root.add(service_jobstore_id)
 
-                unprocessed_job_descriptions = new_job_descriptions_to_process  # Refresh until none left.
+                unprocessed_job_descriptions = copy.deepcopy(new_job_descriptions_to_process)
             logger.debug(f"{len(reachable_from_root)} jobs reachable from root.")
             return reachable_from_root
 
