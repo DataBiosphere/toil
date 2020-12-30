@@ -483,8 +483,43 @@ class AbstractJobStore(ABC):
         if jobCache is None:
             logger.warning("Cleaning jobStore recursively. This may be slow.")
 
-        # Functions to get and check the existence of jobs, using the jobCache
-        # if present
+        # Functions to get and check the existence of jobs, using the jobCache if present
+        def get_jobs_reachable_from_root():
+            """Traverse the job graph from the root job and return a flattened list of all active jobs."""
+            def successors_with_jobs(job_descriptions: list):
+                """
+                For a list of job description objects, this will iterate each job description object's stack
+                of connected jobs and yield any that have an active job and have not yet been added to
+                reachable_from_root.
+                """
+                for job_description in job_descriptions:
+                    for jobs in job_description.stack:
+                        for successor_jobstore_id in jobs:
+                            if successor_jobstore_id not in reachable_from_root and haveJob(successor_jobstore_id):
+                                yield getJobDescription(successor_jobstore_id)
+
+            logger.debug("Checking job graph connectivity...")
+            # Iterate from the root JobDescription and collate all jobs that are reachable from it.
+            # All other jobs returned by self.jobs() are orphaned and can be removed.
+            root_job_description = self.loadRootJob()
+            reachable_from_root = {root_job_description.jobStoreID}
+            jobs_with_stacks_to_traverse = [root_job_description]
+
+            while jobs_with_stacks_to_traverse:
+                new_jobs_with_stacks_to_traverse = []  # Reset.
+                for successor_job_description in successors_with_jobs(jobs_with_stacks_to_traverse):
+                    reachable_from_root.add(successor_job_description.jobStoreID)
+                    new_jobs_with_stacks_to_traverse.append(successor_job_description)
+
+                    # Traverse service jobs connected with this job.
+                    for service_jobstore_id in successor_job_description.services:
+                        if haveJob(service_jobstore_id):
+                            assert service_jobstore_id not in reachable_from_root  # Necessary?
+                            reachable_from_root.add(service_jobstore_id)
+                jobs_with_stacks_to_traverse = new_jobs_with_stacks_to_traverse  # Refresh until none left.
+            logger.debug(f"{len(reachable_from_root)} jobs reachable from root.")
+            return reachable_from_root
+
         def getJobDescription(jobId):
             if jobCache is not None:
                 try:
@@ -520,33 +555,10 @@ class AbstractJobStore(ABC):
             else:
                 return self.jobs()
 
-        logger.debug("Checking job graph connectivity...")
-        # Iterate from the root JobDescription and collate all jobs that are reachable from it
-        # All other jobs returned by self.jobs() are orphaned and can be removed
-        root_job_description = self.loadRootJob()
-        reachableFromRoot = {root_job_description.jobStoreID}
-        jobs_with_stacks_to_traverse = [root_job_description]
-        while jobs_with_stacks_to_traverse:
-            new_jobs_with_stacks_to_traverse = []
-            for job_description in jobs_with_stacks_to_traverse:
-                for jobs in job_description.stack:
-                    for successor_jobstore_id in jobs:
-                        if successor_jobstore_id not in reachableFromRoot and haveJob(successor_jobstore_id):
-                            successor_job_description = getJobDescription(successor_jobstore_id)
-                            if successor_job_description.jobStoreID not in reachableFromRoot:
-                                reachableFromRoot.add(successor_job_description.jobStoreID)
-                                new_jobs_with_stacks_to_traverse.append(successor_job_description)
-                                # Traverse service jobs
-                                for service_jobstore_id in successor_job_description.services:
-                                    if haveJob(service_jobstore_id):
-                                        assert service_jobstore_id not in reachableFromRoot  # is this necessary?
-                                        reachableFromRoot.add(service_jobstore_id)
-            jobs_with_stacks_to_traverse = new_jobs_with_stacks_to_traverse
-
-        logger.debug("%d jobs reachable from root." % len(reachableFromRoot))
+        reachableFromRoot = get_jobs_reachable_from_root()
 
         # Cleanup jobs that are not reachable from the root, and therefore orphaned
-        # TODO: Avoid reiterating reachableFromRoot (which may be very large)
+        # TODO: Avoid reiterating reachable_from_root (which may be very large)
         jobsToDelete = [x for x in getJobDescriptions() if x.jobStoreID not in reachableFromRoot]
         for jobDescription in jobsToDelete:
             # clean up any associated files before deletion
@@ -560,8 +572,7 @@ class AbstractJobStore(ABC):
         jobDescriptionsReachableFromRoot = {id: getJobDescription(id) for id in reachableFromRoot}
 
         # Clean up any checkpoint jobs -- delete any successors it
-        # may have launched, and restore the job to a pristine
-        # state
+        # may have launched, and restore the job to a pristine state
         jobsDeletedByCheckpoints = set()
         for jobDescription in [desc for desc in jobDescriptionsReachableFromRoot.values() if isinstance(desc, CheckpointJobDescription)]:
             if jobDescription.jobStoreID in jobsDeletedByCheckpoints:
