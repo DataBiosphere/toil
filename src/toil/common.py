@@ -410,14 +410,14 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
     #
     # Auto scaling options
     #
-    addOptionFn = addGroupFn("toil options for autoscaling the cluster of worker nodes",
+    addOptionFn = addGroupFn("Toil options for autoscaling a cluster of worker nodes.",
                              "Allows the specification of the minimum and maximum number of nodes "
                              "in an autoscaled cluster, as well as parameters to control the "
                              "level of provisioning.")
 
-    addOptionFn("--provisioner", dest="provisioner", choices=['aws', 'gce'],
-                help="The provisioner for cluster auto-scaling. The currently supported choices are"
-                     "'gce', or 'aws'. The default is %s." % config.provisioner)
+    addOptionFn('-p', '--provisioner', dest='provisioner', choices=['aws', 'gce'],
+                help=f"The provisioner for cluster auto-scaling. The currently supported choices are"
+                     f"'gce', or 'aws'. The default is {config.provisioner}.")
 
     addOptionFn('--nodeTypes', default=None,
                 help="List of node types separated by commas. The syntax for each node type "

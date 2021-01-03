@@ -44,9 +44,11 @@ def cluster_factory(provisioner, clusterName=None, zone=None, nodeStorage=50, no
 
 def add_provisioner_options(parser):
     group = parser.add_argument_group("Provisioner Options.")
-    group.add_argument('-p', "--provisioner", dest='provisioner', choices=['aws', 'gce'], required=False,
-                       default="aws", help="The provisioner for cluster auto-scaling.  "
-                                           "AWS and Google are currently supported.")
+
+    # TODO: Duplicate "--provisioner" argument in common.py; consolidate
+    group.add_argument('-p', '--provisioner', dest='provisioner', choices=['aws', 'gce'],
+                help=f"The provisioner for cluster auto-scaling. The currently supported choices are"
+                     f"'gce', or 'aws'.")
     group.add_argument('-z', '--zone', dest='zone', required=False, default=None,
                        help="The availability zone of the master. This parameter can also be set via the 'TOIL_X_ZONE' "
                             "environment variable, where X is AWS or GCE, or by the ec2_region_name parameter "
