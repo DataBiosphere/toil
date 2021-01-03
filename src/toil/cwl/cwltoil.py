@@ -1805,7 +1805,7 @@ def determine_load_listing(tool: ToilCommandLineTool):
 
 
 usage_message = '\n' + textwrap.dedent(f"""
-            * All positional arguments [cwl, yml] must always be specified last for toil-cwl-runner.
+            * All positional arguments [cwl, yml_or_json] must always be specified last for toil-cwl-runner.
               Note: If you're trying to specify a jobstore, please use --jobStore.
     
                   Usage: toil-cwl-runner [options] example.cwl example-job.yaml
