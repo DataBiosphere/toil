@@ -1826,10 +1826,6 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     if args is None:
         args = sys.argv[1:]
 
-    # warn the user if positional args are specified first
-    if not args[0].startswith('-'):
-        logger.warning(usage_message)
-
     config = Config()
     config.disableChaining = True
     config.cwl = True
