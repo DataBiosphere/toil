@@ -400,7 +400,7 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
     batchsystem_options.add_argument("--statePollingWait", dest="statePollingWait", default=1, type=int,
                                      help="Time, in seconds, to wait before doing a scheduler query for job state.  "
                                           "Return cached results if within the waiting period.")
-    add_all_batchsystem_options(batchsystem_options)
+    add_all_batchsystem_options(batchsystem_options, config)
 
     # Auto scaling options
     autoscaling_options = parser.add_argument_group(
