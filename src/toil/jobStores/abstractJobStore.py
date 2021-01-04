@@ -526,48 +526,46 @@ class AbstractJobStore(ABC):
 
             Note: Jobs returned by self.jobs(), but not this function, are orphaned, and can be removed as dead jobs.
             """
-            def successors(job_descriptions: List[JobDescription]) -> Iterable[JobDescription]:
-                """
-                For a list of job description objects, this will iterate each job description object's stack
-                of connected jobs and yield any that have both an active job and have not yet been added to
-                reachable_from_root.
-                """
-                for job_description in job_descriptions:
-                    for jobs in job_description.stack:
-                        for successor_jobstore_id in jobs:
-                            if successor_jobstore_id not in reachable_from_root and haveJob(successor_jobstore_id):
-                                yield getJobDescription(successor_jobstore_id)
-
-            def add_to_reachable_from_root(job_description: JobDescription) -> None:
-                """Add this job's jobstore ID, and any dependent service job's jobstore IDs."""
-                reachable_from_root.add(job_description.jobStoreID)
-                for service_jobstore_id in job_description.services:
-                    if haveJob(service_jobstore_id):
-                        reachable_from_root.add(service_jobstore_id)
-
             # Iterate from the root JobDescription and collate all jobs that are reachable from it.
             root_job_description = self.loadRootJob()
             reachable_from_root = set()
-            add_to_reachable_from_root(root_job_description)
 
-            # unprocessed means it might have successor jobs we need to add.
+            # Add first root job outside of the loop below.
+            reachable_from_root.add(root_job_description.jobStoreID)
+            # add all of root's linked service jobs as well
+            for service_jobstore_id in root_job_description.services:
+                if haveJob(service_jobstore_id):
+                    reachable_from_root.add(service_jobstore_id)
+
+            # Unprocessed means it might have successor jobs we need to add.
             unprocessed_job_descriptions = [root_job_description]
 
             while unprocessed_job_descriptions:
                 new_job_descriptions_to_process = []  # Reset.
-                for successor_job_description in successors(unprocessed_job_descriptions):
-                    add_to_reachable_from_root(successor_job_description)
-                    new_job_descriptions_to_process.append(successor_job_description)
+                for job_description in unprocessed_job_descriptions:
+                    for jobs in job_description.stack:
+                        for successor_jobstore_id in jobs:
+                            if successor_jobstore_id not in reachable_from_root and haveJob(successor_jobstore_id):
+                                successor_job_description = getJobDescription(successor_jobstore_id)
+
+                                # Add each successor job.
+                                reachable_from_root.add(successor_job_description.jobStoreID)
+                                # Add all of the successor's linked service jobs as well.
+                                for service_jobstore_id in successor_job_description.services:
+                                    if haveJob(service_jobstore_id):
+                                        reachable_from_root.add(service_jobstore_id)
+
+                                new_job_descriptions_to_process.append(successor_job_description)
                 unprocessed_job_descriptions = new_job_descriptions_to_process
 
             logger.debug(f"{len(reachable_from_root)} jobs reachable from root.")
             return reachable_from_root
 
-        reachableFromRoot = get_jobs_reachable_from_root()
+        reachable_from_root = get_jobs_reachable_from_root()
 
         # Cleanup jobs that are not reachable from the root, and therefore orphaned
         # TODO: Avoid reiterating reachable_from_root (which may be very large)
-        jobsToDelete = [x for x in getJobDescriptions() if x.jobStoreID not in reachableFromRoot]
+        jobsToDelete = [x for x in getJobDescriptions() if x.jobStoreID not in reachable_from_root]
         for jobDescription in jobsToDelete:
             # clean up any associated files before deletion
             for fileID in jobDescription.filesToDelete:
@@ -577,7 +575,7 @@ class AbstractJobStore(ABC):
             # Delete the job from us and the cache
             deleteJob(jobDescription.jobStoreID)
 
-        jobDescriptionsReachableFromRoot = {id: getJobDescription(id) for id in reachableFromRoot}
+        jobDescriptionsReachableFromRoot = {id: getJobDescription(id) for id in reachable_from_root}
 
         # Clean up any checkpoint jobs -- delete any successors it
         # may have launched, and restore the job to a pristine state
