@@ -11,8 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 import socket
+
+from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import closing
-from typing import Callable
+from typing import Callable, Union
 
 from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
                                         BATCH_SYSTEMS,
@@ -41,107 +43,88 @@ def getPublicIP():
         return '127.0.0.1'
 
 
-def add_parasol_options(add_option: Callable):
-    add_option("--parasolCommand", dest="parasolCommand", default=None,
-               help="The name or path of the parasol program. Will be looked up on PATH "
-                    "unless it starts with a slash. default=%s" % 'parasol')
-    add_option("--parasolMaxBatches", dest="parasolMaxBatches", default=None,
-               help="Maximum number of job batches the Parasol batch is allowed to create. One "
-                    "batch is created for jobs with a a unique set of resource requirements. "
-                    "default=%i" % 1000)
+def add_parasol_options(parser: Union[ArgumentParser, _ArgumentGroup]):
+    parser.add_argument("--parasolCommand", dest="parasolCommand", default='parasol',
+                        help="The name or path of the parasol program. Will be looked up on PATH "
+                             "unless it starts with a slash.  (default: %(default)s).")
+    parser.add_argument("--parasolMaxBatches", dest="parasolMaxBatches", default=1000,
+                        help="Maximum number of job batches the Parasol batch is allowed to create. One batch is "
+                             "created for jobs with a a unique set of resource requirements.  (default: %(default)s).")
 
 
-def add_single_machine_options(add_option: Callable, cwl: bool):
-    add_option("--scale", dest="scale", default=None,
-               help=("A scaling factor to change the value of all submitted "
-                     "tasks's submitted cores. Used in singleMachine batch "
-                     "system. default=%s" % 1))
-    if cwl:
-        # TODO: Use both options; add as mutually exclusive groups
-        add_option(
-            "--noLinkImports", dest="linkImports", default=True,
-            action='store_false', help="When using a filesystem based job "
-            "store, CWL input files are by default symlinked in. "
-            "Specifying this option instead copies the files into the job "
-            "store, which may protect them from being modified externally. "
-            "When not specified and as long as caching is enabled, Toil will "
-            "protect the file automatically by changing the permissions to "
-            "read-only.")
-        add_option(
-            "--noMoveExports", dest="moveExports", default=True,
-            action='store_false', help="When using a filesystem based job "
-            "store, output files are by default moved to the output directory, "
-            "and a symlink to the moved exported file is created at the initial location. "                           
-            "Specifying this option instead copies the files into the output "
-            "directory. Applies to filesystem-based job stores only.")
-    else:
-        add_option(
-            "--linkImports", dest="linkImports", default=False,
-            action='store_true', help="When using Toil's importFile function "
-            "for staging, input files are copied to the job store. Specifying "
-            "this option saves space by sym-linking imported files. As long "
-            "as caching is enabled Toil will protect the file "
-            "automatically by changing the permissions to read-only.")
-        add_option(
-            "--moveExports", dest="moveExports", default=False,
-            action='store_true', help="When using Toil's exportFile function "
-            "for staging, output files are copied to the output directory. Specifying "
-            "this option saves space by moving exported files, and making a symlink to "
-            "the exported file in the job store. Applies to filesystem-based job stores only.")
+def add_single_machine_options(parser: Union[ArgumentParser, _ArgumentGroup]):
+    parser.add_argument("--scale", dest="scale", default=1,
+                        help="A scaling factor to change the value of all submitted tasks's submitted cores.  "
+                             "Used in the single_machine batch system.  (default: %(default)s).")
+
+    link_imports = parser.add_mutually_exclusive_group()
+    link_imports_help = ("When using a filesystem based job store, CWL input files are by default symlinked in.  "
+                         "Specifying this option instead copies the files into the job store, which may protect "
+                         "them from being modified externally.  When not specified and as long as caching is enabled, "
+                         "Toil will protect the file automatically by changing the permissions to read-only.")
+    link_imports.add_argument("--linkImports", dest="linkImports", action='store_true', help=link_imports_help)
+    link_imports.add_argument("--noLinkImports", dest="linkImports", action='store_false', help=link_imports_help)
+    link_imports.set_defaults(linkImports=True)
+
+    move_exports = parser.add_mutually_exclusive_group()
+    move_exports_help = ('When using a filesystem based job store, output files are by default moved to the '
+                         'output directory, and a symlink to the moved exported file is created at the initial '
+                         'location.  Specifying this option instead copies the files into the output directory.  '
+                         'Applies to filesystem-based job stores only.')
+    move_exports.add_argument("--moveExports", dest="moveExports", action='store_true', help=move_exports_help)
+    move_exports.add_argument("--noMoveExports", dest="moveExports", action='store_false', help=move_exports_help)
+    move_exports.set_defaults(moveExports=False)
 
 
-def add_mesos_options(add_option: Callable):
-    add_option("--mesosMaster", dest="mesosMasterAddress", default=f'{getPublicIP()}:5050',
-               help="The host and port of the Mesos master separated by colon. (default: %(default)s)")
+def add_mesos_options(parser: Union[ArgumentParser, _ArgumentGroup]):
+    parser.add_argument("--mesosMaster", dest="mesosMasterAddress", default=f'{getPublicIP()}:5050',
+                        help="The host and port of the Mesos master separated by colon.  (default: %(default)s)")
 
 
-def add_kubernetes_options(add_option: Callable):
-    add_option("--kubernetesHostPath", dest="kubernetesHostPath", default=None,
-               help="Path on Kubernetes hosts to use as shared inter-pod temp directory (default: %(default)s)")
+def add_kubernetes_options(parser: Union[ArgumentParser, _ArgumentGroup]):
+    parser.add_argument("--kubernetesHostPath", dest="kubernetesHostPath", default=None,
+                        help="Path on Kubernetes hosts to use as shared inter-pod temp directory.  "
+                             "(default: %(default)s)")
 
 
-def set_batchsystem_options(batch_system: str, setOption: Callable):
+def set_batchsystem_options(batch_system: str, set_option: Callable):
     batch_system_factory = BATCH_SYSTEM_FACTORY_REGISTRY[batch_system]()
-    batch_system_factory.setOptions(setOption)
+    batch_system_factory.setOptions(set_option)
 
 
-def add_all_batchsystem_options(add_option: Callable, config):
+def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup], config):
     # TODO: Only add options for the system the user is specifying?
-    add_option("--batchSystem", dest="batchSystem", default=DEFAULT_BATCH_SYSTEM, choices=BATCH_SYSTEMS,
-               help=(f"The type of batch system to run the job(s) with, currently can be one "
-                     f"of {', '.join(BATCH_SYSTEMS)}. default={DEFAULT_BATCH_SYSTEM}"))
-    add_option("--disableHotDeployment", dest="disableAutoDeployment",
-               action='store_true', default=None,
-               help=("Hot-deployment was renamed to auto-deployment.  Option now redirects to "
-                     "--disableAutoDeployment.  Left in for backwards compatibility."))
-    add_option("--disableAutoDeployment", dest="disableAutoDeployment",
-               action='store_true', default=None,
-               help=("Should auto-deployment of the user script be deactivated? If True, the user "
-                     "script/package should be present at the same location on all workers. "
-                     "default=false"))
-    add_option("--maxLocalJobs", default=cpu_count(),
-               help=f"For batch systems that support a local queue for "
-                    f"housekeeping jobs (Mesos, GridEngine, htcondor, lsf, slurm, "
-                    f"torque), the maximum number of these housekeeping jobs to "
-                    f"run on the local system. "
-                    f"The default (equal to the number of cores) is a maximum of "
-                    f"{cpu_count()} concurrent local housekeeping jobs.")
-    add_option("--manualMemArgs", default=False, action='store_true', dest="manualMemArgs",
-               help="Do not add the default arguments: 'hv=MEMORY' & 'h_vmem=MEMORY' to "
-                    "the qsub call, and instead rely on TOIL_GRIDGENGINE_ARGS to supply "
-                    "alternative arguments.  Requires that TOIL_GRIDGENGINE_ARGS be set.")
-    add_option("--runCwlInternalJobsOnWorkers", dest="runCwlInternalJobsOnWorkers",
-               action='store_true', default=None,
-               help="Whether to run CWL internal jobs (e.g. CWLScatter) on the worker nodes "
-                      "instead of the primary node. If false (default), then all such jobs are run on "
-                      "the primary node. Setting this to true can speed up the pipeline for very large "
-                      "workflows with many sub-workflows and/or scatters, provided that the worker "
-                      "pool is large enough.")
+    parser.add_argument("--batchSystem", dest="batchSystem", default=DEFAULT_BATCH_SYSTEM, choices=BATCH_SYSTEMS,
+                        help=f"The type of batch system to run the job(s) with, currently can be one "
+                             f"of {', '.join(BATCH_SYSTEMS)}. default={DEFAULT_BATCH_SYSTEM}")
+    parser.add_argument("--disableHotDeployment", dest="disableAutoDeployment", action='store_true', default=None,
+                        help="Hot-deployment was renamed to auto-deployment.  Option now redirects to "
+                             "--disableAutoDeployment.  Left in for backwards compatibility.")
+    parser.add_argument("--disableAutoDeployment", dest="disableAutoDeployment", action='store_true', default=None,
+                        help="Should auto-deployment of the user script be deactivated? If True, the user "
+                             "script/package should be present at the same location on all workers.  Default = False.")
+    parser.add_argument("--maxLocalJobs", default=cpu_count(),
+                        help=f"For batch systems that support a local queue for housekeeping jobs "
+                             f"(Mesos, GridEngine, htcondor, lsf, slurm, torque).  Specifies the maximum "
+                             f"number of these housekeeping jobs to run on the local system.  The default "
+                             f"(equal to the number of cores) is a maximum of {cpu_count()} concurrent "
+                             f"local housekeeping jobs.")
+    parser.add_argument("--manualMemArgs", default=False, action='store_true', dest="manualMemArgs",
+                        help="Do not add the default arguments: 'hv=MEMORY' & 'h_vmem=MEMORY' to the qsub "
+                             "call, and instead rely on TOIL_GRIDGENGINE_ARGS to supply alternative arguments.  "
+                             "Requires that TOIL_GRIDGENGINE_ARGS be set.")
+    parser.add_argument("--runCwlInternalJobsOnWorkers", dest="runCwlInternalJobsOnWorkers", action='store_true',
+                        default=None,
+                        help="Whether to run CWL internal jobs (e.g. CWLScatter) on the worker nodes "
+                             "instead of the primary node. If false (default), then all such jobs are run on "
+                             "the primary node. Setting this to true can speed up the pipeline for very large "
+                             "workflows with many sub-workflows and/or scatters, provided that the worker "
+                             "pool is large enough.")
 
-    add_parasol_options(add_option)
-    add_single_machine_options(add_option, config.cwl)
-    add_mesos_options(add_option)
-    add_kubernetes_options(add_option)
+    add_parasol_options(parser)
+    add_single_machine_options(parser)
+    add_mesos_options(parser)
+    add_kubernetes_options(parser)
 
 
 def set_batchsystem_config_defaults(config):
