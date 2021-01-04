@@ -161,8 +161,7 @@ py37_provisioner_integration:
     - make test tests=src/toil/test/sort/sortTest.py
     - make test tests=src/toil/test/provisioners/clusterScalerTest.py
     - make test tests=src/toil/test/utils/utilsTest.py::UtilsTest::testAWSProvisionerUtils
-    # - python -m pytest --duration=0 -s -r s src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSRestartTest::testAutoScaledCluster
-    # - python -m pytest -s src/toil/test/provisioners/aws/awsProvisionerTest.py
+    - make test tests=src/toil/test/provisioners/aws/awsProvisionerTest.py
     # - python -m pytest -s src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
 
 # Python3.8
