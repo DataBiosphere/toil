@@ -22,7 +22,7 @@ from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
 from toil.lib.threading import cpu_count
 
 
-def getPublicIP():
+def getPublicIP() -> str:
     """Get the IP that this machine uses to contact the internet.
 
     If behind a NAT, this will still be this computer's IP, and not the router's."""
@@ -43,7 +43,7 @@ def getPublicIP():
         return '127.0.0.1'
 
 
-def add_parasol_options(parser: Union[ArgumentParser, _ArgumentGroup]):
+def add_parasol_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
     parser.add_argument("--parasolCommand", dest="parasolCommand", default='parasol',
                         help="The name or path of the parasol program. Will be looked up on PATH "
                              "unless it starts with a slash.  (default: %(default)s).")
@@ -52,7 +52,7 @@ def add_parasol_options(parser: Union[ArgumentParser, _ArgumentGroup]):
                              "created for jobs with a a unique set of resource requirements.  (default: %(default)s).")
 
 
-def add_single_machine_options(parser: Union[ArgumentParser, _ArgumentGroup]):
+def add_single_machine_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
     parser.add_argument("--scale", dest="scale", default=1,
                         help="A scaling factor to change the value of all submitted tasks's submitted cores.  "
                              "Used in the single_machine batch system.  (default: %(default)s).")
@@ -76,12 +76,12 @@ def add_single_machine_options(parser: Union[ArgumentParser, _ArgumentGroup]):
     move_exports.set_defaults(moveExports=False)
 
 
-def add_mesos_options(parser: Union[ArgumentParser, _ArgumentGroup]):
+def add_mesos_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
     parser.add_argument("--mesosMaster", dest="mesosMasterAddress", default=f'{getPublicIP()}:5050',
                         help="The host and port of the Mesos master separated by colon.  (default: %(default)s)")
 
 
-def add_kubernetes_options(parser: Union[ArgumentParser, _ArgumentGroup]):
+def add_kubernetes_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
     parser.add_argument("--kubernetesHostPath", dest="kubernetesHostPath", default=None,
                         help="Path on Kubernetes hosts to use as shared inter-pod temp directory.  "
                              "(default: %(default)s)")
@@ -97,12 +97,12 @@ def add_slurm_options(parser: Union[ArgumentParser, _ArgumentGroup]):
     allocate_mem.set_defaults(allocate_mem=True)
 
 
-def set_batchsystem_options(batch_system: str, setOption: Callable):
+def set_batchsystem_options(batch_system: str, set_option: Callable) -> None:
     batch_system_factory = BATCH_SYSTEM_FACTORY_REGISTRY[batch_system]()
-    batch_system_factory.setOptions(setOption)
+    batch_system_factory.setOptions(set_option)
 
 
-def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup], config):
+def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
     # TODO: Only add options for the system the user is specifying?
     parser.add_argument("--batchSystem", dest="batchSystem", default=DEFAULT_BATCH_SYSTEM, choices=BATCH_SYSTEMS,
                         help=f"The type of batch system to run the job(s) with, currently can be one "
@@ -138,7 +138,7 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup], c
     add_kubernetes_options(parser)
 
 
-def set_batchsystem_config_defaults(config):
+def set_batchsystem_config_defaults(config) -> None:
     """
     Set default options for builtin batch systems. This is required if a Config
     object is not constructed from an Options object.

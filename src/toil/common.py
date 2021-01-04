@@ -15,14 +15,15 @@ import logging
 import os
 import pickle
 import re
+import requests
 import subprocess
 import sys
 import tempfile
 import time
 import uuid
-from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
-import requests
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from typing import Optional, Callable, Any, List
 
 from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import (add_all_batchsystem_options,
@@ -92,7 +93,7 @@ class Config:
         self.maxPreemptableServiceJobs = sys.maxsize
         self.maxServiceJobs = sys.maxsize
         self.deadlockWait = 60  # Number of seconds we must be stuck with all services before declaring a deadlock
-        self.deadlockCheckInterval = 30 # Minimum polling delay for deadlocks
+        self.deadlockCheckInterval = 30  # Minimum polling delay for deadlocks
         self.statePollingWait = 1  # Number of seconds to wait before querying job state
 
         # Resource requirements
@@ -137,17 +138,20 @@ class Config:
         # CWL
         self.cwl = False
 
-    def setOptions(self, options):
+    def setOptions(self, options) -> None:
         """Creates a config object from the options object."""
-        def setOption(option_name, parsingFn=None, checkFn=None, default=None):
+        def set_option(option_name: str,
+                       parsing_function: Optional[Callable] = None,
+                       check_function: Optional[Callable] = None,
+                       default: Any = None) -> None:
             option_value = getattr(options, option_name, default)
 
             if option_value is not None:
-                if parsingFn is not None:
-                    option_value = parsingFn(option_value)
-                if checkFn is not None:
+                if parsing_function is not None:
+                    option_value = parsing_function(option_value)
+                if check_function is not None:
                     try:
-                        checkFn(option_value)
+                        check_function(option_value)
                     except AssertionError:
                         raise RuntimeError(f"The {option_name} option has an invalid value: {option_value}")
                 setattr(self, option_name, option_value)
@@ -155,34 +159,33 @@ class Config:
         # Function to parse integer from string expressed in different formats
         h2b = lambda x: human2bytes(str(x))
 
-        def parseJobStore(s):
-            name, rest = Toil.parseLocator(s)
+        def parse_jobstore(jobstore_uri: str):
+            name, rest = Toil.parseLocator(jobstore_uri)
             if name == 'file':
                 # We need to resolve relative paths early, on the leader, because the worker process
                 # may have a different working directory than the leader, e.g. under Mesos.
                 return Toil.buildLocator(name, os.path.abspath(rest))
             else:
-                return s
+                return jobstore_uri
 
-        def parseStrList(s: str):
+        def parse_str_list(s: str):
             return [str(x) for x in s.split(",")]
 
-        def parseIntList(s: str):
+        def parse_int_list(s: str):
             return [int(x) for x in s.split(",")]
 
         # Core options
-        setOption("jobStore", parsingFn=parseJobStore)
+        set_option("jobStore", parsing_function=parse_jobstore)
         # TODO: LOG LEVEL STRING
-        setOption("workDir")
+        set_option("workDir")
         if self.workDir is not None:
             self.workDir = os.path.abspath(self.workDir)
             if not os.path.exists(self.workDir):
-                raise RuntimeError("The path provided to --workDir (%s) does not exist."
-                                   % self.workDir)
-        setOption("noStdOutErr")
-        setOption("stats")
-        setOption("cleanWorkDir")
-        setOption("clean")
+                raise RuntimeError(f"The path provided to --workDir ({self.workDir}) does not exist.")
+        set_option("noStdOutErr")
+        set_option("stats")
+        set_option("cleanWorkDir")
+        set_option("clean")
         if self.stats:
             if self.clean != "never" and self.clean is not None:
                 raise RuntimeError("Contradicting options passed: Clean flag is set to %s "
@@ -192,44 +195,44 @@ class Config:
             self.clean = "never"
         elif self.clean is None:
             self.clean = "onSuccess"
-        setOption('clusterStats')
-        setOption("restart")
+        set_option('clusterStats')
+        set_option("restart")
 
         # Batch system options
-        setOption("batchSystem")
-        set_batchsystem_options(self.batchSystem, setOption)
-        setOption("disableAutoDeployment")
-        setOption("scale", float, fC(0.0))
-        setOption("parasolCommand")
-        setOption("parasolMaxBatches", int, iC(1))
-        setOption("linkImports")
-        setOption("moveExports")
-        setOption("allocate_mem")
-        setOption("mesosMasterAddress")
-        setOption("kubernetesHostPath")
-        setOption("environment", parseSetEnv)
+        set_option("batchSystem")
+        set_batchsystem_options(self.batchSystem, set_option)
+        set_option("disableAutoDeployment")
+        set_option("scale", float, fC(0.0))
+        set_option("parasolCommand")
+        set_option("parasolMaxBatches", int, iC(1))
+        set_option("linkImports")
+        set_option("moveExports")
+        set_option("allocate_mem")
+        set_option("mesosMasterAddress")
+        set_option("kubernetesHostPath")
+        set_option("environment", parseSetEnv)
 
         # Autoscaling options
-        setOption("provisioner")
-        setOption("nodeTypes", parseStrList)
-        setOption("nodeOptions")
-        setOption("minNodes", parseIntList)
-        setOption("maxNodes", parseIntList)
-        setOption("targetTime", int)
+        set_option("provisioner")
+        set_option("nodeTypes", parse_str_list)
+        set_option("nodeOptions")
+        set_option("minNodes", parse_int_list)
+        set_option("maxNodes", parse_int_list)
+        set_option("targetTime", int)
         if self.targetTime <= 0:
             raise RuntimeError(f'targetTime ({self.targetTime}) must be a positive integer!')
-        setOption("betaInertia", float)
+        set_option("betaInertia", float)
         if not 0.0 <= self.betaInertia <= 0.9:
             raise RuntimeError(f'betaInertia ({self.betaInertia}) must be between 0.0 and 0.9!')
-        setOption("scaleInterval", float)
-        setOption("metrics")
-        setOption("preemptableCompensation", float)
+        set_option("scaleInterval", float)
+        set_option("metrics")
+        set_option("preemptableCompensation", float)
         if not 0.0 <= self.preemptableCompensation <= 1.0:
             raise RuntimeError(f'preemptableCompensation ({self.preemptableCompensation}) must be between 0.0 and 1.0!')
-        setOption("nodeStorage", int)
+        set_option("nodeStorage", int)
 
-        def checkNodeStorageOverrides(nodeStorageOverrides):
-            for override in nodeStorageOverrides:
+        def check_nodestoreage_overrides(overrides: List[str]) -> None:
+            for override in overrides:
                 tokens = override.split(":")
                 assert len(tokens) == 2, \
                     'Each component of --nodeStorageOverrides must have nodeType:nodeStorage'
@@ -237,62 +240,62 @@ class Config:
                     'nodeType of --nodeStorageOverrides must be among --nodeTypes'
                 assert tokens[1].isdigit(), \
                     'nodeStorage must be an integer in --nodeStorageOverrides'
-        setOption("nodeStorageOverrides", parseStrList, checkFn=checkNodeStorageOverrides)
+        set_option("nodeStorageOverrides", parse_str_list, check_function=check_nodestoreage_overrides)
 
         # Parameters to limit service jobs / detect deadlocks
-        setOption("maxServiceJobs", int)
-        setOption("maxPreemptableServiceJobs", int)
-        setOption("deadlockWait", int)
-        setOption("deadlockCheckInterval", int)
-        setOption("statePollingWait", int)
+        set_option("maxServiceJobs", int)
+        set_option("maxPreemptableServiceJobs", int)
+        set_option("deadlockWait", int)
+        set_option("deadlockCheckInterval", int)
+        set_option("statePollingWait", int)
 
         # Resource requirements
-        setOption("defaultMemory", h2b, iC(1))
-        setOption("defaultCores", float, fC(1.0))
-        setOption("defaultDisk", h2b, iC(1))
-        setOption("readGlobalFileMutableByDefault")
-        setOption("maxCores", int, iC(1))
-        setOption("maxMemory", h2b, iC(1))
-        setOption("maxDisk", h2b, iC(1))
-        setOption("defaultPreemptable")
+        set_option("defaultMemory", h2b, iC(1))
+        set_option("defaultCores", float, fC(1.0))
+        set_option("defaultDisk", h2b, iC(1))
+        set_option("readGlobalFileMutableByDefault")
+        set_option("maxCores", int, iC(1))
+        set_option("maxMemory", h2b, iC(1))
+        set_option("maxDisk", h2b, iC(1))
+        set_option("defaultPreemptable")
 
         # Retrying/rescuing jobs
-        setOption("retryCount", int, iC(1))
-        setOption("enableUnlimitedPreemptableRetries")
-        setOption("doubleMem")
-        setOption("maxJobDuration", int, iC(1))
-        setOption("rescueJobsFrequency", int, iC(1))
+        set_option("retryCount", int, iC(1))
+        set_option("enableUnlimitedPreemptableRetries")
+        set_option("doubleMem")
+        set_option("maxJobDuration", int, iC(1))
+        set_option("rescueJobsFrequency", int, iC(1))
 
         # Misc
-        setOption("maxLocalJobs", int)
-        setOption("disableCaching")
-        setOption("disableChaining")
-        setOption("disableJobStoreChecksumVerification")
-        setOption("maxLogFileSize", h2b, iC(1))
-        setOption("writeLogs")
-        setOption("writeLogsGzip")
-        setOption("writeLogsFromAllJobs")
-        setOption("runCwlInternalJobsOnWorkers")
-        setOption("disableProgress")
+        set_option("maxLocalJobs", int)
+        set_option("disableCaching")
+        set_option("disableChaining")
+        set_option("disableJobStoreChecksumVerification")
+        set_option("maxLogFileSize", h2b, iC(1))
+        set_option("writeLogs")
+        set_option("writeLogsGzip")
+        set_option("writeLogsFromAllJobs")
+        set_option("runCwlInternalJobsOnWorkers")
+        set_option("disableProgress")
 
         assert not (self.writeLogs and self.writeLogsGzip), \
             "Cannot use both --writeLogs and --writeLogsGzip at the same time."
         assert not self.writeLogsFromAllJobs or self.writeLogs or self.writeLogsGzip, \
             "To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set."
 
-        def checkSse(sseKey):
-            with open(sseKey) as f:
-                assert (len(f.readline().rstrip()) == 32)
+        def check_sse_key(sse_key: str) -> None:
+            with open(sse_key) as f:
+                assert len(f.readline().rstrip()) == 32, 'SSE key appears to be invalid.'
 
-        setOption("sseKey", checkFn=checkSse)
-        setOption("servicePollingInterval", float, fC(0.0))
-        setOption("forceDockerAppliance")
+        set_option("sseKey", check_function=check_sse_key)
+        set_option("servicePollingInterval", float, fC(0.0))
+        set_option("forceDockerAppliance")
 
         # Debug options
-        setOption("debugWorker")
-        setOption("disableWorkerOutputCapture")
-        setOption("badWorker", float, fC(0.0, 1.0))
-        setOption("badWorkerFailInterval", float, fC(0.0))
+        set_option("debugWorker")
+        set_option("disableWorkerOutputCapture")
+        set_option("badWorker", float, fC(0.0, 1.0))
+        set_option("badWorkerFailInterval", float, fC(0.0))
 
     def __eq__(self, other):
         return self.__dict__ == other.__dict__
@@ -396,11 +399,12 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
     # Batch system options
     batchsystem_options = parser.add_argument_group(
         title="Toil options for specifying the batch system.",
-        description="Allows the specification of the batch system.")
+        description="Allows the specification of the batch system."
+    )
     batchsystem_options.add_argument("--statePollingWait", dest="statePollingWait", default=1, type=int,
                                      help="Time, in seconds, to wait before doing a scheduler query for job state.  "
                                           "Return cached results if within the waiting period.")
-    add_all_batchsystem_options(batchsystem_options, config)
+    add_all_batchsystem_options(batchsystem_options)
 
     # Auto scaling options
     autoscaling_options = parser.add_argument_group(
@@ -473,7 +477,8 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
         service_options = parser.add_argument_group(
             title="Toil options for limiting the number of service jobs and detecting service deadlocks",
             description="Allows the specification of the maximum number of service jobs in a cluster.  By keeping "
-                        "this limited we can avoid nodes occupied with services causing deadlocks.")
+                        "this limited we can avoid nodes occupied with services causing deadlocks."
+        )
         service_options.add_argument("--maxServiceJobs", dest="maxServiceJobs", default=None, type=int,
                                      help=f"The maximum number of service jobs that can be run concurrently, "
                                           f"excluding service jobs running on preemptable nodes.  "
@@ -525,8 +530,8 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
 
     # Retrying/rescuing jobs
     job_options = parser.add_argument_group(
-        title="Toil options for rescuing/killing/restarting jobs",
-        description="The options for jobs that either run too long/fail or get lost (some batch systems have issues!)"
+        title="Toil options for rescuing/killing/restarting jobs.",
+        description="The options for jobs that either run too long/fail or get lost (some batch systems have issues!)."
     )
     job_options.add_argument("--retryCount", dest="retryCount", default=None,
                              help=f"Number of times to retry a failing job before giving up and "
@@ -549,7 +554,10 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
                                   f"default={config.rescueJobsFrequency}")
 
     # Debug options
-    debug_options = parser.add_argument_group("toil debug options", "Debug options")
+    debug_options = parser.add_argument_group(
+        title="Toil debug options.",
+        description="Debug options for finding problems or helping with testing."
+    )
     debug_options.add_argument("--debugWorker", default=False, action="store_true",
                                help="Experimental no forking mode for local debugging.  Specifically, workers "
                                     "are not forked and stderr/stdout are not redirected to the log.")
@@ -564,7 +572,10 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
                                     f"default={config.badWorkerFailInterval}")
 
     # Misc options
-    misc_options = parser.add_argument_group("Toil Miscellaneous Options", "Miscellaneous Options")
+    misc_options = parser.add_argument_group(
+        title="Toil miscellaneous options.",
+        description="Everything else."
+    )
     misc_options.add_argument('--disableCaching', dest='disableCaching', type='bool', nargs='?', const=True,
                               default=False,
                               help='Disables caching in the file store. This flag must be set to use '
