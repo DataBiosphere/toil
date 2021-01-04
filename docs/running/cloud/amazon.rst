@@ -326,9 +326,8 @@ somewhere else.
 A node type can be specified as preemptable by adding a `spot bid`_ to its entry in the list of node types provided with
 the ``--nodeTypes`` flag. If spot instance prices rise above your bid, the preemptable node whill be shut down.
 
-While individual jobs can each explicitly specify whether or not they should be run on preemptable nodes
-via the boolean ``preemptable`` resource requirement, the ``--defaultPreemptable`` flag will allow jobs without a
-``preemptable`` requirement to run on preemptable machines.
+Individual jobs can each explicitly specify whether or not they should be run on preemptable nodes
+via the boolean ``preemptable`` resource requirement.
 
 .. admonition:: Specify Preemptability Carefully
 

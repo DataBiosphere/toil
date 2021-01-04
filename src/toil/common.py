@@ -100,7 +100,6 @@ class Config:
         self.defaultCores = 1
         self.defaultDisk = 2147483648
         self.readGlobalFileMutableByDefault = False
-        self.defaultPreemptable = False
         self.maxCores = sys.maxsize
         self.maxMemory = sys.maxsize
         self.maxDisk = sys.maxsize
@@ -253,7 +252,6 @@ class Config:
         setOption("maxCores", int, iC(1))
         setOption("maxMemory", h2b, iC(1))
         setOption("maxDisk", h2b, iC(1))
-        setOption("defaultPreemptable")
 
         # Retrying/rescuing jobs
         setOption("retryCount", int, iC(1))
@@ -538,8 +536,6 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
                      'that do not specify an explicit value for this requirement. Standard '
                      'suffixes like K, Ki, M, Mi, G or Gi are supported. Default is %s' %
                      bytes2human(config.defaultDisk, symbols='iec'))
-    assert not config.defaultPreemptable, 'User would be unable to reset config.defaultPreemptable'
-    addOptionFn('--defaultPreemptable', dest='defaultPreemptable', action='store_true')
     addOptionFn('--maxCores', dest='maxCores', default=None, metavar='INT',
                 help='The maximum number of CPU cores to request from the batch system at any one '
                      'time. Standard suffixes like K, Ki, M, Mi, G or Gi are supported. Default '

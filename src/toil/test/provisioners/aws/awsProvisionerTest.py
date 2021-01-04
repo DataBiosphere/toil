@@ -147,8 +147,6 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
         toilOptions.extend(['--nodeTypes=' + ",".join(self.instanceTypes),
                             '--maxNodes=' + ",".join(self.numWorkers)])
-        if preemptableJobs:
-            toilOptions.extend(['--defaultPreemptable'])
 
         self._runScript(toilOptions)
 

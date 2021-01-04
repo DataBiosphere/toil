@@ -154,8 +154,6 @@ class AbstractGCEAutoscaleTest(ToilTest):
 
         toilOptions.extend(['--nodeTypes=' + ",".join(self.instanceTypes),
                             '--maxNodes=%s' % ",".join(self.numWorkers)])
-        if preemptableJobs:
-            toilOptions.extend(['--defaultPreemptable'])
 
         self._runScript(toilOptions)
 
