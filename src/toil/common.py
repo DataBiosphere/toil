@@ -204,6 +204,7 @@ class Config:
         setOption("parasolMaxBatches", int, iC(1))
         setOption("linkImports")
         setOption("moveExports")
+        setOption("allocate_mem")
         setOption("mesosMasterAddress")
         setOption("kubernetesHostPath")
         setOption("environment", parseSetEnv)
@@ -399,7 +400,7 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
     batchsystem_options.add_argument("--statePollingWait", dest="statePollingWait", default=1, type=int,
                                      help="Time, in seconds, to wait before doing a scheduler query for job state.  "
                                           "Return cached results if within the waiting period.")
-    add_all_batchsystem_options(batchsystem_options, config)
+    add_all_batchsystem_options(batchsystem_options)
 
     # Auto scaling options
     autoscaling_options = parser.add_argument_group(
@@ -680,7 +681,7 @@ def getNodeID():
     return nodeID
 
 
-class Toil(object):
+class Toil:
     """
     A context manager that represents a Toil workflow, specifically the batch system, job store,
     and its configuration.

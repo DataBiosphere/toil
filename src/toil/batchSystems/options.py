@@ -87,9 +87,19 @@ def add_kubernetes_options(parser: Union[ArgumentParser, _ArgumentGroup]):
                              "(default: %(default)s)")
 
 
-def set_batchsystem_options(batch_system: str, set_option: Callable):
+def add_slurm_options(parser: Union[ArgumentParser, _ArgumentGroup]):
+    allocate_mem = parser.add_mutually_exclusive_group()
+    allocate_mem_help = ("A flag that can block allocating memory with '--mem' for job submissions "
+                         "on SLURM since some system servers may reject any job request that "
+                         "explicitly specifies the memory allocation.  The default is to always allocate memory.")
+    allocate_mem.add_argument("--dont_allocate_mem", action='store_false', dest="allocate_mem", help=allocate_mem_help)
+    allocate_mem.add_argument("--allocate_mem", action='store_true', dest="allocate_mem", help=allocate_mem_help)
+    allocate_mem.set_defaults(allocate_mem=True)
+
+
+def set_batchsystem_options(batch_system: str, setOption: Callable):
     batch_system_factory = BATCH_SYSTEM_FACTORY_REGISTRY[batch_system]()
-    batch_system_factory.setOptions(set_option)
+    batch_system_factory.setOptions(setOption)
 
 
 def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup], config):
@@ -124,6 +134,7 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup], c
     add_parasol_options(parser)
     add_single_machine_options(parser)
     add_mesos_options(parser)
+    add_slurm_options(parser)
     add_kubernetes_options(parser)
 
 
@@ -150,6 +161,9 @@ def set_batchsystem_config_defaults(config):
 
     # mesos
     config.mesosMasterAddress = f'{getPublicIP()}:5050'
+
+    # SLURM
+    config.allocate_mem = True
     
     # Kubernetes
     config.kubernetesHostPath = None
