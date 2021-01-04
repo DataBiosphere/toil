@@ -151,7 +151,7 @@ class UtilsTest(ToilTest):
                     '--provisioner=aws', '--zone=us-west-2a', '--logLevel=DEBUG'])
 
             from toil.provisioners import cluster_factory
-            cluster = toil.provisioners.cluster_factory(provisioner='aws', clusterName=clusterName)
+            cluster = toil.provisioners.cluster_factory(provisioner='aws', zone='us-west-2a', clusterName=clusterName)
             leader = cluster.getLeader()
 
             # check that the leader carries the appropriate tags
@@ -159,7 +159,7 @@ class UtilsTest(ToilTest):
             for key in tags:
                 self.assertEqual(tags[key], leader.tags.get(key))
         finally:
-            system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
+            system([self.toilMain, 'destroy-cluster', '--zone=us-west-2a', '--provisioner=aws', clusterName])
 
     @slow
     def testUtilsSort(self):
