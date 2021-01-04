@@ -212,9 +212,9 @@ class Config:
 
         # Autoscaling options
         set_option("provisioner")
-        set_option("nodeTypes", parseStrList)
-        set_option("minNodes", parseIntList)
-        set_option("maxNodes", parseIntList)
+        set_option("nodeTypes", parse_str_list)
+        set_option("minNodes", parse_int_list)
+        set_option("maxNodes", parse_int_list)
         set_option("targetTime", int)
         if self.targetTime <= 0:
             raise RuntimeError(f'targetTime ({self.targetTime}) must be a positive integer!')
