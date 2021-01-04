@@ -22,13 +22,12 @@ from datetime import timedelta
 from http.client import BadStatusLine
 from urllib.request import urlopen
 from uuid import uuid4
-from typing import Set, Iterable, List, Union
+from typing import Set, Union
 from requests.exceptions import HTTPError
 
 from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
 from toil.job import (CheckpointJobDescription,
-                      JobDescription,
                       TemporaryID,
                       JobException,
                       ServiceJobDescription)
