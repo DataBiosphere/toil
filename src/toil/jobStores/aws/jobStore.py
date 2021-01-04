@@ -28,9 +28,7 @@ from io import BytesIO
 from typing import Optional
 
 import boto3
-import boto.s3
 import boto.sdb
-import boto.s3.connection
 import botocore.credentials
 import botocore.session
 from boto.exception import SDBResponseError
@@ -511,8 +509,8 @@ class AWSJobStore(AbstractJobStore):
         except ClientError as e:
             if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
                 objExists = False
-        else:
-            raise
+            else:
+                raise
         if existing is True and not objExists:
             raise RuntimeError(f"Key '{keyName}' does not exist in bucket '{bucketName}'.")
         elif existing is False and objExists:

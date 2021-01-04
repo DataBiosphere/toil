@@ -39,7 +39,6 @@ from toil.job import Job, JobDescription, TemporaryID
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobException)
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.lib.exceptions import panic
 from toil.lib.memoize import memoize
 from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
@@ -687,7 +686,7 @@ class AbstractJobStoreTest(object):
             def testImportSharedFile(self, otherCls):
                 """
                 :param AbstractJobStoreTest.Test self: the current test case
-                
+
                 :param AbstractJobStoreTest.Test otherCls: the test case class for the job store
                        to import from or export to
                 """
@@ -1317,7 +1316,6 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def _hashTestFile(self, url):
         from toil.jobStores.aws.jobStore import AWSJobStore
-        key = AWSJobStore._getKeyForUrl(urlparse.urlparse(url), existing=True)
         key = AWSJobStore._getObjectForUrl(urlparse.urlparse(url), existing=True)
         contents = key.get().get('Body').read()
         return hashlib.md5(contents).hexdigest()
