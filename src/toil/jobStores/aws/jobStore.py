@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
-import base64
 import hashlib
 import itertools
 import logging
@@ -47,7 +46,6 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobStoreException)
 from toil.jobStores.aws.utils import (SDBHelper,
                                       bucket_location_to_region,
-                                      chunkedFileUpload,
                                       copyKeyMultipart,
                                       fileSizeAndTime,
                                       monkeyPatchSdbConnection,
@@ -57,7 +55,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       retry_sdb,
                                       retryable_s3_errors,
                                       sdb_unavailable,
-                                      uploadFromPath)
+                                      uploadFromPath, uploadFile)
 from toil.jobStores.utils import (ReadablePipe,
                                   ReadableTransformingPipe,
                                   WritablePipe)
@@ -1121,7 +1119,7 @@ class AWSJobStore(AbstractJobStore):
 
             wrapped = getattr(hashlib, algorithm)()
             logger.debug(f'Starting {algorithm} checksum to match {expected}')
-            return (algorithm, wrapped, expected)
+            return algorithm, wrapped, expected
 
         def _update_checksum(self, checksum_in_progress, data):
             """
@@ -1145,8 +1143,6 @@ class AWSJobStore(AbstractJobStore):
                         (checksum_in_progress[2], result_hash))
 
             return '$'.join([checksum_in_progress[0], result_hash])
-
-
 
         def _get_file_checksum(self, localFilePath, to_match=None):
             with open(localFilePath, 'rb') as f:
@@ -1189,15 +1185,14 @@ class AWSJobStore(AbstractJobStore):
                         logger.debug('Updating checksum with %d bytes', len(buf))
                         info._update_checksum(hasher, buf)
 
-                        headers = info._s3EncryptionHeaders()
+                        client = store.s3_client
+                        bucket_name = store.filesBucket.name
+                        headerArgs = info._s3EncryptionArgs()
+
                         for attempt in retry_s3():
                             with attempt:
                                 logger.debug('Starting multipart upload')
                                 # low-level clients are thread safe
-                                client = store.s3_client
-                                bucket_name = store.filesBucket.name
-                                headerArgs = info._s3EncryptionArgs()
-
                                 upload = client.create_multipart_upload(Bucket=bucket_name,
                                                                         Key=compat_bytes(info.fileID), **headerArgs)
                                 uploadId = upload['UploadId']
@@ -1358,7 +1353,8 @@ class AWSJobStore(AbstractJobStore):
                                                 srcKeyVersion=compat_bytes(srcObj.version_id),
                                                 dstBucketName=compat_bytes(self.outer.filesBucket.name),
                                                 dstKeyName=compat_bytes(self._fileID),
-                                                sseAlgorithm='AES256', sseKey=self._getSSEKey())
+                                                sseAlgorithm='AES256',
+                                                sseKey=self._getSSEKey())
 
         def copyTo(self, dstObj):
             """
@@ -1375,15 +1371,16 @@ class AWSJobStore(AbstractJobStore):
                 resource = get_boto3_session().resource('s3', region_name=self.outer.region)
 
                 for attempt in retry_s3():
-                    encrypted = True if self.outer.sseKeyPath else False
-                    copyKeyMultipart(resource,
-                                     srcBucketName=compat_bytes(self.outer.filesBucket.name),
-                                     srcKeyName=compat_bytes(self.fileID),
-                                     srcKeyVersion=compat_bytes(self.version),
-                                     dstBucketName=compat_bytes(dstObj.bucket_name),
-                                     dstKeyName=compat_bytes(dstObj.key),
-                                     copySourceSseAlgorithm='AES256',
-                                     copySourceSseKey=self._getSSEKey())
+                    # encrypted = True if self.outer.sseKeyPath else False
+                    with attempt:
+                        copyKeyMultipart(resource,
+                                         srcBucketName=compat_bytes(self.outer.filesBucket.name),
+                                         srcKeyName=compat_bytes(self.fileID),
+                                         srcKeyVersion=compat_bytes(self.version),
+                                         dstBucketName=compat_bytes(dstObj.bucket_name),
+                                         dstKeyName=compat_bytes(dstObj.key),
+                                         copySourceSseAlgorithm='AES256',
+                                         copySourceSseKey=self._getSSEKey())
             else:
                 assert False
 

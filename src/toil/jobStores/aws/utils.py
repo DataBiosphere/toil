@@ -14,7 +14,6 @@
 import base64
 import bz2
 import errno
-import itertools
 import logging
 import os
 import socket
@@ -22,14 +21,12 @@ import types
 from ssl import SSLError
 from typing import Optional
 
-import boto3
 from boto.exception import (BotoServerError,
                             SDBResponseError)
 from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
 
 from toil.lib.compatibility import compat_bytes
-from toil.lib.exceptions import panic
 from toil.lib.retry import old_retry, retry, ErrorCondition
 
 logger = logging.getLogger(__name__)
@@ -270,15 +267,15 @@ def uploadFile(readable,
     error_codes=[404, 500, 502, 503, 504]
 )])
 def copyKeyMultipart(resource,
-                     srcBucketName,
-                     srcKeyName,
-                     srcKeyVersion,
-                     dstBucketName,
-                     dstKeyName,
-                     sseAlgorithm=None,
-                     sseKey=None,
-                     copySourceSseAlgorithm=None,
-                     copySourceSseKey=None):
+                     srcBucketName: str,
+                     srcKeyName: str,
+                     srcKeyVersion: str,
+                     dstBucketName: str,
+                     dstKeyName: str,
+                     sseAlgorithm: Optional[str] = None,
+                     sseKey: Optional[str] = None,
+                     copySourceSseAlgorithm: Optional[str] = None,
+                     copySourceSseKey: Optional[str] = None):
     """
     Copies a key from a source key to a destination key in multiple parts. Note that if the
     destination key exists it will be overwritten implicitly, and if it does not exist a new
