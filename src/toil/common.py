@@ -77,7 +77,6 @@ class Config:
         self.provisioner = None
         self.nodeTypes = []
         check_valid_node_types(self.provisioner, self.nodeTypes)
-        self.nodeOptions = None
         self.minNodes = None
         self.maxNodes = [10]
         self.targetTime = defaultTargetTime
@@ -211,7 +210,6 @@ class Config:
         # Autoscaling options
         setOption("provisioner")
         setOption("nodeTypes", parseStrList)
-        setOption("nodeOptions")
         setOption("minNodes", parseIntList)
         setOption("maxNodes", parseIntList)
         setOption("targetTime", int)
@@ -431,11 +429,6 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
                      "preemptable nodes of that type will be preferred when creating "
                      "new nodes once the maximum number of preemptable-nodes has been"
                      "reached.")
-
-    addOptionFn('--nodeOptions', default=None,
-                help = "Options for provisioning the nodes. The syntax "
-                       "depends on the provisioner used. Neither the CGCloud nor the AWS "
-                       "provisioner support any node options.")
 
     addOptionFn('--minNodes', default=None,
                 help="Mininum number of nodes of each type in the cluster, if using "
