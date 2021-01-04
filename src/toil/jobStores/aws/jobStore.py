@@ -46,6 +46,8 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobStoreException)
 from toil.jobStores.aws.utils import (SDBHelper,
                                       bucket_location_to_region,
+                                      uploadFromPath,
+                                      uploadFile,
                                       copyKeyMultipart,
                                       fileSizeAndTime,
                                       monkeyPatchSdbConnection,
@@ -54,8 +56,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       retry_s3,
                                       retry_sdb,
                                       retryable_s3_errors,
-                                      sdb_unavailable,
-                                      uploadFromPath, uploadFile)
+                                      sdb_unavailable)
 from toil.jobStores.utils import (ReadablePipe,
                                   ReadableTransformingPipe,
                                   WritablePipe)
@@ -69,14 +70,18 @@ from toil.lib.retry import retry
 
 
 def get_boto3_session():
+    """
+    Create a boto3 Session with credential caching.
+    """
+    # Make sure to use credential caching when talking to Amazon via boto3
+    # See https://github.com/boto/botocore/pull/1338/
+
     botocore_session = botocore.session.get_session()
     botocore_session.get_component('credential_provider').get_provider(
         'assume-role').cache = botocore.credentials.JSONFileCache()
     return boto3.Session(botocore_session=botocore_session)
 
 
-# Make sure to use credential caching when talking to Amazon via boto3
-# See https://github.com/boto/botocore/pull/1338/
 boto3_session = get_boto3_session()
 s3_boto3_resource = boto3_session.resource('s3')
 s3_boto3_client = boto3_session.client('s3')
@@ -193,7 +198,7 @@ class AWSJobStore(AbstractJobStore):
     @property
     def _registered(self):
         """
-        A optional boolean property indidcating whether this job store is registered. The
+        A optional boolean property indicating whether this job store is registered. The
         registry is the authority on deciding if a job store exists or not. If True, this job
         store exists, if None the job store is transitioning from True to False or vice versa,
         if False the job store doesn't exist.
@@ -463,8 +468,11 @@ class AWSJobStore(AbstractJobStore):
 
         logger.debug("Uploading %s", dstObj.key)
         # uploadFile takes care of using multipart upload if the file is larger than partSize (default to 5MB)
-        uploadFile(readable=readable, resource=resource, bucketName=dstObj.bucket_name,
-                   fileID=dstObj.key, partSize=5 * 1000 * 1000)
+        uploadFile(readable=readable,
+                   resource=resource,
+                   bucketName=dstObj.bucket_name,
+                   fileID=dstObj.key,
+                   partSize=5 * 1000 * 1000)
 
     @staticmethod
     def _getObjectForUrl(url, existing: Optional[bool] = None):
@@ -481,22 +489,20 @@ class AWSJobStore(AbstractJobStore):
 
         botoargs = {}
         host = os.environ.get('TOIL_S3_HOST', None)
-        if host:
-            botoargs['host'] = host
         port = os.environ.get('TOIL_S3_PORT', None)
-        if port:
-            botoargs['port'] = int(port)
-        is_secure = os.environ.get('TOIL_S3_USE_SSL', True)
-        if is_secure == 'False':
-            is_secure = False
-            botoargs['is_secure'] = is_secure
+        protocol = 'https'
+        if os.environ.get('TOIL_S3_USE_SSL', True) == 'False':
+            protocol = 'http'
+        if host:
+            botoargs['endpoint_url'] = f"{protocol}://{host}{f':{port}' if port else ''}"
 
-        if botoargs:
-            botoargs['calling_format'] = boto.s3.connection.OrdinaryCallingFormat()
+        # TODO: OrdinaryCallingFormat equivalent in boto3?
+        # if botoargs:
+        #     botoargs['calling_format'] = boto.s3.connection.OrdinaryCallingFormat()
 
         # Get the bucket's region to avoid a redirect per request
         region = AWSJobStore.getBucketRegion(bucketName)
-        s3 = get_boto3_session().resource('s3', region_name=region)
+        s3 = boto3.resource('s3', region_name=region, **botoargs)
         obj = s3.Object(bucketName, keyName)
         objExists = True
 
@@ -637,7 +643,7 @@ class AWSJobStore(AbstractJobStore):
 
     # TODO: Make this retry more specific?
     #  example: https://github.com/DataBiosphere/toil/issues/3378
-    @retry
+    @retry()
     def getPublicUrl(self, jobStoreFileID):
         info = self.FileInfo.loadOrFail(jobStoreFileID)
         if info.content is not None:
@@ -682,8 +688,12 @@ class AWSJobStore(AbstractJobStore):
         monkeyPatchSdbConnection(db)
         return db
 
-    def _bindBucket(self, bucket_name, create=False, block=True, versioning=False,
-                    check_versioning_consistency=True):
+    def _bindBucket(self,
+                    bucket_name: str,
+                    create: bool = False,
+                    block: bool = True,
+                    versioning: bool = False,
+                    check_versioning_consistency: bool = True):
         """
         Return the Boto Bucket object representing the S3 bucket with the given name. If the
         bucket does not exist and `create` is True, it will be created.
@@ -703,7 +713,7 @@ class AWSJobStore(AbstractJobStore):
         assert self.bucketNameRe.match(bucket_name)
         logger.debug("Binding to job store bucket '%s'.", bucket_name)
 
-        def bucket_creation_pending(e):
+        def bucket_creation_pending(error):
             # https://github.com/BD2KGenomics/toil/issues/955
             # https://github.com/BD2KGenomics/toil/issues/995
             # https://github.com/BD2KGenomics/toil/issues/1093
@@ -711,8 +721,8 @@ class AWSJobStore(AbstractJobStore):
             # BucketAlreadyOwnedByYou == 409
             # OperationAborted == 409
             # NoSuchBucket == 404
-            return (isinstance(e, ClientError) and
-                    e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') in (404, 409))
+            return (isinstance(error, ClientError) and
+                    error.response.get('ResponseMetadata', {}).get('HTTPStatusCode') in (404, 409))
 
         bucketExisted = True
         for attempt in retry_s3(predicate=bucket_creation_pending):
@@ -1090,9 +1100,11 @@ class AWSJobStore(AbstractJobStore):
                 resource = get_boto3_session().resource('s3', region_name=self.outer.region)
 
                 self.checksum = self._get_file_checksum(localFilePath) if calculateChecksum else None
-                self.version = uploadFromPath(localFilePath, resource=resource,
+                self.version = uploadFromPath(localFilePath,
+                                              resource=resource,
                                               bucketName=self.outer.filesBucket.name,
-                                              fileID=compat_bytes(self.fileID), headerArgs=headerArgs,
+                                              fileID=compat_bytes(self.fileID),
+                                              headerArgs=headerArgs,
                                               partSize=self.outer.partSize)
 
         def _start_checksum(self, to_match=None, algorithm='sha1'):
@@ -1194,7 +1206,8 @@ class AWSJobStore(AbstractJobStore):
                                 logger.debug('Starting multipart upload')
                                 # low-level clients are thread safe
                                 upload = client.create_multipart_upload(Bucket=bucket_name,
-                                                                        Key=compat_bytes(info.fileID), **headerArgs)
+                                                                        Key=compat_bytes(info.fileID),
+                                                                        **headerArgs)
                                 uploadId = upload['UploadId']
                                 parts = []
 
@@ -1205,9 +1218,12 @@ class AWSJobStore(AbstractJobStore):
                                         logger.debug('Uploading part %d of %d bytes', part_num + 1, len(buf))
                                         # TODO: include the Content-MD5 header:
                                         #  https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.complete_multipart_upload
-                                        part = client.upload_part(Bucket=bucket_name, Key=compat_bytes(info.fileID),
-                                                                  PartNumber=part_num + 1, UploadId=uploadId,
-                                                                  Body=BytesIO(buf), **headerArgs)
+                                        part = client.upload_part(Bucket=bucket_name,
+                                                                  Key=compat_bytes(info.fileID),
+                                                                  PartNumber=part_num + 1,
+                                                                  UploadId=uploadId,
+                                                                  Body=BytesIO(buf),
+                                                                  **headerArgs)
 
                                         parts.append({"PartNumber": part_num + 1, "ETag": part["ETag"]})
 
@@ -1223,7 +1239,8 @@ class AWSJobStore(AbstractJobStore):
                                 for attempt in retry_s3():
                                     with attempt:
                                         client.abort_multipart_upload(Bucket=bucket_name,
-                                                                      Key=compat_bytes(info.fileID), UploadId=uploadId)
+                                                                      Key=compat_bytes(info.fileID),
+                                                                      UploadId=uploadId)
 
                         else:
 
@@ -1239,7 +1256,9 @@ class AWSJobStore(AbstractJobStore):
                                 with attempt:
                                     logger.debug('Attempting to complete upload...')
                                     completed = client.complete_multipart_upload(
-                                        Bucket=bucket_name, Key=compat_bytes(info.fileID), UploadId=uploadId,
+                                        Bucket=bucket_name,
+                                        Key=compat_bytes(info.fileID),
+                                        UploadId=uploadId,
                                         MultipartUpload={"Parts": parts})
 
                                     logger.debug('Completed upload object of type %s: %s', str(type(completed)),
@@ -1292,11 +1311,14 @@ class AWSJobStore(AbstractJobStore):
                         for attempt in retry_s3():
                             with attempt:
                                 logger.debug('Uploading single part of %d bytes', dataLength)
-                                client.upload_fileobj(Bucket=bucket_name, Key=compat_bytes(info.fileID),
-                                                      Fileobj=buf, ExtraArgs=headerArgs)
+                                client.upload_fileobj(Bucket=bucket_name,
+                                                      Key=compat_bytes(info.fileID),
+                                                      Fileobj=buf,
+                                                      ExtraArgs=headerArgs)
 
                                 # use head_object with the SSE headers to access versionId and content_length attributes
-                                headObj = client.head_object(Bucket=bucket_name, Key=compat_bytes(info.fileID),
+                                headObj = client.head_object(Bucket=bucket_name,
+                                                             Key=compat_bytes(info.fileID),
                                                              **headerArgs)
                                 assert dataLength == headObj.get('ContentLength', None)
                                 info.version = headObj.get('VersionId', None)
@@ -1307,7 +1329,8 @@ class AWSJobStore(AbstractJobStore):
                             for attempt in retry_s3(predicate=lambda e: retryable_s3_errors(e) or isinstance(e, AssertionError)):
                                 with attempt:
                                     headObj = client.head_object(Bucket=bucket_name,
-                                                                 Key=compat_bytes(info.fileID), **headerArgs)
+                                                                 Key=compat_bytes(info.fileID),
+                                                                 **headerArgs)
                                     info.version = headObj.get('VersionId', None)
                                     logger.warning('Reloaded key with no version and got version %s', str(info.version))
                                     assert info.version is not None
@@ -1593,7 +1616,8 @@ class AWSJobStore(AbstractJobStore):
                     uploads = s3_boto3_client.list_multipart_uploads(Bucket=bucket.name).get('Uploads')
                     if uploads:
                         for u in uploads:
-                            s3_boto3_client.abort_multipart_upload(Bucket=bucket.name, Key=u["Key"],
+                            s3_boto3_client.abort_multipart_upload(Bucket=bucket.name,
+                                                                   Key=u["Key"],
                                                                    UploadId=u["UploadId"])
 
                     bucket.objects.all().delete()
@@ -1602,7 +1626,7 @@ class AWSJobStore(AbstractJobStore):
                 except s3_boto3_client.exceptions.NoSuchBucket:
                     pass
                 except ClientError as e:
-                    if e.response.get('Error', {}).get('Code') != 'NoSuchBucket':
+                    if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') != 404:
                         raise
 
 
