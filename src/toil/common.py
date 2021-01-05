@@ -206,6 +206,7 @@ class Config:
         set_option("parasolMaxBatches", int, iC(1))
         set_option("linkImports")
         set_option("moveExports")
+        set_option("allocate_mem")
         set_option("mesosMasterAddress")
         set_option("kubernetesHostPath")
         set_option("environment", parseSetEnv)
