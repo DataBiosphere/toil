@@ -86,7 +86,6 @@ def add_kubernetes_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> Non
                         help="Path on Kubernetes hosts to use as shared inter-pod temp directory.  "
                              "(default: %(default)s)")
 
-
 def add_slurm_options(parser: Union[ArgumentParser, _ArgumentGroup]):
     allocate_mem = parser.add_mutually_exclusive_group()
     allocate_mem_help = ("A flag that can block allocating memory with '--mem' for job submissions "
@@ -95,7 +94,6 @@ def add_slurm_options(parser: Union[ArgumentParser, _ArgumentGroup]):
     allocate_mem.add_argument("--dont_allocate_mem", action='store_false', dest="allocate_mem", help=allocate_mem_help)
     allocate_mem.add_argument("--allocate_mem", action='store_true', dest="allocate_mem", help=allocate_mem_help)
     allocate_mem.set_defaults(allocate_mem=True)
-
 
 def set_batchsystem_options(batch_system: str, set_option: Callable) -> None:
     batch_system_factory = BATCH_SYSTEM_FACTORY_REGISTRY[batch_system]()
