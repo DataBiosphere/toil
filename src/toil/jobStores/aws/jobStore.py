@@ -492,7 +492,7 @@ class AWSJobStore(AbstractJobStore):
         if os.environ.get('TOIL_S3_USE_SSL', True) == 'False':
             protocol = 'http'
         if host:
-            botoargs['endpoint_url'] = f"{protocol}://{host}{f':{port}' if port else ''}"
+            botoargs['endpoint_url'] = f'{protocol}://{host}' + f':{port}' if port else ''
 
         # TODO: OrdinaryCallingFormat equivalent in boto3?
         # if botoargs:
@@ -500,7 +500,7 @@ class AWSJobStore(AbstractJobStore):
 
         # Get the bucket's region to avoid a redirect per request
         region = AWSJobStore.getBucketRegion(bucketName)
-        s3 = boto3.resource('s3', region_name=region, **botoargs)
+        s3 = get_boto3_session().resource('s3', region_name=region, **botoargs)
         obj = s3.Object(bucketName, keyName)
         objExists = True
 
