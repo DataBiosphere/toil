@@ -35,7 +35,7 @@ def main():
         "wf_dictionary": containing the parsed workflow information.
         "tasks_dictionary": containing the parsed task information.
 
-    wdl_synthesis takes the "wf_dictionary", "tasks_dictionary", and JSON files
+    wdl_synthesis takes the "wf_dictionary", "tasks_dictionary", and the JSON file
     and uses them to write a native python script for use with Toil.
 
     Requires a WDL file, and a JSON file.  The WDL file contains ordered commands,
