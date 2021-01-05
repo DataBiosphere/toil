@@ -17,7 +17,7 @@ import os
 import subprocess
 import sys
 
-from toil.wdl import dict_from_JSON
+from toil.wdl.utils import dict_from_JSON
 from toil.wdl.versions.draft2 import AnalyzeDraft2WDL
 from toil.wdl.wdl_synthesis import SynthesizeWDL
 
@@ -35,15 +35,14 @@ def main():
         "wf_dictionary": containing the parsed workflow information.
         "tasks_dictionary": containing the parsed task information.
 
-    wdl_synthesis takes the "wf_dictionary" and "tasks_dictionary" and uses them to
-    write a native python script for use with Toil.
+    wdl_synthesis takes the "wf_dictionary", "tasks_dictionary", and JSON files
+    and uses them to write a native python script for use with Toil.
 
     Requires a WDL file, and a JSON file.  The WDL file contains ordered commands,
     and the JSON file contains input values for those commands.  To run in Toil,
     these two files must be parsed, restructured into python dictionaries, and
     then compiled into a Toil formatted python script.  This compiled Toil script
-    is deleted after running unless the user specifies: "--dont_delete_compiled"
-    as an option.
+    is deleted unless the user specifies: "--dev_mode" as an option.
 
     The WDL parser was auto-generated from the Broad's current WDL grammar file:
     https://github.com/openwdl/wdl/blob/master/parsers/grammar.hgr

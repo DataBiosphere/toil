@@ -372,7 +372,7 @@ class ToilWdlIntegrationTest(ToilTest):
             u'helloHaplotypeCaller.haplotypeCaller.RefDict': u'"src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.dict"',
             u'helloHaplotypeCaller.haplotypeCaller.RefFasta': u'"src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.fasta"'}
 
-        from toil.wdl import dict_from_JSON
+        from toil.wdl.utils import dict_from_JSON
         json_dict = dict_from_JSON("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
         assert json_dict == default_json_dict_output, (
                 str(json_dict) + '\nAssertionError: ' + str(default_json_dict_output))

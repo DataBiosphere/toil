@@ -39,6 +39,18 @@ class AnalyzeWDL:
         # holds workflow structure from WDL workflow objects
         self.workflows_dictionary = OrderedDict()
 
+        # unique iterator to add to cmd names
+        self.command_number = 0
+
+        # unique iterator to add to call names
+        self.call_number = 0
+
+        # unique iterator to add to scatter names
+        self.scatter_number = 0
+
+        # unique iterator to add to if names
+        self.if_number = 0
+
     def analyze(self):
         """
         Analyzes the WDL file passed into the constructor and generates the two

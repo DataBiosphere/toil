@@ -35,21 +35,6 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
     AnalyzeWDL implementation for the draft-2 version.
     """
 
-    def __init__(self, wdl_file):
-        super().__init__(wdl_file)
-
-        # unique iterator to add to cmd names
-        self.command_number = 0
-
-        # unique iterator to add to call names
-        self.call_number = 0
-
-        # unique iterator to add to scatter names
-        self.scatter_number = 0
-
-        # unique iterator to add to if names
-        self.if_number = 0
-
     def analyze(self):
         """
         Analyzes the WDL file passed into the constructor and generates the two
