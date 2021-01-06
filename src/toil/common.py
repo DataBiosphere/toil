@@ -15,14 +15,15 @@ import logging
 import os
 import pickle
 import re
+import requests
 import subprocess
 import sys
 import tempfile
 import time
 import uuid
-from argparse import ArgumentParser
 
-import requests
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from typing import Optional, Callable, Any, List
 
 from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import (add_all_batchsystem_options,
@@ -77,7 +78,6 @@ class Config:
         self.provisioner = None
         self.nodeTypes = []
         check_valid_node_types(self.provisioner, self.nodeTypes)
-        self.nodeOptions = None
         self.minNodes = None
         self.maxNodes = [10]
         self.targetTime = defaultTargetTime
@@ -92,7 +92,7 @@ class Config:
         self.maxPreemptableServiceJobs = sys.maxsize
         self.maxServiceJobs = sys.maxsize
         self.deadlockWait = 60  # Number of seconds we must be stuck with all services before declaring a deadlock
-        self.deadlockCheckInterval = 30 # Minimum polling delay for deadlocks
+        self.deadlockCheckInterval = 30  # Minimum polling delay for deadlocks
         self.statePollingWait = 1  # Number of seconds to wait before querying job state
 
         # Resource requirements
@@ -137,17 +137,20 @@ class Config:
         # CWL
         self.cwl = False
 
-    def setOptions(self, options):
+    def setOptions(self, options) -> None:
         """Creates a config object from the options object."""
-        def setOption(option_name, parsingFn=None, checkFn=None, default=None):
+        def set_option(option_name: str,
+                       parsing_function: Optional[Callable] = None,
+                       check_function: Optional[Callable] = None,
+                       default: Any = None) -> None:
             option_value = getattr(options, option_name, default)
 
             if option_value is not None:
-                if parsingFn is not None:
-                    option_value = parsingFn(option_value)
-                if checkFn is not None:
+                if parsing_function is not None:
+                    option_value = parsing_function(option_value)
+                if check_function is not None:
                     try:
-                        checkFn(option_value)
+                        check_function(option_value)
                     except AssertionError:
                         raise RuntimeError(f"The {option_name} option has an invalid value: {option_value}")
                 setattr(self, option_name, option_value)
@@ -155,34 +158,33 @@ class Config:
         # Function to parse integer from string expressed in different formats
         h2b = lambda x: human2bytes(str(x))
 
-        def parseJobStore(s):
-            name, rest = Toil.parseLocator(s)
+        def parse_jobstore(jobstore_uri: str):
+            name, rest = Toil.parseLocator(jobstore_uri)
             if name == 'file':
                 # We need to resolve relative paths early, on the leader, because the worker process
                 # may have a different working directory than the leader, e.g. under Mesos.
                 return Toil.buildLocator(name, os.path.abspath(rest))
             else:
-                return s
+                return jobstore_uri
 
-        def parseStrList(s: str):
+        def parse_str_list(s: str):
             return [str(x) for x in s.split(",")]
 
-        def parseIntList(s: str):
+        def parse_int_list(s: str):
             return [int(x) for x in s.split(",")]
 
         # Core options
-        setOption("jobStore", parsingFn=parseJobStore)
+        set_option("jobStore", parsing_function=parse_jobstore)
         # TODO: LOG LEVEL STRING
-        setOption("workDir")
+        set_option("workDir")
         if self.workDir is not None:
             self.workDir = os.path.abspath(self.workDir)
             if not os.path.exists(self.workDir):
-                raise RuntimeError("The path provided to --workDir (%s) does not exist."
-                                   % self.workDir)
-        setOption("noStdOutErr")
-        setOption("stats")
-        setOption("cleanWorkDir")
-        setOption("clean")
+                raise RuntimeError(f"The path provided to --workDir ({self.workDir}) does not exist.")
+        set_option("noStdOutErr")
+        set_option("stats")
+        set_option("cleanWorkDir")
+        set_option("clean")
         if self.stats:
             if self.clean != "never" and self.clean is not None:
                 raise RuntimeError("Contradicting options passed: Clean flag is set to %s "
@@ -192,43 +194,43 @@ class Config:
             self.clean = "never"
         elif self.clean is None:
             self.clean = "onSuccess"
-        setOption('clusterStats')
-        setOption("restart")
+        set_option('clusterStats')
+        set_option("restart")
 
         # Batch system options
-        setOption("batchSystem")
-        set_batchsystem_options(self.batchSystem, setOption)
-        setOption("disableAutoDeployment")
-        setOption("scale", float, fC(0.0))
-        setOption("parasolCommand")
-        setOption("parasolMaxBatches", int, iC(1))
-        setOption("linkImports")
-        setOption("moveExports")
-        setOption("mesosMasterAddress")
-        setOption("kubernetesHostPath")
-        setOption("environment", parseSetEnv)
+        set_option("batchSystem")
+        set_batchsystem_options(self.batchSystem, set_option)
+        set_option("disableAutoDeployment")
+        set_option("scale", float, fC(0.0))
+        set_option("parasolCommand")
+        set_option("parasolMaxBatches", int, iC(1))
+        set_option("linkImports")
+        set_option("moveExports")
+        set_option("allocate_mem")
+        set_option("mesosMasterAddress")
+        set_option("kubernetesHostPath")
+        set_option("environment", parseSetEnv)
 
         # Autoscaling options
-        setOption("provisioner")
-        setOption("nodeTypes", parseStrList)
-        setOption("nodeOptions")
-        setOption("minNodes", parseIntList)
-        setOption("maxNodes", parseIntList)
-        setOption("targetTime", int)
+        set_option("provisioner")
+        set_option("nodeTypes", parse_str_list)
+        set_option("minNodes", parse_int_list)
+        set_option("maxNodes", parse_int_list)
+        set_option("targetTime", int)
         if self.targetTime <= 0:
             raise RuntimeError(f'targetTime ({self.targetTime}) must be a positive integer!')
-        setOption("betaInertia", float)
+        set_option("betaInertia", float)
         if not 0.0 <= self.betaInertia <= 0.9:
             raise RuntimeError(f'betaInertia ({self.betaInertia}) must be between 0.0 and 0.9!')
-        setOption("scaleInterval", float)
-        setOption("metrics")
-        setOption("preemptableCompensation", float)
+        set_option("scaleInterval", float)
+        set_option("metrics")
+        set_option("preemptableCompensation", float)
         if not 0.0 <= self.preemptableCompensation <= 1.0:
             raise RuntimeError(f'preemptableCompensation ({self.preemptableCompensation}) must be between 0.0 and 1.0!')
-        setOption("nodeStorage", int)
+        set_option("nodeStorage", int)
 
-        def checkNodeStorageOverrides(nodeStorageOverrides):
-            for override in nodeStorageOverrides:
+        def check_nodestoreage_overrides(overrides: List[str]) -> None:
+            for override in overrides:
                 tokens = override.split(":")
                 assert len(tokens) == 2, \
                     'Each component of --nodeStorageOverrides must have nodeType:nodeStorage'
@@ -236,62 +238,62 @@ class Config:
                     'nodeType of --nodeStorageOverrides must be among --nodeTypes'
                 assert tokens[1].isdigit(), \
                     'nodeStorage must be an integer in --nodeStorageOverrides'
-        setOption("nodeStorageOverrides", parseStrList, checkFn=checkNodeStorageOverrides)
+        set_option("nodeStorageOverrides", parse_str_list, check_function=check_nodestoreage_overrides)
 
         # Parameters to limit service jobs / detect deadlocks
-        setOption("maxServiceJobs", int)
-        setOption("maxPreemptableServiceJobs", int)
-        setOption("deadlockWait", int)
-        setOption("deadlockCheckInterval", int)
-        setOption("statePollingWait", int)
+        set_option("maxServiceJobs", int)
+        set_option("maxPreemptableServiceJobs", int)
+        set_option("deadlockWait", int)
+        set_option("deadlockCheckInterval", int)
+        set_option("statePollingWait", int)
 
         # Resource requirements
-        setOption("defaultMemory", h2b, iC(1))
-        setOption("defaultCores", float, fC(1.0))
-        setOption("defaultDisk", h2b, iC(1))
-        setOption("readGlobalFileMutableByDefault")
-        setOption("maxCores", int, iC(1))
-        setOption("maxMemory", h2b, iC(1))
-        setOption("maxDisk", h2b, iC(1))
-        setOption("defaultPreemptable")
+        set_option("defaultMemory", h2b, iC(1))
+        set_option("defaultCores", float, fC(1.0))
+        set_option("defaultDisk", h2b, iC(1))
+        set_option("readGlobalFileMutableByDefault")
+        set_option("maxCores", int, iC(1))
+        set_option("maxMemory", h2b, iC(1))
+        set_option("maxDisk", h2b, iC(1))
+        set_option("defaultPreemptable")
 
         # Retrying/rescuing jobs
-        setOption("retryCount", int, iC(1))
-        setOption("enableUnlimitedPreemptableRetries")
-        setOption("doubleMem")
-        setOption("maxJobDuration", int, iC(1))
-        setOption("rescueJobsFrequency", int, iC(1))
+        set_option("retryCount", int, iC(1))
+        set_option("enableUnlimitedPreemptableRetries")
+        set_option("doubleMem")
+        set_option("maxJobDuration", int, iC(1))
+        set_option("rescueJobsFrequency", int, iC(1))
 
         # Misc
-        setOption("maxLocalJobs", int)
-        setOption("disableCaching")
-        setOption("disableChaining")
-        setOption("disableJobStoreChecksumVerification")
-        setOption("maxLogFileSize", h2b, iC(1))
-        setOption("writeLogs")
-        setOption("writeLogsGzip")
-        setOption("writeLogsFromAllJobs")
-        setOption("runCwlInternalJobsOnWorkers")
-        setOption("disableProgress")
+        set_option("maxLocalJobs", int)
+        set_option("disableCaching")
+        set_option("disableChaining")
+        set_option("disableJobStoreChecksumVerification")
+        set_option("maxLogFileSize", h2b, iC(1))
+        set_option("writeLogs")
+        set_option("writeLogsGzip")
+        set_option("writeLogsFromAllJobs")
+        set_option("runCwlInternalJobsOnWorkers")
+        set_option("disableProgress")
 
         assert not (self.writeLogs and self.writeLogsGzip), \
             "Cannot use both --writeLogs and --writeLogsGzip at the same time."
         assert not self.writeLogsFromAllJobs or self.writeLogs or self.writeLogsGzip, \
             "To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set."
 
-        def checkSse(sseKey):
-            with open(sseKey) as f:
-                assert (len(f.readline().rstrip()) == 32)
+        def check_sse_key(sse_key: str) -> None:
+            with open(sse_key) as f:
+                assert len(f.readline().rstrip()) == 32, 'SSE key appears to be invalid.'
 
-        setOption("sseKey", checkFn=checkSse)
-        setOption("servicePollingInterval", float, fC(0.0))
-        setOption("forceDockerAppliance")
+        set_option("sseKey", check_function=check_sse_key)
+        set_option("servicePollingInterval", float, fC(0.0))
+        set_option("forceDockerAppliance")
 
         # Debug options
-        setOption("debugWorker")
-        setOption("disableWorkerOutputCapture")
-        setOption("badWorker", float, fC(0.0, 1.0))
-        setOption("badWorkerFailInterval", float, fC(0.0))
+        set_option("debugWorker")
+        set_option("disableWorkerOutputCapture")
+        set_option("badWorker", float, fC(0.0, 1.0))
+        set_option("badWorkerFailInterval", float, fC(0.0))
 
     def __eq__(self, other):
         return self.__dict__ == other.__dict__
@@ -316,7 +318,7 @@ JOBSTORE_HELP = ("The location of the job store for the workflow.  "
 
 
 def parser_with_common_options(provisioner_options=False, jobstore_option=True):
-    parser = ArgumentParser()
+    parser = ArgumentParser(prog='Toil', formatter_class=ArgumentDefaultsHelpFormatter)
 
     if provisioner_options:
         add_provisioner_options(parser)
@@ -337,329 +339,295 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
     if not isinstance(parser, ArgumentParser):
         raise ValueError(f"Unanticipated class: {parser.__class__}.  Must be: argparse.ArgumentParser.")
 
-    def addGroupFn(group_title, group_description):
-        return parser.add_argument_group(group_title, group_description).add_argument
-
     add_logging_options(parser)
     parser.register("type", "bool", parseBool)  # Custom type for arg=True/False.
 
-    #
     # Core options
-    #
-    addOptionFn = addGroupFn("Toil core options.",
-                             "Options to specify the location of the Toil workflow and turn on "
-                             "stats collation about the performance of jobs.")
-    addOptionFn('jobStore', type=str, help=JOBSTORE_HELP)
-    addOptionFn("--workDir", dest="workDir", default=None,
-                help="Absolute path to directory where temporary files generated during the Toil "
-                     "run should be placed. Standard output and error from batch system jobs "
-                     "(unless --noStdOutErr) will be placed in this directory. A cache directory "
-                     "may be placed in this directory. Temp files and folders will be placed in a "
-                     "directory toil-<workflowID> within workDir. The workflowID is generated by "
-                     "Toil and will be reported in the workflow logs. Default is determined by the "
-                     "variables (TMPDIR, TEMP, TMP) via mkdtemp. This directory needs to exist on "
-                     "all machines running jobs; if capturing standard output and error from batch "
-                     "system jobs is desired, it will generally need to be on a shared file system. "
-                     "When sharing a cache between containers on a host, this directory must be "
-                     "shared between the containers.")
-    addOptionFn("--noStdOutErr", dest="noStdOutErr", action="store_true", default=None,
-                help="Do not capture standard output and error from batch system jobs.")
-    addOptionFn("--stats", dest="stats", action="store_true", default=None,
-                help="Records statistics about the toil workflow to be used by 'toil stats'.")
-    addOptionFn("--clean", dest="clean", choices=['always', 'onError', 'never', 'onSuccess'],
-                default=None,
-                help=("Determines the deletion of the jobStore upon completion of the program. "
-                      "Choices: 'always', 'onError','never', 'onSuccess'. The --stats option requires "
-                      "information from the jobStore upon completion so the jobStore will never be deleted with"
-                      "that flag. If you wish to be able to restart the run, choose \'never\' or \'onSuccess\'. "
-                      "Default is \'never\' if stats is enabled, and \'onSuccess\' otherwise"))
-    addOptionFn("--cleanWorkDir", dest="cleanWorkDir",
-                choices=['always', 'never', 'onSuccess', 'onError'], default='always',
-                help=(
-                "Determines deletion of temporary worker directory upon completion of a job. Choices: 'always', "
-                "'never', 'onSuccess'. Default = always. WARNING: This option should be changed for debugging "
-                "only. Running a full pipeline with this option could fill your disk with intermediate data."))
-    addOptionFn("--clusterStats", dest="clusterStats", nargs='?', action='store',
-                default=None, const=os.getcwd(),
-                help="If enabled, writes out JSON resource usage statistics to a file. "
-                     "The default location for this file is the current working directory, "
-                     "but an absolute path can also be passed to specify where this file "
-                     "should be written. This options only applies when using scalable batch "
-                     "systems.")
-    #
+    core_options = parser.add_argument_group(
+        title="Toil core options.",
+        description="Options to specify the location of the Toil workflow and "
+                    "turn on stats collation about the performance of jobs."
+    )
+    core_options.add_argument('jobStore', type=str, help=JOBSTORE_HELP)
+    core_options.add_argument("--workDir", dest="workDir", default=None,
+                              help="Absolute path to directory where temporary files generated during the Toil "
+                                   "run should be placed. Standard output and error from batch system jobs "
+                                   "(unless --noStdOutErr) will be placed in this directory. A cache directory "
+                                   "may be placed in this directory. Temp files and folders will be placed in a "
+                                   "directory toil-<workflowID> within workDir. The workflowID is generated by "
+                                   "Toil and will be reported in the workflow logs. Default is determined by the "
+                                   "variables (TMPDIR, TEMP, TMP) via mkdtemp. This directory needs to exist on "
+                                   "all machines running jobs; if capturing standard output and error from batch "
+                                   "system jobs is desired, it will generally need to be on a shared file system. "
+                                   "When sharing a cache between containers on a host, this directory must be "
+                                   "shared between the containers.")
+    core_options.add_argument("--noStdOutErr", dest="noStdOutErr", action="store_true", default=None,
+                              help="Do not capture standard output and error from batch system jobs.")
+    core_options.add_argument("--stats", dest="stats", action="store_true", default=None,
+                              help="Records statistics about the toil workflow to be used by 'toil stats'.")
+    clean_choices = ['always', 'onError', 'never', 'onSuccess']
+    core_options.add_argument("--clean", dest="clean", choices=clean_choices, default=None,
+                              help=f"Determines the deletion of the jobStore upon completion of the program.  "
+                                   f"Choices: {clean_choices}.  The --stats option requires information from the "
+                                   f"jobStore upon completion so the jobStore will never be deleted with that flag.  "
+                                   f"If you wish to be able to restart the run, choose \'never\' or \'onSuccess\'.  "
+                                   f"Default is \'never\' if stats is enabled, and \'onSuccess\' otherwise.")
+    core_options.add_argument("--cleanWorkDir", dest="cleanWorkDir", choices=clean_choices, default='always',
+                              help=f"Determines deletion of temporary worker directory upon completion of a job.  "
+                                   f"Choices: {clean_choices}.  Default = always.  WARNING: This option should be "
+                                   f"changed for debugging only.  Running a full pipeline with this option could "
+                                   f"fill your disk with excessive intermediate data.")
+    core_options.add_argument("--clusterStats", dest="clusterStats", nargs='?', action='store', default=None,
+                              const=os.getcwd(),
+                              help="If enabled, writes out JSON resource usage statistics to a file.  "
+                                   "The default location for this file is the current working directory, but an "
+                                   "absolute path can also be passed to specify where this file should be written. "
+                                   "This options only applies when using scalable batch systems.")
+
     # Restarting the workflow options
-    #
-    addOptionFn = addGroupFn("toil options for restarting an existing workflow",
-                             "Allows the restart of an existing workflow")
-    addOptionFn("--restart", dest="restart", default=None, action="store_true",
-                help="If --restart is specified then will attempt to restart existing workflow "
-                     "at the location pointed to by the --jobStore option. Will raise an exception "
-                     "if the workflow does not exist")
+    restart_options = parser.add_argument_group(
+        title="Toil options for restarting an existing workflow.",
+        description="Allows the restart of an existing workflow"
+    )
+    restart_options.add_argument("--restart", dest="restart", default=None, action="store_true",
+                                 help="If --restart is specified then will attempt to restart existing workflow "
+                                      "at the location pointed to by the --jobStore option. Will raise an exception "
+                                      "if the workflow does not exist")
 
-    #
     # Batch system options
-    #
-    addOptionFn = addGroupFn("toil options for specifying the batch system",
-                             "Allows the specification of the batch system, and arguments to the "
-                             "batch system/big batch system (see below).")
-    addOptionFn("--statePollingWait", dest="statePollingWait", default=1, type=int,
-                help=("Time, in seconds, to wait before doing a scheduler query for job state. "
-                      "Return cached results if within the waiting period."))
-    add_all_batchsystem_options(addOptionFn, config)
+    batchsystem_options = parser.add_argument_group(
+        title="Toil options for specifying the batch system.",
+        description="Allows the specification of the batch system."
+    )
+    batchsystem_options.add_argument("--statePollingWait", dest="statePollingWait", default=1, type=int,
+                                     help="Time, in seconds, to wait before doing a scheduler query for job state.  "
+                                          "Return cached results if within the waiting period.")
+    add_all_batchsystem_options(batchsystem_options)
 
-    #
     # Auto scaling options
-    #
-    addOptionFn = addGroupFn("toil options for autoscaling the cluster of worker nodes",
-                             "Allows the specification of the minimum and maximum number of nodes "
-                             "in an autoscaled cluster, as well as parameters to control the "
-                             "level of provisioning.")
+    autoscaling_options = parser.add_argument_group(
+        title="Toil options for autoscaling the cluster of worker nodes.",
+        description="Allows the specification of the minimum and maximum number of nodes in an autoscaled cluster, "
+                    "as well as parameters to control the level of provisioning."
+    )
+    provisioner_choices = ['aws', 'gce']
+    autoscaling_options.add_argument("--provisioner", dest="provisioner", choices=provisioner_choices,
+                                     help=f"The provisioner for cluster auto-scaling. The currently supported choices "
+                                          f"are {provisioner_choices}.  The default is {config.provisioner}.")
+    autoscaling_options.add_argument('--nodeTypes', default=None,
+                                     help="List of worker node types separated by commas. The syntax for each node "
+                                          "type depends on the provisioner used.  For the AWS provisioner this is the "
+                                          "name of an EC2 instance type, optionally followed by a colon and the price "
+                                          "in dollars to bid for a spot instance of that type.  For example: "
+                                          "'c3.8xlarge:0.42'.  If no spot bid is specified, nodes of this type will "
+                                          "be non-preemptable (non-discounted and not subject to potential early "
+                                          "termination based on the availability of discounted instances).  It is "
+                                          "acceptable to specify an instance as both preemptable and non-preemptable, "
+                                          "including it twice in the list. In that case, preemptable nodes of that "
+                                          "type will be preferred when creating new nodes once the maximum number of "
+                                          "preemptable-nodes has been reached.")
+    autoscaling_options.add_argument('--minNodes', default=None,
+                                     help="Mininum number of nodes of each type in the cluster, if using "
+                                          "auto-scaling.  This should be provided as a comma-separated list of the "
+                                          "same length as the list of node types. default=0")
+    autoscaling_options.add_argument('--maxNodes', default=None,
+                                     help=f"Maximum number of nodes of each type in the cluster, if using autoscaling, "
+                                          f"provided as a comma-separated list.  The first value is used as a default "
+                                          f"if the list length is less than the number of nodeTypes.  "
+                                          f"default={config.maxNodes[0]}")
+    autoscaling_options.add_argument("--targetTime", dest="targetTime", default=None,
+                                     help=f"Sets how rapidly you aim to complete jobs in seconds. Shorter times mean "
+                                          f"more aggressive parallelization. The autoscaler attempts to scale up/down "
+                                          f"so that it expects all queued jobs will complete within targetTime "
+                                          f"seconds.  default={config.targetTime}")
+    autoscaling_options.add_argument("--betaInertia", dest="betaInertia", default=None,
+                                     help=f"A smoothing parameter to prevent unnecessary oscillations in the number "
+                                          f"of provisioned nodes. This controls an exponentially weighted moving "
+                                          f"average of the estimated number of nodes. A value of 0.0 disables any "
+                                          f"smoothing, and a value of 0.9 will smooth so much that few changes will "
+                                          f"ever be made.  Must be between 0.0 and 0.9.  default={config.betaInertia}")
+    autoscaling_options.add_argument("--scaleInterval", dest="scaleInterval", default=None,
+                                     help=f"The interval (seconds) between assessing if the scale of "
+                                          f"the cluster needs to change. default={config.scaleInterval}")
+    autoscaling_options.add_argument("--preemptableCompensation", dest="preemptableCompensation", default=None,
+                                     help=f"The preference of the autoscaler to replace preemptable nodes with "
+                                          f"non-preemptable nodes, when preemptable nodes cannot be started for some "
+                                          f"reason. Defaults to {config.preemptableCompensation}. This value must be "
+                                          f"between 0.0 and 1.0, inclusive.  A value of 0.0 disables such "
+                                          f"compensation, a value of 0.5 compensates two missing preemptable nodes "
+                                          f"with a non-preemptable one. A value of 1.0 replaces every missing "
+                                          f"pre-emptable node with a non-preemptable one.")
+    autoscaling_options.add_argument("--nodeStorage", dest="nodeStorage", default=50,
+                                     help="Specify the size of the root volume of worker nodes when they are launched "
+                                          "in gigabytes. You may want to set this if your jobs require a lot of disk "
+                                          "space.  (default: %(default)s).")
+    autoscaling_options.add_argument('--nodeStorageOverrides', default=None,
+                                     help="Comma-separated list of nodeType:nodeStorage that are used to override "
+                                          "the default value from --nodeStorage for the specified nodeType(s).  "
+                                          "This is useful for heterogeneous jobs where some tasks require much more "
+                                          "disk than others.")
+    autoscaling_options.add_argument("--metrics", dest="metrics", default=False, action="store_true",
+                                     help="Enable the prometheus/grafana dashboard for monitoring CPU/RAM usage, "
+                                          "queue size, and issued jobs.")
 
-    addOptionFn("--provisioner", dest="provisioner", choices=['aws', 'gce'],
-                help="The provisioner for cluster auto-scaling. The currently supported choices are"
-                     "'gce', or 'aws'. The default is %s." % config.provisioner)
-
-    addOptionFn('--nodeTypes', default=None,
-                help="List of node types separated by commas. The syntax for each node type "
-                     "depends on the provisioner used. For the cgcloud and AWS provisioners "
-                     "this is the name of an EC2 instance type, optionally followed by a "
-                     "colon and the price in dollars "
-                     "to bid for a spot instance of that type, for example 'c3.8xlarge:0.42'."
-                     "If no spot bid is specified, nodes of this type will be non-preemptable."
-                     "It is acceptable to specify an instance as both preemptable and "
-                     "non-preemptable, including it twice in the list. In that case,"
-                     "preemptable nodes of that type will be preferred when creating "
-                     "new nodes once the maximum number of preemptable-nodes has been"
-                     "reached.")
-
-    addOptionFn('--nodeOptions', default=None,
-                help = "Options for provisioning the nodes. The syntax "
-                       "depends on the provisioner used. Neither the CGCloud nor the AWS "
-                       "provisioner support any node options.")
-
-    addOptionFn('--minNodes', default=None,
-                help="Mininum number of nodes of each type in the cluster, if using "
-                     "auto-scaling. This should be provided as a comma-separated "
-                     "list of the same length as the list of node types. default=0")
-
-    addOptionFn('--maxNodes', default=None,
-                help="Maximum number of nodes of each type in the cluster, if using "
-                     "autoscaling, provided as a comma-separated list. The first value is used "
-                     "as a default if the list length is less than the number of nodeTypes. "
-                     "default=%s" % config.maxNodes[0])
-
-    addOptionFn("--targetTime", dest="targetTime", default=None,
-                help=("Sets how rapidly you aim to complete jobs in seconds. Shorter times mean "
-                      "more aggressive parallelization. The autoscaler attempts to scale up/down "
-                      "so that it expects all queued jobs will complete within targetTime "
-                      "seconds. default=%s" % config.targetTime))
-    addOptionFn("--betaInertia", dest="betaInertia", default=None,
-                help=("A smoothing parameter to prevent unnecessary oscillations in the "
-                      "number of provisioned nodes. This controls an exponentially weighted "
-                      "moving average of the estimated number of nodes. A value of 0.0 "
-                      "disables any smoothing, and a value of 0.9 will smooth so much that "
-                      "few changes will ever be made.  Must be between 0.0 and 0.9.  "
-                      "default=%s" % config.betaInertia))
-    addOptionFn("--scaleInterval", dest="scaleInterval", default=None,
-                help=("The interval (seconds) between assessing if the scale of"
-                      " the cluster needs to change. default=%s" % config.scaleInterval))
-    addOptionFn("--preemptableCompensation", dest="preemptableCompensation",
-                default=None,
-                help=("The preference of the autoscaler to replace preemptable nodes with "
-                      "non-preemptable nodes, when preemptable nodes cannot be started for some "
-                      "reason. Defaults to %s. This value must be between 0.0 and 1.0, inclusive. "
-                      "A value of 0.0 disables such compensation, a value of 0.5 compensates two "
-                      "missing preemptable nodes with a non-preemptable one. A value of 1.0 "
-                      "replaces every missing pre-emptable node with a non-preemptable one." %
-                      config.preemptableCompensation))
-    addOptionFn("--nodeStorage", dest="nodeStorage", default=50,
-                help=("Specify the size of the root volume of worker nodes when they are launched "
-                      "in gigabytes. You may want to set this if your jobs require a lot of disk "
-                      "space. The default value is 50."))
-    addOptionFn('--nodeStorageOverrides', default=None,
-                help="Comma-separated list of nodeType:nodeStorage that are used to override "
-                     "the default value from --nodeStorage for the specified nodeType(s). "
-                     "This is useful for heterogeneous jobs where some tasks require much more "
-                     "disk than others.")
-    addOptionFn("--metrics", dest="metrics",
-                default=False, action="store_true",
-                help=(
-                "Enable the prometheus/grafana dashboard for monitoring CPU/RAM usage, queue size, "
-                "and issued jobs."))
-
-    #
     # Parameters to limit service jobs / detect service deadlocks
-    #
     if not config.cwl:
-        addOptionFn = addGroupFn(
-            "toil options for limiting the number of service jobs and detecting service deadlocks",
-            "Allows the specification of the maximum number of service jobs "
-            "in a cluster. By keeping this limited "
-            " we can avoid all the nodes being occupied with services, so causing a deadlock")
-        addOptionFn("--maxServiceJobs", dest="maxServiceJobs", default=None, type=int,
-                    help=(
-                    "The maximum number of service jobs that can be run concurrently, excluding service jobs running on preemptable nodes. default=%s" % config.maxServiceJobs))
-        addOptionFn("--maxPreemptableServiceJobs", dest="maxPreemptableServiceJobs", default=None, type=int,
-                    help=(
-                    "The maximum number of service jobs that can run concurrently on preemptable nodes. default=%s" % config.maxPreemptableServiceJobs))
-        addOptionFn("--deadlockWait", dest="deadlockWait", default=None, type=int,
-                    help=(
-                    "Time, in seconds, to tolerate the workflow running only the same service "
-                    "jobs, with no jobs to use them, before declaring the workflow to be "
-                    "deadlocked and stopping. default=%s" % config.deadlockWait))
-        addOptionFn("--deadlockCheckInterval", dest="deadlockCheckInterval", default=None, type=int,
-                    help=(
-                    "Time, in seconds, to wait between checks to see if the workflow is stuck "
-                    "running only service jobs, with no jobs to use them. Should be shorter than "
-                    "--deadlockWait. May need to be increased if the batch system cannot "
-                    "enumerate running jobs quickly enough, or if polling for running jobs is "
-                    "placing an unacceptable load on a shared cluster. default=%s" %
-                    config.deadlockCheckInterval))
+        service_options = parser.add_argument_group(
+            title="Toil options for limiting the number of service jobs and detecting service deadlocks",
+            description="Allows the specification of the maximum number of service jobs in a cluster.  By keeping "
+                        "this limited we can avoid nodes occupied with services causing deadlocks."
+        )
+        service_options.add_argument("--maxServiceJobs", dest="maxServiceJobs", default=None, type=int,
+                                     help=f"The maximum number of service jobs that can be run concurrently, "
+                                          f"excluding service jobs running on preemptable nodes.  "
+                                          f"default={config.maxServiceJobs}")
+        service_options.add_argument("--maxPreemptableServiceJobs", dest="maxPreemptableServiceJobs", default=None,
+                                     type=int,
+                                     help=f"The maximum number of service jobs that can run concurrently on "
+                                          f"preemptable nodes.  default={config.maxPreemptableServiceJobs}")
+        service_options.add_argument("--deadlockWait", dest="deadlockWait", default=None, type=int,
+                                     help=f"Time, in seconds, to tolerate the workflow running only the same service "
+                                          f"jobs, with no jobs to use them, before declaring the workflow to be "
+                                          f"deadlocked and stopping.  default={config.deadlockWait}")
+        service_options.add_argument("--deadlockCheckInterval", dest="deadlockCheckInterval", default=None, type=int,
+                                     help="Time, in seconds, to wait between checks to see if the workflow is stuck "
+                                          "running only service jobs, with no jobs to use them. Should be shorter "
+                                          "than --deadlockWait. May need to be increased if the batch system cannot "
+                                          "enumerate running jobs quickly enough, or if polling for running jobs is "
+                                          "placing an unacceptable load on a shared cluster.  "
+                                          "default={config.deadlockCheckInterval}")
 
-    #
     # Resource requirements
-    #
-    addOptionFn = addGroupFn("toil options for cores/memory requirements",
-                             "The options to specify default cores/memory requirements (if not "
-                             "specified by the jobs themselves), and to limit the total amount of "
-                             "memory/cores requested from the batch system.")
-    addOptionFn('--defaultMemory', dest='defaultMemory', default=None, metavar='INT',
-                help='The default amount of memory to request for a job. Only applicable to jobs '
-                     'that do not specify an explicit value for this requirement. Standard '
-                     'suffixes like K, Ki, M, Mi, G or Gi are supported. Default is %s' %
-                     bytes2human(config.defaultMemory, symbols='iec'))
-    addOptionFn('--defaultCores', dest='defaultCores', default=None, metavar='FLOAT',
-                help='The default number of CPU cores to dedicate a job. Only applicable to jobs '
-                     'that do not specify an explicit value for this requirement. Fractions of a '
-                     'core (for example 0.1) are supported on some batch systems, namely Mesos '
-                     'and singleMachine. Default is %.1f ' % config.defaultCores)
-    addOptionFn('--defaultDisk', dest='defaultDisk', default=None, metavar='INT',
-                help='The default amount of disk space to dedicate a job. Only applicable to jobs '
-                     'that do not specify an explicit value for this requirement. Standard '
-                     'suffixes like K, Ki, M, Mi, G or Gi are supported. Default is %s' %
-                     bytes2human(config.defaultDisk, symbols='iec'))
-    assert not config.defaultPreemptable, 'User would be unable to reset config.defaultPreemptable'
-    addOptionFn('--defaultPreemptable', dest='defaultPreemptable', action='store_true')
-    addOptionFn('--maxCores', dest='maxCores', default=None, metavar='INT',
-                help='The maximum number of CPU cores to request from the batch system at any one '
-                     'time. Standard suffixes like K, Ki, M, Mi, G or Gi are supported. Default '
-                     'is %s' % bytes2human(config.maxCores, symbols='iec'))
-    addOptionFn('--maxMemory', dest='maxMemory', default=None, metavar='INT',
-                help="The maximum amount of memory to request from the batch system at any one "
-                     "time. Standard suffixes like K, Ki, M, Mi, G or Gi are supported. Default "
-                     "is %s" % bytes2human(config.maxMemory, symbols='iec'))
-    addOptionFn('--maxDisk', dest='maxDisk', default=None, metavar='INT',
-                help='The maximum amount of disk space to request from the batch system at any '
-                     'one time. Standard suffixes like K, Ki, M, Mi, G or Gi are supported. '
-                     'Default is %s' % bytes2human(config.maxDisk, symbols='iec'))
+    resource_options = parser.add_argument_group(
+        title="Toil options for cores/memory requirements.",
+        description="The options to specify default cores/memory requirements (if not specified by the jobs "
+                    "themselves), and to limit the total amount of memory/cores requested from the batch system."
+    )
+    resource_help_msg = ('The {} amount of {} to request for a job.  '
+                         'Only applicable to jobs that do not specify an explicit value for this requirement.  '
+                         '{}.  '
+                         'Default is {}.')
+    cpu_note = 'Fractions of a core (for example 0.1) are supported on some batch systems [mesos, single_machine]'
+    disk_mem_note = 'Standard suffixes like K, Ki, M, Mi, G or Gi are supported'
+    resource_options.add_argument('--defaultMemory', dest='defaultMemory', default=None, metavar='INT',
+                                  help=resource_help_msg.format('default', 'memory', disk_mem_note,
+                                                                bytes2human(config.defaultMemory, symbols="iec")))
+    resource_options.add_argument('--defaultCores', dest='defaultCores', default=None, metavar='FLOAT',
+                                  help=resource_help_msg.format('default', 'cpu', cpu_note, str(config.defaultCores)))
+    resource_options.add_argument('--defaultDisk', dest='defaultDisk', default=None, metavar='INT',
+                                  help=resource_help_msg.format('default', 'disk', disk_mem_note,
+                                                                bytes2human(config.defaultDisk, symbols="iec")))
+    resource_options.add_argument('--maxCores', dest='maxCores', default=None, metavar='INT',
+                                  help=resource_help_msg.format('max', 'cpu', cpu_note, str(config.maxCores)))
+    resource_options.add_argument('--maxMemory', dest='maxMemory', default=None, metavar='INT',
+                                  help=resource_help_msg.format('max', 'memory', disk_mem_note,
+                                                                bytes2human(config.maxMemory, symbols="iec")))
+    resource_options.add_argument('--maxDisk', dest='maxDisk', default=None, metavar='INT',
+                                  help=resource_help_msg.format('max', 'disk', disk_mem_note,
+                                                                bytes2human(config.maxDisk, symbols="iec")))
 
-    #
     # Retrying/rescuing jobs
-    #
-    addOptionFn = addGroupFn("toil options for rescuing/killing/restarting jobs", \
-                             "The options for jobs that either run too long/fail or get lost \
-                             (some batch systems have issues!)")
-    addOptionFn("--retryCount", dest="retryCount", default=None,
-                help=("Number of times to retry a failing job before giving up and "
-                      "labeling job failed. default=%s" % config.retryCount))
-    addOptionFn("--enableUnlimitedPreemptableRetries", dest="enableUnlimitedPreemptableRetries",
-                action='store_true', default=False,
-                help=("If set, preemptable failures (or any failure due to an instance getting "
-                      "unexpectedly terminated) would not count towards job failures and "
-                      "--retryCount."))
-    addOptionFn("--doubleMem", dest="doubleMem", action='store_true', default=False,
-                help=("If set, batch jobs which die to reaching memory limit on batch schedulers "
-                      "will have their memory doubled and they will be retried. The remaining "
-                      "retry count will be reduced by 1. Currently supported by LSF."))
-    addOptionFn("--maxJobDuration", dest="maxJobDuration", default=None,
-                help=("Maximum runtime of a job (in seconds) before we kill it "
-                      "(this is a lower bound, and the actual time before killing "
-                      "the job may be longer). default=%s" % config.maxJobDuration))
-    addOptionFn("--rescueJobsFrequency", dest="rescueJobsFrequency", default=None,
-                help=("Period of time to wait (in seconds) between checking for "
-                      "missing/overlong jobs, that is jobs which get lost by the batch "
-                      "system. Expert parameter. default=%s" % config.rescueJobsFrequency))
+    job_options = parser.add_argument_group(
+        title="Toil options for rescuing/killing/restarting jobs.",
+        description="The options for jobs that either run too long/fail or get lost (some batch systems have issues!)."
+    )
+    job_options.add_argument("--retryCount", dest="retryCount", default=None,
+                             help=f"Number of times to retry a failing job before giving up and "
+                                  f"labeling job failed. default={config.retryCount}")
+    job_options.add_argument("--enableUnlimitedPreemptableRetries", dest="enableUnlimitedPreemptableRetries",
+                             action='store_true', default=False,
+                             help="If set, preemptable failures (or any failure due to an instance getting "
+                                  "unexpectedly terminated) will not count towards job failures and --retryCount.")
+    job_options.add_argument("--doubleMem", dest="doubleMem", action='store_true', default=False,
+                             help="If set, batch jobs which die to reaching memory limit on batch schedulers "
+                                  "will have their memory doubled and they will be retried. The remaining "
+                                  "retry count will be reduced by 1. Currently supported by LSF.")
+    job_options.add_argument("--maxJobDuration", dest="maxJobDuration", default=None,
+                             help=f"Maximum runtime of a job (in seconds) before we kill it (this is a lower bound, "
+                                  f"and the actual time before killing the job may be longer).  "
+                                  f"default={config.maxJobDuration}")
+    job_options.add_argument("--rescueJobsFrequency", dest="rescueJobsFrequency", default=None,
+                             help=f"Period of time to wait (in seconds) between checking for missing/overlong jobs, "
+                                  f"that is jobs which get lost by the batch system. Expert parameter.  "
+                                  f"default={config.rescueJobsFrequency}")
 
-    #
-    # Misc options
-    #
-    addOptionFn = addGroupFn("Toil Miscellaneous Options", "Miscellaneous Options")
-    addOptionFn('--disableCaching', dest='disableCaching',
-                type='bool', nargs='?', const=True, default=False,
-                help='Disables caching in the file store. This flag must be set to use '
-                     'a batch system that does not support cleanup, such as Parasol.')
-    addOptionFn('--disableChaining', dest='disableChaining', action='store_true', default=False,
-                help="Disables chaining of jobs (chaining uses one job's resource allocation "
-                "for its successor job if possible).")
-    addOptionFn("--disableJobStoreChecksumVerification", dest="disableJobStoreChecksumVerification",
-                default=False, action="store_true",
-                help=("Disables checksum verification for files transferred to/from the job store. "
-                      "Checksum verification is a safety check to ensure the data is not corrupted "
-                      "during transfer. Currently only supported for non-streaming AWS files."))
-    addOptionFn("--maxLogFileSize", dest="maxLogFileSize", default=None,
-                help=("The maximum size of a job log file to keep (in bytes), log files "
-                      "larger than this will be truncated to the last X bytes. Setting "
-                      "this option to zero will prevent any truncation. Setting this "
-                      "option to a negative value will truncate from the beginning."
-                      "Default=%s" % bytes2human(config.maxLogFileSize)))
-    addOptionFn("--writeLogs", dest="writeLogs", nargs='?', action='store',
-                default=None, const=os.getcwd(),
-                help="Write worker logs received by the leader into their own files at the "
-                     "specified path. Any non-empty standard output and error from failed batch "
-                     "system jobs will also be written into files at this path. "
-                     "The current working directory will be used if a path is "
-                     "not specified explicitly. Note: By default only the logs of failed jobs are "
-                     "returned to leader. Set log level to 'debug' or enable "
-                     "'--writeLogsFromAllJobs' to get logs back from successful jobs, and adjust "
-                     "'maxLogFileSize' to control the truncation limit for worker logs.")
-    addOptionFn("--writeLogsGzip", dest="writeLogsGzip", nargs='?', action='store',
-                default=None, const=os.getcwd(),
-                help="Identical to --writeLogs except the logs files are gzipped on the leader.")
-    addOptionFn("--writeLogsFromAllJobs", dest="writeLogsFromAllJobs", action='store_true',
-                default=False,
-                help="Whether to write logs from all jobs (including the successful ones) without "
-                     "necessarily setting the log level to 'debug'. Ensure that either --writeLogs "
-                     "or --writeLogsGzip is set if enabling this option.")
-    addOptionFn("--realTimeLogging", dest="realTimeLogging", action="store_true", default=False,
-                help="Enable real-time logging from workers to masters")
-
-    addOptionFn("--sseKey", dest="sseKey", default=None,
-                help="Path to file containing 32 character key to be used for server-side encryption on "
-                     "awsJobStore or googleJobStore. SSE will not be used if this flag is not passed.")
-    addOptionFn("--setEnv", '-e', metavar='NAME=VALUE or NAME',
-                dest="environment", default=[], action="append",
-                help="Set an environment variable early on in the worker. If VALUE is omitted, "
-                     "it will be looked up in the current environment. Independently of this "
-                     "option, the worker will try to emulate the leader's environment before "
-                     "running a job, except for some variables known to vary across systems. "
-                     "Using this option, a variable can be injected into the worker process "
-                     "itself before it is started.")
-    addOptionFn("--servicePollingInterval", dest="servicePollingInterval", default=None,
-                help="Interval of time service jobs wait between polling for the existence"
-                " of the keep-alive flag (defailt=%s)" % config.servicePollingInterval)
-    addOptionFn('--forceDockerAppliance', dest='forceDockerAppliance', action='store_true',
-                default=False,
-                help='Disables sanity checking the existence of the docker image specified by '
-                'TOIL_APPLIANCE_SELF, which Toil uses to provision mesos for autoscaling.')
-    addOptionFn('--disableProgress', dest='disableProgress', action='store_true', default=False,
-                help="Disables the progress bar shown when standard error is a terminal.")
-    #
     # Debug options
-    #
-    addOptionFn = addGroupFn("toil debug options", "Debug options")
-    addOptionFn("--debugWorker", default=False, action="store_true",
-                help="Experimental no forking mode for local debugging."
-                     " Specifically, workers are not forked and"
-                     " stderr/stdout are not redirected to the log.")
-    addOptionFn("--disableWorkerOutputCapture", default=False, action="store_true",
-                help="Let worker output go to worker's standard"
-                     " out/error instead of per-job logs.")
-    addOptionFn("--badWorker", dest="badWorker", default=None,
-                help=(
-                "For testing purposes randomly kill 'badWorker' proportion of jobs using SIGKILL, default=%s" % config.badWorker))
-    addOptionFn("--badWorkerFailInterval", dest="badWorkerFailInterval", default=None,
-                help=("When killing the job pick uniformly within the interval from 0.0 to "
-                      "'badWorkerFailInterval' seconds after the worker starts, default=%s" % config.badWorkerFailInterval))
+    debug_options = parser.add_argument_group(
+        title="Toil debug options.",
+        description="Debug options for finding problems or helping with testing."
+    )
+    debug_options.add_argument("--debugWorker", default=False, action="store_true",
+                               help="Experimental no forking mode for local debugging.  Specifically, workers "
+                                    "are not forked and stderr/stdout are not redirected to the log.")
+    debug_options.add_argument("--disableWorkerOutputCapture", default=False, action="store_true",
+                               help="Let worker output go to worker's standard out/error instead of per-job logs.")
+    debug_options.add_argument("--badWorker", dest="badWorker", default=None,
+                               help=f"For testing purposes randomly kill --badWorker proportion of jobs using "
+                                    f"SIGKILL.  default={config.badWorker}")
+    debug_options.add_argument("--badWorkerFailInterval", dest="badWorkerFailInterval", default=None,
+                               help=f"When killing the job pick uniformly within the interval from 0.0 to "
+                                    f"--badWorkerFailInterval seconds after the worker starts.  "
+                                    f"default={config.badWorkerFailInterval}")
+
+    # Misc options
+    misc_options = parser.add_argument_group(
+        title="Toil miscellaneous options.",
+        description="Everything else."
+    )
+    misc_options.add_argument('--disableCaching', dest='disableCaching', type='bool', nargs='?', const=True,
+                              default=False,
+                              help='Disables caching in the file store. This flag must be set to use '
+                                   'a batch system that does not support cleanup, such as Parasol.')
+    misc_options.add_argument('--disableChaining', dest='disableChaining', action='store_true', default=False,
+                              help="Disables chaining of jobs (chaining uses one job's resource allocation "
+                                   "for its successor job if possible).")
+    misc_options.add_argument("--disableJobStoreChecksumVerification", dest="disableJobStoreChecksumVerification",
+                              default=False, action="store_true",
+                              help="Disables checksum verification for files transferred to/from the job store.  "
+                                   "Checksum verification is a safety check to ensure the data is not corrupted "
+                                   "during transfer. Currently only supported for non-streaming AWS files.")
+    misc_options.add_argument("--maxLogFileSize", dest="maxLogFileSize", default=None,
+                              help=f"The maximum size of a job log file to keep (in bytes), log files larger than "
+                                   f"this will be truncated to the last X bytes. Setting this option to zero will "
+                                   f"prevent any truncation. Setting this option to a negative value will truncate "
+                                   f"from the beginning.  Default={bytes2human(config.maxLogFileSize)}")
+    misc_options.add_argument("--writeLogs", dest="writeLogs", nargs='?', action='store', default=None,
+                              const=os.getcwd(),
+                              help="Write worker logs received by the leader into their own files at the specified "
+                                   "path. Any non-empty standard output and error from failed batch system jobs will "
+                                   "also be written into files at this path.  The current working directory will be "
+                                   "used if a path is not specified explicitly. Note: By default only the logs of "
+                                   "failed jobs are returned to leader. Set log level to 'debug' or enable "
+                                   "'--writeLogsFromAllJobs' to get logs back from successful jobs, and adjust "
+                                   "'maxLogFileSize' to control the truncation limit for worker logs.")
+    misc_options.add_argument("--writeLogsGzip", dest="writeLogsGzip", nargs='?', action='store', default=None,
+                              const=os.getcwd(),
+                              help="Identical to --writeLogs except the logs files are gzipped on the leader.")
+    misc_options.add_argument("--writeLogsFromAllJobs", dest="writeLogsFromAllJobs", action='store_true',
+                              default=False,
+                              help="Whether to write logs from all jobs (including the successful ones) without "
+                                   "necessarily setting the log level to 'debug'. Ensure that either --writeLogs "
+                                   "or --writeLogsGzip is set if enabling this option.")
+    misc_options.add_argument("--realTimeLogging", dest="realTimeLogging", action="store_true", default=False,
+                              help="Enable real-time logging from workers to masters")
+    misc_options.add_argument("--sseKey", dest="sseKey", default=None,
+                              help="Path to file containing 32 character key to be used for server-side encryption on "
+                                   "awsJobStore or googleJobStore. SSE will not be used if this flag is not passed.")
+    misc_options.add_argument("--setEnv", '-e', metavar='NAME=VALUE or NAME', dest="environment", default=[],
+                              action="append",
+                              help="Set an environment variable early on in the worker. If VALUE is omitted, it will "
+                                   "be looked up in the current environment. Independently of this option, the worker "
+                                   "will try to emulate the leader's environment before running a job, except for "
+                                   "some variables known to vary across systems.  Using this option, a variable can "
+                                   "be injected into the worker process itself before it is started.")
+    misc_options.add_argument("--servicePollingInterval", dest="servicePollingInterval", default=None,
+                              help=f"Interval of time service jobs wait between polling for the existence of the "
+                                   f"keep-alive flag.  Default: {config.servicePollingInterval}")
+    misc_options.add_argument('--forceDockerAppliance', dest='forceDockerAppliance', action='store_true', default=False,
+                              help='Disables sanity checking the existence of the docker image specified by '
+                                   'TOIL_APPLIANCE_SELF, which Toil uses to provision mesos for autoscaling.')
+    misc_options.add_argument('--disableProgress', dest='disableProgress', action='store_true', default=False,
+                              help="Disables the progress bar shown when standard error is a terminal.")
 
 
 def parseBool(val):
@@ -722,7 +690,7 @@ def getNodeID():
     return nodeID
 
 
-class Toil(object):
+class Toil:
     """
     A context manager that represents a Toil workflow, specifically the batch system, job store,
     and its configuration.

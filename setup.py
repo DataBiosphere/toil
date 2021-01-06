@@ -46,6 +46,7 @@ def run_setup():
     dateutil = 'python-dateutil'
     addict = 'addict>=2.2.1, <2.3'
     enlighten = 'enlighten>=1.5.2, <2'
+    wdlparse = 'wdlparse==0.1.0'
 
     core_reqs = [
         dill,
@@ -75,11 +76,13 @@ def run_setup():
         htcondor]
     kubernetes_reqs = [
         kubernetes,
-        idna] # Kubernetes's urllib3 can mange to use idna without really depending on it.
+        idna]  # Kubernetes's urllib3 can mange to use idna without really depending on it.
     mesos_reqs = [
         pymesos,
         psutil]
-    wdl_reqs = []
+    wdl_reqs = [
+        wdlparse
+    ]
 
     # htcondor is not supported by apple
     # this is tricky to conditionally support in 'all' due
@@ -91,7 +94,8 @@ def run_setup():
         encryption_reqs + \
         google_reqs + \
         kubernetes_reqs + \
-        mesos_reqs
+        mesos_reqs + \
+        wdl_reqs
 
     setup(
         name='toil',

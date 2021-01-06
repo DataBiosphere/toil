@@ -15,6 +15,7 @@ import errno
 import hashlib
 import logging
 import os
+import stat
 import re
 import shutil
 import sqlite3
@@ -1035,7 +1036,6 @@ class CachingFileStore(AbstractFileStore):
         # Make sure to pass along the file basename.
         # TODO: this empty file could leak if we die now...
         fileID = self.jobStore.getEmptyFileStoreID(creatorID, cleanup, os.path.basename(localFileName))
-
         # Work out who we are
         me = get_process_name(self.workDir)
 
@@ -1120,7 +1120,10 @@ class CachingFileStore(AbstractFileStore):
         else:
             # We do not want to use the cache
             finalPath = self._readGlobalFileWithoutCache(fileStoreID, localFilePath, mutable, symlink, readerID)
-            
+
+        if getattr(fileStoreID, 'executable', False):
+            os.chmod(finalPath, os.stat(finalPath).st_mode | stat.S_IXUSR)
+
         # Record access in case the job crashes and we have to log it
         self.logAccess(fileStoreID, finalPath)
         return finalPath

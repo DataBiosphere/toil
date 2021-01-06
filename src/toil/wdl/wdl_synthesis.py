@@ -14,7 +14,6 @@
 import logging
 import os
 
-import toil.wdl.wdl_parser as wdl_parser
 from toil.wdl.wdl_functions import heredoc_wdl
 from toil.wdl.wdl_types import (WDLArrayType,
                                 WDLCompoundType,
@@ -23,7 +22,7 @@ from toil.wdl.wdl_types import (WDLArrayType,
                                 WDLPairType,
                                 WDLType)
 
-wdllogger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class SynthesizeWDL:
@@ -53,6 +52,13 @@ class SynthesizeWDL:
                  jobstore=None,
                  destBucket=None):
         self.output_directory = output_directory
+        if not os.path.exists(self.output_directory):
+            try:
+                os.makedirs(self.output_directory)
+            except:
+                raise OSError(
+                    'Could not create directory.  Insufficient permissions or disk space most likely.')
+
         self.output_file = os.path.join(self.output_directory, 'toilwdl_compiled.py')
 
         self.jobstore = jobstore if jobstore else './toilWorkflowRun'
@@ -1068,16 +1074,3 @@ class SynthesizeWDL:
             f.write(pretty(i.tasks_dictionary))
             f.write('\n\n\n\n\n\n')
             f.write(pretty(i.workflows_dictionary))
-
-
-def write_AST(wdl_file, outdir=None):
-    '''
-    Writes a file with the AST for a wdl file in the outdir.
-    '''
-    if outdir is None:
-        outdir = os.getcwd()
-    with open(os.path.join(outdir, 'AST.out'), 'w') as f:
-        with open(wdl_file, 'r') as wdl:
-            wdl_string = wdl.read()
-            ast = wdl_parser.parse(wdl_string).ast()
-            f.write(ast.dumps(indent=2))
