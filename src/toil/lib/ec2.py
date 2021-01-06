@@ -144,9 +144,9 @@ def establish_boto3_session(region_name: Optional[str] = None) -> Session:
     # See https://github.com/boto/botocore/pull/1338/
     # And https://github.com/boto/botocore/commit/2dae76f52ae63db3304b5933730ea5efaaaf2bfc
 
-    botocore_session = botocore.session.get_session()
+    botocore_session = get_session()
     botocore_session.get_component('credential_provider').get_provider(
-        'assume-role').cache = botocore.credentials.JSONFileCache()
+        'assume-role').cache = JSONFileCache()
     return Session(botocore_session=botocore_session, region_name=region_name)
 
 # This regex matches AWS availability zones.
