@@ -200,7 +200,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 kubernetes.config.load_kube_config()
                 # Worked. We're using kube config
                 config_source = 'kube'
-            except TypeError:
+            except kubernetes.config.ConfigException:
                 # Didn't work. Try pod-based credentials in case we are in a pod.
                 try:
                     kubernetes.config.load_incluster_config()
