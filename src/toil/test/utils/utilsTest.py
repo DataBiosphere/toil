@@ -147,7 +147,7 @@ class UtilsTest(ToilTest):
 
             # launch master with an assortment of custom tags
             system([self.toilMain, 'launch-cluster', '-t', 'key1=value1', '-t', 'key2=value2', '--tag', 'key3=value3',
-                    '--leaderNodeType=m3.medium', '--keyPairName=' + keyName, clusterName,
+                    '--leaderNodeType=t2.medium', '--keyPairName=' + keyName, clusterName,
                     '--provisioner=aws', '--zone=us-west-2a', '--logLevel=DEBUG'])
 
             from toil.provisioners import cluster_factory
