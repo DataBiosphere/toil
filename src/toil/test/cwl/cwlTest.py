@@ -48,12 +48,20 @@ log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 3600
 
 
+def invent_aws_jobstore():
+    """
+    Create a string usable as a new, quite probably unique job store on AWS.
+    """
+
+    return f'aws:us-west-2:deleteme-toil-test-{str(uuid.uuid4())[-12:]}'
+
+
+
 def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selected_tests=None):
     try:
         cmd = ['cwltest',
                '--verbose',
                '--tool=toil-cwl-runner',
-               f'-j{int(psutil.cpu_count()/2)}',
                f'--test={yml}',
                '--timeout=2400',
                f'--basedir={workDir}']
@@ -62,15 +70,31 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
 
         args_passed_directly_to_toil = [f'--disableCaching={not caching}', '--clean=always']
 
-        if batchSystem == 'kubernetes' and 'CWL_K8_TEST_BUCKET' in os.environ:
-            args_passed_directly_to_toil.append(f'--jobStore=aws:us-west-2:{os.environ["CWL_K8_TEST_BUCKET"]}')
+        job_store_override = None
+
+        if batchSystem == 'kubernetes':
+            # We will need a job store that is not local.
+            # If we don't pas this, a local job store gets created in the work dir.
+            job_store_override = invent_aws_jobstore()
+            args_passed_directly_to_toil.append(f'--jobStore={job_store_override}')
+        else:
+            # We are runnign locally and aren't sending the same job store to
+            # every test, so we can run tests in parallel.
+            # TODO: Work out a way to generate an AWS job store dynamically per test.
+            cmd.append(f'-j{int(psutil.cpu_count()/2)}')
 
         if batchSystem:
             args_passed_directly_to_toil.append(f"--batchSystem={batchSystem}")
         cmd.extend(['--'] + args_passed_directly_to_toil)
 
         log.info("Running: '%s'", "' '".join(cmd))
-        subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
+        try:
+            subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
+        finally:
+            if job_store_override:
+                # Clean up the job store we used for all the tests, if it is still there.
+                subprocess.run(['toil', 'clean', job_store_override])
+
     except subprocess.CalledProcessError as e:
         only_unsupported = False
         # check output -- if we failed but only have unsupported features, we're okay
@@ -154,7 +178,7 @@ class CWLv10Test(ToilTest):
     def test_s3_as_secondary_file(self):
         from toil.cwl import cwltoil
         st = StringIO()
-        main_args = ['--jobStore', f'aws:us-west-2:deleteme-cwl-s3-secondary-file-test-{str(uuid.uuid4())[-12:]}',
+        main_args = ['--jobStore', invent_aws_jobstore(),
                      '--outdir', self.outDir,
                      os.path.join(self.rootDir, 'src/toil/test/cwl/s3_secondary_file.cwl'),
                      os.path.join(self.rootDir, 'src/toil/test/cwl/s3_secondary_file.json')]
@@ -202,7 +226,10 @@ class CWLv10Test(ToilTest):
 
     @slow
     def test_restart(self):
-        """Enable restarts with toil-cwl-runner -- run failing test, re-run correct test."""
+        """
+        Enable restarts with toil-cwl-runner -- run failing test, re-run correct test.
+        Only implemented for single machine.
+        """
         log.info('Running CWL Test Restart.  Expecting failure, then success.')
         from toil.cwl import cwltoil
         from toil.jobStores.abstractJobStore import NoSuchJobStoreException

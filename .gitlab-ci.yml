@@ -51,7 +51,6 @@ py37_cwl_v1.0_kubernetes:
     - export TOIL_WORKDIR=/var/lib/toil
     - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
     - mkdir -p ${TOIL_WORKDIR}
-    - export CWL_K8_TEST_BUCKET=toil-test-$RANDOM-$RANDOM-$RANDOM
     - mypy --ignore-missing-imports --no-strict-optional $(pwd)/src/toil/cwl/cwltoil.py  # make this a separate linting stage
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance_with_caching
