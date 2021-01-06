@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.wdl.wdl_types import WDLFile, WDLPair
 
-wdllogger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class WDLRuntimeError(Exception):
@@ -180,7 +180,7 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
 
 def process_single_infile(wdl_file: WDLFile, fileStore: AbstractFileStore) -> WDLFile:
     f = wdl_file.file_path
-    wdllogger.info('Importing {f} into the jobstore.'.format(f=f))
+    logger.info('Importing {f} into the jobstore.'.format(f=f))
     if f.startswith('http://') or f.startswith('https://') or \
             f.startswith('file://') or f.startswith('wasb://'):
         filepath = fileStore.importFile(f)
@@ -292,7 +292,7 @@ def process_single_outfile(wdl_file: WDLFile, fileStore, workDir, outDir) -> WDL
             std_file = os.path.join(workDir, 'execution', std_file)
             if os.path.exists(std_file):
                 with open(std_file, 'rb') as f:
-                    wdllogger.info(f.read())
+                    logger.info(f.read())
 
         raise RuntimeError('OUTPUT FILE: {} was not found in {}!\n'
                            '{}\n\n'
