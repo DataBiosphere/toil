@@ -1216,7 +1216,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         from boto.sdb import connect_to_region
         from toil.jobStores.aws.jobStore import BucketLocationConflictException
         from toil.jobStores.aws.utils import retry_s3
-        from toil.jobStores.aws.jobStore import get_boto3_session
+        from toil.jobStores.aws.jobStore import establish_boto3_session
         externalAWSLocation = 'us-west-1'
 
         for testRegion in 'us-east-1', 'us-west-2':
@@ -1227,7 +1227,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             testJobStoreUUID = str(uuid.uuid4())
             # Create the bucket at the external region
             bucketName = 'domain-test-' + testJobStoreUUID + '--files'
-            client = get_boto3_session().client('s3', region_name=externalAWSLocation)
+            client = establish_boto3_session().client('s3', region_name=externalAWSLocation)
 
             for attempt in retry_s3(delays=(2, 5, 10, 30, 60), timeout=600):
                 with attempt:
@@ -1324,8 +1324,8 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         """A S3.Bucket instance is returned"""
         from toil.jobStores.aws.utils import retry_s3
         from toil.jobStores.aws.utils import region_to_bucket_location
-        from toil.jobStores.aws.jobStore import get_boto3_session
-        resource = get_boto3_session().resource('s3', region_name=self.awsRegion())
+        from toil.jobStores.aws.jobStore import establish_boto3_session
+        resource = establish_boto3_session().resource('s3', region_name=self.awsRegion())
         bucket = resource.Bucket('import-export-test-%s' % uuid.uuid4())
 
         for attempt in retry_s3():
