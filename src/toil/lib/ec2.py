@@ -445,7 +445,32 @@ def create_instances(ec2_resource: ServiceResource,
         request['TagSpecifications'] = [{'ResourceType': 'instance', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]},
                                         {'ResourceType': 'volume', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]}]
 
-    return ec2_resource.create_instances(**prune(request))
+    instances_made = ec2_resource.create_instances(**prune(request))
+    
+    for instance in instances_made:
+        for tag_found in instance.tags:
+            # Sometimes tags are overridden by policy in the account. Check them over.
+            key_found = tag_found.get('Key')
+            value_found = tag_found.get('Value')
+            if key_found in tags and tags[key_found] != value_found:
+                # Someone tampered with our tags
+                log.warning('Instance has value of %s for tag %s instead of submitted value of %s. Fixing...',
+                            value_found, key_found, tags[key_found])
+                # Put them back. We can't do this for template-based instances, but we can do it here.
+                try:
+                    instance.create_tags({'Key': key_found, 'Value': tags[key_found]})
+                except e:
+                    # We can't fail now or we will retry the entire method and make the instances again!
+                    # So we just let the tags be wrong if we can't fix them the first time.
+                    log.warning('Failed to correct tag %s: %s', key_found, e)
+                    pass
+                    
+    return instances_made
+                    
+                
+                
+        
+    
            
 @retry(intervals=[5, 5, 10, 20, 20, 20, 20], errors=INCONSISTENCY_ERRORS)
 def create_launch_template(ec2_client: BaseClient,
