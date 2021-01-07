@@ -6,6 +6,12 @@ variables:
   DEBIAN_FRONTEND: "noninteractive"
 
 before_script:
+  # Configure Docker to use a mirror for Docker Hub and restart the daemon
+  # Set the registry as insecure because it is probably cluster-internal over plain HTTP.
+  - |
+    if [[ ! -z "${DOCKER_HUB_MIRROR}" ]] ; then
+        echo "{\"registry-mirrors\": [\"${DOCKER_HUB_MIRROR}\"], \"insecure-registries\": [\"${DOCKER_HUB_MIRROR##*://}\"]}" | sudo tee /etc/docker/daemon.json
+    fi
   - startdocker || true
   - docker info
   - cat /etc/hosts
