@@ -176,6 +176,6 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                 maxCPU = int(items[cpu_index])
             if items[mem_index] != '-' and MemoryString(items[mem_index]) > maxMEM:
                 maxMEM = MemoryString(items[mem_index])
-        if maxCPU == 0 or maxMEM == 0:
+        if maxCPU == 0 or maxMEM == MemoryString("0"):
             raise RuntimeError('qhost returned null NCPU or MEMTOT info')
         return maxCPU, maxMEM
