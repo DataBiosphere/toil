@@ -287,6 +287,3 @@ class ReadableTransformingPipe(ReadablePipe):
     
     def writeTo(self, writable):
         self.transform(self.source, writable)
-    
-    
-

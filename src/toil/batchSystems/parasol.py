@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ from threading import Thread
 from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
 from toil.common import Toil
-from toil.lib.bioio import getTempFile
+from toil.test import get_temp_file
 from toil.lib.iterables import concat
 
 logger = logging.getLogger(__name__)
@@ -140,7 +140,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         try:
             results = self.resultsFiles[(truncatedMemory, jobDesc.cores)]
         except KeyError:
-            results = getTempFile(rootDir=self.parasolResultsDir)
+            results = get_temp_file(rootDir=self.parasolResultsDir)
             self.resultsFiles[(truncatedMemory, jobDesc.cores)] = results
 
         # Prefix the command with environment overrides, optionally looking them up from the
@@ -366,4 +366,3 @@ class ParasolBatchSystem(BatchSystemSupport):
         from toil.common import iC
         setOption("parasolCommand", None, None, 'parasol')
         setOption("parasolMaxBatches", int, iC(1), 10000)
-        

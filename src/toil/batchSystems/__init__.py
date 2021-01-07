@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 from functools import total_ordering
 
 
@@ -22,7 +20,7 @@ class DeadlockException(Exception):
     resources to run the workflow
     """
     def __init__(self, msg):
-        self.msg = "Deadlock encountered: " + msg
+        self.msg = f"Deadlock encountered: {msg}"
         super().__init__()
 
     def __str__(self):

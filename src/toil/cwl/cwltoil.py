@@ -1,6 +1,6 @@
 """Implemented support for Common Workflow Language (CWL) for Toil."""
 # Copyright (C) 2015 Curoverse, Inc
-# Copyright (C) 2016-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 # Copyright (C) 2019-2020 Seven Bridges
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,6 +37,7 @@ from typing import (
     Mapping,
     MutableMapping,
     MutableSequence,
+    Optional,
     Text,
     TextIO,
     Tuple,
@@ -55,6 +56,7 @@ import cwltool.main
 import cwltool.provenance
 import cwltool.resolver
 import cwltool.stdfsaccess
+import schema_salad.ref_resolver
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mutation import MutationManager
@@ -72,8 +74,8 @@ from cwltool.software_requirements import (
     get_container_from_software_requirements,
 )
 from cwltool.utils import (
-    CWLOutputAtomType,
     CWLObjectType,
+    CWLOutputAtomType,
     adjustDirObjs,
     adjustFileObjs,
     aslist,
@@ -86,7 +88,6 @@ from ruamel.yaml.comments import CommentedMap
 from schema_salad import validate
 from schema_salad.schema import Names
 from schema_salad.sourceline import SourceLine
-import schema_salad.ref_resolver
 
 from toil.common import Config, Toil, addOptions
 from toil.fileStores import FileID
@@ -564,8 +565,12 @@ class ToilPathMapper(PathMapper):
         staged: bool = False,
     ) -> None:
         """Iterate over a CWL object, resolving File and Directory path references."""
+        stagedir = cast(Optional[str], obj.get("dirname")) or stagedir
         tgt = convert_pathsep_to_unix(
-            os.path.join(stagedir, cast(str, obj["basename"]))
+            os.path.join(
+                stagedir,
+                cast(str, obj["basename"]),
+            )
         )
         if obj["location"] in self._pathmap:
             return
@@ -579,7 +584,7 @@ class ToilPathMapper(PathMapper):
                 resolved, tgt, "WritableDirectory" if copy else "Directory", staged
             )
 
-            if location.startswith("file://") and not self.stage_listing:
+            if location.startswith("file://"):
                 staged = False
 
             self.visitlisting(
@@ -598,7 +603,6 @@ class ToilPathMapper(PathMapper):
                     cast(str, obj["contents"]),
                     tgt,
                     "CreateWritableFile" if copy else "CreateFile",
-                    # "CreateFile",  # TODO: Allow "WritableFile" here; see base class
                     staged,
                 )
             else:

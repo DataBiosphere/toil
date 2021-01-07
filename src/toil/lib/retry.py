@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -150,7 +150,7 @@ try:
 except ModuleNotFoundError:
     botocore = None
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ErrorCondition:
@@ -257,7 +257,7 @@ def retry(intervals: Optional[List] = None,
                             raise
 
                     interval = intervals_remaining.pop(0)
-                    log.debug(f"Error in {func}: {e}. Retrying after {interval} s...")
+                    logger.debug(f"Error in {func}: {e}. Retrying after {interval} s...")
                     time.sleep(interval)
         return call
     return decorate
@@ -424,7 +424,7 @@ def old_retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: Fals
                 yield
             except Exception as e:
                 if time.time( ) + delay < expiration and predicate( e ):
-                    log.info( 'Got %s, trying again in %is.', e, delay )
+                    logger.info('Got %s, trying again in %is.', e, delay)
                     time.sleep( delay )
                 else:
                     raise

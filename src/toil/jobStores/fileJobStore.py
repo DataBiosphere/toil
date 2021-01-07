@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
 import errno
 import logging
 import os
+import stat
 import pickle
 import random
 import re
@@ -31,7 +32,9 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchFileException,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
-from toil.lib.misc import (AtomicFileCreate, atomic_copy, atomic_copyobj,
+from toil.lib.misc import (AtomicFileCreate,
+                           atomic_copy,
+                           atomic_copyobj,
                            robust_rmtree)
 
 logger = logging.getLogger(__name__)
@@ -285,12 +288,13 @@ class FileJobStore(AbstractJobStore):
     def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False):
         if issubclass(otherCls, FileJobStore):
             if sharedFileName is None:
+                executable = os.stat(url.path).st_mode & stat.S_IXUSR != 0
                 absPath = self._getUniqueFilePath(url.path)  # use this to get a valid path to write to in job store
                 with self.optionalHardCopy(hardlink):
                     self._copyOrLink(url, absPath)
                 # TODO: os.stat(absPath).st_size consistently gives values lower than
                 # getDirSizeRecursively()
-                return FileID(self._getFileIdFromPath(absPath), os.stat(absPath).st_size)
+                return FileID(self._getFileIdFromPath(absPath), os.stat(absPath).st_size, executable)
             else:
                 self._requireValidSharedFileName(sharedFileName)
                 path = self._getSharedFilePath(sharedFileName)
@@ -308,7 +312,10 @@ class FileJobStore(AbstractJobStore):
             if self.moveExports:
                 self._move_and_linkback(srcPath, destPath)
             else:
-                atomic_copy(srcPath, destPath)
+                executable = False
+                if getattr(jobStoreFileID, 'executable', False):
+                    executable = jobStoreFileID.executable
+                atomic_copy(srcPath, destPath, executable=executable)
         else:
             super(FileJobStore, self)._defaultExportFile(otherCls, jobStoreFileID, url)
 
@@ -335,11 +342,12 @@ class FileJobStore(AbstractJobStore):
         with open(cls._extractPathFromUrl(url), 'rb') as readable:
             shutil.copyfileobj(readable, writable, length=cls.BUFFER_SIZE)
             # Return the number of bytes we read when we reached EOF.
-            return readable.tell()
+            executable = os.stat(readable.name).st_mode & stat.S_IXUSR
+            return readable.tell(), executable
         
 
     @classmethod
-    def _writeToUrl(cls, readable, url):
+    def _writeToUrl(cls, readable, url, executable=False):
         """
         Writes the contents of a file to a source (writes readable to url)
         using a ~10Mb buffer.
@@ -348,7 +356,9 @@ class FileJobStore(AbstractJobStore):
         :param object readable: An open file object to read from.
         """
         # we use a ~10Mb buffer to improve speed
-        atomic_copyobj(readable, cls._extractPathFromUrl(url), length=cls.BUFFER_SIZE)
+        atomic_copyobj(readable, cls._extractPathFromUrl(url), length=cls.BUFFER_SIZE,
+                        executable=executable)
+
 
     @staticmethod
     def _extractPathFromUrl(url):

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 import errno
 import logging
 import os
@@ -430,7 +428,8 @@ def logProcessContext(config):
 
 try:
     from boto import provider
-    from botocore.credentials import (JSONFileCache, RefreshableCredentials,
+    from botocore.credentials import (JSONFileCache,
+                                      RefreshableCredentials,
                                       create_credential_resolver)
     from botocore.session import Session
 
@@ -683,4 +682,3 @@ try:
 
 except ImportError:
     pass
-

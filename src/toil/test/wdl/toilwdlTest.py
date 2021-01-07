@@ -6,31 +6,24 @@ import uuid
 import zipfile
 from urllib.request import urlretrieve
 
-import toil.wdl.wdl_parser as wdl_parser
-from toil.test import ToilTest, needs_docker, slow
+from toil.test import ToilTest, needs_docker, needs_java, slow
 from toil.version import exactPython
-from toil.wdl.wdl_analysis import AnalyzeWDL
-from toil.wdl.wdl_synthesis import SynthesizeWDL
-from toil.wdl.wdl_functions import generate_docker_bashscript_file
-from toil.wdl.wdl_functions import select_first
-from toil.wdl.wdl_functions import size
-from toil.wdl.wdl_functions import glob
-from toil.wdl.wdl_functions import process_and_read_file
-from toil.wdl.wdl_functions import process_infile
-from toil.wdl.wdl_functions import process_outfile
-from toil.wdl.wdl_functions import abspath_file
-from toil.wdl.wdl_functions import combine_dicts
-from toil.wdl.wdl_functions import parse_memory
-from toil.wdl.wdl_functions import parse_cores
-from toil.wdl.wdl_functions import parse_disk
-from toil.wdl.wdl_functions import defined
-from toil.wdl.wdl_functions import read_tsv
-from toil.wdl.wdl_functions import read_csv
-from toil.wdl.wdl_functions import basename
-from toil.test import ToilTest, slow, needs_docker, needs_java
-import zipfile
-import shutil
-import uuid
+from toil.wdl.wdl_functions import (abspath_file,
+                                    basename,
+                                    combine_dicts,
+                                    defined,
+                                    generate_docker_bashscript_file,
+                                    glob,
+                                    parse_cores,
+                                    parse_disk,
+                                    parse_memory,
+                                    process_and_read_file,
+                                    process_infile,
+                                    process_outfile,
+                                    read_csv,
+                                    read_tsv,
+                                    select_first,
+                                    size)
 
 
 class ToilWdlIntegrationTest(ToilTest):
@@ -171,8 +164,7 @@ class ToilWdlIntegrationTest(ToilTest):
         wdl_that_should_exist = [os.path.abspath('src/toil/wdl/wdl_analysis.py'),
                                  os.path.abspath('src/toil/wdl/wdl_synthesis.py'),
                                  os.path.abspath('src/toil/wdl/wdl_types.py'),
-                                 os.path.abspath('src/toil/wdl/wdl_functions.py'),
-                                 os.path.abspath('src/toil/wdl/wdl_parser.py')]
+                                 os.path.abspath('src/toil/wdl/wdl_functions.py')]
         # make sure the files match the expected files
         for location in wdl_that_should_exist:
             assert location in wdl_locations, '{} not in {}!'.format(str(location), str(wdl_locations))
@@ -226,14 +218,11 @@ class ToilWdlIntegrationTest(ToilTest):
     def testPrimitives(self):
         '''Test if toilwdl correctly interprets some basic declarations.'''
         wdl = os.path.abspath('src/toil/test/wdl/testfiles/vocab.wdl')
-        json = os.path.abspath('src/toil/test/wdl/testfiles/vocab.json')
 
-        aWDL = AnalyzeWDL(wdl, json, self.output_dir)
-        with open(wdl, 'r') as wdl:
-            wdl_string = wdl.read()
-            ast = wdl_parser.parse(wdl_string).ast()
-            aWDL.create_tasks_dict(ast)
-            aWDL.create_workflows_dict(ast)
+        # TODO: test for all version.
+        from toil.wdl.versions.draft2 import AnalyzeDraft2WDL
+        aWDL = AnalyzeDraft2WDL(wdl)
+        aWDL.analyze()
 
         no_declaration = ['bool1', 'int1', 'float1', 'file1', 'string1']
         collection_counter = []
@@ -383,13 +372,10 @@ class ToilWdlIntegrationTest(ToilTest):
             u'helloHaplotypeCaller.haplotypeCaller.RefDict': u'"src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.dict"',
             u'helloHaplotypeCaller.haplotypeCaller.RefFasta': u'"src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.fasta"'}
 
-        t = AnalyzeWDL(
-            "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl",
-            "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json",
-            self.output_dir)
-
-        json_dict = t.dict_from_JSON("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
-        assert json_dict == default_json_dict_output, (str(json_dict) + '\nAssertionError: ' + str(default_json_dict_output))
+        from toil.wdl.utils import dict_from_JSON
+        json_dict = dict_from_JSON("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
+        assert json_dict == default_json_dict_output, (
+                str(json_dict) + '\nAssertionError: ' + str(default_json_dict_output))
 
     @classmethod
     def fetch_and_unzip_from_s3(cls, filename, data, data_dir):

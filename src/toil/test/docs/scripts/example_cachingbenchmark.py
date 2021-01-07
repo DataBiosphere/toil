@@ -103,6 +103,3 @@ def report(job, views):
 
 if __name__=="__main__":
     main()
-
-    
-

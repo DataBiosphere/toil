@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ import errno
 import hashlib
 import logging
 import os
+import stat
 import re
 import shutil
 import sqlite3
@@ -25,9 +26,8 @@ import uuid
 from contextlib import contextmanager
 
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
-from toil.fileStores import FileID
+from toil.fileStores import FileID, make_public_dir
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.lib.bioio import makePublicDir
 from toil.lib.humanize import bytes2human
 from toil.lib.misc import atomic_copy, atomic_copyobj, robust_rmtree
 from toil.lib.retry import ErrorCondition, retry
@@ -975,7 +975,7 @@ class CachingFileStore(AbstractFileStore):
         # Create a working directory for the job
         startingDir = os.getcwd()
         # Move self.localTempDir from the worker directory set up in __init__ to a per-job directory.
-        self.localTempDir = makePublicDir(os.path.join(self.localTempDir, str(uuid.uuid4())))
+        self.localTempDir = make_public_dir(os.path.join(self.localTempDir, str(uuid.uuid4())))
         # Check the status of all jobs on this node. If there are jobs that started and died before
         # cleaning up their presence from the database, clean them up ourselves.
         self._removeDeadJobs(self.workDir, self.con)
@@ -1036,7 +1036,6 @@ class CachingFileStore(AbstractFileStore):
         # Make sure to pass along the file basename.
         # TODO: this empty file could leak if we die now...
         fileID = self.jobStore.getEmptyFileStoreID(creatorID, cleanup, os.path.basename(localFileName))
-
         # Work out who we are
         me = get_process_name(self.workDir)
 
@@ -1121,7 +1120,10 @@ class CachingFileStore(AbstractFileStore):
         else:
             # We do not want to use the cache
             finalPath = self._readGlobalFileWithoutCache(fileStoreID, localFilePath, mutable, symlink, readerID)
-            
+
+        if getattr(fileStoreID, 'executable', False):
+            os.chmod(finalPath, os.stat(finalPath).st_mode | stat.S_IXUSR)
+
         # Record access in case the job crashes and we have to log it
         self.logAccess(fileStoreID, finalPath)
         return finalPath

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
 
 
 import os
+import stat
 import uuid
 
 from toil.common import Toil
@@ -95,6 +96,31 @@ class ImportExportFileTest(ToilTest):
             with toil._jobStore.readSharedFileStream(sharedFileName) as f:
                 self.assertEqual(f.read().decode('utf-8'), 'some data')
 
+    def testImportExportFilePermissions(self):
+        """
+        Ensures that uploaded files preserve their file permissions when they
+        are downloaded again. This function checks that an imported executable file
+        maintains its executability after being exported.
+        """
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        with Toil(options) as toil:
+            for executable in True,False:
+                srcFile = '%s/%s%s' % (self._tempDir, 'in', str(uuid.uuid4()))
+                with open(srcFile, 'w') as f:
+                    f.write('Hello')
+
+                if executable:
+                    # Add file owner execute permissions
+                    os.chmod(srcFile, os.stat(srcFile).st_mode | stat.S_IXUSR)
+
+                # Current file owner execute permissions
+                initialPermissions = os.stat(srcFile).st_mode & stat.S_IXUSR
+                fileID = toil.importFile('file://' + srcFile)
+                toil.exportFile(fileID, 'file://' + self.dstFile)
+                currentPermissions = os.stat(self.dstFile).st_mode & stat.S_IXUSR
+
+                assert initialPermissions == currentPermissions
+
 
 class RestartingJob(Job):
     def __init__(self, inputFileID, failFileID):
@@ -111,4 +137,3 @@ class RestartingJob(Job):
                     with fileStore.writeGlobalFileStream() as (fo, outputFileID):
                         fo.write((fi.read().decode('utf-8') + 'World!').encode('utf-8'))
                         return outputFileID
-

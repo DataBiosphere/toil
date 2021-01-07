@@ -82,7 +82,7 @@ during the computation of a workflow, first set up and configure an account with
     " AWS Secret Access Key [****************G0ys]: "
     " Default region name [us-west-1]: "
     " Default output format [json]: "
-   
+
    This will create the files `~/.aws/config` and `~/.aws/credentials`.
 
 #. If not done already, install toil (example uses version 3.12.0, but we recommend the latest release): ::
@@ -344,6 +344,27 @@ for a shortage of preemptable nodes of a certain type by creating non-preemptabl
 non-preemptable nodes of that type were specified in ``--nodeTypes``.
 
 .. _spot bid: https://aws.amazon.com/ec2/spot/pricing/
+
+Using MinIO and S3-Compatible object stores
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Toil can be configured to access files stored in an `S3-compatible object store`_ such as `MinIO`_. The following environment variables can be used to configure the S3 connection used:
+
+- ``TOIL_S3_HOST``: the IP address or hostname to use for connecting to S3
+
+- ``TOIL_S3_PORT``: the port number to use for connecting to S3, if needed
+
+- ``TOIL_S3_USE_SSL``: enable or disable the usage of SSL for connecting to S3 (``True`` by default)
+
+Examples::
+
+    TOIL_S3_HOST=127.0.0.1
+    TOIL_S3_PORT=9010
+    TOIL_S3_USE_SSL=False
+
+
+.. _S3-compatible object store: https://en.wikipedia.org/wiki/Amazon_S3#S3_API_and_competing_services
+.. _MinIO: https://min.io/
 
 Dashboard
 ---------
