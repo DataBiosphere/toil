@@ -1804,7 +1804,7 @@ def determine_load_listing(tool: ToilCommandLineTool):
     return load_listing
 
 
-usage_message = '\n' + textwrap.dedent(f"""
+usage_message = '\n\n' + textwrap.dedent(f"""
             * All positional arguments [cwl, yml_or_json] must always be specified last for toil-cwl-runner.
               Note: If you're trying to specify a jobstore, please use --jobStore.
     
@@ -2120,7 +2120,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     loading_context.fetcher_constructor,
                 )
             except schema_salad.exceptions.ValidationException:
-                print('You may be getting this error because your arguments are incorrect or out of order.' +
+                print('\nYou may be getting this error because your arguments are incorrect or out of order.' +
                       usage_message, file=sys.stderr)
                 raise
 
@@ -2174,7 +2174,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 )
             except SystemExit as e:
                 if e.code == 2:  # raised by argparse's parse_args() function
-                    print('If both a CWL file and an input object (YAML/JSON) file were provided, this may be the argument order.' +
+                    print('\nIf both a CWL file and an input object (YAML/JSON) file were '
+                          'provided, this may be the argument order.' +
                           usage_message, file=sys.stderr)
                 raise
 
