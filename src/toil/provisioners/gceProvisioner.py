@@ -138,8 +138,7 @@ class GCEProvisioner(AbstractProvisioner):
             tags.update(kwargs['userTags'])
         self._tags = json.dumps(tags)
 
-        userData =  self._getCloudConfigUserData('leader')
-        metadata = {'items': [{'key': 'user-data', 'value': userData}]}
+        metadata = {'items': [{'key': 'user-data', 'value': self._getCloudConfigUserData('leader')}]}
         imageType = 'flatcar-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
         disk = {}
@@ -149,14 +148,19 @@ class GCEProvisioner(AbstractProvisioner):
         disk.update({'boot': True,
              'autoDelete': True })
         name= 'l' + str(uuid.uuid4())
-        leader = self._gceDriver.create_node(name, leaderNodeType, imageType,
-                                            location=self._zone,
-                                            ex_service_accounts=sa_scopes,
-                                            ex_metadata=metadata,
-                                            ex_subnetwork=self._vpcSubnet,
-                                            ex_disks_gce_struct = [disk],
-                                            description=self._tags,
-                                            ex_preemptible=False)
+
+        leader = self._gceDriver.create_node(
+            name,
+            leaderNodeType,
+            imageType,
+            location=self._zone,
+            ex_service_accounts=sa_scopes,
+            ex_metadata=metadata,
+            ex_subnetwork=self._vpcSubnet,
+            ex_disks_gce_struct = [disk],
+            description=self._tags,
+            ex_preemptible=False
+        )
 
         self._instanceGroup.add_instances([leader])
         self._leaderPrivateIP = leader.private_ips[0] # needed if adding workers
