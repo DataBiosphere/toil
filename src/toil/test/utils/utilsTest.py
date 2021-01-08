@@ -146,7 +146,8 @@ class UtilsTest(ToilTest):
             logger.debug(f"Found AWSProvisioner: {aws_provisioner}.")
 
             # launch master with an assortment of custom tags
-            system([self.toilMain, 'launch-cluster', '-t', 'key1=value1', '-t', 'key2=value2', '--tag', 'key3=value3',
+            system([self.toilMain, 'launch-cluster', '--clusterType', 'mesos',
+                    '-t', 'key1=value1', '-t', 'key2=value2', '--tag', 'key3=value3',
                     '--leaderNodeType=t2.medium', '--keyPairName=' + keyName, clusterName,
                     '--provisioner=aws', '--zone=us-west-2a', '--logLevel=DEBUG'])
 
@@ -157,7 +158,7 @@ class UtilsTest(ToilTest):
             # check that the leader carries the appropriate tags
             tags = {'key1': 'value1', 'key2': 'value2', 'key3': 'value3', 'Name': clusterName, 'Owner': keyName}
             for key in tags:
-                self.assertEqual(tags[key], leader.tags.get(key))
+                self.assertEqual(leader.tags.get(key), tags[key])
         finally:
             system([self.toilMain, 'destroy-cluster', '--zone=us-west-2a', '--provisioner=aws', clusterName])
 

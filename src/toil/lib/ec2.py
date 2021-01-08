@@ -447,7 +447,18 @@ def create_instances(ec2_resource: ServiceResource,
 
     instances_made = ec2_resource.create_instances(**prune(request))
     
+    log.debug('Created instances: %s', instances_made)
+    
+    # Now we need to wait a bit for account policies to apply and mess up our tags
+    time.sleep(a_short_time)
+    
     for instance in instances_made:
+        # The instance tags that the instance is immediately returned with
+        # don't reflect the application of account tagging policies. We need to
+        # refresh the instance so we can see the policies applied.
+        instance.reload()
+        
+        # Some instance tags may need re-setting to the values we guarantee they will have.
         fixes = []
         for tag_found in instance.tags:
             # Sometimes tags are overridden by policy in the account. Check them over.
@@ -458,9 +469,11 @@ def create_instances(ec2_resource: ServiceResource,
                 log.warning('Instance has value of %s for tag %s instead of submitted value of %s.',
                             value_found, key_found, tags[key_found])
                 fixes.append({'Key': key_found, 'Value': tags[key_found]})
+            else:
+                log.debug('Instance has correct value of %s for tag %s', value_found, key_found)
         if fixes:
             # Put them back. We can't do this for template-based instances, but we can do it here.
-            log.warning('Fixing %d tags...', len(fixes))
+            log.warning('Fixing %d tags (check your AWS account policies!) ...', len(fixes))
             try:
                 instance.create_tags(Tags=fixes)
             except Exception as e:
