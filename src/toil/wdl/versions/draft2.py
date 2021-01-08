@@ -302,12 +302,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         output_array = []
         for j in i.attributes['attributes']:
             if j.name == 'Output':
-                var_name = self.parse_declaration_name(j.attr("name"))
-                var_type = self.parse_declaration_type(j.attr("type"))
-                var_expressn = self.parse_declaration_expressn(j.attr("expression"), es='', output_expressn=True)
-                if not (var_expressn.startswith('(') and var_expressn.endswith(')')):
-                    var_expressn = self.translate_wdl_string_to_python_string(var_expressn)
-                output_array.append((var_name, var_type, var_expressn))
+                output_array.append(self.parse_declaration(j))
             else:
                 raise NotImplementedError
         return output_array
@@ -551,7 +546,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         else:
             raise NotImplementedError
 
-    def parse_declaration_expressn(self, expressionAST, es, output_expressn=False):
+    def parse_declaration_expressn(self, expressionAST, es):
         """
         Expressions are optional.  Workflow declaration valid examples:
 
@@ -576,10 +571,11 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
                     else:
                         raise TypeError('Parsed boolean ({}) must be expressed as "true" or "false".'
                                         ''.format(expressionAST.source_string))
-                elif expressionAST.str == 'string' and not output_expressn:
+                elif expressionAST.str == 'string':
                     parsed_string = self.translate_wdl_string_to_python_string(expressionAST.source_string)
                     return '{string}'.format(string=parsed_string)
                 else:
+                    # integers, floats, and variables
                     return '{string}'.format(string=expressionAST.source_string)
             elif isinstance(expressionAST, wdl_parser.Ast):
                 if expressionAST.name == 'Add':

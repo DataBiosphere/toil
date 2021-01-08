@@ -877,6 +877,9 @@ class SynthesizeWDL:
             if fn_section.endswith(' + '):
                 fn_section = fn_section[:-3]
             fn_section += '\n        cmd = textwrap.dedent(cmd.strip("{nl}"))\n'.format(nl=r"\n")
+        else:
+            # empty command section
+            fn_section += '        cmd = ""'
 
         return fn_section
 
