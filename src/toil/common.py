@@ -411,7 +411,7 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
                     "as well as parameters to control the level of provisioning."
     )
     provisioner_choices = ['aws', 'gce']
-    autoscaling_options.add_argument("--provisioner", dest="provisioner", choices=provisioner_choices,
+    autoscaling_options.add_argument('--provisioner', '-p', dest="provisioner", choices=provisioner_choices,
                                      help=f"The provisioner for cluster auto-scaling. The currently supported choices "
                                           f"are {provisioner_choices}.  The default is {config.provisioner}.")
     autoscaling_options.add_argument('--nodeTypes', default=None,
