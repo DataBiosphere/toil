@@ -165,7 +165,7 @@ py37_provisioner_integration:
     # - python -m pytest -s src/toil/test/provisioners/aws/awsProvisionerTest.py
     # - python -m pytest -s src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
 
-py37_google_jobstore
+py37_google_jobstore:
   stage: integration
   script:
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
