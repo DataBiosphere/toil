@@ -165,6 +165,17 @@ py37_provisioner_integration:
     # - python -m pytest -s src/toil/test/provisioners/aws/awsProvisionerTest.py
     # - python -m pytest -s src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
 
+py37_google_jobstore
+  stage: integration
+  script:
+    # This reads GITLAB_SECRET_FILE_SSH_KEYS
+    - python setup_gitlab_ssh.py
+    - export TOIL_TEST_INTEGRATIVE=True
+    - export GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_CREDENTIALS
+    - export TOIL_GOOGLE_KEYNAME=id_rsa
+    - export TOIL_GOOGLE_PROJECTID=toil-dev
+    - make test tests=src/toil/test/jobStores/jobStoreTest.py::GoogleJobStoreTest
+
 # Python3.8
 py38_main:
   stage: basic_tests
