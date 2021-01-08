@@ -486,7 +486,7 @@ class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
         # use appliance ssh method instead of sshutil so we can specify input param
         cluster = cluster_factory(provisioner='aws', zone=self.zone, clusterName=self.clusterName)
         leader = cluster.getLeader()
-        leader.sshAppliance('tee', '/home/userScript.py', input=script)
+        leader.sshAppliance('tee', '/home/userScript.py', input=script.encode('utf-8'))
 
     def _runScript(self, toilOptions):
         toilOptions.extend(['--provisioner=aws', '--batchSystem=mesos',

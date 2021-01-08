@@ -227,6 +227,9 @@ class Node(object):
         to be False by default.
 
         kwargs: input, tty, appliance, collectStdout, sshOptions, strict
+
+        :param bytes input: UTF-8 encoded input bytes to send to the command
+
         """
         commandTokens = ['ssh', '-tt']
         if not kwargs.pop('strict', False):
