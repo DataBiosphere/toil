@@ -98,6 +98,9 @@ class AbstractAWSAutoscaleTest(ToilTest):
         log.debug('\n\nSTDERR: ' + e.decode("utf-8"))
         if p.returncode != 0:
             # It failed
+            log.error("Failed to run %s.", str(cmd))
+            log.error('\n\nSTDOUT: ' + o.decode("utf-8"))
+            log.error('\n\nSTDERR: ' + e.decode("utf-8"))
             raise subprocess.CalledProcessError(p.returncode, ' '.join(cmd))
 
     def rsyncUtil(self, src, dest):

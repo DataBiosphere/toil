@@ -478,6 +478,11 @@ def needs_appliance(test_item):
 
     try:
         image = applianceSelf()
+    except ApplianceImageNotFound:
+        return unittest.skip(f"Appliance image is not published. Use 'make test' target to automatically build appliance, or "
+                             f"just run 'make push_docker' prior to running this test.")(test_item)
+
+    try:
         stdout, stderr = subprocess.Popen(['docker', 'inspect', '--format="{{json .RepoTags}}"', image],
                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
         if image in stdout.decode("utf-8"):
@@ -485,7 +490,7 @@ def needs_appliance(test_item):
     except:
         pass
 
-    return unittest.skip(f"Cannot find appliance {image}. Use 'make test' target to automatically build appliance, or "
+    return unittest.skip(f"Cannot find appliance {image} locally. Use 'make test' target to automatically build appliance, or "
                          f"just run 'make push_docker' prior to running this test.")(test_item)
 
 
