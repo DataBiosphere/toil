@@ -34,8 +34,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
 
     class Worker(Thread, metaclass=ABCMeta):
 
-        def __init__(self, newJobsQueue, updatedJobsQueue, killQueue,
-                     killedJobsQueue, boss):
+        def __init__(self, newJobsQueue, updatedJobsQueue, killQueue, killedJobsQueue, boss):
             """
             Abstract worker interface class. All instances are created with five
             initial arguments (below). Note the Queue instances passed are empty.

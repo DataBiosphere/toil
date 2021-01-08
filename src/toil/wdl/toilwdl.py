@@ -17,33 +17,32 @@ import os
 import subprocess
 import sys
 
-import toil.wdl.wdl_parser as wdl_parser
-from toil.wdl.wdl_analysis import AnalyzeWDL
-from toil.wdl.wdl_synthesis import SynthesizeWDL, write_AST
+from toil.wdl.utils import dict_from_JSON
+from toil.wdl.versions.draft2 import AnalyzeDraft2WDL
+from toil.wdl.wdl_synthesis import SynthesizeWDL
 
-wdllogger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def main():
-    '''
+    """
     A program to run WDL input files using native Toil scripts.
 
     Calls two files, described below, wdl_analysis.py and wdl_synthesis.py:
 
-    wdl_analysis reads the wdl, json, and extraneous files and restructures them
-    into 2 intermediate data structures before writing (python dictionaries):
+    wdl_analysis reads the wdl and restructures them into 2 intermediate data
+    structures before writing (python dictionaries):
         "wf_dictionary": containing the parsed workflow information.
         "tasks_dictionary": containing the parsed task information.
 
-    wdl_synthesis takes the "wf_dictionary" and "tasks_dictionary" and uses them to
-    write a native python script for use with Toil.
+    wdl_synthesis takes the "wf_dictionary", "tasks_dictionary", and the JSON file
+    and uses them to write a native python script for use with Toil.
 
     Requires a WDL file, and a JSON file.  The WDL file contains ordered commands,
     and the JSON file contains input values for those commands.  To run in Toil,
     these two files must be parsed, restructured into python dictionaries, and
     then compiled into a Toil formatted python script.  This compiled Toil script
-    is deleted after running unless the user specifies: "--dont_delete_compiled"
-    as an option.
+    is deleted unless the user specifies: "--dev_mode" as an option.
 
     The WDL parser was auto-generated from the Broad's current WDL grammar file:
     https://github.com/openwdl/wdl/blob/master/parsers/grammar.hgr
@@ -58,7 +57,7 @@ def main():
     github.com/ENCODE-DCC/pipeline-container/blob/master/local-workflows/encode_mapping_workflow.wdl
 
     Additional support to be broadened to include more features soon.
-    '''
+    """
     parser = argparse.ArgumentParser(description='Runs WDL files with toil.')
     parser.add_argument('wdl_file', help='A WDL workflow file.')
     parser.add_argument('secondary_file', help='A secondary data file (json).')
@@ -89,34 +88,28 @@ def main():
     # check_call later to run the compiled toil file.
     args, wdl_run_args = parser.parse_known_args()
 
-    wdl_file_path = os.path.abspath(args.wdl_file)
+    wdl_file = os.path.abspath(args.wdl_file)
     args.secondary_file = os.path.abspath(args.secondary_file)
     args.outdir = os.path.abspath(args.outdir)
 
-    if args.dev_mode:
-        write_AST(wdl_file_path, args.outdir)
+    # TODO: construct analyzer based on version.
+    aWDL = AnalyzeDraft2WDL(wdl_file=wdl_file)
 
-    aWDL = AnalyzeWDL(wdl_file_path, args.secondary_file, args.outdir)
+    if args.dev_mode:
+        aWDL.write_AST(out_dir=args.outdir)
 
     # read secondary file; create dictionary to hold variables
     if args.secondary_file.endswith('.json'):
-        aWDL.dict_from_JSON(args.secondary_file)
-    elif args.secondary_file.endswith('.yml') or args.secondary_file.endswith('.yaml'):
-        aWDL.dict_from_YML(args.secondary_file)  # json only atm
+        json_dict = dict_from_JSON(args.secondary_file)
     else:
         raise RuntimeError('Unsupported Secondary File Type.  Use json.')
 
-    # parse the wdl AST into 2 dictionaries
-    with open(wdl_file_path, 'r') as wdl:
-        wdl_string = wdl.read()
-        ast = wdl_parser.parse(wdl_string).ast()
-        aWDL.create_tasks_dict(ast)
-        aWDL.create_workflows_dict(ast)
+    aWDL.analyze()
 
     sWDL = SynthesizeWDL(aWDL.tasks_dictionary,
                          aWDL.workflows_dictionary,
                          args.outdir,
-                         aWDL.json_dict,
+                         json_dict,
                          args.docker_user,
                          args.jobStore,
                          args.destBucket)
@@ -134,10 +127,10 @@ def main():
                            sWDL.output_file)
 
     if args.dev_mode:
-        wdllogger.debug('WDL file compiled to toil script.')
+        logger.debug('WDL file compiled to toil script.')
         sWDL.write_mappings(aWDL)
     else:
-        wdllogger.debug('WDL file compiled to toil script.  Running now.')
+        logger.debug('WDL file compiled to toil script.  Running now.')
         exe = sys.executable if sys.executable else 'python'
         cmd = [exe, sWDL.output_file]
         cmd.extend(wdl_run_args)

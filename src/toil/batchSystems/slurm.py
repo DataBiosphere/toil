@@ -171,7 +171,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
                 sbatch_line.append('--export=' + ','.join(argList))
 
-            if mem is not None:
+            if mem is not None and self.boss.config.allocate_mem:
                 # memory passed in is in bytes, but slurm expects megabytes
                 sbatch_line.append(f'--mem={math.ceil(mem / 2 ** 20)}')
             if cpu is not None:
