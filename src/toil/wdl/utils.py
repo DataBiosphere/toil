@@ -13,8 +13,53 @@
 # limitations under the License.
 import json
 
+from toil.wdl.wdl_analysis import AnalyzeWDL
 
-def dict_from_JSON(JSON_file):
+
+def check_version(iterable) -> str:
+    """
+    Takes in a WDL document and checks the version.
+
+    :param iterable: An iterable that contains the lines of a WDL document.
+    """
+    if isinstance(iterable, str):
+        iterable = iterable.split('\n')
+
+    for line in iterable:
+        line = line.strip()
+        # check if the first non-empty, non-comment line is the version statement
+        if line and not line.startswith('#'):
+            if line.startswith('version '):
+                return line[8:].strip()
+            break
+    # only draft-2 doesn't contain the version declaration
+    return 'draft-2'
+
+
+def get_analyzer(wdl_file: str) -> AnalyzeWDL:
+    """
+    Creates an instance of an AnalyzeWDL implementation based on the version.
+
+    :param wdl_file: The path to the WDL file.
+    :rtype: AnalyzeWDL
+    """
+    with open(wdl_file, 'r') as f:
+        version = check_version(f)
+
+    if version == 'draft-2':
+        from toil.wdl.versions.draft2 import AnalyzeDraft2WDL
+        return AnalyzeDraft2WDL(wdl_file)
+    # elif version == '1.0':
+    #     from toil.wdl.versions.v1 import AnalyzeV1WDL
+    #     return AnalyzeV1WDL(wdl_file)
+    # elif version == 'development':
+    #     from toil.wdl.versions.dev import AnalyzeDevelopmentWDL
+    #     return AnalyzeDevelopmentWDL(wdl_file)
+    else:
+        raise RuntimeError(f"Unknown WDL version: '{version}'.")
+
+
+def dict_from_JSON(JSON_file: str) -> dict:
     """
     Takes a WDL-mapped json file and creates a dict containing the bindings.
 
@@ -32,3 +77,79 @@ def dict_from_JSON(JSON_file):
         else:
             json_dict[d] = data[d]
     return json_dict
+
+
+def write_mappings(parser: AnalyzeWDL) -> None:
+    """
+    Intended to take an AnalyzeWDL instance and prints the final task dict,
+    and workflow dict.
+
+    Does not work by default with toil since Toil actively suppresses stdout
+    during the run.
+    """
+    from collections import OrderedDict
+
+    class Formatter(object):
+        def __init__(self):
+            self.types = {}
+            self.htchar = '\t'
+            self.lfchar = '\n'
+            self.indent = 0
+            self.set_formater(object, self.__class__.format_object)
+            self.set_formater(dict, self.__class__.format_dict)
+            self.set_formater(list, self.__class__.format_list)
+            self.set_formater(tuple, self.__class__.format_tuple)
+
+        def set_formater(self, obj, callback):
+            self.types[obj] = callback
+
+        def __call__(self, value, **args):
+            for key in args:
+                setattr(self, key, args[key])
+            formater = self.types[type(value) if type(value) in self.types else object]
+            return formater(self, value, self.indent)
+
+        def format_object(self, value, indent):
+            return repr(value)
+
+        def format_dict(self, value, indent):
+            items = [
+                self.lfchar + self.htchar * (indent + 1) + repr(key) + ': ' +
+                (self.types[type(value[key]) if type(value[key]) in self.types else object])(self, value[key],
+                                                                                             indent + 1)
+                for key in value]
+            return '{%s}' % (','.join(items) + self.lfchar + self.htchar * indent)
+
+        def format_list(self, value, indent):
+            items = [
+                self.lfchar + self.htchar * (indent + 1) + (
+                    self.types[type(item) if type(item) in self.types else object])(self, item, indent + 1)
+                for item in value]
+            return '[%s]' % (','.join(items) + self.lfchar + self.htchar * indent)
+
+        def format_tuple(self, value, indent):
+            items = [
+                self.lfchar + self.htchar * (indent + 1) + (
+                    self.types[type(item) if type(item) in self.types else object])(self, item, indent + 1)
+                for item in value]
+            return '(%s)' % (','.join(items) + self.lfchar + self.htchar * indent)
+
+    pretty = Formatter()
+
+    def format_ordereddict(self, value, indent):
+        items = [
+            self.lfchar + self.htchar * (indent + 1) +
+            "(" + repr(key) + ', ' + (self.types[
+                type(value[key]) if type(value[key]) in self.types else object
+            ])(self, value[key], indent + 1) + ")"
+            for key in value
+        ]
+        return 'OrderedDict([%s])' % (','.join(items) +
+                                      self.lfchar + self.htchar * indent)
+
+    pretty.set_formater(OrderedDict, format_ordereddict)
+
+    with open('mappings.out', 'w') as f:
+        f.write(pretty(parser.tasks_dictionary))
+        f.write('\n\n\n\n\n\n')
+        f.write(pretty(parser.workflows_dictionary))
