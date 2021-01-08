@@ -82,6 +82,9 @@ class SynthesizeWDL:
         # holds workflow structure from WDL workflow objects
         self.workflows_dictionary = workflows_dictionary
 
+        # keep track of which workflow is being written
+        self.current_workflow = None
+
         # unique iterator to add to cmd names
         self.cmd_num = 0
 
@@ -221,6 +224,7 @@ class SynthesizeWDL:
 
         # declare each job in main as a wrapped toil function in order of priority
         for wf in self.workflows_dictionary:
+            self.current_workflow = wf
             for assignment in self.workflows_dictionary[wf]:
                 if assignment.startswith('declaration'):
                     main_section += self.write_main_jobwrappers_declaration(self.workflows_dictionary[wf][assignment])
@@ -242,12 +246,11 @@ class SynthesizeWDL:
     def write_main_jobwrappers_declaration(self, declaration):
 
         main_section = ''
-        wf = next(iter(self.workflows_dictionary))
         var_name, var_type, var_expr = declaration
 
         # check the json file for the expression's value
         # this is a higher priority and overrides anything written in the .wdl
-        json_expressn = self.json_var(wf=wf, var=var_name)
+        json_expressn = self.json_var(wf=self.current_workflow, var=var_name)
         if json_expressn is not None:
             var_expr = json_expressn
 
@@ -363,8 +366,7 @@ class SynthesizeWDL:
                 if assignment == assigned:
                     return scatternamespace
                 elif assignment.startswith('declaration'):
-                    declaration = self.workflows_dictionary[wf][assignment]
-                    name, _, _ = declaration
+                    name, _, _ = self.workflows_dictionary[wf][assignment]
                     scatternamespace.append(name)
                 elif assignment.startswith('call'):
                     if 'outputs' in self.tasks_dictionary[self.workflows_dictionary[wf][assignment]['task']]:

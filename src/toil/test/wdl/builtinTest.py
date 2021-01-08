@@ -8,27 +8,29 @@ from typing import List, Optional
 
 from toil.test import ToilTest
 from toil.version import exactPython
-from toil.wdl.wdl_functions import (WDLPair,
-                                    WDLRuntimeError,
-                                    ceil,
-                                    cross,
-                                    floor,
-                                    length,
-                                    read_boolean,
-                                    read_float,
-                                    read_int,
-                                    read_json,
-                                    read_lines,
-                                    read_map,
-                                    read_string,
-                                    read_tsv,
-                                    sub,
-                                    transpose,
-                                    wdl_zip,
-                                    write_json,
-                                    write_lines,
-                                    write_map,
-                                    write_tsv)
+from toil.wdl.wdl_functions import (
+    WDLPair,
+    WDLRuntimeError,
+    ceil,
+    cross,
+    floor,
+    length,
+    read_boolean,
+    read_float,
+    read_int,
+    read_json,
+    read_lines,
+    read_map,
+    read_string,
+    read_tsv,
+    sub,
+    transpose,
+    wdl_zip,
+    write_json,
+    write_lines,
+    write_map,
+    write_tsv
+)
 
 
 class WdlStandardLibraryFunctionsTest(ToilTest):
