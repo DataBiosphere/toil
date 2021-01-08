@@ -85,12 +85,20 @@ class AbstractAWSAutoscaleTest(ToilTest):
         subprocess.check_call(['toil', 'clean', self.jobStore])
 
     def sshUtil(self, command):
+        """
+        Run the given command on the cluster.
+        Raise subprocess.CalledProcessError if it fails.
+        """
+
         cmd = ['toil', 'ssh-cluster', '--insecure', '-p=aws', '-z', self.zone, self.clusterName] + command
         log.debug("Running %s.", str(cmd))
         p = subprocess.Popen(cmd, stderr=-1, stdout=-1)
         o, e = p.communicate()
         log.debug('\n\nSTDOUT: ' + o.decode("utf-8"))
         log.debug('\n\nSTDERR: ' + e.decode("utf-8"))
+        if p.returncode != 0:
+            # It failed
+            raise subprocess.CalledProcessError(p.returncode, ' '.join(cmd))
 
     def rsyncUtil(self, src, dest):
         subprocess.check_call(['toil', 'rsync-cluster', '--insecure', '-p=aws', '-z', self.zone, self.clusterName] + [src, dest])
@@ -419,7 +427,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
         newOptions = [option for option in toilOptions if option not in disallowedOptions]
         try:
             # include a default memory - on restart the minimum memory requirement is the default, usually 2 GB
-            command = ['/home/venv/bin/python', self.scriptName, '-e', 'FAIL=true', '--defaultMemory=50000000']
+            command = ['/home/venv/bin/python', self.scriptName, '--setEnv', 'FAIL=true', '--defaultMemory=50000000']
             command.extend(newOptions)
             self.sshUtil(command)
         except subprocess.CalledProcessError:
