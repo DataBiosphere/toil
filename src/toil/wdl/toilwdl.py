@@ -106,7 +106,6 @@ def main():
     else:
         raise RuntimeError('Unsupported Secondary File Type.  Use json.')
 
-    logger.info(f"Parsing WDL file with version: '{aWDL.version}'.")
     aWDL.analyze()
 
     sWDL = SynthesizeWDL(aWDL.version,

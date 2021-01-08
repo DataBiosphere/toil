@@ -49,14 +49,14 @@ def get_analyzer(wdl_file: str) -> AnalyzeWDL:
     if version == 'draft-2':
         from toil.wdl.versions.draft2 import AnalyzeDraft2WDL
         return AnalyzeDraft2WDL(wdl_file)
-    # elif version == '1.0':
-    #     from toil.wdl.versions.v1 import AnalyzeV1WDL
-    #     return AnalyzeV1WDL(wdl_file)
-    # elif version == 'development':
-    #     from toil.wdl.versions.dev import AnalyzeDevelopmentWDL
-    #     return AnalyzeDevelopmentWDL(wdl_file)
+    elif version == '1.0':
+        from toil.wdl.versions.v1 import AnalyzeV1WDL
+        return AnalyzeV1WDL(wdl_file)
+    elif version == 'development':
+        from toil.wdl.versions.dev import AnalyzeDevelopmentWDL
+        return AnalyzeDevelopmentWDL(wdl_file)
     else:
-        raise RuntimeError(f"Unknown WDL version: '{version}'.")
+        raise RuntimeError(f"Unsupported WDL version: '{version}'.")
 
 
 def dict_from_JSON(JSON_file: str) -> dict:
