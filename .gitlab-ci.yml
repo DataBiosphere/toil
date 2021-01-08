@@ -168,8 +168,12 @@ py37_provisioner_integration:
 py37_google_jobstore:
   stage: integration
   script:
-    # This reads GITLAB_SECRET_FILE_SSH_KEYS
-    - python setup_gitlab_ssh.py
+    - pwd
+    - apt update && apt install -y tzdata awscli jq python3.7 python3.7-dev
+    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    - python setup_gitlab_ssh.py && chmod 400 /root/.ssh/id_rsa
+    - echo $'Host *\n    AddressFamily inet' > /root/.ssh/config
+    - export LIBPROCESS_IP=127.0.0.1
     - export TOIL_TEST_INTEGRATIVE=True
     - export GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_CREDENTIALS
     - export TOIL_GOOGLE_KEYNAME=id_rsa
