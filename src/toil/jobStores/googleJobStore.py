@@ -256,7 +256,7 @@ class GoogleJobStore(AbstractJobStore):
 
     def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
         fileID = self._newID(isFile=True, jobStoreID=jobStoreID if cleanup else None)
-        self._writeFile(fileID, BytesIO(bytes("", 'utf-8')))
+        self._writeFile(fileID, BytesIO(b""))
         return fileID
 
     @googleRetry
@@ -452,7 +452,7 @@ class GoogleJobStore(AbstractJobStore):
                 raise NoSuchFileException(jobStoreID)
         blob.upload_from_file(fileObj)
 
-    def _writeBytes(self, jobStoreID, stringToUpload, **kwarg):
+    def _writeBytes(self, jobStoreID: str, stringToUpload: bytes, **kwarg) -> None:
         self._writeFile(jobStoreID, BytesIO(stringToUpload), **kwarg)
 
     @contextmanager
