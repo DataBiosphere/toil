@@ -563,6 +563,10 @@ class SynthesizeWDL:
                 # reusing write_main_jobwrappers_if() here, but it needs to be indented one more level.
                 fn_section += self.indent_docstring(self.write_main_jobwrappers_if(job['body'][statement]['body']))
 
+        # check for empty scatter section
+        if len(job['body']) == 0:
+            fn_section += '            pass'
+
         for var in scatter_outputs:
             fn_section += '            {var}.append({task}.rv("{output}"))\n'.format(var=var['task'] + '_' + var['output'],
                                                                                      task='job_' + var['task'],
