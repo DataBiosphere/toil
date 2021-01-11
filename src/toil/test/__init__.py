@@ -465,7 +465,7 @@ def needs_cwl(test_item):
         return test_item
 
 
-def needs_appliance(test_item):
+def needs_local_appliance(test_item):
     """
     Use as a decorator before test classes or methods to only run them if
     the Toil appliance Docker image is downloaded.

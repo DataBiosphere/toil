@@ -27,7 +27,7 @@ from toil.provisioners.aws import get_current_aws_zone
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from toil.test import (ToilTest,
                        integrative,
-                       needs_appliance,
+                       needs_fetchable_appliance,
                        needs_aws_ec2,
                        slow,
                        timeLimit)
@@ -48,7 +48,7 @@ class AWSProvisionerBenchTest(ToilTest):
             assert(ami.startswith('ami-'))
 
 @needs_aws_ec2
-@needs_appliance
+@needs_fetchable_appliance
 @slow
 @integrative
 class AbstractAWSAutoscaleTest(ToilTest):

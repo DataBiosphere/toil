@@ -163,7 +163,6 @@ py37_provisioner_integration:
     - export TOIL_TEST_INTEGRATIVE=True; export TOIL_AWS_KEYNAME=id_rsa; export TOIL_AWS_ZONE=us-west-2a
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
-    - make push_docker
     - make test tests=src/toil/test/sort/sortTest.py
     - make test tests=src/toil/test/provisioners/clusterScalerTest.py
     - make test tests=src/toil/test/utils/utilsTest.py::UtilsTest::testAWSProvisionerUtils
