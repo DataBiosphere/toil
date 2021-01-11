@@ -66,6 +66,10 @@ class JobPromiseConstraintError(RuntimeError):
             super().__init__(f"Job {promisingJob.description} cannot promise its return value to non-successor {recipientJob.description}")
 
 
+class ConflictingPredecessorError(Exception):
+    pass
+
+
 class TemporaryID:
     """
     Placeholder for a job ID used by a JobDescription that has not yet been
@@ -1803,7 +1807,7 @@ class Job:
         RuntimeError if the job is already a predecessor.
         """
         if predecessorJob in self._directPredecessors:
-            raise RuntimeError("The given job is already a predecessor of this job")
+            raise ConflictingPredecessorError("The given job is already a predecessor of this job")
         self._directPredecessors.add(predecessorJob)
         
         # Record the need for the predecessor to finish

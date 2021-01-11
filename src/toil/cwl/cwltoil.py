@@ -92,7 +92,7 @@ from schema_salad.sourceline import SourceLine
 from toil.common import Config, Toil, addOptions
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.job import Job
+from toil.job import Job, ConflictingPredecessorError
 from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobStoreException
 from toil.version import baseVersion
 
@@ -1657,8 +1657,10 @@ class CWLWorkflow(Job):
                                 if isinstance(
                                     promises[s], (CWLJobWrapper, CWLGather)
                                 ) and not promises[s].hasFollowOn(wfjob):
-                                    promises[s].addFollowOn(wfjob)
-                                    connected = True
+                                    try:
+                                        promises[s].addFollowOn(wfjob)
+                                    except ConflictingPredecessorError:
+                                        connected = True
                                 if not isinstance(
                                     promises[s], (CWLJobWrapper, CWLGather)
                                 ) and not promises[s].hasChild(wfjob):
