@@ -1660,7 +1660,8 @@ class CWLWorkflow(Job):
                                     try:
                                         promises[s].addFollowOn(wfjob)
                                     except ConflictingPredecessorError:
-                                        connected = True
+                                        pass
+                                    connected = True
                                 if not isinstance(
                                     promises[s], (CWLJobWrapper, CWLGather)
                                 ) and not promises[s].hasChild(wfjob):
