@@ -25,6 +25,7 @@ def run_setup():
     """
     boto = 'boto==2.48.0'
     boto3 = 'boto3>=1.7.50, <2.0'
+    ec2_metadata = 'ec2-metadata>=2.3.0, <2.4'
     futures = 'futures==3.1.1'
     pycryptodome = 'pycryptodome==3.5.1'
     pymesos = 'pymesos==0.3.15'
@@ -61,6 +62,7 @@ def run_setup():
     aws_reqs = [
         boto,
         boto3,
+        ec2_metadata,
         futures,
         pycryptodome]
     cwl_reqs = [

@@ -34,14 +34,39 @@ def running_on_ec2():
 
     hv_uuid_path = '/sys/hypervisor/uuid'
     if os.path.exists(hv_uuid_path) and file_begins_with(hv_uuid_path, 'ec2'):
+        logger.debug('We are running on EC2 because we see an EC2 hypervisor')
         return True
-    # Some instances do not have the /sys/hypervisor/uuid file, so check the identity document instead.
+
+    # Some instances do not have the /sys/hypervisor/uuid file, so check the metadata service
+
+    # ec2_metadata module
+    try:
+        import requests
+        try:
+            from ec2_metadata import ec2_metadata
+            if ec2_metadata.availability_zone is not None:
+                logger.debug('We are running on EC2 because ec2-metadata can talk to the metadata service')
+                return True
+        except requests.exceptions.ConnectionError:
+            # Couldn't talk to the metadata service
+            logger.debug('ec2-metadata could not talk to the metadata service')
+            return False
+    except ImportError:
+        logger.debug('We could not import the modules necessary to use ec2-metadata')
+        pass
+
+    # Check the identity document manually.
     # See https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-identity-documents.html
     try:
         urlopen('http://169.254.169.254/latest/dynamic/instance-identity/document', timeout=1)
+        logger.debug('We are running on EC2 because we can talk to the metadata service ourselves')
         return True
     except URLError:
-        return False
+        logger.debug('We could not talk to the metadata service ourselves')
+        pass
+
+    logger.debug('We are not running on EC2 because we have no evidence that we are')
+    return False
 
 def get_current_aws_region():
     aws_zone = get_current_aws_zone()
@@ -49,29 +74,82 @@ def get_current_aws_region():
 
 
 def get_current_aws_zone(spotBid=None, nodeType=None, ctx=None):
+    # Always take an override if set
+    zone = os.environ.get('TOIL_AWS_ZONE', None)
+
+    if zone:
+        logger.debug('Got zone from environment')
+        return zone
+
+    # We always try the metadata service whether we think we're on EC2 or not,
+    # because to check if we're on EC2 we would maybe just talk to the metadata
+    # service anyway.
+
+    # First priority, non-boto2 ect-metadata
+
+    try:
+        import requests
+        requests_con_error = requests.exceptions.ConnectionError
+    except ImportError:
+        # We can't get the exception we want to catch, so fake it
+        class FakeException(Exception):
+            pass
+        requests_con_error = FakeException
+
+    try:
+        from ec2_metadata import ec2_metadata
+        zone = ec2_metadata.availability_zone
+    except ImportError:
+        logger.debug('Could not import ec2-metadata to get zone')
+    except requests_con_error:
+        logger.debug('Could not retrieve zone via ec2-metadata')
+
+    if zone:
+        logger.debug('Got zone from ec2-metadata')
+        return zone
+
+    # Second priority: boto2
+
     try:
         import boto
         from boto.utils import get_instance_metadata
+        zone = get_instance_metadata()['placement']['availability-zone']
     except ImportError:
-        return None
+        logger.debug('Could not import boto2 to get zone')
+    except KeyError:
+        logger.debug('Could not get zone from boto2 metadata')
 
-    zone = os.environ.get('TOIL_AWS_ZONE', None)
-    if not zone and running_on_ec2():
-        try:
-            zone = get_instance_metadata()['placement']['availability-zone']
-        except KeyError:
-            pass
+    if zone:
+        logger.debug('Got zone from boto2')
+        return zone
+
+    # Then if we haven't found a zone yet, we aren't ourselves in one, so maybe spot optimize
+
     if not zone and spotBid:
         # if spot bid is present, all the other parameters must be as well
         assert bool(spotBid) == bool(nodeType) == bool(ctx)
         # if the zone is unset and we are using the spot market, optimize our
         # choice based on the spot history
+        logger.debug('Choosing zone to optimize spot bid')
         return optimize_spot_bid(ctx=ctx, instance_type=nodeType, spot_bid=float(spotBid))
-    if not zone:
-        zone = boto.config.get('Boto', 'ec2_region_name')
-        if zone is not None:
-            zone += 'a'  # derive an availability zone in the region
 
+    # Last priority: guessing a zone from the config file via boto2
+
+    if not zone:
+        try:
+            import boto
+            zone = boto.config.get('Boto', 'ec2_region_name')
+            if zone is not None:
+                zone += 'a'  # derive an availability zone in the region
+        except ImportError:
+            logger.debug('Could not import boto2 to inspect config file')
+            pass
+
+    if zone:
+        logger.debug('Guessed zone from boto2 config')
+        return zone
+
+    logger.debug('Could not get zone by any method')
     return zone
 
 

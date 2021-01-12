@@ -479,6 +479,7 @@ class AWSProvisioner(AbstractProvisioner):
                                                                   spec=kwargs, num_instances=numNodes)
                 else:
                     logger.debug('Launching %s preemptable nodes', numNodes)
+                    # Place the instances in the current AWS zone if we have one, or the best one for spot pricing if we don't.
                     kwargs['placement'] = get_current_aws_zone(spotBid, instanceType.name, self._boto2)
                     # force generator to evaluate
                     instancesLaunched = list(create_spot_instances(ec2=self._boto2.ec2,
