@@ -137,7 +137,7 @@ class AWSProvisioner(AbstractProvisioner):
         self._sseKey = sseKey
         self._zone = zone if zone else get_current_aws_zone()
         
-        if zone is None:
+        if self._zone is None:
             # Can't proceed without a real zone
             raise RuntimeError('No AWS availability zone specified. Configure in Boto '
                                'configuration file, TOIL_AWS_ZONE environment variable, or '
