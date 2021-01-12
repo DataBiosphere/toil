@@ -15,6 +15,7 @@ import logging
 import os
 import subprocess
 import time
+import tempfile
 from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent
@@ -62,7 +63,41 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.spotBid = 0.15
         self.zone = get_current_aws_zone()
         assert self.zone is not None, "Could not determine AWS availability zone to test in; is TOIL_AWS_ZONE set?"
-        self.scriptDir = '/tmp/t/'
+        # We can't dump our user script right in /tmp or /home, because hot
+        # deploy refuses to zip up those whole directories. So we make sure to
+        # have a subdirectory to upload the script to. 
+        self.scriptDir = '/tmp/t'
+        # Where should we put our virtualenv?
+        self.venvDir = '/tmp/venv'
+        # Where should we put our data to work on?
+        self.dataDir = '/tmp/data'
+        # What filename should we use for our script (without path)?
+        # Can be changed by derived tests.
+        self.scriptName = 'test_script.py'
+        
+    def python(self):
+        """
+        Return the full path to the venv Python on the leader.
+        """
+        return os.path.join(self.venvDir, 'bin/python')
+        
+    def pip(self):
+        """
+        Return the full path to the venv pip on the leader.
+        """
+        return os.path.join(self.venvDir, 'bin/pip')
+        
+    def script(self):
+        """
+        Return the full path to the user script on the leader.
+        """
+        return os.path.join(self.scriptDir, self.scriptName)
+        
+    def data(self, filename):
+        """
+        Return the full path to the data file with the given name on the leader.
+        """
+        return os.path.join(self.dataDir, filename)
 
     def destroyCluster(self):
         """
@@ -73,6 +108,10 @@ class AbstractAWSAutoscaleTest(ToilTest):
         subprocess.check_call(['toil', 'destroy-cluster', '-p=aws', '-z', self.zone, self.clusterName])
 
     def setUp(self):
+        """
+        Set up for the test.
+        Must be overridden to call this method and set self.jobStore.
+        """
         super(AbstractAWSAutoscaleTest, self).setUp()
         # Make sure that destroy works before we create any clusters.
         # If this fails, no tests will run.
@@ -153,14 +192,15 @@ class AbstractAWSAutoscaleTest(ToilTest):
         # already insures the leader is running
         self.cluster = cluster_factory(provisioner='aws', zone=self.zone, clusterName=self.clusterName)
         self.leader = self.cluster.getLeader()
-        self.sshUtil(['mkdir', '-p', self.scriptDir])  # hot deploy doesn't seem permitted to work in normal /tmp or /home
+        self.sshUtil(['mkdir', '-p', self.scriptDir])
+        self.sshUtil(['mkdir', '-p', self.dataDir])
 
         assert len(self.getMatchingRoles()) == 1
         # --never-download prevents silent upgrades to pip, wheel and setuptools
-        venv_command = ['virtualenv', '--system-site-packages', '--python', exactPython, '--never-download', '/home/venv']
+        venv_command = ['virtualenv', '--system-site-packages', '--python', exactPython, '--never-download', self.venvDir]
         self.sshUtil(venv_command)
 
-        upgrade_command = ['/home/venv/bin/pip', 'install', 'setuptools==28.7.1', 'pyyaml==3.12']
+        upgrade_command = [self.pip(), 'install', 'setuptools==28.7.1', 'pyyaml==3.12']
         self.sshUtil(upgrade_command)
 
         self._getScript()
@@ -169,9 +209,9 @@ class AbstractAWSAutoscaleTest(ToilTest):
                        '--workDir=/var/lib/toil',
                        '--clean=always',
                        '--retryCount=2',
-                       '--clusterStats=/tmp/t/',
+                       '--clusterStats=' + self.scriptDir + '/',
                        '--logDebug',
-                       '--logFile=/tmp/t/sort.log'
+                       '--logFile=' + os.path.join(self.scriptDir, 'sort.log')
                        ]
         
         if preemptableJobs:
@@ -181,9 +221,10 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
         assert len(self.getMatchingRoles()) == 1
 
-        # check stats
-        self.sshUtil(['/home/venv/bin/python', '-c', 'import json; import os; '
-                      'json.load(open("/home/" + [f for f in os.listdir("/tmp/t/") if f.endswith(".json")].pop()))'])
+        # check stats, which we dumped to the script directory, by loading them
+        # as JSON and makign sure they are syntactically OK.
+        self.sshUtil([self.python(), '-c', 'import json; import os; '
+                      'json.load(open("' + self.scriptDir + '/" + [f for f in os.listdir("' + self.scriptDir + '") if f.endswith(".json")].pop()))'])
 
         from boto.exception import EC2ResponseError
         volumeID = self.getRootVolID()
@@ -212,6 +253,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         super(AWSAutoscaleTest, self).__init__(name)
         self.clusterName = 'provisioner-test-' + str(uuid4())
         self.requestedLeaderStorage = 80
+        self.scriptName = 'sort.py'
 
     def setUp(self):
         super(AWSAutoscaleTest, self).setUp()
@@ -222,15 +264,15 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         with open(fileToSort, 'w') as f:
             # Fixme: making this file larger causes the test to hang
             f.write('01234567890123456789012345678901')
-        self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/sort/sort.py'), ':/home/sort.py')
-        self.rsyncUtil(fileToSort, ':/home/sortFile')
+        self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/sort/sort.py'), ':' + self.script())
+        self.rsyncUtil(fileToSort, ':' + self.data('sortFile'))
         os.unlink(fileToSort)
 
     def _runScript(self, toilOptions):
         toilOptions.extend(['--provisioner=aws', '--batchSystem=mesos',
                             '--nodeTypes=' + ",".join(self.instanceTypes),
                             '--maxNodes=' + ",".join(self.numWorkers)])
-        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile', '--sseKey=/home/sortFile']
+        runCommand = [self.python(), self.script(), '--fileToSort=' + self.data('sortFile'), '--sseKey=' + self.data('sortFile')]
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
 
@@ -303,7 +345,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         toilOptions.extend(['--provisioner=aws', '--batchSystem=mesos',
                             '--nodeTypes=' + ",".join(self.instanceTypes),
                             '--maxNodes=' + ",".join(self.numWorkers)])
-        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']
+        runCommand = [self.python(), self.script(), '--fileToSort=' + self.data('sortFile')]
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
         
@@ -330,7 +372,7 @@ class AWSManagedAutoscaleTest(AWSAutoscaleTest):
     def _runScript(self, toilOptions):
         # Don't use the provisioner, and use Kubernetes instead of Mesos
         toilOptions.extend(['--batchSystem=kubernetes'])
-        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']
+        runCommand = [self.python(), self.script(), '--fileToSort=' + self.data('sortFile')]
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
 
@@ -351,8 +393,8 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
         sseKeyFile = os.path.join(os.getcwd(), 'keyFile')
         with open(sseKeyFile, 'w') as f:
             f.write('01234567890123456789012345678901')
-        self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/sort/sort.py'), ':/home/sort.py')
-        self.rsyncUtil(sseKeyFile, ':/home/keyFile')
+        self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/sort/sort.py'), ':' + self.script())
+        self.rsyncUtil(sseKeyFile, ':' + self.data('keyFile'))
         os.unlink(sseKeyFile)
 
     def _runScript(self, toilOptions):
@@ -362,9 +404,9 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
         toilOptions.extend(['--provisioner=aws', '--batchSystem=mesos',
                             '--nodeTypes=' + ",".join(self.instanceTypes),
                             '--maxNodes=' + ",".join(self.numWorkers)])
-        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/s3am/bin/asadmin', '--sortMemory=0.6G', '--mergeMemory=3.0G']
+        runCommand = [self.python(), self.script(), '--fileToSort=/home/s3am/bin/asadmin', '--sortMemory=0.6G', '--mergeMemory=3.0G']
         runCommand.extend(toilOptions)
-        runCommand.append('--sseKey=/home/keyFile')
+        runCommand.append('--sseKey=' + self.data('keyFile'))
         self.sshUtil(runCommand)
 
     @integrative
@@ -382,12 +424,12 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
     def __init__(self, name):
         super(AWSRestartTest, self).__init__(name)
         self.clusterName = 'restart-test-' + str(uuid4())
+        self.scriptName = 'restartScript.py'
 
     def setUp(self):
         super(AWSRestartTest, self).setUp()
         self.instanceTypes = ['t2.small']
         self.numWorkers = ['1']
-        self.scriptName = self.scriptDir + 'restartScript.py'
         self.jobStore = 'aws:%s:restart-%s' % (self.awsRegion(), uuid4())
 
     def _getScript(self):
@@ -409,16 +451,18 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
                 Job.Runner.startToil(rootJob, options)
 
         script = dedent('\n'.join(getsource(restartScript).split('\n')[1:]))
-        tempfile_path = '/tmp/temp-or-ary.txt'
-        with open(tempfile_path, 'w') as f:
-            # use appliance ssh method instead of sshutil so we can specify input param
-            f.write(script)
+        
         cluster = cluster_factory(provisioner='aws', zone=self.zone, clusterName=self.clusterName)
         leader = cluster.getLeader()
-        self.sshUtil(['mkdir', '-p', self.scriptDir])  # hot deploy doesn't seem permitted to work in normal /tmp or /home
-        leader.injectFile(tempfile_path, self.scriptName, 'toil_leader')
-        if os.path.exists(tempfile_path):
-            os.remove(tempfile_path)
+        
+        self.sshUtil(['mkdir', '-p', self.scriptDir])
+        
+        with tempfile.NamedTemporaryFile(mode='w') as t:
+            # use appliance ssh method instead of sshutil so we can specify input param
+            t.write(script)
+            # This works to make writes visible on non-Windows
+            t.flush()
+            leader.injectFile(t.name, self.script(), 'toil_leader')
 
     def _runScript(self, toilOptions):
         # Use the provisioner in the workflow
@@ -430,7 +474,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
         newOptions = [option for option in toilOptions if option not in disallowedOptions]
         try:
             # include a default memory - on restart the minimum memory requirement is the default, usually 2 GB
-            command = ['/home/venv/bin/python', self.scriptName, '--setEnv', 'FAIL=true', '--defaultMemory=50000000']
+            command = [self.python(), self.script(), '--setEnv', 'FAIL=true', '--defaultMemory=50000000']
             command.extend(newOptions)
             self.sshUtil(command)
         except subprocess.CalledProcessError:
@@ -438,7 +482,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
         else:
             self.fail('Command succeeded when we expected failure')
         with timeLimit(600):
-            command = ['/home/venv/bin/python', self.scriptName, '--restart', '--defaultMemory=50000000']
+            command = [self.python(), self.script(), '--restart', '--defaultMemory=50000000']
             command.extend(toilOptions)
             self.sshUtil(command)
 
@@ -452,6 +496,7 @@ class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
     def __init__(self, name):
         super(PreemptableDeficitCompensationTest, self).__init__(name)
         self.clusterName = 'deficit-test-' + str(uuid4())
+        self.scriptName = 'userScript.py'
 
     def setUp(self):
         super(PreemptableDeficitCompensationTest, self).setUp()
@@ -489,13 +534,14 @@ class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
         # use appliance ssh method instead of sshutil so we can specify input param
         cluster = cluster_factory(provisioner='aws', zone=self.zone, clusterName=self.clusterName)
         leader = cluster.getLeader()
-        leader.sshAppliance('tee', '/home/userScript.py', input=script.encode('utf-8'))
+        self.sshUtil(['mkdir', '-p', self.scriptDir])
+        leader.sshAppliance('tee', self.script(), input=script.encode('utf-8'))
 
     def _runScript(self, toilOptions):
         toilOptions.extend(['--provisioner=aws', '--batchSystem=mesos',
                             '--nodeTypes=' + ",".join(self.instanceTypes),
                             '--maxNodes=' + ",".join(self.numWorkers)])
         toilOptions.extend(['--preemptableCompensation=1.0'])
-        command = ['/home/venv/bin/python', '/home/userScript.py']
+        command = [self.python(), self.script()]
         command.extend(toilOptions)
         self.sshUtil(command)
