@@ -305,7 +305,7 @@ class SynthesizeWDL:
     def write_main_jobwrappers_if(self, if_statement):
         # check for empty if statement
         if not if_statement:
-            return self.indent_docstring('        pass')
+            return self.indent('        pass')
 
         main_section = ''
         for assignment in if_statement:
@@ -320,7 +320,7 @@ class SynthesizeWDL:
             if assignment.startswith('if'):
                 main_section += '        if {}:\n'.format(if_statement[assignment]['expression'])
                 main_section += self.write_main_jobwrappers_if(if_statement[assignment]['body'])
-        main_section = self.indent_docstring(main_section)
+        main_section = self.indent(main_section)
         return main_section
 
     def write_main_jobwrappers_scatter(self, task, assignment):
@@ -549,7 +549,7 @@ class SynthesizeWDL:
         for statement in job['body']:
             if statement.startswith('declaration'):
                 # reusing write_main_jobwrappers_declaration() here, but it needs to be indented one more level.
-                fn_section += self.indent_docstring(
+                fn_section += self.indent(
                     self.write_main_jobwrappers_declaration(job['body'][statement]))
             elif statement.startswith('call'):
                 fn_section += self.write_scatter_callwrapper(job['body'][statement], previous_dependency)
@@ -559,7 +559,7 @@ class SynthesizeWDL:
             elif statement.startswith('if'):
                 fn_section += '            if {}:\n'.format(job['body'][statement]['expression'])
                 # reusing write_main_jobwrappers_if() here, but it needs to be indented one more level.
-                fn_section += self.indent_docstring(self.write_main_jobwrappers_if(job['body'][statement]['body']))
+                fn_section += self.indent(self.write_main_jobwrappers_if(job['body'][statement]['body']))
 
         # check for empty scatter section
         if len(job['body']) == 0:
@@ -962,12 +962,12 @@ class SynthesizeWDL:
 
         return fn_section
 
-    def indent_docstring(self, string2indent):
+    def indent(self, string2indent: str) -> str:
+        """
+        Indent the input string by 4 spaces.
+        """
         split_string = string2indent.split('\n')
-        new_string = ''
-        for line in split_string:
-            new_string += '    {}\n'.format(line)
-        return new_string
+        return '\n'.join(f'    {line}' for line in split_string)
 
     def needsdocker(self, job):
         """

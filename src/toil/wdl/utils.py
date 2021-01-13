@@ -16,11 +16,12 @@ import json
 from toil.wdl.wdl_analysis import AnalyzeWDL
 
 
-def check_version(iterable) -> str:
+def get_version(iterable) -> str:
     """
-    Takes in a WDL document and checks the version.
+    Get the version of the WDL document.
 
     :param iterable: An iterable that contains the lines of a WDL document.
+    :return: The WDL version used in the workflow.
     """
     if isinstance(iterable, str):
         iterable = iterable.split('\n')
@@ -41,10 +42,9 @@ def get_analyzer(wdl_file: str) -> AnalyzeWDL:
     Creates an instance of an AnalyzeWDL implementation based on the version.
 
     :param wdl_file: The path to the WDL file.
-    :rtype: AnalyzeWDL
     """
     with open(wdl_file, 'r') as f:
-        version = check_version(f)
+        version = get_version(f)
 
     if version == 'draft-2':
         from toil.wdl.versions.draft2 import AnalyzeDraft2WDL
@@ -79,13 +79,13 @@ def dict_from_JSON(JSON_file: str) -> dict:
     return json_dict
 
 
-def write_mappings(parser: AnalyzeWDL) -> None:
+def write_mappings(parser: AnalyzeWDL, filename: str = 'mappings.out') -> None:
     """
-    Intended to take an AnalyzeWDL instance and prints the final task dict,
-    and workflow dict.
+    Takes an AnalyzeWDL instance and writes the final task dict and workflow
+    dict to the given file.
 
-    Does not work by default with toil since Toil actively suppresses stdout
-    during the run.
+    :param parser: An AnalyzeWDL instance.
+    :param filename: The name of a file to write to.
     """
     from collections import OrderedDict
 
@@ -149,7 +149,7 @@ def write_mappings(parser: AnalyzeWDL) -> None:
 
     pretty.set_formater(OrderedDict, format_ordereddict)
 
-    with open('mappings.out', 'w') as f:
+    with open(filename, 'w') as f:
         f.write(pretty(parser.tasks_dictionary))
         f.write('\n\n\n\n\n\n')
         f.write(pretty(parser.workflows_dictionary))
