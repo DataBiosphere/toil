@@ -349,18 +349,18 @@ class GoogleJobStore(AbstractJobStore):
     def _readFromUrl(cls, url, writable):
         blob = cls._getBlobFromURL(url, exists=True)
         blob.download_to_file(writable)
-        return blob.size
+        return blob.size, False
 
     @classmethod
     def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() == 'gs'
 
     @classmethod
-    def _writeToUrl(cls, readable, url):
+    def _writeToUrl(cls, readable: bytes, url, executable=False) -> None:
         blob = cls._getBlobFromURL(url)
         blob.upload_from_file(readable)
 
-    def writeStatsAndLogging(self, statsAndLoggingString):
+    def writeStatsAndLogging(self, statsAndLoggingString: bytes) -> None:
         statsID = self.statsBaseID + str(uuid.uuid4())
         log.debug("Writing stats file: %s", statsID)
         with self._uploadStream(statsID, encrypt=False, update=False) as f:
@@ -442,7 +442,7 @@ class GoogleJobStore(AbstractJobStore):
         return job.download_as_string()
 
     @googleRetry
-    def _writeFile(self, jobStoreID, fileObj, update=False, encrypt=True):
+    def _writeFile(self, jobStoreID: str, fileObj: bytes, update=False, encrypt=True) -> None:
         blob = self.bucket.blob(compat_bytes(jobStoreID), encryption_key=self.sseKey if encrypt else None)
         if not update:
             # TODO: should probably raise a special exception and be added to all jobStores
