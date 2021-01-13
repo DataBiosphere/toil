@@ -17,11 +17,7 @@ import os
 import subprocess
 import sys
 
-from toil.wdl.utils import (
-    get_analyzer,
-    dict_from_JSON,
-    write_mappings
-)
+from toil.wdl.utils import dict_from_JSON, get_analyzer, write_mappings
 from toil.wdl.wdl_synthesis import SynthesizeWDL
 
 logger = logging.getLogger(__name__)

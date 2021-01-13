@@ -14,16 +14,14 @@
 import logging
 from collections import OrderedDict
 
-from toil.wdl.wdl_types import (
-    WDLArrayType,
-    WDLBooleanType,
-    WDLFileType,
-    WDLFloatType,
-    WDLIntType,
-    WDLMapType,
-    WDLPairType,
-    WDLStringType
-)
+from toil.wdl.wdl_types import (WDLArrayType,
+                                WDLBooleanType,
+                                WDLFileType,
+                                WDLFloatType,
+                                WDLIntType,
+                                WDLMapType,
+                                WDLPairType,
+                                WDLStringType)
 
 logger = logging.getLogger(__name__)
 

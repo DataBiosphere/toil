@@ -16,14 +16,12 @@ import os
 from typing import Optional
 
 from toil.wdl.wdl_functions import heredoc_wdl
-from toil.wdl.wdl_types import (
-    WDLArrayType,
-    WDLCompoundType,
-    WDLFileType,
-    WDLMapType,
-    WDLPairType,
-    WDLType
-)
+from toil.wdl.wdl_types import (WDLArrayType,
+                                WDLCompoundType,
+                                WDLFileType,
+                                WDLMapType,
+                                WDLPairType,
+                                WDLType)
 
 logger = logging.getLogger(__name__)
 
