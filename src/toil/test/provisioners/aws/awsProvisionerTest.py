@@ -147,10 +147,14 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
     def createClusterUtil(self, args=None):
         args = [] if args is None else args
-        
+       
+        command = ['toil', 'launch-cluster', '-p=aws', '-z', self.zone, f'--keyPairName={self.keyName}',
+                   '--leaderNodeType=t2.medium', self.clusterName] + args
+       
+        logger.debug('Launching cluster: %s', command)
+       
         # Try creating the cluster
-        subprocess.check_call(['toil', 'launch-cluster', '-p=aws', '-z', self.zone, f'--keyPairName={self.keyName}',
-                               '--leaderNodeType=t2.medium', self.clusterName] + args)
+        subprocess.check_call(command)
         # If we fail, tearDown will destroy the cluster.
 
     def getMatchingRoles(self):

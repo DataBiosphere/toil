@@ -227,8 +227,8 @@ class AbstractProvisioner(ABC):
                 with open(localFile) as f:
                     leaderPublicKey = f.read()
                     
-                # Drop the key type and keep just the key data
-                leaderPublicKey=leaderPublicKey.split(' ')[1]
+        # Drop the key type and keep just the key data
+        leaderPublicKey=leaderPublicKey.split(' ')[1]
         
         # confirm it really is an RSA public key
         assert leaderPublicKey.startswith('AAAAB3NzaC1yc2E'), leaderPublicKey
