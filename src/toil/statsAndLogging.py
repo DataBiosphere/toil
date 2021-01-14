@@ -18,7 +18,7 @@ import os
 import time
 from argparse import ArgumentParser
 from threading import Event, Thread
-from typing import Optional, Union, TextIO, BinaryIO
+from typing import BinaryIO, Optional, TextIO, Union
 
 from toil.lib.expando import Expando
 from toil.lib.resources import get_total_cpu_time

@@ -20,17 +20,18 @@ from abc import ABC, ABCMeta, abstractmethod
 from contextlib import closing, contextmanager
 from datetime import timedelta
 from http.client import BadStatusLine
+from typing import Set, Union
 from urllib.request import urlopen
 from uuid import uuid4
-from typing import Set, Union
+
 from requests.exceptions import HTTPError
 
 from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
 from toil.job import (CheckpointJobDescription,
-                      TemporaryID,
                       JobException,
-                      ServiceJobDescription)
+                      ServiceJobDescription,
+                      TemporaryID)
 from toil.lib.memoize import memoize
 from toil.lib.misc import WriteWatchingStream
 from toil.lib.retry import ErrorCondition, retry

@@ -17,7 +17,8 @@ import os
 from pipes import quote
 
 from toil.batchSystems import MemoryString
-from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
+from toil.batchSystems.abstractGridEngineBatchSystem import \
+    AbstractGridEngineBatchSystem
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)

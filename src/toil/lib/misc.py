@@ -1,8 +1,8 @@
 import logging
 import os
-import stat
 import random
 import shutil
+import stat
 import subprocess
 import sys
 import uuid

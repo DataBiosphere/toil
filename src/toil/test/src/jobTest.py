@@ -22,8 +22,7 @@ import pytest
 from toil.common import Toil
 from toil.job import Job, JobFunctionWrappingJob, JobGraphDeadlockException
 from toil.leader import FailedJobsException
-from toil.test import get_temp_file
-from toil.test import ToilTest, slow, travis_test
+from toil.test import ToilTest, get_temp_file, slow, travis_test
 
 logger = logging.getLogger(__name__)
 

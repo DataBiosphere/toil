@@ -19,7 +19,8 @@ import time
 
 import htcondor
 
-from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
+from toil.batchSystems.abstractGridEngineBatchSystem import \
+    AbstractGridEngineBatchSystem
 
 logger = logging.getLogger(__name__)
 

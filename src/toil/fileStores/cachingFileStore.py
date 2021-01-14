@@ -15,10 +15,10 @@ import errno
 import hashlib
 import logging
 import os
-import stat
 import re
 import shutil
 import sqlite3
+import stat
 import tempfile
 import threading
 import time

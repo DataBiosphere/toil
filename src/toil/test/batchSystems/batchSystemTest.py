@@ -32,7 +32,6 @@ from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
 # protected by annotations.
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
-from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config
 from toil.job import Job, JobDescription
@@ -50,6 +49,7 @@ from toil.test import (ToilTest,
                        needs_torque,
                        slow,
                        travis_test)
+from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 
 logger = logging.getLogger(__name__)
 

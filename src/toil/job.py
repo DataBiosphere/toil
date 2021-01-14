@@ -67,7 +67,9 @@ class JobPromiseConstraintError(RuntimeError):
 
 
 class ConflictingPredecessorError(Exception):
-    pass
+    def __init__(self, predecessor: 'Job', successor: 'Job'):
+        super().__init__(f'The given job: "{predecessor.description}" is already a '
+                         f'predecessor of job: "{successor.description}".')
 
 
 class TemporaryID:
@@ -1216,6 +1218,10 @@ class Job:
         
         return followOnJob
 
+    def hasPredecessor(self, job: 'Job') -> bool:
+        """Check if a given job is already a predecessor of this job."""
+        return job in self._directPredecessors
+
     def hasFollowOn(self, followOnJob):
         """
         Check if given job is already a follow-on of this job.
@@ -1225,7 +1231,7 @@ class Job:
         :rtype: bool
         """
         return self._description.hasChild(followOnJob.jobStoreID) 
-        
+
     def addService(self, service, parentService=None):
         """
         Add a service.
@@ -1807,7 +1813,7 @@ class Job:
         RuntimeError if the job is already a predecessor.
         """
         if predecessorJob in self._directPredecessors:
-            raise ConflictingPredecessorError("The given job is already a predecessor of this job")
+            raise ConflictingPredecessorError(predecessorJob, self)
         self._directPredecessors.add(predecessorJob)
         
         # Record the need for the predecessor to finish
