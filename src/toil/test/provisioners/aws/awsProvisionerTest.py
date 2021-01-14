@@ -70,7 +70,9 @@ class AbstractAWSAutoscaleTest(ToilTest):
         # Where should we put our virtualenv?
         self.venvDir = '/tmp/venv'
         # Where should we put our data to work on?
-        self.dataDir = '/tmp/data'
+        # Must exist in the Toil container; the leader will try to rsync to it
+        # (for the SSE key) and not create it.
+        self.dataDir = '/tmp'
         # What filename should we use for our script (without path)?
         # Can be changed by derived tests.
         self.scriptName = 'test_script.py'
