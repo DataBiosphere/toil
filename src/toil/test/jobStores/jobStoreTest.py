@@ -24,7 +24,7 @@ import time
 import urllib.parse as urlparse
 import uuid
 from abc import ABCMeta, abstractmethod
-from io import StringIO
+from io import BytesIO
 from itertools import chain, islice
 from queue import Queue
 from threading import Thread
@@ -1168,8 +1168,8 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
             return url
         with open('/dev/urandom', 'rb') as readable:
             contents = str(readable.read(size))
-        GoogleJobStore._writeToUrl(StringIO(contents), urlparse.urlparse(url))
-        return url, hashlib.md5(contents).hexdigest()
+        GoogleJobStore._writeToUrl(BytesIO(bytes(contents, 'utf-8')), urlparse.urlparse(url))
+        return url, hashlib.md5(contents.encode()).hexdigest()
 
     def _hashTestFile(self, url):
         from toil.jobStores.googleJobStore import GoogleJobStore
