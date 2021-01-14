@@ -356,7 +356,7 @@ class GoogleJobStore(AbstractJobStore):
         return url.scheme.lower() == 'gs'
 
     @classmethod
-    def _writeToUrl(cls, readable: bytes, url, executable=False) -> None:
+    def _writeToUrl(cls, readable: bytes, url: str, executable: bool = False) -> None:
         blob = cls._getBlobFromURL(url)
         blob.upload_from_file(readable)
 
