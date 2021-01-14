@@ -151,7 +151,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         command = ['toil', 'launch-cluster', '-p=aws', '-z', self.zone, f'--keyPairName={self.keyName}',
                    '--leaderNodeType=t2.medium', self.clusterName] + args
        
-        logger.debug('Launching cluster: %s', command)
+        log.debug('Launching cluster: %s', command)
        
         # Try creating the cluster
         subprocess.check_call(command)
