@@ -56,7 +56,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
     def __init__(self, methodName):
         super(AbstractAWSAutoscaleTest, self).__init__(methodName=methodName)
         self.keyName = os.environ.get('TOIL_AWS_KEYNAME', 'id_rsa')
-        self.instanceTypes = ["m3.large"]
+        self.instanceTypes = ["m5a.large"]
         self.clusterName = 'aws-provisioner-test-' + str(uuid4())
         self.numWorkers = ['2']
         self.numSamples = 2
@@ -299,14 +299,14 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     @integrative
     @needs_aws_ec2
     def testAutoScale(self):
-        self.instanceTypes = ["m3.large"]
+        self.instanceTypes = ["m5a.large"]
         self.numWorkers = ['2']
         self._test()
 
     @integrative
     @needs_aws_ec2
     def testSpotAutoScale(self):
-        self.instanceTypes = ["m3.large:%f" % self.spotBid]
+        self.instanceTypes = ["m5a.large:%f" % self.spotBid]
         self.numWorkers = ['2']
         self._test(preemptableJobs=True)
 
@@ -416,7 +416,7 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
     @integrative
     @needs_aws_ec2
     def testAutoScale(self):
-        self.instanceTypes = ["t2.small", "m3.large"]
+        self.instanceTypes = ["t2.small", "m5a.large"]
         self.numWorkers = ['2', '1']
         self._test()
 
@@ -504,7 +504,7 @@ class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
 
     def setUp(self):
         super(PreemptableDeficitCompensationTest, self).setUp()
-        self.instanceTypes = ['m3.large:0.01', "m3.large"]  # instance needs to be available on the spot market
+        self.instanceTypes = ['m5a.large:0.01', "m5a.large"]  # instance needs to be available on the spot market
         self.numWorkers = ['1', '1']
         self.jobStore = 'aws:%s:deficit-%s' % (self.awsRegion(), uuid4())
 

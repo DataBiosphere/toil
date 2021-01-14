@@ -74,7 +74,7 @@ _TAG_KEY_TOIL_CLUSTER_NAME = 'clusterName'
 _STORAGE_ROOT_OVERHEAD_GIGS = 4
 
 def awsRetryPredicate(e):
-    if isinstance(socket.gaierror):
+    if isinstance(e, socket.gaierror):
         # Could be a DNS outage:
         # socket.gaierror: [Errno -2] Name or service not known
         return True
