@@ -1,4 +1,4 @@
-# Copyright (C) 2018-2020 UCSC Computational Genomics Lab
+# Copyright (C) 2018-2021 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,6 +13,15 @@
 # limitations under the License.
 import logging
 from collections import OrderedDict
+
+from toil.wdl.wdl_types import (WDLArrayType,
+                                WDLBooleanType,
+                                WDLFileType,
+                                WDLFloatType,
+                                WDLIntType,
+                                WDLMapType,
+                                WDLPairType,
+                                WDLStringType)
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +48,8 @@ class AnalyzeWDL:
         # holds workflow structure from WDL workflow objects
         self.workflows_dictionary = OrderedDict()
 
-        # unique iterator to add to cmd names
-        self.command_number = 0
+        # unique iterator to add to declaration names
+        self.declaration_number = 0
 
         # unique iterator to add to call names
         self.call_number = 0
@@ -50,6 +59,13 @@ class AnalyzeWDL:
 
         # unique iterator to add to if names
         self.if_number = 0
+
+    @property
+    def version(self) -> str:
+        """
+        Returns the version of the WDL document as a string.
+        """
+        raise NotImplementedError
 
     def analyze(self):
         """
@@ -66,3 +82,37 @@ class AnalyzeWDL:
         Writes a file with the AST for a wdl file in the out_dir.
         """
         pass
+
+    primitive_types = {
+        'String': WDLStringType,
+        'Int': WDLIntType,
+        'Float': WDLFloatType,
+        'Boolean': WDLBooleanType,
+        'File': WDLFileType
+    }
+
+    compound_types = {
+        'Array': WDLArrayType,
+        'Pair': WDLPairType,
+        'Map': WDLMapType
+    }
+
+    def create_wdl_primitive_type(self, key: str, optional: bool = False):
+        """
+        Returns an instance of WDLType.
+        """
+        type_ = self.primitive_types.get(key)
+        if type_:
+            return type_(optional=optional)
+        else:
+            raise RuntimeError(f'Unsupported primitive type: {key}')
+
+    def create_wdl_compound_type(self, key: str, elements: list, optional: bool = False):
+        """
+        Returns an instance of WDLCompoundType.
+        """
+        type_ = self.compound_types.get(key)
+        if type_:
+            return type_(*elements, optional=optional)
+        else:
+            raise RuntimeError(f'Unsupported compound type: {key}')
