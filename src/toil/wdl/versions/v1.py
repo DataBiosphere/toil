@@ -98,7 +98,7 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
             # input
             if is_context(section, 'Workflow_inputContext'):
                 # loop through all inputs and add to the workflow dictionary.
-                # Treating this the same as workflow declarations for now
+                # treating this the same as workflow declarations for now
                 for wf_input in self.visitWorkflow_input(section):
                     wf[f'declaration{self.declaration_number}'] = wf_input
                     self.declaration_number += 1
@@ -183,12 +183,11 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
         name = '.'.join(identifier.getText() for identifier in ctx.call_name().Identifier())
         alias = ctx.call_alias().Identifier().getText() if ctx.call_alias() else name
 
-        body = OrderedDict({  # kvp generator
-            input_.Identifier().getText(): self.visitExpr(input_.expr())
-            for input_ in ctx.call_body().call_inputs().call_input()
-
-            # check if {} and {input: ...} are provided
-        }) if ctx.call_body() and ctx.call_body().call_inputs() else OrderedDict()
+        body = OrderedDict()
+        # make sure that '{}' and '{input: ...}' are provided
+        if ctx.call_body() and ctx.call_body().call_inputs():
+            for input_ in ctx.call_body().call_inputs().call_input():
+                body[input_.Identifier().getText()] = self.visitExpr(input_.expr())
 
         return {
             'task': name,
@@ -222,8 +221,7 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
 
         Returns a dict={expression, body}.
         """
-        # see https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#conditionals
-
+        # see https://github.com/openwdl/wdl/blob/main/versions/1.0/SPEC.md#conditionals
         expr = self.visitExpr(ctx.expr())
 
         body = OrderedDict()
@@ -251,7 +249,6 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
             section = element.children[0]
             # input
             if is_context(section, 'Task_inputContext'):
-                # treating this the same as task declarations for now
                 task.setdefault('inputs', []).extend(self.visitTask_input(section))
             # output
             elif is_context(section, 'Task_outputContext'):
@@ -264,6 +261,7 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
                 task['runtime'] = self.visitTask_runtime(section)
             # bound_decls
             elif is_context(section, 'Bound_declsContext'):
+                # treating this the same as inputs for now
                 decl = self.visitBound_decls(section)
                 task.setdefault('inputs', []).append(decl)
             # parameter_meta, and meta
@@ -336,7 +334,7 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
         """
         Returns a string representing the string_part.
         """
-        # join here because a string that contains $, {, or } is split
+        # join here because a string that contains '$', '{', or '}' is split
         return ''.join(part.getText() for part in ctx.CommandStringPart())
 
     def visitTask_command_expr_with_string(self, ctx):
@@ -377,7 +375,7 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
 
     def visitUnbound_decls(self, ctx):
         """
-        Contains an unbounded input declaration. E.g.: `String in_str`.
+        Contains an unbounded declaration. E.g.: `String in_str`.
 
         Returns a tuple=(name, type, expr), where `expr` is None.
         """
@@ -387,7 +385,7 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
 
     def visitBound_decls(self, ctx):
         """
-        Contains a bounded input declaration. E.g.: `String in_str = "some string"`.
+        Contains a bounded declaration. E.g.: `String in_str = "some string"`.
 
         Returns a tuple=(name, type, expr).
         """

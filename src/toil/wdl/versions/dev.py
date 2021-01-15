@@ -44,7 +44,7 @@ class AnalyzeDevelopmentWDL(AnalyzeV1WDL, WdlParserVisitor):  # extend from 1.0
 
     def visitDocument(self, ctx):
         """
-        Similar to version 1.0, expect the 'workflow' element is included in
+        Similar to version 1.0, except the 'workflow' element is included in
         `ctx.document_element()` instead of being `ctx.workflow()`.
         """
         for element in ctx.document_element():
@@ -64,7 +64,7 @@ class AnalyzeDevelopmentWDL(AnalyzeV1WDL, WdlParserVisitor):  # extend from 1.0
             return super(AnalyzeDevelopmentWDL, self).visitDocument_element(ctx)
 
     def visitCall(self, ctx):
-        # TODO: the development version contains an additional 'call_afters' element.
+        # TODO: call_afters is newly added. implement it here and in wdl_synthesis.
 
         return super(AnalyzeDevelopmentWDL, self).visitCall(ctx)
 
