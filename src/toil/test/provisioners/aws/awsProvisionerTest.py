@@ -138,34 +138,45 @@ class AbstractAWSAutoscaleTest(ToilTest):
         os.set_blocking(p.stdout.fileno(), False)
         os.set_blocking(p.stderr.fileno(), False)
         
-        out_buffer = ''
-        err_buffer = ''
-        
+        out_buffer = b''
+        err_buffer = b''
+
+        loops_since_line = 0
+
         running = True
-        while running == True:
+        while running:
             # While the process is running, see if it stopped
-            running = p.poll()
-            
+            running = (p.poll() == None)
+
             # Also collect its output
             out_data = p.stdout.read()
             if out_data:
                 out_buffer += out_data
-           
+
             while out_buffer.find(b'\n') != -1:
                 # And log every full line
                 cut = out_buffer.find(b'\n')
                 log.info('STDOUT: %s', out_buffer[0:cut].decode('utf-8', errors='ignore'))
-                out_data = out_buffer[cut+1:]
-           
+                loops_since_line = 0
+                out_buffer = out_buffer[cut+1:]
+
             # Same for the error
             err_data = p.stderr.read()
             if err_data:
                 err_buffer += err_data
-                
+
             while err_buffer.find(b'\n') != -1:
                 cut = err_buffer.find(b'\n')
                 log.info('STDERR: %s', err_buffer[0:cut].decode('utf-8', errors='ignore'))
+                loops_since_line = 0
                 err_buffer = err_buffer[cut+1:]
+
+            loops_since_line += 1
+            if loops_since_line > 60:
+                log.debug('...waiting...')
+                loops_since_line = 0
+
+            time.sleep(1)
                 
         # At the end, log the last lines
         if out_buffer:
@@ -214,6 +225,23 @@ class AbstractAWSAutoscaleTest(ToilTest):
         """Download the test script needed by the inheriting unit test class."""
         raise NotImplementedError()
 
+    def putScript(self, content: str):
+        """
+        Helper method for _getScript to inject a script file at the configured script path, from text.
+        """
+        cluster = cluster_factory(provisioner='aws', zone=self.zone, clusterName=self.clusterName)
+        leader = cluster.getLeader()
+
+        self.sshUtil(['mkdir', '-p', self.scriptDir])
+
+        with tempfile.NamedTemporaryFile(mode='w') as t:
+            # use appliance ssh method instead of sshutil so we can specify input param
+            t.write(content)
+            # This works to make writes visible on non-Windows
+            t.flush()
+            leader.injectFile(t.name, self.script(), 'toil_leader')
+
+
     @abstractmethod
     def _runScript(self, toilOptions):
         """
@@ -243,6 +271,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         upgrade_command = [self.pip(), 'install', 'setuptools==28.7.1', 'pyyaml==3.12']
         self.sshUtil(upgrade_command)
 
+        log.info('Set up script...')
         self._getScript()
 
         toilOptions = [self.jobStore,
@@ -256,6 +285,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         if preemptableJobs:
             toilOptions.extend(['--defaultPreemptable'])
 
+        log.info('Run script...')
         self._runScript(toilOptions)
 
         assert len(self.getMatchingRoles()) == 1
@@ -485,19 +515,8 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
                 Job.Runner.startToil(rootJob, options)
 
         script = dedent('\n'.join(getsource(restartScript).split('\n')[1:]))
+        self.putScript(script)
         
-        cluster = cluster_factory(provisioner='aws', zone=self.zone, clusterName=self.clusterName)
-        leader = cluster.getLeader()
-        
-        self.sshUtil(['mkdir', '-p', self.scriptDir])
-        
-        with tempfile.NamedTemporaryFile(mode='w') as t:
-            # use appliance ssh method instead of sshutil so we can specify input param
-            t.write(script)
-            # This works to make writes visible on non-Windows
-            t.flush()
-            leader.injectFile(t.name, self.script(), 'toil_leader')
-
     def _runScript(self, toilOptions):
         # Use the provisioner in the workflow
         toilOptions.extend(['--provisioner=aws', '--batchSystem=mesos',
@@ -565,11 +584,7 @@ class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
                         toil.start(Job.wrapJobFn(job))
 
         script = dedent('\n'.join(getsource(userScript).split('\n')[1:]))
-        # use appliance ssh method instead of sshutil so we can specify input param
-        cluster = cluster_factory(provisioner='aws', zone=self.zone, clusterName=self.clusterName)
-        leader = cluster.getLeader()
-        self.sshUtil(['mkdir', '-p', self.scriptDir])
-        leader.sshAppliance('tee', self.script(), input=script.encode('utf-8'))
+        self.putScript(script)
 
     def _runScript(self, toilOptions):
         toilOptions.extend(['--provisioner=aws', '--batchSystem=mesos',
