@@ -132,16 +132,50 @@ class AbstractAWSAutoscaleTest(ToilTest):
         """
 
         cmd = ['toil', 'ssh-cluster', '--insecure', '-p=aws', '-z', self.zone, self.clusterName] + command
-        log.debug("Running %s.", str(cmd))
-        p = subprocess.Popen(cmd, stderr=-1, stdout=-1)
-        o, e = p.communicate()
-        log.debug('\n\nSTDOUT: ' + o.decode("utf-8"))
-        log.debug('\n\nSTDERR: ' + e.decode("utf-8"))
+        log.info("Running %s.", str(cmd))
+        p = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        # Put in non-blocking mode. See https://stackoverflow.com/a/59291466
+        os.set_blocking(p.stdout.fileno(), False)
+        os.set_blocking(p.stderr.fileno(), False)
+        
+        out_buffer = ''
+        err_buffer = ''
+        
+        running = True
+        while running == True:
+            # While the process is running, see if it stopped
+            running = p.poll()
+            
+            # Also collect its output
+            out_data = p.stdout.read()
+            if out_data:
+                out_buffer += out_data
+           
+            while out_buffer.find(b'\n') != -1:
+                # And log every full line
+                cut = out_buffer.find(b'\n')
+                log.info('STDOUT: %s', out_buffer[0:cut].decode('utf-8', errors='ignore'))
+                out_data = out_buffer[cut+1:]
+           
+            # Same for the error
+            err_data = p.stderr.read()
+            if err_data:
+                err_buffer += err_data
+                
+            while err_buffer.find(b'\n') != -1:
+                cut = err_buffer.find(b'\n')
+                log.info('STDERR: %s', err_buffer[0:cut].decode('utf-8', errors='ignore'))
+                err_buffer = err_buffer[cut+1:]
+                
+        # At the end, log the last lines
+        if out_buffer:
+            log.info('STDOUT: %s', out_buffer.decode('utf-8', errors='ignore'))
+        if err_buffer:
+            log.info('STDOUT: %s', err_buffer.decode('utf-8', errors='ignore'))
+        
         if p.returncode != 0:
             # It failed
             log.error("Failed to run %s.", str(cmd))
-            log.error('\n\nSTDOUT: ' + o.decode("utf-8"))
-            log.error('\n\nSTDERR: ' + e.decode("utf-8"))
             raise subprocess.CalledProcessError(p.returncode, ' '.join(cmd))
 
     def rsyncUtil(self, src, dest):
