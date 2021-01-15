@@ -13,12 +13,16 @@
 # limitations under the License.
 import logging
 
-from toil.wdl.wdl_analysis import AnalyzeWDL
+from wdlparse.dev.WdlLexer import WdlLexer, FileStream
+from wdlparse.dev.WdlParser import WdlParser, CommonTokenStream
+from wdlparse.dev.WdlParserVisitor import WdlParserVisitor
+
+from toil.wdl.versions.v1 import AnalyzeV1WDL, is_context
 
 logger = logging.getLogger(__name__)
 
 
-class AnalyzeDevelopmentWDL(AnalyzeWDL):
+class AnalyzeDevelopmentWDL(AnalyzeV1WDL, WdlParserVisitor):  # extend from 1.0
     """
     AnalyzeWDL implementation for the development version.
     """
@@ -33,4 +37,52 @@ class AnalyzeDevelopmentWDL(AnalyzeWDL):
         intermediate data structures: `self.workflows_dictionary` and
         `self.tasks_dictionary`.
         """
-        raise NotImplementedError
+        lexer = WdlLexer(FileStream(self.wdl_file))
+        parser = WdlParser(input=CommonTokenStream(lexer))
+        tree = parser.document()
+        self.visitDocument(tree)
+
+    def visitDocument(self, ctx):
+        """
+        Similar to version 1.0, expect the 'workflow' element is included in
+        `ctx.document_element()` instead of being `ctx.workflow()`.
+        """
+        for element in ctx.document_element():
+            self.visitDocument_element(element)
+
+    def visitDocument_element(self, ctx):
+        """
+        Similar to version 1.0, except this also contains 'workflow'.
+        """
+        element = ctx.children[0]
+
+        # workflow
+        if is_context(element, 'WorkflowContext'):
+            return self.visitWorkflow(element)
+        else:
+            # hand the rest to super.
+            return super(AnalyzeDevelopmentWDL, self).visitDocument_element(ctx)
+
+    def visitCall(self, ctx):
+        # TODO: the development version contains an additional 'call_afters' element.
+
+        return super(AnalyzeDevelopmentWDL, self).visitCall(ctx)
+
+    # task hints
+    # def visitTask(self, ctx):
+    #     # Task_hintsContext
+
+    # task_command_expr_part: removed expression_placeholder_option
+    # string_expr_part:       removed expression_placeholder_option
+
+    # task_runtime_kv: more specific with the keywords
+
+    # primitive_literal: added NONE LITERAL
+
+    # type_base: added DIRECTORY
+
+    def visitStruct_literal(self, ctx):
+        """
+        Pattern: Identifier LBRACE (Identifier COLON expr (COMMA Identifier COLON expr)*)* RBRACE
+        """
+        raise NotImplementedError(f'Structs are not implemented yet :(')

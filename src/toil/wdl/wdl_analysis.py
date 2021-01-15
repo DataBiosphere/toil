@@ -116,3 +116,9 @@ class AnalyzeWDL:
             return type_(*elements, optional=optional)
         else:
             raise RuntimeError(f'Unsupported compound type: {key}')
+
+    def is_valid_fn_call(self, fn_call: str) -> bool:
+        """
+        Returns if the `fn_call` string in WDL is a recognizable function call.
+        """
+        pass
