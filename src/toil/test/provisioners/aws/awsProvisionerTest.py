@@ -215,7 +215,6 @@ class AbstractAWSAutoscaleTest(ToilTest):
                        '--workDir=/var/lib/toil',
                        '--clean=always',
                        '--retryCount=2',
-                       '--clusterStats=' + self.scriptDir + '/',
                        '--logDebug',
                        '--logFile=' + os.path.join(self.scriptDir, 'sort.log')
                        ]
@@ -226,11 +225,6 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self._runScript(toilOptions)
 
         assert len(self.getMatchingRoles()) == 1
-
-        # check stats, which we dumped to the script directory, by loading them
-        # as JSON and makign sure they are syntactically OK.
-        self.sshUtil([self.python(), '-c', 'import json; import os; '
-                      'json.load(open("' + self.scriptDir + '/" + [f for f in os.listdir("' + self.scriptDir + '") if f.endswith(".json")].pop()))'])
 
         from boto.exception import EC2ResponseError
         volumeID = self.getRootVolID()
