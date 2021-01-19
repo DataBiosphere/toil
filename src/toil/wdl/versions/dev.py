@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 class AnalyzeDevelopmentWDL(AnalyzeV1WDL, WdlParserVisitor):  # extend from 1.0
     """
-    AnalyzeWDL implementation for the development version.
+    AnalyzeWDL implementation for the development version using antlr4.
     """
 
     @property

@@ -35,7 +35,7 @@ def is_context(ctx, classname: Union[str, tuple]):
 
 class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
     """
-    AnalyzeWDL implementation for the 1.0 version.
+    AnalyzeWDL implementation for the 1.0 version using antlr4.
     """
 
     @property
@@ -346,19 +346,11 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
 
     def visitTask_command_expr_part(self, ctx):
         """
-        Contains the expression inside ${expr}.
+        Contains the expression inside ${expr}. Same function as `self.visitString_expr_part()`.
 
         Returns the expression.
         """
-
-        # [!!] TODO: expression_placeholder_option
-        # https://github.com/openwdl/wdl/blob/main/versions/1.0/SPEC.md#expression-placeholder-options
-
-        #  e.g.: ${sep=", " array_value}
-        #  e.g.: ${true="--yes" false="--no" boolean_value}
-        #  e.g.: ${default="foo" optional_value}
-
-        return self.visitExpr(ctx.expr())
+        return self.visitString_expr_part(ctx)  # noqa
 
     def visitTask_runtime(self, ctx):
         """
@@ -372,6 +364,17 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
                            for kv in ctx.task_runtime_kv())
 
     # Shared
+
+    def visitAny_decls(self, ctx):
+        """
+        Contains a bounded or unbounded declaration.
+        """
+        if ctx.bound_decls():
+            return self.visitBound_decls(ctx.bound_decls())
+        elif ctx.unbound_decls():
+            return self.visitUnbound_decls(ctx.unbound_decls())
+        else:
+            raise RuntimeError
 
     def visitUnbound_decls(self, ctx):
         """
@@ -427,11 +430,101 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
             if val not in ('true', 'false'):
                 raise TypeError(f'Parsed boolean ({val}) must be expressed as "true" or "false".')
             return val.capitalize()
+        elif is_context(ctx.children[0], 'StringContext'):
+            return self.visitString(ctx.children[0])
         elif is_context(ctx.children[0], ('TerminalNodeImpl',  # this also includes variables
-                                          'StringContext', 'NumberContext')):
+                                          'NumberContext')):
             return ctx.children[0].getText()
         else:
             raise RuntimeError(f'Primitive literal has unknown child: {type(ctx.children[0])}.')
+
+    def visitString(self, ctx):
+        """
+        Contains a `string_part` followed by an array of `string_expr_with_string_part`s.
+        """
+        string = self.visitString_part(ctx.string_part())
+
+        for part in ctx.string_expr_with_string_part():
+            string += ' + ' + self.visitString_expr_with_string_part(part)
+
+        return string
+
+    def visitString_expr_with_string_part(self, ctx):
+        """
+        Contains a `string_expr_part` and a `string_part`.
+        """
+        expr = self.visitString_expr_part(ctx.string_expr_part())
+        part = self.visitString_part(ctx.string_part())
+
+        if not part:
+            return expr
+
+        return expr + ' + ' + part
+
+    def visitString_expr_part(self, ctx):
+        """
+        Contains an array of `expression_placeholder_option`s and an `expr`.
+        """
+        # See https://github.com/openwdl/wdl/blob/main/versions/1.0/parsers/antlr4/WdlV1Parser.g4#L56
+
+        options = {}
+
+        for opt in ctx.expression_placeholder_option():
+            key, val = self.visitExpression_placeholder_option(opt)
+            options[key] = val
+
+        expr = self.visitExpr(ctx.expr())
+
+        if 'sep' in options:
+            sep = options['sep']
+            return f'{sep}.join(str(x) for x in {expr})'
+        elif 'default' in options:
+            default = options['default']
+            return f'{expr} if {expr} else {default}'
+        else:
+            return expr
+
+    def visitString_part(self, ctx):
+        """
+        Returns a string representing the string_part.
+        """
+        # join here because a string that contains '$', '{', or '}' is split
+        part = ''.join(part.getText() for part in ctx.StringPart())
+
+        if part:
+            return f"'{part}'"
+        return None
+
+    def visitExpression_placeholder_option(self, ctx):
+        """
+        Expression Placeholder Options.
+
+        Matches three of the following:
+              BoolLiteral EQUAL (string | number)
+              DEFAULT EQUAL (string | number)
+              SEP EQUAL (string | number)
+
+        See https://github.com/openwdl/wdl/blob/main/versions/1.0/SPEC.md#expression-placeholder-options
+
+        e.g.: ${sep=", " array_value}
+        e.g.: ${true="--yes" false="--no" boolean_value}
+        e.g.: ${default="foo" optional_value}
+
+        Returns a tuple=(key, value)
+        """
+        assert len(ctx.children) == 3
+
+        param = ctx.children[0].getText()
+        str_or_num = ctx.children[2]
+        val = self.visitString(str_or_num) if is_context(str_or_num, 'StringContext') else self.visitNumber(str_or_num)
+
+        return param, val
+
+    def visitExpr(self, ctx):
+        """
+        Expression root.
+        """
+        return self.visitInfix0(ctx.expr_infix())
 
     def visitInfix0(self, ctx):
         """
@@ -537,6 +630,45 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
         rhs = self.visitInfix5(ctx)
         return f'{lhs} {operation} {rhs}'
 
+    def visitInfix5(self, ctx):
+        """
+        Expression infix5.
+        """
+        return self._visitExpr_core(ctx.expr_infix5().expr_core())
+
+    def _visitExpr_core(self, expr):
+        """
+        Expression core.
+        """
+        if is_context(expr, 'ApplyContext'):
+            return self.visitApply(expr)
+        elif is_context(expr, 'Array_literalContext'):
+            return self.visitArray_literal(expr)
+        elif is_context(expr, 'Pair_literalContext'):
+            return self.visitPair_literal(expr)
+        elif is_context(expr, 'Map_literalContext'):
+            raise NotImplementedError
+        elif is_context(expr, 'Object_literalContext'):
+            raise NotImplementedError
+        elif is_context(expr, 'IfthenelseContext'):
+            return self.visitIfthenelse(expr)
+        elif is_context(expr, 'Expression_groupContext'):
+            return self.visitExpression_group(expr)
+        elif is_context(expr, 'AtContext'):
+            return self.visitAt(expr)
+        elif is_context(expr, 'Get_nameContext'):
+            return self.visitGet_name(expr)
+        elif is_context(expr, 'NegateContext'):
+            return self.visitNegate(expr)
+        elif is_context(expr, 'UnarysignedContext'):
+            return self.visitUnarysigned(expr)
+        elif is_context(expr, 'PrimitivesContext'):
+            return self.visitPrimitives(expr)
+        elif is_context(expr, 'Left_nameContext'):
+            raise NotImplementedError
+
+        raise NotImplementedError(f"Expression context '{type(expr)}' is not supported.")
+
     # expr_core
     # see: https://github.com/w-gao/wdl/blob/main/versions/development/parsers/antlr4/WdlParser.g4#L121
 
@@ -545,7 +677,28 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
         A function call.
         Pattern: Identifier LPAREN (expr (COMMA expr)*)? RPAREN
         """
-        pass
+        fn = ctx.Identifier().getText()
+        params = ', '.join(self.visitExpr(expr) for expr in ctx.expr())
+
+        if fn == 'stdout':
+            return '_toil_wdl_internal__stdout_file'
+        elif fn == 'stderr':
+            return '_toil_wdl_internal__stderr_file'
+        elif fn in ('range', 'zip'):
+            # replace python built-in functions
+            return f'wdl_{fn}'
+
+        call = f'{fn}({params}'
+
+        # append necessary params for i/o functions
+        if fn == 'glob':
+            return call + ', tempDir)'
+        elif fn == 'size':
+            return call + (params + ', ' if params else '') + 'fileStore=fileStore)'
+        elif fn in ('write_lines', 'write_tsv', 'write_json', 'write_map'):
+            return call + ', temp_dir=tempDir, file_store=fileStore)'
+        else:
+            return call + ')'
 
     def visitArray_literal(self, ctx):
         """
@@ -566,8 +719,6 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
         # return f"{{{', '.join()}}}"
         pass
 
-    # [!!] TODO: visitObject_literal
-
     def visitIfthenelse(self, ctx):
         """
         Ternary expression.
@@ -577,7 +728,6 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
         condition = self.visitExpr(ctx.expr(1))
         if_false = self.visitExpr(ctx.expr(2))
 
-        # this should also work without parenthesis
         return f'({condition} if {if_true} else {if_false})'
 
     def visitExpression_group(self, ctx):
@@ -591,23 +741,48 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
         Array or map lookup.
         Pattern: expr_core LBRACK expr RBRACK
         """
-        pass
+        expr_core = self._visitExpr_core(ctx.expr_core())
+        expr = self.visitExpr(ctx.expr())
+
+        # parenthesis must be removed because 'i[0]' works, but '(i)[0]' does not
+        if expr_core[0] == '(' and expr_core[-1] == ')':
+            expr_core = expr_core[1:-1]
+
+        return f'{expr_core}[{expr}]'
 
     def visitGet_name(self, ctx):
         """
         Member access.
         Pattern: expr_core DOT Identifier
         """
-        pass
+        expr_core = self._visitExpr_core(ctx.expr_core())
+        identifier = ctx.Identifier().getText()
+
+        if identifier in ('left', 'right'):
+            # hack-y way to make sure pair.left and pair.right are parsed correctly.
+            return f'({expr_core}.{identifier})'
+
+        return f'({expr_core}_{identifier})'
 
     def visitNegate(self, ctx):
         """
         Pattern: NOT expr
         """
-        pass
+        return f'(not {self.visitExpr(ctx.expr())})'
 
     def visitUnarysigned(self, ctx):
         """
         Pattern: (PLUS | MINUS) expr
         """
-        pass
+        plus: bool = ctx.PLUS() is not None
+        expr = self.visitExpr(ctx.expr())
+
+        if plus:
+            return f'({expr})'
+        return f'(-{expr})'
+
+    def visitPrimitives(self, ctx):
+        """
+        Expression alias for primitive literal.
+        """
+        return self.visitPrimitive_literal(ctx.primitive_literal())
