@@ -51,7 +51,7 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
         lexer = WdlV1Lexer(FileStream(self.wdl_file))
         parser = WdlV1Parser(input=CommonTokenStream(lexer))
         tree = parser.document()
-        self.visit(tree)
+        self.visitDocument(tree)
 
     def visitDocument(self, ctx):
         """
@@ -80,7 +80,7 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
         # import_doc
         elif is_context(element, 'Import_docContext'):
             # TODO: add support for imports.
-            raise NotImplementedError('Import other WDL files is not supported.')
+            raise NotImplementedError('Import is not supported.')
         else:
             raise RuntimeError(f'Unrecognized document element in visitDocument(): {type(element)}')
 
@@ -445,7 +445,7 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
         string = self.visitString_part(ctx.string_part())
 
         for part in ctx.string_expr_with_string_part():
-            string += ' + ' + self.visitString_expr_with_string_part(part)
+            string += f' + {self.visitString_expr_with_string_part(part)}'
 
         return string
 
@@ -459,7 +459,7 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
         if not part:
             return expr
 
-        return expr + ' + ' + part
+        return f'{expr} + {part}'
 
     def visitString_expr_part(self, ctx):
         """
@@ -475,14 +475,16 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
 
         expr = self.visitExpr(ctx.expr())
 
-        if 'sep' in options:
+        if len(options) == 0:
+            return expr
+        elif 'sep' in options:
             sep = options['sep']
             return f'{sep}.join(str(x) for x in {expr})'
         elif 'default' in options:
             default = options['default']
             return f'{expr} if {expr} else {default}'
         else:
-            return expr
+            raise NotImplementedError(options)
 
     def visitString_part(self, ctx):
         """
@@ -497,7 +499,7 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
 
     def visitExpression_placeholder_option(self, ctx):
         """
-        Expression Placeholder Options.
+        Expression placeholder options.
 
         Matches three of the following:
               BoolLiteral EQUAL (string | number)
@@ -646,10 +648,10 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
             return self.visitArray_literal(expr)
         elif is_context(expr, 'Pair_literalContext'):
             return self.visitPair_literal(expr)
-        elif is_context(expr, 'Map_literalContext'):
-            raise NotImplementedError
-        elif is_context(expr, 'Object_literalContext'):
-            raise NotImplementedError
+        # elif is_context(expr, 'Map_literalContext'):
+        #     raise NotImplementedError
+        # elif is_context(expr, 'Object_literalContext'):
+        #     raise NotImplementedError
         elif is_context(expr, 'IfthenelseContext'):
             return self.visitIfthenelse(expr)
         elif is_context(expr, 'Expression_groupContext'):
@@ -664,8 +666,8 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
             return self.visitUnarysigned(expr)
         elif is_context(expr, 'PrimitivesContext'):
             return self.visitPrimitives(expr)
-        elif is_context(expr, 'Left_nameContext'):
-            raise NotImplementedError
+        # elif is_context(expr, 'Left_nameContext'):
+        #     raise NotImplementedError
 
         raise NotImplementedError(f"Expression context '{type(expr)}' is not supported.")
 
@@ -711,13 +713,6 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
         Pattern: LPAREN expr COMMA expr RPAREN
         """
         return f"({self.visitExpr(ctx.expr(0))}, {self.visitExpr(ctx.expr(1))})"
-
-    def visitMap_literal(self, ctx):
-        """
-        Pattern: LBRACE (expr COLON expr (COMMA expr COLON expr)*)* RBRACE
-        """
-        # return f"{{{', '.join()}}}"
-        pass
 
     def visitIfthenelse(self, ctx):
         """
@@ -778,7 +773,7 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
         expr = self.visitExpr(ctx.expr())
 
         if plus:
-            return f'({expr})'
+            return f'(+{expr})'
         return f'(-{expr})'
 
     def visitPrimitives(self, ctx):
