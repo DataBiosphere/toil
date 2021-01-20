@@ -55,9 +55,7 @@ def get_current_aws_zone(spotBid=None, nodeType=None, ctx=None):
             import boto
             from boto.utils import get_instance_metadata
             zone = get_instance_metadata()['placement']['availability-zone']
-        except KeyError:
-            pass
-        except ImportError:
+        except (KeyError, ImportError):
             pass
     if not zone and spotBid:
         # if spot bid is present, all the other parameters must be as well
