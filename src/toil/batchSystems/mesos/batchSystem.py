@@ -317,9 +317,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         The Mesos driver thread which handles the scheduler's communication with the Mesos master
         """
         framework = addict.Dict()
-        user = getpass.getuser()
-        log.debug(f"using user {user}")
-        framework.user = user  # We must determine the user name ourselves with pymesos
+        framework.user = getpass.getuser()  # We must determine the user name ourselves with pymesos
         framework.name = "toil"
         framework.principal = framework.name
         # Make the driver which implements most of the scheduler logic and calls back to us for the user-defined parts.
