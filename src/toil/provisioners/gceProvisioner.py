@@ -41,21 +41,22 @@ class GCEProvisioner(AbstractProvisioner):
     SOURCE_IMAGE = (b'projects/flatcar-cloud/global/images/family/flatcar-stable')
 
     def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):
-        super(GCEProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
         self.cloud = 'gce'
         self._sseKey = sseKey
 
-        # If the clusterName is not given, then Toil must be running on the leader
-        # and should read the settings from the instance meta-data.
-        if clusterName:
-            self._readCredentials()
-        else:
-            self._readClusterSettings()
-            
+        # Call base class constructor, which will call createClusterSettings()
+        # or readClusterSettings()
+        super(GCEProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
+
     def supportedClusterTypes(self):
         return {'mesos'}
 
-    def _readClusterSettings(self):
+    def createClusterSettings(self):
+        # All we need to do is read the Google credentials we need to provision
+        # things
+        self._readCredentials()
+
+    def readClusterSettings(self):
         """
         Read the cluster settings from the instance, which should be the leader.
         See https://cloud.google.com/compute/docs/storing-retrieving-metadata for details about

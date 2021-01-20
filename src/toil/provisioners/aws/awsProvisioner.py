@@ -129,7 +129,6 @@ class InvalidClusterStateException(Exception):
 
 class AWSProvisioner(AbstractProvisioner):
     def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):
-        super(AWSProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
         self.cloud = 'aws'
         self._sseKey = sseKey
         self._zone = zone if zone else get_current_aws_zone()
@@ -139,7 +138,7 @@ class AWSProvisioner(AbstractProvisioner):
             raise RuntimeError('No AWS availability zone specified. Configure in Boto '
                                'configuration file, TOIL_AWS_ZONE environment variable, or '
                                'on the command line.')
-    
+
 
         # establish boto3 clients
         self.session = establish_boto3_session(region_name=zone_to_region(self._zone))
@@ -149,15 +148,21 @@ class AWSProvisioner(AbstractProvisioner):
         self.autoscaling_client = self.session.client('autoscaling')
         self.iam_client = self.session.client('iam')
 
-        if clusterName:
-            self._buildContext()  # create boto2 context (self._boto2)
-        else:
-            self._readClusterSettings() # Also fills in self._boto2
+        # Call base class constructor, which will call createClusterSettings()
+        # or readClusterSettings()
+        super(AWSProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
+
+
             
     def supportedClusterTypes(self):
         return {'mesos', 'kubernetes'}
 
-    def _readClusterSettings(self):
+    def createClusterSettings(self):
+        # All we need to do for a new cluster is build the context and fill in
+        # self._boto2
+        self._buildContext()
+
+    def readClusterSettings(self):
         """
         Reads the cluster settings from the instance metadata, which assumes the instance
         is the leader.

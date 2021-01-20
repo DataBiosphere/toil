@@ -23,6 +23,7 @@ from functools import total_ordering
 from typing import Dict, Optional, Set
 
 from toil import applianceSelf, customDockerInitCmd, customInitCmd
+from toil.provisioners import ClusterTypeNotSupportedException
 from toil.provisioners.node import Node
 
 a_short_time = 5
@@ -135,7 +136,7 @@ class AbstractProvisioner(ABC):
         self.clusterName = clusterName
         self.clusterType = clusterType
         
-        if self.clusterType not in self.supportedCcusterTypes():
+        if self.clusterType not in self.supportedClusterTypes():
             # This isn't actually a cluster type we can do
             ClusterTypeNotSupportedException(type(self), clusterType)
         
@@ -150,13 +151,30 @@ class AbstractProvisioner(ABC):
         # Kubernetes joining information as a dict for Kubernetes clusters.
         self._leaderWorkerAuthentication = None
 
+        if clusterName:
+            # Making a new cluster
+            self.createClusterSettings()
+        else:
+            # Starting up on an existing cluster
+            self.readClusterSettings()
+
     @abstractmethod
-    def supportedCcusterTypes(self) -> Set[str]:
+    def supportedClusterTypes(self) -> Set[str]:
         """
-        Get all the cluster types that this provisioner implementation supports.
+        Get all the cluster types that this provisioner implementation
+        supports.
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def createClusterSettings(self):
+        """
+        Initialize class for a new cluster, to be deployed, when running
+        outside the cloud.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def readClusterSettings(self):
         """
         Initialize class from an existing cluster. This method assumes that
