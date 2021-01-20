@@ -678,6 +678,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                                                                                 self.namespace, 'pods',
                                                                                 field_selector=query)
         except Exception as e:
+            # We couldn't talk to the metrics service on this attempt. We don't
+            # retry, but we also don't want to just ignore all errors. We only
+            # want to ignore errors we expect to see if the problem is that the
+            # metrics service is not working.
             if type(e) in retryable_kubernetes_errors:
                 # This is the sort of error we would expect from an overloaded
                 # Kubernetes or a dead metrics service.
