@@ -517,7 +517,6 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
     resource_options.add_argument('--defaultDisk', dest='defaultDisk', default=None, metavar='INT',
                                   help=resource_help_msg.format('default', 'disk', disk_mem_note,
                                                                 bytes2human(config.defaultDisk, symbols="iec")))
-    assert not config.defaultPreemptable, 'User would be unable to reset config.defaultPreemptable'
     resource_options.add_argument('--defaultPreemptable', dest='defaultPreemptable', action='store_true',
                                   help='Make all jobs able to run on preemptable (spot) nodes by default.')
     resource_options.add_argument('--maxCores', dest='maxCores', default=None, metavar='INT',
