@@ -97,6 +97,8 @@ print(heredoc('''
         mv go/bin/* /usr/bin/ && \
         mv go /usr/local/
         
+    # Build Singularity, but only keep the binaries and scrap the GOPATH to
+    # save space
     RUN mkdir -p $(go env GOPATH)/src/github.com/sylabs && \
         cd $(go env GOPATH)/src/github.com/sylabs && \
         git clone https://github.com/sylabs/singularity.git && \
