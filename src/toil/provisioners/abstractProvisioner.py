@@ -20,7 +20,7 @@ import textwrap
 import yaml
 from abc import ABC, abstractmethod
 from functools import total_ordering
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 
 from toil import applianceSelf, customDockerInitCmd, customInitCmd
 from toil.provisioners.node import Node
@@ -134,6 +134,11 @@ class AbstractProvisioner(ABC):
         """
         self.clusterName = clusterName
         self.clusterType = clusterType
+        
+        if self.clusterType not in self.supportedCcusterTypes():
+            # This isn't actually a cluster type we can do
+            ClusterTypeNotSupportedException(type(self), clusterType)
+        
         self._zone = zone
         self._nodeStorage = nodeStorage
         self._nodeStorageOverrides = {}
@@ -144,6 +149,13 @@ class AbstractProvisioner(ABC):
         # This will hold an SSH public key for Mesos clusters, or the
         # Kubernetes joining information as a dict for Kubernetes clusters.
         self._leaderWorkerAuthentication = None
+
+    @abstractmethod
+    def supportedCcusterTypes(self) -> Set[str]:
+        """
+        Get all the cluster types that this provisioner implementation supports.
+        """
+        raise NotImplementedError
 
     def readClusterSettings(self):
         """

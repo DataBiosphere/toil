@@ -50,8 +50,7 @@ from toil.lib.retry import (get_error_body,
                             get_error_message,
                             get_error_status,
                             old_retry)
-from toil.provisioners import (NoSuchClusterException,
-                               ClusterTypeNotSupportedException)
+from toil.provisioners import NoSuchClusterException
 from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
                                                    Shape,
                                                    ManagedNodesNotSupportedException)
@@ -130,8 +129,6 @@ class InvalidClusterStateException(Exception):
 
 class AWSProvisioner(AbstractProvisioner):
     def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):
-        if clusterType not in ['mesos', 'kubernetes']:
-            raise ClusterTypeNotSupportedException(AWSProvisioner, clusterType)
         super(AWSProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
         self.cloud = 'aws'
         self._sseKey = sseKey
@@ -156,6 +153,9 @@ class AWSProvisioner(AbstractProvisioner):
             self._buildContext()  # create boto2 context (self._boto2)
         else:
             self._readClusterSettings() # Also fills in self._boto2
+            
+    def supportedClusterTypes(self):
+        return {'mesos', 'kubernetes'}
 
     def _readClusterSettings(self):
         """

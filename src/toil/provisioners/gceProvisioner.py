@@ -41,9 +41,6 @@ class GCEProvisioner(AbstractProvisioner):
     SOURCE_IMAGE = (b'projects/flatcar-cloud/global/images/family/flatcar-stable')
 
     def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):
-        if clusterType != 'mesos':
-            # We only support Mesos clusters.
-            raise ClusterTypeNotSupportedException(GCEProvisioner, clusterType)
         super(GCEProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
         self.cloud = 'gce'
         self._sseKey = sseKey
@@ -54,6 +51,9 @@ class GCEProvisioner(AbstractProvisioner):
             self._readCredentials()
         else:
             self._readClusterSettings()
+            
+    def supportedClusterTypes(self):
+        return {'mesos'}
 
     def _readClusterSettings(self):
         """
