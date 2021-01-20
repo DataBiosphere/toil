@@ -657,7 +657,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         We assume the pod has only one container, as Toil's pods do.
 
         If the metrics service is not working, we treat the pod as not being
-        stuck OOM.
+        stuck OOM. Otherwise, we would kill all functioning jobs on clusters
+        where the metrics service is down or isn't installed.
 
         :param kubernetes.client.V1Pod podObject: a Kubernetes pod with one
                                        container to check up on.
