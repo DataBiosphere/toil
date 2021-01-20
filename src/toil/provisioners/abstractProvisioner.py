@@ -772,7 +772,8 @@ class AbstractProvisioner(ABC):
         Return the Kubernetes cloud provider (for example, 'aws'), to pass to
         the kubelets in a Kubernetes cluster provisioned using this provisioner.
         
-        Defaults to None if not overridden.
+        Defaults to None if not overridden, in which case no cloud provider
+        integration will be used.
 
         :returns: Cloud provider name, or None
         """
