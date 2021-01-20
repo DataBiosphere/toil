@@ -44,6 +44,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
                                                    BatchSystemCleanupSupport,
                                                    UpdatedBatchJobInfo)
 from toil.common import Toil
+from toil.job import JobDescription
 from toil.lib.humanize import human2bytes
 from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
@@ -321,7 +322,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         
     # setEnv is provided by BatchSystemSupport, updates self.environment
     
-    def _createAffinity(self, preemptable: bool) -> kubernetes.client.V1Affinity:
+    def _create_affinity(self, preemptable: bool) -> kubernetes.client.V1Affinity:
         """
         Make a V1Affinity that places pods appropriately depending on if they
         tolerate preemptable nodes or not.
@@ -363,6 +364,100 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Make the node affinity into an overall affinity
         return kubernetes.client.V1Affinity(node_affinity=node_affinity)
         
+    def _create_pod_spec(self, jobDesc: JobDescription) -> kubernetes.client.V1PodSpec:
+        """
+        Make the specification for a pod that can execute the given job.
+        """
+        
+        # Make a job dict to send to the executor.
+        # First just wrap the command and the environment to run it in
+        job = {'command': jobDesc.command,
+               'environment': self.environment.copy()}
+        # TODO: query customDockerInitCmd to respect TOIL_CUSTOM_DOCKER_INIT_COMMAND
+        
+        if self.userScript is not None:
+            # If there's a user script resource be sure to send it along
+            job['userScript'] = self.userScript
+
+        # Encode it in a form we can send in a command-line argument. Pickle in
+        # the highest protocol to prevent mixed-Python-version workflows from
+        # trying to work. Make sure it is text so we can ship it to Kubernetes
+        # via JSON.
+        encodedJob = base64.b64encode(pickle.dumps(job, pickle.HIGHEST_PROTOCOL)).decode('utf-8')
+
+        # The Kubernetes API makes sense only in terms of the YAML format. Objects
+        # represent sections of the YAML files. Except from our point of view, all
+        # the internal nodes in the YAML structure are named and typed.
+
+        # For docs, start at the root of the job hierarchy:
+        # https://github.com/kubernetes-client/python/blob/master/kubernetes/docs/V1Job.md
+
+        # Make a definition for the container's resource requirements.
+        # Add on a bit for Kubernetes overhead (Toil worker's memory, hot deployed
+        # user scripts).
+        # Kubernetes needs some lower limit of memory to run the pod at all without
+        # OOMing. We also want to provision some extra space so that when
+        # we test _isPodStuckOOM we never get True unless the job has
+        # exceeded jobDesc.memory.
+        requirements_dict = {'cpu': jobDesc.cores,
+                             'memory': jobDesc.memory + 1024 * 1024 * 512,
+                             'ephemeral-storage': jobDesc.disk + 1024 * 1024 * 512}
+        # Use the requirements as the limits, for predictable behavior, and because
+        # the UCSC Kubernetes admins want it that way.
+        limits_dict = requirements_dict
+        resources = kubernetes.client.V1ResourceRequirements(limits=limits_dict,
+                                                             requests=requirements_dict)
+        
+        # Collect volumes and mounts
+        volumes = []
+        mounts = []
+        
+        if self.host_path is not None:
+            # Provision Toil WorkDir from a HostPath volume, to share with other pods
+            host_path_volume_name = 'workdir'
+            # Use type='Directory' to fail if the host directory doesn't exist already.
+            host_path_volume_source = kubernetes.client.V1HostPathVolumeSource(path=self.host_path, type='Directory')
+            host_path_volume = kubernetes.client.V1Volume(name=host_path_volume_name,
+                                                         host_path=host_path_volume_source)
+            volumes.append(host_path_volume)
+            host_path_volume_mount = kubernetes.client.V1VolumeMount(mount_path=self.workerWorkDir, name=host_path_volume_name)
+            mounts.append(host_path_volume_mount)
+        else:
+            # Provision Toil WorkDir as an ephemeral volume
+            ephemeral_volume_name = 'workdir'
+            ephemeral_volume_source = kubernetes.client.V1EmptyDirVolumeSource()
+            ephemeral_volume = kubernetes.client.V1Volume(name=ephemeral_volume_name,
+                                                          empty_dir=ephemeral_volume_source)
+            volumes.append(ephemeral_volume)
+            ephemeral_volume_mount = kubernetes.client.V1VolumeMount(mount_path=self.workerWorkDir, name=ephemeral_volume_name)
+            mounts.append(ephemeral_volume_mount)
+
+        if self.awsSecretName is not None:
+            # Also mount an AWS secret, if provided.
+            # TODO: make this generic somehow
+            secret_volume_name = 's3-credentials'
+            secret_volume_source = kubernetes.client.V1SecretVolumeSource(secret_name=self.awsSecretName)
+            secret_volume = kubernetes.client.V1Volume(name=secret_volume_name,
+                                                       secret=secret_volume_source)
+            volumes.append(secret_volume)
+            secret_volume_mount = kubernetes.client.V1VolumeMount(mount_path='/root/.aws', name=secret_volume_name)
+            mounts.append(secret_volume_mount)
+
+        # Make a container definition
+        container = kubernetes.client.V1Container(command=['_toil_kubernetes_executor', encodedJob],
+                                                  image=self.dockerImage,
+                                                  name="runner-container",
+                                                  resources=resources,
+                                                  volume_mounts=mounts)
+        # Wrap the container in a spec
+        pod_spec = kubernetes.client.V1PodSpec(containers=[container],
+                                               volumes=volumes,
+                                               restart_policy="Never")
+        # Tell the spec where to land                   
+        pod_spec.affinity = self._create_affinity(jobDesc.preemptable)
+        
+        return pod_spec
+                                               
     
     def issueBatchJob(self, jobDesc):
         # TODO: get a sensible self.maxCores, etc. so we can checkResourceRequest.
@@ -378,102 +473,18 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             
             # Check resource requirements (managed by BatchSystemSupport)
             self.checkResourceRequest(jobDesc.memory, jobDesc.cores, jobDesc.disk)
+           
+            # Make a pod that describes running the job
+            pod_spec = self._create_pod_spec(jobDesc)
             
             # Make a batch system scope job ID
             jobID = self.getNextJobID()
             # Make a unique name
             jobName = self.jobPrefix + str(jobID)
-
-            # Make a job dict to send to the executor.
-            # First just wrap the command and the environment to run it in
-            job = {'command': jobDesc.command,
-                   'environment': self.environment.copy()}
-            # TODO: query customDockerInitCmd to respect TOIL_CUSTOM_DOCKER_INIT_COMMAND
             
-            if self.userScript is not None:
-                # If there's a user script resource be sure to send it along
-                job['userScript'] = self.userScript
-
-            # Encode it in a form we can send in a command-line argument.
-            # Pickle in the highest protocol to prevent mixed Python2/3 workflows from trying to work
-            # TODO: Make the appliance use/support Python 3
-            # Make sure it is text so we can ship it to Kubernetes via JSON.
-            encodedJob = base64.b64encode(pickle.dumps(job, pickle.HIGHEST_PROTOCOL)).decode('utf-8')
-
-            # The Kubernetes API makes sense only in terms of the YAML format. Objects
-            # represent sections of the YAML files. Except from our point of view, all
-            # the internal nodes in the YAML structure are named and typed.
-
-            # For docs, start at the root of the job hierarchy:
-            # https://github.com/kubernetes-client/python/blob/master/kubernetes/docs/V1Job.md
-
-            # Make a definition for the container's resource requirements.
-            # Add on a bit for Kubernetes overhead (Toil worker's memory, hot deployed
-            # user scripts).
-            # Kubernetes needs some lower limit of memory to run the pod at all without
-            # OOMing. We also want to provision some extra space so that when
-            # we test _isPodStuckOOM we never get True unless the job has
-            # exceeded jobDesc.memory.
-            requirements_dict = {'cpu': jobDesc.cores,
-                                 'memory': jobDesc.memory + 1024 * 1024 * 512,
-                                 'ephemeral-storage': jobDesc.disk + 1024 * 1024 * 512}
-            # Use the requirements as the limits, for predictable behavior, and because
-            # the UCSC Kubernetes admins want it that way.
-            limits_dict = requirements_dict
-            resources = kubernetes.client.V1ResourceRequirements(limits=limits_dict,
-                                                                 requests=requirements_dict)
-            
-            # Collect volumes and mounts
-            volumes = []
-            mounts = []
-            
-            if self.host_path is not None:
-                # Provision Toil WorkDir from a HostPath volume, to share with other pods
-                host_path_volume_name = 'workdir'
-                # Use type='Directory' to fail if the host directory doesn't exist already.
-                host_path_volume_source = kubernetes.client.V1HostPathVolumeSource(path=self.host_path, type='Directory')
-                host_path_volume = kubernetes.client.V1Volume(name=host_path_volume_name,
-                                                             host_path=host_path_volume_source)
-                volumes.append(host_path_volume)
-                host_path_volume_mount = kubernetes.client.V1VolumeMount(mount_path=self.workerWorkDir, name=host_path_volume_name)
-                mounts.append(host_path_volume_mount)
-            else:
-                # Provision Toil WorkDir as an ephemeral volume
-                ephemeral_volume_name = 'workdir'
-                ephemeral_volume_source = kubernetes.client.V1EmptyDirVolumeSource()
-                ephemeral_volume = kubernetes.client.V1Volume(name=ephemeral_volume_name,
-                                                              empty_dir=ephemeral_volume_source)
-                volumes.append(ephemeral_volume)
-                ephemeral_volume_mount = kubernetes.client.V1VolumeMount(mount_path=self.workerWorkDir, name=ephemeral_volume_name)
-                mounts.append(ephemeral_volume_mount)
-
-            if self.awsSecretName is not None:
-                # Also mount an AWS secret, if provided.
-                # TODO: make this generic somehow
-                secret_volume_name = 's3-credentials'
-                secret_volume_source = kubernetes.client.V1SecretVolumeSource(secret_name=self.awsSecretName)
-                secret_volume = kubernetes.client.V1Volume(name=secret_volume_name,
-                                                           secret=secret_volume_source)
-                volumes.append(secret_volume)
-                secret_volume_mount = kubernetes.client.V1VolumeMount(mount_path='/root/.aws', name=secret_volume_name)
-                mounts.append(secret_volume_mount)
-
-            # Make a container definition
-            container = kubernetes.client.V1Container(command=['_toil_kubernetes_executor', encodedJob],
-                                                      image=self.dockerImage,
-                                                      name="runner-container",
-                                                      resources=resources,
-                                                      volume_mounts=mounts)
-            # Wrap the container in a spec
-            pod_spec = kubernetes.client.V1PodSpec(containers=[container],
-                                                   volumes=volumes,
-                                                   restart_policy="Never")
-            # Tell the spec where to land                   
-            pod_spec.affinity = self._createAffinity(jobDesc.preemptable)
-                                                   
             # Make metadata to label the job/pod with info.
             metadata = kubernetes.client.V1ObjectMeta(name=jobName,
-                                                      labels={"toil_run": self.runID})
+                                                      labels={"toil_run": self.runID}) 
             
             # Wrap the spec in a template
             template = kubernetes.client.V1PodTemplateSpec(spec=pod_spec, metadata=metadata)
