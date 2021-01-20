@@ -322,7 +322,13 @@ def wait_until_instance_profile_arn_exists(instance_profile_arn: str):
     # TODO: We have no guarantee that the ARN contains the name.
     instance_profile_name = instance_profile_arn.split(':instance-profile/')[-1]
     iam_client.get_instance_profile(InstanceProfileName=instance_profile_name)
-
+    
+def flatten_tags(tags: Dict[str, str]) -> List[Dict[str, str]]:
+    """
+    Convert tags from a key to value dict into a list of 'Key': xxx, 'Value': xxx dicts.
+    """
+    return [{'Key': k, 'Value': v} for k, v in tags.items()]
+    
 
 @retry(intervals=[5, 5, 10, 20, 20, 20, 20], errors=INCONSISTENCY_ERRORS)
 def create_instances(ec2_resource: ServiceResource,
@@ -375,9 +381,9 @@ def create_instances(ec2_resource: ServiceResource,
                
     if tags:
         # Tag everything when we make it.
-        # TODO: just generate tags data once?
-        request['TagSpecifications'] = [{'ResourceType': 'instance', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]},
-                                        {'ResourceType': 'volume', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]}]
+        flat_tags = flatten_tags(tags)
+        request['TagSpecifications'] = [{'ResourceType': 'instance', 'Tags': flat_tags},
+                                        {'ResourceType': 'volume', 'Tags': flat_tags}]
 
     return ec2_resource.create_instances(**prune(request))
     
@@ -439,15 +445,15 @@ def create_launch_template(ec2_client: BaseClient,
                
     if tags:
         # Tag everything when we make it.
-        # TODO: just generate tags data once?
-        template['TagSpecifications'] = [{'ResourceType': 'instance', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]},
-                                         {'ResourceType': 'volume', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]}]
+        flat_tags = flatten_tags(tags)
+        template['TagSpecifications'] = [{'ResourceType': 'instance', 'Tags': flat_tags},
+                                         {'ResourceType': 'volume', 'Tags': flat_tags}]
 
     request = {'LaunchTemplateData': prune(template),
                'LaunchTemplateName': template_name}
                
     if tags:
-        request['TagSpecifications'] = [{'ResourceType': 'launch-template', 'Tags': [{'Key': k, 'Value': v} for k, v in tags.items()]}]
+        request['TagSpecifications'] = [{'ResourceType': 'launch-template', 'Tags': flat_tags}]
                
     return ec2_client.create_launch_template(**request)['LaunchTemplate']['LaunchTemplateId']
 
@@ -513,7 +519,7 @@ def create_auto_scaling_group(autoscaling_client: BaseClient,
                
     if tags:
         # Tag the ASG itself.
-        asg['Tags'] = [{'Key': k, 'Value': v, } for k, v in tags.items()]
+        asg['Tags'] = flatten_tags(tags)
 
     # Don't prune the ASG because MinSize and MaxSize are required and may be 0.
     autoscaling_client.create_auto_scaling_group(**asg)
