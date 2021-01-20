@@ -329,7 +329,7 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
         
     
-    def addManagedNodes(self, nodeType, maxNodes, preemptable, spotBid=None) -> None:
+    def addManagedNodes(self, nodeType, minNodes, maxNodes, preemptable, spotBid=None) -> None:
         """
         Add a group of managed nodes of the given type, up to the given maximum.
         The nodes will automatically be launched and termianted depending on cluster load.
@@ -337,6 +337,7 @@ class AbstractProvisioner(ABC):
         Raises ManagedNodesNotSupportedException if the provisioner
         implementation or cluster configuration can't have managed nodes.
         
+        :param minNodes: The minimum number of nodes to scale to
         :param maxNodes: The maximum number of nodes to scale to
         :param preemptable: whether or not the nodes will be preemptable
         :param spotBid: The bid for preemptable nodes if applicable (this can be set in config, also).

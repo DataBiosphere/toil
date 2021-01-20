@@ -427,7 +427,7 @@ class AWSManagedAutoscaleTest(AWSAutoscaleTest):
         from toil.lib.ec2 import wait_instances_running
         self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
                                      '--nodeTypes', ",".join(self.instanceTypes),
-                                     '--managedWorkers', ",".join(self.numWorkers),
+                                     '--workers', ",".join(['0-{c}' for c in self.numWorkers]),
                                      '--nodeStorage', str(self.requestedLeaderStorage),
                                      '--clusterType', 'kubernetes'])
 

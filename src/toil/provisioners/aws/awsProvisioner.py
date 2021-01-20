@@ -509,7 +509,7 @@ class AWSProvisioner(AbstractProvisioner):
         logger.debug('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
         
-    def addManagedNodes(self, nodeType, maxNodes, preemptable, spotBid=None) -> None:
+    def addManagedNodes(self, nodeType, minNodes, maxNodes, preemptable, spotBid=None) -> None:
         
         if self.clusterType != 'kubernetes':
             raise ManagedNodesNotSupportedException("Managed nodes only supported for Kubernetes clusters")
@@ -528,7 +528,8 @@ class AWSProvisioner(AbstractProvisioner):
         # Make the template
         launch_template_id = self._createWorkerLaunchTemplate(nodeType, preemptable=preemptable)
         # Make the ASG
-        self._createWorkerAutoScalingGroup(launch_template_id, [nodeType], maxNodes, spot_bid=spotBid)
+        self._createWorkerAutoScalingGroup(launch_template_id, [nodeType], minNodes, maxNodes,
+                                           spot_bid=spotBid)
         
     def getProvisionedWorkers(self, nodeType, preemptable) -> List[Node]:
         assert self._leaderPrivateIP
@@ -979,6 +980,7 @@ class AWSProvisioner(AbstractProvisioner):
     def _createWorkerAutoScalingGroup(self,
                                       launch_template_id: str,
                                       instance_types: List[str],
+                                      min_size: int,
                                       max_size: int,
                                       spot_bid: Optional[float] = None) -> str:
         """
@@ -989,6 +991,7 @@ class AWSProvisioner(AbstractProvisioner):
                at least one. Needed here to calculate the ephemeral storage
                provided. The instance type used to create the launch template
                must be present, for correct storage space calculation.
+        :param min_size: Minimum number of instances to scale to.
         :param max_size: Maximum number of instances to scale to.
         :param spot_bid: Make this a spot ASG with the given bid.
         
@@ -1035,7 +1038,7 @@ class AWSProvisioner(AbstractProvisioner):
                                   asg_name=asg_name,
                                   launch_template_id=launch_template_id,
                                   vpc_subnets=[self._subnetID],
-                                  min_size=0,
+                                  min_size=min_size,
                                   max_size=max_size,
                                   instance_types=instance_types,
                                   spot_bid=spot_bid,
