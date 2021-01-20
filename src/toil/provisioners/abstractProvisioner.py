@@ -597,6 +597,8 @@ class AbstractProvisioner(ABC):
                 raise RuntimeError("Unknown role %s" % role)
         elif self.clusterType == 'kubernetes':
             if role == 'leader':
+                # We need *an* entry point or the leader container will finish
+                # and go away, and thus not be available to take user logins.
                 entryPoint = 'sleep'
                 entryPointArgs = 'infinity'
             else:
