@@ -462,8 +462,8 @@ def create_auto_scaling_group(autoscaling_client: BaseClient,
                               asg_name: str,
                               launch_template_id: str,
                               vpc_subnets: List[str],
-                              min_size: int = 0,
-                              max_size: int = 0,
+                              min_size: int,
+                              max_size: int,
                               instance_types: Optional[List[str]] = None,
                               spot_bid: Optional[float] = None,
                               spot_cheapest: bool = False,
@@ -473,8 +473,15 @@ def create_auto_scaling_group(autoscaling_client: BaseClient,
     Create a new Auto Scaling Group with the given name (which is also its
     unique identifier).
     
+    :param autoscaling_client: Boto3 client for autoscaling.
+    :param asg_name: Unique name for the autoscaling group.
+    :param launch_template_id: ID of the launch template to make instances from.
     :param vpc_subnets: One or more subnet IDs to place instances in the group
            into. Determine the availability zone(s) instances will launch into.
+    :param min_size: Minimum number of instances to have in the group at all
+           times. 
+    :param max_size: Maximum number of instances to allow in the group at any
+           time.
     :param instance_types: Use a pool over the given instance types, instead of
            the type given in the launch template. For on-demand groups, this is
            a prioritized list. For spot groups, we let AWS balance according to
