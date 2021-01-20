@@ -321,6 +321,49 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         
     # setEnv is provided by BatchSystemSupport, updates self.environment
     
+    def _createAffinity(self, preemptable: bool) -> kubernetes.client.V1Affinity:
+        """
+        Make a V1Affinity that places pods appropriately depending on if they
+        tolerate preemptable nodes or not.
+        """
+        
+        # Describe preemptable nodes
+        
+        # There's no labeling standard for knowing which nodes are
+        # preemptable across different cloud providers/Kubernetes clusters,
+        # so we use the labels that EKS uses. Toil-managed Kubernetes
+        # clusters also use this label. If we come to support more kinds of
+        # preemptable nodes, we will need to add more labels to avoid here.
+        preemptable_label = "eks.amazonaws.com/capacityType"
+        preemptable_value = "SPOT"
+        
+        non_spot = [kubernetes.client.V1NodeSelectorRequirement(key=preemptable_label,
+                                                                operator='NotIn',
+                                                                values=[preemptable_value])]
+        unspecified = [kubernetes.client.V1NodeSelectorRequirement(key=preemptable_label,
+                                                                   operator='DoesNotExist')]
+        # These are OR'd
+        node_selector_terms = [kubernetes.client.V1NodeSelectorTerm(match_expressions=non_spot),
+                               kubernetes.client.V1NodeSelectorTerm(match_expressions=unspecified)]
+        node_selector = kubernetes.client.V1NodeSelector(node_selector_terms=node_selector_terms)
+        
+        
+        if preemptable:
+            # We can put this job anywhere. But we would be smart to prefer
+            # preemptable nodes first, if available, so we don't block any
+            # non-preemptable jobs.
+            node_preference = kubernetes.client.V1PreferredSchedulingTerm(weight=1, preference=node_selector)
+            
+            node_affinity = kubernetes.client.V1NodeAffinity(preferred_during_scheduling_ignored_during_execution=[node_preference])
+        else:
+            # We need to add some selector stuff to keep the job off of
+            # nodes that might be preempted.
+            node_affinity = kubernetes.client.V1NodeAffinity(required_during_scheduling_ignored_during_execution=node_selector)
+            
+        # Make the node affinity into an overall affinity
+        return kubernetes.client.V1Affinity(node_affinity=node_affinity)
+        
+    
     def issueBatchJob(self, jobDesc):
         # TODO: get a sensible self.maxCores, etc. so we can checkResourceRequest.
         # How do we know if the cluster will autoscale?
@@ -425,29 +468,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             pod_spec = kubernetes.client.V1PodSpec(containers=[container],
                                                    volumes=volumes,
                                                    restart_policy="Never")
+            # Tell the spec where to land                   
+            pod_spec.affinity = self._createAffinity(jobDesc.preemptable)
                                                    
-            if not jobDesc.preemptable:
-                # We need to add some selector stuff to keep the job off of
-                # nodes that might be preempted.
-                
-                # There's no labeling standard, so we use the one that EKS uses.
-                # Toil-managed Kubernetes clusters also use this label.
-                preemptable_label = "eks.amazonaws.com/capacityType"
-                preemptable_value = "SPOT"
-                
-                non_spot = [kubernetes.client.V1NodeSelectorRequirement(key=preemptable_label,
-                                                                        operator='NotIn',
-                                                                        values=[preemptable_value])]
-                unspecified = [kubernetes.client.V1NodeSelectorRequirement(key=preemptable_label,
-                                                                           operator='DoesNotExist')]
-                # These are OR'd
-                node_selector_terms = [kubernetes.client.V1NodeSelectorTerm(match_expressions=non_spot),
-                                       kubernetes.client.V1NodeSelectorTerm(match_expressions=unspecified)]
-                node_selector = kubernetes.client.V1NodeSelector(node_selector_terms=node_selector_terms)
-                node_affinity = kubernetes.client.V1NodeAffinity(required_during_scheduling_ignored_during_execution=node_selector)
-                
-                pod_spec.affinity = kubernetes.client.V1Affinity(node_affinity=node_affinity)
-                
             # Make metadata to label the job/pod with info.
             metadata = kubernetes.client.V1ObjectMeta(name=jobName,
                                                       labels={"toil_run": self.runID})
