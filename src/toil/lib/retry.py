@@ -292,6 +292,96 @@ def return_status_code(e):
     else:
         raise ValueError(f'Unsupported error type; cannot grok status code: {e}.')
 
+def get_error_code(e: Exception) -> str:
+    """
+    Get the error code name from a Boto 2 or 3 error, or compatible types.
+    
+    Returns empty string for other errors.
+    """
+    if hasattr(e, 'error_code') and isinstance(e.error_code, str):
+        # A Boto 2 error
+        return e.error_code
+    if hasattr(e, 'code') and isinstance(e.code, str):
+        # A (different?) Boto 2 error
+        return e.code
+    elif hasattr(e, 'response') and hasattr(e.response, 'get'):
+        # A Boto 3 error
+        code = e.response.get('Error', {}).get('Code')
+        if isinstance(code, str):
+            return code
+        else:
+            return ''
+    else:
+        return ''
+    
+def get_error_message(e: Exception) -> str:
+    """
+    Get the error message string from a Boto 2 or 3 error, or compatible types.
+    
+    Note that error message conditions also chack more than this; this function
+    does not fall back to the traceback for incompatible types.
+    """
+    if hasattr(e, 'error_message') and isinstance(e.error_message, str):
+        # A Boto 2 error
+        return e.error_message
+    elif hasattr(e, 'response') and hasattr(e.response, 'get'):
+        # A Boto 3 error
+        message = e.response.get('Error', {}).get('Message')
+        if isinstance(message, str):
+            return message
+        else:
+            return ''
+    else:
+        return ''
+
+def get_error_status(e: Exception) -> int:
+    """
+    Get the HTTP status code from a Boto 2 or 3 error,
+    kubernetes.client.rest.ApiException, http.client.HTTPException,
+    urllib3.exceptions.HTTPError, requests.exceptions.HTTPError,
+    urllib.error.HTTPError, or compatible type
+    
+    Returns 0 from other errors.
+    """
+    
+    def numify(x):
+        """Make sure a value is an integer"""
+        return int(str(x).strip())
+    
+    if hasattr(e, 'status'):
+        # A Boto 2 error, kubernetes.client.rest.ApiException,
+        # http.client.HTTPException, or urllib3.exceptions.HTTPError
+        return numify(e.status)
+    elif hasattr(e, 'response'):
+        if hasattr(e.response, 'status_code'):
+            # A requests.exceptions.HTTPError
+            return numify(e.response.status_code)
+        elif hasattr(e.response, 'get'):
+            # A Boto 3 error
+            return numify(e.response.get('ResponseMetadata', {}).get('HTTPStatusCode'))
+    elif hasattr(e, 'code'):
+        # A urllib.error.HTTPError
+        return numify(e.code)
+    else:
+        return 0
+        
+def get_error_body(e: Exception) -> str:
+    """
+    Gets the body from a Boto 2 or 3 error, or compatible types.
+    
+    Returns the code and message if the error does not have a body.
+    """
+    
+    if hasattr(e, 'body'):
+        # A Boto 2 error
+        if isinstance(e.body, bytes):
+            # Decode the body first
+            return e.body.decode('utf-8')
+        elif isinstance(e.body, str):
+            return e.body
+    
+    # Anything else
+    return f'{get_error_code(e)}: {get_error_message(e)}'
 
 def meets_error_message_condition(e: Exception, error_message: Optional[str]):
     if error_message:
@@ -322,8 +412,8 @@ def meets_error_message_condition(e: Exception, error_message: Optional[str]):
 def meets_error_code_condition(e: Exception, error_codes: Optional[List[int]]):
     """These are expected to be normal HTTP error codes, like 404 or 500."""
     if error_codes:
-        status_code = return_status_code(e)
-        return int(str(status_code).strip()) in error_codes
+        status_code = get_error_status(e)
+        return status_code in error_codes
     else:  # there are no error codes, so the user is not expecting the status to match
         return True
 
@@ -331,7 +421,7 @@ def meets_error_code_condition(e: Exception, error_codes: Optional[List[int]]):
 def meets_boto_error_code_condition(e: Exception, boto_error_codes: Optional[List[str]]):
     """These are expected to be AWS's custom error aliases, like 'BucketNotFound' or 'AccessDenied'."""
     if boto_error_codes:
-        status_code = e.response.get('Error', {}).get('Code')
+        status_code = get_error_code(e)
         return status_code in boto_error_codes
     else:  # there are no boto error codes, so the user is not expecting the status to match
         return True

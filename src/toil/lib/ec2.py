@@ -8,17 +8,19 @@ from typing import Any, Dict, Iterable, List, Union, Optional
 from base64 import b64encode
 from boto.ec2.instance import Instance as Boto2Instance
 from boto.ec2.spotinstancerequest import SpotInstanceRequest
-from boto.exception import BotoServerError
 from boto3 import Session
 from boto3.resources.base import ServiceResource
 from botocore.client import BaseClient
 from botocore.credentials import JSONFileCache
-from botocore.exceptions import ClientError
 from botocore.session import get_session
 
 
 from toil.lib.exceptions import panic
-from toil.lib.retry import old_retry, retry, ErrorCondition
+from toil.lib.retry import (get_error_code, 
+                            get_error_message,
+                            old_retry,
+                            retry,
+                            ErrorCondition)
 
 a_short_time = 5
 a_long_time = 60 * 60
@@ -31,74 +33,6 @@ class UserError(RuntimeError):
         super(
             UserError, self).__init__(
             message if cause is None else cause.message)
-
-def get_error_code(e: Union[ClientError, BotoServerError, Any]) -> str:
-    """
-    Get the error code name from a Boto 2 or 3 error, or compatible types.
-    
-    Returns empty string for other errors.
-    """
-    if hasattr(e, 'error_code'):
-        # A Boto 2 error
-        return e.error_code
-    if hasattr(e, 'code'):
-        # A (different?) Boto 2 error
-        return e.code
-    elif hasattr(e, 'response'):
-        # A Boto 3 error
-        return e.response['Error']['Code']
-    else:
-        return ''
-    
-def get_error_message(e: Union[ClientError, BotoServerError, Any]) -> str:
-    """
-    Get the error message string from a Boto 2 or 3 error, or compatible types.
-    """
-    if hasattr(e, 'error_message'):
-        # A Boto 2 error
-        return e.error_message
-    elif hasattr(e, 'response'):
-        # A Boto 3 error
-        return e.response['Error']['Message']
-    else:
-        return ''
-
-def get_error_status(e: Union[ClientError, BotoServerError, Any]) -> int:
-    """
-    Get the HTTP status code from a Boto 2 or 3 error, or compatible types.
-    
-    Returns 0 from other errors.
-    """
-    
-    if hasattr(e, 'status'):
-        # A Boto 2 error
-        return e.status
-    elif hasattr(e, 'response'):
-        # A Boto 3 error
-        return e.response['ResponseMetadata']['HTTPStatusCode']
-    else:
-        return 0
-        
-def get_error_body(e: Union[ClientError, BotoServerError, Any]) -> str:
-    """
-    Gets the body from a Boto 2 or 3 error, or compatible types.
-    
-    Returns the code and message if the error does not have a body.
-    
-    Returns the empty string for other types.
-    """
-    
-    if hasattr(e, 'body'):
-        # A Boto 2 error
-        if isinstance(e.body, bytes):
-            # Decode the body first
-            return e.body.decode('utf-8')
-        else:
-            return e.body
-    else:
-        # Anything else
-        return f'{get_error_code(e)}: {get_error_message(e)}'
-        
 
 def not_found(e):
     try:
@@ -135,7 +69,7 @@ class UnexpectedResourceState(Exception):
 def establish_boto3_session(region_name: Optional[str] = None) -> Session:
     """
     This is the One True Place where Boto3 sessions should be established, and
-    prepares them with the nexessary credential caching.
+    prepares them with the necessary credential caching.
 
     :param region_name: If given, the session will be associated with the given AWS region.
     """

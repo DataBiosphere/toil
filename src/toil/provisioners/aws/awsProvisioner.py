@@ -38,10 +38,6 @@ from toil.lib.ec2 import (a_short_time,
                           create_ondemand_instances,
                           create_spot_instances,
                           establish_boto3_session,
-                          get_error_body,
-                          get_error_code,
-                          get_error_message,
-                          get_error_status,
                           wait_instances_running,
                           wait_transition,
                           zone_to_region)
@@ -49,7 +45,11 @@ from toil.lib.ec2nodes import InstanceType
 from toil.lib.generatedEC2Lists import E2Instances
 from toil.lib.memoize import memoize
 from toil.lib.misc import truncExpBackoff
-from toil.lib.retry import old_retry
+from toil.lib.retry import (get_error_body,
+                            get_error_code,
+                            get_error_message,
+                            get_error_status,
+                            old_retry)
 from toil.provisioners import (NoSuchClusterException,
                                ClusterTypeNotSupportedException)
 from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
