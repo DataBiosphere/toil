@@ -423,6 +423,11 @@ class AbstractProvisioner(ABC):
             Make a systemd unit on the instance with the given name (including
             .service), and content, and apply the given command to it (default:
             'start'). Units will be enabled by default.
+            
+            Unit logs can be investigated with:
+                systemctl status whatever.service
+            or:
+                journalctl -xe
             """
             
             self.units.append({'name': name, 'command': command, 'enable': enable, 'content': content})
