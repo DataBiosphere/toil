@@ -885,10 +885,10 @@ class AbstractProvisioner(ABC):
                     # as node.kubernetes.io/unreachable, and hasn't dialed in recently (and
                     # is thus in readiness state Unknown)
                     echo "Node $NODE_NAME is supposed to be scaled away and also gone. Removing from cluster..."
-                    # Drop it
-                    kubectl --kubeconfig /etc/kubernetes/admin.conf delete node "$NODE_NAME"
+                    # Drop it if possible
+                    kubectl --kubeconfig /etc/kubernetes/admin.conf delete node "$NODE_NAME" || true
                 done
-                sleep 30
+                sleep 300
             done
             ''').format(**values))
         config.addUnit("cleanup-nodes.service", content=textwrap.dedent('''\
