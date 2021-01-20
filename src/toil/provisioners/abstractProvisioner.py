@@ -667,7 +667,7 @@ class AbstractProvisioner(ABC):
             METRICS_API_VERSION="v0.3.7",
             CLUSTER_NAME=self.clusterName,
             # YAML line that tells the Kubelet to use a cloud provider, if we need one.
-            CLOUD_PROVIDER_SPEC='cloud-provider: ' + self.getKubernetesCloudProvider() if self.getKubernetesCloudProvider() else ''
+            CLOUD_PROVIDER_SPEC=('cloud-provider: ' + self.getKubernetesCloudProvider()) if self.getKubernetesCloudProvider() else ''
         )
         
     def addKubernetesServices(self, config: InstanceConfiguration):
