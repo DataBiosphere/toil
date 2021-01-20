@@ -33,7 +33,7 @@ def main():
     options = parser.parse_args()
     set_logging_from_options(options)
     
-    # Since we collect all the remaining argumkents at the end for a command to
+    # Since we collect all the remaining arguments at the end for a command to
     # run, it's easy to lose options.
     if len(options.args) > 0 and options.args[0].startswith('-'):
         logger.warning('Argument \'%s\' interpreted as a command to run '
