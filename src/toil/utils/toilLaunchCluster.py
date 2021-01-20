@@ -77,7 +77,7 @@ def main():
     parser.add_argument("-W", "--managedWorkers", dest='managedWorkers', default=None, type=str,
                         help="Comma-separated list of one number per node type in --nodeTypes. "
                              "The cluster will automatically deploy workers of that type, when "
-                             "needed, up to the given limit.")
+                             "needed, auto-scaling up to the given limit.")
     parser.add_argument("--leaderStorage", dest='leaderStorage', type=int, default=50,
                         help="Specify the size (in gigabytes) of the root volume for the leader "
                              "instance.  This is an EBS volume.")
