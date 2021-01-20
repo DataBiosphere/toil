@@ -32,4 +32,4 @@ def main():
                               zone=options.zone)
     cluster.destroyCluster()
 
-    logger.info('Cluster is now gone.')
+    logger.info('Cluster %s is now gone.', options.clusterName)
