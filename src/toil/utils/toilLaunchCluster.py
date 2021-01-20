@@ -109,13 +109,10 @@ def main():
     # This holds (instance type name, bid or None) tuples for each node type.
     # No bid means non-preemptable
     parsedNodeTypes = []
-    # This holds how many of each kind of node to make (or bid on) explicitly
-    # at cluster startup, or 0 if no nodes should be made
-    fixedNodeCounts = []
-    # This holds how many to limit autoscaling to when using managed nodes
-    # scaled by the cluster, as pairs of (min, max), or (0, 0) if no node group
-    # should be made
-    managedNodeCountRanges = [] 
+
+    # This holds either ints to launch static nodes, or tuples of ints
+    # specifying ranges to launch managed auto-scaling nodes, for each type.
+    nodeCounts = []
 
     if ((worker_node_types != [] or worker_node_ranges != []) and not
         (worker_node_types != [] and worker_node_ranges != [])):
@@ -140,12 +137,10 @@ def main():
                     parts = spec.split('-')
                     if len(parts) != 2:
                         raise RuntimeError("Unacceptable range: " + spec)
-                    fixedNodeCounts.append(0)
-                    managedNodeCountRanges.append((int(parts[0]), int(parts[1])))
+                    nodeCounts.append((int(parts[0]), int(parts[1])))
                 else:
                     # Provision fixed nodes
-                    fixedNodeCounts.append(int(spec))
-                    managedNodeCountRanges.append((0, 0))
+                    nodeCounts.append(int(spec))
 
     owner = options.owner or options.keyPairName or 'toil'
 
@@ -174,39 +169,46 @@ def main():
                           awsEc2ProfileArn=options.awsEc2ProfileArn,
                           awsEc2ExtraSecurityGroupIds=options.awsEc2ExtraSecurityGroupIds)
 
-    for typeNum, count in enumerate(fixedNodeCounts):
-        # For each batch of workers to make at startup
-        if count == 0:
-            # Don't want any
-            continue
+    for typeNum, spec in enumerate(nodeCounts):
+        # For each batch of workers to make 
         wanted = parsedNodeTypes[typeNum]
-        if wanted[1] is None:
-            # Make non-spot instances
-            cluster.addNodes(nodeType=wanted[0], numNodes=count, preemptable=False)
-        else:
-            # We have a spot bid
-            cluster.addNodes(nodeType=wanted[0], numNodes=count, preemptable=True,
-                             spotBid=wanted[1])
 
-    for typeNum, (min_count, max_count) in enumerate(managedNodeCountRanges):
-        # For each batch of workers to dynamically scale
+        if isinstance(spec, int):
+            # Make static nodes
 
-        if max_count < min_count:
-            # Flip them around
-            min_count, max_count = max_count, min_count
+            if spec == 0:
+                # Don't make anything
+                continue
 
-        if max_count == 0:
-            # Don't want any
-            continue
-        wanted = parsedNodeTypes[typeNum]
-        if wanted[1] is None:
-            # Make non-spot instances
-            cluster.addManagedNodes(nodeType=wanted[0], minNodes=min_count, maxNodes=max_count,
-                                    preemptable=False)
-        else:
-            # Bid at the given price.
-            cluster.addManagedNodes(nodeType=wanted[0], minNodes=min_count, maxNodes=max_count,
-                                    preemptable=True, spotBid=wanted[1])
+            if wanted[1] is None:
+                # Make non-spot instances
+                cluster.addNodes(nodeType=wanted[0], numNodes=spec, preemptable=False)
+            else:
+                # We have a spot bid
+                cluster.addNodes(nodeType=wanted[0], numNodes=spec, preemptable=True,
+                                 spotBid=wanted[1])
+
+        elif isinstance(spec, tuple):
+            # Make a range of auto-scaling nodes
+
+            max_count, min_count = spec
+
+            if max_count < min_count:
+                # Flip them around
+                min_count, max_count = max_count, min_count
+
+            if max_count == 0:
+                # Don't want any
+                continue
+
+            if wanted[1] is None:
+                # Make non-spot instances
+                cluster.addManagedNodes(nodeType=wanted[0], minNodes=min_count, maxNodes=max_count,
+                                        preemptable=False)
+            else:
+                # Bid at the given price.
+                cluster.addManagedNodes(nodeType=wanted[0], minNodes=min_count, maxNodes=max_count,
+                                        preemptable=True, spotBid=wanted[1])
 
     logger.info('Cluster created successfully.')
 
