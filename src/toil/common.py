@@ -22,8 +22,8 @@ import tempfile
 import time
 import uuid
 
-from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
-from typing import Any, Callable, List, Optional
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from typing import Optional, Callable, Any, List
 
 
 from toil import logProcessContext, lookupEnvVar
