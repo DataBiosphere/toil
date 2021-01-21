@@ -1630,8 +1630,6 @@ class CWLWorkflow(Job):
                             outputs=step.tool["out"],
                             requirements=self.cwlwf.requirements,
                         )
-                        if cwljob.get("arrayS", None) == ["hello", "world"]:
-                            print("stop_here")
 
                         if "scatter" in step.tool:
                             wfjob = CWLScatter(
