@@ -92,7 +92,7 @@ from schema_salad.sourceline import SourceLine
 from toil.common import Config, Toil, addOptions
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.job import ConflictingPredecessorError, Job
+from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobStoreException
 from toil.version import baseVersion
 
@@ -1544,7 +1544,7 @@ def remove_pickle_problems(obj: ProcessType) -> ProcessType:
 
 class CWLWorkflow(Job):
     """
-    Toil Job to convert a CWL workflow grah into a Toil job graph.
+    Toil Job to convert a CWL workflow graph into a Toil job graph.
 
     The Toil job graph will include the appropriate dependencies.
     """
@@ -1587,7 +1587,7 @@ class CWLWorkflow(Job):
         all_outputs_fulfilled = False
         while not all_outputs_fulfilled:
             # Iteratively go over the workflow steps, scheduling jobs as their
-            # dependencies can be fufilled by upstream workflow inputs or
+            # dependencies can be fulfilled by upstream workflow inputs or
             # step outputs. Loop exits when the workflow outputs
             # are satisfied.
 
@@ -1597,10 +1597,9 @@ class CWLWorkflow(Job):
                 if step.tool["id"] not in jobs:
                     stepinputs_fufilled = True
                     for inp in step.tool["inputs"]:
-                        if "source" in inp:
-                            for s in aslist(inp["source"]):
-                                if s not in promises:
-                                    stepinputs_fufilled = False
+                        for s in aslist(inp.get("source", [])):
+                            if s not in promises:
+                                stepinputs_fufilled = False
                     if stepinputs_fufilled:
                         jobobj = {}
 
@@ -1631,6 +1630,8 @@ class CWLWorkflow(Job):
                             outputs=step.tool["out"],
                             requirements=self.cwlwf.requirements,
                         )
+                        if cwljob.get("arrayS", None) == ["hello", "world"]:
+                            print("stop_here")
 
                         if "scatter" in step.tool:
                             wfjob = CWLScatter(
@@ -1657,6 +1658,7 @@ class CWLWorkflow(Job):
                                 if (
                                     isinstance(promises[s], (CWLJobWrapper, CWLGather))
                                     and not promises[s].hasFollowOn(wfjob)
+                                    # promises[s] job has already added wfjob as a followOn prior
                                     and not wfjob.hasPredecessor(promises[s])
                                 ):
                                     promises[s].addFollowOn(wfjob)
