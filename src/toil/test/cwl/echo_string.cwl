@@ -49,6 +49,3 @@ outputs: []
 requirements:
   - class: ScatterFeatureRequirement
   - class: MultipleInputFeatureRequirement
-
-$namespaces:
-  cwltool: "http://commonwl.org/cwltool#"
