@@ -685,7 +685,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
                            self.nodeShapes}  # Maximum number of workers
         self.running = False
         self.leaderThread = Thread(target=self._leaderFn)
-
+    
     def start(self):
         self.running = True
         self.leaderThread.start()
@@ -709,6 +709,15 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         pass
 
     def unignoreNode(self, nodeAddress):
+        pass
+
+    def supportedClusterTypes(self):
+        pass
+        
+    def createClusterSettings(self):
+        pass
+    
+    def readClusterSettings(self):
         pass
 
     @contextmanager
