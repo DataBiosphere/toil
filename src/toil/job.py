@@ -68,8 +68,7 @@ class JobPromiseConstraintError(RuntimeError):
 
 class ConflictingPredecessorError(Exception):
     def __init__(self, predecessor: 'Job', successor: 'Job'):
-        super().__init__(f'The given job: "{predecessor.description}" is already a '
-                         f'predecessor of job: "{successor.description}".')
+        super().__init__(f'The given job: "{predecessor.description}" is already a predecessor of job: "{successor.description}".')
 
 
 class TemporaryID:
@@ -1206,7 +1205,7 @@ class Job:
         :return: followOnJob
         :rtype: toil.job.Job
         """
-        
+
         assert isinstance(followOnJob, Job)
         
         # Join the job graphs
@@ -1215,7 +1214,7 @@ class Job:
         self._description.addFollowOn(followOnJob.jobStoreID)
         # Record the temporary back-reference
         followOnJob._addPredecessor(self)
-        
+
         return followOnJob
 
     def hasPredecessor(self, job: 'Job') -> bool:
@@ -1803,15 +1802,8 @@ class Job:
                 RuntimeError, not return False!
             """
 
-    ####################################################
-    #Private functions
-    ####################################################
-
     def _addPredecessor(self, predecessorJob):
-        """
-        Adds a predecessor job to the set of predecessor jobs. Raises a \
-        RuntimeError if the job is already a predecessor.
-        """
+        """Adds a predecessor job to the set of predecessor jobs."""
         if predecessorJob in self._directPredecessors:
             raise ConflictingPredecessorError(predecessorJob, self)
         self._directPredecessors.add(predecessorJob)

@@ -460,13 +460,9 @@ class CWLSmallTests(ToilTest):
         option_3 = '--clean=always'
         cwl = os.path.join(self._projectRootPath(), 'src/toil/test/cwl/echo_string.cwl')
         cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
-
+        log.debug(f'Now running: {" ".join(cmd)}')
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         assert stdout == b'{}'
         assert b'Finished toil run successfully' in stderr
         assert p.returncode == 0
-        with open('/home/quokka/git/toil/src/toil/test/cwl/stdout', 'wb') as f:
-            f.write(stdout)
-        with open('/home/quokka/git/toil/src/toil/test/cwl/stderr', 'wb') as f:
-            f.write(stderr)
