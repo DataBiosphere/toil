@@ -171,6 +171,21 @@ py37_provisioner_integration:
     # - python -m pytest -s src/toil/test/provisioners/aws/awsProvisionerTest.py
     # - python -m pytest -s src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
 
+py37_google_jobstore:
+  stage: integration
+  script:
+    - pwd
+    - apt update && apt install -y tzdata awscli jq python3.7 python3.7-dev
+    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    - python setup_gitlab_ssh.py && chmod 400 /root/.ssh/id_rsa
+    - echo $'Host *\n    AddressFamily inet' > /root/.ssh/config
+    - export LIBPROCESS_IP=127.0.0.1
+    - export TOIL_TEST_INTEGRATIVE=True
+    - export GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_CREDENTIALS
+    - export TOIL_GOOGLE_KEYNAME=id_rsa
+    - export TOIL_GOOGLE_PROJECTID=toil-dev
+    - make test tests=src/toil/test/jobStores/jobStoreTest.py::GoogleJobStoreTest
+
 # Python3.8
 py38_main:
   stage: basic_tests

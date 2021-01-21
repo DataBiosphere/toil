@@ -95,7 +95,7 @@ def check_valid_node_types(provisioner, node_types):
             if nodeType and ':' in nodeType:
                 nodeType = nodeType.split(':')[0]
 
-            if nodeType not in E2Instances:
+            if nodeType in E2Instances:
                 raise RuntimeError(f"It looks like you've specified an AWS nodeType with the {provisioner} "
                                    f"provisioner.  Please specify a nodeType for {provisioner}.")
     else:

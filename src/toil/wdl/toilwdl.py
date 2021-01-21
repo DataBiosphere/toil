@@ -1,4 +1,4 @@
-# Copyright (C) 2018-2020 UCSC Computational Genomics Lab
+# Copyright (C) 2018-2021 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,8 +17,7 @@ import os
 import subprocess
 import sys
 
-from toil.wdl.utils import dict_from_JSON
-from toil.wdl.versions.draft2 import AnalyzeDraft2WDL
+from toil.wdl.utils import dict_from_JSON, get_analyzer, write_mappings
 from toil.wdl.wdl_synthesis import SynthesizeWDL
 
 logger = logging.getLogger(__name__)
@@ -92,8 +91,7 @@ def main():
     args.secondary_file = os.path.abspath(args.secondary_file)
     args.outdir = os.path.abspath(args.outdir)
 
-    # TODO: construct analyzer based on version.
-    aWDL = AnalyzeDraft2WDL(wdl_file=wdl_file)
+    aWDL = get_analyzer(wdl_file=wdl_file)
 
     if args.dev_mode:
         aWDL.write_AST(out_dir=args.outdir)
@@ -106,7 +104,8 @@ def main():
 
     aWDL.analyze()
 
-    sWDL = SynthesizeWDL(aWDL.tasks_dictionary,
+    sWDL = SynthesizeWDL(aWDL.version,
+                         aWDL.tasks_dictionary,
                          aWDL.workflows_dictionary,
                          args.outdir,
                          json_dict,
@@ -128,7 +127,7 @@ def main():
 
     if args.dev_mode:
         logger.debug('WDL file compiled to toil script.')
-        sWDL.write_mappings(aWDL)
+        write_mappings(aWDL)
     else:
         logger.debug('WDL file compiled to toil script.  Running now.')
         exe = sys.executable if sys.executable else 'python'

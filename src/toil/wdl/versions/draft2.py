@@ -16,16 +16,8 @@ import os
 from collections import OrderedDict
 
 from wdlparse.draft2 import wdl_parser
-
 from toil.wdl.wdl_analysis import AnalyzeWDL
-from toil.wdl.wdl_types import (WDLArrayType,
-                                WDLBooleanType,
-                                WDLFileType,
-                                WDLFloatType,
-                                WDLIntType,
-                                WDLMapType,
-                                WDLPairType,
-                                WDLStringType)
+
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +26,10 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
     """
     AnalyzeWDL implementation for the draft-2 version.
     """
+
+    @property
+    def version(self) -> str:
+        return 'draft-2'
 
     def analyze(self):
         """
@@ -63,7 +59,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
                 f.write(ast.dumps(indent=2))
 
     def find_asts(self, ast_root, name):
-        '''
+        """
         Finds an AST node with the given name and the entire subtree under it.
         A function borrowed from scottfrazer.  Thank you Scott Frazer!
 
@@ -71,7 +67,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
                          any portion that you wish to search.
         :param name: The name of the subtree you're looking for, like "Task".
         :return: nodes representing the AST subtrees matching the "name" given.
-        '''
+        """
         nodes = []
         if isinstance(ast_root, wdl_parser.AstList):
             for node in ast_root:
@@ -84,20 +80,20 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         return nodes
 
     def create_tasks_dict(self, ast):
-        '''
+        """
         Parse each "Task" in the AST.  This will create self.tasks_dictionary,
         where each task name is a key.
 
         :return: Creates the self.tasks_dictionary necessary for much of the
         parser.  Returning it is only necessary for unittests.
-        '''
+        """
         tasks = self.find_asts(ast, 'Task')
         for task in tasks:
             self.parse_task(task)
         return self.tasks_dictionary
 
     def parse_task(self, task):
-        '''
+        """
         Parses a WDL task AST subtree.
 
         Currently looks at and parses 4 sections:
@@ -109,14 +105,14 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         :param task: An AST subtree of a WDL "Task".
         :return: Returns nothing but adds a task to the self.tasks_dictionary
         necessary for much of the parser.
-        '''
+        """
 
         task_name = task.attributes["name"].source_string
 
         # task declarations
         declaration_array = []
         for declaration_subAST in task.attr("declarations"):
-            declaration_array.append(self.parse_task_declaration(declaration_subAST))
+            declaration_array.append(self.parse_declaration(declaration_subAST))
             self.tasks_dictionary.setdefault(task_name, OrderedDict())['inputs'] = declaration_array
 
         for section in task.attr("sections"):
@@ -135,29 +131,6 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
             if section.name == "Outputs":
                 output_array = self.parse_task_outputs(section)
                 self.tasks_dictionary.setdefault(task_name, OrderedDict())['outputs'] = output_array
-
-    def parse_task_declaration(self, declaration_subAST):
-        '''
-        Parses the declaration section of the WDL task AST subtree.
-
-        Examples:
-
-        String my_name
-        String your_name
-        Int two_chains_i_mean_names = 0
-
-        :param declaration_subAST: Some subAST representing a task declaration
-                                   like: 'String file_name'
-        :return: var_name, var_type, var_value
-            Example:
-                Input subAST representing:   'String file_name'
-                Output:  var_name='file_name', var_type='String', var_value=None
-        '''
-        var_name = self.parse_declaration_name(declaration_subAST.attr("name"))
-        var_type = self.parse_declaration_type(declaration_subAST.attr("type"))
-        var_expressn = self.parse_declaration_expressn(declaration_subAST.attr("expression"), es='')
-
-        return (var_name, var_type, var_expressn)
 
     def parse_task_rawcommand_attributes(self, code_snippet):
         """
@@ -181,7 +154,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         return attr_dict
 
     def parse_task_rawcommand(self, rawcommand_subAST):
-        '''
+        """
         Parses the rawcommand section of the WDL task AST subtree.
 
         Task "rawcommands" are divided into many parts.  There are 2 types of
@@ -207,7 +180,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
                   Where: command_var = 'GVCFs'
                          command_type = 'variable'
                          command_actions = {'sep': ' -V '}
-        '''
+        """
         command_array = []
         for code_snippet in rawcommand_subAST.attributes["parts"]:
 
@@ -259,7 +232,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
             raise NotImplementedError
 
     def parse_task_runtime(self, runtime_subAST):
-        '''
+        """
         Parses the runtime section of the WDL task AST subtree.
 
         The task "runtime" section currently supports context fields for a
@@ -271,7 +244,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
                                        ('cpu','2'),
                                        ('memory','17.1 GB'),
                                        ('disks','local-disk 420 HDD')]
-        '''
+        """
         runtime_attributes = OrderedDict()
         if isinstance(runtime_subAST, wdl_parser.Terminal):
             raise NotImplementedError
@@ -287,7 +260,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         return runtime_attributes
 
     def parse_task_outputs(self, i):
-        '''
+        """
         Parse the WDL output section.
 
         Outputs are like declarations, with a type, name, and value.  Examples:
@@ -325,22 +298,17 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
 
         :return: output_array representing outputs generated by the job/task:
                 e.g. x = [(var_name, var_type, var_value, var_actions), ...]
-        '''
+        """
         output_array = []
         for j in i.attributes['attributes']:
             if j.name == 'Output':
-                var_name = self.parse_declaration_name(j.attr("name"))
-                var_type = self.parse_declaration_type(j.attr("type"))
-                var_expressn = self.parse_declaration_expressn(j.attr("expression"), es='', output_expressn=True)
-                if not (var_expressn.startswith('(') and var_expressn.endswith(')')):
-                    var_expressn = self.translate_wdl_string_to_python_string(var_expressn)
-                output_array.append((var_name, var_type, var_expressn))
+                output_array.append(self.parse_declaration(j))
             else:
                 raise NotImplementedError
         return output_array
 
     def translate_wdl_string_to_python_string(self, some_string):
-        '''
+        """
         Parses a string representing a given job's output filename into something
         python can read.  Replaces ${string}'s with normal variables and the rest
         with normal strings all concatenated with ' + '.
@@ -357,7 +325,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
                         (job priority #, job ID #, Job Skeleton Name, Job Alias)
         :param some_string: e.g. '${sampleName}.vcf'
         :return: output_string, e.g. 'sampleName + ".vcf"'
-        '''
+        """
 
         try:
             # add support for 'sep'
@@ -366,7 +334,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
 
             if edited_string.find('${') != -1:
                 continue_loop = True
-                while (continue_loop):
+                while continue_loop:
                     index_start = edited_string.find('${')
                     index_end = edited_string.find('}', index_start)
 
@@ -394,26 +362,21 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
             return ''
 
     def create_workflows_dict(self, ast):
-        '''
+        """
         Parse each "Workflow" in the AST.  This will create self.workflows_dictionary,
         where each called job is a tuple key of the form: (priority#, job#, name, alias).
 
         :return: Creates the self.workflows_dictionary necessary for much of the
         parser.  Returning it is only necessary for unittests.
-        '''
+        """
         workflows = self.find_asts(ast, 'Workflow')
         for workflow in workflows:
             self.parse_workflow(workflow)
         return self.workflows_dictionary
 
     def parse_workflow(self, workflow):
-        '''
+        """
         Parses a WDL workflow AST subtree.
-
-        Currently looks at and parses 3 sections:
-        1. Declarations (e.g. string x = 'helloworld')
-        2. Calls (similar to a python def)
-        3. Scatter (which expects to map to a Call or multiple Calls)
 
         Returns nothing but creates the self.workflows_dictionary necessary for much
         of the parser.
@@ -421,40 +384,19 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         :param workflow: An AST subtree of a WDL "Workflow".
         :return: Returns nothing but adds a workflow to the
                  self.workflows_dictionary necessary for much of the parser.
-        '''
+        """
         workflow_name = workflow.attr('name').source_string
+        self.workflows_dictionary[workflow_name] = self.parse_workflow_body(workflow.attr("body"))
 
-        wf_declared_dict = OrderedDict()
-        for section in workflow.attr("body"):
-
-            if section.name == "Declaration":
-                var_name, var_map = self.parse_workflow_declaration(section)
-                wf_declared_dict[var_name] = var_map
-            self.workflows_dictionary.setdefault(workflow_name, OrderedDict())['wf_declarations'] = wf_declared_dict
-
-            if section.name == "Scatter":
-                scattertask = self.parse_workflow_scatter(section)
-                self.workflows_dictionary.setdefault(workflow_name, OrderedDict())['scatter' + str(self.scatter_number)] = scattertask
-                self.scatter_number += 1
-
-            if section.name == "Call":
-                task = self.parse_workflow_call(section)
-                self.workflows_dictionary.setdefault(workflow_name, OrderedDict())['call' + str(self.call_number)] = task
-                self.call_number += 1
-
-            if section.name == "If":
-                task = self.parse_workflow_if(section)
-                self.workflows_dictionary.setdefault(workflow_name, OrderedDict())['if' + str(self.if_number)] = task
-                self.if_number += 1
-
-    def parse_workflow_if(self, ifAST):
-        expression = self.parse_workflow_if_expression(ifAST.attr('expression'))
-        body = self.parse_workflow_if_body(ifAST.attr('body'))
-        return {'expression': expression, 'body': body}
-
-    def parse_workflow_if_body(self, i):
+    def parse_workflow_body(self, i):
+        """
+        Currently looks at and parses 3 sections:
+        1. Declarations (e.g. String x = 'helloworld')
+        2. Calls (similar to a python def)
+        3. Scatter (which expects to map to a Call or multiple Calls)
+        4. Conditionals
+        """
         subworkflow_dict = OrderedDict()
-        wf_declared_dict = OrderedDict()
         if isinstance(i, wdl_parser.Terminal):
             raise NotImplementedError
         elif isinstance(i, wdl_parser.Ast):
@@ -462,39 +404,38 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         elif isinstance(i, wdl_parser.AstList):
             for ast in i:
                 if ast.name == "Declaration":
-                    var_name, var_map = self.parse_workflow_declaration(ast)
-                    wf_declared_dict[var_name] = var_map
-                subworkflow_dict['wf_declarations'] = wf_declared_dict
+                    declaration = self.parse_declaration(ast)
+                    subworkflow_dict['declaration' + str(self.declaration_number)] = declaration
+                    self.declaration_number += 1
 
-                if ast.name == "Scatter":
+                elif ast.name == "Scatter":
                     scattertask = self.parse_workflow_scatter(ast)
                     subworkflow_dict['scatter' + str(self.scatter_number)] = scattertask
                     self.scatter_number += 1
 
-                if ast.name == "Call":
+                elif ast.name == "Call":
                     task = self.parse_workflow_call(ast)
                     subworkflow_dict['call' + str(self.call_number)] = task
                     self.call_number += 1
 
-                if ast.name == "If":
+                elif ast.name == "If":
                     task = self.parse_workflow_if(ast)
                     subworkflow_dict['if' + str(self.if_number)] = task
                     self.if_number += 1
         return subworkflow_dict
 
+    def parse_workflow_if(self, ifAST):
+        expression = self.parse_workflow_if_expression(ifAST.attr('expression'))
+        body = self.parse_workflow_body(ifAST.attr('body'))
+        return {'expression': expression, 'body': body}
+
     def parse_workflow_if_expression(self, i):
-        if isinstance(i, wdl_parser.Terminal):
-            ifthis = i.source_string
-        elif isinstance(i, wdl_parser.Ast):
-            ifthis = self.parse_declaration_expressn(i, es='')
-        elif isinstance(i, wdl_parser.AstList):
-            raise NotImplementedError
-        return ifthis
+        return self.parse_declaration_expressn(i, es='')
 
     def parse_workflow_scatter(self, scatterAST):
         item = self.parse_workflow_scatter_item(scatterAST.attr('item'))
         collection = self.parse_workflow_scatter_collection(scatterAST.attr('collection'))
-        body = self.parse_workflow_scatter_body(scatterAST.attr('body'))
+        body = self.parse_workflow_body(scatterAST.attr('body'))
         return {'item': item, 'collection': collection, 'body': body}
 
     def parse_workflow_scatter_item(self, i):
@@ -513,38 +454,28 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         elif isinstance(i, wdl_parser.AstList):
             raise NotImplementedError
 
-    def parse_workflow_scatter_body(self, i):
-        if isinstance(i, wdl_parser.Terminal):
-            raise NotImplementedError
-        elif isinstance(i, wdl_parser.Ast):
-            raise NotImplementedError
-        elif isinstance(i, wdl_parser.AstList):
-            scatterbody = OrderedDict()
-            element = 0
-            for ast in i:
-                if ast.name == "Declaration":
-                    var_name, var_map = self.parse_workflow_declaration(ast)
-                    scatterbody['variable' + str(element)] = var_map
-                    element += 1
+    def parse_declaration(self, ast):
+        """
+        Parses a WDL declaration AST subtree into a Python tuple.
 
-                if ast.name == "Scatter":
-                    scattertask = self.parse_workflow_scatter(ast)
-                    scatterbody['scatter' + str(self.scatter_number)] = scattertask
-                    self.scatter_number += 1
-                    # TODO test this
-                    raise NotImplementedError
+        Examples:
 
-                if ast.name == "Call":
-                    task = self.parse_workflow_call(ast)
-                    scatterbody['call' + str(self.call_number)] = task
-                    self.call_number += 1
+        String my_name
+        String your_name
+        Int two_chains_i_mean_names = 0
 
-                if ast.name == "If":
-                    task = self.parse_workflow_if(ast)
-                    scatterbody['if' + str(self.if_number)] = task
-                    self.if_number += 1
-        return scatterbody
+        :param ast: Some subAST representing a task declaration like:
+                     'String file_name'
+        :return: var_name, var_type, var_value
+            Example:
+                Input subAST representing:   'String file_name'
+                Output:  var_name='file_name', var_type='String', var_value=None
+        """
+        var_name = self.parse_declaration_name(ast.attr("name"))
+        var_type = self.parse_declaration_type(ast.attr("type"))
+        var_expressn = self.parse_declaration_expressn(ast.attr("expression"), es='')
 
+        return var_name, var_type, var_expressn
 
     def parse_declaration_name(self, nameAST):
         """
@@ -590,19 +521,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         :return: a WDLType instance
         """
         if isinstance(typeAST, wdl_parser.Terminal):
-            if typeAST.source_string == 'String':
-                return WDLStringType()
-            elif typeAST.source_string == 'Int':
-                return WDLIntType()
-            elif typeAST.source_string == 'Float':
-                return WDLFloatType()
-            elif typeAST.source_string == 'Boolean':
-                return WDLBooleanType()
-            elif typeAST.source_string == 'File':
-                return WDLFileType()
-            else:
-                raise NotImplementedError
-
+            return self.create_wdl_primitive_type(typeAST.source_string)
         elif isinstance(typeAST, wdl_parser.Ast):
             if typeAST.name == 'Type':
                 subtype = typeAST.attr('subtype')
@@ -617,15 +536,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
                 # we're looking at a compound type
                 name = typeAST.attr('name').source_string
                 elements = [self.parse_declaration_type(element) for element in subtype]
-
-                if name == 'Array':
-                    return WDLArrayType(elements[0], optional=optional)
-                if name == 'Pair':
-                    return WDLPairType(*elements, optional=optional)
-                elif name == 'Map':
-                    return WDLMapType(*elements, optional=optional)
-                else:
-                    raise NotImplementedError
+                return self.create_wdl_compound_type(name, elements, optional=optional)
             else:
                 # either a primitive optional type OR deeply recursive types
                 # TODO: add tests #3331
@@ -635,7 +546,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         else:
             raise NotImplementedError
 
-    def parse_declaration_expressn(self, expressionAST, es, output_expressn=False):
+    def parse_declaration_expressn(self, expressionAST, es):
         """
         Expressions are optional.  Workflow declaration valid examples:
 
@@ -660,10 +571,11 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
                     else:
                         raise TypeError('Parsed boolean ({}) must be expressed as "true" or "false".'
                                         ''.format(expressionAST.source_string))
-                elif expressionAST.str == 'string' and not output_expressn:
+                elif expressionAST.str == 'string':
                     parsed_string = self.translate_wdl_string_to_python_string(expressionAST.source_string)
                     return '{string}'.format(string=parsed_string)
                 else:
+                    # integers, floats, and variables
                     return '{string}'.format(string=expressionAST.source_string)
             elif isinstance(expressionAST, wdl_parser.Ast):
                 if expressionAST.name == 'Add':
@@ -936,32 +848,6 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
                 es_param = es_param[:-2]
             return es_param
 
-    def parse_workflow_declaration(self, wf_declaration_subAST):
-        '''
-        Parses a WDL declaration AST subtree into a string and a python
-        dictionary containing its 'type' and 'value'.
-
-        For example:
-        var_name = refIndex
-        var_map = {'type': File,
-                   'value': bamIndex}
-
-        :param wf_declaration_subAST: An AST subtree of a workflow declaration.
-        :return: var_name, which is the name of the declared variable
-        :return: var_map, a dictionary with keys for type and value.
-                          e.g. {'type': File, 'value': bamIndex}
-        '''
-        var_map = OrderedDict()
-        var_name = self.parse_declaration_name(wf_declaration_subAST.attr("name"))
-        var_type = self.parse_declaration_type(wf_declaration_subAST.attr("type"))
-        var_expressn = self.parse_declaration_expressn(wf_declaration_subAST.attr("expression"), es='')
-
-        var_map['name'] = var_name
-        var_map['type'] = var_type
-        var_map['value'] = var_expressn
-
-        return var_name, var_map
-
     def parse_workflow_call_taskname(self, i):
         """
         Required.
@@ -1004,7 +890,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
             raise NotImplementedError
         elif isinstance(i, wdl_parser.AstList):
             for ast in i:
-                declaration_array.append(self.parse_task_declaration(ast))
+                declaration_array.append(self.parse_declaration(ast))
 
         # have not seen this used so raise to check
         if declaration_array:
@@ -1063,7 +949,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         io_map = OrderedDict()
 
         if isinstance(i, wdl_parser.Terminal):
-            return i.source_string # no io mappings; represents just a blank call
+            return i.source_string  # no io mappings; represents just a blank call
         elif isinstance(i, wdl_parser.Ast):
             if i.name == 'CallBody':
                 declarations = self.parse_workflow_call_body_declarations(i.attr("declarations")) # have not seen this used
@@ -1075,15 +961,14 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
 
         return io_map
 
-
     def parse_workflow_call(self, i):
-        '''
+        """
         Parses a WDL workflow call AST subtree to give the variable mappings for
         that particular job/task "call".
 
         :param i: WDL workflow job object
         :return: python dictionary of io mappings for that job call
-        '''
+        """
         task_being_called = self.parse_workflow_call_taskname(i.attr("task"))
         task_alias = self.parse_workflow_call_taskalias(i.attr("alias"))
         io_map = self.parse_workflow_call_body(i.attr("body"))

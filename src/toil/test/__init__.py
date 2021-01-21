@@ -316,8 +316,6 @@ def needs_google(test_item):
 
     if not os.getenv('TOIL_GOOGLE_PROJECTID'):
         return unittest.skip("Set TOIL_GOOGLE_PROJECTID to include this test.")(test_item)
-    elif not config.get('Credentials'):  # TODO: Deprecate this check?  Needed by only by the ancients.
-        return unittest.skip("Configure ~/.boto with Google Cloud credentials to include this test.")(test_item)
     return test_item
 
 
