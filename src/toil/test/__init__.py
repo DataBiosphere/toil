@@ -310,7 +310,7 @@ def needs_google(test_item):
     """Use as a decorator before test classes or methods to run only if Google is usable."""
     test_item = _mark_test('google', test_item)
     try:
-        from boto import config
+        from google.cloud import storage
     except ImportError:
         return unittest.skip("Install Toil with the 'google' extra to include this test.")(test_item)
 
