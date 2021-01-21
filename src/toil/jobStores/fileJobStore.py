@@ -14,6 +14,7 @@
 import errno
 import logging
 import os
+import stat
 import pickle
 import random
 import re

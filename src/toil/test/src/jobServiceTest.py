@@ -24,7 +24,8 @@ from unittest import skipIf
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.job import Job
 from toil.leader import DeadlockException, FailedJobsException
-from toil.test import ToilTest, get_temp_file, slow
+from toil.test import get_temp_file
+from toil.test import ToilTest, slow
 
 logger = logging.getLogger(__name__)
 

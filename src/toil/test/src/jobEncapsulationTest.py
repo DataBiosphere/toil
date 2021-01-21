@@ -14,7 +14,8 @@
 import os
 
 from toil.job import Job
-from toil.test import ToilTest, get_temp_file, travis_test
+from toil.test import get_temp_file
+from toil.test import ToilTest, travis_test
 from toil.test.src.jobTest import fn1Test
 
 

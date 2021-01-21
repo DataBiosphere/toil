@@ -14,10 +14,9 @@
 import os
 import signal
 import time
+import psutil
 from abc import ABCMeta
 from uuid import uuid4
-
-import psutil
 
 from toil.job import Job
 from toil.leader import FailedJobsException

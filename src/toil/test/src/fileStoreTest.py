@@ -18,9 +18,9 @@ import filecmp
 import inspect
 import logging
 import os
+import stat
 import random
 import signal
-import stat
 import time
 from abc import ABCMeta
 from struct import pack, unpack
