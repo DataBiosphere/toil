@@ -25,7 +25,6 @@ import uuid
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from typing import Optional, Callable, Any, List
 
-
 from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import (add_all_batchsystem_options,
                                        set_batchsystem_config_defaults,

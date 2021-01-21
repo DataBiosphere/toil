@@ -1212,12 +1212,12 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         failed to be created.  We simulate a failed jobstore bucket creation by using a bucket in a
         different region with the same name.
         """
-        from boto.sdb import connect_to_region
         from botocore.exceptions import ClientError
+        from boto.sdb import connect_to_region
 
-        from toil.jobStores.aws.jobStore import (BucketLocationConflictException,
-                                                 get_boto3_session)
+        from toil.jobStores.aws.jobStore import BucketLocationConflictException
         from toil.jobStores.aws.utils import retry_s3
+        from toil.jobStores.aws.jobStore import get_boto3_session
         externalAWSLocation = 'us-west-1'
 
         for testRegion in 'us-east-1', 'us-west-2':
@@ -1323,9 +1323,9 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def _createExternalStore(self):
         """A S3.Bucket instance is returned"""
+        from toil.jobStores.aws.utils import retry_s3
+        from toil.jobStores.aws.utils import region_to_bucket_location
         from toil.jobStores.aws.jobStore import get_boto3_session
-        from toil.jobStores.aws.utils import (region_to_bucket_location,
-                                              retry_s3)
         resource = get_boto3_session().resource('s3', region_name=self.awsRegion())
         bucket = resource.Bucket('import-export-test-%s' % uuid.uuid4())
 
