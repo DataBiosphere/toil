@@ -23,7 +23,6 @@ from http.client import BadStatusLine
 from urllib.request import urlopen
 from uuid import uuid4
 from typing import Set, Union
-
 from requests.exceptions import HTTPError
 
 from toil.common import safeUnpickleFromStream

@@ -1214,7 +1214,6 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         """
         from botocore.exceptions import ClientError
         from boto.sdb import connect_to_region
-
         from toil.jobStores.aws.jobStore import BucketLocationConflictException
         from toil.jobStores.aws.utils import retry_s3
         from toil.jobStores.aws.jobStore import get_boto3_session

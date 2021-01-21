@@ -25,7 +25,6 @@ from boto.exception import (
     BotoServerError,
     SDBResponseError
 )
-
 from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
 
