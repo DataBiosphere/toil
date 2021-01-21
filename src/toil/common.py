@@ -15,15 +15,16 @@ import logging
 import os
 import pickle
 import re
+import requests
 import subprocess
 import sys
 import tempfile
 import time
 import uuid
+
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from typing import Any, Callable, List, Optional
 
-import requests
 
 from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import (add_all_batchsystem_options,

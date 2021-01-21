@@ -1,9 +1,9 @@
+import boto3
 import logging
 import time
 from operator import attrgetter
 from typing import Dict, List, Optional
 
-import boto3
 from boto3.resources.base import ServiceResource
 from boto.exception import EC2ResponseError
 

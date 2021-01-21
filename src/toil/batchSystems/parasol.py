@@ -26,8 +26,8 @@ from threading import Thread
 from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
 from toil.common import Toil
-from toil.lib.iterables import concat
 from toil.test import get_temp_file
+from toil.lib.iterables import concat
 
 logger = logging.getLogger(__name__)
 

@@ -11,10 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
 import hashlib
 import itertools
 import logging
-import os
 import pickle
 import re
 import reprlib
@@ -44,6 +44,8 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobStoreException)
 from toil.jobStores.aws.utils import (SDBHelper,
                                       bucket_location_to_region,
+                                      uploadFromPath,
+                                      uploadFile,
                                       copyKeyMultipart,
                                       fileSizeAndTime,
                                       monkeyPatchSdbConnection,
@@ -52,9 +54,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       retry_s3,
                                       retry_sdb,
                                       retryable_s3_errors,
-                                      sdb_unavailable,
-                                      uploadFile,
-                                      uploadFromPath)
+                                      sdb_unavailable)
 from toil.jobStores.utils import (ReadablePipe,
                                   ReadableTransformingPipe,
                                   WritablePipe)
