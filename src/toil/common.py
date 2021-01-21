@@ -337,7 +337,7 @@ def parser_with_common_options(provisioner_options=False, jobstore_option=True):
 
 def addOptions(parser: ArgumentParser, config: Config = Config()):
     if not (isinstance(parser, ArgumentParser) or isinstance(parser, _ArgumentGroup)):
-        raise ValueError(f"Unanticipated class: {parser.__class__}.  Must be: argparse.ArgumentParser.")
+        raise ValueError(f"Unanticipated class: {parser.__class__}.  Must be: argparse.ArgumentParser or ArgumentGroup.")
 
     add_logging_options(parser)
     parser.register("type", "bool", parseBool)  # Custom type for arg=True/False.
