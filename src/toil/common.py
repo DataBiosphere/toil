@@ -22,7 +22,7 @@ import tempfile
 import time
 import uuid
 
-from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from argparse import _ArgumentGroup, ArgumentParser, ArgumentDefaultsHelpFormatter
 from typing import Optional, Callable, Any, List
 
 from toil import logProcessContext, lookupEnvVar
@@ -336,7 +336,7 @@ def parser_with_common_options(provisioner_options=False, jobstore_option=True):
 
 
 def addOptions(parser: ArgumentParser, config: Config = Config()):
-    if not isinstance(parser, ArgumentParser):
+    if not isinstance(parser, ArgumentParser) or not isinstance(parser, _ArgumentGroup):
         raise ValueError(f"Unanticipated class: {parser.__class__}.  Must be: argparse.ArgumentParser.")
 
     add_logging_options(parser)
