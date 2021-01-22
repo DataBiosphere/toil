@@ -491,7 +491,7 @@ class AnalyzeV1WDL(AnalyzeWDL):
             return f'{sep}.join(str(x) for x in {expr})'
         elif 'default' in options:
             default = options['default']
-            return f'{expr} if {expr} else {default}'
+            return f'({expr} if {expr} else {default})'
         else:
             raise NotImplementedError(options)
 
