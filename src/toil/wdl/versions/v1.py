@@ -17,7 +17,6 @@ from typing import Union
 
 from wdlparse.v1.WdlV1Lexer import WdlV1Lexer, FileStream
 from wdlparse.v1.WdlV1Parser import WdlV1Parser, CommonTokenStream
-from wdlparse.v1.WdlV1ParserVisitor import WdlV1ParserVisitor
 
 from toil.wdl.wdl_analysis import AnalyzeWDL
 
@@ -33,7 +32,7 @@ def is_context(ctx, classname: Union[str, tuple]):
     return ctx.__class__.__name__ in classname
 
 
-class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
+class AnalyzeV1WDL(AnalyzeWDL):
     """
     AnalyzeWDL implementation for the 1.0 version using antlr4.
     """
@@ -113,13 +112,14 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
                 wf[wf_key] = contents
             # parameter_meta and meta
             elif is_context(section, ('Parameter_meta_elementContext', 'Meta_elementContext')):
+                # ignore additional metadata information for now.
                 pass
             else:
                 raise RuntimeError(f'Unrecognized workflow element in visitWorkflow(): {type(section)}')
 
     def visitWorkflow_input(self, ctx):
         """
-        Contains an array of 'any_decls', which can be unbounded or bounded declarations.
+        Contains an array of 'any_decls', which can be unbound or bound declarations.
         Example:
             input {
               String in_str = "twenty"
@@ -272,7 +272,7 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
 
     def visitTask_input(self, ctx):
         """
-        Contains an array of 'any_decls', which can be unbounded or bounded declarations.
+        Contains an array of 'any_decls', which can be unbound or bound declarations.
         Example:
             input {
               String in_str = "twenty"
@@ -367,7 +367,7 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
 
     def visitAny_decls(self, ctx):
         """
-        Contains a bounded or unbounded declaration.
+        Contains a bound or unbound declaration.
         """
         if ctx.bound_decls():
             return self.visitBound_decls(ctx.bound_decls())
@@ -378,7 +378,7 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
 
     def visitUnbound_decls(self, ctx):
         """
-        Contains an unbounded declaration. E.g.: `String in_str`.
+        Contains an unbound declaration. E.g.: `String in_str`.
 
         Returns a tuple=(name, type, expr), where `expr` is None.
         """
@@ -388,7 +388,7 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
 
     def visitBound_decls(self, ctx):
         """
-        Contains a bounded declaration. E.g.: `String in_str = "some string"`.
+        Contains a bound declaration. E.g.: `String in_str = "some string"`.
 
         Returns a tuple=(name, type, expr).
         """
@@ -437,6 +437,12 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
             return ctx.children[0].getText()
         else:
             raise RuntimeError(f'Primitive literal has unknown child: {type(ctx.children[0])}.')
+
+    def visitNumber(self, ctx):
+        """
+        Contains an `IntLiteral` or a `FloatLiteral`.
+        """
+        return ctx.children[0].getText()
 
     def visitString(self, ctx):
         """
@@ -501,7 +507,7 @@ class AnalyzeV1WDL(AnalyzeWDL, WdlV1ParserVisitor):
         """
         Expression placeholder options.
 
-        Matches three of the following:
+        Can match one of the following:
               BoolLiteral EQUAL (string | number)
               DEFAULT EQUAL (string | number)
               SEP EQUAL (string | number)
