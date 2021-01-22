@@ -35,6 +35,9 @@ def is_context(ctx, classname: Union[str, tuple]):
 class AnalyzeV1WDL(AnalyzeWDL):
     """
     AnalyzeWDL implementation for the 1.0 version using antlr4.
+
+    See: https://github.com/openwdl/wdl/blob/main/versions/1.0/SPEC.md
+         https://github.com/openwdl/wdl/blob/main/versions/1.0/parsers/antlr4/WdlV1Parser.g4
     """
 
     @property
@@ -50,28 +53,28 @@ class AnalyzeV1WDL(AnalyzeWDL):
         lexer = WdlV1Lexer(FileStream(self.wdl_file))
         parser = WdlV1Parser(input=CommonTokenStream(lexer))
         tree = parser.document()
-        self.visitDocument(tree)
+        self.visit_document(tree)
 
-    def visitDocument(self, ctx):
+    def visit_document(self, ctx):
         """
         Root of tree. Contains `version` followed by an optional workflow and
         any number of `document_element`s.
         """
         wf = ctx.workflow()
         if wf:
-            self.visitWorkflow(wf)
+            self.visit_workflow(wf)
 
         for element in ctx.document_element():
-            self.visitDocument_element(element)
+            self.visit_document_element(element)
 
-    def visitDocument_element(self, ctx):
+    def visit_document_element(self, ctx):
         """
         Contains one of the following: 'import_doc', 'struct', or 'task'.
         """
         element = ctx.children[0]
         # task
         if is_context(element, 'TaskContext'):
-            return self.visitTask(element)
+            return self.visit_task(element)
         # struct
         elif is_context(element, 'StructContext'):
             # TODO: add support for structs.
@@ -85,7 +88,7 @@ class AnalyzeV1WDL(AnalyzeWDL):
 
     # Workflow section
 
-    def visitWorkflow(self, ctx):
+    def visit_workflow(self, ctx):
         """
         Contains an 'identifier' and an array of `workflow_element`s.
         """
@@ -98,17 +101,17 @@ class AnalyzeV1WDL(AnalyzeWDL):
             if is_context(section, 'Workflow_inputContext'):
                 # loop through all inputs and add to the workflow dictionary.
                 # treating this the same as workflow declarations for now
-                for wf_input in self.visitWorkflow_input(section):
+                for wf_input in self.visit_workflow_input(section):
                     wf[f'declaration{self.declaration_number}'] = wf_input
                     self.declaration_number += 1
             # output
             elif is_context(section, 'Workflow_outputContext'):
                 # TODO: add support for workflow level outputs in wdl_synthesis
-                wf['wf_outputs'] = self.visitWorkflow_output(section)
+                wf['wf_outputs'] = self.visit_workflow_output(section)
             # inner_element
             # i.e.: non-input declarations, scatters, calls, and conditionals
             elif is_context(section, 'Inner_workflow_elementContext'):
-                wf_key, contents = self.visitInner_workflow_element(section)
+                wf_key, contents = self.visit_inner_workflow_element(section)
                 wf[wf_key] = contents
             # parameter_meta and meta
             elif is_context(section, ('Parameter_meta_elementContext', 'Meta_elementContext')):
@@ -117,7 +120,7 @@ class AnalyzeV1WDL(AnalyzeWDL):
             else:
                 raise RuntimeError(f'Unrecognized workflow element in visitWorkflow(): {type(section)}')
 
-    def visitWorkflow_input(self, ctx):
+    def visit_workflow_input(self, ctx):
         """
         Contains an array of 'any_decls', which can be unbound or bound declarations.
         Example:
@@ -128,9 +131,9 @@ class AnalyzeV1WDL(AnalyzeWDL):
 
         Returns a list of tuple=(name, type, expr).
         """
-        return [self.visitAny_decls(decl) for decl in ctx.any_decls()]
+        return [self.visit_any_decls(decl) for decl in ctx.any_decls()]
 
-    def visitWorkflow_output(self, ctx):
+    def visit_workflow_output(self, ctx):
         """
         Contains an array of 'bound_decls' (unbound_decls not allowed).
         Example:
@@ -140,9 +143,9 @@ class AnalyzeV1WDL(AnalyzeWDL):
 
         Returns a list of tuple=(name, type, expr).
         """
-        return [self.visitBound_decls(decl) for decl in ctx.bound_decls()]
+        return [self.visit_bound_decls(decl) for decl in ctx.bound_decls()]
 
-    def visitInner_workflow_element(self, ctx):
+    def visit_inner_workflow_element(self, ctx):
         """
         Returns a tuple=(unique_key, dict), where dict contains the contents of
         the given inner workflow element.
@@ -154,26 +157,26 @@ class AnalyzeV1WDL(AnalyzeWDL):
         if is_context(element, 'Bound_declsContext'):
             key = f'declaration{self.declaration_number}'
             self.declaration_number += 1
-            return key, self.visitBound_decls(element)
+            return key, self.visit_bound_decls(element)
         # call
         elif is_context(element, 'CallContext'):
             key = f'call{self.call_number}'
             self.call_number += 1
-            return key, self.visitCall(element)
+            return key, self.visit_call(element)
         # scatter
         elif is_context(element, 'ScatterContext'):
             key = f'scatter{self.scatter_number}'
             self.scatter_number += 1
-            return key, self.visitScatter(element)
+            return key, self.visit_scatter(element)
         # conditional
         elif is_context(element, 'ConditionalContext'):
             key = f'if{self.if_number}'
             self.if_number += 1
-            return key, self.visitConditional(element)
+            return key, self.visit_conditional(element)
         else:
             raise RuntimeError(f'Unrecognized workflow element in visitInner_workflow_element(): {type(element)}')
 
-    def visitCall(self, ctx):
+    def visit_call(self, ctx):
         """
         Pattern: CALL call_name call_alias? call_body?
         Example WDL syntax: call task_1 {input: arr=arr}
@@ -187,7 +190,7 @@ class AnalyzeV1WDL(AnalyzeWDL):
         # make sure that '{}' and '{input: ...}' are provided
         if ctx.call_body() and ctx.call_body().call_inputs():
             for input_ in ctx.call_body().call_inputs().call_input():
-                body[input_.Identifier().getText()] = self.visitExpr(input_.expr())
+                body[input_.Identifier().getText()] = self.visit_expr(input_.expr())
 
         return {
             'task': name,
@@ -195,7 +198,7 @@ class AnalyzeV1WDL(AnalyzeWDL):
             'io': body
         }
 
-    def visitScatter(self, ctx):
+    def visit_scatter(self, ctx):
         """
         Pattern: SCATTER LPAREN Identifier In expr RPAREN LBRACE inner_workflow_element* RBRACE
         Example WDL syntax: scatter ( i in items) { ... }
@@ -203,10 +206,10 @@ class AnalyzeV1WDL(AnalyzeWDL):
         Returns a dict={item, collection, body}.
         """
         item = ctx.Identifier().getText()
-        expr = self.visitExpr(ctx.expr())
+        expr = self.visit_expr(ctx.expr())
         body = OrderedDict()
         for element in ctx.inner_workflow_element():
-            body_key, contents = self.visitInner_workflow_element(element)
+            body_key, contents = self.visit_inner_workflow_element(element)
             body[body_key] = contents
         return {
             'item': item,
@@ -214,7 +217,7 @@ class AnalyzeV1WDL(AnalyzeWDL):
             'body': body
         }
 
-    def visitConditional(self, ctx):
+    def visit_conditional(self, ctx):
         """
         Pattern: IF LPAREN expr RPAREN LBRACE inner_workflow_element* RBRACE
         Example WDL syntax: if (condition) { ... }
@@ -222,11 +225,11 @@ class AnalyzeV1WDL(AnalyzeWDL):
         Returns a dict={expression, body}.
         """
         # see https://github.com/openwdl/wdl/blob/main/versions/1.0/SPEC.md#conditionals
-        expr = self.visitExpr(ctx.expr())
+        expr = self.visit_expr(ctx.expr())
 
         body = OrderedDict()
         for element in ctx.inner_workflow_element():
-            body_key, contents = self.visitInner_workflow_element(element)
+            body_key, contents = self.visit_inner_workflow_element(element)
             body[body_key] = contents
 
         return {
@@ -236,7 +239,7 @@ class AnalyzeV1WDL(AnalyzeWDL):
 
     # Task section
 
-    def visitTask(self, ctx):
+    def visit_task(self, ctx):
         """
         Root of a task definition. Contains an `identifier` and an array of
         `task_element`s.
@@ -249,20 +252,20 @@ class AnalyzeV1WDL(AnalyzeWDL):
             section = element.children[0]
             # input
             if is_context(section, 'Task_inputContext'):
-                task.setdefault('inputs', []).extend(self.visitTask_input(section))
+                task.setdefault('inputs', []).extend(self.visit_task_input(section))
             # output
             elif is_context(section, 'Task_outputContext'):
-                task['outputs'] = self.visitTask_output(section)
+                task['outputs'] = self.visit_task_output(section)
             # command
             elif is_context(section, 'Task_commandContext'):
-                task['raw_commandline'] = self.visitTask_command(section)
+                task['raw_commandline'] = self.visit_task_command(section)
             # runtime
             elif is_context(section, 'Task_runtimeContext'):
-                task['runtime'] = self.visitTask_runtime(section)
+                task['runtime'] = self.visit_task_runtime(section)
             # bound_decls
             elif is_context(section, 'Bound_declsContext'):
                 # treating this the same as inputs for now
-                decl = self.visitBound_decls(section)
+                decl = self.visit_bound_decls(section)
                 task.setdefault('inputs', []).append(decl)
             # parameter_meta, and meta
             elif is_context(section, ('Parameter_meta_elementContext', 'Meta_elementContext')):
@@ -270,7 +273,7 @@ class AnalyzeV1WDL(AnalyzeWDL):
             else:
                 raise RuntimeError(f'Unrecognized task element in visitTask(): {type(section)}')
 
-    def visitTask_input(self, ctx):
+    def visit_task_input(self, ctx):
         """
         Contains an array of 'any_decls', which can be unbound or bound declarations.
         Example:
@@ -281,9 +284,9 @@ class AnalyzeV1WDL(AnalyzeWDL):
 
         Returns a list of tuple=(name, type, expr)
         """
-        return [self.visitAny_decls(decl) for decl in ctx.any_decls()]
+        return [self.visit_any_decls(decl) for decl in ctx.any_decls()]
 
-    def visitTask_output(self, ctx):
+    def visit_task_output(self, ctx):
         """
         Contains an array of 'bound_decls' (unbound_decls not allowed).
         Example:
@@ -293,9 +296,9 @@ class AnalyzeV1WDL(AnalyzeWDL):
 
         Returns a list of tuple=(name, type, expr)
         """
-        return [self.visitBound_decls(decl) for decl in ctx.bound_decls()]
+        return [self.visit_bound_decls(decl) for decl in ctx.bound_decls()]
 
-    def visitTask_command(self, ctx):
+    def visit_task_command(self, ctx):
         """
         Parses the command section of the WDL task.
 
@@ -317,42 +320,42 @@ class AnalyzeV1WDL(AnalyzeWDL):
         parts = []
 
         # add the first part
-        str_part = self.visitTask_command_string_part(ctx.task_command_string_part())
+        str_part = self.visit_task_command_string_part(ctx.task_command_string_part())
         if str_part:
             parts.append(f"r'''{str_part}'''")
 
         # add the rest
         for group in ctx.task_command_expr_with_string():
-            expr_part, str_part = self.visitTask_command_expr_with_string(group)
+            expr_part, str_part = self.visit_task_command_expr_with_string(group)
             parts.append(expr_part)
             if str_part:
                 parts.append(f"r'''{str_part}'''")
 
         return parts
 
-    def visitTask_command_string_part(self, ctx):
+    def visit_task_command_string_part(self, ctx):
         """
         Returns a string representing the string_part.
         """
         # join here because a string that contains '$', '{', or '}' is split
         return ''.join(part.getText() for part in ctx.CommandStringPart())
 
-    def visitTask_command_expr_with_string(self, ctx):
+    def visit_task_command_expr_with_string(self, ctx):
         """
         Returns a tuple=(expr_part, string_part).
         """
-        return (self.visitTask_command_expr_part(ctx.task_command_expr_part()),
-                self.visitTask_command_string_part(ctx.task_command_string_part()))
+        return (self.visit_task_command_expr_part(ctx.task_command_expr_part()),
+                self.visit_task_command_string_part(ctx.task_command_string_part()))
 
-    def visitTask_command_expr_part(self, ctx):
+    def visit_task_command_expr_part(self, ctx):
         """
-        Contains the expression inside ${expr}. Same function as `self.visitString_expr_part()`.
+        Contains the expression inside ${expr}. Same function as `self.visit_string_expr_part()`.
 
         Returns the expression.
         """
-        return self.visitString_expr_part(ctx)  # noqa
+        return self.visit_string_expr_part(ctx)
 
-    def visitTask_runtime(self, ctx):
+    def visit_task_runtime(self, ctx):
         """
         Contains an array of `task_runtime_kv`s.
 
@@ -360,45 +363,45 @@ class AnalyzeV1WDL(AnalyzeWDL):
         'cores', or 'disks'.
         """
         return OrderedDict((kv.children[0].getText(),  # runtime key
-                            self.visitExpr(kv.expr()))  # runtime value
+                            self.visit_expr(kv.expr()))  # runtime value
                            for kv in ctx.task_runtime_kv())
 
     # Shared
 
-    def visitAny_decls(self, ctx):
+    def visit_any_decls(self, ctx):
         """
         Contains a bound or unbound declaration.
         """
         if ctx.bound_decls():
-            return self.visitBound_decls(ctx.bound_decls())
+            return self.visit_bound_decls(ctx.bound_decls())
         elif ctx.unbound_decls():
-            return self.visitUnbound_decls(ctx.unbound_decls())
+            return self.visit_unbound_decls(ctx.unbound_decls())
         else:
-            raise RuntimeError
+            raise RuntimeError(f'Unrecognized declaration: {type(ctx)}')
 
-    def visitUnbound_decls(self, ctx):
+    def visit_unbound_decls(self, ctx):
         """
         Contains an unbound declaration. E.g.: `String in_str`.
 
         Returns a tuple=(name, type, expr), where `expr` is None.
         """
         name = ctx.Identifier().getText()
-        type_ = self.visitWdl_type(ctx.wdl_type())
+        type_ = self.visit_wdl_type(ctx.wdl_type())
         return name, type_, None
 
-    def visitBound_decls(self, ctx):
+    def visit_bound_decls(self, ctx):
         """
         Contains a bound declaration. E.g.: `String in_str = "some string"`.
 
         Returns a tuple=(name, type, expr).
         """
         name = ctx.Identifier().getText()
-        type_ = self.visitWdl_type(ctx.wdl_type())
-        expr = self.visitExpr(ctx.expr())
+        type_ = self.visit_wdl_type(ctx.wdl_type())
+        expr = self.visit_expr(ctx.expr())
 
         return name, type_, expr
 
-    def visitWdl_type(self, ctx):
+    def visit_wdl_type(self, ctx):
         """
         Returns a WDLType instance.
         """
@@ -415,12 +418,12 @@ class AnalyzeV1WDL(AnalyzeWDL):
             name = identifier.children[0].getText()  # the first child is the name of the type.
             type_ = identifier.wdl_type()
             if isinstance(type_, list):
-                elements = [self.visitWdl_type(element) for element in type_]
+                elements = [self.visit_wdl_type(element) for element in type_]
             else:
-                elements = [self.visitWdl_type(type_)]
+                elements = [self.visit_wdl_type(type_)]
             return self.create_wdl_compound_type(key=name, elements=elements, optional=optional)
 
-    def visitPrimitive_literal(self, ctx):
+    def visit_primitive_literal(self, ctx):
         """
         Returns the primitive literal as a string.
         """
@@ -431,43 +434,43 @@ class AnalyzeV1WDL(AnalyzeWDL):
                 raise TypeError(f'Parsed boolean ({val}) must be expressed as "true" or "false".')
             return val.capitalize()
         elif is_context(ctx.children[0], 'StringContext'):
-            return self.visitString(ctx.children[0])
+            return self.visit_string(ctx.children[0])
         elif is_context(ctx.children[0], ('TerminalNodeImpl',  # this also includes variables
                                           'NumberContext')):
             return ctx.children[0].getText()
         else:
             raise RuntimeError(f'Primitive literal has unknown child: {type(ctx.children[0])}.')
 
-    def visitNumber(self, ctx):
+    def visit_number(self, ctx):
         """
         Contains an `IntLiteral` or a `FloatLiteral`.
         """
         return ctx.children[0].getText()
 
-    def visitString(self, ctx):
+    def visit_string(self, ctx):
         """
         Contains a `string_part` followed by an array of `string_expr_with_string_part`s.
         """
-        string = self.visitString_part(ctx.string_part())
+        string = self.visit_string_part(ctx.string_part())
 
         for part in ctx.string_expr_with_string_part():
-            string += f' + {self.visitString_expr_with_string_part(part)}'
+            string += f' + {self.visit_string_expr_with_string_part(part)}'
 
         return string
 
-    def visitString_expr_with_string_part(self, ctx):
+    def visit_string_expr_with_string_part(self, ctx):
         """
         Contains a `string_expr_part` and a `string_part`.
         """
-        expr = self.visitString_expr_part(ctx.string_expr_part())
-        part = self.visitString_part(ctx.string_part())
+        expr = self.visit_string_expr_part(ctx.string_expr_part())
+        part = self.visit_string_part(ctx.string_part())
 
         if not part:
             return expr
 
         return f'{expr} + {part}'
 
-    def visitString_expr_part(self, ctx):
+    def visit_string_expr_part(self, ctx):
         """
         Contains an array of `expression_placeholder_option`s and an `expr`.
         """
@@ -476,10 +479,10 @@ class AnalyzeV1WDL(AnalyzeWDL):
         options = {}
 
         for opt in ctx.expression_placeholder_option():
-            key, val = self.visitExpression_placeholder_option(opt)
+            key, val = self.visit_expression_placeholder_option(opt)
             options[key] = val
 
-        expr = self.visitExpr(ctx.expr())
+        expr = self.visit_expr(ctx.expr())
 
         if len(options) == 0:
             return expr
@@ -492,7 +495,7 @@ class AnalyzeV1WDL(AnalyzeWDL):
         else:
             raise NotImplementedError(options)
 
-    def visitString_part(self, ctx):
+    def visit_string_part(self, ctx):
         """
         Returns a string representing the string_part.
         """
@@ -503,7 +506,7 @@ class AnalyzeV1WDL(AnalyzeWDL):
             return f"'{part}'"
         return None
 
-    def visitExpression_placeholder_option(self, ctx):
+    def visit_expression_placeholder_option(self, ctx):
         """
         Expression placeholder options.
 
@@ -524,169 +527,169 @@ class AnalyzeV1WDL(AnalyzeWDL):
 
         param = ctx.children[0].getText()
         str_or_num = ctx.children[2]
-        val = self.visitString(str_or_num) if is_context(str_or_num, 'StringContext') else self.visitNumber(str_or_num)
+        val = self.visit_string(str_or_num) \
+            if is_context(str_or_num, 'StringContext') else self.visit_number(str_or_num)
 
         return param, val
 
-    def visitExpr(self, ctx):
+    def visit_expr(self, ctx):
         """
         Expression root.
         """
-        return self.visitInfix0(ctx.expr_infix())
+        return self.visit_infix0(ctx.expr_infix())
 
-    def visitInfix0(self, ctx):
+    def visit_infix0(self, ctx):
         """
         Expression infix0 (LOR).
         """
         infix = ctx.expr_infix0()
         if is_context(infix, 'LorContext'):
-            return self.visitLor(infix)
-        return self.visitInfix1(infix)
+            return self.visit_lor(infix)
+        return self.visit_infix1(infix)
 
-    def visitLor(self, ctx):
+    def visit_lor(self, ctx):
         """
         Logical OR expression.
         """
-        lhs = self.visitInfix0(ctx)
-        rhs = self.visitInfix1(ctx)
+        lhs = self.visit_infix0(ctx)
+        rhs = self.visit_infix1(ctx)
         return f'{lhs} or {rhs}'
 
-    def visitInfix1(self, ctx):
+    def visit_infix1(self, ctx):
         """
         Expression infix1 (LAND).
         """
         infix = ctx.expr_infix1()
         if is_context(infix, 'LandContext'):
-            return self.visitLand(infix)
-        return self.visitInfix2(infix)
+            return self.visit_land(infix)
+        return self.visit_infix2(infix)
 
-    def visitLand(self, ctx):
+    def visit_land(self, ctx):
         """
         Logical AND expresion.
         """
-        lhs = self.visitInfix1(ctx)
-        rhs = self.visitInfix2(ctx)
+        lhs = self.visit_infix1(ctx)
+        rhs = self.visit_infix2(ctx)
         return f'{lhs} and {rhs}'
 
-    def visitInfix2(self, ctx):
+    def visit_infix2(self, ctx):
         """
         Expression infix2 (comparisons).
         """
         infix = ctx.expr_infix2()
         if is_context(infix, 'EqeqContext'):
-            return self._visitInfix2(infix, '==')
+            return self._visit_infix2(infix, '==')
         elif is_context(infix, 'NeqContext'):
-            return self._visitInfix2(infix, '!=')
+            return self._visit_infix2(infix, '!=')
         elif is_context(infix, 'LteContext'):
-            return self._visitInfix2(infix, '<=')
+            return self._visit_infix2(infix, '<=')
         elif is_context(infix, 'GteContext'):
-            return self._visitInfix2(infix, '>=')
+            return self._visit_infix2(infix, '>=')
         elif is_context(infix, 'LtContext'):
-            return self._visitInfix2(infix, '<')
+            return self._visit_infix2(infix, '<')
         elif is_context(infix, 'GtContext'):
-            return self._visitInfix2(infix, '>')
+            return self._visit_infix2(infix, '>')
         # continue down our path
-        return self.visitInfix3(infix)
+        return self.visit_infix3(infix)
 
-    def _visitInfix2(self, ctx, operation: str):
+    def _visit_infix2(self, ctx, operation: str):
         """
         :param operation: Operation as a string.
         """
-        lhs = self.visitInfix2(ctx)
-        rhs = self.visitInfix3(ctx)
+        lhs = self.visit_infix2(ctx)
+        rhs = self.visit_infix3(ctx)
         return f'{lhs} {operation} {rhs}'
 
-    def visitInfix3(self, ctx):
+    def visit_infix3(self, ctx):
         """
         Expression infix3 (add/subtract).
         """
         infix = ctx.expr_infix3()
         if is_context(infix, 'AddContext'):
-            return self._visitInfix3(infix, '+')
+            return self._visit_infix3(infix, '+')
         elif is_context(infix, 'SubContext'):
-            return self._visitInfix3(infix, '-')
+            return self._visit_infix3(infix, '-')
         # continue down our path
-        return self.visitInfix4(infix)
+        return self.visit_infix4(infix)
 
-    def _visitInfix3(self, ctx, operation: str):
+    def _visit_infix3(self, ctx, operation: str):
         """
         :param operation: Operation as a string.
         """
-        lhs = self.visitInfix3(ctx)
-        rhs = self.visitInfix4(ctx)
+        lhs = self.visit_infix3(ctx)
+        rhs = self.visit_infix4(ctx)
         return f'{lhs} {operation} {rhs}'
 
-    def visitInfix4(self, ctx):
+    def visit_infix4(self, ctx):
         """
         Expression infix4 (multiply/divide/modulo).
         """
         infix = ctx.expr_infix4()
         if is_context(infix, 'MulContext'):
-            return self._visitInfix4(infix, '*')
+            return self._visit_infix4(infix, '*')
         elif is_context(infix, 'DivideContext'):
-            return self._visitInfix4(infix, '/')
+            return self._visit_infix4(infix, '/')
         elif is_context(infix, 'ModContext'):
-            return self._visitInfix4(infix, '%')
+            return self._visit_infix4(infix, '%')
         # continue down our path
-        return self.visitInfix5(infix)
+        return self.visit_infix5(infix)
 
-    def _visitInfix4(self, ctx, operation: str):
+    def _visit_infix4(self, ctx, operation: str):
         """
         :param operation: Operation as a string.
         """
-        lhs = self.visitInfix4(ctx)
-        rhs = self.visitInfix5(ctx)
+        lhs = self.visit_infix4(ctx)
+        rhs = self.visit_infix5(ctx)
         return f'{lhs} {operation} {rhs}'
 
-    def visitInfix5(self, ctx):
+    def visit_infix5(self, ctx):
         """
         Expression infix5.
         """
-        return self._visitExpr_core(ctx.expr_infix5().expr_core())
+        return self.visit_expr_core(ctx.expr_infix5().expr_core())
 
-    def _visitExpr_core(self, expr):
+    def visit_expr_core(self, expr):
         """
         Expression core.
         """
         if is_context(expr, 'ApplyContext'):
-            return self.visitApply(expr)
+            return self.visit_apply(expr)
         elif is_context(expr, 'Array_literalContext'):
-            return self.visitArray_literal(expr)
+            return self.visit_array_literal(expr)
         elif is_context(expr, 'Pair_literalContext'):
-            return self.visitPair_literal(expr)
+            return self.visit_pair_literal(expr)
         # elif is_context(expr, 'Map_literalContext'):
         #     raise NotImplementedError
         # elif is_context(expr, 'Object_literalContext'):
         #     raise NotImplementedError
         elif is_context(expr, 'IfthenelseContext'):
-            return self.visitIfthenelse(expr)
+            return self.visit_ifthenelse(expr)
         elif is_context(expr, 'Expression_groupContext'):
-            return self.visitExpression_group(expr)
+            return self.visit_expression_group(expr)
         elif is_context(expr, 'AtContext'):
-            return self.visitAt(expr)
+            return self.visit_at(expr)
         elif is_context(expr, 'Get_nameContext'):
-            return self.visitGet_name(expr)
+            return self.visit_get_name(expr)
         elif is_context(expr, 'NegateContext'):
-            return self.visitNegate(expr)
+            return self.visit_negate(expr)
         elif is_context(expr, 'UnarysignedContext'):
-            return self.visitUnarysigned(expr)
+            return self.visit_unarysigned(expr)
         elif is_context(expr, 'PrimitivesContext'):
-            return self.visitPrimitives(expr)
+            return self.visit_primitives(expr)
         # elif is_context(expr, 'Left_nameContext'):
         #     raise NotImplementedError
 
         raise NotImplementedError(f"Expression context '{type(expr)}' is not supported.")
 
     # expr_core
-    # see: https://github.com/w-gao/wdl/blob/main/versions/development/parsers/antlr4/WdlParser.g4#L121
 
-    def visitApply(self, ctx):
+    def visit_apply(self, ctx):
         """
         A function call.
         Pattern: Identifier LPAREN (expr (COMMA expr)*)? RPAREN
         """
         fn = ctx.Identifier().getText()
-        params = ', '.join(self.visitExpr(expr) for expr in ctx.expr())
+        params = ', '.join(self.visit_expr(expr) for expr in ctx.expr())
 
         if fn == 'stdout':
             return '_toil_wdl_internal__stdout_file'
@@ -708,42 +711,42 @@ class AnalyzeV1WDL(AnalyzeWDL):
         else:
             return call + ')'
 
-    def visitArray_literal(self, ctx):
+    def visit_array_literal(self, ctx):
         """
         Pattern: LBRACK (expr (COMMA expr)*)* RBRACK
         """
-        return f"[{', '.join(self.visitExpr(expr) for expr in ctx.expr())}]"
+        return f"[{', '.join(self.visit_expr(expr) for expr in ctx.expr())}]"
 
-    def visitPair_literal(self, ctx):
+    def visit_pair_literal(self, ctx):
         """
         Pattern: LPAREN expr COMMA expr RPAREN
         """
-        return f"({self.visitExpr(ctx.expr(0))}, {self.visitExpr(ctx.expr(1))})"
+        return f"({self.visit_expr(ctx.expr(0))}, {self.visit_expr(ctx.expr(1))})"
 
-    def visitIfthenelse(self, ctx):
+    def visit_ifthenelse(self, ctx):
         """
         Ternary expression.
         Pattern: IF expr THEN expr ELSE expr
         """
-        if_true = self.visitExpr(ctx.expr(0))
-        condition = self.visitExpr(ctx.expr(1))
-        if_false = self.visitExpr(ctx.expr(2))
+        if_true = self.visit_expr(ctx.expr(0))
+        condition = self.visit_expr(ctx.expr(1))
+        if_false = self.visit_expr(ctx.expr(2))
 
         return f'({condition} if {if_true} else {if_false})'
 
-    def visitExpression_group(self, ctx):
+    def visit_expression_group(self, ctx):
         """
         Pattern: LPAREN expr RPAREN
         """
-        return f'({self.visitExpr(ctx.expr())})'
+        return f'({self.visit_expr(ctx.expr())})'
 
-    def visitAt(self, ctx):
+    def visit_at(self, ctx):
         """
         Array or map lookup.
         Pattern: expr_core LBRACK expr RBRACK
         """
-        expr_core = self._visitExpr_core(ctx.expr_core())
-        expr = self.visitExpr(ctx.expr())
+        expr_core = self.visit_expr_core(ctx.expr_core())
+        expr = self.visit_expr(ctx.expr())
 
         # parenthesis must be removed because 'i[0]' works, but '(i)[0]' does not
         if expr_core[0] == '(' and expr_core[-1] == ')':
@@ -751,12 +754,12 @@ class AnalyzeV1WDL(AnalyzeWDL):
 
         return f'{expr_core}[{expr}]'
 
-    def visitGet_name(self, ctx):
+    def visit_get_name(self, ctx):
         """
         Member access.
         Pattern: expr_core DOT Identifier
         """
-        expr_core = self._visitExpr_core(ctx.expr_core())
+        expr_core = self.visit_expr_core(ctx.expr_core())
         identifier = ctx.Identifier().getText()
 
         if identifier in ('left', 'right'):
@@ -765,25 +768,25 @@ class AnalyzeV1WDL(AnalyzeWDL):
 
         return f'({expr_core}_{identifier})'
 
-    def visitNegate(self, ctx):
+    def visit_negate(self, ctx):
         """
         Pattern: NOT expr
         """
-        return f'(not {self.visitExpr(ctx.expr())})'
+        return f'(not {self.visit_expr(ctx.expr())})'
 
-    def visitUnarysigned(self, ctx):
+    def visit_unarysigned(self, ctx):
         """
         Pattern: (PLUS | MINUS) expr
         """
         plus: bool = ctx.PLUS() is not None
-        expr = self.visitExpr(ctx.expr())
+        expr = self.visit_expr(ctx.expr())
 
         if plus:
             return f'(+{expr})'
         return f'(-{expr})'
 
-    def visitPrimitives(self, ctx):
+    def visit_primitives(self, ctx):
         """
         Expression alias for primitive literal.
         """
-        return self.visitPrimitive_literal(ctx.primitive_literal())
+        return self.visit_primitive_literal(ctx.primitive_literal())
