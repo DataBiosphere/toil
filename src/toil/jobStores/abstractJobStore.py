@@ -964,12 +964,21 @@ class AbstractJobStore(ABC):
 
     @abstractmethod
     @contextmanager
-    def readFileStream(self, jobStoreFileID):
+    def readFileStream(self, jobStoreFileID, mode='b', encoding=None, errors=None):
         """
         Similar to readFile, but returns a context manager yielding a file handle which can be
         read from. The yielded file handle does not need to and should not be closed explicitly.
 
         :param str jobStoreFileID: ID of the file to get a readable file handle for
+
+        :param str mode: an optional string that specifies the mode in which the file is opened.
+                It defaults to 'b' which means open for reading in binary mode.
+
+        :param str encoding: the name of the encoding used to decode or encode the file.
+                This should only be used in text mode.
+
+        :param str errors: an optional string that specifies how encoding and decoding errors
+                are to be handled. This cannot be used in binary mode.
         """
         raise NotImplementedError()
 
@@ -1054,7 +1063,7 @@ class AbstractJobStore(ABC):
 
     @abstractmethod
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName, isProtected=None):
+    def writeSharedFileStream(self, sharedFileName, isProtected=None, mode='b', encoding=None, errors=None):
         """
         Returns a context manager yielding a writable file handle to the global file referenced
         by the given name.  File will be created in an atomic manner.
@@ -1065,6 +1074,15 @@ class AbstractJobStore(ABC):
         :param bool isProtected: True if the file must be encrypted, None if it may be encrypted or
                False if it must be stored in the clear.
 
+        :param str mode: an optional string that specifies the mode in which the file is opened.
+                It defaults to 'b' which means open for reading in binary mode.
+
+        :param str encoding: the name of the encoding used to decode or encode the file.
+                This should only be used in text mode.
+
+        :param str errors: an optional string that specifies how encoding and decoding errors
+                are to be handled. This cannot be used in binary mode.
+
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
         """
@@ -1072,13 +1090,22 @@ class AbstractJobStore(ABC):
 
     @abstractmethod
     @contextmanager
-    def readSharedFileStream(self, sharedFileName):
+    def readSharedFileStream(self, sharedFileName, mode='b', encoding=None, errors=None):
         """
         Returns a context manager yielding a readable file handle to the global file referenced
         by the given name.
 
         :param str sharedFileName: A file name matching AbstractJobStore.fileNameRegex, unique within
                this job store
+
+        :param str mode: an optional string that specifies the mode in which the file is opened.
+                It defaults to 'b' which means open for reading in binary mode.
+
+        :param str encoding: the name of the encoding used to decode or encode the file.
+                This should only be used in text mode.
+
+        :param str errors: an optional string that specifies how encoding and decoding errors
+                are to be handled. This cannot be used in binary mode.
         """
         raise NotImplementedError()
 

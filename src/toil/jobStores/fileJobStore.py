@@ -551,7 +551,7 @@ class FileJobStore(AbstractJobStore):
             yield f
 
     @contextmanager
-    def readFileStream(self, jobStoreFileID):
+    def readFileStream(self, jobStoreFileID, mode='b', encoding=None, errors=None):
         self._checkJobStoreFileID(jobStoreFileID)
         with open(self._getFilePathFromId(jobStoreFileID), 'rb') as f:
             yield f
@@ -565,19 +565,29 @@ class FileJobStore(AbstractJobStore):
         return os.path.join(self.sharedFilesDir, sharedFileName)
 
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName, isProtected=None):
+    def writeSharedFileStream(self, sharedFileName, isProtected=None, mode='b', encoding=None, errors=None):
         # the isProtected parameter has no effect on the fileStore
         self._requireValidSharedFileName(sharedFileName)
         with AtomicFileCreate(self._getSharedFilePath(sharedFileName)) as tmpSharedFilePath:
-            with open(tmpSharedFilePath, 'wb') as f:
-                yield f
+            if mode == 'b':
+                with open(tmpSharedFilePath, 'wb') as f:
+                    yield f
+            elif mode == 't':
+                with open(tmpSharedFilePath, 'w', encoding=encoding) as f:
+                    yield f
 
     @contextmanager
-    def readSharedFileStream(self, sharedFileName):
+    def readSharedFileStream(self, sharedFileName, mode='b', encoding=None, errors=None):
         self._requireValidSharedFileName(sharedFileName)
         try:
-            with open(self._getSharedFilePath(sharedFileName), 'rb') as f:
-                yield f
+            if mode == 'b':
+                with open(self._getSharedFilePath(sharedFileName), 'rb') as f:
+                    yield f
+
+            elif mode == 't':
+                with open(self._getSharedFilePath(sharedFileName), 'r', encoding=encoding) as f:
+                    yield f
+
         except IOError as e:
             if e.errno == errno.ENOENT:
                 raise NoSuchFileException(sharedFileName)
