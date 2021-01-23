@@ -382,6 +382,22 @@ class AbstractJobStoreTest(object):
             self.assertUrl(jobstore1.getSharedPublicUrl('nonEncrypted'))
             self.assertRaises(NoSuchFileException, jobstore1.getSharedPublicUrl, 'missing')
 
+
+        def testWriteSharedFileStreamTextMode(self):
+            jobstore1 = self.jobstore_initialized
+            jobstore2 = self.jobstore_resumed_noconfig
+
+            bar = 'bar'
+
+            with jobstore1.writeSharedFileStream('foo', mode='t', encoding='utf-8') as f:
+                f.write(bar)
+
+            with jobstore2.readSharedFileStream('foo', mode='t', encoding='utf-8') as f:
+                self.assertEqual(bar, f.read())
+
+            with jobstore1.readSharedFileStream('foo', mode='t', encoding='utf-8') as f:
+                self.assertEqual(bar, f.read())
+
         @travis_test
         def testPerJobFiles(self):
             """Tests the behavior of files on jobs."""
