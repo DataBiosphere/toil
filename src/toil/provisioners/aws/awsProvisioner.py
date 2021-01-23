@@ -131,9 +131,10 @@ class AWSProvisioner(AbstractProvisioner):
     def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):
         self.cloud = 'aws'
         self._sseKey = sseKey
-        self._zone = zone if zone else get_current_aws_zone()
+        # self._zone will be filled in by base class constructor
+        zone = zone if zone else get_current_aws_zone()
         
-        if self._zone is None:
+        if zone is None:
             # Can't proceed without a real zone
             raise RuntimeError('No AWS availability zone specified. Configure in Boto '
                                'configuration file, TOIL_AWS_ZONE environment variable, or '
