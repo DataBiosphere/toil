@@ -142,7 +142,7 @@ class AWSProvisioner(AbstractProvisioner):
 
 
         # establish boto3 clients
-        self.session = establish_boto3_session(region_name=zone_to_region(self._zone))
+        self.session = establish_boto3_session(region_name=zone_to_region(zone))
         # Boto3 splits functionality between a "resource" and a "client" for the same AWS aspect.
         self.ec2_resource = self.session.resource('ec2')
         self.ec2_client = self.session.client('ec2')
