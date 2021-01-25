@@ -25,7 +25,10 @@ logger = logging.getLogger(__name__)
 
 def is_context(ctx, classname: Union[str, tuple]):
     """
-    Checks if the input context object is an instance of the string classname.
+    Returns whether an ANTLR4 context object is of the precise type `classname`.
+
+    If a tuple is provided as classname, this returns True if the context object
+    matches one of the string class names.
     """
     if isinstance(classname, str):
         return ctx.__class__.__name__ == classname
@@ -34,7 +37,7 @@ def is_context(ctx, classname: Union[str, tuple]):
 
 class AnalyzeV1WDL(AnalyzeWDL):
     """
-    AnalyzeWDL implementation for the 1.0 version using antlr4.
+    AnalyzeWDL implementation for the 1.0 version using ANTLR4.
 
     See: https://github.com/openwdl/wdl/blob/main/versions/1.0/SPEC.md
          https://github.com/openwdl/wdl/blob/main/versions/1.0/parsers/antlr4/WdlV1Parser.g4
@@ -652,16 +655,14 @@ class AnalyzeV1WDL(AnalyzeWDL):
         """
         Expression core.
         """
+        # TODO: implement map_literal, object_literal, and left_name
+
         if is_context(expr, 'ApplyContext'):
             return self.visit_apply(expr)
         elif is_context(expr, 'Array_literalContext'):
             return self.visit_array_literal(expr)
         elif is_context(expr, 'Pair_literalContext'):
             return self.visit_pair_literal(expr)
-        # elif is_context(expr, 'Map_literalContext'):
-        #     raise NotImplementedError
-        # elif is_context(expr, 'Object_literalContext'):
-        #     raise NotImplementedError
         elif is_context(expr, 'IfthenelseContext'):
             return self.visit_ifthenelse(expr)
         elif is_context(expr, 'Expression_groupContext'):
@@ -676,8 +677,6 @@ class AnalyzeV1WDL(AnalyzeWDL):
             return self.visit_unarysigned(expr)
         elif is_context(expr, 'PrimitivesContext'):
             return self.visit_primitives(expr)
-        # elif is_context(expr, 'Left_nameContext'):
-        #     raise NotImplementedError
 
         raise NotImplementedError(f"Expression context '{type(expr)}' is not supported.")
 
