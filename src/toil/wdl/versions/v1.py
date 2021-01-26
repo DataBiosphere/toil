@@ -411,10 +411,10 @@ class AnalyzeV1WDL(AnalyzeWDL):
         identifier = ctx.type_base().children[0]
         optional = ctx.OPTIONAL() is not None
 
-        # TODO: OBJECT type
-
         # primitives
         if is_context(identifier, 'TerminalNodeImpl'):
+
+            # TODO: implement Object type
             return self.create_wdl_primitive_type(key=identifier.getText(), optional=optional)
         # compound types
         else:
