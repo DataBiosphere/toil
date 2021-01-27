@@ -409,16 +409,27 @@ class FileJobStore(AbstractJobStore):
         return relPath
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None):
+    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None, mode='b',
+                        encoding=None, errors=None):
         if not basename:
             basename = 'stream'
         absPath = self._getUniqueFilePath(basename, jobStoreID, cleanup)
         relPath = self._getFileIdFromPath(absPath)
-        with open(absPath, 'wb') as f:
-            # Don't yield while holding an open file descriptor to the temp
-            # file. That can result in temp files still being open when we try
-            # to clean ourselves up, somehow, for certain workloads.
-            yield f, relPath
+
+        if mode == 'b':
+            with open(absPath, 'wb') as f:
+                # Don't yield while holding an open file descriptor to the temp
+                # file. That can result in temp files still being open when we try
+                # to clean ourselves up, somehow, for certain workloads.
+                yield f, relPath
+
+        elif mode == 't':
+            with open(absPath, 'w', encoding=encoding) as f:
+                # Don't yield while holding an open file descriptor to the temp
+                # file. That can result in temp files still being open when we try
+                # to clean ourselves up, somehow, for certain workloads.
+                yield f, relPath
+
 
     def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
         with self.writeFileStream(jobStoreID, cleanup, basename) as (fileHandle, jobStoreFileID):
@@ -542,19 +553,30 @@ class FileJobStore(AbstractJobStore):
         return st.st_size
 
     @contextmanager
-    def updateFileStream(self, jobStoreFileID):
+    def updateFileStream(self, jobStoreFileID, mode='b', encoding=None, errors=None):
         self._checkJobStoreFileID(jobStoreFileID)
         # File objects are context managers (CM) so we could simply return what open returns.
         # However, it is better to wrap it in another CM so as to prevent users from accessing
         # the file object directly, without a with statement.
-        with open(self._getFilePathFromId(jobStoreFileID), 'wb') as f:
-            yield f
+        if mode == 'b':
+            with open(self._getFilePathFromId(jobStoreFileID), 'wb') as f:
+                yield f
+
+        elif mode == 't':
+            with open(self._getFilePathFromId(jobStoreFileID), 'w', encoding=encoding) as f:
+                yield f
+
 
     @contextmanager
     def readFileStream(self, jobStoreFileID, mode='b', encoding=None, errors=None):
         self._checkJobStoreFileID(jobStoreFileID)
-        with open(self._getFilePathFromId(jobStoreFileID), 'rb') as f:
-            yield f
+        if mode == 'b':
+            with open(self._getFilePathFromId(jobStoreFileID), 'rb') as f:
+                yield f
+
+        elif mode == 't':
+            with open(self._getFilePathFromId(jobStoreFileID), 'r', encoding=encoding) as f:
+                yield f
 
     ##########################################
     # The following methods deal with shared files, i.e. files not associated

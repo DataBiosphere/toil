@@ -883,7 +883,8 @@ class AbstractJobStore(ABC):
 
     @abstractmethod
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None):
+    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None, mode='b',
+                            encoding=None, errors=None):
         """
         Similar to writeFile, but returns a context manager yielding a tuple of
         1) a file handle which can be written to and 2) the ID of the resulting
@@ -902,6 +903,15 @@ class AbstractJobStore(ABC):
         :param str basename: If supported by the implementation, use the given
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
+
+        :param str mode: an optional string that specifies the mode in which the file is opened.
+                It defaults to 'b' which means open for reading in binary mode.
+
+        :param str encoding: the name of the encoding used to decode or encode the file.
+                This should only be used in text mode.
+
+        :param str errors: an optional string that specifies how encoding and decoding errors
+                are to be handled. This cannot be used in binary mode.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -1037,13 +1047,22 @@ class AbstractJobStore(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def updateFileStream(self, jobStoreFileID):
+    def updateFileStream(self, jobStoreFileID, mode='b', encoding=None, errors=None):
         """
         Replaces the existing version of a file in the job store. Similar to writeFile, but
         returns a context manager yielding a file handle which can be written to. The
         yielded file handle does not need to and should not be closed explicitly.
 
         :param str jobStoreFileID: the ID of the file in the job store to be updated
+
+        :param str mode: an optional string that specifies the mode in which the file is opened.
+                It defaults to 'b' which means open for reading in binary mode.
+
+        :param str encoding: the name of the encoding used to decode or encode the file.
+                This should only be used in text mode.
+
+        :param str errors: an optional string that specifies how encoding and decoding errors
+                are to be handled. This cannot be used in binary mode.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
