@@ -792,6 +792,9 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
         options.workDir = tempDir
         from toil import physicalDisk
         availableDisk = physicalDisk(options.workDir)
+        logger.info('Testing disk concurrency limits with %s disk space', availableDisk)
+        # More disk might become available by the time Toil starts, so we limit it here
+        options.maxDisk = availableDisk
         options.batchSystem = self.batchSystemName
 
         counterPath = os.path.join(tempDir, 'counter')
@@ -799,15 +802,22 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
         value, maxValue = getCounters(counterPath)
         assert (value, maxValue) == (0, 0)
 
+        half_disk = availableDisk // 2
+        more_than_half_disk = half_disk + 500
+        logger.info('Dividing into parts of %s and %s', half_disk, more_than_half_disk)
+
         root = Job()
         # Physically, we're asking for 50% of disk and 50% of disk + 500bytes in the two jobs. The
         # batchsystem should not allow the 2 child jobs to run concurrently.
         root.addChild(Job.wrapFn(measureConcurrency, counterPath, self.sleepTime, cores=1,
-                                    memory='1M', disk=availableDisk // 2))
+                                    memory='1M', disk=half_disk))
         root.addChild(Job.wrapFn(measureConcurrency, counterPath, self.sleepTime, cores=1,
-                                 memory='1M', disk=(availableDisk // 2) + 500))
+                                 memory='1M', disk=more_than_half_disk))
         Job.Runner.startToil(root, options)
         _, maxValue = getCounters(counterPath)
+
+        logger.info('After run: %s disk space', physicalDisk(options.workDir))
+
         self.assertEqual(maxValue, 1)
 
     @skipIf(SingleMachineBatchSystem.numCores < 4, 'Need at least four cores to run this test')

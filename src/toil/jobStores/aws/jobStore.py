@@ -59,6 +59,7 @@ from toil.jobStores.utils import (ReadablePipe,
                                   ReadableTransformingPipe,
                                   WritablePipe)
 from toil.lib.compatibility import compat_bytes
+from toil.lib.ec2 import establish_boto3_session
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.exceptions import panic
 from toil.lib.memoize import strict_bool
@@ -66,21 +67,7 @@ from toil.lib.misc import AtomicFileCreate
 from toil.lib.objects import InnerClass
 from toil.lib.retry import retry
 
-
-def get_boto3_session():
-    """
-    Create a boto3 Session with credential caching.
-    """
-    # Make sure to use credential caching when talking to Amazon via boto3
-    # See https://github.com/boto/botocore/pull/1338/
-
-    botocore_session = botocore.session.get_session()
-    botocore_session.get_component('credential_provider').get_provider(
-        'assume-role').cache = botocore.credentials.JSONFileCache()
-    return boto3.Session(botocore_session=botocore_session)
-
-
-boto3_session = get_boto3_session()
+boto3_session = establish_boto3_session()
 s3_boto3_resource = boto3_session.resource('s3')
 s3_boto3_client = boto3_session.client('s3')
 logger = logging.getLogger(__name__)
@@ -147,7 +134,7 @@ class AWSJobStore(AbstractJobStore):
         self.filesBucket = None
         self.db = self._connectSimpleDB()
 
-        self.s3_resource = get_boto3_session().resource('s3', region_name=self.region)
+        self.s3_resource = boto3_session.resource('s3', region_name=self.region)
         self.s3_client = self.s3_resource.meta.client
 
     def initialize(self, config):
@@ -462,12 +449,11 @@ class AWSJobStore(AbstractJobStore):
     @classmethod
     def _writeToUrl(cls, readable, url, executable=False):
         dstObj = cls._getObjectForUrl(url)
-        resource = get_boto3_session().resource('s3')
 
         logger.debug("Uploading %s", dstObj.key)
         # uploadFile takes care of using multipart upload if the file is larger than partSize (default to 5MB)
         uploadFile(readable=readable,
-                   resource=resource,
+                   resource=s3_boto3_resource,
                    bucketName=dstObj.bucket_name,
                    fileID=dstObj.key,
                    partSize=5 * 1000 * 1000)
@@ -500,7 +486,7 @@ class AWSJobStore(AbstractJobStore):
 
         # Get the bucket's region to avoid a redirect per request
         region = AWSJobStore.getBucketRegion(bucketName)
-        s3 = get_boto3_session().resource('s3', region_name=region, **botoargs)
+        s3 = boto3_session.resource('s3', region_name=region, **botoargs)
         obj = s3.Object(bucketName, keyName)
         objExists = True
 
@@ -1095,7 +1081,7 @@ class AWSJobStore(AbstractJobStore):
             else:
                 headerArgs = self._s3EncryptionArgs()
                 # Create a new Resource in case it needs to be on its own thread
-                resource = get_boto3_session().resource('s3', region_name=self.outer.region)
+                resource = boto3_session.resource('s3', region_name=self.outer.region)
 
                 self.checksum = self._get_file_checksum(localFilePath) if calculateChecksum else None
                 self.version = uploadFromPath(localFilePath,
@@ -1367,7 +1353,7 @@ class AWSJobStore(AbstractJobStore):
                 self.content = srcObj.get().get('Body').read()
             else:
                 # Create a new Resource in case it needs to be on its own thread
-                resource = get_boto3_session().resource('s3', region_name=self.outer.region)
+                resource = boto3_session.resource('s3', region_name=self.outer.region)
                 self.version = copyKeyMultipart(resource,
                                                 srcBucketName=compat_bytes(srcObj.bucket_name),
                                                 srcKeyName=compat_bytes(srcObj.key),
@@ -1389,7 +1375,7 @@ class AWSJobStore(AbstractJobStore):
                         dstObj.put(Body=self.content)
             elif self.version:
                 # Create a new Resource in case it needs to be on its own thread
-                resource = get_boto3_session().resource('s3', region_name=self.outer.region)
+                resource = boto3_session.resource('s3', region_name=self.outer.region)
 
                 for attempt in retry_s3():
                     # encrypted = True if self.outer.sseKeyPath else False

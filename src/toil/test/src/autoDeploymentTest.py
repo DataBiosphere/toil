@@ -4,14 +4,14 @@ import time
 from contextlib import contextmanager
 
 from toil.lib.iterables import concat
-from toil.test import ApplianceTestSupport, needs_appliance, needs_mesos, slow
+from toil.test import ApplianceTestSupport, needs_local_appliance, needs_mesos, slow
 from toil.version import exactPython
 
 logger = logging.getLogger(__name__)
 
 
 @needs_mesos
-@needs_appliance
+@needs_local_appliance
 @slow
 class AutoDeploymentTest(ApplianceTestSupport):
     """

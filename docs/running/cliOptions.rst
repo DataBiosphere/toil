@@ -208,6 +208,9 @@ the logging module:
                         explicit value for this requirement. Standard suffixes
                         like K, Ki, M, Mi, G or Gi are supported. Default is
                         2.0G
+  --defaultPreemptable BOOL
+                        Set if jobs that do not specifically prohibit it should
+                        able to run on preemptable (spot) nodes.
   --maxCores INT        The maximum number of CPU cores to request from the
                         batch system at any one time. Standard suffixes like
                         K, Ki, M, Mi, G or Gi are supported.
