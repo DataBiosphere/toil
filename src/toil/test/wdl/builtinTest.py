@@ -355,6 +355,15 @@ class WdlLanguageSpecWorkflowsTest(WdlWorkflowsTest):
         expected_result = '[["A Whale of a Tale."],["true"],["11"]]'
         self.check_function('type_pair', cases=['with_files'], expected_result=expected_result)
 
+    def test_v1_declaration(self):
+        """
+        Basic declaration example modified from the WDL 1.0 spec:
+
+        https://github.com/openwdl/wdl/blob/main/versions/1.0/SPEC.md#declarations
+        """
+        expected_result = 'Hello, x!; Hello, y!'
+        self.check_function('v1_spec', cases=['declaration'], expected_result=expected_result)
+
 
 class WdlStandardLibraryWorkflowsTest(WdlWorkflowsTest):
     """
