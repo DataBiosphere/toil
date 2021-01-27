@@ -66,7 +66,6 @@ If using Toil for your research, please cite
    :maxdepth: 2
 
    contributing/contributing
-   contributing/maintaining
    contributing/checklists
 
 .. toctree::
