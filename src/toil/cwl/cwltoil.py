@@ -1544,7 +1544,7 @@ def remove_pickle_problems(obj: ProcessType) -> ProcessType:
 
 class CWLWorkflow(Job):
     """
-    Toil Job to convert a CWL workflow grah into a Toil job graph.
+    Toil Job to convert a CWL workflow graph into a Toil job graph.
 
     The Toil job graph will include the appropriate dependencies.
     """
@@ -1587,7 +1587,7 @@ class CWLWorkflow(Job):
         all_outputs_fulfilled = False
         while not all_outputs_fulfilled:
             # Iteratively go over the workflow steps, scheduling jobs as their
-            # dependencies can be fufilled by upstream workflow inputs or
+            # dependencies can be fulfilled by upstream workflow inputs or
             # step outputs. Loop exits when the workflow outputs
             # are satisfied.
 
@@ -1597,10 +1597,9 @@ class CWLWorkflow(Job):
                 if step.tool["id"] not in jobs:
                     stepinputs_fufilled = True
                     for inp in step.tool["inputs"]:
-                        if "source" in inp:
-                            for s in aslist(inp["source"]):
-                                if s not in promises:
-                                    stepinputs_fufilled = False
+                        for s in aslist(inp.get("source", [])):
+                            if s not in promises:
+                                stepinputs_fufilled = False
                     if stepinputs_fufilled:
                         jobobj = {}
 
@@ -1654,9 +1653,12 @@ class CWLWorkflow(Job):
                         connected = False
                         for inp in step.tool["inputs"]:
                             for s in aslist(inp.get("source", [])):
-                                if isinstance(
-                                    promises[s], (CWLJobWrapper, CWLGather)
-                                ) and not promises[s].hasFollowOn(wfjob):
+                                if (
+                                    isinstance(promises[s], (CWLJobWrapper, CWLGather))
+                                    and not promises[s].hasFollowOn(wfjob)
+                                    # promises[s] job has already added wfjob as a followOn prior
+                                    and not wfjob.hasPredecessor(promises[s])
+                                ):
                                     promises[s].addFollowOn(wfjob)
                                     connected = True
                                 if not isinstance(
@@ -1665,9 +1667,8 @@ class CWLWorkflow(Job):
                                     promises[s].addChild(wfjob)
                                     connected = True
                         if not connected:
-                            # the workflow step has default inputs only & isn't
-                            # connected to other jobs, so add it as child of
-                            # this workflow.
+                            # Workflow step is default inputs only & isn't connected
+                            # to other jobs, so add it as child of this workflow.
                             self.addChild(wfjob)
 
                         for out in step.tool["outputs"]:
@@ -1804,7 +1805,8 @@ def determine_load_listing(tool: ToilCommandLineTool):
     return load_listing
 
 
-usage_message = '\n\n' + textwrap.dedent(f"""
+usage_message = "\n\n" + textwrap.dedent(
+    f"""
             * All positional arguments [cwl, yml_or_json] must always be specified last for toil-cwl-runner.
               Note: If you're trying to specify a jobstore, please use --jobStore.
     
@@ -1815,7 +1817,10 @@ usage_message = '\n\n' + textwrap.dedent(f"""
                            --logInfo \\
                            example.cwl \\
                            example-job.yaml
-            """[1:])
+            """[
+        1:
+    ]
+)
 
 
 def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
@@ -2120,8 +2125,11 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     loading_context.fetcher_constructor,
                 )
             except schema_salad.exceptions.ValidationException:
-                print('\nYou may be getting this error because your arguments are incorrect or out of order.' +
-                      usage_message, file=sys.stderr)
+                print(
+                    "\nYou may be getting this error because your arguments are incorrect or out of order."
+                    + usage_message,
+                    file=sys.stderr,
+                )
                 raise
 
             options.tool_help = None
@@ -2174,9 +2182,11 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 )
             except SystemExit as e:
                 if e.code == 2:  # raised by argparse's parse_args() function
-                    print('\nIf both a CWL file and an input object (YAML/JSON) file were '
-                          'provided, this may be the argument order.' +
-                          usage_message, file=sys.stderr)
+                    print(
+                        "\nIf both a CWL file and an input object (YAML/JSON) file were "
+                        "provided, this may be the argument order." + usage_message,
+                        file=sys.stderr,
+                    )
                 raise
 
             fs_access = cwltool.stdfsaccess.StdFsAccess(options.basedir)
