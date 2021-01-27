@@ -417,14 +417,14 @@ class FileJobStore(AbstractJobStore):
         relPath = self._getFileIdFromPath(absPath)
 
         if mode == 'b':
-            with open(absPath, 'wb') as f:
+            with open(absPath, 'wb', errors=errors) as f:
                 # Don't yield while holding an open file descriptor to the temp
                 # file. That can result in temp files still being open when we try
                 # to clean ourselves up, somehow, for certain workloads.
                 yield f, relPath
 
         elif mode == 't':
-            with open(absPath, 'w', encoding=encoding) as f:
+            with open(absPath, 'w', encoding=encoding, errors=errors) as f:
                 # Don't yield while holding an open file descriptor to the temp
                 # file. That can result in temp files still being open when we try
                 # to clean ourselves up, somehow, for certain workloads.
@@ -559,11 +559,12 @@ class FileJobStore(AbstractJobStore):
         # However, it is better to wrap it in another CM so as to prevent users from accessing
         # the file object directly, without a with statement.
         if mode == 'b':
-            with open(self._getFilePathFromId(jobStoreFileID), 'wb') as f:
+            with open(self._getFilePathFromId(jobStoreFileID), 'wb', errors=errors) as f:
                 yield f
 
         elif mode == 't':
-            with open(self._getFilePathFromId(jobStoreFileID), 'w', encoding=encoding) as f:
+            with open(self._getFilePathFromId(jobStoreFileID), 'w', encoding=encoding,
+                    errors=errors) as f:
                 yield f
 
 
@@ -571,11 +572,12 @@ class FileJobStore(AbstractJobStore):
     def readFileStream(self, jobStoreFileID, mode='b', encoding=None, errors=None):
         self._checkJobStoreFileID(jobStoreFileID)
         if mode == 'b':
-            with open(self._getFilePathFromId(jobStoreFileID), 'rb') as f:
+            with open(self._getFilePathFromId(jobStoreFileID), 'rb', errors=errors) as f:
                 yield f
 
         elif mode == 't':
-            with open(self._getFilePathFromId(jobStoreFileID), 'r', encoding=encoding) as f:
+            with open(self._getFilePathFromId(jobStoreFileID), 'r', encoding=encoding,
+                    errors=errors) as f:
                 yield f
 
     ##########################################
@@ -592,10 +594,10 @@ class FileJobStore(AbstractJobStore):
         self._requireValidSharedFileName(sharedFileName)
         with AtomicFileCreate(self._getSharedFilePath(sharedFileName)) as tmpSharedFilePath:
             if mode == 'b':
-                with open(tmpSharedFilePath, 'wb') as f:
+                with open(tmpSharedFilePath, 'wb', errors=errors) as f:
                     yield f
             elif mode == 't':
-                with open(tmpSharedFilePath, 'w', encoding=encoding) as f:
+                with open(tmpSharedFilePath, 'w', encoding=encoding, errors=errors) as f:
                     yield f
 
     @contextmanager
@@ -603,11 +605,12 @@ class FileJobStore(AbstractJobStore):
         self._requireValidSharedFileName(sharedFileName)
         try:
             if mode == 'b':
-                with open(self._getSharedFilePath(sharedFileName), 'rb') as f:
+                with open(self._getSharedFilePath(sharedFileName), 'rb', errors=errors) as f:
                     yield f
 
             elif mode == 't':
-                with open(self._getSharedFilePath(sharedFileName), 'r', encoding=encoding) as f:
+                with open(self._getSharedFilePath(sharedFileName), 'r', encoding=encoding,
+                        errors=errors) as f:
                     yield f
 
         except IOError as e:
