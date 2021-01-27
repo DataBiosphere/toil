@@ -13,14 +13,20 @@
 # limitations under the License.
 import logging
 
-from toil.wdl.wdl_analysis import AnalyzeWDL
+from wdlparse.dev.WdlLexer import WdlLexer, FileStream
+from wdlparse.dev.WdlParser import WdlParser, CommonTokenStream
+
+from toil.wdl.versions.v1 import AnalyzeV1WDL, is_context
 
 logger = logging.getLogger(__name__)
 
 
-class AnalyzeDevelopmentWDL(AnalyzeWDL):
+class AnalyzeDevelopmentWDL(AnalyzeV1WDL):  # extend from 1.0
     """
-    AnalyzeWDL implementation for the development version.
+    AnalyzeWDL implementation for the development version using ANTLR4.
+
+    See: https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md
+         https://github.com/openwdl/wdl/blob/main/versions/development/parsers/antlr4/WdlParser.g4
     """
 
     @property
@@ -33,4 +39,30 @@ class AnalyzeDevelopmentWDL(AnalyzeWDL):
         intermediate data structures: `self.workflows_dictionary` and
         `self.tasks_dictionary`.
         """
-        raise NotImplementedError
+        lexer = WdlLexer(FileStream(self.wdl_file))
+        parser = WdlParser(input=CommonTokenStream(lexer))
+        tree = parser.document()
+        self.visit_document(tree)
+
+    def visit_document(self, ctx):
+        """
+        Similar to version 1.0, except the 'workflow' element is included in
+        `ctx.document_element()`.
+        """
+        for element in ctx.document_element():
+            self.visit_document_element(element)
+
+    def visit_document_element(self, ctx):
+        """
+        Similar to version 1.0, except this also contains 'workflow'.
+        """
+        element = ctx.children[0]
+
+        # workflow
+        if is_context(element, 'WorkflowContext'):
+            return self.visit_workflow(element)
+        else:
+            # hand the rest to super.
+            return super(AnalyzeDevelopmentWDL, self).visit_document_element(ctx)
+
+    # TODO: implement the rest of the changes since WDL 1.0.

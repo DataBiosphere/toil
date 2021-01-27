@@ -27,9 +27,12 @@ def is_context(ctx, classname: Union[str, tuple]):
     """
     Returns whether an ANTLR4 context object is of the precise type `classname`.
 
-    If a tuple is provided as classname, this returns True if the context object
-    matches one of the string class names.
+    :param ctx: An ANTLR4 context object.
+    :param classname: The class name(s) as a string or a tuple of strings. If a
+                      tuple is provided, this returns True if the context object
+                      matches one of the class names.
     """
+    # we check for `ctx.__class__.__name__` so that it's portable across multiple similar auto-generated parsers.
     if isinstance(classname, str):
         return ctx.__class__.__name__ == classname
     return ctx.__class__.__name__ in classname
