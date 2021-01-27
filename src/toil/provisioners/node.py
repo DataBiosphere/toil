@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 class Node(object):
-    maxWaitTime = 5 * 60
+    maxWaitTime = 7 * 60
 
     def __init__(self, publicIP, privateIP, name, launchTime, nodeType, preemptable, tags=None):
         self.publicIP = publicIP
