@@ -71,7 +71,6 @@ py37_batch_systems:
 
 py37_cwl_v1.0:
   stage: main_tests
-  only:
   script:
     - pwd
     - apt update && apt install -y tzdata jq python3.7 python3.7-dev
