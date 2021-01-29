@@ -22,12 +22,13 @@ from datetime import timedelta
 from http.client import BadStatusLine
 from urllib.request import urlopen
 from uuid import uuid4
-
+from typing import Set, Union
 from requests.exceptions import HTTPError
 
 from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
 from toil.job import (CheckpointJobDescription,
+                      TemporaryID,
                       JobException,
                       ServiceJobDescription)
 from toil.lib.memoize import memoize
@@ -268,7 +269,8 @@ class AbstractJobStore(ABC):
         """
         Imports the file at the given URL into job store. The ID of the newly imported file is
         returned. If the name of a shared file name is provided, the file will be imported as
-        such and None is returned.
+        such and None is returned. If an executable file on the local filesystem is uploaded, its
+        executability will be preserved when it is downloaded.
 
         Currently supported schemes are:
 
@@ -319,8 +321,8 @@ class AbstractJobStore(ABC):
         """
         if sharedFileName is None:
             with self.writeFileStream() as (writable, jobStoreFileID):
-                size = otherCls._readFromUrl(url, writable)
-                return FileID(jobStoreFileID, size)
+                size, executable = otherCls._readFromUrl(url, writable)
+                return FileID(jobStoreFileID, size, executable)
         else:
             self._requireValidSharedFileName(sharedFileName)
             with self.writeSharedFileStream(sharedFileName) as writable:
@@ -329,7 +331,9 @@ class AbstractJobStore(ABC):
 
     def exportFile(self, jobStoreFileID, dstUrl):
         """
-        Exports file to destination pointed at by the destination URL.
+        Exports file to destination pointed at by the destination URL. The exported file will be
+        executable if and only if it was originally uploaded from an executable file on the
+        local filesystem.
 
         Refer to :meth:`.AbstractJobStore.importFile` documentation for currently supported URL schemes.
 
@@ -373,8 +377,11 @@ class AbstractJobStore(ABC):
 
         :param urlparse.ParseResult url: The parsed URL of the file to export to.
         """
+        executable = False
         with self.readFileStream(jobStoreFileID) as readable:
-            otherCls._writeToUrl(readable, url)
+            if getattr(jobStoreFileID, 'executable', False):
+                executable = jobStoreFileID.executable
+            otherCls._writeToUrl(readable, url, executable)
 
     @classmethod
     @abstractmethod
@@ -401,7 +408,8 @@ class AbstractJobStore(ABC):
 
         :param writable: a writable stream
 
-        :return int: returns the size of the file in bytes
+        :return: The size of the file in bytes and whether the executable permission bit is set
+        :rtype: Tuple[int, bool]
         """
         raise NotImplementedError()
 
@@ -475,8 +483,7 @@ class AbstractJobStore(ABC):
         if jobCache is None:
             logger.warning("Cleaning jobStore recursively. This may be slow.")
 
-        # Functions to get and check the existence of jobs, using the jobCache
-        # if present
+        # Functions to get and check the existence of jobs, using the jobCache if present
         def getJobDescription(jobId):
             if jobCache is not None:
                 try:
@@ -512,47 +519,65 @@ class AbstractJobStore(ABC):
             else:
                 return self.jobs()
 
-        # Iterate from the root JobDescription and collate all jobs that are reachable from it
-        # All other jobs returned by self.jobs() are orphaned and can be removed
-        reachableFromRoot = set()
+        def get_jobs_reachable_from_root() -> Set[Union[TemporaryID, str]]:
+            """
+            Traverse the job graph from the root job and return a flattened set of all active jobstore IDs.
 
-        def getConnectedJobs(jobDescription):
-            if jobDescription.jobStoreID in reachableFromRoot:
-                return
-            reachableFromRoot.add(jobDescription.jobStoreID)
-            # Traverse jobs in stack
-            for jobs in jobDescription.stack:
-                for successorJobStoreID in jobs:
-                    if (successorJobStoreID not in reachableFromRoot
-                        and haveJob(successorJobStoreID)):
-                        getConnectedJobs(getJobDescription(successorJobStoreID))
-            # Traverse service jobs
-            for serviceJobStoreID in jobDescription.services:
-                if haveJob(serviceJobStoreID):
-                    assert serviceJobStoreID not in reachableFromRoot
-                    reachableFromRoot.add(serviceJobStoreID)
+            Note: Jobs returned by self.jobs(), but not this function, are orphaned, and can be removed as dead jobs.
+            """
+            # Iterate from the root JobDescription and collate all jobs that are reachable from it.
+            root_job_description = self.loadRootJob()
+            reachable_from_root = set()
 
-        logger.debug("Checking job graph connectivity...")
-        getConnectedJobs(self.loadRootJob())
-        logger.debug("%d jobs reachable from root." % len(reachableFromRoot))
+            # Add first root job outside of the loop below.
+            reachable_from_root.add(root_job_description.jobStoreID)
+            # add all of root's linked service jobs as well
+            for service_jobstore_id in root_job_description.services:
+                if haveJob(service_jobstore_id):
+                    reachable_from_root.add(service_jobstore_id)
+
+            # Unprocessed means it might have successor jobs we need to add.
+            unprocessed_job_descriptions = [root_job_description]
+
+            while unprocessed_job_descriptions:
+                new_job_descriptions_to_process = []  # Reset.
+                for job_description in unprocessed_job_descriptions:
+                    for jobs in job_description.stack:
+                        for successor_jobstore_id in jobs:
+                            if successor_jobstore_id not in reachable_from_root and haveJob(successor_jobstore_id):
+                                successor_job_description = getJobDescription(successor_jobstore_id)
+
+                                # Add each successor job.
+                                reachable_from_root.add(successor_job_description.jobStoreID)
+                                # Add all of the successor's linked service jobs as well.
+                                for service_jobstore_id in successor_job_description.services:
+                                    if haveJob(service_jobstore_id):
+                                        reachable_from_root.add(service_jobstore_id)
+
+                                new_job_descriptions_to_process.append(successor_job_description)
+                unprocessed_job_descriptions = new_job_descriptions_to_process
+
+            logger.debug(f"{len(reachable_from_root)} jobs reachable from root.")
+            return reachable_from_root
+
+        reachable_from_root = get_jobs_reachable_from_root()
 
         # Cleanup jobs that are not reachable from the root, and therefore orphaned
-        jobsToDelete = [x for x in getJobDescriptions() if x.jobStoreID not in reachableFromRoot]
+        # TODO: Avoid reiterating reachable_from_root (which may be very large)
+        jobsToDelete = [x for x in getJobDescriptions() if x.jobStoreID not in reachable_from_root]
         for jobDescription in jobsToDelete:
             # clean up any associated files before deletion
             for fileID in jobDescription.filesToDelete:
                 # Delete any files that should already be deleted
-                logger.warning("Deleting file '%s'. It is marked for deletion but has not yet been "
-                            "removed.", fileID)
+                logger.warning(f"Deleting file '{fileID}'. It is marked for deletion but has not yet been removed.")
                 self.deleteFile(fileID)
             # Delete the job from us and the cache
             deleteJob(jobDescription.jobStoreID)
 
-        jobDescriptionsReachableFromRoot = {id: getJobDescription(id) for id in reachableFromRoot}
+        jobDescriptionsReachableFromRoot = {id: getJobDescription(id) for id in reachable_from_root}
 
         # Clean up any checkpoint jobs -- delete any successors it
-        # may have launched, and restore the job to a pristine
-        # state
+        # may have launched, and restore the job to a pristine state
         jobsDeletedByCheckpoints = set()
         for jobDescription in [desc for desc in jobDescriptionsReachableFromRoot.values() if isinstance(desc, CheckpointJobDescription)]:
             if jobDescription.jobStoreID in jobsDeletedByCheckpoints:
@@ -1152,4 +1177,4 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
 
             # Do the download
             shutil.copyfileobj(readable, counter)
-            return size[0]
+            return size[0], False

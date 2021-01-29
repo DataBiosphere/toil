@@ -6,6 +6,12 @@ variables:
   DEBIAN_FRONTEND: "noninteractive"
 
 before_script:
+  # Configure Docker to use a mirror for Docker Hub and restart the daemon
+  # Set the registry as insecure because it is probably cluster-internal over plain HTTP.
+  - |
+    if [[ ! -z "${DOCKER_HUB_MIRROR}" ]] ; then
+        echo "{\"registry-mirrors\": [\"${DOCKER_HUB_MIRROR}\"], \"insecure-registries\": [\"${DOCKER_HUB_MIRROR##*://}\"]}" | sudo tee /etc/docker/daemon.json
+    fi
   - startdocker || true
   - docker info
   - cat /etc/hosts
@@ -175,13 +181,26 @@ py37_provisioner_integration:
     - export TOIL_TEST_INTEGRATIVE=True; export TOIL_AWS_KEYNAME=id_rsa; export TOIL_AWS_ZONE=us-west-2a
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
-    - make push_docker
     - make test tests=src/toil/test/sort/sortTest.py
     - make test tests=src/toil/test/provisioners/clusterScalerTest.py
     - make test tests=src/toil/test/utils/utilsTest.py::UtilsTest::testAWSProvisionerUtils
-    # - python -m pytest --duration=0 -s -r s src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSRestartTest::testAutoScaledCluster
-    # - python -m pytest -s src/toil/test/provisioners/aws/awsProvisionerTest.py
+    - make test tests=src/toil/test/provisioners/aws/awsProvisionerTest.py
     # - python -m pytest -s src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
+
+py37_google_jobstore:
+  stage: integration
+  script:
+    - pwd
+    - apt update && apt install -y tzdata awscli jq python3.7 python3.7-dev
+    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    - python setup_gitlab_ssh.py && chmod 400 /root/.ssh/id_rsa
+    - echo $'Host *\n    AddressFamily inet' > /root/.ssh/config
+    - export LIBPROCESS_IP=127.0.0.1
+    - export TOIL_TEST_INTEGRATIVE=True
+    - export GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_CREDENTIALS
+    - export TOIL_GOOGLE_KEYNAME=id_rsa
+    - export TOIL_GOOGLE_PROJECTID=toil-dev
+    - make test tests=src/toil/test/jobStores/jobStoreTest.py::GoogleJobStoreTest
 
 # Python3.8
 py38_main:

@@ -469,3 +469,43 @@ class CWLv12Test(ToilTest):
                               yml=self.test_yaml,
                               caching=caching,
                               batchSystem=batchSystem)
+
+
+@needs_cwl
+class CWLSmallTests(ToilTest):
+    def test_usage_message(self):
+        """
+        This is purely to ensure a (more) helpful error message is printed if a user does
+        not order their positional args correctly [cwl, cwl-job (json/yml/yaml), jobstore].
+        """
+        toil = 'toil-cwl-runner'
+        cwl = 'test/cwl/revsort.cwl'
+        cwl_job_json = 'test/cwl/revsort-job.json'
+        jobstore = 'delete-test-toil'
+        random_option_1 = '--logInfo'
+        random_option_2 = '--disableCaching=false'
+        cmd_wrong_ordering_1 = [toil, cwl, cwl_job_json, jobstore, random_option_1, random_option_2]
+        cmd_wrong_ordering_2 = [toil, cwl, jobstore, random_option_1, random_option_2, cwl_job_json]
+        cmd_wrong_ordering_3 = [toil, jobstore, random_option_1, random_option_2, cwl, cwl_job_json]
+
+        for cmd in [cmd_wrong_ordering_1, cmd_wrong_ordering_2, cmd_wrong_ordering_3]:
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = p.communicate()
+            self.assertIn(b'Usage: toil-cwl-runner [options] example.cwl example-job.yaml', stderr)
+            self.assertIn(b'All positional arguments [cwl, yml_or_json] '
+                          b'must always be specified last for toil-cwl-runner.', stderr)
+
+    def test_workflow_echo_string(self):
+        toil = 'toil-cwl-runner'
+        jobstore = f'--jobStore=file:explicit-local-jobstore-{uuid.uuid4()}'
+        option_1 = '--strict-memory-limit'
+        option_2 = '--force-docker-pull'
+        option_3 = '--clean=always'
+        cwl = os.path.join(self._projectRootPath(), 'src/toil/test/cwl/echo_string.cwl')
+        cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
+        log.debug(f'Now running: {" ".join(cmd)}')
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = p.communicate()
+        assert stdout == b'{}'
+        assert b'Finished toil run successfully' in stderr
+        assert p.returncode == 0

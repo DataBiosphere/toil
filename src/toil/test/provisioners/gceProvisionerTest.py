@@ -21,7 +21,7 @@ import pytest
 
 from toil.test import (ToilTest,
                        integrative,
-                       needs_appliance,
+                       needs_fetchable_appliance,
                        needs_google,
                        slow,
                        timeLimit)
@@ -32,7 +32,7 @@ log = logging.getLogger(__name__)
 
 @needs_google
 @integrative
-@needs_appliance
+@needs_fetchable_appliance
 @slow
 class AbstractGCEAutoscaleTest(ToilTest):
     projectID = os.getenv('TOIL_GOOGLE_PROJECTID')

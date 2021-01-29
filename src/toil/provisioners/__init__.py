@@ -17,10 +17,17 @@ from difflib import get_close_matches
 logger = logging.getLogger(__name__)
 
 
-def cluster_factory(provisioner, clusterName=None, zone=None, nodeStorage=50, nodeStorageOverrides=None, sseKey=None):
+def cluster_factory(provisioner, clusterName=None, clusterType='mesos', zone=None, nodeStorage=50, nodeStorageOverrides=None, sseKey=None):
     """
-    :param clusterName: The name of the cluster.
+    Find and instantiate the appropriate provisioner instance to make clusters
+    in the given cloud.
+    
+    Raises ClusterTypeNotSupportedException if the given provisioner does not
+    implement clusters of the given type.
+    
     :param provisioner: The cloud type of the cluster.
+    :param clusterName: The name of the cluster.
+    :param clusterType: The type of cluster: 'mesos' or 'kubernetes'.
     :param zone: The cloud zone
     :return: A cluster object for the the cloud type.
     """
@@ -30,23 +37,25 @@ def cluster_factory(provisioner, clusterName=None, zone=None, nodeStorage=50, no
         except ImportError:
             logger.error('The aws extra must be installed to use this provisioner')
             raise
-        return AWSProvisioner(clusterName, zone, nodeStorage, nodeStorageOverrides, sseKey)
+        return AWSProvisioner(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey)
     elif provisioner == 'gce':
         try:
             from toil.provisioners.gceProvisioner import GCEProvisioner
         except ImportError:
             logger.error('The google extra must be installed to use this provisioner')
             raise
-        return GCEProvisioner(clusterName, zone, nodeStorage, nodeStorageOverrides, sseKey)
+        return GCEProvisioner(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey)
     else:
         raise RuntimeError("Invalid provisioner '%s'" % provisioner)
 
 
 def add_provisioner_options(parser):
     group = parser.add_argument_group("Provisioner Options.")
-    group.add_argument('-p', "--provisioner", dest='provisioner', choices=['aws', 'gce'], required=False,
-                       default="aws", help="The provisioner for cluster auto-scaling.  "
-                                           "AWS and Google are currently supported.")
+
+    # TODO: Duplicate "--provisioner" argument in common.py; consolidate
+    group.add_argument('-p', '--provisioner', dest='provisioner', choices=['aws', 'gce'],
+                help=f"The provisioner for cluster auto-scaling. The currently supported choices are"
+                     f"'gce', or 'aws'.")
     group.add_argument('-z', '--zone', dest='zone', required=False, default=None,
                        help="The availability zone of the master. This parameter can also be set via the 'TOIL_X_ZONE' "
                             "environment variable, where X is AWS or GCE, or by the ec2_region_name parameter "
@@ -93,7 +102,7 @@ def check_valid_node_types(provisioner, node_types):
             if nodeType and ':' in nodeType:
                 nodeType = nodeType.split(':')[0]
 
-            if nodeType not in E2Instances:
+            if nodeType in E2Instances:
                 raise RuntimeError(f"It looks like you've specified an AWS nodeType with the {provisioner} "
                                    f"provisioner.  Please specify a nodeType for {provisioner}.")
     else:
@@ -104,3 +113,8 @@ class NoSuchClusterException(Exception):
     """Indicates that the specified cluster does not exist."""
     def __init__(self, cluster_name):
         super(NoSuchClusterException, self).__init__(f"The cluster '{cluster_name}' could not be found")
+        
+class ClusterTypeNotSupportedException(Exception):
+    """Indicates that a provisioner does not support a given cluster type."""
+    def __init__(self, provisioner_class, cluster_type):
+        super().__init__(f"The {provisioner_class} provisioner does not support making {cluster_type} clusters")

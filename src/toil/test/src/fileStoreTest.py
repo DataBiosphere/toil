@@ -18,6 +18,7 @@ import filecmp
 import inspect
 import logging
 import os
+import stat
 import random
 import signal
 import time
@@ -27,6 +28,7 @@ from uuid import uuid4
 
 import pytest
 
+from toil.common import Toil
 from toil.fileStores import FileID
 from toil.fileStores.cachingFileStore import (CacheUnbalancedError,
                                               IllegalDeletionCacheError)
@@ -232,6 +234,94 @@ class hidden:
                             localFileIDs.remove(fsID)
                             logger.info('No longer have file: %s', fsID)
                 i += 1
+
+        def testWriteReadGlobalFilePermissions(self):
+            """
+            Ensures that uploaded files preserve their file permissions when they
+            are downloaded again. This function checks that a written executable file
+            maintains its executability after being read.
+            """
+            for executable in True,False:
+                A = Job.wrapJobFn(self._testWriteReadGlobalFilePermissions, executable=executable)
+                Job.Runner.startToil(A, self.options)
+
+        @staticmethod
+        def _testWriteReadGlobalFilePermissions(job, executable):
+            srcFile = job.fileStore.getLocalTempFile()
+            with open(srcFile, 'w') as f:
+                f.write('Hello')
+
+            if executable:
+                os.chmod(srcFile, os.stat(srcFile).st_mode | stat.S_IXUSR)
+
+            # Initial file owner execute permissions
+            initialPermissions = os.stat(srcFile).st_mode & stat.S_IXUSR
+            fileID = job.fileStore.writeGlobalFile(srcFile)
+
+            for mutable in True,False:
+                for symlink in True,False:
+                    dstFile = job.fileStore.getLocalTempFileName()
+                    job.fileStore.readGlobalFile(fileID, userPath=dstFile, mutable=mutable, symlink=symlink)
+                    # Current file owner execute permissions
+                    currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
+
+                    assert initialPermissions == currentPermissions
+
+        def testWriteExportFileCompatibility(self):
+            """
+            Ensures that files created in a job preserve their executable permissions
+            when they are exported from the leader.
+            """
+            for executable in True,False:
+                A = Job.wrapJobFn(self._testWriteExportFileCompatibility, executable=executable)
+                with Toil(self.options) as toil:
+                    initialPermissions, fileID = toil.start(A)
+                    dstFile = os.path.join(self._createTempDir(), str(uuid4()))
+                    toil.exportFile(fileID, 'file://' + dstFile)
+                    currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
+
+                    assert initialPermissions == currentPermissions
+
+        @staticmethod
+        def _testWriteExportFileCompatibility(job, executable):
+            srcFile = job.fileStore.getLocalTempFile()
+            with open(srcFile, 'w') as f:
+                f.write('Hello')
+            if executable:
+                os.chmod(srcFile, os.stat(srcFile).st_mode | stat.S_IXUSR)
+            initialPermissions = os.stat(srcFile).st_mode & stat.S_IXUSR
+            fileID = job.fileStore.writeGlobalFile(srcFile)
+            return initialPermissions, fileID
+
+        def testImportReadFileCompatibility(self):
+            """
+            Ensures that files imported to the leader preserve their executable permissions
+            when they are read by the fileStore.
+            """
+            with Toil(self.options) as toil:
+                workDir = self._createTempDir()
+                for executable in True, False:
+                    srcFile = os.path.join(workDir, str(uuid4()))
+                    with open(srcFile, 'w') as f:
+                        f.write('Hello')
+                    if executable:
+                        os.chmod(srcFile, os.stat(srcFile).st_mode | stat.S_IXUSR)
+                    initialPermissions = os.stat(srcFile).st_mode & stat.S_IXUSR
+                    jobStoreFileID = toil.importFile('file://' + srcFile)
+                    for mutable in True,False:
+                        for symlink in True, False:
+                            with self.subTest(f'Now testing readGlobalFileWith: mutable={mutable} symlink={symlink}'):
+                                dstFile = os.path.join(workDir, str(uuid4()))
+                                A = Job.wrapJobFn(_testImportReadFileCompatibility, fileID=jobStoreFileID, dstFile=dstFile,
+                                                    initialPermissions=initialPermissions, mutable=mutable, symlink=symlink)
+                                toil.start(A)
+
+        @staticmethod
+        def _testImportReadFileCompatibility(job, fileID, dstFile, initialPermissions, mutable, symlink):
+            dstFile = job.fileStore.readGlobalFile(fileID, mutable=mutable, symlink=symlink)
+            currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
+
+            assert initialPermissions == currentPermissions
 
         @staticmethod
         def _writeFileToJobStore(job, isLocalFile, nonLocalDir=None, fileMB=1):

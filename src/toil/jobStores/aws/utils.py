@@ -14,26 +14,28 @@
 import base64
 import bz2
 import errno
-import itertools
 import logging
 import os
 import socket
 import types
 from ssl import SSLError
+from typing import Optional
 
-import boto3
-from boto.exception import (BotoServerError,
-                            S3CopyError,
-                            S3CreateError,
-                            S3ResponseError,
-                            SDBResponseError)
+from boto.exception import (
+    BotoServerError,
+    SDBResponseError
+)
+from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
 
-from toil.lib.compatibility import compat_bytes, compat_bytes
-from toil.lib.exceptions import panic
-from toil.lib.retry import old_retry
+from toil.lib.compatibility import compat_bytes
+from toil.lib.retry import (
+    old_retry,
+    retry,
+    ErrorCondition
+)
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class SDBHelper(object):
@@ -172,85 +174,120 @@ class SDBHelper(object):
         return binary, numChunks
 
 
-
-
 def fileSizeAndTime(localFilePath):
     file_stat = os.stat(localFilePath)
     return file_stat.st_size, file_stat.st_mtime
 
 
-def uploadFromPath(localFilePath, partSize, bucket, fileID, headers):
+@retry(errors=[ErrorCondition(
+    error=ClientError,
+    error_codes=[404, 500, 502, 503, 504]
+)])
+def uploadFromPath(localFilePath: str,
+                   resource,
+                   bucketName: str,
+                   fileID: str,
+                   headerArgs: Optional[dict] = None,
+                   partSize: int = 50 << 20):
     """
     Uploads a file to s3, using multipart uploading if applicable
 
     :param str localFilePath: Path of the file to upload to s3
-    :param int partSize: max size of each part in the multipart upload, in bytes
-    :param boto.s3.Bucket bucket: the s3 bucket to upload to
+    :param S3.Resource resource: boto3 resource
+    :param str bucketName: name of the bucket to upload to
     :param str fileID: the name of the file to upload to
-    :param headers: http headers to use when uploading - generally used for encryption purposes
+    :param dict headerArgs: http headers to use when uploading - generally used for encryption purposes
+    :param int partSize: max size of each part in the multipart upload, in bytes
+
     :return: version of the newly uploaded file
     """
+    if headerArgs is None:
+        headerArgs = {}
+
+    client = resource.meta.client
     file_size, file_time = fileSizeAndTime(localFilePath)
-    if file_size <= partSize:
-        key = bucket.new_key(key_name=compat_bytes(fileID))
-        key.name = fileID
-        for attempt in retry_s3():
-            with attempt:
-                key.set_contents_from_filename(localFilePath, headers=headers)
-        version = key.version_id
-    else:
-        with open(localFilePath, 'rb') as f:
-            version = chunkedFileUpload(f, bucket, fileID, file_size, headers, partSize)
-    for attempt in retry_s3():
-        with attempt:
-            key = bucket.get_key(compat_bytes(fileID),
-                                 headers=headers,
-                                 version_id=version)
-    assert key.size == file_size
+
+    version = uploadFile(localFilePath, resource, bucketName, fileID, headerArgs, partSize)
+    info = client.head_object(Bucket=bucketName, Key=compat_bytes(fileID), VersionId=version, **headerArgs)
+    size = info.get('ContentLength')
+
+    assert size == file_size
+
     # Make reasonably sure that the file wasn't touched during the upload
     assert fileSizeAndTime(localFilePath) == (file_size, file_time)
     return version
 
 
-def chunkedFileUpload(readable, bucket, fileID, file_size, headers=None, partSize=50 << 20):
-    for attempt in retry_s3():
-        with attempt:
-            upload = bucket.initiate_multipart_upload(
-                key_name=compat_bytes(fileID),
-                headers=headers)
-    try:
-        start = 0
-        part_num = itertools.count()
-        while start < file_size:
-            end = min(start + partSize, file_size)
-            assert readable.tell() == start
-            for attempt in retry_s3():
-                with attempt:
-                    upload.upload_part_from_file(fp=readable,
-                                                 part_num=next(part_num) + 1,
-                                                 size=end - start,
-                                                 headers=headers)
-            start = end
-        assert readable.tell() == file_size == start
-    except:
-        with panic(log=log):
-            for attempt in retry_s3():
-                with attempt:
-                    upload.cancel_upload()
+@retry(errors=[ErrorCondition(
+    error=ClientError,
+    error_codes=[404, 500, 502, 503, 504]
+)])
+def uploadFile(readable,
+               resource,
+               bucketName: str,
+               fileID: str,
+               headerArgs: Optional[dict] = None,
+               partSize: int = 50 << 20):
+    """
+    Upload a readable object to s3, using multipart uploading if applicable.
+    :param readable: a readable stream or a file path to upload to s3
+    :param S3.Resource resource: boto3 resource
+    :param str bucketName: name of the bucket to upload to
+    :param str fileID: the name of the file to upload to
+    :param dict headerArgs: http headers to use when uploading - generally used for encryption purposes
+    :param int partSize: max size of each part in the multipart upload, in bytes
+    :return: version of the newly uploaded file
+    """
+    if headerArgs is None:
+        headerArgs = {}
+
+    client = resource.meta.client
+    config = TransferConfig(
+        multipart_threshold=partSize,
+        multipart_chunksize=partSize,
+        use_threads=True
+    )
+    if isinstance(readable, str):
+        client.upload_file(Filename=readable,
+                           Bucket=bucketName,
+                           Key=compat_bytes(fileID),
+                           ExtraArgs=headerArgs,
+                           Config=config)
     else:
-        for attempt in retry_s3():
-            with attempt:
-                version = upload.complete_upload().version_id
-    return version
+        client.upload_fileobj(Fileobj=readable,
+                              Bucket=bucketName,
+                              Key=compat_bytes(fileID),
+                              ExtraArgs=headerArgs,
+                              Config=config)
+
+        # Wait until the object exists before calling head_object
+        object_summary = resource.ObjectSummary(bucketName, compat_bytes(fileID))
+        object_summary.wait_until_exists(**headerArgs)
+
+    info = client.head_object(Bucket=bucketName, Key=compat_bytes(fileID), **headerArgs)
+    return info.get('VersionId', None)
 
 
-def copyKeyMultipart(srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, dstKeyName, sseAlgorithm=None, sseKey=None,
-                     copySourceSseAlgorithm=None, copySourceSseKey=None):
+@retry(errors=[ErrorCondition(
+    error=ClientError,
+    error_codes=[404, 500, 502, 503, 504]
+)])
+def copyKeyMultipart(resource,
+                     srcBucketName: str,
+                     srcKeyName: str,
+                     srcKeyVersion: str,
+                     dstBucketName: str,
+                     dstKeyName: str,
+                     sseAlgorithm: Optional[str] = None,
+                     sseKey: Optional[str] = None,
+                     copySourceSseAlgorithm: Optional[str] = None,
+                     copySourceSseKey: Optional[str] = None):
     """
     Copies a key from a source key to a destination key in multiple parts. Note that if the
     destination key exists it will be overwritten implicitly, and if it does not exist a new
     key will be created. If the destination bucket does not exist an error will be raised.
 
+    :param S3.Resource resource: boto3 resource
     :param str srcBucketName: The name of the bucket to be copied from.
     :param str srcKeyName: The name of the key to be copied from.
     :param str srcKeyVersion: The version of the key to be copied from.
@@ -264,8 +301,7 @@ def copyKeyMultipart(srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, ds
     :rtype: str
     :return: The version of the copied file (or None if versioning is not enabled for dstBucket).
     """
-    s3 = boto3.resource('s3')
-    dstBucket = s3.Bucket(compat_bytes(dstBucketName))
+    dstBucket = resource.Bucket(compat_bytes(dstBucketName))
     dstObject = dstBucket.Object(compat_bytes(dstKeyName))
     copySource = {'Bucket': compat_bytes(srcBucketName), 'Key': compat_bytes(srcKeyName)}
     if srcKeyVersion is not None:
@@ -288,7 +324,7 @@ def copyKeyMultipart(srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, ds
     dstObject.copy(copySource, ExtraArgs=copyEncryptionArgs)
 
     # Wait until the object exists before calling head_object
-    object_summary = s3.ObjectSummary(dstObject.bucket_name, dstObject.key)
+    object_summary = resource.ObjectSummary(dstObject.bucket_name, dstObject.key)
     object_summary.wait_until_exists(**destEncryptionArgs)
 
     # Unfortunately, boto3's managed copy doesn't return the version
@@ -296,9 +332,11 @@ def copyKeyMultipart(srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, ds
     # after, leaving open the possibility that it may have been
     # modified again in the few seconds since the copy finished. There
     # isn't much we can do about it.
-    info = boto3.client('s3').head_object(Bucket=dstObject.bucket_name, Key=dstObject.key,
-                                          **destEncryptionArgs)
+    info = resource.meta.client.head_object(Bucket=dstObject.bucket_name,
+                                            Key=dstObject.key,
+                                            **destEncryptionArgs)
     return info.get('VersionId', None)
+
 
 def _put_attributes_using_post(self, domain_or_name, item_name, attributes,
                                replace=True, expected_value=None):
@@ -365,15 +403,19 @@ def retry_sdb(delays=default_delays, timeout=default_timeout, predicate=retryabl
 
 
 def retryable_s3_errors(e):
-    return ((isinstance(e, (S3CreateError, S3ResponseError))
-             and e.status == 409
-             and 'try again' in e.message)
-            or connection_reset(e)
+    return (connection_reset(e)
             or (isinstance(e, BotoServerError) and e.status == 500)
             # Throttling response sometimes received on bucket creation
             or (isinstance(e, BotoServerError) and e.status == 503 and e.code == 'SlowDown')
-            or (isinstance(e, S3CopyError) and 'try again' in e.message)
-            or (isinstance(e, ClientError) and 'BucketNotEmpty' in str(e)))
+            # boto3 errors
+            # TODO: switch to @retry decorators
+            or (isinstance(e, ClientError) and
+                ('BucketNotEmpty' in str(e)
+                 # TODO: test these!
+                 or (e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 409
+                     and 'try again' in str(e))
+                 or e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') in (
+                     404, 500, 502, 503, 504))))
 
 
 def retry_s3(delays=default_delays, timeout=default_timeout, predicate=retryable_s3_errors):
