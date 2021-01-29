@@ -78,7 +78,7 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
             job_store_override = invent_aws_jobstore()
             args_passed_directly_to_toil.append(f'--jobStore={job_store_override}')
         else:
-            # We are runnign locally and aren't sending the same job store to
+            # We are running locally and aren't sending the same job store to
             # every test, so we can run tests in parallel.
             # TODO: Work out a way to generate an AWS job store dynamically per test.
             cmd.append(f'-j{int(psutil.cpu_count()/2)}')
