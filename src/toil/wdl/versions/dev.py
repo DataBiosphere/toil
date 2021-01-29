@@ -57,12 +57,50 @@ class AnalyzeDevelopmentWDL(AnalyzeV1WDL):  # extend from 1.0
         Similar to version 1.0, except this also contains 'workflow'.
         """
         element = ctx.children[0]
-
-        # workflow
         if is_context(element, 'WorkflowContext'):
             return self.visit_workflow(element)
         else:
-            # hand the rest to super.
+            # let super take care of the rest.
             return super(AnalyzeDevelopmentWDL, self).visit_document_element(ctx)
 
-    # TODO: implement the rest of the changes since WDL 1.0.
+    def visit_call(self, ctx):
+        """
+        Similar to version 1.0, except `ctx.call_afters()` is added.
+        """
+        # TODO: implement call_afters
+        # See: https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#call-statement
+        return super(AnalyzeDevelopmentWDL, self).visit_call(ctx)
+
+    def visit_string_expr_part(self, ctx):
+        """
+        Similar to version 1.0, except `ctx.expression_placeholder_option()`
+        is removed.
+        """
+        # expression placeholder options are removed in development
+        # See: https://github.com/openwdl/wdl/blob/main/versions/development/parsers/antlr4/WdlParser.g4#L55
+
+        return self.visit_expr(ctx.expr())
+
+    def visit_wdl_type(self, ctx):
+        """
+        Similar to version 1.0, except Directory type is added.
+        """
+        identifier = ctx.type_base().children[0]
+
+        if identifier == 'Directory':
+            # TODO: implement Directory type
+            raise NotImplementedError('Directory type is not implemented.')
+        else:
+            # let super take care of the rest.
+            return super(AnalyzeDevelopmentWDL, self).visit_wdl_type(ctx)
+
+    def visit_expr_core(self, expr):
+        """
+        Similar to version 1.0, except struct literal is added.
+        """
+        if is_context(expr, 'Struct_literalContext'):
+            # TODO: implement struct literal
+            raise NotImplementedError(f'WDL struct is not implemented.')
+        else:
+            # let super take care of the rest.
+            return super(AnalyzeDevelopmentWDL, self).visit_expr_core(expr)
