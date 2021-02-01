@@ -905,13 +905,22 @@ class AbstractJobStore(ABC):
                matching that basename, the file will be detected.
 
         :param str mode: an optional string that specifies the mode in which the file is opened.
-                It defaults to 'b' which means open for reading in binary mode.
+                It defaults to 'b' which means open for writing in binary mode.
 
-        :param str encoding: the name of the encoding used to decode or encode the file.
-                This should only be used in text mode.
+                Currently supported mode characters:
 
-        :param str errors: an optional string that specifies how encoding and decoding errors
-                are to be handled. This cannot be used in binary mode.
+                    - 'b': open for writing in binary mode
+
+                    - 't': open for writing in text mode
+
+                The default mode is 'b' (open for writing in binary mode, synonym of 'wb').
+
+        :param str encoding: the name of the encoding used to encode the file. Encodings are the same
+                as for encode() and the default is platform dependent: locale.getpreferredencoding(False)
+                is called to get the current locale encoding. This should only be used in text mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -982,13 +991,21 @@ class AbstractJobStore(ABC):
         :param str jobStoreFileID: ID of the file to get a readable file handle for
 
         :param str mode: an optional string that specifies the mode in which the file is opened.
-                It defaults to 'b' which means open for reading in binary mode.
 
-        :param str encoding: the name of the encoding used to decode or encode the file.
-                This should only be used in text mode.
+                Currently supported mode characters:
 
-        :param str errors: an optional string that specifies how encoding and decoding errors
-                are to be handled. This cannot be used in binary mode.
+                    - 'b': binary mode
+
+                    - 't': text mode
+
+                The default mode is 'b' (open for reading in binary mode, synonym of 'rb').
+
+        :param str encoding: the name of the encoding used to decode the file. Encodings are the same as
+                for decode() and the default is platform dependent: locale.getpreferredencoding(False) is
+                called to get the current locale encoding. This should only be used in text mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
         """
         raise NotImplementedError()
 
@@ -1056,13 +1073,21 @@ class AbstractJobStore(ABC):
         :param str jobStoreFileID: the ID of the file in the job store to be updated
 
         :param str mode: an optional string that specifies the mode in which the file is opened.
-                It defaults to 'b' which means open for reading in binary mode.
 
-        :param str encoding: the name of the encoding used to decode or encode the file.
-                This should only be used in text mode.
+                Currently supported mode characters:
 
-        :param str errors: an optional string that specifies how encoding and decoding errors
-                are to be handled. This cannot be used in binary mode.
+                    - 'b': binary mode
+
+                    - 't': text mode
+
+                The default mode is 'b' (open for writing in binary mode, synonym of 'wb').
+
+        :param str encoding: the name of the encoding used to encode the file. Encodings are the same
+                as for encode() and the default is platform dependent: locale.getpreferredencoding(False)
+                is called to get the current locale encoding. This should only be used in text mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -1094,13 +1119,21 @@ class AbstractJobStore(ABC):
                False if it must be stored in the clear.
 
         :param str mode: an optional string that specifies the mode in which the file is opened.
-                It defaults to 'b' which means open for reading in binary mode.
 
-        :param str encoding: the name of the encoding used to decode or encode the file.
-                This should only be used in text mode.
+                Currently supported mode characters:
 
-        :param str errors: an optional string that specifies how encoding and decoding errors
-                are to be handled. This cannot be used in binary mode.
+                    - 'b': binary mode
+
+                    - 't': text mode
+
+                The default mode is 'b' (open for writing in binary mode, synonym of 'wb').
+
+        :param str encoding: the name of the encoding used to encode the file. Encodings are the same
+                as for encode() and the default is platform dependent: locale.getpreferredencoding(False)
+                is called to get the current locale encoding. This should only be used in text mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -1118,13 +1151,21 @@ class AbstractJobStore(ABC):
                this job store
 
         :param str mode: an optional string that specifies the mode in which the file is opened.
-                It defaults to 'b' which means open for reading in binary mode.
 
-        :param str encoding: the name of the encoding used to decode or encode the file.
-                This should only be used in text mode.
+                Currently supported mode characters:
 
-        :param str errors: an optional string that specifies how encoding and decoding errors
-                are to be handled. This cannot be used in binary mode.
+                    - 'b': binary mode
+
+                    - 't': text mode
+
+                The default mode is 'b' (open for reading in binary mode, synonym of 'rb').
+
+        :param str encoding: the name of the encoding used to decode the file. Encodings are the same
+                as for decode() and the default is platform dependent: locale.getpreferredencoding(False)
+                is called to get the current locale encoding. This should only be used in text mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
         """
         raise NotImplementedError()
 
