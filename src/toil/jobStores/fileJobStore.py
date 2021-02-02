@@ -507,7 +507,7 @@ class FileJobStore(AbstractJobStore):
 
         # If we get here, neither a symlink nor a hardlink will work.
         # Make a complete copy.
-        atomic_copy(jobStoreFilePath, localFilePath)
+        atomic_copy(jobStoreFilePath, localFilePath, executable=executable)
 
     def deleteFile(self, jobStoreFileID):
         if not self.fileExists(jobStoreFileID):

@@ -276,7 +276,7 @@ class hidden:
             Ensures that files created in a job preserve their executable permissions
             when they are exported from the leader.
             """
-            for executable in True,False:
+            for executable in True, False:
                 export_file_job = Job.wrapJobFn(self._testWriteExportFileCompatibility, executable=executable)
                 with Toil(self.options) as toil:
                     initialPermissions, fileID = toil.start(export_file_job)

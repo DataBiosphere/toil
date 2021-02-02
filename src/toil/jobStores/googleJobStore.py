@@ -14,6 +14,7 @@
 import logging
 import os
 import pickle
+import stat
 import time
 import uuid
 from contextlib import contextmanager
@@ -270,6 +271,8 @@ class GoogleJobStore(AbstractJobStore):
             with open(tmpPath, 'wb') as writeable:
                 blob = self.bucket.get_blob(compat_bytes(jobStoreFileID), encryption_key=self.sseKey)
                 blob.download_to_file(writeable)
+        if getattr(jobStoreFileID, 'executable', False):
+            os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
 
     @contextmanager
     def readFileStream(self, jobStoreFileID):

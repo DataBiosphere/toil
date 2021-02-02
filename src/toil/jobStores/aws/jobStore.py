@@ -18,6 +18,7 @@ import logging
 import pickle
 import re
 import reprlib
+import stat
 import time
 import urllib.error
 import urllib.parse
@@ -27,10 +28,7 @@ from contextlib import contextmanager
 from io import BytesIO
 from typing import Optional
 
-import boto3
 import boto.sdb
-import botocore.credentials
-import botocore.session
 from boto.exception import SDBResponseError
 from botocore.exceptions import ClientError
 
@@ -563,6 +561,8 @@ class AWSJobStore(AbstractJobStore):
         info = self.FileInfo.loadOrFail(jobStoreFileID)
         logger.debug("Reading %r into %r.", info, localFilePath)
         info.download(localFilePath, not self.config.disableJobStoreChecksumVerification)
+        if getattr(jobStoreFileID, 'executable', False):
+            os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
 
     @contextmanager
     def readFileStream(self, jobStoreFileID):
