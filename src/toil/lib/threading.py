@@ -27,7 +27,7 @@ from contextlib import contextmanager
 import psutil
 
 from toil.lib.exceptions import raise_
-from toil.lib.misc import robust_rmtree
+from toil.lib.io import robust_rmtree
 
 logger = logging.getLogger(__name__)
 

@@ -29,7 +29,7 @@ from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.fileStores import FileID, make_public_dir
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.humanize import bytes2human
-from toil.lib.misc import atomic_copy, atomic_copyobj, robust_rmtree
+from toil.lib.io import atomic_copy, atomic_copyobj, robust_rmtree
 from toil.lib.retry import ErrorCondition, retry
 from toil.lib.threading import get_process_name, process_name_exists
 

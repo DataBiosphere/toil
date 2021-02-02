@@ -241,9 +241,14 @@ class hidden:
             are downloaded again. This function checks that a written executable file
             maintains its executability after being read.
             """
-            for executable in True,False:
-                A = Job.wrapJobFn(self._testWriteReadGlobalFilePermissions, executable=executable)
-                Job.Runner.startToil(A, self.options)
+            for executable in True, False:
+                for disable_caching in True, False:
+                    with self.subTest(f'Testing readwrite file permissions\n'
+                                      f'[executable: {executable}]\n'
+                                      f'[disable_caching: {disable_caching}]\n'):
+                        self.options.disableCaching = disable_caching
+                        read_write_job = Job.wrapJobFn(self._testWriteReadGlobalFilePermissions, executable=executable)
+                        Job.Runner.startToil(read_write_job, self.options)
 
         @staticmethod
         def _testWriteReadGlobalFilePermissions(job, executable):
@@ -258,14 +263,13 @@ class hidden:
             initialPermissions = os.stat(srcFile).st_mode & stat.S_IXUSR
             fileID = job.fileStore.writeGlobalFile(srcFile)
 
-            for mutable in True,False:
-                for symlink in True,False:
+            for mutable in True, False:
+                for symlink in True, False:
                     dstFile = job.fileStore.getLocalTempFileName()
                     job.fileStore.readGlobalFile(fileID, userPath=dstFile, mutable=mutable, symlink=symlink)
                     # Current file owner execute permissions
                     currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
-
-                    assert initialPermissions == currentPermissions
+                    assert initialPermissions == currentPermissions, f'{initialPermissions} != {currentPermissions}'
 
         def testWriteExportFileCompatibility(self):
             """
@@ -273,14 +277,14 @@ class hidden:
             when they are exported from the leader.
             """
             for executable in True,False:
-                A = Job.wrapJobFn(self._testWriteExportFileCompatibility, executable=executable)
+                export_file_job = Job.wrapJobFn(self._testWriteExportFileCompatibility, executable=executable)
                 with Toil(self.options) as toil:
-                    initialPermissions, fileID = toil.start(A)
+                    initialPermissions, fileID = toil.start(export_file_job)
                     dstFile = os.path.join(self._createTempDir(), str(uuid4()))
                     toil.exportFile(fileID, 'file://' + dstFile)
                     currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
 
-                    assert initialPermissions == currentPermissions
+                    assert initialPermissions == currentPermissions, f'{initialPermissions} != {currentPermissions}'
 
         @staticmethod
         def _testWriteExportFileCompatibility(job, executable):
@@ -312,8 +316,12 @@ class hidden:
                         for symlink in True, False:
                             with self.subTest(f'Now testing readGlobalFileWith: mutable={mutable} symlink={symlink}'):
                                 dstFile = os.path.join(workDir, str(uuid4()))
-                                A = Job.wrapJobFn(_testImportReadFileCompatibility, fileID=jobStoreFileID, dstFile=dstFile,
-                                                    initialPermissions=initialPermissions, mutable=mutable, symlink=symlink)
+                                A = Job.wrapJobFn(self._testImportReadFileCompatibility,
+                                                  fileID=jobStoreFileID,
+                                                  dstFile=dstFile,
+                                                  initialPermissions=initialPermissions,
+                                                  mutable=mutable,
+                                                  symlink=symlink)
                                 toil.start(A)
 
         @staticmethod

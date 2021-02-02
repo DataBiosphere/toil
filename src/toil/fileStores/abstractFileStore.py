@@ -23,7 +23,7 @@ import dill
 
 from toil.common import cacheDirName
 from toil.fileStores import FileID
-from toil.lib.misc import WriteWatchingStream
+from toil.lib.io import WriteWatchingStream
 
 logger = logging.getLogger(__name__)
 

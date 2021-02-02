@@ -63,7 +63,7 @@ from toil.lib.ec2 import establish_boto3_session
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.exceptions import panic
 from toil.lib.memoize import strict_bool
-from toil.lib.misc import AtomicFileCreate
+from toil.lib.io import AtomicFileCreate
 from toil.lib.objects import InnerClass
 from toil.lib.retry import retry
 

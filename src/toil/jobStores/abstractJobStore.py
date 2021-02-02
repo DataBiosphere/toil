@@ -32,7 +32,7 @@ from toil.job import (CheckpointJobDescription,
                       JobException,
                       ServiceJobDescription)
 from toil.lib.memoize import memoize
-from toil.lib.misc import WriteWatchingStream
+from toil.lib.io import WriteWatchingStream
 from toil.lib.retry import ErrorCondition, retry
 
 logger = logging.getLogger(__name__)

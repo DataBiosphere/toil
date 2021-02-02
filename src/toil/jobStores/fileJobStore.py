@@ -32,10 +32,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchFileException,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
-from toil.lib.misc import (AtomicFileCreate,
-                           atomic_copy,
-                           atomic_copyobj,
-                           robust_rmtree)
+from toil.lib.io import AtomicFileCreate, atomic_copy, atomic_copyobj, robust_rmtree
 
 logger = logging.getLogger(__name__)
 
@@ -309,20 +306,20 @@ class FileJobStore(AbstractJobStore):
         if issubclass(otherCls, FileJobStore):
             srcPath = self._getFilePathFromId(jobStoreFileID)
             destPath = self._extractPathFromUrl(url)
+            executable = getattr(jobStoreFileID, 'executable', False)
             if self.moveExports:
-                self._move_and_linkback(srcPath, destPath)
+                self._move_and_linkback(srcPath, destPath, executable=executable)
             else:
-                executable = False
-                if getattr(jobStoreFileID, 'executable', False):
-                    executable = jobStoreFileID.executable
                 atomic_copy(srcPath, destPath, executable=executable)
         else:
             super(FileJobStore, self)._defaultExportFile(otherCls, jobStoreFileID, url)
 
-    def _move_and_linkback(self, srcPath, destPath):
+    def _move_and_linkback(self, srcPath, destPath, executable):
         logger.debug("moveExports option, Moving src=%s to dest=%s ; then symlinking dest to src", srcPath, destPath)
         shutil.move(srcPath, destPath)
         os.symlink(destPath, srcPath)
+        if executable:
+            os.chmod(destPath, os.stat(destPath).st_mode | stat.S_IXUSR)
 
     @classmethod
     def getSize(cls, url):
@@ -438,6 +435,7 @@ class FileJobStore(AbstractJobStore):
         self._checkJobStoreFileID(jobStoreFileID)
         jobStoreFilePath = self._getFilePathFromId(jobStoreFileID)
         localDirPath = os.path.dirname(localFilePath)
+        executable = getattr(jobStoreFileID, 'executable', False)
 
         if not symlink and os.path.islink(localFilePath):
             # We had a symlink and want to clobber it with a hardlink or copy.
@@ -454,8 +452,6 @@ class FileJobStore(AbstractJobStore):
             # There's less that can go wrong.
             try:
                 os.symlink(jobStoreFilePath, localFilePath)
-                # It worked!
-                return
             except OSError as e:
                 if e.errno == errno.EEXIST:
                     # Overwrite existing file, emulating shutil.copyfile().
@@ -463,11 +459,17 @@ class FileJobStore(AbstractJobStore):
                     # It would be very unlikely to fail again for same reason but possible
                     # nonetheless in which case we should just give up.
                     os.symlink(jobStoreFilePath, localFilePath)
-
-                    # Now we succeeded and don't need to copy
-                    return
                 else:
                     raise
+
+            if executable:
+                try:
+                    os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
+                    return
+                except PermissionError:
+                    # can't symlink and preserve exec permissions
+                    # prioritize permissions and attempt to hardlink next
+                    pass
 
         # If we get here, symlinking isn't an option.
         if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
@@ -477,8 +479,6 @@ class FileJobStore(AbstractJobStore):
 
             try:
                 os.link(jobStoreFilePath, localFilePath)
-                # It worked!
-                return
             except OSError as e:
                 if e.errno == errno.EEXIST:
                     # Overwrite existing file, emulating shutil.copyfile().
@@ -486,9 +486,6 @@ class FileJobStore(AbstractJobStore):
                     # It would be very unlikely to fail again for same reason but possible
                     # nonetheless in which case we should just give up.
                     os.link(jobStoreFilePath, localFilePath)
-
-                    # Now we succeeded and don't need to copy
-                    return
                 elif e.errno == errno.EXDEV:
                     # It's a cross-device link even though it didn't appear to be.
                     # Just keep going and hit the file copy case.
@@ -498,6 +495,15 @@ class FileJobStore(AbstractJobStore):
                     logger.critical('jobStoreFilePath: ' + jobStoreFilePath + ' ' + str(os.path.exists(jobStoreFilePath)))
                     logger.critical('localFilePath: ' + localFilePath + ' ' + str(os.path.exists(localFilePath)))
                     raise
+
+                if executable:
+                    try:
+                        os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
+                        return
+                    except PermissionError:
+                        # can't hardlink and preserve exec permissions
+                        # prioritize permissions and attempt to copy next
+                        pass
 
         # If we get here, neither a symlink nor a hardlink will work.
         # Make a complete copy.

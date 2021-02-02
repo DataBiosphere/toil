@@ -32,7 +32,8 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobStoreException)
 from toil.jobStores.utils import ReadablePipe, WritablePipe
 from toil.lib.compatibility import compat_bytes
-from toil.lib.misc import AtomicFileCreate, truncExpBackoff
+from toil.lib.io import AtomicFileCreate
+from toil.lib.misc import truncExpBackoff
 from toil.lib.retry import old_retry
 
 log = logging.getLogger(__name__)
