@@ -228,7 +228,7 @@ def convert_mb(kb, unit):
              "TB": 2}
     assert unit in UNITS, ("%s not a valid unit, valid units are %s."
                            % (unit, list(UNITS.keys())))
-    return int(float(kb) // float(math.pow(1024, UNITS[unit])))
+    return float(kb) / float(math.pow(1024, UNITS[unit]))
 
 
 
