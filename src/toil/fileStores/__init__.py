@@ -14,6 +14,8 @@
 import os
 import stat
 
+from uuid import uuid4
+
 
 def make_public_dir(dirName: str) -> str:
     """Makes a given subdirectory if it doesn't already exist, making sure it is public."""
@@ -21,6 +23,33 @@ def make_public_dir(dirName: str) -> str:
         os.mkdir(dirName)
         os.chmod(dirName, 0o777)
     return dirName
+
+
+def unused_dir_path(prefix: str) -> str:
+    """
+    Try to make a random directory name with length 4 that doesn't exist, with the given prefix.
+
+    Otherwise, try length 5, length 6, etc, up to a max of 32 (len of uuid4 with dashes replaced).
+
+    This function's purpose is mostly to avoid having long file names when generating directories.
+
+    If somehow this fails, which should be incredibly unlikely, default to a normal uuid4, which was
+    our old default.
+    """
+    for i in range(4, 32 + 1):  # make random uuids and truncate to lengths starting at 4 and working up to max 32
+        for _ in range(10):  # make 10 attempts for each length
+            truncated_uuid = str(uuid4()).replace('-', '')[:i]
+            generated_dir_path = os.path.join(prefix, truncated_uuid)
+            if not os.path.exists(generated_dir_path):
+                return generated_dir_path
+    this_should_never_happen = os.path.join(prefix, str(uuid4()))
+    assert not os.path.exists(this_should_never_happen)
+    return this_should_never_happen
+
+
+def make_unique_public_dir(prefix: str) -> str:
+    """Makes a new subdirectory with the given prefix, making sure it is public."""
+    return make_public_dir(unused_dir_path(prefix))
 
 
 class FileID(str):

@@ -22,11 +22,10 @@ import sqlite3
 import tempfile
 import threading
 import time
-import uuid
 from contextlib import contextmanager
 
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
-from toil.fileStores import FileID, make_public_dir
+from toil.fileStores import FileID, make_unique_public_dir
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.humanize import bytes2human
 from toil.lib.io import atomic_copy, atomic_copyobj, robust_rmtree
@@ -975,7 +974,7 @@ class CachingFileStore(AbstractFileStore):
         # Create a working directory for the job
         startingDir = os.getcwd()
         # Move self.localTempDir from the worker directory set up in __init__ to a per-job directory.
-        self.localTempDir = make_public_dir(os.path.join(self.localTempDir, str(uuid.uuid4())))
+        self.localTempDir = make_unique_public_dir(prefix=self.localTempDir)
         # Check the status of all jobs on this node. If there are jobs that started and died before
         # cleaning up their presence from the database, clean them up ourselves.
         self._removeDeadJobs(self.workDir, self.con)

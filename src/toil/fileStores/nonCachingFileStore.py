@@ -15,16 +15,13 @@ import errno
 import fcntl
 import logging
 import os
-import stat
-import sys
-import uuid
 from collections import defaultdict
 from contextlib import contextmanager
 
 import dill
 
 from toil.common import getDirSizeRecursively, getFileSystemSize
-from toil.fileStores import FileID, make_public_dir
+from toil.fileStores import FileID, make_unique_public_dir
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.humanize import bytes2human
 from toil.lib.io import robust_rmtree
@@ -44,7 +41,7 @@ class NonCachingFileStore(AbstractFileStore):
     def open(self, job):
         jobReqs = job.disk
         startingDir = os.getcwd()
-        self.localTempDir = make_public_dir(os.path.join(self.localTempDir, str(uuid.uuid4())))
+        self.localTempDir = make_unique_public_dir(prefix=self.localTempDir)
         self._removeDeadJobs(self.workDir)
         self.jobStateFile = self._createJobStateFile()
         freeSpace, diskSize = getFileSystemSize(self.localTempDir)
