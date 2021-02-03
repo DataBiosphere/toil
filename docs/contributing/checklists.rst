@@ -14,6 +14,8 @@ This document contains checklists for dealing with PRs. More general PR informat
 Reviewing Pull Requests
 ~~~~~~~~~~~~~~~~~~~~~~~
 
+This checklist is to be kept in sync with the checklist in the pull request template.
+
 When reviewing a PR, do the following:
 
 * |X| Make sure it is coming from ``issues/XXXX-fix-the-thing`` in the Toil repo, or from an external repo.
@@ -37,10 +39,12 @@ When reviewing a PR, do the following:
 Merging Pull Requests
 ~~~~~~~~~~~~~~~~~~~~~
 
+This checklist is to be kept in sync with the checklist in the pull request template.
+
 When merging a PR, do the following:
 
 * |X| Make sure the PR passes tests.
-* |X| Make sure the PR has been reviewsd **since its last modification**. If not, review it.
+* |X| Make sure the PR has been reviewed **since its last modification**. If not, review it.
 * |X| Merge with the Github "Squash and merge" feature.
     * |X| If there are multiple authors' commits, add `Co-authored-by`_ to give credit to all contributing authors.
         .. _Co-authored-by: https://github.blog/2018-01-29-commit-together-with-co-authors/
