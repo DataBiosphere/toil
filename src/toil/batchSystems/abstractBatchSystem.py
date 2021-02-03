@@ -360,7 +360,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         batch system job IDs, for ease of debugging job failures.
 
         :param: string jobID : Toil job ID
-        :param: string std : The provenance of the stream (either 'stderr' or 'stdout')
+        :param: string std : The provenance of the stream (for example: 'err' for 'stderr' or 'out' for 'stdout')
 
         :rtype: string : Formatted filename; however if self.config.noStdOutErr is true,
              returns '/dev/null' or equivalent.

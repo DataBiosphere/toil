@@ -262,8 +262,8 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             bsubline = ["bsub", "-cwd", ".", "-J", "toil_job_{}".format(jobID)]
             bsubline.extend(bsubMem)
             bsubline.extend(bsubCpu)
-            stdoutfile = self.boss.formatStdOutErrPath(jobID, '%J', 'stdout')
-            stderrfile = self.boss.formatStdOutErrPath(jobID, '%J', 'stderr')
+            stdoutfile = self.boss.formatStdOutErrPath(jobID, '%J', 'out')
+            stderrfile = self.boss.formatStdOutErrPath(jobID, '%J', 'err')
             bsubline.extend(['-o', stdoutfile, '-e', stderrfile])
             lsfArgs = os.getenv('TOIL_LSF_ARGS')
             if lsfArgs:

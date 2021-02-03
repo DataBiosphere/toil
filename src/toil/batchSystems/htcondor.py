@@ -72,9 +72,9 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             # a shared filesystem. So to make this work we need to set should_transfer_files = Yes
             # in the submit file, so that HTCondor will write the standard output/error files on the
             # compute node, then transfer back once the job has completed.
-            stdoutfile = self.boss.formatStdOutErrPath(jobID, '$(cluster)', 'stdout')
-            stderrfile = self.boss.formatStdOutErrPath(jobID, '$(cluster)', 'stderr')
-            condorlogfile = self.boss.formatStdOutErrPath(jobID, '$(cluster)', 'job_events')
+            stdoutfile = self.boss.formatStdOutErrPath(jobID, '$(cluster)', 'out')
+            stderrfile = self.boss.formatStdOutErrPath(jobID, '$(cluster)', 'err')
+            condorlogfile = self.boss.formatStdOutErrPath(jobID, '$(cluster)', 'events')
 
             # Execute the entire command as /bin/sh -c "command"
             # TODO: Transfer the jobStore directory if using a local file store with a relative path.

@@ -193,8 +193,8 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             A very simple script generator that just wraps the command given; for
             now this goes to default tempdir
             """
-            stdoutfile = self.boss.formatStdOutErrPath(jobID, r'${PBS_JOBID}', 'stdout')
-            stderrfile = self.boss.formatStdOutErrPath(jobID, r'${PBS_JOBID}', 'stderr')
+            stdoutfile = self.boss.formatStdOutErrPath(jobID, r'${PBS_JOBID}', 'out')
+            stderrfile = self.boss.formatStdOutErrPath(jobID, r'${PBS_JOBID}', 'err')
 
             _, tmpFile = tempfile.mkstemp(suffix='.sh', prefix='torque_wrapper')
             fh = open(tmpFile , 'w')
