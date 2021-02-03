@@ -32,8 +32,8 @@ after_script:
   - stopdocker || true
 
 stages:
-#  - basic_tests
-#  - main_tests
+  - basic_tests
+  - main_tests
   - integration
 
 
