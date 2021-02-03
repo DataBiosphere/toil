@@ -277,21 +277,21 @@ class FileJobStore(AbstractJobStore):
         if hardlink:
             self.linkImports = saved
 
-    def _copyOrLink(self, srcURL, destPath):
+    def _copyOrLink(self, srcURL, destPath, symlink=False):
         # linking is not done be default because of issue #1755
         srcPath = self._extractPathFromUrl(srcURL)
-        if self.linkImports:
+        if self.linkImports or symlink:
             os.symlink(os.path.realpath(srcPath), destPath)
         else:
             atomic_copy(srcPath, destPath)
 
-    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False):
+    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False, symlink=False):
         if issubclass(otherCls, FileJobStore):
             if sharedFileName is None:
                 executable = os.stat(url.path).st_mode & stat.S_IXUSR != 0
                 absPath = self._getUniqueFilePath(url.path)  # use this to get a valid path to write to in job store
                 with self.optionalHardCopy(hardlink):
-                    self._copyOrLink(url, absPath)
+                    self._copyOrLink(url, absPath, symlink=symlink)
                 # TODO: os.stat(absPath).st_size consistently gives values lower than
                 # getDirSizeRecursively()
                 return FileID(self._getFileIdFromPath(absPath), os.stat(absPath).st_size, executable)
@@ -299,7 +299,7 @@ class FileJobStore(AbstractJobStore):
                 self._requireValidSharedFileName(sharedFileName)
                 path = self._getSharedFilePath(sharedFileName)
                 with self.optionalHardCopy(hardlink):
-                    self._copyOrLink(url, path)
+                    self._copyOrLink(url, path, symlink=symlink)
                 return None
         else:
             return super(FileJobStore, self)._importFile(otherCls, url,
