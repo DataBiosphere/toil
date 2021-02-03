@@ -5,6 +5,8 @@ To be copied to the [draft changelog](https://github.com/DataBiosphere/toil/wiki
 
 ## Reviewer Checklist
 
+<!-- To be kept in sync with docs/contributing/checklist.rst -->
+
  * [ ] Make sure it is coming from `issues/XXXX-fix-the-thing` in the Toil repo, or from an external repo.
     * [ ] If it is coming from an external repo, make sure to pull it in for CI with:
         ```
@@ -23,6 +25,8 @@ To be copied to the [draft changelog](https://github.com/DataBiosphere/toil/wiki
 * [ ] Finish the review with an overall description of your opinion.
 
 ## Merger Checklist
+
+<!-- To be kept in sync with docs/contributing/checklist.rst -->
 
 * [ ] Make sure the PR passes tests.
 * [ ] Make sure the PR has been reviewed **since its last modification**. If not, review it.
