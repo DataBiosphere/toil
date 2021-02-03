@@ -17,6 +17,7 @@ from wdlparse.dev.WdlLexer import WdlLexer, FileStream
 from wdlparse.dev.WdlParser import WdlParser, CommonTokenStream
 
 from toil.wdl.versions.v1 import AnalyzeV1WDL, is_context
+from toil.wdl.wdl_types import WDLType
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,7 @@ class AnalyzeDevelopmentWDL(AnalyzeV1WDL):  # extend from 1.0
         tree = parser.document()
         self.visit_document(tree)
 
-    def visit_document(self, ctx):
+    def visit_document(self, ctx: WdlParser.DocumentContext) -> None:
         """
         Similar to version 1.0, except the 'workflow' element is included in
         `ctx.document_element()`.
@@ -52,18 +53,18 @@ class AnalyzeDevelopmentWDL(AnalyzeV1WDL):  # extend from 1.0
         for element in ctx.document_element():
             self.visit_document_element(element)
 
-    def visit_document_element(self, ctx):
+    def visit_document_element(self, ctx: WdlParser.Document_elementContext) -> None:
         """
         Similar to version 1.0, except this also contains 'workflow'.
         """
         element = ctx.children[0]
         if is_context(element, 'WorkflowContext'):
-            return self.visit_workflow(element)
+            self.visit_workflow(element)
         else:
             # let super take care of the rest.
-            return super(AnalyzeDevelopmentWDL, self).visit_document_element(ctx)
+            super(AnalyzeDevelopmentWDL, self).visit_document_element(ctx)
 
-    def visit_call(self, ctx):
+    def visit_call(self, ctx: WdlParser.CallContext) -> dict:
         """
         Similar to version 1.0, except `ctx.call_afters()` is added.
         """
@@ -71,7 +72,7 @@ class AnalyzeDevelopmentWDL(AnalyzeV1WDL):  # extend from 1.0
         # See: https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#call-statement
         return super(AnalyzeDevelopmentWDL, self).visit_call(ctx)
 
-    def visit_string_expr_part(self, ctx):
+    def visit_string_expr_part(self, ctx: WdlParser.String_expr_partContext) -> str:
         """
         Similar to version 1.0, except `ctx.expression_placeholder_option()`
         is removed.
@@ -81,7 +82,7 @@ class AnalyzeDevelopmentWDL(AnalyzeV1WDL):  # extend from 1.0
 
         return self.visit_expr(ctx.expr())
 
-    def visit_wdl_type(self, ctx):
+    def visit_wdl_type(self, ctx: WdlParser.Wdl_typeContext) -> WDLType:
         """
         Similar to version 1.0, except Directory type is added.
         """
@@ -94,7 +95,7 @@ class AnalyzeDevelopmentWDL(AnalyzeV1WDL):  # extend from 1.0
             # let super take care of the rest.
             return super(AnalyzeDevelopmentWDL, self).visit_wdl_type(ctx)
 
-    def visit_expr_core(self, expr):
+    def visit_expr_core(self, expr: WdlParser.Expr_coreContext) -> str:
         """
         Similar to version 1.0, except struct literal is added.
         """

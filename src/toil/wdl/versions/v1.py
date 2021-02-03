@@ -23,7 +23,7 @@ from toil.wdl.wdl_analysis import AnalyzeWDL
 logger = logging.getLogger(__name__)
 
 
-def is_context(ctx, classname: Union[str, tuple]):
+def is_context(ctx, classname: Union[str, tuple]) -> bool:
     """
     Returns whether an ANTLR4 context object is of the precise type `classname`.
 
