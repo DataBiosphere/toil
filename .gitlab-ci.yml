@@ -17,7 +17,7 @@ before_script:
   - cat /etc/hosts
   - mkdir -p ~/.kube && cp "$GITLAB_SECRET_FILE_KUBE_CONFIG" ~/.kube/config
   - mkdir -p ~/.aws && cp "$GITLAB_SECRET_FILE_AWS_CREDENTIALS" ~/.aws/credentials
-  - sudo apt-get install -y software-properties-common
+  - sudo apt-get install -y software-properties-common build-essential virtualenv
   - sudo add-apt-repository -y ppa:deadsnakes/ppa
   - sudo apt-get update
 
