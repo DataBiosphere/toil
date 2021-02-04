@@ -485,8 +485,6 @@ class WdlStandardLibraryWorkflowsTest(WdlWorkflowsTest):
                                             '{"left":3,"right":"a"},{"left":3,"right":"b"}]')
 
     def test_as_pairs(self):
-        # NOTE: as_pairs() is only supported in the development version as of 2020.
-
         self.check_function('as_pairs', cases=['as_input'],
                             expected_result='[{"left":"a","right":1},{"left":"b","right":2},{"left":"c","right":3}]')
 
