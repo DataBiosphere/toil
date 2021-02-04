@@ -113,7 +113,7 @@ clean_sdist:
 # We always claim to be Travis, so that local test runs will not skip Travis tests.
 test: check_venv check_build_reqs
 	TRAVIS=true \
-	    python -m pytest --cov=toil --durations=0 -s -r s $(tests)
+	    python -m pytest --cov=toil --durations=0 --log-level DEBUG --log-cli-level INFO -r s $(tests)
 
 
 # This target will skip building docker and all docker based tests

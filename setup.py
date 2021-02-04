@@ -23,9 +23,9 @@ def run_setup():
     Calls setup(). This function exists so the setup() invocation preceded more internal
     functionality. The `version` module is imported dynamically by import_version() below.
     """
-    boto = 'boto==2.48.0'
-    boto3 = 'boto3>=1.7.50, <2.0'
-    futures = 'futures==3.1.1'
+    boto = 'boto>=2.48.0, <3'
+    boto3 = 'boto3>=1.7.50, <2'
+    futures = 'futures>=3.1.1, <4'
     pycryptodome = 'pycryptodome==3.5.1'
     pymesos = 'pymesos==0.3.15'
     psutil = 'psutil >= 3.0.1, <6'
@@ -36,9 +36,10 @@ def run_setup():
     cwltool = 'cwltool==3.0.20201203173111'
     galaxyToolUtil = 'galaxy-tool-util'
     htcondor = 'htcondor>=8.6.0'
-    kubernetes = 'kubernetes>=10, <11'
+    kubernetes = 'kubernetes>=12, <13'
     idna = 'idna>=2'
     pytz = 'pytz>=2012'
+    pyyaml = 'pyyaml>=5, <6'
     dill = 'dill>=0.3.2, <0.4'
     requests = 'requests>=2, <3'
     docker = 'docker==4.3.1'
@@ -55,6 +56,7 @@ def run_setup():
         psutil,
         addict,
         pytz,
+        pyyaml,
         enlighten]
     aws_reqs = [
         boto,

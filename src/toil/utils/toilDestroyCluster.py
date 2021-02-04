@@ -12,16 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Terminates the specified cluster and associated resources."""
+import logging
 from toil.common import parser_with_common_options
 from toil.provisioners import cluster_factory
 from toil.statsAndLogging import set_logging_from_options
 
 
+logger = logging.getLogger(__name__)
+
 def main():
     parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
     options = parser.parse_args()
     set_logging_from_options(options)
+    
+    logger.info('Destroying cluster %s', options.clusterName)
+    
     cluster = cluster_factory(provisioner=options.provisioner,
                               clusterName=options.clusterName,
                               zone=options.zone)
     cluster.destroyCluster()
+
+    logger.info('Cluster %s is now gone.', options.clusterName)

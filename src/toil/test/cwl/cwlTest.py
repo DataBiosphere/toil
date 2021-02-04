@@ -427,6 +427,9 @@ class CWLv12Test(ToilTest):
                               caching=caching,
                               batchSystem=batchSystem)
 
+
+@needs_cwl
+class CWLSmallTests(ToilTest):
     def test_usage_message(self):
         """
         This is purely to ensure a (more) helpful error message is printed if a user does
@@ -448,3 +451,18 @@ class CWLv12Test(ToilTest):
             self.assertIn(b'Usage: toil-cwl-runner [options] example.cwl example-job.yaml', stderr)
             self.assertIn(b'All positional arguments [cwl, yml_or_json] '
                           b'must always be specified last for toil-cwl-runner.', stderr)
+
+    def test_workflow_echo_string(self):
+        toil = 'toil-cwl-runner'
+        jobstore = f'--jobStore=file:explicit-local-jobstore-{uuid.uuid4()}'
+        option_1 = '--strict-memory-limit'
+        option_2 = '--force-docker-pull'
+        option_3 = '--clean=always'
+        cwl = os.path.join(self._projectRootPath(), 'src/toil/test/cwl/echo_string.cwl')
+        cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
+        log.debug(f'Now running: {" ".join(cmd)}')
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = p.communicate()
+        assert stdout == b'{}'
+        assert b'Finished toil run successfully' in stderr
+        assert p.returncode == 0
