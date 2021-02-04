@@ -406,7 +406,7 @@ class AWSJobStore(AbstractJobStore):
         logger.debug("Created %r.", info)
         return info.fileID
 
-    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False):
+    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False, symlink=False):
         if issubclass(otherCls, AWSJobStore):
             srcObj = self._getObjectForUrl(url, existing=True)
             size = srcObj.content_length
