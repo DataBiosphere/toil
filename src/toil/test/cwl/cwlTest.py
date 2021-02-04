@@ -443,14 +443,12 @@ class CWLv11Test(ToilTest):
 
     @slow
     @needs_kubernetes
-    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_kubernetes_cwl_conformance(self):
         return self.test_run_conformance(batchSystem="kubernetes")
 
 
     @slow
     @needs_kubernetes
-    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_kubernetes_cwl_conformance_caching(self):
         return self.test_run_conformance(batchSystem="kubernetes", caching=True)
 
@@ -491,14 +489,12 @@ class CWLv12Test(ToilTest):
 
     @slow
     @needs_kubernetes
-    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_kubernetes_cwl_conformance(self):
         return self.test_run_conformance(batchSystem="kubernetes")
 
 
     @slow
     @needs_kubernetes
-    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_kubernetes_cwl_conformance_caching(self):
         return self.test_run_conformance(batchSystem="kubernetes", caching=True)
 
