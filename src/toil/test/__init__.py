@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
 import datetime
 import logging
 import os
+import random
 import re
 import shutil
 import signal
@@ -37,11 +38,10 @@ from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
 from toil.lib.iterables import concat
 from toil.lib.memoize import memoize
 from toil.lib.threading import ExceptionalThread, cpu_count
-from toil.provisioners.aws import runningOnEC2
+from toil.provisioners.aws import running_on_ec2
 from toil.version import distVersion
 
-logging.basicConfig(level=logging.DEBUG)
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ToilTest(unittest.TestCase):
@@ -88,12 +88,12 @@ class ToilTest(unittest.TestCase):
         super(ToilTest, cls).tearDownClass()
 
     def setUp(self):
-        log.info("Setting up %s ...", self.id())
+        logger.info("Setting up %s ...", self.id())
         super(ToilTest, self).setUp()
 
     def tearDown(self):
         super(ToilTest, self).tearDown()
-        log.info("Tore down %s", self.id())
+        logger.info("Tore down %s", self.id())
 
     @classmethod
     def awsRegion(cls):
@@ -101,7 +101,7 @@ class ToilTest(unittest.TestCase):
         Use us-west-2 unless running on EC2, in which case use the region in which
         the instance is located
         """
-        return cls._region() if runningOnEC2() else 'us-west-2'
+        return cls._region() if running_on_ec2() else 'us-west-2'
 
     @classmethod
     def _availabilityZone(cls):
@@ -205,7 +205,7 @@ class ToilTest(unittest.TestCase):
         :return: The output of the process' stdout if capture=True was passed, None otherwise.
         """
         args = list(concat(command, args))
-        log.info('Running %r', args)
+        logger.info('Running %r', args)
         capture = kwargs.pop('capture', False)
         _input = kwargs.pop('input', None)
         if capture:
@@ -241,6 +241,20 @@ else:
         return getattr(pytest.mark, name)(test_item)
 
 
+def get_temp_file(suffix="", rootDir=None):
+    """Returns a string representing a temporary file, that must be manually deleted."""
+    if rootDir is None:
+        handle, tmp_file = tempfile.mkstemp(suffix)
+        os.close(handle)
+        return tmp_file
+    else:
+        alphanumerics = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+        tmp_file = os.path.join(rootDir, f"tmp_{''.join([random.choice(alphanumerics) for _ in range(0, 10)])}{suffix}")
+        open(tmp_file, 'w').close()
+        os.chmod(tmp_file, 0o777)  # Ensure everyone has access to the file.
+        return tmp_file
+
+
 def needs_rsync3(test_item):
     """
     Use as a decorator before test classes or methods that depend on any features used in rsync
@@ -269,7 +283,7 @@ def needs_aws_s3(test_item):
     except ImportError:
         return unittest.skip("Install Toil with the 'aws' extra to include this test.")(test_item)
 
-    if not (boto_credentials or os.path.exists(os.path.expanduser('~/.aws/credentials')) or runningOnEC2()):
+    if not (boto_credentials or os.path.exists(os.path.expanduser('~/.aws/credentials')) or running_on_ec2()):
         return unittest.skip("Configure AWS credentials to include this test.")(test_item)
     return test_item
 
@@ -296,14 +310,12 @@ def needs_google(test_item):
     """Use as a decorator before test classes or methods to run only if Google is usable."""
     test_item = _mark_test('google', test_item)
     try:
-        from boto import config
+        from google.cloud import storage
     except ImportError:
         return unittest.skip("Install Toil with the 'google' extra to include this test.")(test_item)
 
     if not os.getenv('TOIL_GOOGLE_PROJECTID'):
         return unittest.skip("Set TOIL_GOOGLE_PROJECTID to include this test.")(test_item)
-    elif not config.get('Credentials'):  # TODO: Deprecate this check?  Needed by only by the ancients.
-        return unittest.skip("Configure ~/.boto with Google Cloud credentials to include this test.")(test_item)
     return test_item
 
 
@@ -339,13 +351,13 @@ def needs_kubernetes(test_item):
 def needs_mesos(test_item):
     """Use as a decorator before test classes or methods to run only if Mesos is installed."""
     test_item = _mark_test('mesos', test_item)
-    if not (which('mesos-master') or which('mesos-slave')):
+    if not (which('mesos-master') or which('mesos-agent')):
         return unittest.skip("Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
     try:
         import psutil
         import pymesos
         print(psutil.__file__)
-        pritn(pymesos.__file__)  # keep these imports from being removed.
+        print(pymesos.__file__)  # keep these imports from being removed.
     except ImportError:
         return unittest.skip("Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
     return test_item
@@ -451,7 +463,7 @@ def needs_cwl(test_item):
         return test_item
 
 
-def needs_appliance(test_item):
+def needs_local_appliance(test_item):
     """
     Use as a decorator before test classes or methods to only run them if
     the Toil appliance Docker image is downloaded.
@@ -464,6 +476,11 @@ def needs_appliance(test_item):
 
     try:
         image = applianceSelf()
+    except ApplianceImageNotFound:
+        return unittest.skip(f"Appliance image is not published. Use 'make test' target to automatically build appliance, or "
+                             f"just run 'make push_docker' prior to running this test.")(test_item)
+
+    try:
         stdout, stderr = subprocess.Popen(['docker', 'inspect', '--format="{{json .RepoTags}}"', image],
                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
         if image in stdout.decode("utf-8"):
@@ -471,7 +488,7 @@ def needs_appliance(test_item):
     except:
         pass
 
-    return unittest.skip(f"Cannot find appliance {image}. Use 'make test' target to automatically build appliance, or "
+    return unittest.skip(f"Cannot find appliance {image} locally. Use 'make test' target to automatically build appliance, or "
                          f"just run 'make push_docker' prior to running this test.")(test_item)
 
 
@@ -684,27 +701,6 @@ def make_tests(generalMethod, targetClass, **kwargs):
         insertMethodToClass()
 
 
-@contextmanager
-def tempFileContaining(content, suffix=''):
-    """
-    Write a file with the given contents, and keep it on disk as long as the context is active.
-    :param str content: The contents of the file.
-    :param str suffix: The extension to use for the temporary file.
-    """
-    fd, path = tempfile.mkstemp(suffix=suffix)
-    try:
-        encoded = content.encode('utf-8')
-        assert os.write(fd, encoded) == len(encoded)
-    except:
-        os.close(fd)
-        raise
-    else:
-        os.close(fd)
-        yield path
-    finally:
-        os.unlink(path)
-
-
 class ApplianceTestSupport(ToilTest):
     """
     A Toil test that runs a user script on a minimal cluster of appliance containers,
@@ -722,7 +718,7 @@ class ApplianceTestSupport(ToilTest):
                Beware that if KEY is a path to a directory, its entire content will be deleted
                when the cluster is torn down.
 
-        :param int numCores: The number of cores to be offered by the Mesos slave process running
+        :param int numCores: The number of cores to be offered by the Mesos agent process running
                in the worker container.
 
         :rtype: (ApplianceTestSupport.Appliance, ApplianceTestSupport.Appliance)
@@ -777,7 +773,7 @@ class ApplianceTestSupport(ToilTest):
                                    ['--volume=%s:%s' % mount for mount in self.mounts.items()],
                                    image,
                                    self._containerCommand()))
-                log.info('Running %r', args)
+                logger.info('Running %r', args)
                 self.popen = subprocess.Popen(args)
             self.start()
             self.__wait_running()
@@ -797,7 +793,7 @@ class ApplianceTestSupport(ToilTest):
             return False  # don't swallow exception
 
         def __wait_running(self):
-            log.info("Waiting for %s container process to appear. "
+            logger.info("Waiting for %s container process to appear. "
                      "Expect to see 'Error: No such image or container'.", self._getRole())
             while self.isAlive():
                 try:
@@ -832,7 +828,7 @@ class ApplianceTestSupport(ToilTest):
 
         def tryRun(self):
             self.popen.wait()
-            log.info('Exiting %s', self.__class__.__name__)
+            logger.info('Exiting %s', self.__class__.__name__)
 
         def runOnAppliance(self, *args, **kwargs):
             # Check if thread is still alive. Note that ExceptionalThread.join raises the
@@ -887,7 +883,7 @@ class ApplianceTestSupport(ToilTest):
             super(ApplianceTestSupport.WorkerThread, self).__init__(outer, mounts)
 
         def _entryPoint(self):
-            return 'mesos-slave'
+            return 'mesos-agent'
 
         def _getRole(self):
             return 'worker'

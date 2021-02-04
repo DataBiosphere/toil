@@ -1,4 +1,4 @@
-# Copyright (C) 2015 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -40,19 +40,23 @@ class GCEProvisioner(AbstractProvisioner):
     NODE_BOTO_PATH = "/root/.boto" # boto file path on instances
     SOURCE_IMAGE = (b'projects/flatcar-cloud/global/images/family/flatcar-stable')
 
-    def __init__(self, clusterName, zone, nodeStorage, nodeStorageOverrides, sseKey):
-        super(GCEProvisioner, self).__init__(clusterName, zone, nodeStorage, nodeStorageOverrides)
+    def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):
         self.cloud = 'gce'
         self._sseKey = sseKey
 
-        # If the clusterName is not given, then Toil must be running on the leader
-        # and should read the settings from the instance meta-data.
-        if clusterName:
-            self._readCredentials()
-        else:
-            self._readClusterSettings()
+        # Call base class constructor, which will call createClusterSettings()
+        # or readClusterSettings()
+        super(GCEProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
 
-    def _readClusterSettings(self):
+    def supportedClusterTypes(self):
+        return {'mesos'}
+
+    def createClusterSettings(self):
+        # All we need to do is read the Google credentials we need to provision
+        # things
+        self._readCredentials()
+
+    def readClusterSettings(self):
         """
         Read the cluster settings from the instance, which should be the leader.
         See https://cloud.google.com/compute/docs/storing-retrieving-metadata for details about
@@ -79,13 +83,14 @@ class GCEProvisioner(AbstractProvisioner):
         leader = self.getLeader()
         self._leaderPrivateIP = leader.privateIP
 
-        # generate a public key for the leader, which is used to talk to workers
-        self._masterPublicKey = self._setSSH()
-
         # The location of the Google credentials file on instances.
         self._credentialsPath = GoogleJobStore.nodeServiceAccountJson
         self._keyName = 'core' # key name leader users to communicate with works
         self._botoPath = self.NODE_BOTO_PATH # boto credentials (used if reading an AWS bucket)
+        
+        # Let the base provisioner work out how to deploy duly authorized
+        # workers for this leader.
+        self._setLeaderWorkerAuthentication()
 
     def _readCredentials(self):
         """
@@ -104,7 +109,7 @@ class GCEProvisioner(AbstractProvisioner):
         self._projectId = self.googleConnectionParams['project_id']
         self._clientEmail = self.googleConnectionParams['client_email']
         self._credentialsPath = self._googleJson
-        self._masterPublicKey = None
+        self._clearLeaderWorkerAuthentication() # TODO: Why are we doing this?
         self._gceDriver = self._getDriver()
 
 
@@ -134,8 +139,7 @@ class GCEProvisioner(AbstractProvisioner):
             tags.update(kwargs['userTags'])
         self._tags = json.dumps(tags)
 
-        userData =  self._getCloudConfigUserData('leader')
-        metadata = {'items': [{'key': 'user-data', 'value': userData}]}
+        metadata = {'items': [{'key': 'user-data', 'value': self._getCloudConfigUserData('leader')}]}
         imageType = 'flatcar-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
         disk = {}
@@ -145,14 +149,19 @@ class GCEProvisioner(AbstractProvisioner):
         disk.update({'boot': True,
              'autoDelete': True })
         name= 'l' + str(uuid.uuid4())
-        leader = self._gceDriver.create_node(name, leaderNodeType, imageType,
-                                            location=self._zone,
-                                            ex_service_accounts=sa_scopes,
-                                            ex_metadata=metadata,
-                                            ex_subnetwork=self._vpcSubnet,
-                                            ex_disks_gce_struct = [disk],
-                                            description=self._tags,
-                                            ex_preemptible=False)
+
+        leader = self._gceDriver.create_node(
+            name,
+            leaderNodeType,
+            imageType,
+            location=self._zone,
+            ex_service_accounts=sa_scopes,
+            ex_metadata=metadata,
+            ex_subnetwork=self._vpcSubnet,
+            ex_disks_gce_struct = [disk],
+            description=self._tags,
+            ex_preemptible=False
+        )
 
         self._instanceGroup.add_instances([leader])
         self._leaderPrivateIP = leader.private_ips[0] # needed if adding workers
@@ -167,8 +176,11 @@ class GCEProvisioner(AbstractProvisioner):
         leaderNode.injectFile(self._credentialsPath, GoogleJobStore.nodeServiceAccountJson, 'toil_leader')
         if self._botoPath:
             leaderNode.injectFile(self._botoPath, self.NODE_BOTO_PATH, 'toil_leader')
+        # Download credentials
+        self._setLeaderWorkerAuthentication(leaderNode)
+        
         logger.debug('Launched leader')
-
+        
     def getNodeShape(self, nodeType, preemptable=False):
         # TODO: read this value only once
         sizes = self._gceDriver.list_sizes(location=self._zone)
@@ -240,7 +252,7 @@ class GCEProvisioner(AbstractProvisioner):
             logger.debug('Launching %s preemptable nodes', numNodes)
 
         #kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
-        userData =  self._getCloudConfigUserData('worker', self._masterPublicKey, keyPath, preemptable)
+        userData =  self._getCloudConfigUserData('worker', keyPath, preemptable)
         metadata = {'items': [{'key': 'user-data', 'value': userData}]}
         imageType = 'flatcar-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]

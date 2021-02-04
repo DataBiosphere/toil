@@ -1,4 +1,4 @@
-# Copyright (C) 2015 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,18 +15,19 @@ import datetime
 import logging
 import os
 from collections import namedtuple
-from difflib import get_close_matches
 from operator import attrgetter
-from statistics import stdev, mean
-from urllib.request import urlopen
+from statistics import mean, stdev
 from urllib.error import URLError
+from urllib.request import urlopen
+
+from toil.lib.ec2 import zone_to_region
 
 logger = logging.getLogger(__name__)
 
 ZoneTuple = namedtuple('ZoneTuple', ['name', 'price_deviation'])
 
 
-def runningOnEC2():
+def running_on_ec2():
     def file_begins_with(path, prefix):
         with open(path) as f:
             return f.read(len(prefix)) == prefix
@@ -42,45 +43,35 @@ def runningOnEC2():
     except URLError:
         return False
 
-
-def zoneToRegion(zone):
-    """Get a region (e.g. us-west-2) from a zone (e.g. us-west-1c)."""
-    from toil.lib.context import Context
-    return Context.availability_zone_re.match(zone).group(1)
+def get_current_aws_region():
+    aws_zone = get_current_aws_zone()
+    return zone_to_region(aws_zone) if aws_zone else None
 
 
-def getSpotZone(spotBid, nodeType, ctx):
-    return _getCurrentAWSZone(spotBid, nodeType, ctx)
-
-
-def getCurrentAWSZone():
-    return _getCurrentAWSZone()
-
-
-def _getCurrentAWSZone(spotBid=None, nodeType=None, ctx=None):
-    zone = None
-    try:
-        import boto
-        from boto.utils import get_instance_metadata
-    except ImportError:
-        pass
-    else:
-        zone = os.environ.get('TOIL_AWS_ZONE', None)
-        if not zone and runningOnEC2():
-            try:
-                zone = get_instance_metadata()['placement']['availability-zone']
-            except KeyError:
-                pass
-        if not zone and spotBid:
-            # if spot bid is present, all the other parameters must be as well
-            assert bool(spotBid) == bool(nodeType) == bool(ctx)
-            # if the zone is unset and we are using the spot market, optimize our
-            # choice based on the spot history
-            return optimize_spot_bid(ctx=ctx, instance_type=nodeType, spot_bid=float(spotBid))
-        if not zone:
+def get_current_aws_zone(spotBid=None, nodeType=None, ctx=None):
+    zone = os.environ.get('TOIL_AWS_ZONE', None)
+    if not zone and running_on_ec2():
+        try:
+            import boto
+            from boto.utils import get_instance_metadata
+            zone = get_instance_metadata()['placement']['availability-zone']
+        except (KeyError, ImportError):
+            pass
+    if not zone and spotBid:
+        # if spot bid is present, all the other parameters must be as well
+        assert bool(spotBid) == bool(nodeType) == bool(ctx)
+        # if the zone is unset and we are using the spot market, optimize our
+        # choice based on the spot history
+        return optimize_spot_bid(ctx=ctx, instance_type=nodeType, spot_bid=float(spotBid))
+    if not zone:
+        try:
+            import boto
             zone = boto.config.get('Boto', 'ec2_region_name')
             if zone is not None:
                 zone += 'a'  # derive an availability zone in the region
+        except ImportError:
+            pass
+
     return zone
 
 
@@ -201,55 +192,3 @@ def _get_spot_history(ctx, instance_type):
                                                product_description="Linux/UNIX")
     spot_data.sort(key=attrgetter("timestamp"), reverse=True)
     return spot_data
-
-
-def checkValidNodeTypes(provisioner, nodeTypes):
-    """
-    Raises if an invalid nodeType is specified for aws or gce.
-
-    :param str provisioner: 'aws' or 'gce' to specify which cloud provisioner used.
-    :param nodeTypes: A list of node types.  Example: ['t2.micro', 't2.medium']
-    :return: Nothing.  Raises if invalid nodeType.
-    """
-    # TODO: Move out of "aws.__init__.py"  >.>
-    if not nodeTypes:
-        return
-    if not isinstance(nodeTypes, list):
-        nodeTypes = [nodeTypes]
-    if not isinstance(nodeTypes[0], str):
-        return
-    # check if a valid node type for aws
-    from toil.lib.generatedEC2Lists import E2Instances, regionDict
-    if provisioner == 'aws':
-        from toil.provisioners.aws import getCurrentAWSZone
-        currentZone = getCurrentAWSZone()
-        if not currentZone:
-            currentZone = 'us-west-2'
-        else:
-            currentZone = currentZone[:-1] # adds something like 'a' or 'b' to the end
-        # check if instance type exists in this region
-        for nodeType in nodeTypes:
-            if nodeType and ':' in nodeType:
-                nodeType = nodeType.split(':')[0]
-            if nodeType not in regionDict[currentZone]:
-                # They probably misspelled it and can't tell.
-                close = get_close_matches(nodeType, regionDict[currentZone], 1)
-                if len(close) > 0:
-                    helpText = ' Did you mean ' + close[0] + '?'
-                else:
-                    helpText = ''
-                raise RuntimeError('Invalid nodeType (%s) specified for AWS in region: %s.%s'
-                                   '' % (nodeType, currentZone, helpText))
-    elif provisioner == 'gce':
-        for nodeType in nodeTypes:
-            if nodeType and ':' in nodeType:
-                nodeType = nodeType.split(':')[0]
-            try:
-                E2Instances[nodeType]
-                raise RuntimeError("It looks like you've specified an AWS nodeType with the "
-                                   "{} provisioner.  Please specify an {} nodeType."
-                                   "".format(provisioner, provisioner))
-            except KeyError:
-                pass
-    else:
-        raise RuntimeError("Invalid provisioner: {}".format(provisioner))

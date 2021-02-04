@@ -1,6 +1,6 @@
 """Implemented support for Common Workflow Language (CWL) for Toil."""
 # Copyright (C) 2015 Curoverse, Inc
-# Copyright (C) 2016-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 # Copyright (C) 2019-2020 Seven Bridges
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,6 +27,7 @@ import os
 import stat
 import sys
 import tempfile
+import textwrap
 import urllib
 import uuid
 from typing import (
@@ -37,6 +38,7 @@ from typing import (
     Mapping,
     MutableMapping,
     MutableSequence,
+    Optional,
     Text,
     TextIO,
     Tuple,
@@ -55,6 +57,7 @@ import cwltool.main
 import cwltool.provenance
 import cwltool.resolver
 import cwltool.stdfsaccess
+import schema_salad.ref_resolver
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mutation import MutationManager
@@ -72,7 +75,6 @@ from cwltool.software_requirements import (
     get_container_from_software_requirements,
 )
 from cwltool.utils import (
-    CWLOutputAtomType,
     CWLObjectType,
     adjustDirObjs,
     adjustFileObjs,
@@ -86,7 +88,6 @@ from ruamel.yaml.comments import CommentedMap
 from schema_salad import validate
 from schema_salad.schema import Names
 from schema_salad.sourceline import SourceLine
-import schema_salad.ref_resolver
 
 from toil.common import Config, Toil, addOptions
 from toil.fileStores import FileID
@@ -564,8 +565,12 @@ class ToilPathMapper(PathMapper):
         staged: bool = False,
     ) -> None:
         """Iterate over a CWL object, resolving File and Directory path references."""
+        stagedir = cast(Optional[str], obj.get("dirname")) or stagedir
         tgt = convert_pathsep_to_unix(
-            os.path.join(stagedir, cast(str, obj["basename"]))
+            os.path.join(
+                stagedir,
+                cast(str, obj["basename"]),
+            )
         )
         if obj["location"] in self._pathmap:
             return
@@ -579,7 +584,7 @@ class ToilPathMapper(PathMapper):
                 resolved, tgt, "WritableDirectory" if copy else "Directory", staged
             )
 
-            if location.startswith("file://") and not self.stage_listing:
+            if location.startswith("file://"):
                 staged = False
 
             self.visitlisting(
@@ -598,7 +603,6 @@ class ToilPathMapper(PathMapper):
                     cast(str, obj["contents"]),
                     tgt,
                     "CreateWritableFile" if copy else "CreateFile",
-                    # "CreateFile",  # TODO: Allow "WritableFile" here; see base class
                     staged,
                 )
             else:
@@ -1540,7 +1544,7 @@ def remove_pickle_problems(obj: ProcessType) -> ProcessType:
 
 class CWLWorkflow(Job):
     """
-    Toil Job to convert a CWL workflow grah into a Toil job graph.
+    Toil Job to convert a CWL workflow graph into a Toil job graph.
 
     The Toil job graph will include the appropriate dependencies.
     """
@@ -1583,7 +1587,7 @@ class CWLWorkflow(Job):
         all_outputs_fulfilled = False
         while not all_outputs_fulfilled:
             # Iteratively go over the workflow steps, scheduling jobs as their
-            # dependencies can be fufilled by upstream workflow inputs or
+            # dependencies can be fulfilled by upstream workflow inputs or
             # step outputs. Loop exits when the workflow outputs
             # are satisfied.
 
@@ -1593,10 +1597,9 @@ class CWLWorkflow(Job):
                 if step.tool["id"] not in jobs:
                     stepinputs_fufilled = True
                     for inp in step.tool["inputs"]:
-                        if "source" in inp:
-                            for s in aslist(inp["source"]):
-                                if s not in promises:
-                                    stepinputs_fufilled = False
+                        for s in aslist(inp.get("source", [])):
+                            if s not in promises:
+                                stepinputs_fufilled = False
                     if stepinputs_fufilled:
                         jobobj = {}
 
@@ -1650,9 +1653,12 @@ class CWLWorkflow(Job):
                         connected = False
                         for inp in step.tool["inputs"]:
                             for s in aslist(inp.get("source", [])):
-                                if isinstance(
-                                    promises[s], (CWLJobWrapper, CWLGather)
-                                ) and not promises[s].hasFollowOn(wfjob):
+                                if (
+                                    isinstance(promises[s], (CWLJobWrapper, CWLGather))
+                                    and not promises[s].hasFollowOn(wfjob)
+                                    # promises[s] job has already added wfjob as a followOn prior
+                                    and not wfjob.hasPredecessor(promises[s])
+                                ):
                                     promises[s].addFollowOn(wfjob)
                                     connected = True
                                 if not isinstance(
@@ -1661,9 +1667,8 @@ class CWLWorkflow(Job):
                                     promises[s].addChild(wfjob)
                                     connected = True
                         if not connected:
-                            # the workflow step has default inputs only & isn't
-                            # connected to other jobs, so add it as child of
-                            # this workflow.
+                            # Workflow step is default inputs only & isn't connected
+                            # to other jobs, so add it as child of this workflow.
                             self.addChild(wfjob)
 
                         for out in step.tool["outputs"]:
@@ -1800,10 +1805,32 @@ def determine_load_listing(tool: ToilCommandLineTool):
     return load_listing
 
 
+usage_message = "\n\n" + textwrap.dedent(
+    f"""
+            * All positional arguments [cwl, yml_or_json] must always be specified last for toil-cwl-runner.
+              Note: If you're trying to specify a jobstore, please use --jobStore.
+    
+                  Usage: toil-cwl-runner [options] example.cwl example-job.yaml
+                  Example: toil-cwl-runner \\
+                           --jobStore aws:us-west-2:jobstore \\
+                           --realTimeLogging \\
+                           --logInfo \\
+                           example.cwl \\
+                           example-job.yaml
+            """[
+        1:
+    ]
+)
+
+
 def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     """Run the main loop for toil-cwl-runner."""
     # Remove cwltool logger's stream handler so it uses Toil's
     cwllogger.removeHandler(defaultStreamHandler)
+
+    if args is None:
+        args = sys.argv[1:]
+
     config = Config()
     config.disableChaining = True
     config.cwl = True
@@ -1814,7 +1841,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     # Will override the "jobStore" positional argument, enables
     # user to select jobStore or get a default from logic one below.
-    parser.add_argument("--jobStore", type=str)
+    parser.add_argument("--jobStore", "--jobstore", dest="jobStore", type=str)
     parser.add_argument("--not-strict", action="store_true")
     parser.add_argument(
         "--enable-dev",
@@ -1932,8 +1959,6 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         help="Specify a default docker container that will be "
         "used if the workflow fails to specify one.",
     )
-    if args is None:
-        args = sys.argv[1:]
 
     provgroup = parser.add_argument_group(
         "Options for recording provenance " "information of the execution"
@@ -2008,7 +2033,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     workdir = tempfile.mkdtemp()
     os.rmdir(workdir)
 
-    # we use workdir as default default jobStore:
+    # we use the workdir as the default jobStore:
     options = parser.parse_args([workdir] + args)
 
     # if tmpdir_prefix is not the default value, set workDir if unset, and move
@@ -2041,7 +2066,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     if options.logLevel:
         # Make sure cwltool uses Toil's log level.
         # Applies only on the leader.
-        cwllogger.setLevel(options.logLevel)
+        cwllogger.setLevel(options.logLevel.upper())
 
     outdir = os.path.abspath(options.outdir)
     tmp_outdir_prefix = os.path.abspath(options.tmp_outdir_prefix)
@@ -2092,11 +2117,21 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             loading_context.strict = not options.not_strict
             options.workflow = options.cwltool
             options.job_order = options.cwljob
-            uri, tool_file_uri = cwltool.load_tool.resolve_tool_uri(
-                options.cwltool,
-                loading_context.resolver,
-                loading_context.fetcher_constructor,
-            )
+
+            try:
+                uri, tool_file_uri = cwltool.load_tool.resolve_tool_uri(
+                    options.cwltool,
+                    loading_context.resolver,
+                    loading_context.fetcher_constructor,
+                )
+            except schema_salad.exceptions.ValidationException:
+                print(
+                    "\nYou may be getting this error because your arguments are incorrect or out of order."
+                    + usage_message,
+                    file=sys.stderr,
+                )
+                raise
+
             options.tool_help = None
             options.debug = options.logLevel == "DEBUG"
             job_order_object, options.basedir, jobloader = cwltool.main.load_job_order(
@@ -2135,14 +2170,24 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 logging.error(err)
                 return 33
             runtime_context.secret_store = SecretStore()
-            initialized_job_order = cwltool.main.init_job_order(
-                job_order_object,
-                options,
-                tool,
-                jobloader,
-                sys.stdout,
-                secret_store=runtime_context.secret_store,
-            )
+
+            try:
+                initialized_job_order = cwltool.main.init_job_order(
+                    job_order_object,
+                    options,
+                    tool,
+                    jobloader,
+                    sys.stdout,
+                    secret_store=runtime_context.secret_store,
+                )
+            except SystemExit as e:
+                if e.code == 2:  # raised by argparse's parse_args() function
+                    print(
+                        "\nIf both a CWL file and an input object (YAML/JSON) file were "
+                        "provided, this may be the argument order." + usage_message,
+                        file=sys.stderr,
+                    )
+                raise
 
             fs_access = cwltool.stdfsaccess.StdFsAccess(options.basedir)
             fill_in_defaults(tool.tool["inputs"], initialized_job_order, fs_access)

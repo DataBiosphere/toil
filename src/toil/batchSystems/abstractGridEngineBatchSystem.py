@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,8 +34,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
 
     class Worker(Thread, metaclass=ABCMeta):
 
-        def __init__(self, newJobsQueue, updatedJobsQueue, killQueue,
-                     killedJobsQueue, boss):
+        def __init__(self, newJobsQueue, updatedJobsQueue, killQueue, killedJobsQueue, boss):
             """
             Abstract worker interface class. All instances are created with five
             initial arguments (below). Note the Queue instances passed are empty.

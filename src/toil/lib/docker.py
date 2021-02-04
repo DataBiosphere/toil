@@ -1,5 +1,16 @@
-
-
+# Copyright (C) 2015-2021 Regents of the University of California
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 import base64
 import logging
 import os
@@ -10,7 +21,9 @@ from shlex import quote
 import requests
 
 import docker
-from docker.errors import (ContainerError, ImageNotFound, NotFound,
+from docker.errors import (ContainerError,
+                           ImageNotFound,
+                           NotFound,
                            create_api_error_from_http_exception)
 from docker.utils.socket import consume_socket_output, demux_adaptor
 

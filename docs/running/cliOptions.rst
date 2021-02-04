@@ -161,10 +161,6 @@ the logging module:
                         that type will be preferred when creating new nodes
                         once the maximum number of preemptable-nodes
                         have been reached.
-  --nodeOptions NODEOPTIONS
-                        Options for provisioning the nodes. The syntax depends
-                        on the provisioner used. Neither the CGCloud nor the
-                        AWS provisioner support any node options.
   --minNodes MINNODES   Minimum number of nodes of each type in the cluster,
                         if using auto-scaling. This should be provided as a
                         comma-separated list of the same length as the list of
@@ -212,6 +208,9 @@ the logging module:
                         explicit value for this requirement. Standard suffixes
                         like K, Ki, M, Mi, G or Gi are supported. Default is
                         2.0G
+  --defaultPreemptable BOOL
+                        Set if jobs that do not specifically prohibit it should
+                        able to run on preemptable (spot) nodes.
   --maxCores INT        The maximum number of CPU cores to request from the
                         batch system at any one time. Standard suffixes like
                         K, Ki, M, Mi, G or Gi are supported.

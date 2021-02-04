@@ -1,4 +1,4 @@
-# Copyright (C) 2015 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,8 +19,12 @@ from uuid import uuid4
 
 import pytest
 
-from toil.test import (ToilTest, integrative, needs_appliance, needs_google,
-                       slow, timeLimit)
+from toil.test import (ToilTest,
+                       integrative,
+                       needs_fetchable_appliance,
+                       needs_google,
+                       slow,
+                       timeLimit)
 from toil.version import exactPython
 
 log = logging.getLogger(__name__)
@@ -28,7 +32,7 @@ log = logging.getLogger(__name__)
 
 @needs_google
 @integrative
-@needs_appliance
+@needs_fetchable_appliance
 @slow
 class AbstractGCEAutoscaleTest(ToilTest):
     projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
@@ -340,4 +344,3 @@ class GCERestartTest(AbstractGCEAutoscaleTest):
     @integrative
     def testAutoScaledCluster(self):
         self._test()
-

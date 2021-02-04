@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,21 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from docker.errors import ImageNotFound
 from toil import checkDockerImageExists, parseDockerAppliance
-from toil.test import ToilTest, needs_appliance
+from toil.test import ToilTest, needs_docker
 
 
-# requires internet
-@needs_appliance
-class dockerCheckTests(ToilTest):
-    """
-    Tests initial checking of whether a docker image exists in the specified repository or not.
-    """
-    def setUp(self):
-        pass
-
+@needs_docker
+class DockerCheckTest(ToilTest):
+    """Tests checking whether a docker image exists or not."""
     def testOfficialUbuntuRepo(self):
         """Image exists.  This should pass."""
         ubuntu_repo = 'ubuntu:latest'

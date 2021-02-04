@@ -22,18 +22,24 @@ def main():
 
     try:
         module = modules[cmd]
-        del sys.argv[1]
-        module.main()
     except KeyError:
         sys.stderr.write(f'Unknown option "{cmd}".  Pass --help to display usage information.\n')
         sys.exit(1)
-
+        
+    del sys.argv[1]
+    module.main()
 
 def loadModules():
     # noinspection PyUnresolvedReferences
-    from toil.utils import (toilClean, toilDebugFile, toilDebugJob,  # noqa
-                            toilDestroyCluster, toilKill, toilLaunchCluster,
-                            toilRsyncCluster, toilSshCluster, toilStats,
+    from toil.utils import (toilClean,
+                            toilDebugFile,
+                            toilDebugJob,
+                            toilDestroyCluster,
+                            toilKill,
+                            toilLaunchCluster,
+                            toilRsyncCluster,
+                            toilSshCluster,
+                            toilStats,
                             toilStatus)
     return {"-".join([i.lower() for i in re.findall('[A-Z][^A-Z]*', name)]): module for name, module in locals().items()}
 

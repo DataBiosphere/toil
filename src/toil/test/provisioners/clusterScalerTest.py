@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,8 +32,10 @@ from toil.common import Config, defaultTargetTime
 from toil.job import JobDescription
 from toil.lib.humanize import human2bytes as h2b
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
-from toil.provisioners.clusterScaler import (BinPackedFit, ClusterScaler,
-                                             NodeReservation, ScalerThread)
+from toil.provisioners.clusterScaler import (BinPackedFit,
+                                             ClusterScaler,
+                                             NodeReservation,
+                                             ScalerThread)
 from toil.provisioners.node import Node
 from toil.test import ToilTest, slow, travis_test
 
@@ -660,7 +662,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     Mimics a job batcher, provisioner and scalable batch system
     """
     def __init__(self, config, secondsPerJob):
-        super(MockBatchSystemAndProvisioner, self).__init__('clusterName')
+        super(MockBatchSystemAndProvisioner, self).__init__(clusterName='clusterName', clusterType='mesos')
         # To mimic parallel preemptable and non-preemptable queues
         # for jobs we create two parallel instances of the following class
         self.config = config
@@ -683,7 +685,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
                            self.nodeShapes}  # Maximum number of workers
         self.running = False
         self.leaderThread = Thread(target=self._leaderFn)
-
+    
     def start(self):
         self.running = True
         self.leaderThread.start()
@@ -707,6 +709,15 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         pass
 
     def unignoreNode(self, nodeAddress):
+        pass
+
+    def supportedClusterTypes(self):
+        return {'mesos'}
+        
+    def createClusterSettings(self):
+        pass
+    
+    def readClusterSettings(self):
         pass
 
     @contextmanager

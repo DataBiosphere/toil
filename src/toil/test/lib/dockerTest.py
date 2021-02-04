@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,8 +22,12 @@ import docker
 from docker.errors import ContainerError
 from toil.job import Job
 from toil.leader import FailedJobsException
-from toil.lib.docker import (FORGO, RM, STOP, apiDockerCall,
-                             containerIsRunning, dockerKill)
+from toil.lib.docker import (FORGO,
+                             RM,
+                             STOP,
+                             apiDockerCall,
+                             containerIsRunning,
+                             dockerKill)
 from toil.test import ToilTest, needs_docker, slow
 
 logger = logging.getLogger(__name__)

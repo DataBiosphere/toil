@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from functools import wraps
-from io import StringIO
+from io import BytesIO
 
 from google.api_core.exceptions import (GoogleAPICallError,
                                         InternalServerError,
@@ -136,7 +136,7 @@ class GoogleJobStore(AbstractJobStore):
 
         # set up sever side encryption after we set up config in super
         if self.config.sseKey is not None:
-            with open(self.config.sseKey) as f:
+            with open(self.config.sseKey, 'rb') as f:
                 self.sseKey = compat_bytes(f.read())
                 assert len(self.sseKey) == 32
 
@@ -179,7 +179,7 @@ class GoogleJobStore(AbstractJobStore):
 
     def create(self, jobDescription):
         # TODO: we don't implement batching, but we probably should.
-        self._writeString(jobDescription.jobStoreID, pickle.dumps(jobDescription, protocol=pickle.HIGHEST_PROTOCOL))
+        self._writeBytes(jobDescription.jobStoreID, pickle.dumps(jobDescription, protocol=pickle.HIGHEST_PROTOCOL))
         return jobDescription
 
     @googleRetry
@@ -210,7 +210,7 @@ class GoogleJobStore(AbstractJobStore):
         return job
 
     def update(self, job):
-        self._writeString(job.jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL), update=True)
+        self._writeBytes(job.jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL), update=True)
 
     @googleRetry
     def delete(self, jobStoreID):
@@ -244,7 +244,7 @@ class GoogleJobStore(AbstractJobStore):
 
     def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
         fileID = self._newID(isFile=True, jobStoreID=jobStoreID if cleanup else None)
-        with open(localFilePath) as f:
+        with open(localFilePath, 'rb') as f:
             self._writeFile(fileID, f)
         return fileID
 
@@ -256,7 +256,7 @@ class GoogleJobStore(AbstractJobStore):
 
     def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
         fileID = self._newID(isFile=True, jobStoreID=jobStoreID if cleanup else None)
-        self._writeFile(fileID, StringIO(""))
+        self._writeFile(fileID, BytesIO(b""))
         return fileID
 
     @googleRetry
@@ -266,7 +266,7 @@ class GoogleJobStore(AbstractJobStore):
         if not self.fileExists(jobStoreFileID):
             raise NoSuchFileException(jobStoreFileID)
         with AtomicFileCreate(localFilePath) as tmpPath:
-            with open(tmpPath, 'w') as writeable:
+            with open(tmpPath, 'wb') as writeable:
                 blob = self.bucket.get_blob(compat_bytes(jobStoreFileID), encryption_key=self.sseKey)
                 blob.download_to_file(writeable)
 
@@ -289,7 +289,7 @@ class GoogleJobStore(AbstractJobStore):
         return self.bucket.get_blob(compat_bytes(jobStoreFileID), encryption_key=self.sseKey).size
 
     def updateFile(self, jobStoreFileID, localFilePath):
-        with open(localFilePath) as f:
+        with open(localFilePath, 'rb') as f:
             self._writeFile(jobStoreFileID, f, update=True)
 
     @contextmanager
@@ -349,18 +349,18 @@ class GoogleJobStore(AbstractJobStore):
     def _readFromUrl(cls, url, writable):
         blob = cls._getBlobFromURL(url, exists=True)
         blob.download_to_file(writable)
-        return blob.size
+        return blob.size, False
 
     @classmethod
     def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() == 'gs'
 
     @classmethod
-    def _writeToUrl(cls, readable, url):
+    def _writeToUrl(cls, readable: bytes, url: str, executable: bool = False) -> None:
         blob = cls._getBlobFromURL(url)
         blob.upload_from_file(readable)
 
-    def writeStatsAndLogging(self, statsAndLoggingString):
+    def writeStatsAndLogging(self, statsAndLoggingString: bytes) -> None:
         statsID = self.statsBaseID + str(uuid.uuid4())
         log.debug("Writing stats file: %s", statsID)
         with self._uploadStream(statsID, encrypt=False, update=False) as f:
@@ -442,7 +442,7 @@ class GoogleJobStore(AbstractJobStore):
         return job.download_as_string()
 
     @googleRetry
-    def _writeFile(self, jobStoreID, fileObj, update=False, encrypt=True):
+    def _writeFile(self, jobStoreID: str, fileObj: bytes, update=False, encrypt=True) -> None:
         blob = self.bucket.blob(compat_bytes(jobStoreID), encryption_key=self.sseKey if encrypt else None)
         if not update:
             # TODO: should probably raise a special exception and be added to all jobStores
@@ -452,8 +452,8 @@ class GoogleJobStore(AbstractJobStore):
                 raise NoSuchFileException(jobStoreID)
         blob.upload_from_file(fileObj)
 
-    def _writeString(self, jobStoreID, stringToUpload, **kwarg):
-        self._writeFile(jobStoreID, StringIO(stringToUpload), **kwarg)
+    def _writeBytes(self, jobStoreID: str, stringToUpload: bytes, **kwarg) -> None:
+        self._writeFile(jobStoreID, BytesIO(stringToUpload), **kwarg)
 
     @contextmanager
     @googleRetry

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -113,7 +113,7 @@ clean_sdist:
 # We always claim to be Travis, so that local test runs will not skip Travis tests.
 test: check_venv check_build_reqs
 	TRAVIS=true \
-	    python -m pytest --cov=toil --duration=0 -s -r s $(tests)
+	    python -m pytest --cov=toil --durations=0 --log-level DEBUG --log-cli-level INFO -r s $(tests)
 
 
 # This target will skip building docker and all docker based tests
@@ -202,9 +202,7 @@ check_build_reqs:
 		|| ( printf "$(red)Build requirements are missing. Run 'make prepare' to install them.$(normal)\n" ; false )
 
 prepare: check_venv
-	pip install mock==1.0.1 pytest==4.3.1 pytest-cov==2.6.1 stubserver==1.0.1 \
-		pytest-timeout==1.3.3 setuptools==45.3.0 'sphinx>=2.4.4,<3' \
-		cwltest mypy flake8 flake8-bugbear black isort pydocstyle
+	pip install -r requirements-dev.txt
 
 check_venv:
 	@python -c 'import sys, os; sys.exit( int( 0 if "VIRTUAL_ENV" in os.environ else 1 ) )' \
@@ -231,10 +229,12 @@ PYSOURCES=$(shell find src -name '*.py') setup.py version_template.py
 # Linting and code style related targets
 ## sorting imports using isort: https://github.com/timothycrosley/isort
 sort_imports: $(PYSOURCES)
-	isort $^
+	isort -m VERTICAL $^
+	make format
 
 remove_unused_imports: $(PYSOURCES)
 	autoflake --in-place --remove-all-unused-imports $^
+	make format
 
 format: $(wildcard src/toil/cwl/*.py)
 	black $^

@@ -8,28 +8,27 @@ from typing import List, Optional
 
 from toil.test import ToilTest
 from toil.version import exactPython
-from toil.wdl.wdl_functions import (
-    ceil,
-    floor,
-    length,
-    read_boolean,
-    read_float,
-    read_int,
-    read_json,
-    read_lines,
-    read_map,
-    read_string,
-    read_tsv,
-    sub,
-    transpose,
-    write_json,
-    write_lines,
-    write_map,
-    write_tsv,
-    wdl_zip,
-    cross,
-    WDLPair,
-    WDLRuntimeError)
+from toil.wdl.wdl_functions import (WDLPair,
+                                    WDLRuntimeError,
+                                    ceil,
+                                    cross,
+                                    floor,
+                                    length,
+                                    read_boolean,
+                                    read_float,
+                                    read_int,
+                                    read_json,
+                                    read_lines,
+                                    read_map,
+                                    read_string,
+                                    read_tsv,
+                                    sub,
+                                    transpose,
+                                    wdl_zip,
+                                    write_json,
+                                    write_lines,
+                                    write_map,
+                                    write_tsv)
 
 
 class WdlStandardLibraryFunctionsTest(ToilTest):
@@ -355,6 +354,15 @@ class WdlLanguageSpecWorkflowsTest(WdlWorkflowsTest):
         # 3. src/toil/test/wdl/testfiles/test_int.txt           -> '11'
         expected_result = '[["A Whale of a Tale."],["true"],["11"]]'
         self.check_function('type_pair', cases=['with_files'], expected_result=expected_result)
+
+    def test_v1_declaration(self):
+        """
+        Basic declaration example modified from the WDL 1.0 spec:
+
+        https://github.com/openwdl/wdl/blob/main/versions/1.0/SPEC.md#declarations
+        """
+        expected_result = 'Hello, x!; Hello, y!'
+        self.check_function('v1_spec', cases=['declaration'], expected_result=expected_result)
 
 
 class WdlStandardLibraryWorkflowsTest(WdlWorkflowsTest):

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import logging
 import math
 import os
@@ -25,8 +24,9 @@ from threading import Condition, Event, Lock, Thread
 
 import toil
 from toil import worker as toil_worker
-from toil.batchSystems.abstractBatchSystem import (
-    EXIT_STATUS_UNAVAILABLE_VALUE, BatchSystemSupport, UpdatedBatchJobInfo)
+from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
+                                                   BatchSystemSupport,
+                                                   UpdatedBatchJobInfo)
 from toil.common import Toil
 from toil.lib.threading import cpu_count
 
@@ -39,7 +39,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     give it as they come in, but in parallel.
 
     Uses a single "daddy" thread to manage a fleet of child processes.
-    
+
     Communication with the daddy thread happens via two queues: one queue of
     jobs waiting to be run (the input queue), and one queue of jobs that are
     finished/stopped and need to be returned by getUpdatedBatchJob (the output
@@ -70,7 +70,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     physicalMemory = toil.physicalMemory()
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        
+        self.config = config
         # Limit to the smaller of the user-imposed limit and what we actually
         # have on this machine for each resource. 
         #
@@ -86,7 +86,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 # We have an actually specified limit and not the default
                 log.warning('Not enough memory! User limited to %i bytes but we only have %i bytes.', maxMemory, self.physicalMemory)
             maxMemory = self.physicalMemory
-        self.physicalDisk = toil.physicalDisk(config)
+
+        workdir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)  # config.workDir may be None; this sets a real directory
+        self.physicalDisk = toil.physicalDisk(workdir)
         if maxDisk > self.physicalDisk:
             if maxDisk != sys.maxsize:
                 # We have an actually specified limit and not the default
@@ -493,12 +495,10 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         
         # Don't do our own assertions about job size vs. our configured size.
         # The abstract batch system can handle it.
-        self.checkResourceRequest(jobDesc.memory, cores, jobDesc.disk, name=jobDesc.jobName,
-            detail='Scale is set to {}.'.format(self.scale))
-        
-        self.checkResourceRequest(jobDesc.memory, cores, jobDesc.disk)
-        log.debug("Issuing the command: %s with memory: %i, cores: %i, disk: %i" % (
-            jobDesc.command, jobDesc.memory, cores, jobDesc.disk))
+        self.checkResourceRequest(jobDesc.memory, cores, jobDesc.disk, job_name=jobDesc.jobName,
+                                  detail=f'Scale is set to {self.scale}.')
+        log.debug(f"Issuing the command: {jobDesc.command} with "
+                  f"memory: {jobDesc.memory}, cores: {cores}, disk: {jobDesc.disk}")
         with self.jobIndexLock:
             jobID = self.jobIndex
             self.jobIndex += 1
@@ -526,7 +526,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             if jobID in self.runningJobs:
                 info = self.runningJobs[jobID]
                 info.killIntended = True
-                if info.popen != None:
+                if info.popen is not None:
                     log.debug('Send kill to PID %s', info.popen.pid)
                     info.popen.kill()
                     log.debug('Sent kill to PID %s', info.popen.pid)
@@ -582,7 +582,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         setOption("scale", default=1)
 
 
-class Info(object):
+class Info:
     """
     Record for a running job.
 
@@ -598,7 +598,7 @@ class Info(object):
         self.killIntended = killIntended
 
 
-class ResourcePool(object):
+class ResourcePool:
     """
     Represents an integral amount of a resource (such as memory bytes).
 

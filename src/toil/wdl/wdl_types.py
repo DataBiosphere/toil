@@ -47,6 +47,9 @@ class WDLType:
             else:
                 raise WDLRuntimeError(f"Required input for '{self.name}' type not specified.")
 
+        if isinstance(value, Promise):
+            return value
+
         return self._create(value)
 
     def _create(self, value: Any) -> Any:

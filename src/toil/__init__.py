@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,8 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 import errno
 import logging
 import os
@@ -144,7 +142,7 @@ def resolveEntryPoint(entryPoint):
 
 
 @memoize
-def physicalMemory():
+def physicalMemory() -> int:
     """
     >>> n = physicalMemory()
     >>> n > 0
@@ -158,11 +156,8 @@ def physicalMemory():
         return int(subprocess.check_output(['sysctl', '-n', 'hw.memsize']).decode('utf-8').strip())
 
 
-def physicalDisk(config, toilWorkflowDir=None):
-    if toilWorkflowDir is None:
-        from toil.common import Toil
-        toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
-    diskStats = os.statvfs(toilWorkflowDir)
+def physicalDisk(directory: str) -> int:
+    diskStats = os.statvfs(directory)
     return diskStats.f_frsize * diskStats.f_bavail
 
 
@@ -433,7 +428,8 @@ def logProcessContext(config):
 
 try:
     from boto import provider
-    from botocore.credentials import (JSONFileCache, RefreshableCredentials,
+    from botocore.credentials import (JSONFileCache,
+                                      RefreshableCredentials,
                                       create_credential_resolver)
     from botocore.session import Session
 
@@ -499,7 +495,8 @@ try:
                 # We are on AWS and we don't have credentials passed along and we aren't anonymous.
                 # We will backend into a boto3 resolver for getting credentials.
                 # Make sure to enable boto3's own caching, so we can share that
-                # cash with pure boto3 code elsewhere in Toil.
+                # cache with pure boto3 code elsewhere in Toil.
+                # Keep synced with toil.lib.ec2.establish_boto3_session
                 self._boto3_resolver = create_credential_resolver(Session(profile=profile_name), cache=JSONFileCache())
             else:
                 # We will use the normal flow
@@ -686,4 +683,3 @@ try:
 
 except ImportError:
     pass
-
