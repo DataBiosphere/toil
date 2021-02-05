@@ -532,7 +532,7 @@ class AWSJobStore(AbstractJobStore):
         return info.fileID
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, mode='b', encoding=None, errors=None, 
+    def writeFileStream(self, jobStoreID=None, mode='b', encoding=None, errors=None,
                             cleanup=False, basename=None):
         info = self.FileInfo.create(jobStoreID if cleanup else None)
         with info.uploadStream(mode=mode, encoding=encoding, errors=errors) as writable:
