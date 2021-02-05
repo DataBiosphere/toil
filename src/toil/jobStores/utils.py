@@ -313,8 +313,8 @@ class ReadableTransformingPipe(ReadablePipe):
     
     """
     
-    def __init__(self, source):
-        super(ReadableTransformingPipe, self).__init__()
+    def __init__(self, source, mode='b', encoding=None, errors=None):
+        super(ReadableTransformingPipe, self).__init__(mode=mode, encoding=encoding, errors=errors)
         self.source = source
         
     @abstractmethod

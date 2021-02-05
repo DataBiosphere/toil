@@ -532,20 +532,21 @@ class AWSJobStore(AbstractJobStore):
         return info.fileID
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None):
+    def writeFileStream(self, jobStoreID=None, mode='b', encoding=None, errors=None, 
+                            cleanup=False, basename=None):
         info = self.FileInfo.create(jobStoreID if cleanup else None)
-        with info.uploadStream() as writable:
+        with info.uploadStream(mode=mode, encoding=encoding, errors=errors) as writable:
             yield writable, info.fileID
         info.save()
         logger.debug("Wrote %r.", info)
 
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName, isProtected=None):
+    def writeSharedFileStream(self, sharedFileName, isProtected=None, mode='b', encoding=None, errors=None):
         self._requireValidSharedFileName(sharedFileName)
         info = self.FileInfo.loadOrCreate(jobStoreFileID=self._sharedFileID(sharedFileName),
                                           ownerID=str(self.sharedFileOwnerID),
                                           encrypted=isProtected)
-        with info.uploadStream() as writable:
+        with info.uploadStream(mode=mode, encoding=encoding, errors=errors) as writable:
             yield writable
         info.save()
         logger.debug("Wrote %r for shared file %r.", info, sharedFileName)
@@ -557,9 +558,9 @@ class AWSJobStore(AbstractJobStore):
         logger.debug("Wrote %r from path %r.", info, localFilePath)
 
     @contextmanager
-    def updateFileStream(self, jobStoreFileID):
+    def updateFileStream(self, jobStoreFileID, mode='b', encoding=None, errors=None):
         info = self.FileInfo.loadOrFail(jobStoreFileID)
-        with info.uploadStream() as writable:
+        with info.uploadStream(mode=mode, encoding=encoding, errors=errors) as writable:
             yield writable
         info.save()
         logger.debug("Wrote %r from stream.", info)
@@ -579,19 +580,19 @@ class AWSJobStore(AbstractJobStore):
         info.download(localFilePath, not self.config.disableJobStoreChecksumVerification)
 
     @contextmanager
-    def readFileStream(self, jobStoreFileID):
+    def readFileStream(self, jobStoreFileID, mode='b', encoding=None, errors=None):
         info = self.FileInfo.loadOrFail(jobStoreFileID)
         logger.debug("Reading %r into stream.", info)
-        with info.downloadStream() as readable:
+        with info.downloadStream(mode=mode, encoding=encoding, errors=errors) as readable:
             yield readable
 
     @contextmanager
-    def readSharedFileStream(self, sharedFileName):
+    def readSharedFileStream(self, sharedFileName, mode='b', encoding=None, errors=None):
         self._requireValidSharedFileName(sharedFileName)
         jobStoreFileID = self._sharedFileID(sharedFileName)
         info = self.FileInfo.loadOrFail(jobStoreFileID, customName=sharedFileName)
         logger.debug("Reading %r for shared file %r into stream.", info, sharedFileName)
-        with info.downloadStream() as readable:
+        with info.downloadStream(mode=mode, encoding=encoding, errors=errors) as readable:
             yield readable
 
     def deleteFile(self, jobStoreFileID):
@@ -1164,9 +1165,9 @@ class AWSJobStore(AbstractJobStore):
                 return self._finish_checksum(hasher)
 
         @contextmanager
-        def uploadStream(self, multipart=True, allowInlining=True):
+        def uploadStream(self, mode='b', encoding=None, errors=None, multipart=True, allowInlining=True):
             """
-            Context manager that gives out a binary-mode upload stream to upload data.
+            Context manager that gives out a binary/text mode upload stream to upload data.
             """
 
             # Note that we have to handle already having a content or a version
@@ -1336,7 +1337,11 @@ class AWSJobStore(AbstractJobStore):
                     # Make sure we actually wrote something, even if an empty file
                     assert (bool(info.version) or info.content is not None)
 
-            pipe = MultiPartPipe() if multipart else SinglePartPipe()
+            if multipart:
+                pipe = MultiPartPipe(mode=mode, encoding=encoding, errors=errors)
+            else:
+                SinglePartPipe(mode=mode, encoding=encoding, errors=errors)
+
             with pipe as writable:
                 yield writable
 
@@ -1432,7 +1437,10 @@ class AWSJobStore(AbstractJobStore):
                 assert False
 
         @contextmanager
-        def downloadStream(self, verifyChecksum=True):
+        def downloadStream(self, mode='b', encoding=None, errors=None, verifyChecksum=True):
+            """
+            Context manager that gives out a binary/text mode download stream to download data.
+            """
             info = self
 
             class DownloadPipe(ReadablePipe):
@@ -1474,10 +1482,10 @@ class AWSJobStore(AbstractJobStore):
                     info._finish_checksum(hasher)
                     # Now stop so EOF happens in the output.
 
-            with DownloadPipe() as readable:
+            with DownloadPipe(mode=mode, encoding=encoding, errors=errors) as readable:
                 if verifyChecksum and self.checksum:
                     # Interpose a pipe to check the hash
-                    with HashingPipe(readable) as verified:
+                    with HashingPipe(readable, mode=mode, encoding=encoding, errors=errors) as verified:
                         yield verified
                 else:
                     # No true checksum available, so don't hash
