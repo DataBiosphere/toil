@@ -88,8 +88,30 @@ class WritablePipe(ABC):
             self.readFrom(readable)
             self.reader_done = True
 
-    def __init__(self):
+    def __init__(self, mode='b', encoding=None, errors=None):
+        """
+        :param str mode: an optional string that specifies the mode in which the file is opened.
+            It defaults to 'b' which means open for writing in binary mode.
+
+            Currently supported mode characters:
+
+                - 'b': open for writing in binary mode
+
+                - 't': open for writing in text mode
+
+            The default mode is 'b' (open for writing in binary mode, synonym of 'wb').
+
+        :param str encoding: the name of the encoding used to encode the file. Encodings are the same
+                as for encode() and the default is platform dependent: locale.getpreferredencoding(False)
+                is called to get the current locale encoding. This should only be used in text mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
+        """
         super(WritablePipe, self).__init__()
+        self.mode = mode
+        self.encoding = encoding
+        self.errors = errors
         self.readable_fh = None
         self.writable = None
         self.thread = None
@@ -97,7 +119,7 @@ class WritablePipe(ABC):
 
     def __enter__(self):
         self.readable_fh, writable_fh = os.pipe()
-        self.writable = os.fdopen(writable_fh, 'wb')
+        self.writable = os.fdopen(writable_fh, 'w' + self.mode, encoding=self.encoding, errors=self.errors)
         self.thread = ExceptionalThread(target=self._reader)
         self.thread.start()
         return self.writable
@@ -209,15 +231,37 @@ class ReadablePipe(ABC):
             if e.errno != errno.EPIPE:
                 raise
 
-    def __init__(self):
+    def __init__(self, mode, encoding, errors):
+        """
+        :param str mode: an optional string that specifies the mode in which the file is opened.
+            It defaults to 'b' which means open for writing in binary mode.
+
+            Currently supported mode characters:
+
+                - 'b': open for writing in binary mode
+
+                - 't': open for writing in text mode
+
+            The default mode is 'b' (open for writing in binary mode, synonym of 'wb').
+
+        :param str encoding: the name of the encoding used to encode the file. Encodings are the same
+                as for encode() and the default is platform dependent: locale.getpreferredencoding(False)
+                is called to get the current locale encoding. This should only be used in text mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
+        """
         super(ReadablePipe, self).__init__()
+        self.mode = mode
+        self.encoding = encoding
+        self.errors = errors
         self.writable_fh = None
         self.readable = None
         self.thread = None
 
     def __enter__(self):
         readable_fh, self.writable_fh = os.pipe()
-        self.readable = os.fdopen(readable_fh, 'rb')
+        self.readable = os.fdopen(readable_fh, 'r' + self.mode, encoding=self.encoding, errors=self.errors)
         self.thread = ExceptionalThread(target=self._writer)
         self.thread.start()
         return self.readable
