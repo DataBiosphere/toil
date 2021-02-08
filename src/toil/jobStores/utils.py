@@ -231,7 +231,7 @@ class ReadablePipe(ABC):
             if e.errno != errno.EPIPE:
                 raise
 
-    def __init__(self, mode, encoding, errors):
+    def __init__(self, mode='b', encoding=None, errors=None):
         """
         :param str mode: an optional string that specifies the mode in which the file is opened.
             It defaults to 'b' which means open for writing in binary mode.
