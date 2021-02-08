@@ -484,6 +484,9 @@ class WdlStandardLibraryWorkflowsTest(WdlWorkflowsTest):
                                             '{"left":2,"right":"a"},{"left":2,"right":"b"},'
                                             '{"left":3,"right":"a"},{"left":3,"right":"b"}]')
 
+    def test_as_map(self):
+        self.check_function('as_map', cases=['as_input'], expected_result='{"a":1,"b":2,"c":3}')
+
 
 if __name__ == "__main__":
     unittest.main()

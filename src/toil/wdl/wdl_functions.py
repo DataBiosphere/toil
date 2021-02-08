@@ -946,3 +946,25 @@ def cross(left: List[Any], right: List[Any]) -> List[WDLPair]:
         raise WDLRuntimeError(f'cross() requires both inputs to be Array[]!  Not: {type(left)} and {type(right)}')
 
     return list(WDLPair(left=left_val, right=right_val) for left_val in left for right_val in right)
+
+
+def as_map(in_array: List[WDLPair]) -> dict:
+    """
+    Given an Array consisting of Pairs, the `as_map` function returns a Map in
+    which the left elements of the Pairs are the keys and the right elements the
+    values.
+
+    WDL syntax: Map[X,Y] as_map(Array[Pair[X,Y]])
+    """
+    if not isinstance(in_array, list):
+        raise WDLRuntimeError(f'as_map() requires "{in_array}" to be a list!  Not: {type(in_array)}')
+
+    map = {}
+
+    for pair in in_array:
+        if map.get(pair.left):
+            raise WDLRuntimeError('Cannot evaluate "as_map()" with duplicated keys.')
+
+        map[pair.left] = pair.right
+
+    return map
