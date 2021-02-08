@@ -17,10 +17,17 @@ from difflib import get_close_matches
 logger = logging.getLogger(__name__)
 
 
-def cluster_factory(provisioner, clusterName=None, zone=None, nodeStorage=50, nodeStorageOverrides=None, sseKey=None):
+def cluster_factory(provisioner, clusterName=None, clusterType='mesos', zone=None, nodeStorage=50, nodeStorageOverrides=None, sseKey=None):
     """
-    :param clusterName: The name of the cluster.
+    Find and instantiate the appropriate provisioner instance to make clusters
+    in the given cloud.
+    
+    Raises ClusterTypeNotSupportedException if the given provisioner does not
+    implement clusters of the given type.
+    
     :param provisioner: The cloud type of the cluster.
+    :param clusterName: The name of the cluster.
+    :param clusterType: The type of cluster: 'mesos' or 'kubernetes'.
     :param zone: The cloud zone
     :return: A cluster object for the the cloud type.
     """
@@ -30,14 +37,14 @@ def cluster_factory(provisioner, clusterName=None, zone=None, nodeStorage=50, no
         except ImportError:
             logger.error('The aws extra must be installed to use this provisioner')
             raise
-        return AWSProvisioner(clusterName, zone, nodeStorage, nodeStorageOverrides, sseKey)
+        return AWSProvisioner(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey)
     elif provisioner == 'gce':
         try:
             from toil.provisioners.gceProvisioner import GCEProvisioner
         except ImportError:
             logger.error('The google extra must be installed to use this provisioner')
             raise
-        return GCEProvisioner(clusterName, zone, nodeStorage, nodeStorageOverrides, sseKey)
+        return GCEProvisioner(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey)
     else:
         raise RuntimeError("Invalid provisioner '%s'" % provisioner)
 
@@ -106,3 +113,8 @@ class NoSuchClusterException(Exception):
     """Indicates that the specified cluster does not exist."""
     def __init__(self, cluster_name):
         super(NoSuchClusterException, self).__init__(f"The cluster '{cluster_name}' could not be found")
+        
+class ClusterTypeNotSupportedException(Exception):
+    """Indicates that a provisioner does not support a given cluster type."""
+    def __init__(self, provisioner_class, cluster_type):
+        super().__init__(f"The {provisioner_class} provisioner does not support making {cluster_type} clusters")

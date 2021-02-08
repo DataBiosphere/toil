@@ -662,7 +662,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     Mimics a job batcher, provisioner and scalable batch system
     """
     def __init__(self, config, secondsPerJob):
-        super(MockBatchSystemAndProvisioner, self).__init__('clusterName')
+        super(MockBatchSystemAndProvisioner, self).__init__(clusterName='clusterName', clusterType='mesos')
         # To mimic parallel preemptable and non-preemptable queues
         # for jobs we create two parallel instances of the following class
         self.config = config
@@ -685,7 +685,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
                            self.nodeShapes}  # Maximum number of workers
         self.running = False
         self.leaderThread = Thread(target=self._leaderFn)
-
+    
     def start(self):
         self.running = True
         self.leaderThread.start()
@@ -709,6 +709,15 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         pass
 
     def unignoreNode(self, nodeAddress):
+        pass
+
+    def supportedClusterTypes(self):
+        return {'mesos'}
+        
+    def createClusterSettings(self):
+        pass
+    
+    def readClusterSettings(self):
         pass
 
     @contextmanager

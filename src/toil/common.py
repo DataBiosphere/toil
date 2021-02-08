@@ -22,7 +22,7 @@ import tempfile
 import time
 import uuid
 
-from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from argparse import _ArgumentGroup, ArgumentParser, ArgumentDefaultsHelpFormatter
 from typing import Optional, Callable, Any, List
 
 from toil import logProcessContext, lookupEnvVar
@@ -336,8 +336,8 @@ def parser_with_common_options(provisioner_options=False, jobstore_option=True):
 
 
 def addOptions(parser: ArgumentParser, config: Config = Config()):
-    if not isinstance(parser, ArgumentParser):
-        raise ValueError(f"Unanticipated class: {parser.__class__}.  Must be: argparse.ArgumentParser.")
+    if not (isinstance(parser, ArgumentParser) or isinstance(parser, _ArgumentGroup)):
+        raise ValueError(f"Unanticipated class: {parser.__class__}.  Must be: argparse.ArgumentParser or ArgumentGroup.")
 
     add_logging_options(parser)
     parser.register("type", "bool", parseBool)  # Custom type for arg=True/False.
@@ -517,6 +517,9 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
     resource_options.add_argument('--defaultDisk', dest='defaultDisk', default=None, metavar='INT',
                                   help=resource_help_msg.format('default', 'disk', disk_mem_note,
                                                                 bytes2human(config.defaultDisk, symbols="iec")))
+    resource_options.add_argument('--defaultPreemptable', dest='defaultPreemptable', metavar='BOOL',
+                                  type='bool', nargs='?', const=True, default=False,
+                                  help='Make all jobs able to run on preemptable (spot) nodes by default.')
     resource_options.add_argument('--maxCores', dest='maxCores', default=None, metavar='INT',
                                   help=resource_help_msg.format('max', 'cpu', cpu_note, str(config.maxCores)))
     resource_options.add_argument('--maxMemory', dest='maxMemory', default=None, metavar='INT',

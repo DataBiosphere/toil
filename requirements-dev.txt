@@ -1,9 +1,9 @@
 mock==4.0.3
-pytest==6.2.0
-pytest-cov==2.10.1
+pytest==6.2.1
+pytest-cov==2.11.1
 pytest-timeout==1.4.2
 stubserver==1.1
-setuptools==51.0.0
+setuptools==51.3.3
 sphinx==3.3.1
 cwltest==2.0.20200626112502
 mypy==0.790
