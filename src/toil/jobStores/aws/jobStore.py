@@ -1326,7 +1326,7 @@ class AWSJobStore(AbstractJobStore):
             if multipart:
                 pipe = MultiPartPipe(mode=mode, encoding=encoding, errors=errors)
             else:
-                SinglePartPipe(mode=mode, encoding=encoding, errors=errors)
+                pipe = SinglePartPipe(mode=mode, encoding=encoding, errors=errors)
 
             with pipe as writable:
                 yield writable
