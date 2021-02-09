@@ -946,3 +946,40 @@ def cross(left: List[Any], right: List[Any]) -> List[WDLPair]:
         raise WDLRuntimeError(f'cross() requires both inputs to be Array[]!  Not: {type(left)} and {type(right)}')
 
     return list(WDLPair(left=left_val, right=right_val) for left_val in left for right_val in right)
+
+
+def as_pairs(in_map: dict) -> List[WDLPair]:
+    """
+    Given a Map, the `as_pairs` function returns an Array containing each element
+    in the form of a Pair. The key will be the left element of the Pair and the
+    value the right element. The order of the the Pairs in the resulting Array
+    is the same as the order of the key/value pairs in the Map.
+
+    WDL syntax: Array[Pair[X,Y]] as_pairs(Map[X,Y])
+    """
+    if not isinstance(in_map, dict):
+        raise WDLRuntimeError(f'as_pairs() requires "{in_map}" to be Map[]!  Not: {type(in_map)}')
+
+    return list(WDLPair(left=k, right=v) for k, v in in_map.items())
+
+  
+def as_map(in_array: List[WDLPair]) -> dict:
+    """
+    Given an Array consisting of Pairs, the `as_map` function returns a Map in
+    which the left elements of the Pairs are the keys and the right elements the
+    values.
+
+    WDL syntax: Map[X,Y] as_map(Array[Pair[X,Y]])
+    """
+    if not isinstance(in_array, list):
+        raise WDLRuntimeError(f'as_map() requires "{in_array}" to be a list!  Not: {type(in_array)}')
+
+    map = {}
+
+    for pair in in_array:
+        if map.get(pair.left):
+            raise WDLRuntimeError('Cannot evaluate "as_map()" with duplicated keys.')
+
+        map[pair.left] = pair.right
+
+    return map
