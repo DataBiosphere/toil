@@ -199,9 +199,7 @@ def parse_memory_limit(mem):
 
 
 def parse_memory(mem, resource):
-    """
-    Parse memory parameter.  Round to 2 decimal places and set a minimum of 100.0 MB.
-    """
+    """Parse memory parameter."""
     lsf_unit = get_lsf_units(resource=resource)
     megabytes_of_mem = convert_mb(float(mem) * 1024, lsf_unit)
     return megabytes_of_mem
