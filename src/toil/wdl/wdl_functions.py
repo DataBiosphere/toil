@@ -961,3 +961,25 @@ def as_pairs(in_map: dict) -> List[WDLPair]:
         raise WDLRuntimeError(f'as_pairs() requires "{in_map}" to be Map[]!  Not: {type(in_map)}')
 
     return list(WDLPair(left=k, right=v) for k, v in in_map.items())
+
+  
+def as_map(in_array: List[WDLPair]) -> dict:
+    """
+    Given an Array consisting of Pairs, the `as_map` function returns a Map in
+    which the left elements of the Pairs are the keys and the right elements the
+    values.
+
+    WDL syntax: Map[X,Y] as_map(Array[Pair[X,Y]])
+    """
+    if not isinstance(in_array, list):
+        raise WDLRuntimeError(f'as_map() requires "{in_array}" to be a list!  Not: {type(in_array)}')
+
+    map = {}
+
+    for pair in in_array:
+        if map.get(pair.left):
+            raise WDLRuntimeError('Cannot evaluate "as_map()" with duplicated keys.')
+
+        map[pair.left] = pair.right
+
+    return map
