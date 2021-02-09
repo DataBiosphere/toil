@@ -37,6 +37,10 @@ from toil.lib.retry import ErrorCondition, retry
 
 logger = logging.getLogger(__name__)
 
+try:
+    from botocore.exceptions import ProxyConnectionError
+except ImportError:
+    ProxyConnectionError = None
 
 class InvalidImportExportUrlException(Exception):
     def __init__(self, url):
@@ -243,7 +247,7 @@ class AbstractJobStore(ABC):
             from importlib import import_module
             try:
                 module = import_module(moduleName)
-            except ImportError:
+            except (ImportError, ProxyConnectionError):
                 logger.debug("Unable to import '%s' as is expected if the corresponding extra was "
                              "omitted at installation time.", moduleName)
             else:
