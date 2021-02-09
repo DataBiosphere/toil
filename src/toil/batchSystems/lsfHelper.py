@@ -21,14 +21,14 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
 import fnmatch
-import math
 import os
 import re
 import subprocess
 
 from packaging import version
+
+from toil.wdl.wdl_functions import return_bytes
 
 LSB_PARAMS_FILENAME = "lsb.params"
 LSF_CONF_FILENAME = "lsf.conf"
@@ -36,6 +36,7 @@ LSF_CONF_ENV = ["LSF_CONFDIR", "LSF_ENVDIR"]
 DEFAULT_LSF_UNITS = "KB"
 DEFAULT_RESOURCE_UNITS = "MB"
 LSF_JSON_OUTPUT_MIN_VERSION = "10.1.0.2"
+
 
 def find(basedir, string):
     """
@@ -47,6 +48,7 @@ def find(basedir, string):
             matches.append(os.path.join(root, filename))
     return matches
 
+
 def find_first_match(basedir, string):
     """
     return the first file that matches string starting from basedir
@@ -54,12 +56,14 @@ def find_first_match(basedir, string):
     matches = find(basedir, string)
     return matches[0] if matches else matches
 
+
 def get_conf_file(filename, env):
     conf_path = os.environ.get(env)
     if not conf_path:
         return None
     conf_file = find_first_match(conf_path, filename)
     return conf_file
+
 
 def apply_conf_file(fn, conf_filename):
     for env in LSF_CONF_ENV:
@@ -71,17 +75,20 @@ def apply_conf_file(fn, conf_filename):
                 return value
     return None
 
+
 def per_core_reserve_from_stream(stream):
     for k, v in tokenize_conf_stream(stream):
         if k in {"RESOURCE_RESERVE_PER_SLOT", "RESOURCE_RESERVE_PER_TASK"}:
             return v.upper()
     return None
 
+
 def get_lsf_units_from_stream(stream):
     for k, v in tokenize_conf_stream(stream):
         if k == "LSF_UNIT_FOR_LIMITS":
             return v
     return None
+
 
 def tokenize_conf_stream(conf_handle):
     """
@@ -95,6 +102,7 @@ def tokenize_conf_stream(conf_handle):
             continue
         yield (tokens[0].strip(), tokens[1].strip())
 
+
 def apply_bparams(fn):
     """
     apply fn to each line of bparams, returning the result
@@ -105,6 +113,7 @@ def apply_bparams(fn):
     except:
         return None
     return fn(output.split("\n"))
+
 
 def apply_lsadmin(fn):
     """
@@ -141,6 +150,7 @@ def get_lsf_units(resource=False):
     else:
         return DEFAULT_LSF_UNITS
 
+
 def get_lsf_version():
     """
     Get current LSF version
@@ -150,7 +160,7 @@ def get_lsf_version():
         output = subprocess.check_output(cmd).decode('utf-8')
     except:
         return None
-    bjobs_search = re.search('IBM Spectrum LSF Standard (.*),',output)
+    bjobs_search = re.search('IBM Spectrum LSF Standard (.*),', output)
     if bjobs_search:
         lsf_version = bjobs_search.group(1)
         return lsf_version
@@ -180,18 +190,23 @@ def parse_memory_resource(mem):
     """
     return parse_memory(mem, True)
 
+
 def parse_memory_limit(mem):
     """
     Parse memory parameter for -M
     """
     return parse_memory(mem, False)
 
+
 def parse_memory(mem, resource):
     """
-    Parse memory parameter
+    Parse memory parameter.  Round to 2 decimal places and set a minimum of 100.0 MB.
     """
     lsf_unit = get_lsf_units(resource=resource)
-    return convert_mb(float(mem) * 1024, lsf_unit)
+    megabytes_of_mem = round(convert_mb(float(mem) * 1024, lsf_unit), 2)
+    if megabytes_of_mem < 100:
+        megabytes_of_mem = 100.0
+    return megabytes_of_mem
 
 
 def per_core_reservation():
@@ -218,18 +233,13 @@ def per_core_reservation():
         return True
     else:
         return False
-    return False
 
-def convert_mb(kb, unit):
-    UNITS = {"B": -2,
-             "KB": -1,
-             "MB": 0,
-             "GB": 1,
-             "TB": 2}
-    assert unit in UNITS, ("%s not a valid unit, valid units are %s."
-                           % (unit, list(UNITS.keys())))
-    return float(kb) / float(math.pow(1024, UNITS[unit]))
 
+def convert_mb(num: float, unit: str) -> float:
+    """Return the represented amount in megabytes."""
+    units = ['B', 'KB', 'MB', 'GB', 'TB']
+    assert unit in units, f"{unit} not a valid unit, valid units are {list(units.keys())}."
+    return (num * return_bytes(unit)) / return_bytes('MB')
 
 
 if __name__ == "__main__":
