@@ -1151,7 +1151,7 @@ class AWSJobStore(AbstractJobStore):
                 return self._finish_checksum(hasher)
 
         @contextmanager
-        def uploadStream(self, mode='b', encoding=None, errors=None, multipart=True, allowInlining=True):
+        def uploadStream(self, multipart=True, allowInlining=True, mode='b', encoding=None, errors=None):
             """
             Context manager that gives out a binary/text mode upload stream to upload data.
             """
@@ -1423,7 +1423,7 @@ class AWSJobStore(AbstractJobStore):
                 assert False
 
         @contextmanager
-        def downloadStream(self, mode='b', encoding=None, errors=None, verifyChecksum=True):
+        def downloadStream(self, verifyChecksum=True, mode='b', encoding=None, errors=None):
             """
             Context manager that gives out a binary/text mode download stream to download data.
             """
