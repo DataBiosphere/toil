@@ -203,9 +203,7 @@ def parse_memory(mem, resource):
     Parse memory parameter.  Round to 2 decimal places and set a minimum of 100.0 MB.
     """
     lsf_unit = get_lsf_units(resource=resource)
-    megabytes_of_mem = round(convert_mb(float(mem) * 1024, lsf_unit), 2)
-    if megabytes_of_mem < 100:
-        megabytes_of_mem = 100.0
+    megabytes_of_mem = convert_mb(float(mem) * 1024, lsf_unit)
     return megabytes_of_mem
 
 
