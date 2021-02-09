@@ -64,6 +64,7 @@ py37_batch_systems:
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     - make test tests=src/toil/test/batchSystems/batchSystemTest.py
     - make test tests=src/toil/test/mesos/MesosDataStructuresTest.py
+    - make test tests=src/toil/test/batchSystems/utilities.py
 
 py37_cwl_v1.0:
   stage: main_tests

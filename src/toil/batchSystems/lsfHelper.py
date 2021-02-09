@@ -236,10 +236,13 @@ def per_core_reservation():
 
 
 def convert_mb(num: float, unit: str) -> float:
-    """Return the represented amount in megabytes."""
+    """Return the represented amount in megabytes.  Always return at least 1 mb.  Always round to 2 decimal places."""
     units = ['B', 'KB', 'MB', 'GB', 'TB']
     assert unit in units, f"{unit} not a valid unit, valid units are {list(units.keys())}."
-    return (num * return_bytes(unit)) / return_bytes('MB')
+    converted = (num * return_bytes(unit)) / return_bytes('MB')
+    if converted < 1:
+        converted = 1.0
+    return round(converted, 2)
 
 
 if __name__ == "__main__":
