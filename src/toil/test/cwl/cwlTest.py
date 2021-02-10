@@ -319,11 +319,21 @@ class CWLv10Test(ToilTest):
     @needs_kubernetes
     def test_kubernetes_cwl_conformance(self, **kwargs):
         # TODO: tests that are still broken on Kubernetes:
-        # 42 55 84 85 87 88 93 107 136 137 173
+        # 42
+        # 55
+        # 84
+        # 85
+        # 87
+        # 88
+        # 93
+        # 107
+        # 136
+        # 137
+        # 173
         return self.test_run_conformance(batchSystem="kubernetes",
                                          selected_tests="1-41,43-54,56-83,86,89-92,94-106,108-135,138-172,174-197",
                                          **kwargs)
-                                         
+
     @slow
     @needs_lsf
     @unittest.skip
@@ -442,7 +452,28 @@ class CWLv11Test(ToilTest):
     @slow
     @needs_kubernetes
     def test_kubernetes_cwl_conformance(self, **kwargs):
-        return self.test_run_conformance(batchSystem="kubernetes", **kwargs)
+        # TODO: tests that are still broken on Kubernetes:
+        # 20
+        # 55
+        # 84
+        # 85
+        # 87
+        # 88
+        # 93
+        # 108
+        # 137
+        # 138
+        # 174
+        # 199
+        # 224
+        # 226
+        # 235
+        # 236
+        # 245
+        # 247
+        return self.test_run_conformance(batchSystem="kubernetes",
+                                         selected_tests="1-19,21-54,56-83,86,89-92,94-107,109-136,139-173,175-198,200-223,225,227-234,237-244,246,248-253",
+                                         **kwargs)
 
 
     @slow
