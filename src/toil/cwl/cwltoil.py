@@ -89,7 +89,7 @@ from schema_salad import validate
 from schema_salad.schema import Names
 from schema_salad.sourceline import SourceLine
 
-from toil.batchSystem.registry import DEFAULT_BATCH_SYSTEM
+from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Config, Toil, addOptions
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore

@@ -31,6 +31,7 @@ import pytest
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
+from toil.lib.threading import cpu_count
 from toil.test import (ToilTest,
                        needs_aws_s3,
                        needs_cwl,
@@ -46,15 +47,6 @@ from toil.test import (ToilTest,
 
 log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 3600
-
-
-def invent_aws_jobstore():
-    """
-    Create a string usable as a new, quite probably unique job store on AWS.
-    """
-
-    return f'aws:us-west-2:deleteme-toil-test-{str(uuid.uuid4())[-12:]}'
-
 
 
 def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selected_tests=None):
@@ -73,15 +65,12 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
         job_store_override = None
 
         if batchSystem == 'kubernetes':
-            # We will need a job store that is not local.
-            # If we don't pas this, a local job store gets created in the work dir.
-            job_store_override = invent_aws_jobstore()
-            args_passed_directly_to_toil.append(f'--jobStore={job_store_override}')
+            # Run tests in parallel on Kubernetes.
+            # We can throw a bunch at it at once and let Kubernetes schedule.
+            cmd.append('-j8')
         else:
-            # We are running locally and aren't sending the same job store to
-            # every test, so we can run tests in parallel.
-            # TODO: Work out a way to generate an AWS job store dynamically per test.
-            cmd.append(f'-j{int(psutil.cpu_count()/2)}')
+            # Run tests in parallel on the local machine
+            cmd.append(f'-j{int(cpu_count()/2)}')
 
         if batchSystem:
             args_passed_directly_to_toil.append(f"--batchSystem={batchSystem}")
@@ -178,8 +167,7 @@ class CWLv10Test(ToilTest):
     def test_s3_as_secondary_file(self):
         from toil.cwl import cwltoil
         st = StringIO()
-        main_args = ['--jobStore', invent_aws_jobstore(),
-                     '--outdir', self.outDir,
+        main_args = ['--outdir', self.outDir,
                      os.path.join(self.rootDir, 'src/toil/test/cwl/s3_secondary_file.cwl'),
                      os.path.join(self.rootDir, 'src/toil/test/cwl/s3_secondary_file.json')]
         cwltoil.main(main_args, stdout=st)
