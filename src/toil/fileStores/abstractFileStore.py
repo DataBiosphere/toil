@@ -222,10 +222,27 @@ class AbstractFileStore(ABC):
         raise NotImplementedError()
 
     @contextmanager
-    def writeGlobalFileStream(self, cleanup=False, basename=None):
+    def writeGlobalFileStream(self, cleanup=False, basename=None, mode='b', encoding=None, errors=None):
         """
         Similar to writeGlobalFile, but allows the writing of a stream to the job store.
         The yielded file handle does not need to and should not be closed explicitly.
+
+        :param str mode: an optional string that specifies the mode in which the file is opened.
+
+            Currently supported mode characters:
+
+                - 'b': binary mode
+
+                - 't': text mode
+
+            The default mode is 'b' (open for reading in binary mode, synonym of 'rb').
+
+        :param str encoding: the name of the encoding used to decode the file. Encodings are the same as
+                for decode() and the default is platform dependent: locale.getpreferredencoding(False) is
+                called to get the current locale encoding. This should only be used in text mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
 
         :param bool cleanup: is as in :func:`toil.fileStores.abstractFileStore.AbstractFileStore.writeGlobalFile`.
         
@@ -238,7 +255,8 @@ class AbstractFileStore(ABC):
                   2) the toil.fileStores.FileID of the resulting file in the job store.
         """
         
-        with self.jobStore.writeFileStream(self.jobDesc.jobStoreID, cleanup, basename) as (backingStream, fileStoreID):
+        with self.jobStore.writeFileStream(self.jobDesc.jobStoreID, cleanup, basename,
+                    mode, encoding, errors) as (backingStream, fileStoreID):
             
             # We have a string version of the file ID, and the backing stream.
             # We need to yield a stream the caller can write to, and a FileID
@@ -321,10 +339,27 @@ class AbstractFileStore(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def readGlobalFileStream(self, fileStoreID):
+    def readGlobalFileStream(self, fileStoreID, mode='b', encoding=None, errors=None):
         """
         Similar to readGlobalFile, but allows a stream to be read from the job store. The yielded
         file handle does not need to and should not be closed explicitly.
+
+        :param str mode: an optional string that specifies the mode in which the file is opened.
+
+            Currently supported mode characters:
+
+                - 'b': binary mode
+
+                - 't': text mode
+
+            The default mode is 'b' (open for reading in binary mode, synonym of 'rb').
+
+        :param str encoding: the name of the encoding used to decode the file. Encodings are the same as
+                for decode() and the default is platform dependent: locale.getpreferredencoding(False) is
+                called to get the current locale encoding. This should only be used in text mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
 
         Implementations must call :meth:`logAccess` to report the download.
 

@@ -249,9 +249,9 @@ class GoogleJobStore(AbstractJobStore):
         return fileID
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, mode='b', encoding=None, errors=None, cleanup=False, basename=None):
+    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None, mode='b', encoding=None, errors=None):
         fileID = self._newID(isFile=True, jobStoreID=jobStoreID if cleanup else None)
-        with self._uploadStream(fileID, mode=mode, encoding=encoding, errors=errors, update=False) as writable:
+        with self._uploadStream(fileID, update=False, mode=mode, encoding=encoding, errors=errors) as writable:
             yield writable, fileID
 
     def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
@@ -295,8 +295,8 @@ class GoogleJobStore(AbstractJobStore):
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID, mode='b', encoding=None, errors=None):
-        with self._uploadStream(jobStoreFileID, mode=mode, encoding=encoding, errors=errors,
-                                    update=True) as writable:
+        with self._uploadStream(jobStoreFileID, update=True, mode=mode, encoding=encoding,
+                                    errors=errors) as writable:
             yield writable
 
     @contextmanager
