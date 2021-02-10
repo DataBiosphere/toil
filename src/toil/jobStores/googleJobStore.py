@@ -273,7 +273,7 @@ class GoogleJobStore(AbstractJobStore):
     @contextmanager
     def readFileStream(self, jobStoreFileID, encoding=None, errors=None):
         with self.readSharedFileStream(jobStoreFileID, isProtected=True, encoding=encoding,
-                                        errors=errors) as readable:
+                            errors=errors) as readable:
             yield readable
 
     def deleteFile(self, jobStoreFileID):

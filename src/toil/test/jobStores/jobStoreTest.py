@@ -382,24 +382,24 @@ class AbstractJobStoreTest(object):
             self.assertUrl(jobstore1.getSharedPublicUrl('nonEncrypted'))
             self.assertRaises(NoSuchFileException, jobstore1.getSharedPublicUrl, 'missing')
 
-        @travis_test
         def testReadWriteSharedFilesTextMode(self):
+            """Checks if text mode is compatible for shared file streams."""
             jobstore1 = self.jobstore_initialized
             jobstore2 = self.jobstore_resumed_noconfig
 
             bar = 'bar'
 
-            with jobstore1.writeSharedFileStream('foo', mode='t', encoding='utf-8') as f:
+            with jobstore1.writeSharedFileStream('foo', encoding='utf-8') as f:
                 f.write(bar)
 
-            with jobstore2.readSharedFileStream('foo', mode='t', encoding='utf-8') as f:
+            with jobstore2.readSharedFileStream('foo', encoding='utf-8') as f:
                 self.assertEqual(bar, f.read())
 
-            with jobstore1.readSharedFileStream('foo', mode='t', encoding='utf-8') as f:
+            with jobstore1.readSharedFileStream('foo', encoding='utf-8') as f:
                 self.assertEqual(bar, f.read())
 
-        @travis_test
         def testReadWriteFileStreamTextMode(self):
+            """Checks if text mode is compatible for file streams."""
             jobstore = self.jobstore_initialized
             job = self.arbitraryJob()
             jobstore.assignID(job)
@@ -408,16 +408,16 @@ class AbstractJobStoreTest(object):
             foo = 'foo'
             bar = 'bar'
 
-            with jobstore.writeFileStream(job.jobStoreID, mode='t', encoding='utf-8') as (f, fileID):
+            with jobstore.writeFileStream(job.jobStoreID, encoding='utf-8') as (f, fileID):
                 f.write(foo)
 
-            with jobstore.readFileStream(fileID, mode='t', encoding='utf-8') as f:
+            with jobstore.readFileStream(fileID, encoding='utf-8') as f:
                 self.assertEqual(foo, f.read())
 
-            with jobstore.updateFileStream(fileID, mode='t', encoding='utf-8') as f:
+            with jobstore.updateFileStream(fileID, encoding='utf-8') as f:
                 f.write(bar)
 
-            with jobstore.readFileStream(fileID, mode='t', encoding='utf-8') as f:
+            with jobstore.readFileStream(fileID, encoding='utf-8') as f:
                 self.assertEqual(bar, f.read())
 
         @travis_test
