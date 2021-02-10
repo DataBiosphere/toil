@@ -318,10 +318,26 @@ class hidden:
 
         @staticmethod
         def _testImportReadFileCompatibility(job, fileID, dstFile, initialPermissions, mutable, symlink):
-            dstFile = job.fileStore.readGlobalFile(fileID, mutable=mutable, symlink=symlink)
+            dstFile = job.fileStore.readGlobalFile(fileNonID, mutable=mutable, symlink=symlink)
             currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
 
             assert initialPermissions == currentPermissions
+
+        def testReadWriteFileStreamTextMode(self):
+            """
+            Checks if text mode is compatibile with file streams.
+            """
+            with Toil(self.options) as toil:
+                A = Job.wrapJobFn(_testReadWriteFileStreamTextMode)
+                toil.start(A)
+
+        @staticmethod
+        def _testReadWriteFileStreamTextMode(job):
+            with job.fileStore.writeGlobalFileStream(encoding='utf-8') as (stream, fileID):
+                stream.write('foo')
+            job.fileStore.readGlobalFileStream(fileID)
+            with job.fileStore.readGlobalFileStream(fileID, encoding='utf-8') as stream2:
+                assert 'foo' == stream2.read()
 
         @staticmethod
         def _writeFileToJobStore(job, isLocalFile, nonLocalDir=None, fileMB=1):
@@ -1314,25 +1330,25 @@ class CachingFileStoreTestWithFileJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'file'
 
 
-@needs_aws_ec2
+#@needs_aws_ec2
 class NonCachingFileStoreTestWithAwsJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'aws'
 
 
 @slow
-@needs_aws_ec2
+#@needs_aws_ec2
 @pytest.mark.timeout(1000)
 class CachingFileStoreTestWithAwsJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'aws'
 
 
-@needs_google
+#@needs_google
 class NonCachingFileStoreTestWithGoogleJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'google'
 
 
 @slow
-@needs_google
+#@needs_google
 @pytest.mark.timeout(1000)
 class CachingFileStoreTestWithGoogleJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'google'
