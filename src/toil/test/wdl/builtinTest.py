@@ -355,6 +355,15 @@ class WdlLanguageSpecWorkflowsTest(WdlWorkflowsTest):
         expected_result = '[["A Whale of a Tale."],["true"],["11"]]'
         self.check_function('type_pair', cases=['with_files'], expected_result=expected_result)
 
+    def test_v1_declaration(self):
+        """
+        Basic declaration example modified from the WDL 1.0 spec:
+
+        https://github.com/openwdl/wdl/blob/main/versions/1.0/SPEC.md#declarations
+        """
+        expected_result = 'Hello, x!; Hello, y!'
+        self.check_function('v1_spec', cases=['declaration'], expected_result=expected_result)
+
 
 class WdlStandardLibraryWorkflowsTest(WdlWorkflowsTest):
     """
@@ -474,6 +483,13 @@ class WdlStandardLibraryWorkflowsTest(WdlWorkflowsTest):
                             expected_result='[{"left":1,"right":"a"},{"left":1,"right":"b"},'
                                             '{"left":2,"right":"a"},{"left":2,"right":"b"},'
                                             '{"left":3,"right":"a"},{"left":3,"right":"b"}]')
+
+    def test_as_pairs(self):
+        self.check_function('as_pairs', cases=['as_input'],
+                            expected_result='[{"left":"a","right":1},{"left":"b","right":2},{"left":"c","right":3}]')
+
+    def test_as_map(self):
+        self.check_function('as_map', cases=['as_input'], expected_result='{"a":1,"b":2,"c":3}')
 
 
 if __name__ == "__main__":

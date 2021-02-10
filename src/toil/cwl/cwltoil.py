@@ -902,7 +902,7 @@ class ResolveIndirect(Job):
 
     def __init__(self, cwljob: dict):
         """Store the dictionary of promises for later resolution."""
-        super(ResolveIndirect, self).__init__()
+        super(ResolveIndirect, self).__init__(cores=1, memory=1024^2, disk=0)
         self.cwljob = cwljob
 
     def run(self, file_store: AbstractFileStore) -> dict:
@@ -1320,7 +1320,7 @@ class CWLScatter(Job):
         conditional: Union[Conditional, None],
     ):
         """Store our context for later execution."""
-        super(CWLScatter, self).__init__()
+        super(CWLScatter, self).__init__(cores=1, memory=100*1024^2, disk=0)
         self.step = step
         self.cwljob = cwljob
         self.runtime_context = runtime_context
@@ -1462,7 +1462,7 @@ class CWLGather(Job):
         outputs: Union[Mapping, MutableSequence],
     ):
         """Collect our context for later gathering."""
-        super(CWLGather, self).__init__()
+        super(CWLGather, self).__init__(cores=1, memory=10*1024^2, disk=0)
         self.step = step
         self.outputs = outputs
 
@@ -1504,6 +1504,7 @@ class SelfJob(Job):
 
     def __init__(self, j: "CWLWorkflow", v: dict):
         """Record the workflow and dictionary."""
+        super(SelfJob, self).__init__(cores=1, memory=1024^2, disk=0)
         self.j = j
         self.v = v
 
@@ -1557,7 +1558,7 @@ class CWLWorkflow(Job):
         conditional: Union[Conditional, None] = None,
     ):
         """Gather our context for later execution."""
-        super(CWLWorkflow, self).__init__()
+        super(CWLWorkflow, self).__init__(cores=1, memory=100*1024^2, disk=0)
         self.cwlwf = cwlwf
         self.cwljob = cwljob
         self.runtime_context = runtime_context

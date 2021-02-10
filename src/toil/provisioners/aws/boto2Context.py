@@ -22,25 +22,25 @@ from boto.exception import BotoServerError
 from boto.s3.connection import S3Connection
 from boto.utils import get_instance_metadata
 
-from toil.lib.ec2 import UserError
+from toil.lib.ec2 import UserError, zone_to_region
 from toil.lib.memoize import memoize
 
 logger = logging.getLogger(__name__)
 
 
-class Context(object):
+class Boto2Context(object):
     """
-    Encapsulates all EC2-specific settings used by components in this project
+    Encapsulates all Boto2 connections used by the AWSProvisioner.
+    
+    Also performs namespacing to keep clusters isolated.
     """
-    availability_zone_re = re.compile(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$')
-
     name_prefix_re = re.compile(r'^(/([0-9a-zA-Z.-][_0-9a-zA-Z.-]*))*')
     name_re = re.compile(name_prefix_re.pattern + '/?$')
     namespace_re = re.compile(name_prefix_re.pattern + '/$')
 
     def __init__(self, availability_zone, namespace):
         """
-        Create an Context object.
+        Create a Boto2Context object.
 
         :param availability_zone: The availability zone to place EC2 resources like volumes and
         instances into. The AWS region to operate in is implied by this parameter since the
@@ -58,59 +58,59 @@ class Context(object):
         different paths. The by itself name has to be unique. For that reason, IAM resource paths
         are pretty much useless.
 
-        >>> ctx = Context( 'us-west-1b', None )
+        >>> ctx = Boto2Context( 'us-west-1b', None )
         Traceback (most recent call last):
         ....
         ValueError: Need namespace
 
-        >>> Context('us-west-1b', namespace='/').namespace
+        >>> Boto2Context('us-west-1b', namespace='/').namespace
         '/'
 
-        >>> Context('us-west-1b', namespace='/foo/').namespace
+        >>> Boto2Context('us-west-1b', namespace='/foo/').namespace
         '/foo/'
 
-        >>> Context('us-west-1b', namespace='/foo/bar/').namespace
+        >>> Boto2Context('us-west-1b', namespace='/foo/bar/').namespace
         '/foo/bar/'
 
-        >>> Context('us-west-1b', namespace='')
+        >>> Boto2Context('us-west-1b', namespace='')
         Traceback (most recent call last):
         ....
         ValueError: Invalid namespace ''
 
-        >>> Context('us-west-1b', namespace='foo')
+        >>> Boto2Context('us-west-1b', namespace='foo')
         Traceback (most recent call last):
         ....
         ValueError: Invalid namespace 'foo'
 
-        >>> Context('us-west-1b', namespace='/foo')
+        >>> Boto2Context('us-west-1b', namespace='/foo')
         Traceback (most recent call last):
         ....
         ValueError: Invalid namespace '/foo'
 
-        >>> Context('us-west-1b', namespace='//foo/')
+        >>> Boto2Context('us-west-1b', namespace='//foo/')
         Traceback (most recent call last):
         ....
         ValueError: Invalid namespace '//foo/'
 
-        >>> Context('us-west-1b', namespace='/foo//')
+        >>> Boto2Context('us-west-1b', namespace='/foo//')
         Traceback (most recent call last):
         ....
         ValueError: Invalid namespace '/foo//'
 
-        >>> Context('us-west-1b', namespace='han//nes')
+        >>> Boto2Context('us-west-1b', namespace='han//nes')
         Traceback (most recent call last):
         ....
         ValueError: Invalid namespace 'han//nes'
 
-        >>> Context('us-west-1b', namespace='/_foo/')
+        >>> Boto2Context('us-west-1b', namespace='/_foo/')
         Traceback (most recent call last):
         ....
         ValueError: Invalid namespace '/_foo/'
 
-        >>> Context('us-west-1b', namespace=u'/foo/').namespace # doctest: +ALLOW_UNICODE
+        >>> Boto2Context('us-west-1b', namespace=u'/foo/').namespace # doctest: +ALLOW_UNICODE
         '/foo/'
 
-        >>> Context('us-west-1b', namespace=u'/föo/').namespace # doctest: +ELLIPSIS
+        >>> Boto2Context('us-west-1b', namespace=u'/föo/').namespace # doctest: +ELLIPSIS
         Traceback (most recent call last):
         ....
         ValueError: 'ascii' codec can't encode ...: ordinal not in range(128)
@@ -118,10 +118,10 @@ class Context(object):
         >>> import string
         >>> component = string.ascii_letters + string.digits + '-_.'
         >>> namespace = '/' + component + '/'
-        >>> Context('us-west-1b', namespace=namespace).namespace == namespace
+        >>> Boto2Context('us-west-1b', namespace=namespace).namespace == namespace
         True
         """
-        super(Context, self).__init__()
+        super().__init__()
 
         self.__iam = None
         self.__vpc = None
@@ -130,11 +130,7 @@ class Context(object):
         self.__sqs = None
 
         self.availability_zone = availability_zone
-        m = self.availability_zone_re.match(availability_zone)
-        if not m:
-            raise ValueError("Can't extract region from availability zone '%s'"
-                             % availability_zone)
-        self.region = m.group(1)
+        self.region = zone_to_region(self.availability_zone)
 
         if namespace is None:
             raise ValueError('Need namespace')
@@ -257,7 +253,7 @@ class Context(object):
 
         Relative names starting with underscores are disallowed.
 
-        >>> ctx = Context( 'us-west-1b', namespace='/' )
+        >>> ctx = Boto2Context( 'us-west-1b', namespace='/' )
         >>> ctx.absolute_name('bar')
         '/bar'
         >>> ctx.absolute_name('/bar')
@@ -275,7 +271,7 @@ class Context(object):
         ...
         InvalidPathError: Invalid path '/_bar'
 
-        >>> ctx = Context( 'us-west-1b', namespace='/foo/' )
+        >>> ctx = Boto2Context( 'us-west-1b', namespace='/foo/' )
         >>> ctx.absolute_name('bar')
         '/foo/bar'
         >>> ctx.absolute_name('bar/')
@@ -319,7 +315,7 @@ class Context(object):
         This scheme only works if name components don't start with '_'. Without that condition,
         '/_' would become '___' the inverse of which is '_/'.
 
-        >>> ctx = Context( 'us-west-1b', namespace='/' )
+        >>> ctx = Boto2Context( 'us-west-1b', namespace='/' )
 
         >>> ctx.to_aws_name( 'foo' )
         'foo'
@@ -357,7 +353,7 @@ class Context(object):
         >>> ctx.from_aws_name( 'g___' )
         'g_/'
 
-        >>> ctx = Context( 'us-west-1b', namespace='/this_ns/' )
+        >>> ctx = Boto2Context( 'us-west-1b', namespace='/this_ns/' )
 
         >>> ctx.to_aws_name( 'foo' )
         'this__ns_foo'
@@ -394,13 +390,13 @@ class Context(object):
         is relative to this context's name space.
 
         >>> zone = 'us-west-1b'
-        >>> Context( zone, namespace='/foo/' ).from_aws_name('bar__x')
+        >>> Boto2Context( zone, namespace='/foo/' ).from_aws_name('bar__x')
         '/bar_x'
-        >>> Context( zone, namespace='/foo_x/' ).from_aws_name('foo__x_bar')
+        >>> Boto2Context( zone, namespace='/foo_x/' ).from_aws_name('foo__x_bar')
         'bar'
-        >>> Context( zone, namespace='/' ).from_aws_name('foo__x_bar__x')
+        >>> Boto2Context( zone, namespace='/' ).from_aws_name('foo__x_bar__x')
         'foo_x/bar_x'
-        >>> Context( zone, namespace='/bla/' ).from_aws_name('foo__x_bar__x')
+        >>> Boto2Context( zone, namespace='/bla/' ).from_aws_name('foo__x_bar__x')
         '/foo_x/bar_x'
         """
         name = '_'.join(s.replace('_', '/') for s in name.split('__'))
@@ -415,7 +411,7 @@ class Context(object):
         """
         Return the last component of a name, absolute or relative.
 
-        >>> ctx = Context( 'us-west-1b', namespace='/foo/bar/')
+        >>> ctx = Boto2Context( 'us-west-1b', namespace='/foo/bar/')
         >>> ctx.base_name('')
         ''
         >>> ctx.base_name('/')
@@ -436,7 +432,7 @@ class Context(object):
 
     def contains_aws_name(self, aws_name):
         """
-        >>> def c(n): return Context( 'us-west-1b', namespace=n)
+        >>> def c(n): return Boto2Context( 'us-west-1b', namespace=n)
         >>> c('/foo/' ).contains_aws_name('bar_x')
         False
         >>> c('/foo/' ).contains_aws_name('foo_x')
@@ -489,13 +485,13 @@ class Context(object):
     @staticmethod
     def drop_hostname(email):
         """
-        >>> Context.drop_hostname("foo")
+        >>> Boto2Context.drop_hostname("foo")
         'foo'
-        >>> Context.drop_hostname("foo@bar.com")
+        >>> Boto2Context.drop_hostname("foo@bar.com")
         'foo'
-        >>> Context.drop_hostname("")
+        >>> Boto2Context.drop_hostname("")
         ''
-        >>> Context.drop_hostname("@")
+        >>> Boto2Context.drop_hostname("@")
         ''
         """
         try:
@@ -528,6 +524,7 @@ class Context(object):
     def setup_iam_ec2_role(self, role_name, policies):
         aws_role_name = self.to_aws_name(role_name)
         try:
+            logger.debug('Creating IAM role...')
             self.iam.create_role(aws_role_name, assume_role_policy_document=json.dumps({
                 "Version": "2012-10-17",
                 "Statement": [{
@@ -535,8 +532,10 @@ class Context(object):
                     "Principal": {"Service": ["ec2.amazonaws.com"]},
                     "Action": ["sts:AssumeRole"]}
                 ]}))
+            logger.debug('Created new IAM role')
         except BotoServerError as e:
             if e.status == 409 and e.error_code == 'EntityAlreadyExists':
+                logger.debug('IAM role already exists. Reusing.')
                 pass
             else:
                 raise
@@ -588,3 +587,9 @@ class Context(object):
 
     def _get_all_roles(self):
         return self._pager(self.iam.list_roles, 'roles')
+
+    def local_instance_profiles(self):
+        return [p for p in self._get_all_instance_profiles() if self.try_contains_aws_name(p.instance_profile_name)]
+
+    def _get_all_instance_profiles(self):
+        return self._pager(self.iam.list_instance_profiles, 'instance_profiles')
