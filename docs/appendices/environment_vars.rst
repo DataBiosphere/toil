@@ -87,6 +87,9 @@ There are several environment variables that affect the way Toil runs.
 |                                  | deleted until all associated nodes have been       |
 |                                  | terminated.                                        |
 +----------------------------------+----------------------------------------------------+
+| TOIL_GOOGLE_PROJECTID            | The Google project ID to use when generating       |
+|                                  | Google job store names for tests or CWL workflows. |
++----------------------------------+----------------------------------------------------+
 | TOIL_SLURM_ARGS                  | Arguments for sbatch for the slurm batch system.   |
 |                                  | Do not pass CPU or memory specifications here.     |
 |                                  | Instead, define resource requirements for the job. |
