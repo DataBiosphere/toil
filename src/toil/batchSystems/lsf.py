@@ -238,7 +238,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             bsubMem = []
             if mem:
                 mem = float(mem) / 1024 ** 3
-                if per_core_reservation():
+                if per_core_reservation() and cpu:
                     mem = mem / math.ceil(cpu)
                 mem_resource = parse_memory_resource(mem)
                 mem_limit = parse_memory_limit(mem)
