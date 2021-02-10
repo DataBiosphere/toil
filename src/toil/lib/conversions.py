@@ -32,6 +32,6 @@ def convert_units(num: float,
                   dst_unit: str) -> float:
     """Returns a float representing the converted input in dst_units."""
     units = ['B', 'KB', 'MB', 'GB', 'TB']
-    assert src_unit in units, f"{src_unit} not a valid unit, valid units are {list(units.keys())}."
-    assert dst_unit in units, f"{dst_unit} not a valid unit, valid units are {list(units.keys())}."
+    assert src_unit in units, f"{src_unit} not a valid unit, valid units are {units}."
+    assert dst_unit in units, f"{dst_unit} not a valid unit, valid units are {units}."
     return (num * bytes_in_unit(src_unit)) / bytes_in_unit(dst_unit)
