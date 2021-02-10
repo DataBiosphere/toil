@@ -282,90 +282,88 @@ class CWLv10Test(ToilTest):
     @slow
     @needs_lsf
     @unittest.skip
+    def test_lsf_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="lsf", **kwargs)
+
+    @slow
+    @needs_slurm
+    @unittest.skip
+    def test_slurm_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="slurm", **kwargs)
+
+    @slow
+    @needs_torque
+    @unittest.skip
+    def test_torque_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="torque", **kwargs)
+
+    @slow
+    @needs_gridengine
+    @unittest.skip
+    def test_gridengine_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="grid_engine", **kwargs)
+
+    @slow
+    @needs_mesos
+    @unittest.skip
+    def test_mesos_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="mesos", **kwargs)
+
+    @slow
+    @needs_parasol
+    @unittest.skip
+    def test_parasol_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="parasol", **kwargs)
+
+    @slow
+    @needs_kubernetes
+    def test_kubernetes_cwl_conformance(self, **kwargs):
+        # TODO: tests that are still broken on Kubernetes:
+        # 42 55 84 85 87 88 93 107 136 137 173
+        return self.test_run_conformance(batchSystem="kubernetes",
+                                         selected_tests="1-41,43-54,56-83,86,89-92,94-106,108-135,138-172,174-197",
+                                         **kwargs)
+                                         
+    @slow
+    @needs_lsf
+    @unittest.skip
     def test_lsf_cwl_conformance_with_caching(self):
-        return self.test_run_conformance(batchSystem="lsf", caching=True)
+        return self.test_lsf_cwl_conformance(caching=True)
 
     @slow
     @needs_slurm
     @unittest.skip
     def test_slurm_cwl_conformance_with_caching(self):
-        return self.test_run_conformance(batchSystem="slurm", caching=True)
+        return self.test_slurm_cwl_conformance(caching=True)
 
     @slow
     @needs_torque
     @unittest.skip
     def test_torque_cwl_conformance_with_caching(self):
-        return self.test_run_conformance(batchSystem="torque", caching=True)
+        return self.test_torque_cwl_conformance(caching=True)
 
     @slow
     @needs_gridengine
     @unittest.skip
     def test_gridengine_cwl_conformance_with_caching(self):
-        return self.test_run_conformance(batchSystem="grid_engine", caching=True)
+        return self.test_gridengine_cwl_conformance(caching=True)
 
     @slow
     @needs_mesos
     @unittest.skip
     def test_mesos_cwl_conformance_with_caching(self):
-        return self.test_run_conformance(batchSystem="mesos", caching=True)
+        return self.test_mesos_cwl_conformance(caching=True)
 
     @slow
     @needs_parasol
     @unittest.skip
     def test_parasol_cwl_conformance_with_caching(self):
-        return self.test_run_conformance(batchSystem="parasol", caching=True)
+        return self.test_parasol_cwl_conformance(caching=True)
 
     @slow
     @needs_kubernetes
-    def test_kubernetes_cwl_conformance_caching(self):
-        # TODO: tests that are still broken on Kubernetes:
-        # 42 55 84 85 87 88 93 107 136 137 173
-        return self.test_run_conformance(batchSystem="kubernetes", caching=True,
-                                         selected_tests="1-41,43-54,56-83,86,89-92,94-106,108-135,138-172,174-197")
-
-    @slow
-    @needs_lsf
-    @unittest.skip
-    def test_lsf_cwl_conformance(self):
-        return self.test_run_conformance(batchSystem="lsf")
-
-    @slow
-    @needs_slurm
-    @unittest.skip
-    def test_slurm_cwl_conformance(self):
-        return self.test_run_conformance(batchSystem="slurm")
-
-    @slow
-    @needs_torque
-    @unittest.skip
-    def test_torque_cwl_conformance(self):
-        return self.test_run_conformance(batchSystem="torque")
-
-    @slow
-    @needs_gridengine
-    @unittest.skip
-    def test_gridengine_cwl_conformance(self):
-        return self.test_run_conformance(batchSystem="grid_engine")
-
-    @slow
-    @needs_mesos
-    @unittest.skip
-    def test_mesos_cwl_conformance(self):
-        return self.test_run_conformance(batchSystem="mesos")
-
-    @slow
-    @needs_parasol
-    @unittest.skip
-    def test_parasol_cwl_conformance(self):
-        return self.test_run_conformance(batchSystem="parasol")
-
-    @slow
-    @needs_kubernetes
-    def test_kubernetes_cwl_conformance(self):
-        # TODO: tests that are still broken on Kubernetes:
-        # 42 55 84 85 87 88 93 107 136 137 173
-        return self.test_run_conformance(batchSystem="kubernetes",
-                                         selected_tests="1-41,43-54,56-83,86,89-92,94-106,108-135,138-172,174-197")
+    def test_kubernetes_cwl_conformance_with_caching(self):
+        return self.test_kubernetes_cwl_conformance(caching=True)
 
     @staticmethod
     def _expected_seqtk_output(outDir):
@@ -443,14 +441,14 @@ class CWLv11Test(ToilTest):
 
     @slow
     @needs_kubernetes
-    def test_kubernetes_cwl_conformance(self):
-        return self.test_run_conformance(batchSystem="kubernetes")
+    def test_kubernetes_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="kubernetes", **kwargs)
 
 
     @slow
     @needs_kubernetes
-    def test_kubernetes_cwl_conformance_caching(self):
-        return self.test_run_conformance(batchSystem="kubernetes", caching=True)
+    def test_kubernetes_cwl_conformance_with_caching(self):
+        return self.test_kubernetes_cwl_conformance(caching=True)
 
 
 @needs_cwl
@@ -489,14 +487,14 @@ class CWLv12Test(ToilTest):
 
     @slow
     @needs_kubernetes
-    def test_kubernetes_cwl_conformance(self):
-        return self.test_run_conformance(batchSystem="kubernetes")
+    def test_kubernetes_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="kubernetes", **kwargs)
 
 
     @slow
     @needs_kubernetes
-    def test_kubernetes_cwl_conformance_caching(self):
-        return self.test_run_conformance(batchSystem="kubernetes", caching=True)
+    def test_kubernetes_cwl_conformance_with_caching(self):
+        return self.test_kubernetes_cwl_conformance(caching=True)
 
 @needs_cwl
 class CWLSmallTests(ToilTest):
