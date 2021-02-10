@@ -28,7 +28,7 @@ import subprocess
 
 from packaging import version
 
-from toil.wdl.wdl_functions import return_bytes
+from toil.lib.conversions import bytes_in_unit, convert_units
 
 LSB_PARAMS_FILENAME = "lsb.params"
 LSF_CONF_FILENAME = "lsf.conf"
@@ -127,7 +127,7 @@ def apply_lsadmin(fn):
     return fn(output.split("\n"))
 
 
-def get_lsf_units(resource=False):
+def get_lsf_units(resource: bool = False) -> str:
     """
     check if we can find LSF_UNITS_FOR_LIMITS in lsadmin and lsf.conf
     files, preferring the value in bparams, then lsadmin, then the lsf.conf file
@@ -169,40 +169,34 @@ def get_lsf_version():
 
 
 def check_lsf_json_output_supported():
-    """
-    Check if the current LSF system supports bjobs json output
-    """
-    lsf_version = get_lsf_version()
-    if not lsf_version:
-        return False
+    """Check if the current LSF system supports bjobs json output."""
     try:
-        if version.parse(lsf_version) >= version.parse(LSF_JSON_OUTPUT_MIN_VERSION):
+        lsf_version = get_lsf_version()
+        if lsf_version and (version.parse(lsf_version) >= version.parse(LSF_JSON_OUTPUT_MIN_VERSION)):
             return True
-        else:
-            return False
     except:
         return False
+    return False
 
 
-def parse_memory_resource(mem):
-    """
-    Parse memory parameter for -R
-    """
+def parse_memory_resource(mem: float) -> str:
+    """Parse memory parameter for -R."""
     return parse_memory(mem, True)
 
 
-def parse_memory_limit(mem):
-    """
-    Parse memory parameter for -M
-    """
+def parse_memory_limit(mem: float) -> str:
+    """Parse memory parameter for -M."""
     return parse_memory(mem, False)
 
 
-def parse_memory(mem, resource):
+def parse_memory(mem: float, resource: bool) -> str:
     """Parse memory parameter."""
     lsf_unit = get_lsf_units(resource=resource)
-    megabytes_of_mem = convert_mb(float(mem) * 1024, lsf_unit)
-    return megabytes_of_mem
+    megabytes_of_mem = convert_units(float(mem) * 1024, src_unit=lsf_unit, dst_unit='MB')
+    if megabytes_of_mem < 1:
+        megabytes_of_mem = 1.0
+    # round as a string here to avoid returning something like 1.231e+12
+    return f'{megabytes_of_mem:.4f}'
 
 
 def per_core_reservation():
@@ -227,18 +221,7 @@ def per_core_reservation():
     per_core = apply_conf_file(per_core_reserve_from_stream, LSB_PARAMS_FILENAME)
     if per_core and per_core.upper() == "Y":
         return True
-    else:
-        return False
-
-
-def convert_mb(num: float, unit: str) -> float:
-    """Return the represented amount in megabytes.  Always return at least 1 mb.  Always round to 2 decimal places."""
-    units = ['B', 'KB', 'MB', 'GB', 'TB']
-    assert unit in units, f"{unit} not a valid unit, valid units are {list(units.keys())}."
-    converted = (num * return_bytes(unit)) / return_bytes('MB')
-    if converted < 1:
-        converted = 1.0
-    return round(converted, 2)
+    return False
 
 
 if __name__ == "__main__":
