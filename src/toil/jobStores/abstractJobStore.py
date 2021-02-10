@@ -883,8 +883,7 @@ class AbstractJobStore(ABC):
 
     @abstractmethod
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None, mode='b',
-                            encoding=None, errors=None):
+    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None, encoding=None, errors=None):
         """
         Similar to writeFile, but returns a context manager yielding a tuple of
         1) a file handle which can be written to and 2) the ID of the resulting
@@ -904,20 +903,8 @@ class AbstractJobStore(ABC):
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
 
-        :param str mode: an optional string that specifies the mode in which the file is opened.
-                It defaults to 'b' which means open for writing in binary mode.
-
-                Currently supported mode characters:
-
-                    - 'b': open for writing in binary mode
-
-                    - 't': open for writing in text mode
-
-                The default mode is 'b' (open for writing in binary mode, synonym of 'wb').
-
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
-                as for encode() and the default is platform dependent: locale.getpreferredencoding(False)
-                is called to get the current locale encoding. This should only be used in text mode.
+                as for encode() and defaults to None. This should only be used in text mode.
 
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
                 are the same as for open() and defaults to 'strict'. This should only be used in text mode.
@@ -983,22 +970,12 @@ class AbstractJobStore(ABC):
 
     @abstractmethod
     @contextmanager
-    def readFileStream(self, jobStoreFileID, mode='b', encoding=None, errors=None):
+    def readFileStream(self, jobStoreFileID, encoding=None, errors=None):
         """
         Similar to readFile, but returns a context manager yielding a file handle which can be
         read from. The yielded file handle does not need to and should not be closed explicitly.
 
         :param str jobStoreFileID: ID of the file to get a readable file handle for
-
-        :param str mode: an optional string that specifies the mode in which the file is opened.
-
-                Currently supported mode characters:
-
-                    - 'b': binary mode
-
-                    - 't': text mode
-
-                The default mode is 'b' (open for reading in binary mode, synonym of 'rb').
 
         :param str encoding: the name of the encoding used to decode the file. Encodings are the same as
                 for decode() and the default is platform dependent: locale.getpreferredencoding(False) is
@@ -1064,7 +1041,7 @@ class AbstractJobStore(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def updateFileStream(self, jobStoreFileID, mode='b', encoding=None, errors=None):
+    def updateFileStream(self, jobStoreFileID, encoding=None, errors=None):
         """
         Replaces the existing version of a file in the job store. Similar to writeFile, but
         returns a context manager yielding a file handle which can be written to. The
@@ -1072,19 +1049,8 @@ class AbstractJobStore(ABC):
 
         :param str jobStoreFileID: the ID of the file in the job store to be updated
 
-        :param str mode: an optional string that specifies the mode in which the file is opened.
-
-                Currently supported mode characters:
-
-                    - 'b': binary mode
-
-                    - 't': text mode
-
-                The default mode is 'b' (open for writing in binary mode, synonym of 'wb').
-
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
-                as for encode() and the default is platform dependent: locale.getpreferredencoding(False)
-                is called to get the current locale encoding. This should only be used in text mode.
+                as for encode() and defaults to None. This should only be used in text mode.
 
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
                 are the same as for open() and defaults to 'strict'. This should only be used in text mode.
@@ -1107,7 +1073,7 @@ class AbstractJobStore(ABC):
 
     @abstractmethod
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName, isProtected=None, mode='b', encoding=None, errors=None):
+    def writeSharedFileStream(self, sharedFileName, isProtected=None, encoding=None, errors=None):
         """
         Returns a context manager yielding a writable file handle to the global file referenced
         by the given name.  File will be created in an atomic manner.
@@ -1118,19 +1084,8 @@ class AbstractJobStore(ABC):
         :param bool isProtected: True if the file must be encrypted, None if it may be encrypted or
                False if it must be stored in the clear.
 
-        :param str mode: an optional string that specifies the mode in which the file is opened.
-
-                Currently supported mode characters:
-
-                    - 'b': binary mode
-
-                    - 't': text mode
-
-                The default mode is 'b' (open for writing in binary mode, synonym of 'wb').
-
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
-                as for encode() and the default is platform dependent: locale.getpreferredencoding(False)
-                is called to get the current locale encoding. This should only be used in text mode.
+                as for encode() and defaults to None. This should only be used in text mode.
 
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
                 are the same as for open() and defaults to 'strict'. This should only be used in text mode.
@@ -1142,7 +1097,7 @@ class AbstractJobStore(ABC):
 
     @abstractmethod
     @contextmanager
-    def readSharedFileStream(self, sharedFileName, mode='b', encoding=None, errors=None):
+    def readSharedFileStream(self, sharedFileName, encoding=None, errors=None):
         """
         Returns a context manager yielding a readable file handle to the global file referenced
         by the given name.
@@ -1150,19 +1105,8 @@ class AbstractJobStore(ABC):
         :param str sharedFileName: A file name matching AbstractJobStore.fileNameRegex, unique within
                this job store
 
-        :param str mode: an optional string that specifies the mode in which the file is opened.
-
-                Currently supported mode characters:
-
-                    - 'b': binary mode
-
-                    - 't': text mode
-
-                The default mode is 'b' (open for reading in binary mode, synonym of 'rb').
-
         :param str encoding: the name of the encoding used to decode the file. Encodings are the same
-                as for decode() and the default is platform dependent: locale.getpreferredencoding(False)
-                is called to get the current locale encoding. This should only be used in text mode.
+                as for decode() and defaults to None. This should only be used in text mode.
 
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
                 are the same as for open() and defaults to 'strict'. This should only be used in text mode.

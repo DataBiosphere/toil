@@ -409,14 +409,13 @@ class FileJobStore(AbstractJobStore):
         return relPath
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None, mode='b',
-                        encoding=None, errors=None):
+    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None, encoding=None, errors=None):
         if not basename:
             basename = 'stream'
         absPath = self._getUniqueFilePath(basename, jobStoreID, cleanup)
         relPath = self._getFileIdFromPath(absPath)
 
-        with open(absPath, 'w' + mode, encoding=encoding, errors=errors) as f:
+        with open(absPath, 'wb' if encoding == None else 'wt', encoding=encoding, errors=errors) as f:
             # Don't yield while holding an open file descriptor to the temp
             # file. That can result in temp files still being open when we try
             # to clean ourselves up, somehow, for certain workloads.
@@ -544,18 +543,18 @@ class FileJobStore(AbstractJobStore):
         return st.st_size
 
     @contextmanager
-    def updateFileStream(self, jobStoreFileID, mode='b', encoding=None, errors=None):
+    def updateFileStream(self, jobStoreFileID, encoding=None, errors=None):
         self._checkJobStoreFileID(jobStoreFileID)
         # File objects are context managers (CM) so we could simply return what open returns.
         # However, it is better to wrap it in another CM so as to prevent users from accessing
         # the file object directly, without a with statement.
-        with open(self._getFilePathFromId(jobStoreFileID), 'w' + mode, encoding=encoding, errors=errors) as f:
+        with open(self._getFilePathFromId(jobStoreFileID), 'wb' if encoding == None else 'wt', encoding=encoding, errors=errors) as f:
             yield f
 
     @contextmanager
-    def readFileStream(self, jobStoreFileID, mode='b', encoding=None, errors=None):
+    def readFileStream(self, jobStoreFileID, encoding=None, errors=None):
         self._checkJobStoreFileID(jobStoreFileID)
-        with open(self._getFilePathFromId(jobStoreFileID), 'r' + mode, encoding=encoding, errors=errors) as f:
+        with open(self._getFilePathFromId(jobStoreFileID), 'rb' if encoding == None else 'rt', encoding=encoding, errors=errors) as f:
             yield f
 
     ##########################################
@@ -567,18 +566,18 @@ class FileJobStore(AbstractJobStore):
         return os.path.join(self.sharedFilesDir, sharedFileName)
 
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName, isProtected=None, mode='b', encoding=None, errors=None):
+    def writeSharedFileStream(self, sharedFileName, isProtected=None, encoding=None, errors=None):
         # the isProtected parameter has no effect on the fileStore
         self._requireValidSharedFileName(sharedFileName)
         with AtomicFileCreate(self._getSharedFilePath(sharedFileName)) as tmpSharedFilePath:
-            with open(tmpSharedFilePath, 'w' + mode, encoding=encoding, errors=None) as f:
+            with open(tmpSharedFilePath, 'wb' if encoding == None else 'wt', encoding=encoding, errors=None) as f:
                 yield f
 
     @contextmanager
-    def readSharedFileStream(self, sharedFileName, mode='b', encoding=None, errors=None):
+    def readSharedFileStream(self, sharedFileName, encoding=None, errors=None):
         self._requireValidSharedFileName(sharedFileName)
         try:
-            with open(self._getSharedFilePath(sharedFileName), 'r' + mode, encoding=encoding, errors=errors) as f:
+            with open(self._getSharedFilePath(sharedFileName), 'rb' if encoding == None else 'rt', encoding=encoding, errors=errors) as f:
                 yield f
 
         except IOError as e:

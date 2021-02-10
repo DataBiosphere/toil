@@ -249,9 +249,9 @@ class GoogleJobStore(AbstractJobStore):
         return fileID
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None, mode='b', encoding=None, errors=None):
+    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None, encoding=None, errors=None):
         fileID = self._newID(isFile=True, jobStoreID=jobStoreID if cleanup else None)
-        with self._uploadStream(fileID, update=False, mode=mode, encoding=encoding, errors=errors) as writable:
+        with self._uploadStream(fileID, update=False, encoding=encoding, errors=errors) as writable:
             yield writable, fileID
 
     def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
@@ -271,8 +271,8 @@ class GoogleJobStore(AbstractJobStore):
                 blob.download_to_file(writeable)
 
     @contextmanager
-    def readFileStream(self, jobStoreFileID, mode='b', encoding=None, errors=None):
-        with self.readSharedFileStream(jobStoreFileID, isProtected=True, mode=mode, encoding=encoding,
+    def readFileStream(self, jobStoreFileID, encoding=None, errors=None):
+        with self.readSharedFileStream(jobStoreFileID, isProtected=True, encoding=encoding,
                                         errors=errors) as readable:
             yield readable
 
@@ -294,23 +294,19 @@ class GoogleJobStore(AbstractJobStore):
             self._writeFile(jobStoreFileID, f, update=True)
 
     @contextmanager
-    def updateFileStream(self, jobStoreFileID, mode='b', encoding=None, errors=None):
-        with self._uploadStream(jobStoreFileID, update=True, mode=mode, encoding=encoding,
+    def updateFileStream(self, jobStoreFileID, encoding=None, errors=None):
+        with self._uploadStream(jobStoreFileID, update=True, encoding=encoding, errors=errors) as writable:
+            yield writable
+
+    @contextmanager
+    def writeSharedFileStream(self, sharedFileName, isProtected=True, encoding=None, errors=None):
+        with self._uploadStream(sharedFileName, encrypt=isProtected, update=True, encoding=encoding,
                                     errors=errors) as writable:
             yield writable
 
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName, isProtected=True, mode='b',
-                                encoding=None, errors=None):
-        with self._uploadStream(sharedFileName, encrypt=isProtected, update=True, mode=mode,
-                                    encoding=encoding, errors=errors) as writable:
-            yield writable
-
-    @contextmanager
-    def readSharedFileStream(self, sharedFileName, isProtected=True, mode='b',
-                                encoding=None, errors=None):
-        with self._downloadStream(sharedFileName, encrypt=isProtected, mode=mode,
-                                encoding=None, errors=None) as readable:
+    def readSharedFileStream(self, sharedFileName, isProtected=True, encoding=None, errors=None):
+        with self._downloadStream(sharedFileName, encrypt=isProtected, encoding=encoding, errors=errors) as readable:
             yield readable
 
     @classmethod
@@ -463,7 +459,7 @@ class GoogleJobStore(AbstractJobStore):
 
     @contextmanager
     @googleRetry
-    def _uploadStream(self, fileName, update=False, encrypt=True, mode='b', encoding=None, errors=None):
+    def _uploadStream(self, fileName, update=False, encrypt=True, encoding=None, errors=None):
         """
         Yields a context manager that can be used to write to the bucket
         with a stream. See :class:`~toil.jobStores.utils.WritablePipe` for an example.
@@ -480,20 +476,8 @@ class GoogleJobStore(AbstractJobStore):
         :param encrypt: whether or not the file is encrypted
         :type encrypt: bool
 
-        :param str mode: an optional string that specifies the mode in which the file is opened.
-            It defaults to 'b' which means open for writing in binary mode.
-
-            Currently supported mode characters:
-
-                - 'b': open for writing in binary mode
-
-                - 't': open for writing in text mode
-
-            The default mode is 'b' (open for writing in binary mode, synonym of 'wb').
-
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
-                as for encode() and the default is platform dependent: locale.getpreferredencoding(False)
-                is called to get the current locale encoding. This should only be used in text mode.
+                as for encode() and defaults to None. This should only be used in text mode.
 
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
                 are the same as for open() and defaults to 'strict'. This should only be used in text mode.
@@ -508,12 +492,12 @@ class GoogleJobStore(AbstractJobStore):
                     assert not blob.exists()
                 blob.upload_from_file(readable)
 
-        with UploadPipe(mode=mode, encoding=encoding, errors=errors) as writable:
+        with UploadPipe(encoding=encoding, errors=errors) as writable:
             yield writable
 
     @contextmanager
     @googleRetry
-    def _downloadStream(self, fileName, encrypt=True, mode='b', encoding=None, errors=None):
+    def _downloadStream(self, fileName, encrypt=True, encoding=None, errors=None):
         """
         Yields a context manager that can be used to read from the bucket
         with a stream. See :class:`~toil.jobStores.utils.WritablePipe` for an example.
@@ -524,20 +508,8 @@ class GoogleJobStore(AbstractJobStore):
         :param encrypt: whether or not the file is encrypted
         :type encrypt: bool
 
-        :param str mode: an optional string that specifies the mode in which the file is opened.
-            It defaults to 'b' which means open for writing in binary mode.
-
-            Currently supported mode characters:
-
-                - 'b': open for writing in binary mode
-
-                - 't': open for writing in text mode
-
-            The default mode is 'b' (open for writing in binary mode, synonym of 'wb').
-
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
-                as for encode() and the default is platform dependent: locale.getpreferredencoding(False)
-                is called to get the current locale encoding. This should only be used in text mode.
+                as for encode() and defaults to None. This should only be used in text mode.
 
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
                 are the same as for open() and defaults to 'strict'. This should only be used in text mode.
@@ -557,5 +529,5 @@ class GoogleJobStore(AbstractJobStore):
                 finally:
                     writable.close()
 
-        with DownloadPipe(mode=mode, encoding=encoding, errors=errors) as readable:
+        with DownloadPipe(encoding=encoding, errors=errors) as readable:
             yield readable
