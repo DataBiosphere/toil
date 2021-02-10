@@ -101,9 +101,8 @@ class NonCachingFileStore(AbstractFileStore):
         return localFilePath
 
     @contextmanager
-    def readGlobalFileStream(self, fileStoreID, mode='b', encoding=None, errors=None):
-        with self.jobStore.readFileStream(fileStoreID, mode=mode, encoding=encoding,
-                errors=errors) as f:
+    def readGlobalFileStream(self, fileStoreID, encoding=None, errors=None):
+        with self.jobStore.readFileStream(fileStoreID, encoding=encoding, errors=errors) as f:
             self.logAccess(fileStoreID)
             yield f
 

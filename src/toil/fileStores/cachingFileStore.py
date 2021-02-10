@@ -1599,7 +1599,7 @@ class CachingFileStore(AbstractFileStore):
                     # Wait for other people's downloads to progress.
                     time.sleep(self.contentionBackoff)
 
-    def readGlobalFileStream(self, fileStoreID, mode='b', encoding=None, errors=None):
+    def readGlobalFileStream(self, fileStoreID, encoding=None, errors=None):
         if str(fileStoreID) in self.filesToDelete:
             # File has already been deleted
             raise FileNotFoundError('Attempted to read deleted file: {}'.format(fileStoreID))
@@ -1608,7 +1608,7 @@ class CachingFileStore(AbstractFileStore):
         
         # TODO: can we fulfil this from the cache if the file is in the cache?
         # I think we can because if a job is keeping the file data on disk due to having it open, it must be paying for it itself.
-        return self.jobStore.readFileStream(fileStoreID, mode=mode, encoding=encoding, errors=errors)
+        return self.jobStore.readFileStream(fileStoreID, encoding=encoding, errors=errors)
 
     def deleteLocalFile(self, fileStoreID):
         # What job are we operating as?
