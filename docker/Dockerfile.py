@@ -122,7 +122,7 @@ print(heredoc('''
     
     ADD singularity-wrapper.sh /usr/local/bin/singularity
 
-    RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/local/toil/bin/singularity
+    RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/local/bin/singularity
     
     # fixes an incompatibility updating pip on Ubuntu 16 w/ python3.8
     RUN sed -i "s/platform.linux_distribution()/('Ubuntu', '16.04', 'xenial')/g" /usr/lib/python3/dist-packages/pip/download.py
