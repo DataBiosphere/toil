@@ -36,7 +36,7 @@ EXTENSIONS_TO_PROCESS = {'.csv',
                          'Makefile'}
 
 
-def strip_trailing_whitespace_from_file(filename: str):
+def strip_trailing_whitespace_from_file(filename: str) -> None:
     """Strips trailing whitespace from a file, in-place."""
     pristine_lines = []
     with open(filename, 'r') as r:
@@ -48,7 +48,7 @@ def strip_trailing_whitespace_from_file(filename: str):
             w.write(pristine_line + '\n')
 
 
-def strip_trailing_whitespace_from_all_files_in_dir(dirname: str):
+def strip_trailing_whitespace_from_all_files_in_dir(dirname: str) -> None:
     """
     Strips trailing whitespace from all files in a directory, recursively.
 
