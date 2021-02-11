@@ -117,8 +117,10 @@ print(heredoc('''
     ADD waitForKey.sh /usr/bin/waitForKey.sh
 
     ADD customDockerInit.sh /usr/bin/customDockerInit.sh
+    
+    ADD singularity-wrapper.sh /usr/local/toil/bin/singularity
 
-    RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh
+    RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/local/toil/bin/singularity
     
     # fixes an incompatibility updating pip on Ubuntu 16 w/ python3.8
     RUN sed -i "s/platform.linux_distribution()/('Ubuntu', '16.04', 'xenial')/g" /usr/lib/python3/dist-packages/pip/download.py
@@ -163,7 +165,8 @@ print(heredoc('''
     ENV TOIL_WORKDIR /var/lib/toil
 
     # We want to get binaries mounted in from the environemnt on Toil-managed Kubernetes
-    env PATH /opt/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    # And to use Toil wrapper scripts in preference to wrapped commands
+    env PATH /opt/bin:/usr/local/toil/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     # We want to pick the right Python when the user runs it
     RUN rm /usr/bin/python3 && rm /usr/bin/python && \

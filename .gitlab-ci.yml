@@ -11,6 +11,7 @@ before_script:
   - |
     if [[ ! -z "${DOCKER_HUB_MIRROR}" ]] ; then
         echo "{\"registry-mirrors\": [\"${DOCKER_HUB_MIRROR}\"], \"insecure-registries\": [\"${DOCKER_HUB_MIRROR##*://}\"]}" | sudo tee /etc/docker/daemon.json
+        export SINGULARITY_DOCKER_HUB_MIRROR="${DOCKER_HUB_MIRROR}"
     fi
   - startdocker || true
   - docker info

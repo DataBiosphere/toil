@@ -60,7 +60,9 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
         if selected_tests:
             cmd.append(f'-n={selected_tests}')
 
-        args_passed_directly_to_toil = [f'--disableCaching={not caching}', '--clean=always']
+        args_passed_directly_to_toil = [f'--disableCaching={not caching}',
+                                        '--clean=always',
+                                        '--setEnv=SINGULARITY_DOCKER_HUB_MIRROR']
 
         job_store_override = None
 

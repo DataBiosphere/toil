@@ -160,4 +160,8 @@ There are several environment variables that affect the way Toil runs.
 |                                  | to S3 (``True`` by default).                       |
 |                                  | Example: ``TOIL_S3_USE_SSL=False``                 |
 +----------------------------------+----------------------------------------------------+
+| SINGULARITY_DOCKER_HUB_MIRROR    | An http or https URL for the Singularity wrapper   |
+|                                  | in the Toil Docker container to use as a mirror    |
+|                                  | for Docker Hub.                                    |
++----------------------------------+----------------------------------------------------+
 .. _standard temporary directory: https://docs.python.org/3/library/tempfile.html#tempfile.gettempdir
