@@ -1210,6 +1210,9 @@ class CWLJob(Job):
         #  see: https://github.com/common-workflow-language/cwltool/blob/78fe9d41ee5a44f8725dfbd7028e4a5ee42949cf/cwltool/builder.py#L474
         # self.builder.outdir = outdir
         # runtime_context.builder = self.builder
+        
+        logger.debug("CWLJob environment: %s", os.environ)
+        logger.debug("Runtime Context environment: %s", runtime_context.preserve_environment)
 
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841

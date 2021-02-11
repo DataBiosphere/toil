@@ -98,7 +98,7 @@ print(heredoc('''
         mv go /usr/local/
         
     # Build Singularity, but only keep the binaries and scrap the GOPATH to
-    # save space
+    # save space. Hide its binary so we can wrap it.
     RUN mkdir -p $(go env GOPATH)/src/github.com/sylabs && \
         cd $(go env GOPATH)/src/github.com/sylabs && \
         git clone https://github.com/sylabs/singularity.git && \
@@ -109,7 +109,9 @@ print(heredoc('''
         make -j4 && \
         make install && \
         cd && \
-        rm -Rf $(go env GOPATH)
+        rm -Rf $(go env GOPATH) \
+        && mkdir -p /usr/local/libexec/toil && \
+        mv /usr/local/bin/singularity /usr/local/libexec/toil/singularity-real
     
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh
@@ -118,7 +120,7 @@ print(heredoc('''
 
     ADD customDockerInit.sh /usr/bin/customDockerInit.sh
     
-    ADD singularity-wrapper.sh /usr/local/toil/bin/singularity
+    ADD singularity-wrapper.sh /usr/local/bin/singularity
 
     RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/local/toil/bin/singularity
     
@@ -165,8 +167,7 @@ print(heredoc('''
     ENV TOIL_WORKDIR /var/lib/toil
 
     # We want to get binaries mounted in from the environemnt on Toil-managed Kubernetes
-    # And to use Toil wrapper scripts in preference to wrapped commands
-    env PATH /opt/bin:/usr/local/toil/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    env PATH /opt/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     # We want to pick the right Python when the user runs it
     RUN rm /usr/bin/python3 && rm /usr/bin/python && \

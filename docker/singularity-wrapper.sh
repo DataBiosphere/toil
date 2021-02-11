@@ -6,7 +6,8 @@
 set -e
 
 # Where is the real Singularity binary?
-SINGULARITY_PATH=/usr/bin/singularity
+# The Dockerfile moves it from /usr/local/bin/singularity to here after installation
+SINGULARITY_PATH=/usr/local/libexec/toil/singularity-real
 
 # Read replacements from the environemnt
 # TODO: really do that
