@@ -16,7 +16,7 @@ from botocore.session import get_session
 
 
 from toil.lib.exceptions import panic
-from toil.lib.retry import (get_error_code, 
+from toil.lib.retry import (get_error_code,
                             get_error_message,
                             old_retry,
                             retry,
@@ -40,7 +40,7 @@ def not_found(e):
     except ValueError:
         # Not the right kind of error
         return False
-    
+
 def inconsistencies_detected(e):
     if get_error_code(e) == 'InvalidGroup.NotFound':
         return True
@@ -310,8 +310,8 @@ def prune(bushy: dict) -> dict:
         if bushy[key]:
             pruned[key] = bushy[key]
     return pruned
-    
-   
+
+
 # We need a module-level client to get the dynamically-generated error types to
 # catch, and to wait on IAM items.
 iam_client = establish_boto3_session().client('iam')
@@ -322,13 +322,13 @@ def wait_until_instance_profile_arn_exists(instance_profile_arn: str):
     # TODO: We have no guarantee that the ARN contains the name.
     instance_profile_name = instance_profile_arn.split(':instance-profile/')[-1]
     iam_client.get_instance_profile(InstanceProfileName=instance_profile_name)
-    
+
 def flatten_tags(tags: Dict[str, str]) -> List[Dict[str, str]]:
     """
     Convert tags from a key to value dict into a list of 'Key': xxx, 'Value': xxx dicts.
     """
     return [{'Key': k, 'Value': v} for k, v in tags.items()]
-    
+
 
 @retry(intervals=[5, 5, 10, 20, 20, 20, 20], errors=INCONSISTENCY_ERRORS)
 def create_instances(ec2_resource: ServiceResource,
@@ -350,14 +350,14 @@ def create_instances(ec2_resource: ServiceResource,
       https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
     Not to be confused with "run_instances" (same input args; returns a dictionary):
       https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.run_instances
-      
+
     Tags, if given, are applied to the instances, and all volumes.
     """
     log.info('Creating %s instance(s) ... ', instance_type)
-    
+
     if isinstance(user_data, str):
         user_data = user_data.encode('utf-8')
-        
+
     request = {'ImageId': image_id,
                'MinCount': num_instances,
                'MaxCount': num_instances,
@@ -367,18 +367,18 @@ def create_instances(ec2_resource: ServiceResource,
                'UserData': user_data,
                'BlockDeviceMappings': block_device_map,
                'SubnetId': subnet_id}
-               
+
     if instance_profile_arn:
         # We could just retry when we get an error because the ARN doesn't
         # exist, but we might as well wait for it.
         wait_until_instance_profile_arn_exists(instance_profile_arn)
-        
+
         # Add it to the request
         request['IamInstanceProfile'] = {'Arn': instance_profile_arn}
-        
+
     if placement_az:
         request['Placement'] = {'AvailabilityZone': placement_az}
-               
+
     if tags:
         # Tag everything when we make it.
         flat_tags = flatten_tags(tags)
@@ -386,7 +386,7 @@ def create_instances(ec2_resource: ServiceResource,
                                         {'ResourceType': 'volume', 'Tags': flat_tags}]
 
     return ec2_resource.create_instances(**prune(request))
-    
+
 @retry(intervals=[5, 5, 10, 20, 20, 20, 20], errors=INCONSISTENCY_ERRORS)
 def create_launch_template(ec2_client: BaseClient,
                            template_name: str,
@@ -402,28 +402,28 @@ def create_launch_template(ec2_client: BaseClient,
                            tags: Optional[Dict[str, str]] = None) -> str:
     """
     Creates a launch template with the given name for launching instances with the given parameters.
-    
+
     We only ever use the default version of any launch template.
 
     Internally calls https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html?highlight=create_launch_template#EC2.Client.create_launch_template
-    
+
     :param tags: Tags, if given, are applied to the template itself, all instances, and all volumes.
     :param user_data: non-base64-encoded user data to pass to the instances.
-    
-    
+
+
     :return: the ID of the launch template.
-    
-    
+
+
     """
     log.info('Creating launch template for %s instances ... ', instance_type)
-    
+
     if isinstance(user_data, str):
         # Make sure we have bytes
         user_data = user_data.encode('utf-8')
-        
+
     # Then base64 and decode back to str.
     user_data = b64encode(user_data).decode('utf-8')
-    
+
     template = {'ImageId': image_id,
                 'KeyName': key_name,
                 'SecurityGroupIds': security_group_ids,
@@ -431,18 +431,18 @@ def create_launch_template(ec2_client: BaseClient,
                 'UserData': user_data,
                 'BlockDeviceMappings': block_device_map,
                 'SubnetId': subnet_id}
-               
+
     if instance_profile_arn:
         # We could just retry when we get an error because the ARN doesn't
         # exist, but we might as well wait for it.
         wait_until_instance_profile_arn_exists(instance_profile_arn)
-        
+
         # Add it to the request
         template['IamInstanceProfile'] = {'Arn': instance_profile_arn}
-        
+
     if placement_az:
         template['Placement'] = {'AvailabilityZone': placement_az}
-               
+
     if tags:
         # Tag everything when we make it.
         flat_tags = flatten_tags(tags)
@@ -451,10 +451,10 @@ def create_launch_template(ec2_client: BaseClient,
 
     request = {'LaunchTemplateData': prune(template),
                'LaunchTemplateName': template_name}
-               
+
     if tags:
         request['TagSpecifications'] = [{'ResourceType': 'launch-template', 'Tags': flat_tags}]
-               
+
     return ec2_client.create_launch_template(**request)['LaunchTemplate']['LaunchTemplateId']
 
 @retry(intervals=[5, 5, 10, 20, 20, 20, 20], errors=INCONSISTENCY_ERRORS)
@@ -472,14 +472,14 @@ def create_auto_scaling_group(autoscaling_client: BaseClient,
     """
     Create a new Auto Scaling Group with the given name (which is also its
     unique identifier).
-    
+
     :param autoscaling_client: Boto3 client for autoscaling.
     :param asg_name: Unique name for the autoscaling group.
     :param launch_template_id: ID of the launch template to make instances from.
     :param vpc_subnets: One or more subnet IDs to place instances in the group
            into. Determine the availability zone(s) instances will launch into.
     :param min_size: Minimum number of instances to have in the group at all
-           times. 
+           times.
     :param max_size: Maximum number of instances to allow in the group at any
            time.
     :param instance_types: Use a pool over the given instance types, instead of
@@ -494,36 +494,36 @@ def create_auto_scaling_group(autoscaling_client: BaseClient,
            eviction probability.
     :param tags: Tags to apply to the ASG only. Tags for the instances should
            be added to the launch template instead.
-    
-    
+
+
     The default version of the launch template is used.
     """
-    
+
     if instance_types is None:
         instance_types = []
-    
+
     if instance_types is not None and len(instance_types) > 20:
         raise RuntimeError(f"Too many instance types ({len(instance_types)}) in group; AWS supports only 20.")
-        
+
     if len(vpc_subnets) == 0:
         raise RuntimeError("No VPC subnets specified to launch into; not clear where to put instances")
-    
+
     # We always write the ASG with a MixedInstancesPolicy even when we have only one type.
     mip = {'LaunchTemplate': {'LaunchTemplateSpecification': {'LaunchTemplateId': launch_template_id, 'Version': '$Default'},
                               'Overrides': [{'InstanceType': t} for t in instance_types]}}
-    
+
     if spot_bid is not None:
         # Ask for spot instances by saying everything above base capacity of 0 should be spot.
         mip['InstancesDistribution'] = {'OnDemandPercentageAboveBaseCapacity': 0,
                                         'SpotAllocationStrategy': 'capacity-optimized' if not spot_cheapest else 'lowest-price',
                                         'SpotMaxPrice': str(spot_bid)}
-    
+
     asg = {'AutoScalingGroupName': asg_name,
            'MixedInstancesPolicy': prune(mip),
            'MinSize': min_size,
            'MaxSize': max_size,
            'VPCZoneIdentifier': ','.join(vpc_subnets)}
-               
+
     if tags:
         # Tag the ASG itself.
         asg['Tags'] = flatten_tags(tags)

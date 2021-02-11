@@ -21,10 +21,10 @@ def cluster_factory(provisioner, clusterName=None, clusterType='mesos', zone=Non
     """
     Find and instantiate the appropriate provisioner instance to make clusters
     in the given cloud.
-    
+
     Raises ClusterTypeNotSupportedException if the given provisioner does not
     implement clusters of the given type.
-    
+
     :param provisioner: The cloud type of the cluster.
     :param clusterName: The name of the cluster.
     :param clusterType: The type of cluster: 'mesos' or 'kubernetes'.
@@ -113,7 +113,7 @@ class NoSuchClusterException(Exception):
     """Indicates that the specified cluster does not exist."""
     def __init__(self, cluster_name):
         super(NoSuchClusterException, self).__init__(f"The cluster '{cluster_name}' could not be found")
-        
+
 class ClusterTypeNotSupportedException(Exception):
     """Indicates that a provisioner does not support a given cluster type."""
     def __init__(self, provisioner_class, cluster_type):

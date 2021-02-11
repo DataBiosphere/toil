@@ -174,7 +174,7 @@ class ErrorCondition:
                  boto_error_codes: List[str] = None,
                  error_message_must_include: str = None,
                  retry_on_this_condition: bool = True):
-                 
+
         if error is None:
             if boto_error_codes:
                 # Default to the base Boto 3 error
@@ -182,8 +182,8 @@ class ErrorCondition:
             else:
                 # Default to base Exception
                 error = Exception
-            
-                 
+
+
         self.error = error
         self.error_codes = error_codes
         self.boto_error_codes = boto_error_codes
@@ -295,7 +295,7 @@ def return_status_code(e):
 def get_error_code(e: Exception) -> str:
     """
     Get the error code name from a Boto 2 or 3 error, or compatible types.
-    
+
     Returns empty string for other errors.
     """
     if hasattr(e, 'error_code') and isinstance(e.error_code, str):
@@ -313,11 +313,11 @@ def get_error_code(e: Exception) -> str:
             return ''
     else:
         return ''
-    
+
 def get_error_message(e: Exception) -> str:
     """
     Get the error message string from a Boto 2 or 3 error, or compatible types.
-    
+
     Note that error message conditions also chack more than this; this function
     does not fall back to the traceback for incompatible types.
     """
@@ -340,14 +340,14 @@ def get_error_status(e: Exception) -> int:
     kubernetes.client.rest.ApiException, http.client.HTTPException,
     urllib3.exceptions.HTTPError, requests.exceptions.HTTPError,
     urllib.error.HTTPError, or compatible type
-    
+
     Returns 0 from other errors.
     """
-    
+
     def numify(x):
         """Make sure a value is an integer"""
         return int(str(x).strip())
-    
+
     if hasattr(e, 'status'):
         # A Boto 2 error, kubernetes.client.rest.ApiException,
         # http.client.HTTPException, or urllib3.exceptions.HTTPError
@@ -364,14 +364,14 @@ def get_error_status(e: Exception) -> int:
         return numify(e.code)
     else:
         return 0
-        
+
 def get_error_body(e: Exception) -> str:
     """
     Gets the body from a Boto 2 or 3 error, or compatible types.
-    
+
     Returns the code and message if the error does not have a body.
     """
-    
+
     if hasattr(e, 'body'):
         # A Boto 2 error
         if isinstance(e.body, bytes):
@@ -379,7 +379,7 @@ def get_error_body(e: Exception) -> str:
             return e.body.decode('utf-8')
         elif isinstance(e.body, str):
             return e.body
-    
+
     # Anything else
     return f'{get_error_code(e)}: {get_error_message(e)}'
 
@@ -388,11 +388,11 @@ def meets_error_message_condition(e: Exception, error_message: Optional[str]):
         if kubernetes:
             if isinstance(e, kubernetes.client.rest.ApiException):
                 return error_message in str(e)
-        
+
         if botocore:
             if isinstance(e, botocore.exceptions.ClientError):
                 return error_message in str(e)
-        
+
         if isinstance(e, http.client.HTTPException) or isinstance(e, urllib3.exceptions.HTTPError):
             return error_message in e.reason
         elif isinstance(e, sqlite3.OperationalError):

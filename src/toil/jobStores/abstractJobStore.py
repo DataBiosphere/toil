@@ -109,14 +109,14 @@ class JobStoreExistsException(Exception):
 class AbstractJobStore(ABC):
     """
     Represents the physical storage for the jobs and files in a Toil workflow.
-    
+
     JobStores are responsible for storing :class:`toil.job.JobDescription`
     (which relate jobs to each other) and files.
-    
+
     Actual :class:`toil.job.Job` objects are stored in files, referenced by
     JobDescriptions. All the non-file CRUD methods the JobStore provides deal
     in JobDescriptions and not full, executable Jobs.
-    
+
     To actually get ahold of a :class:`toil.job.Job`, use
     :meth:`toil.job.Job.loadJob` with a JobStore and the relevant JobDescription.
     """
@@ -506,13 +506,13 @@ class AbstractJobStore(ABC):
                     return self.exists(jobId)
             else:
                 return self.exists(jobId)
-                
+
         def deleteJob(jobId):
             if jobCache is not None:
                 if jobId in jobCache:
                     del jobCache[jobId]
             self.delete(jobId)
-            
+
         def updateJobDescription(jobDescription):
             jobCache[jobDescription.jobStoreID] = jobDescription
             self.update(jobDescription)
@@ -640,7 +640,7 @@ class AbstractJobStore(ABC):
 
                 # Load the jobDescription for the service and initialise the link
                 serviceJobDescription = getJobDescription(jobStoreID)
-                
+
                 # Make sure it really is a service
                 assert isinstance(serviceJobDescription, ServiceJobDescription)
 
@@ -679,7 +679,7 @@ class AbstractJobStore(ABC):
             jobDescription.filterServiceHosts(haveJob)
 
             for serviceID in jobDescription.services:
-                replaceFlagsIfNeeded(getJobDescription(serviceID)) 
+                replaceFlagsIfNeeded(getJobDescription(serviceID))
 
             if servicesSizeFn() != startServicesSize:
                 changed[0] = True
@@ -716,14 +716,14 @@ class AbstractJobStore(ABC):
     # The following methods deal with creating/loading/updating/writing/checking for the
     # existence of jobs
     ##########################################
-    
+
     @abstractmethod
     def assignID(self, jobDescription):
         """
         Get a new jobStoreID to be used by the described job, and assigns it to the JobDescription.
-        
+
         Files associated with the assigned ID will be accepted even if the JobDescription has never been created or updated.
-        
+
         :param toil.job.JobDescription jobDescription: The JobDescription to give an ID to
         """
         raise NotImplementedError()
@@ -742,12 +742,12 @@ class AbstractJobStore(ABC):
     def create(self, jobDescription):
         """
         Writes the given JobDescription to the job store. The job must have an ID assigned already.
-       
+
         :return: The JobDescription passed.
         :rtype: toil.job.JobDescription
         """
         raise NotImplementedError()
-        
+
     @abstractmethod
     def exists(self, jobStoreID):
         """
@@ -798,10 +798,10 @@ class AbstractJobStore(ABC):
         """
         Loads the description of the job referenced by the given ID, assigns it
         the job store's config, and returns it.
-        
+
         May declare the job to have failed (see
         :meth:`toil.job.JobDescription.setupJobAfterFailure`) if there is
-        evidence of a failed update attempt. 
+        evidence of a failed update attempt.
 
         :param str jobStoreID: the ID of the job to load
 
@@ -863,7 +863,7 @@ class AbstractJobStore(ABC):
         :param str localFilePath: the path to the local file that will be uploaded to the job store.
                The last path component (basename of the file) will remain
                associated with the file in the file store, if supported, so
-               that the file can be searched for by name or name glob. 
+               that the file can be searched for by name or name glob.
 
         :param str jobStoreID: the id of a job, or None. If specified, the may be associated
                with that job in a job-store-specific way. This may influence the returned ID.
@@ -902,7 +902,7 @@ class AbstractJobStore(ABC):
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
-               
+
         :param str basename: If supported by the implementation, use the given
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
@@ -932,7 +932,7 @@ class AbstractJobStore(ABC):
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
-               
+
         :param str basename: If supported by the implementation, use the given
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.

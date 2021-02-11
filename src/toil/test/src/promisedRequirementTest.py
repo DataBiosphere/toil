@@ -100,7 +100,7 @@ class hidden(object):
         @travis_test
         def testJobConcurrency(self):
             pass
-        
+
         @travis_test
         def testPromisesWithJobStoreFileObjects(self, caching=True):
             """
@@ -121,7 +121,7 @@ class hidden(object):
             F2.addChild(G)
 
             Job.Runner.startToil(F1, self.getOptions(self._createTempDir('testFiles'), caching=caching))
-        
+
         @travis_test
         def testPromisesWithNonCachingFileStore(self):
             self.testPromisesWithJobStoreFileObjects(caching=False)
