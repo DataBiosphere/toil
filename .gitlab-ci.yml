@@ -112,7 +112,7 @@ py37_cwl_v1.0_kubernetes:
     - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
     - export TOIL_WORKDIR=/var/lib/toil
     - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
-    - echo "Singularity mirror: ${SINGULARITY_DOCKER_HUB_MIRROR}"
+    - echo Singularity mirror is ${SINGULARITY_DOCKER_HUB_MIRROR}
     - mkdir -p ${TOIL_WORKDIR}
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance_with_caching
