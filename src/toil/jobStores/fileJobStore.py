@@ -353,8 +353,10 @@ class FileJobStore(AbstractJobStore):
         :param object readable: An open file object to read from.
         """
         # we use a ~10Mb buffer to improve speed
-        atomic_copyobj(readable, cls._extractPathFromUrl(url), length=cls.BUFFER_SIZE,
-                        executable=executable)
+        atomic_copyobj(readable,
+                       cls._extractPathFromUrl(url),
+                       length=cls.BUFFER_SIZE,
+                       executable=executable)
 
 
     @staticmethod
