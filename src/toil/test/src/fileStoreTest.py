@@ -318,7 +318,7 @@ class hidden:
 
         @staticmethod
         def _testImportReadFileCompatibility(job, fileID, dstFile, initialPermissions, mutable, symlink):
-            dstFile = job.fileStore.readGlobalFile(fileNonID, mutable=mutable, symlink=symlink)
+            dstFile = job.fileStore.readGlobalFile(fileID, mutable=mutable, symlink=symlink)
             currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
 
             assert initialPermissions == currentPermissions
@@ -1330,25 +1330,25 @@ class CachingFileStoreTestWithFileJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'file'
 
 
-#@needs_aws_ec2
+@needs_aws_ec2
 class NonCachingFileStoreTestWithAwsJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'aws'
 
 
 @slow
-#@needs_aws_ec2
+@needs_aws_ec2
 @pytest.mark.timeout(1000)
 class CachingFileStoreTestWithAwsJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'aws'
 
 
-#@needs_google
+@needs_google
 class NonCachingFileStoreTestWithGoogleJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'google'
 
 
 @slow
-#@needs_google
+@needs_google
 @pytest.mark.timeout(1000)
 class CachingFileStoreTestWithGoogleJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'google'
