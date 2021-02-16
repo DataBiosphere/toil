@@ -951,7 +951,9 @@ class AbstractJobStore(ABC):
         appear in the local file system until the copy has completed.
 
         The file at the given local path may not be modified after this method returns!
-
+        
+        Note!  Implementations of readFile need to respect/provide the executable attribute on FileIDs.
+        
         :param str jobStoreFileID: ID of the file to be copied
 
         :param str localFilePath: the local path indicating where to place the contents of the
