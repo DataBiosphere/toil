@@ -12,32 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Debug tool for copying files contained in a toil jobStore."""
-import fnmatch
 import logging
 import os.path
 
 from toil.common import Config, Toil, parser_with_common_options
 from toil.statsAndLogging import set_logging_from_options
+from toil.lib.resources import glob
 
 logger = logging.getLogger(__name__)
-
-
-def recursiveGlob(directoryname, glob_pattern):
-    '''
-    Walks through a directory and its subdirectories looking for files matching
-    the glob_pattern and returns a list=[].
-
-    :param directoryname: Any accessible folder name on the filesystem.
-    :param glob_pattern: A string like "*.txt", which would find all text files.
-    :return: A list=[] of absolute filepaths matching the glob pattern.
-    '''
-    directoryname = os.path.abspath(directoryname)
-    matches = []
-    for root, dirnames, filenames in os.walk(directoryname):
-        for filename in fnmatch.filter(filenames, glob_pattern):
-            absolute_filepath = os.path.join(root, filename)
-            matches.append(absolute_filepath)
-    return matches
 
 
 def fetchJobStoreFiles(jobStore, options):
@@ -53,8 +35,8 @@ def fetchJobStoreFiles(jobStore, options):
     :param options.jobStore: The path to the jobStore directory.
     """
     for jobStoreFile in options.fetch:
-        jobStoreHits = recursiveGlob(directoryname=options.jobStore,
-                                     glob_pattern=jobStoreFile)
+        jobStoreHits = glob(directoryname=options.jobStore,
+                            glob_pattern=jobStoreFile)
         for jobStoreFileID in jobStoreHits:
             logger.debug(f"Copying job store file: {jobStoreFileID} to {options.localFilePath[0]}")
             jobStore.readFile(jobStoreFileID,
@@ -84,7 +66,7 @@ def printContentsOfJobStore(jobStorePath, nameOfJob=None):
         logFile = "jobstore_files.txt"
         nameOfJob = ""
 
-    list_of_files = recursiveGlob(directoryname=jobStorePath, glob_pattern=glob)
+    list_of_files = glob(directoryname=jobStorePath, glob_pattern=glob)
     if os.path.exists(logFile):
         os.remove(logFile)
     for gfile in sorted(list_of_files):

@@ -11,7 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import fnmatch
+import os
 import resource
+
+from typing import List
 
 
 def get_total_cpu_time_and_memory_usage():
@@ -31,3 +35,20 @@ def get_total_cpu_time():
     me = resource.getrusage(resource.RUSAGE_SELF)
     childs = resource.getrusage(resource.RUSAGE_CHILDREN)
     return me.ru_utime + me.ru_stime + childs.ru_utime + childs.ru_stime
+
+
+def glob(glob_pattern: str, directoryname: str) -> List[str]:
+    """
+    Walks through a directory and its subdirectories looking for files matching
+    the glob_pattern and returns a list=[].
+
+    :param directoryname: Any accessible folder name on the filesystem.
+    :param glob_pattern: A string like "*.txt", which would find all text files.
+    :return: A list=[] of absolute filepaths matching the glob pattern.
+    """
+    matches = []
+    for root, dirnames, filenames in os.walk(directoryname):
+        for filename in fnmatch.filter(filenames, glob_pattern):
+            absolute_filepath = os.path.join(root, filename)
+            matches.append(absolute_filepath)
+    return matches
