@@ -107,10 +107,7 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
                     string = fH.readline()
             else:
                 #Check the local file is as we expect
-                with job.fileStore.readGlobalFileStream(fileStoreID) as fH:
-                    # File streams are binary in Python 3 and can't do readline.
-                    # But a StreamReader for UTF-8 is exactly the adapter we need.
-                    fH = codecs.getreader('utf-8')(fH)
+                with job.fileStore.readGlobalFileStream(fileStoreID, 'utf-8') as fH:
                     string = fH.readline()
                     
             #Check the string we get back is what we expect
