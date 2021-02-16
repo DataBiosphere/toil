@@ -59,14 +59,14 @@ def printContentsOfJobStore(jobStorePath, nameOfJob=None):
     """
 
     if nameOfJob:
-        glob = "*" + nameOfJob + "*"
+        glob_pattern = "*" + nameOfJob + "*"
         logFile = nameOfJob + "_fileset.txt"
     else:
-        glob = "*"
+        glob_pattern = "*"
         logFile = "jobstore_files.txt"
         nameOfJob = ""
 
-    list_of_files = glob(directoryname=jobStorePath, glob_pattern=glob)
+    list_of_files = glob(directoryname=jobStorePath, glob_pattern=glob_pattern)
     if os.path.exists(logFile):
         os.remove(logFile)
     for gfile in sorted(list_of_files):
