@@ -452,6 +452,7 @@ class FileJobStore(AbstractJobStore):
             # There's less that can go wrong.
             try:
                 os.symlink(jobStoreFilePath, localFilePath)
+                return
             except OSError as e:
                 if e.errno == errno.EEXIST:
                     # Overwrite existing file, emulating shutil.copyfile().
@@ -459,17 +460,9 @@ class FileJobStore(AbstractJobStore):
                     # It would be very unlikely to fail again for same reason but possible
                     # nonetheless in which case we should just give up.
                     os.symlink(jobStoreFilePath, localFilePath)
+                    return
                 else:
                     raise
-
-            if executable:
-                try:
-                    os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
-                    return
-                except PermissionError:
-                    # can't symlink and preserve exec permissions
-                    # prioritize permissions and attempt to hardlink next
-                    pass
 
         # If we get here, symlinking isn't an option.
         if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
@@ -479,6 +472,7 @@ class FileJobStore(AbstractJobStore):
 
             try:
                 os.link(jobStoreFilePath, localFilePath)
+                return
             except OSError as e:
                 if e.errno == errno.EEXIST:
                     # Overwrite existing file, emulating shutil.copyfile().
@@ -486,6 +480,7 @@ class FileJobStore(AbstractJobStore):
                     # It would be very unlikely to fail again for same reason but possible
                     # nonetheless in which case we should just give up.
                     os.link(jobStoreFilePath, localFilePath)
+                    return
                 elif e.errno == errno.EXDEV:
                     # It's a cross-device link even though it didn't appear to be.
                     # Just keep going and hit the file copy case.
@@ -495,15 +490,6 @@ class FileJobStore(AbstractJobStore):
                     logger.critical('jobStoreFilePath: ' + jobStoreFilePath + ' ' + str(os.path.exists(jobStoreFilePath)))
                     logger.critical('localFilePath: ' + localFilePath + ' ' + str(os.path.exists(localFilePath)))
                     raise
-
-                if executable:
-                    try:
-                        os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
-                        return
-                    except PermissionError:
-                        # can't hardlink and preserve exec permissions
-                        # prioritize permissions and attempt to copy next
-                        pass
 
         # If we get here, neither a symlink nor a hardlink will work.
         # Make a complete copy.
