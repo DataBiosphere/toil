@@ -1211,9 +1211,6 @@ class CWLJob(Job):
         # self.builder.outdir = outdir
         # runtime_context.builder = self.builder
         
-        logger.debug("CWLJob environment: %s", os.environ)
-        logger.debug("Runtime Context environment: %s", runtime_context.preserve_environment)
-
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
 
