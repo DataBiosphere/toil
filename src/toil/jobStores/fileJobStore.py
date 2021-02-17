@@ -454,6 +454,7 @@ class FileJobStore(AbstractJobStore):
             # There's less that can go wrong.
             try:
                 os.symlink(jobStoreFilePath, localFilePath)
+                # It worked!
                 return
             except OSError as e:
                 if e.errno == errno.EEXIST:
@@ -462,6 +463,7 @@ class FileJobStore(AbstractJobStore):
                     # It would be very unlikely to fail again for same reason but possible
                     # nonetheless in which case we should just give up.
                     os.symlink(jobStoreFilePath, localFilePath)
+                    # Now we succeeded and don't need to copy
                     return
                 else:
                     raise
@@ -474,6 +476,7 @@ class FileJobStore(AbstractJobStore):
 
             try:
                 os.link(jobStoreFilePath, localFilePath)
+                # It worked!
                 return
             except OSError as e:
                 if e.errno == errno.EEXIST:
@@ -482,6 +485,7 @@ class FileJobStore(AbstractJobStore):
                     # It would be very unlikely to fail again for same reason but possible
                     # nonetheless in which case we should just give up.
                     os.link(jobStoreFilePath, localFilePath)
+                    # Now we succeeded and don't need to copy
                     return
                 elif e.errno == errno.EXDEV:
                     # It's a cross-device link even though it didn't appear to be.
