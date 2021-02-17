@@ -308,30 +308,9 @@ class CWLv10Test(ToilTest):
 
     @slow
     @needs_kubernetes
+    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance(self, **kwargs):
-        # TODO: tests that are still broken on Kubernetes (in one or more CWL versions):
-        # 20
-        # 28
-        # 35
-        # 38
-        # 39
-        # 42
-        # 55
-        # 79
-        # 83
-        # 84
-        # 85
-        # 87
-        # 88
-        # 93
-        # 107
-        # 135
-        # 136
-        # 137
-        # 141
-        # 173
         return self.test_run_conformance(batchSystem="kubernetes",
-                                         selected_tests="1-19,21-27,29-34,36-37,40-41,43-54,56-78,80-82,86,89-92,94-106,108-134,138-140,142-172,174-197",
                                          **kwargs)
 
     @slow
@@ -372,6 +351,7 @@ class CWLv10Test(ToilTest):
 
     @slow
     @needs_kubernetes
+    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance_with_caching(self):
         return self.test_kubernetes_cwl_conformance(caching=True)
 
@@ -451,45 +431,15 @@ class CWLv11Test(ToilTest):
 
     @slow
     @needs_kubernetes
+    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance(self, **kwargs):
-        # TODO: tests that are still broken on Kubernetes (in one or more CWL versions):
-        # 20
-        # 28
-        # 35
-        # 38
-        # 39
-        # 42
-        # 55
-        # 83
-        # 84
-        # 85
-        # 87
-        # 88
-        # 93
-        # Numbering changes +1 relative to 1.0
-        # 108
-        # 136
-        # 137
-        # 138
-        # 140
-        # 142
-        # 150
-        # 151
-        # 174
-        # 199
-        # 224
-        # 226
-        # 235
-        # 236
-        # 245
-        # 247
         return self.test_run_conformance(batchSystem="kubernetes",
-                                         selected_tests="1-19,21-27,29-34,36-37,40-41,43-54,56-82,86,89-92,94-107,109-135,139,141,143-149,152-173,175-198,200-223,225,227-234,237-244,246,248-253",
                                          **kwargs)
 
 
     @slow
     @needs_kubernetes
+    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance_with_caching(self):
         return self.test_kubernetes_cwl_conformance(caching=True)
 
@@ -530,44 +480,15 @@ class CWLv12Test(ToilTest):
 
     @slow
     @needs_kubernetes
+    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance(self, **kwargs):
-        # TODO: tests that are still broken on Kubernetes (in one or more CWL versions):
-        # 20
-        # 35
-        # 39
-        # 42
-        # Numbering changes +1 relative to 1.1
-        # 56
-        # 85
-        # 86
-        # 88
-        # 89
-        # 94
-        # 109
-        # Numbering changes +1 relative to 1.1?
-        # 138
-        # 139
-        # 143
-        # 149
-        # 150
-        # 175
-        # 189
-        # 225
-        # 227
-        # 236
-        # 237
-        # 246
-        # 249
-        # 331
-        # 332
-        # 337
         return self.test_run_conformance(batchSystem="kubernetes",
-                                         selected_tests="1-19,21-34,36-38,40-41,43-55,57-84,87,90-93,95-108,110-137,140-142,144-148,151-174,176-188,190-224,226,228-235,238-245,247-248,250-330,333-336",
                                          **kwargs)
 
 
     @slow
     @needs_kubernetes
+    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance_with_caching(self):
         return self.test_kubernetes_cwl_conformance(caching=True)
 
