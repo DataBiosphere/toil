@@ -31,7 +31,6 @@ import pytest
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
-from toil.lib.threading import cpu_count
 from toil.test import (ToilTest,
                        needs_aws_s3,
                        needs_cwl,
@@ -75,7 +74,7 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
             cmd.append('-j8')
         else:
             # Run tests in parallel on the local machine
-            cmd.append(f'-j{int(cpu_count()/2)}')
+            cmd.append(f'-j{int(psutil.cpu_count()/2)}')
 
         if batchSystem:
             args_passed_directly_to_toil.append(f"--batchSystem={batchSystem}")
