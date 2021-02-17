@@ -410,7 +410,8 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
         description="Allows the specification of the minimum and maximum number of nodes in an autoscaled cluster, "
                     "as well as parameters to control the level of provisioning."
     )
-    provisioner_choices = ['aws', 'gce']
+    provisioner_choices = ['aws', 'gce', None]
+    # TODO: Better consolidate this provisioner arg and the one in toil/__init__.py?
     autoscaling_options.add_argument('--provisioner', '-p', dest="provisioner", choices=provisioner_choices,
                                      help=f"The provisioner for cluster auto-scaling. The currently supported choices "
                                           f"are {provisioner_choices}.  The default is {config.provisioner}.")

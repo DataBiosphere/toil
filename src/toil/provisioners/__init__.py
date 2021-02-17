@@ -52,10 +52,11 @@ def cluster_factory(provisioner, clusterName=None, clusterType='mesos', zone=Non
 def add_provisioner_options(parser):
     group = parser.add_argument_group("Provisioner Options.")
 
-    # TODO: Duplicate "--provisioner" argument in common.py; consolidate
-    group.add_argument('-p', '--provisioner', dest='provisioner', choices=['aws', 'gce'],
-                help=f"The provisioner for cluster auto-scaling. The currently supported choices are"
-                     f"'gce', or 'aws'.")
+    provisioner_choices = ['aws', 'gce']
+    # TODO: Better consolidate this provisioner arg and the one in common.py?
+    group.add_argument('--provisioner', '-p', dest="provisioner", choices=provisioner_choices, default='aws',
+                       help=f"The provisioner for cluster auto-scaling. The currently supported choices "
+                            f"are {provisioner_choices}.  The default is: %(default)s.")
     group.add_argument('-z', '--zone', dest='zone', required=False, default=None,
                        help="The availability zone of the master. This parameter can also be set via the 'TOIL_X_ZONE' "
                             "environment variable, where X is AWS or GCE, or by the ec2_region_name parameter "
