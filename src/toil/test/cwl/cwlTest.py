@@ -62,8 +62,10 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
 
         args_passed_directly_to_toil = [f'--disableCaching={not caching}',
                                         '--clean=always',
-                                        '--setEnv=SINGULARITY_DOCKER_HUB_MIRROR',
                                         '--logDebug']
+        
+        if 'SINGULARITY_DOCKER_HUB_MIRROR' in os.environ:
+            args_passed_directly_to_toil.append('--setEnv=SINGULARITY_DOCKER_HUB_MIRROR')
 
         job_store_override = None
 
