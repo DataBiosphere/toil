@@ -41,8 +41,6 @@ stages:
 # Python3.6
 py36_main:
   stage: basic_tests
-  only:
-    - /^never$/
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && pip install -U pip && make prepare && make develop extras=[all] && pip install htcondor
@@ -51,8 +49,6 @@ py36_main:
 
 py36_appliance_build:
   stage: basic_tests
-  only:
-    - /^never$/
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && pip install -U pip && make prepare && pip install pycparser && make develop extras=[all] && pip install htcondor awscli==1.16.272
@@ -64,8 +60,6 @@ py36_appliance_build:
 # Python3.7
 py37_batch_systems:
   stage: main_tests
-  only:
-    - /^never$/
   script:
     - pwd
     - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
@@ -84,8 +78,6 @@ py37_cwl_v1.0:
 
 py37_cwl_v1.1:
   stage: main_tests
-  only:
-    - /^never$/
   script:
     - pwd
     - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip && make prepare && make develop extras=[cwl,aws]
@@ -94,8 +86,6 @@ py37_cwl_v1.1:
 
 py37_cwl_v1.2:
   stage: main_tests
-  only:
-    - /^never$/
   script:
     - pwd
     - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip && make prepare && make develop extras=[cwl,aws]
@@ -147,8 +137,6 @@ py37_cwl_v1.2_kubernetes:
 
 py37_wdl:
   stage: main_tests
-  only:
-    - /^never$/
   script:
     - pwd
     - apt update && apt install -y default-jre
@@ -159,8 +147,6 @@ py37_wdl:
 
 py37_jobstore_and_provisioning:
   stage: main_tests
-  only:
-    - /^never$/
   script:
     - pwd
     - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip && make prepare && make develop extras=[all] && pip install htcondor
@@ -174,8 +160,6 @@ py37_jobstore_and_provisioning:
 
 py37_main:
   stage: basic_tests
-  only:
-    - /^never$/
   script:
     - pwd
     - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip && make prepare && make develop extras=[all] && pip install htcondor
@@ -194,8 +178,6 @@ py37_appliance_build:
 
 py37_integration:
   stage: integration
-  only:
-    - /^never$/
   script:
     - pwd
     - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
@@ -209,8 +191,6 @@ py37_integration:
 
 py37_provisioner_integration:
   stage: integration
-  only:
-    - /^never$/
   script:
     - pwd
     - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
@@ -229,8 +209,6 @@ py37_provisioner_integration:
 
 py37_google_jobstore:
   stage: integration
-  only:
-    - /^never$/
   script:
     - pwd
     - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
@@ -246,8 +224,6 @@ py37_google_jobstore:
 # Python3.8
 py38_main:
   stage: basic_tests
-  only:
-    - /^never$/
   script:
     - pwd
     - virtualenv -p python3.8 venv && . venv/bin/activate && pip install -U pip && make prepare && make develop extras=[all] && pip install htcondor
@@ -256,8 +232,6 @@ py38_main:
 
 py38_appliance_build:
   stage: basic_tests
-  only:
-    - /^never$/
   script:
     - pwd
     - virtualenv -p python3.8 venv && . venv/bin/activate && pip install -U pip && make prepare && pip install pycparser && make develop extras=[all] && pip install htcondor awscli==1.16.272
@@ -268,8 +242,6 @@ py38_appliance_build:
 # Cactus-on-Kubernetes integration (as a script and not a pytest test)
 py37_cactus_integration:
   stage: integration
-  only:
-    - /^never$/
   script:
     - set -e
     - virtualenv --system-site-packages --python python3.7 venv
