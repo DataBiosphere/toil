@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.wdl.wdl_types import WDLFile, WDLPair
+from toil.lib.conversions import bytes_in_unit
 
 logger = logging.getLogger(__name__)
 
@@ -426,28 +427,6 @@ def generate_stdout_file(output, tempDir, fileStore, stderr=False):
     return fileStore.readGlobalFile(fileStoreID=file_id, userPath=local_path)
 
 
-def return_bytes(unit='B'):
-    num_bytes = 1
-    if unit.lower() in ['ki', 'kib']:
-        num_bytes = 1 << 10
-    if unit.lower() in ['mi', 'mib']:
-        num_bytes = 1 << 20
-    if unit.lower() in ['gi', 'gib']:
-        num_bytes = 1 << 30
-    if unit.lower() in ['ti', 'tib']:
-        num_bytes = 1 << 40
-
-    if unit.lower() in ['k', 'kb']:
-        num_bytes = 1000
-    if unit.lower() in ['m', 'mb']:
-        num_bytes = 1000 ** 2
-    if unit.lower() in ['g', 'gb']:
-        num_bytes = 1000 ** 3
-    if unit.lower() in ['t', 'tb']:
-        num_bytes = 1000 ** 4
-    return num_bytes
-
-
 def parse_memory(memory):
     """
     Parses a string representing memory and returns
@@ -474,7 +453,7 @@ def parse_memory(memory):
         if len(mem_split) == 2:
             num = mem_split[0]
             unit = mem_split[1]
-            return int(float(num) * return_bytes(unit))
+            return int(float(num) * bytes_in_unit(unit))
         else:
             raise RuntimeError('Memory parsing failed: {}'.format(memory))
     except:
@@ -551,7 +530,7 @@ def size(f: Optional[Union[str, WDLFile, List[Union[str, WDLFile]]]] = None,
     # validate the input. fileStore is only required if the input is not processed.
     f = process_infile(f, fileStore)
 
-    divisor = return_bytes(unit)
+    divisor = bytes_in_unit(unit)
 
     if isinstance(f, list):
         total_size = sum(file.file_path.size for file in f)
@@ -946,3 +925,40 @@ def cross(left: List[Any], right: List[Any]) -> List[WDLPair]:
         raise WDLRuntimeError(f'cross() requires both inputs to be Array[]!  Not: {type(left)} and {type(right)}')
 
     return list(WDLPair(left=left_val, right=right_val) for left_val in left for right_val in right)
+
+
+def as_pairs(in_map: dict) -> List[WDLPair]:
+    """
+    Given a Map, the `as_pairs` function returns an Array containing each element
+    in the form of a Pair. The key will be the left element of the Pair and the
+    value the right element. The order of the the Pairs in the resulting Array
+    is the same as the order of the key/value pairs in the Map.
+
+    WDL syntax: Array[Pair[X,Y]] as_pairs(Map[X,Y])
+    """
+    if not isinstance(in_map, dict):
+        raise WDLRuntimeError(f'as_pairs() requires "{in_map}" to be Map[]!  Not: {type(in_map)}')
+
+    return list(WDLPair(left=k, right=v) for k, v in in_map.items())
+
+  
+def as_map(in_array: List[WDLPair]) -> dict:
+    """
+    Given an Array consisting of Pairs, the `as_map` function returns a Map in
+    which the left elements of the Pairs are the keys and the right elements the
+    values.
+
+    WDL syntax: Map[X,Y] as_map(Array[Pair[X,Y]])
+    """
+    if not isinstance(in_array, list):
+        raise WDLRuntimeError(f'as_map() requires "{in_array}" to be a list!  Not: {type(in_array)}')
+
+    map = {}
+
+    for pair in in_array:
+        if map.get(pair.left):
+            raise WDLRuntimeError('Cannot evaluate "as_map()" with duplicated keys.')
+
+        map[pair.left] = pair.right
+
+    return map

@@ -229,6 +229,7 @@ py38_main:
     - virtualenv -p python3.8 venv && . venv/bin/activate && pip install -U pip && make prepare && make develop extras=[all] && pip install htcondor
     - make test tests=src/toil/test/src
     - make test tests=src/toil/test/utils
+    - make test tests=src/toil/test/lib/test_conversions.py
 
 py38_appliance_build:
   stage: basic_tests
