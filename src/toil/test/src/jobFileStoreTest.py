@@ -13,6 +13,7 @@
 # limitations under the License.
 import codecs
 import errno
+import logging
 import os
 import random
 
@@ -20,6 +21,8 @@ from toil.common import Toil
 from toil.fileStores import FileID
 from toil.job import Job
 from toil.test import ToilTest, slow, travis_test
+
+logger = logging.getLogger(__name__)
 
 PREFIX_LENGTH=200
 
@@ -99,19 +102,24 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
         if random.random() > 0.5:
             #Read the file for the fileStoreID, randomly picking a way to invoke readGlobalFile
             if random.random() > 0.5:
+                local_path = job.fileStore.getLocalTempFileName() if random.random() > 0.5 else None
+                cache = random.random() > 0.5
+            
                 tempFile = job.fileStore.readGlobalFile(fileStoreID, 
-                                                        job.fileStore.getLocalTempFileName() if
-                                                        random.random() > 0.5 else None,
-                                                        cache=random.random() > 0.5)
+                                                        local_path,
+                                                        cache=cache)
                 with open(tempFile, 'r') as fH:
                     string = fH.readline()
+                logging.debug("Downloaded %s to local path %s with cache %s and got %s with %d letters",
+                              fileStoreID, local_path, cache, tempFile, len(string))
             else:
-                #Check the local file is as we expect
+                #Check the streamed file is as we expect
                 with job.fileStore.readGlobalFileStream(fileStoreID) as fH:
                     # File streams are binary in Python 3 and can't do readline.
                     # But a StreamReader for UTF-8 is exactly the adapter we need.
                     fH = codecs.getreader('utf-8')(fH)
                     string = fH.readline()
+                logging.debug("Streamed %s and got %d letters", fileStoreID, len(string))
                     
             #Check the string we get back is what we expect
             assert testStrings[string[:PREFIX_LENGTH]] == string
