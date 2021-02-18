@@ -2128,10 +2128,12 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     else:
         # Since the default won't be used, just pass through the user's choice
         chosen_job_store = options.jobStore
+        
+    
 
     # Re-parse arguments with the new selected jobstore.
     options = parser.parse_args([chosen_job_store] + args)
-    if options.workDir is None:
+    if options.tmpdir_prefix != "tmp" and options.workDir is None:
         # We need to override workDir because by default Toil will pick
         # somewhere under the system temp directory if unset, ignoring
         # --tmpdir-prefix.
@@ -2149,6 +2151,9 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # Make sure cwltool uses Toil's log level.
         # Applies only on the leader.
         cwllogger.setLevel(options.logLevel.upper())
+        
+    logger.debug(f'Using job store {chosen_job_store} from workdir {workdir} with default status {using_default_job_store}')
+    logger.debug(f'Final job store {options.jobStore} and workDir {options.workDir}')
 
     outdir = os.path.abspath(options.outdir)
     tmp_outdir_prefix = os.path.abspath(options.tmp_outdir_prefix)
