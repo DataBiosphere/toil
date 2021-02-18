@@ -564,12 +564,11 @@ class Leader(object):
         except KeyError:
             logger.warning("A result seems to already have been processed for job %s", jobID)
         else:
-            if exitStatus == 0 and exitReason == None:
-                cur_logger = (logger.debug if str(updatedJob.jobName).startswith(CWL_INTERNAL_JOBS)
-                              else logger.info)
-                cur_logger('Job ended: %s', updatedJob)
+            if exitStatus == 0:
+                logger.debug('Job ended: %s', updatedJob)
             else:
-                logger.warning(f'Job failed with exit value {exitStatus}: {updatedJob}')
+                logger.warning(f'Job failed with exit value {exitStatus}: {updatedJob}\n'
+                               f'Exit reason: {exitReason}')
             if self.toilMetrics:
                 self.toilMetrics.logCompletedJob(updatedJob)
             self.processFinishedJob(jobID, exitStatus, wallTime=wallTime, exitReason=exitReason)
