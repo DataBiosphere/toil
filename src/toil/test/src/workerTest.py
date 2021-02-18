@@ -29,7 +29,7 @@ class WorkerTests(ToilTest):
         self.config.jobStore = 'file:%s' % path
         self.jobStore.initialize(self.config)
         self.jobNumber = 0
-    
+
     @travis_test
     def testNextChainable(self):
         """Make sure chainable/non-chainable jobs are identified correctly."""
@@ -40,19 +40,19 @@ class WorkerTests(ToilTest):
             """
             name = 'job%d' % self.jobNumber
             self.jobNumber += 1
-            
+
             descClass = CheckpointJobDescription if checkpoint else JobDescription
             jobDesc = descClass(requirements={'memory': memory, 'cores': cores, 'disk': disk, 'preemptable': preemptable}, jobName=name)
-            
+
             # Assign an ID
             self.jobStore.assignID(jobDesc)
-           
+
             # Save and return the JobDescription
             return self.jobStore.create(jobDesc)
-            
+
         for successorType in ['addChild', 'addFollowOn']:
             # Try with the branch point at both child and follow-on stages
-            
+
             # Identical non-checkpoint jobs should be chainable.
             jobDesc1 = createTestJobDesc(1, 2, 3, True, False)
             jobDesc2 = createTestJobDesc(1, 2, 3, True, False)

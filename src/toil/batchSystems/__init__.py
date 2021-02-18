@@ -33,7 +33,7 @@ class DeadlockException(Exception):
 class MemoryString:
     """
     Represents an amount of bytes, as a string, using suffixes for the unit.
-    
+
     Comparable based on the actual number of bytes instead of string value.
     """
     def __init__(self, string):

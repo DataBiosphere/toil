@@ -94,8 +94,8 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
              intended to be run inside of a docker container for this job.
     '''
     wdl_copyright = heredoc_wdl('''        \n
-        # Borrowed/rewritten from the Broad's Cromwell implementation.  As 
-        # that is under a BSD-ish license, I include here the license off 
+        # Borrowed/rewritten from the Broad's Cromwell implementation.  As
+        # that is under a BSD-ish license, I include here the license off
         # of their GitHub repo.  Thank you Broadies!
 
         # Copyright (c) 2015, Broad Institute, Inc.
@@ -941,7 +941,7 @@ def as_pairs(in_map: dict) -> List[WDLPair]:
 
     return list(WDLPair(left=k, right=v) for k, v in in_map.items())
 
-  
+
 def as_map(in_array: List[WDLPair]) -> dict:
     """
     Given an Array consisting of Pairs, the `as_map` function returns a Map in

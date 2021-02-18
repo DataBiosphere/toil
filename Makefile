@@ -236,6 +236,9 @@ remove_unused_imports: $(PYSOURCES)
 	autoflake --in-place --remove-all-unused-imports $^
 	make format
 
+remove_trailing_whitespace:
+	$(CURDIR)/contrib/admin/remove_trailing_whitespace.py
+
 format: $(wildcard src/toil/cwl/*.py)
 	black $^
 

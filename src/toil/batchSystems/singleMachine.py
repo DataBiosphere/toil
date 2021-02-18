@@ -65,14 +65,14 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     minCores = 0.1
     """
     The minimal fractional CPU. Tasks with a smaller core requirement will be rounded up to this
-    value. 
+    value.
     """
     physicalMemory = toil.physicalMemory()
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         self.config = config
         # Limit to the smaller of the user-imposed limit and what we actually
-        # have on this machine for each resource. 
+        # have on this machine for each resource.
         #
         # If we don't have up to the limit of the resource (and the resource
         # isn't the inlimited sentinel), warn.
@@ -94,7 +94,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 # We have an actually specified limit and not the default
                 log.warning('Not enough disk space! User limited to %i bytes but we only have %i bytes.', maxDisk, self.physicalDisk)
             maxDisk = self.physicalDisk
-            
+
         super(SingleMachineBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         assert self.maxCores >= self.minCores
         assert self.maxMemory >= 1
@@ -103,15 +103,15 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # squeezing more tasks onto each core (scale < 1) or stretching tasks over more cores
         # (scale > 1).
         self.scale = config.scale
-        
+
         if config.badWorker > 0 and config.debugWorker:
             # We can't throw SIGUSR1 at the worker because it is also going to
             # be the leader and/or test harness.
             raise RuntimeError("Cannot use badWorker and debugWorker together; "
                 "worker would have to kill the leader")
-                
+
         self.debugWorker = config.debugWorker
-        
+
         # A counter to generate job IDs and a lock to guard it
         self.jobIndex = 0
         self.jobIndexLock = Lock()
@@ -133,7 +133,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """
         :type: dict[str,Info]
         """
-        
+
         # These next two are only used outside debug-worker mode
 
         # A dict mapping PIDs to Popen objects for running jobs.
@@ -154,7 +154,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.memory = ResourcePool(self.maxMemory, 'memory')
         # A pool representing the available space in bytes
         self.disk = ResourcePool(self.maxDisk, 'disk')
-        
+
         # If we can't schedule something, we fill this in with a reason why
         self.schedulingStatusMessage = None
 
@@ -173,13 +173,13 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             self.daddyThread = Thread(target=self.daddy, daemon=True)
             self.daddyThread.start()
             log.debug('Started in normal mode.')
-            
+
     def daddy(self):
         """
         Be the "daddy" thread.
 
         Our job is to look at jobs from the input queue.
-        
+
         If a job fits in the available resources, we allocate resources for it
         and kick off a child process.
 
@@ -203,7 +203,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                         jobCommand, jobID, jobCores, jobMemory, jobDisk, environment = args
 
                         coreFractions = int(jobCores / self.minCores)
-                        
+
                         # Try to start the child
                         result = self._startChild(jobCommand, jobID,
                             coreFractions, jobMemory, jobDisk, environment)
@@ -234,17 +234,17 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 # TODO: It would be good to be able to wait on a new job or a finished child, whichever comes first.
                 # For now we just sleep and loop.
                 time.sleep(0.01)
-                    
+
 
             # When we get here, we are shutting down.
-            
+
             for popen in self.children.values():
                 # Kill all the children, going through popen to avoid signaling re-used PIDs.
                 popen.kill()
             for popen in self.children.values():
                 # Reap all the children
                 popen.wait()
-            
+
             # Then exit the thread.
             return
         except Exception as e:
@@ -265,9 +265,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """
         See if any children represented in the given dict from PID to Popen
         object have finished.
-        
+
         Return a collection of their PIDs.
-        
+
         Guarantees that each child's exit code will be gettable via wait() on
         the child's Popen object (i.e. does not reap the child, unless via
         Popen).
@@ -276,7 +276,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # We keep our found PIDs in a set so we can work around waitid showing
         # us the same one repeatedly.
         ready = set()
-        
+
         # Find the waitid function
         waitid = getattr(os, 'waitid', None)
 
@@ -313,7 +313,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     # Process is done
                     ready.add(pid)
                     log.debug('Child %d has stopped', pid)
-            
+
             # Return all the done processes we found
             return ready
 
@@ -323,10 +323,10 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         May only be called in debug-worker mode.
         Assumes resources are available.
         """
-        
+
         assert self.debugWorker
 
-    
+
         # TODO: It is not possible to kill running jobs in forkless mode,
         # because they are run immediately in the main thread.
         info = Info(time.time(), None, None, killIntended=False)
@@ -336,7 +336,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             # We can actually run in this thread
             jobName, jobStoreLocator, jobStoreID = jobCommand.split()[1:] # Parse command
             jobStore = Toil.resumeJobStore(jobStoreLocator)
-            toil_worker.workerScript(jobStore, jobStore.config, jobName, jobStoreID, 
+            toil_worker.workerScript(jobStore, jobStore.config, jobName, jobStoreID,
                                      redirectOutputToLogFile=not self.debugWorker) # Call the worker
         else:
             # Run synchronously. If starting or running the command fails, let the exception stop us.
@@ -347,24 +347,24 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.runningJobs.pop(jobID)
         if not info.killIntended:
             self.outputQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=0, wallTime=time.time() - info.time, exitReason=None))
-            
+
     def getSchedulingStatusMessage(self):
         # Implement the abstractBatchSystem's scheduling status message API
         return self.schedulingStatusMessage
-    
+
     def _setSchedulingStatusMessage(self, message):
         """
         If we can't run a job, we record a short message about why not. If the
         leader wants to know what is up with us (for example, to diagnose a
         deadlock), it can ask us for the message.
         """
-        
+
         self.schedulingStatusMessage = message
 
     def _startChild(self, jobCommand, jobID, coreFractions, jobMemory, jobDisk, environment):
         """
         Start a child process for the given job.
-        
+
         Allocate its required resources and save it and save it in our bookkeeping structures.
 
         If the job is started, returns its PID.
@@ -401,7 +401,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                         self.disk.release(jobDisk)
 
                         log.error('Could not start job %s: %s', jobID, traceback.format_exc())
-                        
+
                         # Report as failed.
                         self.outputQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=EXIT_STATUS_UNAVAILABLE_VALUE, wallTime=0, exitReason=None))
 
@@ -452,7 +452,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         Remove the child from our bookkeeping structures and free its resources.
         """
-        
+
         # Look up the child
         popen = self.children[pid]
         jobID = self.childToJob[pid]
@@ -465,7 +465,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.runningJobs.pop(jobID)
         self.childToJob.pop(pid)
         self.children.pop(pid)
-        
+
         # See how the child did, and reap it.
         statusCode = popen.wait()
         if statusCode != 0 and not info.killIntended:
@@ -483,16 +483,16 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         log.debug('Child %d for job %s succeeded', pid, jobID)
 
-        
+
     def issueBatchJob(self, jobDesc):
         """Adds the command and resources to a queue to be run."""
 
         self._checkOnDaddy()
 
         # Round cores to minCores and apply scale.
-        # Make sure to give minCores even if asked for 0 cores, or negative or something. 
+        # Make sure to give minCores even if asked for 0 cores, or negative or something.
         cores = max(math.ceil(jobDesc.cores * self.scale / self.minCores) * self.minCores, self.minCores)
-        
+
         # Don't do our own assertions about job size vs. our configured size.
         # The abstract batch system can handle it.
         self.checkResourceRequest(jobDesc.memory, cores, jobDesc.disk, job_name=jobDesc.jobName,
@@ -503,7 +503,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             jobID = self.jobIndex
             self.jobIndex += 1
         self.jobs[jobID] = jobDesc.command
-        
+
         if self.debugWorker:
             # Run immediately, blocking for return.
             # Ignore resource requirements; we run one job at a time
@@ -512,7 +512,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             # Queue the job for later
             self.inputQueue.put((jobDesc.command, jobID, cores, jobDesc.memory,
                                 jobDesc.disk, self.environment.copy()))
-            
+
 
         return jobID
 
@@ -531,7 +531,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     info.popen.kill()
                     log.debug('Sent kill to PID %s', info.popen.pid)
                 else:
-                    # No popen if running in forkless mode currently 
+                    # No popen if running in forkless mode currently
                     assert self.debugWorker
                     log.critical("Can't kill job: %s in debug mode" % jobID)
                 while jobID in self.runningJobs:
@@ -539,15 +539,15 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
     def getIssuedBatchJobIDs(self):
         """Just returns all the jobs that have been run, but not yet returned as updated."""
-        
+
         self._checkOnDaddy()
-        
+
         return list(self.jobs.keys())
 
     def getRunningBatchJobIDs(self):
-        
+
         self._checkOnDaddy()
-        
+
         now = time.time()
         return {jobID: now - info.time for jobID, info in list(self.runningJobs.items())}
 
@@ -555,7 +555,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """
         Cleanly terminate and join daddy thread.
         """
-        
+
         if self.daddyThread is not None:
             # Tell the daddy thread to stop.
             self.shuttingDown.set()
@@ -566,9 +566,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
     def getUpdatedBatchJob(self, maxWait):
         """Returns a tuple of a no-longer-running job, the return value of its process, and its runtime, or None."""
-        
+
         self._checkOnDaddy()
-        
+
         try:
             item = self.outputQueue.get(timeout=maxWait)
         except Empty:
@@ -630,7 +630,7 @@ class ResourcePool:
             self.value -= amount
             self.__validate()
             return True
-            
+
 
     def acquire(self, amount):
         """

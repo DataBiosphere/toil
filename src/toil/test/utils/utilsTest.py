@@ -261,7 +261,7 @@ class UtilsTest(ToilTest):
 
         # Delete output file
         os.remove(self.outputFile)
-    
+
     @travis_test
     def testUnicodeSupport(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
@@ -293,7 +293,7 @@ class UtilsTest(ToilTest):
             if i > seconds:
                 s = status_fn(self.toilDir)
                 self.assertEqual(s, status, 'Status took longer than 10 seconds to fetch:  %s' % s)
-    
+
     @travis_test
     def testGetPIDStatus(self):
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
@@ -306,7 +306,7 @@ class UtilsTest(ToilTest):
         # delete this shared file. We assume we know its internal layout.
         os.remove(os.path.join(self.toilDir, 'files/shared/pid.log'))
         self.check_status('QUEUED', status_fn=ToilStatus.getPIDStatus)
-    
+
     @travis_test
     def testGetStatusFailedToilWF(self):
         """
@@ -355,7 +355,7 @@ class UtilsTest(ToilTest):
         # print log and check output
         status = ToilStatus(self.toilDir)
         status.printJobLog()
-        
+
         # Make sure it printed some kind of complaint about the missing command.
         args, kwargs = mock_print.call_args
         self.assertIn('invalidcommand', args[0])
@@ -369,14 +369,14 @@ class UtilsTest(ToilTest):
         # Run a workflow that will always fail
         cmd = self.restart_sort_workflow_cmd + ['--badWorker=1']
         subprocess.run(cmd)
-        
+
         restart_cmd = self.restart_sort_workflow_cmd + ['--badWorker=0', '--restart']
         subprocess.run(restart_cmd)
 
         # Check the job store exists after restart attempt
         self.assertTrue(os.path.exists(self.toilDir))
 
-        successful_cmd = [python, '-m', 'toil.test.sort.sort', 'file:' + self.toilDir, 
+        successful_cmd = [python, '-m', 'toil.test.sort.sort', 'file:' + self.toilDir,
                                   '--restart']
         subprocess.run(successful_cmd)
 

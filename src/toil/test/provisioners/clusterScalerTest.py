@@ -70,7 +70,7 @@ class BinPackingTest(ToilTest):
     def setUp(self):
         self.nodeShapes = [c4_8xlarge_preemptable, r3_8xlarge]
         self.bpf = BinPackedFit(self.nodeShapes)
-    
+
     @travis_test
     def testPackingOneShape(self):
         """Pack one shape and check that the resulting reservations look sane."""
@@ -92,7 +92,7 @@ class BinPackingTest(ToilTest):
                                  cores=36,
                                  disk=h2b('100G'),
                                  preemptable=True)]])
-    
+
     @travis_test
     def testSorting(self):
         """
@@ -106,7 +106,7 @@ class BinPackingTest(ToilTest):
                              t2_micro, t2_micro, t2_micro,
                              c4_8xlarge, c4_8xlarge, c4_8xlarge,
                              r3_8xlarge, r3_8xlarge, r3_8xlarge]
-    
+
     @travis_test
     def testAddingInitialNode(self):
         """Pack one shape when no nodes are available and confirm that we fit one node properly."""
@@ -126,7 +126,7 @@ class BinPackingTest(ToilTest):
                                  cores=36,
                                  disk=h2b('100G'),
                                  preemptable=True)]])
-    
+
     @travis_test
     def testLowTargetTime(self):
         """
@@ -148,7 +148,7 @@ class BinPackingTest(ToilTest):
                                               jobTime=300,
                                               globalTargetTime=0)
         self.assertEqual(allocation, {t2_micro: 1000})
-    
+
     @travis_test
     def testHighTargetTime(self):
         """
@@ -169,14 +169,14 @@ class BinPackingTest(ToilTest):
                                               jobTime=300,
                                               globalTargetTime=3600)
         self.assertEqual(allocation, {t2_micro: 84})
-    
+
     @travis_test
     def testZeroResourceJobs(self):
         """
         Test that jobs requiring zero cpu/disk/mem pack first, regardless of targetTime.
 
         Disk/cpu/mem packing is prioritized first, so we set job resource reqs so that each
-        t2.micro (1 cpu/8G disk/1G RAM) can run a seemingly infinite number of jobs with its 
+        t2.micro (1 cpu/8G disk/1G RAM) can run a seemingly infinite number of jobs with its
         resources.
 
         Since all jobs should pack cpu/disk/mem-wise on a t2.micro, we expect only one t2.micro to
@@ -188,7 +188,7 @@ class BinPackingTest(ToilTest):
                                               jobTime=300,
                                               globalTargetTime=0)
         self.assertEqual(allocation, {t2_micro: 1})
-    
+
     @travis_test
     def testLongRunningJobs(self):
         """
@@ -222,7 +222,7 @@ class BinPackingTest(ToilTest):
                                    disk=jobDisk,
                                    preemptable=False))
         return bpf.getRequiredNodes()
-    
+
     @travis_test
     def testPathologicalCase(self):
         """Test a pathological case where only one node can be requested to fit months' worth of jobs.
@@ -248,7 +248,7 @@ class BinPackingTest(ToilTest):
                                        preemptable=False))
         # Hopefully we didn't assign just one node to cover all those jobs.
         self.assertNotEqual(self.bpf.getRequiredNodes(), {r3_8xlarge: 1, c4_8xlarge_preemptable: 0})
-    
+
     @travis_test
     def testJobTooLargeForAllNodes(self):
         """
@@ -288,31 +288,31 @@ class ClusterScalerTest(ToilTest):
         setattr(self.provisioner, 'retryPredicate', lambda _: False)
 
         self.leader = MockBatchSystemAndProvisioner(self.config, 1)
-    
+
     @travis_test
     def testRounding(self):
         """
         Test to make sure the ClusterScaler's rounding rounds properly.
         """
-        
+
         # Get a ClusterScaler
         self.config.targetTime = 1
         self.config.betaInertia = 0.0
         self.config.maxNodes = [2, 3]
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
-        
+
         # Exact integers round to themselves
         self.assertEqual(scaler._round(0.0), 0)
         self.assertEqual(scaler._round(1.0), 1)
         self.assertEqual(scaler._round(-1.0), -1)
         self.assertEqual(scaler._round(123456789101112.13), 123456789101112)
-        
+
         # Decimals other than X.5 round to the side they are closer to
         self.assertEqual(scaler._round(1E-10), 0)
         self.assertEqual(scaler._round(0.5 + 1E-15), 1)
         self.assertEqual(scaler._round(-0.9), -1)
         self.assertEqual(scaler._round(-0.4), 0)
-        
+
         # Decimals at exactly X.5 round away from 0
         self.assertEqual(scaler._round(0.5), 1)
         self.assertEqual(scaler._round(-0.5), -1)
@@ -321,7 +321,7 @@ class ClusterScalerTest(ToilTest):
         self.assertEqual(scaler._round(15.5), 16)
         self.assertEqual(scaler._round(-15.5), -16)
         self.assertEqual(scaler._round(123456789101112.5), 123456789101113)
-    
+
     @travis_test
     def testMaxNodes(self):
         """
@@ -345,7 +345,7 @@ class ClusterScalerTest(ToilTest):
         estimatedNodeCounts = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
         self.assertEqual(estimatedNodeCounts[r3_8xlarge], 2)
         self.assertEqual(estimatedNodeCounts[c4_8xlarge_preemptable], 3)
-    
+
     @travis_test
     def testMinNodes(self):
         """
@@ -358,7 +358,7 @@ class ClusterScalerTest(ToilTest):
         estimatedNodeCounts = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
         self.assertEqual(estimatedNodeCounts[r3_8xlarge], 2)
         self.assertEqual(estimatedNodeCounts[c4_8xlarge_preemptable], 3)
-    
+
     @travis_test
     def testPreemptableDeficitResponse(self):
         """
@@ -397,7 +397,7 @@ class ClusterScalerTest(ToilTest):
         # nodes. All we want to know is if we responded to the deficit
         # properly: 0.5 * 5 (preemptableCompensation * the deficit) = 3 (rounded up).
         self.assertEqual(estimatedNodeCounts[self.provisioner.nodeShapes[1]], 3)
-    
+
     @travis_test
     def testPreemptableDeficitIsSet(self):
         """
@@ -430,7 +430,7 @@ class ClusterScalerTest(ToilTest):
         self.provisioner.addNodes = MagicMock(return_value=5)
         scaler.updateClusterSize(estimatedNodeCounts)
         self.assertEqual(scaler.preemptableNodeDeficit['c4.8xlarge'], 0)
-    
+
     @travis_test
     def testNoLaunchingIfDeltaAlreadyMet(self):
         """
@@ -455,7 +455,7 @@ class ClusterScalerTest(ToilTest):
         self.assertEqual(len(scaler.ignoredNodes), 0,
                          "The scaler didn't unignore an ignored node when "
                          "scaling up")
-    
+
     @travis_test
     def testBetaInertia(self):
         # This is really high, but makes things easy to calculate.
@@ -685,7 +685,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
                            self.nodeShapes}  # Maximum number of workers
         self.running = False
         self.leaderThread = Thread(target=self._leaderFn)
-    
+
     def start(self):
         self.running = True
         self.leaderThread.start()
@@ -713,10 +713,10 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
 
     def supportedClusterTypes(self):
         return {'mesos'}
-        
+
     def createClusterSettings(self):
         pass
-    
+
     def readClusterSettings(self):
         pass
 

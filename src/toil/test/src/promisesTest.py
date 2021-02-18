@@ -19,7 +19,7 @@ class CachedUnpicklingJobStoreTest(ToilTest):
     """
     https://github.com/BD2KGenomics/toil/issues/817
     """
-    
+
     @travis_test
     def test(self):
         """
@@ -44,7 +44,7 @@ class ChainedIndexedPromisesTest(ToilTest):
     """
     https://github.com/BD2KGenomics/toil/issues/1021
     """
-    
+
     @travis_test
     def test(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
@@ -70,7 +70,7 @@ class PathIndexingPromiseTest(ToilTest):
     Test support for indexing promises of arbitrarily nested data structures of lists, dicts and
     tuples, or any other object supporting the __getitem__() protocol.
     """
-    
+
     @travis_test
     def test(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())

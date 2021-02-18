@@ -25,7 +25,7 @@ def main():
     except KeyError:
         sys.stderr.write(f'Unknown option "{cmd}".  Pass --help to display usage information.\n')
         sys.exit(1)
-        
+
     del sys.argv[1]
     module.main()
 
@@ -53,7 +53,7 @@ def printHelp(modules):
                {name} COMMAND --help
 
         Where COMMAND is one of the following:
-        
+
         {descriptions}
         """[1:]))
 

@@ -169,7 +169,7 @@ class GoogleJobStore(AbstractJobStore):
         # google freaks out if we call delete multiple times on the bucket obj, so after success
         # just set to None.
         self.bucket = None
-        
+
     def _newJobID(self):
         return "job"+str(uuid.uuid4())
 
@@ -203,7 +203,7 @@ class GoogleJobStore(AbstractJobStore):
             jobString = self._readContents(jobStoreID)
         except NoSuchFileException:
             raise NoSuchJobException(jobStoreID)
-        job = pickle.loads(jobString) 
+        job = pickle.loads(jobString)
         # It is our responsibility to make sure that the JobDescription is
         # connected to the current config on this machine, for filling in
         # defaults. The leader and worker should never see config-less
