@@ -17,6 +17,7 @@ before_script:
   - cat /etc/hosts
   - mkdir -p ~/.kube && cp "$GITLAB_SECRET_FILE_KUBE_CONFIG" ~/.kube/config
   - mkdir -p ~/.aws && cp "$GITLAB_SECRET_FILE_AWS_CREDENTIALS" ~/.aws/credentials
+  - sudo apt-get update
   - sudo apt-get install -y software-properties-common build-essential virtualenv
   - sudo add-apt-repository -y ppa:deadsnakes/ppa
   - sudo apt-get update
@@ -32,9 +33,18 @@ after_script:
   - stopdocker || true
 
 stages:
+  - linting
   - basic_tests
   - main_tests
   - integration
+
+
+lint:
+  stage: linting
+  script:
+    - pwd
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - make mypy
 
 
 # Python3.6
@@ -185,6 +195,7 @@ py38_main:
     - virtualenv -p python3.8 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - make test tests=src/toil/test/src
     - make test tests=src/toil/test/utils
+    - make test tests=src/toil/test/lib/test_conversions.py
 
 py38_appliance_build:
   stage: basic_tests

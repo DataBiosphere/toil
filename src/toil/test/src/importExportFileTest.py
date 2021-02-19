@@ -47,7 +47,7 @@ class ImportExportFileTest(ToilTest):
                 with open(failFilePath, 'wb') as f:
                     f.write(str(fail).encode('utf-8'))
                 self.failFileID = toil.importFile('file://' + failFilePath)
-                
+
                 outputFileID = toil.start(RestartingJob(inputFileID, self.failFileID))
             else:
                 # Set up job for failure
@@ -77,11 +77,11 @@ class ImportExportFileTest(ToilTest):
     @slow
     def testImportExportRestartTrue(self):
         self._importExport(restart=True)
-    
+
     @travis_test
     def testImportExportRestartFalse(self):
         self._importExport(restart=False)
-    
+
     @travis_test
     def testImportSharedFileName(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())

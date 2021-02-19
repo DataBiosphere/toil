@@ -55,12 +55,12 @@ def get_rendered_toctree(builder, docname, **kwargs):
     with the given parameters, and then return the rendered
     HTML fragment.
     """
-    
+
     if kwargs.get('prune', None) is None:
         kwargs['prune'] = False
     if kwargs.get('collapse', None) is None:
         kwargs['collapse'] = True
-    
+
     fulltoc = build_full_toctree(builder,
                                  docname,
                                  **kwargs

@@ -142,6 +142,8 @@ class SynthesizeWDL:
                     from toil.wdl.wdl_functions import length
                     from toil.wdl.wdl_functions import wdl_zip
                     from toil.wdl.wdl_functions import cross
+                    from toil.wdl.wdl_functions import as_pairs
+                    from toil.wdl.wdl_functions import as_map
                     import fnmatch
                     import textwrap
                     import subprocess
@@ -152,7 +154,7 @@ class SynthesizeWDL:
                     import shlex
                     import uuid
                     import logging
-                    
+
                     _toil_wdl_internal__current_working_dir = os.getcwd()
 
                     logger = logging.getLogger(__name__)
@@ -498,7 +500,7 @@ class SynthesizeWDL:
                              def run(self, fileStore):
                                  fileStore.logToMaster("{jobname}")
                                  tempDir = fileStore.getLocalTempDir()
-                                 
+
                                  try:
                                      os.makedirs(os.path.join(tempDir, 'execution'))
                                  except OSError as e:
@@ -692,10 +694,10 @@ class SynthesizeWDL:
                              def run(self, fileStore):
                                  fileStore.logToMaster("{jobname}")
                                  tempDir = fileStore.getLocalTempDir()
-                                 
+
                                  _toil_wdl_internal__stdout_file = os.path.join(tempDir, 'stdout')
                                  _toil_wdl_internal__stderr_file = os.path.join(tempDir, 'stderr')
-                                 
+
                                  try:
                                      os.makedirs(os.path.join(tempDir, 'execution'))
                                  except OSError as e:
@@ -827,14 +829,14 @@ class SynthesizeWDL:
         docker_template = heredoc_wdl('''
         # apiDockerCall() with demux=True returns a tuple of bytes objects (stdout, stderr).
         _toil_wdl_internal__stdout, _toil_wdl_internal__stderr = \\
-            apiDockerCall(self, 
-                          image={docker_image}, 
-                          working_dir=tempDir, 
-                          parameters=[os.path.join(tempDir, "{job_task_reference}_script.sh")], 
-                          entrypoint="/bin/bash", 
-                          user={docker_user}, 
-                          stderr=True, 
-                          demux=True, 
+            apiDockerCall(self,
+                          image={docker_image},
+                          working_dir=tempDir,
+                          parameters=[os.path.join(tempDir, "{job_task_reference}_script.sh")],
+                          entrypoint="/bin/bash",
+                          user={docker_user},
+                          stderr=True,
+                          demux=True,
                           volumes={{tempDir: {{"bind": tempDir}}}})
         with open(os.path.join(_toil_wdl_internal__current_working_dir, '{job_task_reference}.log'), 'wb') as f:
             if _toil_wdl_internal__stdout:
@@ -914,12 +916,12 @@ class SynthesizeWDL:
         fn_section = ''
 
         fn_section += heredoc_wdl('''
-            _toil_wdl_internal__stdout_file = generate_stdout_file(_toil_wdl_internal__stdout, 
-                                                                   tempDir, 
+            _toil_wdl_internal__stdout_file = generate_stdout_file(_toil_wdl_internal__stdout,
+                                                                   tempDir,
                                                                    fileStore=fileStore)
-            _toil_wdl_internal__stderr_file = generate_stdout_file(_toil_wdl_internal__stderr, 
-                                                                   tempDir, 
-                                                                   fileStore=fileStore, 
+            _toil_wdl_internal__stderr_file = generate_stdout_file(_toil_wdl_internal__stderr,
+                                                                   tempDir,
+                                                                   fileStore=fileStore,
                                                                    stderr=True)
         ''', indent='        ')[1:]
 

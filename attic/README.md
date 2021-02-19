@@ -67,36 +67,36 @@ Default CPU: 1  Default Memory: 2097152K
 Job Time: 0.50  Max CPUs: 9.22337e+18  Max Threads: 4
 Total Clock: 0.09  Total Runtime: 7.60
 Slave
-    Count |                                    Time* |                                    Clock |                                     Wait |                                               Memory 
-        n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |        min       med       ave       max       total 
+    Count |                                    Time* |                                    Clock |                                     Wait |                                               Memory
+        n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |        min       med       ave       max       total
       365 |     0.01    0.02    0.02    0.06    6.82 |     0.01    0.01    0.01    0.04    4.71 |     0.00    0.00    0.01    0.03    2.11 |   9781248K 13869056K 13799121K 14639104K 5036679168K
 Job
  Slave Jobs   |     min    med    ave    max
               |       2      2      2      2
-    Count |                                    Time* |                                    Clock |                                     Wait |                                               Memory 
-        n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |        min       med       ave       max       total 
+    Count |                                    Time* |                                    Clock |                                     Wait |                                               Memory
+        n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |        min       med       ave       max       total
       367 |     0.00    0.00    0.00    0.03    0.68 |     0.00    0.00    0.00    0.01    0.42 |     0.00    0.00    0.00    0.03    0.26 |   9461760K 13869056K 13787694K 14639104K 5060083712K
  Cleanup
-    Count |                                    Time* |                                    Clock |                                     Wait |                                               Memory 
-        n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |        min       med       ave       max       total 
+    Count |                                    Time* |                                    Clock |                                     Wait |                                               Memory
+        n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |        min       med       ave       max       total
         1 |     0.00    0.00    0.00    0.00    0.00 |     0.00    0.00    0.00    0.00    0.00 |     0.00    0.00    0.00    0.00    0.00 |  14639104K 14639104K 14639104K 14639104K   14639104K
  Up
-    Count |                                    Time* |                                    Clock |                                     Wait |                                               Memory 
-        n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |        min       med       ave       max       total 
+    Count |                                    Time* |                                    Clock |                                     Wait |                                               Memory
+        n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |        min       med       ave       max       total
       124 |     0.00    0.00    0.00    0.01    0.15 |     0.00    0.00    0.00    0.01    0.12 |     0.00    0.00    0.00    0.01    0.03 |  13713408K 14090240K 14044985K 14581760K 1741578240K
  Setup
-    Count |                                    Time* |                                    Clock |                                     Wait |                                               Memory 
-        n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |        min       med       ave       max       total 
+    Count |                                    Time* |                                    Clock |                                     Wait |                                               Memory
+        n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |        min       med       ave       max       total
         1 |     0.00    0.00    0.00    0.00    0.00 |     0.00    0.00    0.00    0.00    0.00 |     0.00    0.00    0.00    0.00    0.00 |   9551872K  9551872K  9551872K  9551872K    9551872K
  Down
-    Count |                                    Time* |                                    Clock |                                     Wait |                                               Memory 
-        n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |        min       med       ave       max       total 
+    Count |                                    Time* |                                    Clock |                                     Wait |                                               Memory
+        n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |        min       med       ave       max       total
       241 |     0.00    0.00    0.00    0.03    0.53 |     0.00    0.00    0.00    0.00    0.30 |     0.00    0.00    0.00    0.03    0.23 |   9461760K 13828096K 13669354K 14155776K 3294314496K
 
 ```
 
 The breakdown is given per "slave", which is unit of serial execution, and per "job", which corresponds to a scriptTree job (see below).
-Despite its simplicity, we've found this can be **very** useful for tracking down performance issues, particularly when trying out a pipeline on a new system. 
+Despite its simplicity, we've found this can be **very** useful for tracking down performance issues, particularly when trying out a pipeline on a new system.
 
 The important arguments to **toilStats** are:
 
@@ -120,7 +120,7 @@ The important arguments to **toilStats** are:
 ##toil options
 
    A toil script will have the following command-line options.
-   
+
     Options that control logging.
 
     --logOff            Turn off logging. (default is CRITICAL)
@@ -132,7 +132,7 @@ The important arguments to **toilStats** are:
     --logFile=LOGFILE   File to log in
     --rotatingLogging   Turn on rotating logging, which prevents log files
                         getting too big.
-                        
+
    Options to specify the location of the toil and turn on stats
     collation about the performance of jobs.
 
@@ -275,7 +275,7 @@ class Setup(Job):
         Job.__init__(self, time=1, memory=1000000, cpu=1)
         self.inputFile = inputFile
         self.N = N
-    
+
     def run(self):
         tempOutputFile = getTempFile(rootDir=self.getGlobalTempDir())
         self.addChildJob(Down(self.inputFile, 0, os.path.getsize(self.inputFile), self.N, tempOutputFile))
@@ -318,7 +318,7 @@ Note, there are two types of functions you can wrap - **job functions**, whose f
 
 ScriptTree jobs are serialized (written and retrieved from disk) so that they can be executed in parallel on a cluster of different machines. Thankfully, this is mostly transparent to the user, except for the fact that jobs must be 'pickled' (see python docs), which creates a few constraints upon what can and can not be passed to and stored by a job.
 Currently the preferred way to run a pipeline is to create an executable python script.
-For example, see **tests/sorts/scriptTreeTest_Sort.py**. 
+For example, see **tests/sorts/scriptTreeTest_Sort.py**.
 
 The first line to notice is:
 
@@ -374,7 +374,7 @@ reload the objects in the module, such that their module names will be absolute 
 
 ##Atomicity
 toil and scriptTree are designed to be robust, so that individuals jobs (jobs) can fail, and be subsequently restarted. It is assumed jobs can fail at any point. Thus until toil knows your children have been completed okay you can not assume that your Job has been completed. To ensure that your pipeline can be restarted after a failure ensure that every job (job):
-         
+
 1. **Never cleans up / alters its own input files.** Instead, parents and follow on jobs may clean up the files of children or prior jobs.
 2. Can be re-run from just its input files any number of times. A job should only depend on its input, and it should be possible to run the job as many times as desired, essentially until news of its completion is successfully transmitted to the jobtree master process.
 

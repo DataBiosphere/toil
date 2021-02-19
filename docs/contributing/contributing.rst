@@ -356,13 +356,17 @@ Naming Conventions
 
 .. _great: https://chris.beams.io/posts/git-commit/#seven-rules
 
+.. _PRs:
+
 Pull Requests
 ~~~~~~~~~~~~~
 * All pull requests must be reviewed by a person other than the request's
-  author.
+  author. Review the PR by following the :ref:`reviewingPRs` checklist.
 
 * Modified pull requests must be re-reviewed before merging. **Note that Github
   does not enforce this!**
+
+* Merge pull requests by following the :ref:`mergingPRs` checklist.
 
 * When merging a pull request, make sure to update the `Draft Changelog`_ on
   the Github wiki, which we will use to produce the changelog for the next
@@ -404,7 +408,7 @@ Pull Requests
   .. _Co-authored-by: https://github.blog/2018-01-29-commit-together-with-co-authors/
   .. _Issue #2816: https://github.com/DataBiosphere/toil/issues/2816
   .. _toil.lib.retry: https://github.com/DataBiosphere/toil/blob/master/src/toil/lib/retry.py
-  
+
 
 Publishing a Release
 ~~~~~~~~~~~~~~~~~~~~

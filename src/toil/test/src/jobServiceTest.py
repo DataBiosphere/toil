@@ -44,11 +44,11 @@ class JobServiceTest(ToilTest):
         job = Job()
         service = ToySerializableService("woot")
         startValue = job.addService(service) # Add a first service to job
-        subService = ToySerializableService(startValue) # Now create a child of 
+        subService = ToySerializableService(startValue) # Now create a child of
         # that service that takes the start value promise from the parent service
         job.addService(subService, parentService=service) # This should work if
         # serialization on services is working correctly.
-        
+
         self.runToil(job)
 
     @slow
@@ -86,7 +86,7 @@ class JobServiceTest(ToilTest):
                 r3 = job.addService(ToySerializableService("woot3"))
                 job.addChildFn(fnTest, [ r1, r2, r3 ], outFile)
                 return job
-            
+
             # This should fail as too few services available
             try:
                 self.runToil(makeWorkflow(), badWorker=0.0, maxServiceJobs=2, deadlockWait=5)
@@ -94,17 +94,17 @@ class JobServiceTest(ToilTest):
                 print("Got expected deadlock exception")
             else:
                 assert 0
-                
+
             # This should pass, as adequate services available
             self.runToil(makeWorkflow(), maxServiceJobs=3)
-            # Check we get expected output 
+            # Check we get expected output
             assert open(outFile, 'r').read() == "woot1 woot2 woot3"
         finally:
             os.remove(outFile)
-             
+
     def testServiceWithCheckpoints(self):
         """
-        Tests the creation of a Job.Service with random failures of the worker, making the root job use checkpointing to 
+        Tests the creation of a Job.Service with random failures of the worker, making the root job use checkpointing to
         restart the subtree.
         """
         self.testService(checkpoint=True)
@@ -184,7 +184,7 @@ class JobServiceTest(ToilTest):
 def serviceTest(job, outFile, messageInt):
     """
     Creates one service and one accessing job, which communicate with two files to establish
-    that both run concurrently. 
+    that both run concurrently.
     """
     #Clean out out-file
     open(outFile, 'w').close()
@@ -289,7 +289,7 @@ class ToyService(Job.Service):
                 if len(line.strip()) == 0:
                     # Don't try and make an integer out of nothing
                     continue
-                    
+
                 # Try converting the input line into an integer
                 try:
                     inputInt = int(line)
@@ -297,10 +297,10 @@ class ToyService(Job.Service):
                     logger.debug("Tried casting input line '%s' to integer but got error: %s", line, traceback.format_exc())
                     continue
 
-                # Write out the resulting read integer and the message              
+                # Write out the resulting read integer and the message
                 with jobStore.updateFileStream(outJobStoreID) as fH:
                     fH.write(("%s %s\n" % (inputInt, messageInt)).encode('utf-8'))
-                    
+
                 logger.debug("Service worker did useful work")
         except:
             logger.debug("Error in service worker: %s", traceback.format_exc())
@@ -361,7 +361,7 @@ class ToySerializableService(Job.Service):
 
     def check(self):
         return True
-    
+
 def fnTest(strings, outputFile):
     """
     Function concatenates the strings together and writes them to the output file
