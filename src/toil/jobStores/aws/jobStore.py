@@ -1152,7 +1152,7 @@ class AWSJobStore(AbstractJobStore):
         @contextmanager
         def uploadStream(self, multipart=True, allowInlining=True, encoding=None, errors=None):
             """
-            Context manager that gives out a binary/text mode upload stream to upload data.
+            Context manager that gives out a binary or text mode upload stream to upload data.
             """
 
             # Note that we have to handle already having a content or a version
@@ -1424,7 +1424,7 @@ class AWSJobStore(AbstractJobStore):
         @contextmanager
         def downloadStream(self, verifyChecksum=True, encoding=None, errors=None):
             """
-            Context manager that gives out a binary/text mode download stream to download data.
+            Context manager that gives out a download stream to download data.
             """
             info = self
 

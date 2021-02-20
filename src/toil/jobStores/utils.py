@@ -201,7 +201,7 @@ class ReadablePipe(ABC):
     @abstractmethod
     def writeTo(self, writable):
         """
-        Implement this method to read data from the pipe.
+        Implement this method to write data from the pipe.
 
         :param file writable: the file object representing the writable end of the pipe. Do not
         explicitly invoke the close() method of the object, that will be done automatically.
@@ -224,7 +224,7 @@ class ReadablePipe(ABC):
                 as for encode() and defaults to None. This should only be used in text mode.
 
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
-                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
+                are the same as for open() and defaults to 'strict'.
         """
         super(ReadablePipe, self).__init__()
         self.encoding = encoding
