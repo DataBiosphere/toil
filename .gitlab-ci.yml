@@ -33,7 +33,6 @@ after_script:
   - stopdocker || true
 
 stages:
-
   - docs
   - linting
   - basic_tests
