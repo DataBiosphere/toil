@@ -6,7 +6,7 @@ import uuid
 
 from contextlib import contextmanager
 from io import BytesIO
-from typing import Union, Optional
+from typing import Iterator, Union, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ def atomic_install(tmp_path, final_path) -> None:
         os.rename(tmp_path, final_path)
 
 @contextmanager
-def AtomicFileCreate(final_path: str, keep: bool = False) -> None:
+def AtomicFileCreate(final_path: str, keep: bool = False) -> Iterator[str]:
     """Context manager to create a temporary file.  Entering returns path to
     the temporary file in the same directory as finalPath.  If the code in
     context succeeds, the file renamed to its actually name.  If an error
