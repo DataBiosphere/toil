@@ -1210,7 +1210,7 @@ class CWLJob(Job):
         #  see: https://github.com/common-workflow-language/cwltool/blob/78fe9d41ee5a44f8725dfbd7028e4a5ee42949cf/cwltool/builder.py#L474
         # self.builder.outdir = outdir
         # runtime_context.builder = self.builder
-        
+
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
 
@@ -2128,8 +2128,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     else:
         # Since the default won't be used, just pass through the user's choice
         chosen_job_store = options.jobStore
-        
-    
+
+
 
     # Re-parse arguments with the new selected jobstore.
     options = parser.parse_args([chosen_job_store] + args)
@@ -2151,7 +2151,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # Make sure cwltool uses Toil's log level.
         # Applies only on the leader.
         cwllogger.setLevel(options.logLevel.upper())
-        
+
     logger.debug(f'Using job store {chosen_job_store} from workdir {workdir} with default status {using_default_job_store}')
     logger.debug(f'Final job store {options.jobStore} and workDir {options.workDir}')
 
