@@ -33,24 +33,17 @@ after_script:
   - stopdocker || true
 
 stages:
-  - docs
   - linting
   - basic_tests
   - main_tests
   - integration
-
-doc:
-  stage: docs
-  script:
-    - pwd
-    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - make docs
 
 lint:
   stage: linting
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - make docs
     - make mypy
 
 
