@@ -351,7 +351,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
     >>> import subprocess, tempfile, os
     >>> dirPath = tempfile.mkdtemp()
     >>> path = os.path.join( dirPath, 'foo.py' )
-    >>> with open(path,'w') as f: 
+    >>> with open(path,'w') as f:
     ...     _ = f.write('from toil.resource import ModuleDescriptor\\n'
     ...                 'print(ModuleDescriptor.forModule(__name__))')
     >>> subprocess.check_output([ sys.executable, path ]) # doctest: +ELLIPSIS +ALLOW_BYTES

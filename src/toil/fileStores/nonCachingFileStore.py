@@ -27,7 +27,7 @@ from toil.common import getDirSizeRecursively, getFileSystemSize
 from toil.fileStores import FileID, make_public_dir
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.humanize import bytes2human
-from toil.lib.misc import robust_rmtree
+from toil.lib.io import robust_rmtree
 from toil.lib.threading import get_process_name, process_name_exists
 
 logger = logging.getLogger(__name__)
@@ -95,8 +95,6 @@ class NonCachingFileStore(AbstractFileStore):
 
         self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
         self.localFileMap[fileStoreID].append(localFilePath)
-        if getattr(fileStoreID, 'executable', False):
-            os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
         self.logAccess(fileStoreID, localFilePath)
         return localFilePath
 
@@ -181,7 +179,7 @@ class NonCachingFileStore(AbstractFileStore):
         for jobState in cls._getAllJobStates(nodeInfo):
             if not process_name_exists(nodeInfo, jobState['jobProcessName']):
                 # We need to have a race to pick someone to clean up.
-                
+
                 try:
                     # Open the directory
                     dirFD = os.open(jobState['jobDir'], os.O_RDONLY)
@@ -199,7 +197,7 @@ class NonCachingFileStore(AbstractFileStore):
                     # We got it
                     logger.warning('Detected that job (%s) prematurely terminated.  Fixing the '
                                    'state of the job on disk.', jobState['jobName'])
-                    
+
                     try:
                         if not batchSystemShutdown:
                             logger.debug("Deleting the stale working directory.")

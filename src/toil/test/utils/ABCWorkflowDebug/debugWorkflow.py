@@ -9,8 +9,8 @@ from toil.version import python
 logger = logging.getLogger(__name__)
 
 '''
-This workflow's purpose is to create files and jobs for viewing using stats, 
-status, and printDot() in toilDebugTest.py.  It's intended for future use in a 
+This workflow's purpose is to create files and jobs for viewing using stats,
+status, and printDot() in toilDebugTest.py.  It's intended for future use in a
 debugging tutorial containing a broken job.  It is also a minor integration test.
 '''
 
