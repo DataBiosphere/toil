@@ -1814,13 +1814,14 @@ def generate_default_job_store(batch_system_name: Optional[str], provisioner_nam
                                local_directory: str) -> str:
     """
     Choose a default job store appropriate to the requested batch system and
-    porvisioner, and installed modules. Raises an error if no good default is
+    provisioner, and installed modules. Raises an error if no good default is
     available and the user must choose manually.
 
     :param batch_system_name: Registry name of the batch system the user has
-           requested, if any.
+           requested, if any. If no name has been requested, should be None.
     :param provisioner_name: Name of the provisioner the user has requested,
-           if any, May be 'aws' or 'gce'.
+           if any. Recognized provisioners include 'aws' and 'gce'. None
+           indicates that no provisioner is in use.
     :param local_directory: Path to a nonexistent local directory suitable for
            use as a file job store.
 
@@ -1833,7 +1834,7 @@ def generate_default_job_store(batch_system_name: Optional[str], provisioner_nam
     # Work out how to describe where we are
     situation = f"the '{batch_system_name}' batch system"
     if provisioner_name:
-        situation += f"with the '{provisioner_name}' provisioner"
+        situation += f" with the '{provisioner_name}' provisioner"
 
     try:
         if provisioner_name == 'gce':
@@ -1866,6 +1867,10 @@ def generate_default_job_store(batch_system_name: Optional[str], provisioner_nam
 
             # Roll a random name
             return f'aws:{region}:toil-cwl-{str(uuid.uuid4())}'
+        elif provisioner_name not in ['aws', 'gce']:
+            # We 've never heard of this provisioner and don't know what kind
+            # of job store to use with it.
+            raise NoAvailableJobStoreException()
 
     except (ImportError, NoAvailableJobStoreException):
         raise NoAvailableJobStoreException(
