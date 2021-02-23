@@ -170,7 +170,7 @@ def main():
                           awsEc2ExtraSecurityGroupIds=options.awsEc2ExtraSecurityGroupIds)
 
     for typeNum, spec in enumerate(nodeCounts):
-        # For each batch of workers to make 
+        # For each batch of workers to make
         wanted = parsedNodeTypes[typeNum]
 
         if isinstance(spec, int):

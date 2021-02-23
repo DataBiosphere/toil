@@ -160,8 +160,8 @@ class DeferredFunctionManager(object):
         fcntl.lockf(self.stateFD, fcntl.LOCK_UN)
 
         # Don't bother with close, destroying will close and it seems to maybe
-        # have been GC'd already anyway. 
-        
+        # have been GC'd already anyway.
+
     @contextmanager
     def open(self):
         """
@@ -175,7 +175,7 @@ class DeferredFunctionManager(object):
 
         # Clean up other jobs before we run, so our job has a nice clean node
         self._runOrphanedDeferredFunctions()
-    
+
         try:
             def defer(deferredFunction):
                 # Just serialize defered functions one after the other.
@@ -252,7 +252,7 @@ class DeferredFunctionManager(object):
         """
         Run all of the deferred functions that were registered.
         """
-        
+
         logger.debug("Running own deferred functions")
 
         # Seek back to the start of our file
@@ -334,7 +334,7 @@ class DeferredFunctionManager(object):
                 except OSError:
                     # Maybe the file vanished.
                     pass
-                
+
                 # Unlock it
                 fcntl.lockf(fd, fcntl.LOCK_UN)
 

@@ -59,15 +59,15 @@ class MesosExecutor(Executor):
         # the mesos sandbox if the user hasn't specified --workDir on the command line.
         if not os.getenv('TOIL_WORKDIR'):
             os.environ['TOIL_WORKDIR'] = os.getcwd()
-            
+
     def registered(self, driver, executorInfo, frameworkInfo, agentInfo):
         """
         Invoked once the executor driver has been able to successfully connect with Mesos.
         """
-        
+
         # Get the ID we have been assigned, if we have it
         self.id = executorInfo.executor_id.get('value', None)
-        
+
         log.debug("Registered executor %s with framework", self.id)
         self.address = socket.gethostbyname(agentInfo.hostname)
         nodeInfoThread = threading.Thread(target=self._sendFrameworkMessage, args=[driver], daemon=True)
@@ -137,9 +137,9 @@ class MesosExecutor(Executor):
         """
         Invoked by SchedulerDriver when a Mesos task should be launched by this executor
         """
-        
+
         log.debug("Asked to launch task %s", repr(task))
-        
+
         def runTask():
 
             log.debug("Running task %s", task.task_id.value)
@@ -249,16 +249,16 @@ def main():
             log.debug("Toggled agent log level")
         except Exception:
             log.debug("Failed to toggle agent log level")
-        
+
     # Parse the agent state
     agent_state = json.loads(urlopen("http://%s/state" % os.environ["MESOS_AGENT_ENDPOINT"]).read())
     if 'completed_frameworks' in agent_state:
         # Drop the completed frameworks which grow over time
         del agent_state['completed_frameworks']
     log.debug("Agent state: %s", str(agent_state))
-    
+
     log.debug("Virtual memory info in executor: %s" % repr(psutil.virtual_memory()))
-    
+
     if os.path.exists('/sys/fs/cgroup/memory'):
         # Mesos can limit memory with a cgroup, so we should report on that.
         for (dirpath, dirnames, filenames) in os.walk('/sys/fs/cgroup/memory', followlinks=True):
@@ -271,36 +271,36 @@ def main():
                         log.debug(line.rstrip())
                 except Exception:
                     log.debug("Failed to read file")
-                    
+
     # Mesos can also impose rlimit limits, including on things that really
     # ought to not be limited, like virtual address space size.
     log.debug('DATA rlimit: %s', str(resource.getrlimit(resource.RLIMIT_DATA)))
     log.debug('STACK rlimit: %s', str(resource.getrlimit(resource.RLIMIT_STACK)))
     log.debug('RSS rlimit: %s', str(resource.getrlimit(resource.RLIMIT_RSS)))
     log.debug('AS rlimit: %s', str(resource.getrlimit(resource.RLIMIT_AS)))
-    
-                    
+
+
     executor = MesosExecutor()
     log.debug('Made executor')
     driver = MesosExecutorDriver(executor, use_addict=True)
-    
+
     old_on_event = driver.on_event
-    
+
     def patched_on_event(event):
         """
         Intercept and log all pymesos events.
         """
         log.debug("Event: %s", repr(event))
         old_on_event(event)
-        
+
     driver.on_event = patched_on_event
-    
+
     log.debug('Made driver')
     driver.start()
     log.debug('Started driver')
     driver_result = driver.join()
     log.debug('Joined driver')
-    
+
     # Tolerate a None in addition to the code the docs suggest we should receive from join()
     exit_value = 0 if (driver_result is None or driver_result == 'DRIVER_STOPPED') else 1
     assert len(executor.runningTasks) == 0

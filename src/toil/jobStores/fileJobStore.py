@@ -126,14 +126,14 @@ class FileJobStore(AbstractJobStore):
         # This will be e.g. the function name for wrapped-function jobs.
         # Make sure to render it filename-safe
         usefulFilename = self._makeStringFilenameSafe(jobDescription.jobName)
-        
+
         # Make a unique temp directory under a directory for this job name,
         # possibly sprayed across multiple levels of subdirectories.
         absJobDir = tempfile.mkdtemp(prefix=self.JOB_DIR_PREFIX,
                                      dir=self._getArbitraryJobsDirForName(usefulFilename))
-                                     
+
         jobDescription.jobStoreID = self._getJobIdFromDir(absJobDir)
-        
+
     def create(self, jobDescription):
         if hasattr(self, "_batchedUpdates") and self._batchedUpdates is not None:
             # Save it later
@@ -209,10 +209,10 @@ class FileJobStore(AbstractJobStore):
         jobFile = self._getJobFileName(jobStoreID)
         with open(jobFile, 'rb') as fileHandle:
             job = pickle.load(fileHandle)
-        
+
         # Pass along the current config, which is the JobStore's responsibility.
         job.assignConfig(self.config)
-            
+
         # The following cleans up any issues resulting from the failure of the
         # job during writing by the batch system.
         if os.path.isfile(jobFile + ".new"):
@@ -224,7 +224,7 @@ class FileJobStore(AbstractJobStore):
     def update(self, job):
         assert job.jobStoreID is not None, f"Tried to update job {job} without an ID"
         assert not isinstance(job.jobStoreID, TemporaryID), f"Tried to update job {job} without an assigned ID"
-    
+
         # The job is serialised to a file suffixed by ".new"
         # The file is then moved to its correct path.
         # Atomicity guarantees use the fact the underlying file systems "move"
@@ -334,14 +334,14 @@ class FileJobStore(AbstractJobStore):
         :param str url: A path as a string of the file to be read from.
         :param object writable: An open file object to write to.
         """
-        
+
         # we use a ~10Mb buffer to improve speed
         with open(cls._extractPathFromUrl(url), 'rb') as readable:
             shutil.copyfileobj(readable, writable, length=cls.BUFFER_SIZE)
             # Return the number of bytes we read when we reached EOF.
             executable = os.stat(readable.name).st_mode & stat.S_IXUSR
             return readable.tell(), executable
-        
+
 
     @classmethod
     def _writeToUrl(cls, readable, url, executable=False):
@@ -672,10 +672,10 @@ class FileJobStore(AbstractJobStore):
         :meth:`assignID`, and the corresponding job has not yet been
         deleted, even if the JobDescription hasn't yet been saved for the first
         time.
-        
+
         If the ID has not been assigned, raises a NoSuchJobException.
         """
-        
+
         if not self._waitForFile(self._getJobDirFromId(jobStoreID)):
             raise NoSuchJobException(jobStoreID)
 
