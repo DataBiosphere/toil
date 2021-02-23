@@ -90,8 +90,7 @@ def awsRetryPredicate(e):
     return False
 
 def expectedShutdownErrors(e):
-    return ((get_error_status(e) == 400 and 'dependent object' in get_error_body(e)) or
-            ('not found' in get_error_message(e)))
+    return get_error_status(e) == 400 and 'dependent object' in get_error_body(e)
 
 def awsRetry(f):
     """
