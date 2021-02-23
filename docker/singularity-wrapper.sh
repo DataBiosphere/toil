@@ -59,10 +59,12 @@ if [[ "${ARGC}" -ge "2" && "${ARGV[1]}" == "pull" && ! -z "${MIRROR_HOST}" ]] ; 
     fi
 
     # Run the pull with our extra args, and then all the args starting at 2
-    "${SINGULARITY_PATH}" pull ${HTTP_ARG} "${ARGV[@]:2}"
+    # Run it as the current process so it gets signals intended for it
+    exec "${SINGULARITY_PATH}" pull ${HTTP_ARG} "${ARGV[@]:2}"
 else
     # Pass along all the args except the program name
-    "${SINGULARITY_PATH}" "${ARGV[@]:1}"
+    # Run it as the current process so it gets signals intended for it
+    exec "${SINGULARITY_PATH}" "${ARGV[@]:1}"
 fi
 
 
