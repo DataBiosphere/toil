@@ -28,6 +28,8 @@ ARGV=($0 "${@}")
 
 if [[ "${ARGC}" -ge "2" && "${ARGV[1]}" == "pull" && ! -z "${MIRROR_HOST}" ]] ; then
     # We are doing a pull
+    # TODO: we will want to also catch `singularity build`
+    # TODO: we will want to be able to handle e.g. `singularity -q build`
 
     # We will set this if we manage to replace a Docker name
     REPLACED=0
