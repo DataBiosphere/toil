@@ -947,6 +947,18 @@ def as_map(in_array: List[WDLPair]) -> dict:
     return map
 
 
+def keys(in_map: dict) -> list:
+    """
+    Given a Map, the `keys` function returns an Array consisting of the keys in
+    the Map. The order of the keys in the resulting Array is the same as the
+    order of the Pairs in the Map.
+
+    WDL syntax: Array[X] keys(Map[X,Y])
+    """
+
+    return list(in_map.keys())
+
+
 def collect_by_key(in_array: List[WDLPair]) -> dict:
     """
     Given an Array consisting of Pairs, the `collect_by_key` function returns a Map
