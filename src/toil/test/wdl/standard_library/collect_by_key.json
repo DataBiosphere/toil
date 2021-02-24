@@ -1,0 +1,16 @@
+{
+  "collectByKeyWorkflow.in_array": [
+    {
+      "left": "a",
+      "right": 1
+    },
+    {
+      "left": "b",
+      "right": 2
+    },
+    {
+      "left": "a",
+      "right": 3
+    }
+  ]
+}
