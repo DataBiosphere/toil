@@ -294,7 +294,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 bjobs = subprocess.check_output(memargs, universal_newlines=True)
                 memregex = r"MAX MEM: (.*?);"
                 meminfo = re.search(memregex, bjobs)
-                s = " ".join(bjobs.split())
+                s =' '.join(re.sub(r"\n\s*", "", bjobs).split(','))
                 command = re.search(r"Command <(.*?)>", s)
                 if meminfo:
                     if not command:
