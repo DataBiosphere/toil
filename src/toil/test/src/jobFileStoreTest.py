@@ -110,7 +110,7 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
                                                         cache=cache)
                 with open(tempFile, 'r') as fH:
                     string = fH.readline()
-                logging.debug("Downloaded %s to local path %s with cache %s and got %s with %d letters",
+                logging.info("Downloaded %s to local path %s with cache %s and got %s with %d letters",
                               fileStoreID, local_path, cache, tempFile, len(string))
             else:
                 #Check the streamed file is as we expect
@@ -119,9 +119,10 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
                     # But a StreamReader for UTF-8 is exactly the adapter we need.
                     fH = codecs.getreader('utf-8')(fH)
                     string = fH.readline()
-                logging.debug("Streamed %s and got %d letters", fileStoreID, len(string))
+                logging.info("Streamed %s and got %d letters", fileStoreID, len(string))
             #Check the string we get back is what we expect
-            assert testStrings[string[:PREFIX_LENGTH]] == string
+            assert string[:PREFIX_LENGTH] in testStrings, f"Could not find string: {string[:PREFIX_LENGTH]}"
+            assert testStrings[string[:PREFIX_LENGTH]] == string, f"Mismatch in string: {string[:PREFIX_LENGTH]}"
 
             #This allows the file to be passed to the next job
             outputFileStoreIds.append(fileStoreID)
