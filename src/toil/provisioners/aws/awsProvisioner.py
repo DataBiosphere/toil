@@ -970,16 +970,24 @@ class AWSProvisioner(AbstractProvisioner):
 
         matchedASGs = []
         # Get the first page with no NextToken
-        response = self.autoscaling_client.describe_tags()
+        response = self.autoscaling_client.describe_tags(Filters=filters)
         while True:
             # Process the current page
-            matchedASGs += [item['ResourceId'] for item in response.get('Tags', [])]
+            matchedASGs += [item['ResourceId'] for item in response.get('Tags', [])
+                            if item['Key'] == _TAG_KEY_TOIL_CLUSTER_NAME and
+                            item['Value'] == self.clusterName]
             if 'NextToken' in response:
                 # There are more pages. Get the next one, supplying the token.
-                response = self.autoscaling_client.describe_tags(NextToken=response['NextToken'])
+                response = self.autoscaling_client.describe_tags(Filters=filters,
+                                                                 NextToken=response['NextToken'])
             else:
                 # No more pages
                 break
+
+        for name in matchedASGs:
+            # Double check to make sure we definitely aren't finding non-Toil
+            # things
+            assert name.startswith('toil-')
 
         return matchedASGs
 
