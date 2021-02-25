@@ -65,7 +65,7 @@ class JobFileStoreTest(ToilTest):
             #Total length is 2 million characters (20 strings of length 100K each)
             testStrings = dict([randomString() for i in range(stringNo)])
             options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-            options.logLevel = "INFO"
+            options.logLevel = "DEBUG"
             options.retryCount=retryCount
             options.badWorker=badWorker
             options.badWorkerFailInterval = 1.0
@@ -128,6 +128,7 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
             outputFileStoreIds.append(fileStoreID)
         else:
             #This tests deletion
+            logging.info("Deleted %s", fileStoreID)
             job.fileStore.deleteGlobalFile(fileStoreID)
 
     #Fill out the output strings until we have the same number as the input strings
