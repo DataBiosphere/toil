@@ -1867,7 +1867,7 @@ def generate_default_job_store(batch_system_name: Optional[str], provisioner_nam
 
             # Roll a random name
             return f'aws:{region}:toil-cwl-{str(uuid.uuid4())}'
-        elif provisioner_name not in ['aws', 'gce']:
+        elif provisioner_name is not None and provisioner_name not in ['aws', 'gce']:
             # We 've never heard of this provisioner and don't know what kind
             # of job store to use with it.
             raise NoAvailableJobStoreException()
