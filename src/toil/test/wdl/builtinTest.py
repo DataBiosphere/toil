@@ -496,8 +496,7 @@ class WdlStandardLibraryWorkflowsTest(WdlWorkflowsTest):
 
     def test_collect_by_key(self):
         # NOTE: this result is expected according to the spec but differs from Cromwell.
-        self.check_function('collect_by_key', cases=['as_input'],
-                            expected_result='{"a":[1,3],"b":[2]}')
+        self.check_function('collect_by_key', cases=['as_input'], expected_result='{"a":[1,3],"b":[2]}')
 
 
 if __name__ == "__main__":
