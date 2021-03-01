@@ -945,3 +945,34 @@ def as_map(in_array: List[WDLPair]) -> dict:
         map[pair.left] = pair.right
 
     return map
+
+
+def keys(in_map: dict) -> list:
+    """
+    Given a Map, the `keys` function returns an Array consisting of the keys in
+    the Map. The order of the keys in the resulting Array is the same as the
+    order of the Pairs in the Map.
+
+    WDL syntax: Array[X] keys(Map[X,Y])
+    """
+
+    return list(in_map.keys())
+
+
+def collect_by_key(in_array: List[WDLPair]) -> dict:
+    """
+    Given an Array consisting of Pairs, the `collect_by_key` function returns a Map
+    in which the left elements of the Pairs are the keys and the right elements the
+    values.
+
+    WDL syntax: Map[X,Array[Y]] collect_by_key(Array[Pair[X,Y]])
+    """
+    if not isinstance(in_array, list):
+        raise WDLRuntimeError(f'as_map() requires "{in_array}" to be a list!  Not: {type(in_array)}')
+
+    map = {}
+
+    for pair in in_array:
+        map.setdefault(pair.left, []).append(pair.right)
+
+    return map

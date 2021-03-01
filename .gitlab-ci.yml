@@ -46,6 +46,7 @@ lint:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - make mypy
+    - make docs
 
 
 # Python3.6
