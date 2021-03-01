@@ -142,7 +142,7 @@ endef
 docker: docker/Dockerfile
 	# Pre-pull everything
 	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull ubuntu:16.04 && break || sleep 60; done
-	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull prom/prometheus:v2.0.0 && break || sleep 60; done
+	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull prom/prometheus:v2.24.1 && break || sleep 60; done
 	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull grafana/grafana && break || sleep 60; done
 	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull sscaling/mtail && break || sleep 60; done
 
