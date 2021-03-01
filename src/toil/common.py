@@ -410,10 +410,13 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
         description="Allows the specification of the minimum and maximum number of nodes in an autoscaled cluster, "
                     "as well as parameters to control the level of provisioning."
     )
-    provisioner_choices = ['aws', 'gce']
+    provisioner_choices = ['aws', 'gce', None]
+    # TODO: Better consolidate this provisioner arg and the one in provisioners/__init__.py?
     autoscaling_options.add_argument('--provisioner', '-p', dest="provisioner", choices=provisioner_choices,
-                                     help=f"The provisioner for cluster auto-scaling. The currently supported choices "
-                                          f"are {provisioner_choices}.  The default is {config.provisioner}.")
+                                     help=f"The provisioner for cluster auto-scaling.  This is the main Toil "
+                                          f"'--provisioner' option, and defaults to None for running on single "
+                                          f"machine and non-auto-scaling batch systems.  The currently supported "
+                                          f"choices are {provisioner_choices}.  The default is {config.provisioner}.")
     autoscaling_options.add_argument('--nodeTypes', default=None,
                                      help="List of worker node types separated by commas. The syntax for each node "
                                           "type depends on the provisioner used.  For the AWS provisioner this is the "
@@ -990,7 +993,7 @@ class Toil:
             logger.debug('Injecting user script %s into batch system.', userScriptResource)
             self._batchSystem.setUserScript(userScriptResource)
 
-    def importFile(self, srcUrl, sharedFileName=None):
+    def importFile(self, srcUrl, sharedFileName=None, symlink=False):
         """
         Imports the file at the given URL into job store.
 
@@ -998,7 +1001,7 @@ class Toil:
         full description
         """
         self._assertContextManagerUsed()
-        return self._jobStore.importFile(srcUrl, sharedFileName=sharedFileName)
+        return self._jobStore.importFile(srcUrl, sharedFileName=sharedFileName, symlink=symlink)
 
     def exportFile(self, jobStoreFileID, dstUrl):
         """

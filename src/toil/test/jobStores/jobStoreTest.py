@@ -224,7 +224,7 @@ class AbstractJobStoreTest(object):
             self.jobstore_initialized.create(childJob)
             job.addChild(childJob.jobStoreID)
             self.jobstore_initialized.update(job)
-            
+
             self.assertEqual(self.jobstore_initialized.load(list(job.allSuccessors())[0]).command, childJob.command)
 
         @travis_test
@@ -288,7 +288,7 @@ class AbstractJobStoreTest(object):
             # Reload parent job on jobstore, "refreshing" the job.
             job1 = jobstore1.load(job1.jobStoreID)
             self.assertEqual([sorted(x) for x in job2.stack], [sorted(x) for x in job1.stack])
-            
+
             # Jobs still shouldn't *actually* be equal, even if their contents are the same.
             self.assertNotEqual(job2, job1)
 
@@ -316,7 +316,7 @@ class AbstractJobStoreTest(object):
             child2 = JobDescription(command='job1',
                                     requirements=self.childJobReqs2,
                                     jobName='test3', unitName='onChild2')
-                                    
+
             # Add children to parent.
             jobstore.assignID(child1)
             jobstore.create(child1)
@@ -325,11 +325,11 @@ class AbstractJobStoreTest(object):
             job.addChild(child1.jobStoreID)
             job.addChild(child2.jobStoreID)
             jobstore.update(job)
-            
+
             # Get it ready to run children
             job.command = None
             jobstore.update(job)
-            
+
             # Go get the children
             childJobs = [jobstore.load(childID) for childID in job.nextSuccessors()]
 
@@ -503,7 +503,7 @@ class AbstractJobStoreTest(object):
             jobOnJobStore1 = JobDescription(command='job1',
                                             requirements=self.parentJobReqs,
                                             jobName='test1', unitName='onJobStore1')
-            
+
             jobstore1.assignID(jobOnJobStore1)
             jobstore1.create(jobOnJobStore1)
 
@@ -1005,7 +1005,7 @@ class AbstractJobStoreTest(object):
             """Test whether readFileStream will deadlock on a partial read."""
             job = self.arbitraryJob()
             self.jobstore_initialized.assignID(job)
-            self.jobstore_initialized.create(job) 
+            self.jobstore_initialized.create(job)
             with self.jobstore_initialized.writeFileStream(job.jobStoreID, cleanup=True) as (f, fileID):
                 # Write enough data to make sure the writer thread
                 # will get blocked on the write. Technically anything

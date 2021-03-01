@@ -20,7 +20,7 @@ When reviewing a PR, do the following:
 
 * |X| Make sure it is coming from ``issues/XXXX-fix-the-thing`` in the Toil repo, or from an external repo.
     * |X| If it is coming from an external repo, make sure to pull it in for CI with::
-        
+
         contrib/admin/test-pr otheruser theirbranchname issues/XXXX-fix-the-thing
     * |X| If there is no associated issue, `create one <https://github.com/DataBiosphere/toil/issues/new>`_.
 * |X| Read through the code changes. Make sure that it doesn't have:

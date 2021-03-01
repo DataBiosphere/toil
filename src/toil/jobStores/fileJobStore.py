@@ -32,10 +32,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchFileException,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
-from toil.lib.misc import (AtomicFileCreate,
-                           atomic_copy,
-                           atomic_copyobj,
-                           robust_rmtree)
+from toil.lib.io import AtomicFileCreate, atomic_copy, atomic_copyobj, robust_rmtree
 
 logger = logging.getLogger(__name__)
 
@@ -129,14 +126,14 @@ class FileJobStore(AbstractJobStore):
         # This will be e.g. the function name for wrapped-function jobs.
         # Make sure to render it filename-safe
         usefulFilename = self._makeStringFilenameSafe(jobDescription.jobName)
-        
+
         # Make a unique temp directory under a directory for this job name,
         # possibly sprayed across multiple levels of subdirectories.
         absJobDir = tempfile.mkdtemp(prefix=self.JOB_DIR_PREFIX,
                                      dir=self._getArbitraryJobsDirForName(usefulFilename))
-                                     
+
         jobDescription.jobStoreID = self._getJobIdFromDir(absJobDir)
-        
+
     def create(self, jobDescription):
         if hasattr(self, "_batchedUpdates") and self._batchedUpdates is not None:
             # Save it later
@@ -212,10 +209,10 @@ class FileJobStore(AbstractJobStore):
         jobFile = self._getJobFileName(jobStoreID)
         with open(jobFile, 'rb') as fileHandle:
             job = pickle.load(fileHandle)
-        
+
         # Pass along the current config, which is the JobStore's responsibility.
         job.assignConfig(self.config)
-            
+
         # The following cleans up any issues resulting from the failure of the
         # job during writing by the batch system.
         if os.path.isfile(jobFile + ".new"):
@@ -227,7 +224,7 @@ class FileJobStore(AbstractJobStore):
     def update(self, job):
         assert job.jobStoreID is not None, f"Tried to update job {job} without an ID"
         assert not isinstance(job.jobStoreID, TemporaryID), f"Tried to update job {job} without an assigned ID"
-    
+
         # The job is serialised to a file suffixed by ".new"
         # The file is then moved to its correct path.
         # Atomicity guarantees use the fact the underlying file systems "move"
@@ -277,21 +274,21 @@ class FileJobStore(AbstractJobStore):
         if hardlink:
             self.linkImports = saved
 
-    def _copyOrLink(self, srcURL, destPath):
+    def _copyOrLink(self, srcURL, destPath, symlink=False):
         # linking is not done be default because of issue #1755
         srcPath = self._extractPathFromUrl(srcURL)
-        if self.linkImports:
+        if self.linkImports or symlink:
             os.symlink(os.path.realpath(srcPath), destPath)
         else:
             atomic_copy(srcPath, destPath)
 
-    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False):
+    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False, symlink=False):
         if issubclass(otherCls, FileJobStore):
             if sharedFileName is None:
                 executable = os.stat(url.path).st_mode & stat.S_IXUSR != 0
                 absPath = self._getUniqueFilePath(url.path)  # use this to get a valid path to write to in job store
                 with self.optionalHardCopy(hardlink):
-                    self._copyOrLink(url, absPath)
+                    self._copyOrLink(url, absPath, symlink=symlink)
                 # TODO: os.stat(absPath).st_size consistently gives values lower than
                 # getDirSizeRecursively()
                 return FileID(self._getFileIdFromPath(absPath), os.stat(absPath).st_size, executable)
@@ -299,7 +296,7 @@ class FileJobStore(AbstractJobStore):
                 self._requireValidSharedFileName(sharedFileName)
                 path = self._getSharedFilePath(sharedFileName)
                 with self.optionalHardCopy(hardlink):
-                    self._copyOrLink(url, path)
+                    self._copyOrLink(url, path, symlink=symlink)
                 return None
         else:
             return super(FileJobStore, self)._importFile(otherCls, url,
@@ -309,20 +306,20 @@ class FileJobStore(AbstractJobStore):
         if issubclass(otherCls, FileJobStore):
             srcPath = self._getFilePathFromId(jobStoreFileID)
             destPath = self._extractPathFromUrl(url)
+            executable = getattr(jobStoreFileID, 'executable', False)
             if self.moveExports:
-                self._move_and_linkback(srcPath, destPath)
+                self._move_and_linkback(srcPath, destPath, executable=executable)
             else:
-                executable = False
-                if getattr(jobStoreFileID, 'executable', False):
-                    executable = jobStoreFileID.executable
                 atomic_copy(srcPath, destPath, executable=executable)
         else:
             super(FileJobStore, self)._defaultExportFile(otherCls, jobStoreFileID, url)
 
-    def _move_and_linkback(self, srcPath, destPath):
+    def _move_and_linkback(self, srcPath, destPath, executable):
         logger.debug("moveExports option, Moving src=%s to dest=%s ; then symlinking dest to src", srcPath, destPath)
         shutil.move(srcPath, destPath)
         os.symlink(destPath, srcPath)
+        if executable:
+            os.chmod(destPath, os.stat(destPath).st_mode | stat.S_IXUSR)
 
     @classmethod
     def getSize(cls, url):
@@ -337,14 +334,14 @@ class FileJobStore(AbstractJobStore):
         :param str url: A path as a string of the file to be read from.
         :param object writable: An open file object to write to.
         """
-        
+
         # we use a ~10Mb buffer to improve speed
         with open(cls._extractPathFromUrl(url), 'rb') as readable:
             shutil.copyfileobj(readable, writable, length=cls.BUFFER_SIZE)
             # Return the number of bytes we read when we reached EOF.
             executable = os.stat(readable.name).st_mode & stat.S_IXUSR
             return readable.tell(), executable
-        
+
 
     @classmethod
     def _writeToUrl(cls, readable, url, executable=False):
@@ -356,8 +353,10 @@ class FileJobStore(AbstractJobStore):
         :param object readable: An open file object to read from.
         """
         # we use a ~10Mb buffer to improve speed
-        atomic_copyobj(readable, cls._extractPathFromUrl(url), length=cls.BUFFER_SIZE,
-                        executable=executable)
+        atomic_copyobj(readable,
+                       cls._extractPathFromUrl(url),
+                       length=cls.BUFFER_SIZE,
+                       executable=executable)
 
 
     @staticmethod
@@ -439,6 +438,7 @@ class FileJobStore(AbstractJobStore):
         self._checkJobStoreFileID(jobStoreFileID)
         jobStoreFilePath = self._getFilePathFromId(jobStoreFileID)
         localDirPath = os.path.dirname(localFilePath)
+        executable = getattr(jobStoreFileID, 'executable', False)
 
         if not symlink and os.path.islink(localFilePath):
             # We had a symlink and want to clobber it with a hardlink or copy.
@@ -464,7 +464,6 @@ class FileJobStore(AbstractJobStore):
                     # It would be very unlikely to fail again for same reason but possible
                     # nonetheless in which case we should just give up.
                     os.symlink(jobStoreFilePath, localFilePath)
-
                     # Now we succeeded and don't need to copy
                     return
                 else:
@@ -487,7 +486,6 @@ class FileJobStore(AbstractJobStore):
                     # It would be very unlikely to fail again for same reason but possible
                     # nonetheless in which case we should just give up.
                     os.link(jobStoreFilePath, localFilePath)
-
                     # Now we succeeded and don't need to copy
                     return
                 elif e.errno == errno.EXDEV:
@@ -502,7 +500,7 @@ class FileJobStore(AbstractJobStore):
 
         # If we get here, neither a symlink nor a hardlink will work.
         # Make a complete copy.
-        atomic_copy(jobStoreFilePath, localFilePath)
+        atomic_copy(jobStoreFilePath, localFilePath, executable=executable)
 
     def deleteFile(self, jobStoreFileID):
         if not self.fileExists(jobStoreFileID):
@@ -676,10 +674,10 @@ class FileJobStore(AbstractJobStore):
         :meth:`assignID`, and the corresponding job has not yet been
         deleted, even if the JobDescription hasn't yet been saved for the first
         time.
-        
+
         If the ID has not been assigned, raises a NoSuchJobException.
         """
-        
+
         if not self._waitForFile(self._getJobDirFromId(jobStoreID)):
             raise NoSuchJobException(jobStoreID)
 

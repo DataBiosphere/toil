@@ -41,7 +41,7 @@ class RegularLogTest(ToilTest):
         onlyLogs = [f for f in onlyFiles if f.endswith(extension)]
         logger.info("Found matching: %s", str(onlyLogs))
         assert onlyLogs
-        
+
         if encoding is not None:
             for log in onlyLogs:
                 with open(log, "rb") as f:
@@ -52,7 +52,7 @@ class RegularLogTest(ToilTest):
                     else:
                         mime = mimetypes.guess_type(log)
                         self.assertEqual(mime[1], encoding)
-    
+
     @slow
     def testLogToMaster(self):
         toilOutput = subprocess.check_output([sys.executable,
@@ -90,7 +90,7 @@ class RegularLogTest(ToilTest):
                                               '--clean=always',
                                               '--logLevel=info'], stderr=subprocess.STDOUT)
         assert helloWorld.parentMessage in toilOutput.decode('utf-8')
-    
+
     @travis_test
     def testRegularLog(self):
         toilOutput = subprocess.check_output([sys.executable,

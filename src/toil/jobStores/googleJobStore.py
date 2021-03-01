@@ -14,6 +14,7 @@
 import logging
 import os
 import pickle
+import stat
 import time
 import uuid
 from contextlib import contextmanager
@@ -32,7 +33,8 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobStoreException)
 from toil.jobStores.utils import ReadablePipe, WritablePipe
 from toil.lib.compatibility import compat_bytes
-from toil.lib.misc import AtomicFileCreate, truncExpBackoff
+from toil.lib.io import AtomicFileCreate
+from toil.lib.misc import truncExpBackoff
 from toil.lib.retry import old_retry
 
 log = logging.getLogger(__name__)
@@ -167,7 +169,7 @@ class GoogleJobStore(AbstractJobStore):
         # google freaks out if we call delete multiple times on the bucket obj, so after success
         # just set to None.
         self.bucket = None
-        
+
     def _newJobID(self):
         return "job"+str(uuid.uuid4())
 
@@ -201,7 +203,7 @@ class GoogleJobStore(AbstractJobStore):
             jobString = self._readContents(jobStoreID)
         except NoSuchFileException:
             raise NoSuchJobException(jobStoreID)
-        job = pickle.loads(jobString) 
+        job = pickle.loads(jobString)
         # It is our responsibility to make sure that the JobDescription is
         # connected to the current config on this machine, for filling in
         # defaults. The leader and worker should never see config-less
@@ -269,6 +271,8 @@ class GoogleJobStore(AbstractJobStore):
             with open(tmpPath, 'wb') as writeable:
                 blob = self.bucket.get_blob(compat_bytes(jobStoreFileID), encryption_key=self.sseKey)
                 blob.download_to_file(writeable)
+        if getattr(jobStoreFileID, 'executable', False):
+            os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
 
     @contextmanager
     def readFileStream(self, jobStoreFileID, encoding=None, errors=None):

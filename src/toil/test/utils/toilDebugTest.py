@@ -18,7 +18,7 @@ import subprocess
 import unittest
 
 from toil.test import ToilTest, slow, travis_test
-from toil.utils.toilDebugFile import recursiveGlob
+from toil.lib.resources import glob
 from toil.version import python
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,7 @@ class ToilDebugFileTest(ToilTest):
         print(cmd)
         subprocess.check_call(cmd)
         for xfile in contents:
-            matchingFilesFound = recursiveGlob(self.outputDir, '*' + xfile)
+            matchingFilesFound = glob(glob_pattern='*' + xfile, directoryname=self.outputDir)
             self.assertGreaterEqual(len(matchingFilesFound), 1)
             for fileFound in matchingFilesFound:
                 assert fileFound.endswith(xfile) and os.path.exists(fileFound)

@@ -491,6 +491,9 @@ class WdlStandardLibraryWorkflowsTest(WdlWorkflowsTest):
     def test_as_map(self):
         self.check_function('as_map', cases=['as_input'], expected_result='{"a":1,"b":2,"c":3}')
 
+    def test_keys(self):
+        self.check_function('keys', cases=['as_input'], expected_result='["a","b","c"]')
+
 
 if __name__ == "__main__":
     unittest.main()

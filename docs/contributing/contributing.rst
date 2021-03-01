@@ -408,7 +408,7 @@ Pull Requests
   .. _Co-authored-by: https://github.blog/2018-01-29-commit-together-with-co-authors/
   .. _Issue #2816: https://github.com/DataBiosphere/toil/issues/2816
   .. _toil.lib.retry: https://github.com/DataBiosphere/toil/blob/master/src/toil/lib/retry.py
-  
+
 
 Publishing a Release
 ~~~~~~~~~~~~~~~~~~~~

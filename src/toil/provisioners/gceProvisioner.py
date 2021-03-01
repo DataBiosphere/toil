@@ -87,7 +87,7 @@ class GCEProvisioner(AbstractProvisioner):
         self._credentialsPath = GoogleJobStore.nodeServiceAccountJson
         self._keyName = 'core' # key name leader users to communicate with works
         self._botoPath = self.NODE_BOTO_PATH # boto credentials (used if reading an AWS bucket)
-        
+
         # Let the base provisioner work out how to deploy duly authorized
         # workers for this leader.
         self._setLeaderWorkerAuthentication()
@@ -178,9 +178,9 @@ class GCEProvisioner(AbstractProvisioner):
             leaderNode.injectFile(self._botoPath, self.NODE_BOTO_PATH, 'toil_leader')
         # Download credentials
         self._setLeaderWorkerAuthentication(leaderNode)
-        
+
         logger.debug('Launched leader')
-        
+
     def getNodeShape(self, nodeType, preemptable=False):
         # TODO: read this value only once
         sizes = self._gceDriver.list_sizes(location=self._zone)

@@ -18,6 +18,7 @@ import logging
 import pickle
 import re
 import reprlib
+import stat
 import time
 import urllib.error
 import urllib.parse
@@ -27,10 +28,7 @@ from contextlib import contextmanager
 from io import BytesIO
 from typing import Optional
 
-import boto3
 import boto.sdb
-import botocore.credentials
-import botocore.session
 from boto.exception import SDBResponseError
 from botocore.exceptions import ClientError
 
@@ -63,7 +61,7 @@ from toil.lib.ec2 import establish_boto3_session
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.exceptions import panic
 from toil.lib.memoize import strict_bool
-from toil.lib.misc import AtomicFileCreate
+from toil.lib.io import AtomicFileCreate
 from toil.lib.objects import InnerClass
 from toil.lib.retry import retry
 
@@ -406,7 +404,7 @@ class AWSJobStore(AbstractJobStore):
         logger.debug("Created %r.", info)
         return info.fileID
 
-    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False):
+    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False, symlink=False):
         if issubclass(otherCls, AWSJobStore):
             srcObj = self._getObjectForUrl(url, existing=True)
             size = srcObj.content_length
@@ -563,6 +561,8 @@ class AWSJobStore(AbstractJobStore):
         info = self.FileInfo.loadOrFail(jobStoreFileID)
         logger.debug("Reading %r into %r.", info, localFilePath)
         info.download(localFilePath, not self.config.disableJobStoreChecksumVerification)
+        if getattr(jobStoreFileID, 'executable', False):
+            os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
 
     @contextmanager
     def readFileStream(self, jobStoreFileID, encoding=None, errors=None):

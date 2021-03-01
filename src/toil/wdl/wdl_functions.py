@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import csv
-import fnmatch
 import json
 import logging
 import math
@@ -26,6 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.wdl.wdl_types import WDLFile, WDLPair
 from toil.lib.conversions import bytes_in_unit
+from toil.lib.resources import glob  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -46,23 +46,6 @@ class WDLJSONEncoder(json.JSONEncoder):
         if isinstance(obj, WDLPair):
             return obj.to_dict()
         return json.JSONEncoder.default(self, obj)
-
-
-def glob(glob_pattern, directoryname):
-    '''
-    Walks through a directory and its subdirectories looking for files matching
-    the glob_pattern and returns a list=[].
-
-    :param directoryname: Any accessible folder name on the filesystem.
-    :param glob_pattern: A string like "*.txt", which would find all text files.
-    :return: A list=[] of absolute filepaths matching the glob pattern.
-    '''
-    matches = []
-    for root, dirnames, filenames in os.walk(directoryname):
-        for filename in fnmatch.filter(filenames, glob_pattern):
-            absolute_filepath = os.path.join(root, filename)
-            matches.append(absolute_filepath)
-    return matches
 
 
 def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
@@ -94,8 +77,8 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
              intended to be run inside of a docker container for this job.
     '''
     wdl_copyright = heredoc_wdl('''        \n
-        # Borrowed/rewritten from the Broad's Cromwell implementation.  As 
-        # that is under a BSD-ish license, I include here the license off 
+        # Borrowed/rewritten from the Broad's Cromwell implementation.  As
+        # that is under a BSD-ish license, I include here the license off
         # of their GitHub repo.  Thank you Broadies!
 
         # Copyright (c) 2015, Broad Institute, Inc.
@@ -941,7 +924,7 @@ def as_pairs(in_map: dict) -> List[WDLPair]:
 
     return list(WDLPair(left=k, right=v) for k, v in in_map.items())
 
-  
+
 def as_map(in_array: List[WDLPair]) -> dict:
     """
     Given an Array consisting of Pairs, the `as_map` function returns a Map in
@@ -962,3 +945,15 @@ def as_map(in_array: List[WDLPair]) -> dict:
         map[pair.left] = pair.right
 
     return map
+
+
+def keys(in_map: dict) -> list:
+    """
+    Given a Map, the `keys` function returns an Array consisting of the keys in
+    the Map. The order of the keys in the resulting Array is the same as the
+    order of the Pairs in the Map.
+
+    WDL syntax: Array[X] keys(Map[X,Y])
+    """
+
+    return list(in_map.keys())
