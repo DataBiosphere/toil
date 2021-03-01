@@ -477,10 +477,10 @@ class GoogleJobStore(AbstractJobStore):
         :type encrypt: bool
 
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
-                as for encode() and defaults to None. This should only be used in text mode.
+                as for encode(). Defaults to None which represents binary mode.
 
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
-                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :return: an instance of WritablePipe.
         :rtype: :class:`~toil.jobStores.utils.writablePipe`
@@ -509,10 +509,10 @@ class GoogleJobStore(AbstractJobStore):
         :type encrypt: bool
 
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
-                as for encode() and defaults to None. This should only be used in text mode.
+                as for encode(). Defaults to None which represents binary mode.
 
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
-                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :return: an instance of ReadablePipe.
         :rtype: :class:`~toil.jobStores.utils.ReadablePipe`

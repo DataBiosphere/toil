@@ -1467,12 +1467,14 @@ class AWSJobStore(AbstractJobStore):
                     info._finish_checksum(hasher)
                     # Now stop so EOF happens in the output.
 
-            with DownloadPipe(encoding=encoding, errors=errors) as readable:
-                if verifyChecksum and self.checksum:
+            if verifyChecksum and self.checksum:
+                with DownloadPipe() as readable:
                     # Interpose a pipe to check the hash
                     with HashingPipe(readable, encoding=encoding, errors=errors) as verified:
                         yield verified
-                else:
+            else:
+                # Readable end of pipe produces text mode output if encoding specified
+                with DownloadPipe(encoding=encoding, errors=errors) as readable:
                     # No true checksum available, so don't hash
                     yield readable
 

@@ -72,7 +72,8 @@ class WritablePipe(ABC):
     @abstractmethod
     def readFrom(self, readable):
         """
-        Implement this method to read data from the pipe.
+        Implement this method to read data from the pipe. This method should support both
+        binary and text mode output.
 
         :param file readable: the file object representing the readable end of the pipe. Do not
         explicitly invoke the close() method of the object, that will be done automatically.
@@ -90,11 +91,13 @@ class WritablePipe(ABC):
 
     def __init__(self, encoding=None, errors=None):
         """
+        The specified encoding and errors apply to the writable end of the pipe.
+
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
-                as for encode() and defaults to None. This should only be used in text mode.
+                as for encode(). Defaults to None which represents binary mode.
 
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
-                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
         """
         super(WritablePipe, self).__init__()
         self.encoding = encoding
@@ -201,7 +204,8 @@ class ReadablePipe(ABC):
     @abstractmethod
     def writeTo(self, writable):
         """
-        Implement this method to write data from the pipe.
+        Implement this method to write data from the pipe. This method should support both
+        binary and text mode input.
 
         :param file writable: the file object representing the writable end of the pipe. Do not
         explicitly invoke the close() method of the object, that will be done automatically.
@@ -220,11 +224,13 @@ class ReadablePipe(ABC):
 
     def __init__(self, encoding=None, errors=None):
         """
+        The specified encoding and errors apply to the readable end of the pipe.
+
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
-                as for encode() and defaults to None. This should only be used in text mode.
+                as for encode(). Defaults to None which represents binary mode.
 
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
-                are the same as for open() and defaults to 'strict'.
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
         """
         super(ReadablePipe, self).__init__()
         self.encoding = encoding
@@ -288,6 +294,13 @@ class ReadableTransformingPipe(ReadablePipe):
     """
     
     def __init__(self, source, encoding=None, errors=None):
+        """
+        :param str encoding: the name of the encoding used to encode the file. Encodings are the same
+                as for encode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
+        """
         super(ReadableTransformingPipe, self).__init__(encoding=encoding, errors=errors)
         self.source = source
         

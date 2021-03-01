@@ -231,7 +231,7 @@ class AbstractFileStore(ABC):
                 for decode(). Defaults to None which represents binary mode.
 
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
-                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :param bool cleanup: is as in :func:`toil.fileStores.abstractFileStore.AbstractFileStore.writeGlobalFile`.
         
@@ -334,10 +334,10 @@ class AbstractFileStore(ABC):
         file handle does not need to and should not be closed explicitly.
 
         :param str encoding: the name of the encoding used to decode the file. Encodings are the same as
-                for decode() and defaults to None. This should only be used in text mode.
+                for decode(). Defaults to None which represents binary mode.
 
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
-                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         Implementations must call :meth:`logAccess` to report the download.
 

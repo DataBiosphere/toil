@@ -908,10 +908,10 @@ class AbstractJobStore(ABC):
                matching that basename, the file will be detected.
 
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
-                as for encode() and defaults to None. This should only be used in text mode.
+                as for encode(). Defaults to None which represents binary mode.
 
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
-                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -982,11 +982,10 @@ class AbstractJobStore(ABC):
         :param str jobStoreFileID: ID of the file to get a readable file handle for
 
         :param str encoding: the name of the encoding used to decode the file. Encodings are the same as
-                for decode() and the default is platform dependent: locale.getpreferredencoding(False) is
-                called to get the current locale encoding. This should only be used in text mode.
+                for decode(). Defaults to None which represents binary mode.
 
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
-                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
         """
         raise NotImplementedError()
 
@@ -1054,10 +1053,10 @@ class AbstractJobStore(ABC):
         :param str jobStoreFileID: the ID of the file in the job store to be updated
 
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
-                as for encode() and defaults to None. This should only be used in text mode.
+                as for encode(). Defaults to None which represents binary mode.
 
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
-                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -1089,10 +1088,10 @@ class AbstractJobStore(ABC):
                False if it must be stored in the clear.
 
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
-                as for encode() and defaults to None. This should only be used in text mode.
+                as for encode(). Defaults to None which represents binary mode.
 
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
-                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -1110,10 +1109,10 @@ class AbstractJobStore(ABC):
                this job store
 
         :param str encoding: the name of the encoding used to decode the file. Encodings are the same
-                as for decode() and defaults to None. This should only be used in text mode.
+                as for decode(). Defaults to None which represents binary mode.
 
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
-                are the same as for open() and defaults to 'strict'. This should only be used in text mode.
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
         """
         raise NotImplementedError()
 
