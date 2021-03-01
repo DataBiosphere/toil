@@ -347,7 +347,7 @@ class BatchSystemSupport(AbstractBatchSystem):
             try:
                 value = os.environ[name]
             except KeyError:
-                raise RuntimeError("%s does not exist in current environment", name)
+                raise RuntimeError(f"{name} does not exist in current environment")
         self.environment[name] = value
 
     def formatStdOutErrPath(self, jobID, batchSystem, batchJobIDfmt, fileDesc):

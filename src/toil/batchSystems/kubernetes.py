@@ -201,7 +201,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 kubernetes.config.load_kube_config()
                 # Worked. We're using kube config
                 config_source = 'kube'
-            except TypeError:
+            except kubernetes.config.ConfigException:
                 # Didn't work. Try pod-based credentials in case we are in a pod.
                 try:
                     kubernetes.config.load_incluster_config()
@@ -210,15 +210,13 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 except kubernetes.config.ConfigException:
                     raise RuntimeError('Could not load Kubernetes configuration from ~/.kube/config, $KUBECONFIG, or current pod.')
 
+            # Now fill in the API objects with these credentials
+            self._apis['batch'] = kubernetes.client.BatchV1Api()
+            self._apis['core'] = kubernetes.client.CoreV1Api()
+            self._apis['customObjects'] = kubernetes.client.CustomObjectsApi()
 
-        # Now fill in the API objects with these credentials
-        self._apis['batch'] = kubernetes.client.BatchV1Api()
-        self._apis['core'] = kubernetes.client.CoreV1Api()
-        self._apis['customObjects'] = kubernetes.client.CustomObjectsApi()
-
-        # And save the time
-        self.credential_time = now
-
+            # And save the time
+            self.credential_time = now
         if kind == 'namespace':
             # We just need the namespace string
             if config_source == 'in_cluster':
