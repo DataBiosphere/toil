@@ -113,11 +113,8 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
                 logging.info("Downloaded %s to local path %s with cache %s and got %s with %d letters",
                               fileStoreID, local_path, cache, tempFile, len(string))
             else:
-                #Check the streamed file is as we expect
-                with job.fileStore.readGlobalFileStream(fileStoreID) as fH:
-                    # File streams are binary in Python 3 and can't do readline.
-                    # But a StreamReader for UTF-8 is exactly the adapter we need.
-                    fH = codecs.getreader('utf-8')(fH)
+                #Check the local file is as we expect
+                with job.fileStore.readGlobalFileStream(fileStoreID, 'utf-8') as fH:
                     string = fH.readline()
                 logging.info("Streamed %s and got %d letters", fileStoreID, len(string))
             #Check the string we get back is what we expect

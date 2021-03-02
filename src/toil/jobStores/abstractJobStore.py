@@ -887,7 +887,7 @@ class AbstractJobStore(ABC):
 
     @abstractmethod
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None):
+    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None, encoding=None, errors=None):
         """
         Similar to writeFile, but returns a context manager yielding a tuple of
         1) a file handle which can be written to and 2) the ID of the resulting
@@ -906,6 +906,12 @@ class AbstractJobStore(ABC):
         :param str basename: If supported by the implementation, use the given
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
+
+        :param str encoding: the name of the encoding used to encode the file. Encodings are the same
+                as for encode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -970,12 +976,18 @@ class AbstractJobStore(ABC):
 
     @abstractmethod
     @contextmanager
-    def readFileStream(self, jobStoreFileID):
+    def readFileStream(self, jobStoreFileID, encoding=None, errors=None):
         """
         Similar to readFile, but returns a context manager yielding a file handle which can be
         read from. The yielded file handle does not need to and should not be closed explicitly.
 
         :param str jobStoreFileID: ID of the file to get a readable file handle for
+
+        :param str encoding: the name of the encoding used to decode the file. Encodings are the same as
+                for decode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
         """
         raise NotImplementedError()
 
@@ -1034,13 +1046,19 @@ class AbstractJobStore(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def updateFileStream(self, jobStoreFileID):
+    def updateFileStream(self, jobStoreFileID, encoding=None, errors=None):
         """
         Replaces the existing version of a file in the job store. Similar to writeFile, but
         returns a context manager yielding a file handle which can be written to. The
         yielded file handle does not need to and should not be closed explicitly.
 
         :param str jobStoreFileID: the ID of the file in the job store to be updated
+
+        :param str encoding: the name of the encoding used to encode the file. Encodings are the same
+                as for encode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -1060,7 +1078,7 @@ class AbstractJobStore(ABC):
 
     @abstractmethod
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName, isProtected=None):
+    def writeSharedFileStream(self, sharedFileName, isProtected=None, encoding=None, errors=None):
         """
         Returns a context manager yielding a writable file handle to the global file referenced
         by the given name.  File will be created in an atomic manner.
@@ -1071,6 +1089,12 @@ class AbstractJobStore(ABC):
         :param bool isProtected: True if the file must be encrypted, None if it may be encrypted or
                False if it must be stored in the clear.
 
+        :param str encoding: the name of the encoding used to encode the file. Encodings are the same
+                as for encode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
+
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
         """
@@ -1078,13 +1102,19 @@ class AbstractJobStore(ABC):
 
     @abstractmethod
     @contextmanager
-    def readSharedFileStream(self, sharedFileName):
+    def readSharedFileStream(self, sharedFileName, encoding=None, errors=None):
         """
         Returns a context manager yielding a readable file handle to the global file referenced
         by the given name.
 
         :param str sharedFileName: A file name matching AbstractJobStore.fileNameRegex, unique within
                this job store
+
+        :param str encoding: the name of the encoding used to decode the file. Encodings are the same
+                as for decode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
         """
         raise NotImplementedError()
 

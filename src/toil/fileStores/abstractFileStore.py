@@ -222,10 +222,16 @@ class AbstractFileStore(ABC):
         raise NotImplementedError()
 
     @contextmanager
-    def writeGlobalFileStream(self, cleanup=False, basename=None):
+    def writeGlobalFileStream(self, cleanup=False, basename=None, encoding=None, errors=None):
         """
         Similar to writeGlobalFile, but allows the writing of a stream to the job store.
         The yielded file handle does not need to and should not be closed explicitly.
+
+        :param str encoding: the name of the encoding used to decode the file. Encodings are the same as
+                for decode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :param bool cleanup: is as in :func:`toil.fileStores.abstractFileStore.AbstractFileStore.writeGlobalFile`.
 
@@ -237,9 +243,10 @@ class AbstractFileStore(ABC):
                   1) a file handle which can be written to and
                   2) the toil.fileStores.FileID of the resulting file in the job store.
         """
-
-        with self.jobStore.writeFileStream(self.jobDesc.jobStoreID, cleanup, basename) as (backingStream, fileStoreID):
-
+        
+        with self.jobStore.writeFileStream(self.jobDesc.jobStoreID, cleanup, basename,
+                encoding, errors) as (backingStream, fileStoreID):
+          
             # We have a string version of the file ID, and the backing stream.
             # We need to yield a stream the caller can write to, and a FileID
             # that accurately reflects the size of the data written to the
@@ -321,10 +328,16 @@ class AbstractFileStore(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def readGlobalFileStream(self, fileStoreID):
+    def readGlobalFileStream(self, fileStoreID, encoding=None, errors=None):
         """
         Similar to readGlobalFile, but allows a stream to be read from the job store. The yielded
         file handle does not need to and should not be closed explicitly.
+
+        :param str encoding: the name of the encoding used to decode the file. Encodings are the same as
+                for decode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         Implementations must call :meth:`logAccess` to report the download.
 
