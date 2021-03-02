@@ -40,7 +40,7 @@ example::
             self.message = message
 
         def run(self, fileStore):
-            return "Hello, world!, here's a message: %s" % self.message
+            return "Hello, world! Here's a message: %s" % self.message
 
 
 In the example a class, HelloWorld, is defined. The constructor requests 2
