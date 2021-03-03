@@ -36,7 +36,7 @@ def run_setup():
     cwltool = 'cwltool==3.0.20201203173111'
     galaxyToolUtil = 'galaxy-tool-util'
     htcondor = 'htcondor>=8.6.0'
-    kubernetes = 'kubernetes>=12, <13'
+    kubernetes = 'kubernetes>=12.0.1, <13'
     idna = 'idna>=2'
     pytz = 'pytz>=2012'
     pyyaml = 'pyyaml>=5, <6'

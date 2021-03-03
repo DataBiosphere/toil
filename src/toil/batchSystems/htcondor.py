@@ -140,7 +140,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 jobID = int(ad['ToilJobID'])
                 if not (batchJobID in batchJobIDs):
                     continue
-                
+
                 # HTCondor stores the start of the runtime as a Unix timestamp
                 runtime = time.time() - ad['EnteredCurrentStatus']
                 job_runtimes[jobID] = runtime
@@ -285,7 +285,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             env_items = []
             if self.boss.environment:
                 for key, value in self.boss.environment.items():
-                    
+
                     # Each variable should be in the form of <key>='<value>'
                     env_string = key + "="
 

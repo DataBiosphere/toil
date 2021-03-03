@@ -243,7 +243,7 @@ class CachingFileStore(AbstractFileStore):
         # time.
         self.commitThread = None
 
-    
+
     @staticmethod
     @retry(infinite_retries=True,
            errors=[
@@ -1020,8 +1020,10 @@ class CachingFileStore(AbstractFileStore):
             # its temp dir and database entry.
             self._deallocateSpaceForJob()
 
-    def writeGlobalFile(self, localFileName, cleanup=False):
-
+    def writeGlobalFile(self, localFileName, cleanup=False, executable=False):
+        """
+        Creates a file in the jobstore and returns a FileID reference.
+        """
         # Work out the file itself
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
 
@@ -1171,7 +1173,7 @@ class CachingFileStore(AbstractFileStore):
             if self.forceDownloadDelay is not None:
                 # Wait around to simulate a big file for testing
                 time.sleep(self.forceDownloadDelay)
-            
+
             atomic_copy(cachedPath, localFilePath)
 
             # Change the reference to mutable
@@ -1332,11 +1334,11 @@ class CachingFileStore(AbstractFileStore):
                         time.sleep(self.contentionBackoff)
 
                     # OK, now we have space to make a copy.
-                    
+
                     if self.forceDownloadDelay is not None:
                         # Wait around to simulate a big file for testing
                         time.sleep(self.forceDownloadDelay)
-                    
+
                     # Make the copy
                     atomic_copy(cachedPath, localFilePath)
 
@@ -1598,21 +1600,21 @@ class CachingFileStore(AbstractFileStore):
                     # Wait for other people's downloads to progress.
                     time.sleep(self.contentionBackoff)
 
-    def readGlobalFileStream(self, fileStoreID):
+    def readGlobalFileStream(self, fileStoreID, encoding=None, errors=None):
         if str(fileStoreID) in self.filesToDelete:
             # File has already been deleted
             raise FileNotFoundError('Attempted to read deleted file: {}'.format(fileStoreID))
-        
+
         self.logAccess(fileStoreID)
-        
+
         # TODO: can we fulfil this from the cache if the file is in the cache?
         # I think we can because if a job is keeping the file data on disk due to having it open, it must be paying for it itself.
-        return self.jobStore.readFileStream(fileStoreID)
+        return self.jobStore.readFileStream(fileStoreID, encoding=encoding, errors=errors)
 
     def deleteLocalFile(self, fileStoreID):
         # What job are we operating as?
         jobID = self.jobID
-        
+
         # What paths did we delete
         deleted = []
         # What's the first path, if any, that was missing? If we encounter a
@@ -1790,23 +1792,23 @@ class CachingFileStore(AbstractFileStore):
 
         if os.path.isdir(dir_):
             # There is a directory to clean up
-       
-       
+
+
             # We need the database for the most recent workflow attempt so we
             # can clean up job temp directories.
-            
+
             # We don't have access to a class instance, nor do we have access
             # to the workflow attempt number that we would need in order to
             # find the right database by just going to it. We can't have a link
             # to the current database because opening SQLite databases under
             # multiple names breaks SQLite's atomicity guarantees (because you
             # can't find the journal).
-            
+
             # So we just go and find the cache-n.db with the largest n value,
             # and use that.
             dbFilename = None
             dbAttempt = float('-inf')
-            
+
             for dbCandidate in os.listdir(dir_):
                 # For each thing in the directory
                 match = re.match('cache-([0-9]+).db', dbCandidate)
@@ -1815,14 +1817,14 @@ class CachingFileStore(AbstractFileStore):
                     # number than any other one we have seen, use it.
                     dbFilename = dbCandidate
                     dbAttempt = int(match.group(1))
-            
+
             if dbFilename is not None:
                 # We found a caching database
-                
+
                 logger.debug('Connecting to latest caching database %s for cleanup', dbFilename)
-            
+
                 dbPath = os.path.join(dir_, dbFilename)
-                
+
                 if os.path.exists(dbPath):
                     try:
                         # The database exists, see if we can open it
@@ -1844,7 +1846,7 @@ class CachingFileStore(AbstractFileStore):
                         con.close()
             else:
                 logger.debug('No caching database found in %s', dir_)
-            
+
             # Whether or not we found a database, we need to clean up the cache
             # directory. Delete the state DB if any and everything cached.
             robust_rmtree(dir_)

@@ -360,21 +360,21 @@ class ClusterScaler(object):
 
         if not sum(config.maxNodes) > 0:
             raise RuntimeError('Not configured to create nodes of any type.')
-            
+
     def _round(self, number):
         """
         Helper function for rounding-as-taught-in-school (X.5 rounds to X+1 if positive).
         Python 3 now rounds 0.5 to whichever side is even (i.e. 2.5 rounds to 2).
-        
+
         :param int number: a float to round.
         :return: closest integer to number, rounding ties away from 0.
         """
-        
+
         sign = 1 if number >= 0 else -1
-        
+
         rounded = int(round(number))
         nextRounded = int(round(number + 1 * sign))
-        
+
         if nextRounded == rounded:
             # We rounded X.5 to even, and it was also away from 0.
             return rounded
@@ -490,7 +490,7 @@ class ClusterScaler(object):
             # weighted moving average.
             estimatedNodeCount = self.smoothEstimate(nodeShape, estimatedNodeCount)
 
-            # If we're scaling a non-preemptable node type, we need to see if we have a 
+            # If we're scaling a non-preemptable node type, we need to see if we have a
             # deficit of preemptable nodes of this type that we should compensate for.
             if not nodeShape.preemptable:
                 compensation = self.config.preemptableCompensation
@@ -554,7 +554,7 @@ class ClusterScaler(object):
                     self.preemptableNodeDeficit[nodeType] = 0
             newNodeCounts[nodeShape] = newNodeCount
 
-        #Attempt to terminate any nodes that we previously designated for 
+        #Attempt to terminate any nodes that we previously designated for
         #termination, but which still had workers running.
         self._terminateIgnoredNodes()
         return newNodeCounts

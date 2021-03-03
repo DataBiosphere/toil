@@ -2,6 +2,7 @@ language: python
 python:
   - "3.6"
 install:
+  - pip install -U pip
   - make prepare
   - make develop extras=[aws,google,wdl] # adding extras to avoid import errors
 script:

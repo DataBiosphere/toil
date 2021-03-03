@@ -162,6 +162,6 @@ def set_batchsystem_config_defaults(config) -> None:
 
     # SLURM
     config.allocate_mem = True
-    
+
     # Kubernetes
     config.kubernetesHostPath = None

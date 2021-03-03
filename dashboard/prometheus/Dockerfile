@@ -1,4 +1,4 @@
-FROM prom/prometheus:v2.0.0
+FROM prom/prometheus:v2.24.1
 
 COPY ./prometheus.yml /etc/prometheus/prometheus.yml
 COPY ./run.sh /opt/run.sh

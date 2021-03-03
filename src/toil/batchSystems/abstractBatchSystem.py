@@ -168,7 +168,7 @@ class AbstractBatchSystem(ABC):
         Returns information about job that has updated its status (i.e. ceased
         running, either successfully or with an error). Each such job will be
         returned exactly once.
-        
+
         Does not return info for jobs killed by killBatchJobs, although they
         may cause None to be returned earlier than maxWait.
 
@@ -176,28 +176,28 @@ class AbstractBatchSystem(ABC):
 
         :rtype: UpdatedBatchJobInfo or None
         :return: If a result is available, returns UpdatedBatchJobInfo.
-                 Otherwise it returns None. wallTime is the number of seconds (a strictly 
+                 Otherwise it returns None. wallTime is the number of seconds (a strictly
                  positive float) in wall-clock time the job ran for, or None if this
                  batch system does not support tracking wall time.
         """
         raise NotImplementedError()
-        
+
     def getSchedulingStatusMessage(self):
         """
         Get a log message fragment for the user about anything that might be
         going wrong in the batch system, if available.
-        
+
         If no useful message is available, return None.
-        
+
         This can be used to report what resource is the limiting factor when
         scheduling jobs, for example. If the leader thinks the workflow is
         stuck, the message can be displayed to the user to help them diagnose
         why it might be stuck.
-        
+
         :rtype: str or None
         :return: User-directed message about scheduling state.
         """
-        
+
         # Default implementation returns None.
         # Override to provide scheduling status information.
         return None
@@ -233,17 +233,17 @@ class AbstractBatchSystem(ABC):
         :param setOption: A function with signature setOption(varName, parsingFn=None, checkFn=None, default=None)
            used to update run configuration
         """
-        
+
     def getWorkerContexts(self):
         """
         Get a list of picklable context manager objects to wrap worker work in,
         in order.
-        
+
         Can be used to ask the Toil worker to do things in-process (such as
         configuring environment variables, hot-deploying user scripts, or
         cleaning up a node) that would otherwise require a wrapping "executor"
         process.
-        
+
         :rtype: list
         """
         return []
@@ -293,9 +293,9 @@ class BatchSystemSupport(AbstractBatchSystem):
         :param float cores: number of cores being requested
 
         :param int disk: amount of disk space being requested, in bytes
-        
+
         :param str job_name: Name of the job being checked, for generating a useful error report.
-        
+
         :param str detail: Batch-system-specific message to include in the error.
 
         :raise InsufficientSystemResources: raised when a resource is requested in an amount
@@ -347,7 +347,7 @@ class BatchSystemSupport(AbstractBatchSystem):
             try:
                 value = os.environ[name]
             except KeyError:
-                raise RuntimeError("%s does not exist in current environment", name)
+                raise RuntimeError(f"{name} does not exist in current environment")
         self.environment[name] = value
 
     def formatStdOutErrPath(self, toil_job_id: str, cluster_job_id: str, std: str) -> str:
@@ -455,51 +455,51 @@ class BatchSystemCleanupSupport(BatchSystemLocalSupport):
     Adds cleanup support when the last running job leaves a node, for batch
     systems that can't provide it using the backing scheduler.
     """
-    
+
     @classmethod
     def supportsWorkerCleanup(cls):
         return True
-        
+
     def getWorkerContexts(self):
         # Tell worker to register for and invoke cleanup
-        
+
         # Create a context manager that has a copy of our cleanup info
         context = WorkerCleanupContext(self.workerCleanupInfo)
-       
+
         # Send it along so the worker works inside of it
         contexts = super(BatchSystemCleanupSupport, self).getWorkerContexts()
         contexts.append(context)
         return contexts
-        
+
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(BatchSystemCleanupSupport, self).__init__(config, maxCores, maxMemory, maxDisk)
-        
+
 class WorkerCleanupContext:
     """
     Context manager used by :class:`BatchSystemCleanupSupport` to implement
     cleanup on a node after the last worker is done working.
-    
+
     Gets wrapped around the worker's work.
     """
-    
+
     def __init__(self, workerCleanupInfo):
         """
         Wrap the given workerCleanupInfo in a context manager.
-        
+
         :param WorkerCleanupInfo workerCleanupInfo: Info to use to clean up the worker if we are
                                                     the last to exit the context manager.
         """
-        
-        
+
+
         self.workerCleanupInfo = workerCleanupInfo
         self.arena = None
-        
+
     def __enter__(self):
         # Set up an arena so we know who is the last worker to leave
-        self.arena = LastProcessStandingArena(Toil.getToilWorkDir(self.workerCleanupInfo.workDir), 
+        self.arena = LastProcessStandingArena(Toil.getToilWorkDir(self.workerCleanupInfo.workDir),
                                               self.workerCleanupInfo.workflowID + '-cleanup')
         self.arena.enter()
-        
+
     def __exit__(self, type, value, traceback):
         for _ in self.arena.leave():
             # We are the last concurrent worker to finish.

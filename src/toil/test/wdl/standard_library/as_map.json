@@ -1,0 +1,16 @@
+{
+  "asMapWorkflow.in_array": [
+    {
+      "left": "a",
+      "right": 1
+    },
+    {
+      "left": "b",
+      "right": 2
+    },
+    {
+      "left": "c",
+      "right": 3
+    }
+  ]
+}

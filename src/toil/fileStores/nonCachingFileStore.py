@@ -96,8 +96,8 @@ class NonCachingFileStore(AbstractFileStore):
         return localFilePath
 
     @contextmanager
-    def readGlobalFileStream(self, fileStoreID):
-        with self.jobStore.readFileStream(fileStoreID) as f:
+    def readGlobalFileStream(self, fileStoreID, encoding=None, errors=None):
+        with self.jobStore.readFileStream(fileStoreID, encoding=encoding, errors=errors) as f:
             self.logAccess(fileStoreID)
             yield f
 
@@ -176,7 +176,7 @@ class NonCachingFileStore(AbstractFileStore):
         for jobState in cls._getAllJobStates(nodeInfo):
             if not process_name_exists(nodeInfo, jobState['jobProcessName']):
                 # We need to have a race to pick someone to clean up.
-                
+
                 try:
                     # Open the directory
                     dirFD = os.open(jobState['jobDir'], os.O_RDONLY)
@@ -194,7 +194,7 @@ class NonCachingFileStore(AbstractFileStore):
                     # We got it
                     logger.warning('Detected that job (%s) prematurely terminated.  Fixing the '
                                    'state of the job on disk.', jobState['jobName'])
-                    
+
                     try:
                         if not batchSystemShutdown:
                             logger.debug("Deleting the stale working directory.")
