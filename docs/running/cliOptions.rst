@@ -312,7 +312,7 @@ the logging module:
                         are not redirected to the log. (default=False)
   --disableProgress     Disables the progress bar shown when standard error is
                         a terminal.
-     
+
 
 Restart Option
 --------------

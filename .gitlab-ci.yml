@@ -11,12 +11,14 @@ before_script:
   - |
     if [[ ! -z "${DOCKER_HUB_MIRROR}" ]] ; then
         echo "{\"registry-mirrors\": [\"${DOCKER_HUB_MIRROR}\"], \"insecure-registries\": [\"${DOCKER_HUB_MIRROR##*://}\"]}" | sudo tee /etc/docker/daemon.json
+        export SINGULARITY_DOCKER_HUB_MIRROR="${DOCKER_HUB_MIRROR}"
     fi
   - startdocker || true
   - docker info
   - cat /etc/hosts
   - mkdir -p ~/.kube && cp "$GITLAB_SECRET_FILE_KUBE_CONFIG" ~/.kube/config
   - mkdir -p ~/.aws && cp "$GITLAB_SECRET_FILE_AWS_CREDENTIALS" ~/.aws/credentials
+  - sudo apt-get update
   - sudo apt-get install -y software-properties-common build-essential virtualenv
   - sudo add-apt-repository -y ppa:deadsnakes/ppa
   - sudo apt-get update
@@ -32,9 +34,19 @@ after_script:
   - stopdocker || true
 
 stages:
+  - linting
   - basic_tests
   - main_tests
   - integration
+
+
+lint:
+  stage: linting
+  script:
+    - pwd
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - make mypy
+    - make docs
 
 
 # Python3.6
@@ -42,7 +54,7 @@ py36_main:
   stage: basic_tests
   script:
     - pwd
-    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - virtualenv -p python3.6 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] && pip install htcondor
     - make test tests=src/toil/test/src
     - make test tests=src/toil/test/utils
 
@@ -50,7 +62,7 @@ py36_appliance_build:
   stage: basic_tests
   script:
     - pwd
-    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && pip install pycparser && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    - virtualenv -p python3.6 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && pip install pycparser && make develop extras=[all] && pip install htcondor awscli==1.16.272
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
     - python setup_gitlab_docker.py
     - make push_docker
@@ -61,15 +73,16 @@ py37_batch_systems:
   stage: main_tests
   script:
     - pwd
-    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     - make test tests=src/toil/test/batchSystems/batchSystemTest.py
     - make test tests=src/toil/test/mesos/MesosDataStructuresTest.py
 
 py37_cwl_v1.0:
   stage: main_tests
+  only: []
   script:
     - pwd
-    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[cwl,aws]
+    - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - mypy --ignore-missing-imports --no-strict-optional $(pwd)/src/toil/cwl/cwltoil.py  # make this a separate linting stage
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test
@@ -77,9 +90,10 @@ py37_cwl_v1.0:
 
 py37_cwl_v1.1:
   stage: main_tests
+  only: []
   script:
     - pwd
-    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[cwl,aws]
+    - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv11Test
 
@@ -87,16 +101,61 @@ py37_cwl_v1.2:
   stage: main_tests
   script:
     - pwd
-    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[cwl,aws]
+    - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv12Test
+
+py37_cwl_v1.0_kubernetes:
+  stage: main_tests
+  only: []
+  script:
+    - pwd
+    - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws,kubernetes]
+    - export TOIL_KUBERNETES_OWNER=toiltest
+    - export TOIL_AWS_SECRET_NAME=shared-s3-credentials
+    - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
+    - export TOIL_WORKDIR=/var/lib/toil
+    - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
+    - echo Singularity mirror is ${SINGULARITY_DOCKER_HUB_MIRROR}
+    - mkdir -p ${TOIL_WORKDIR}
+    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance
+    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance_with_caching
+    
+py37_cwl_v1.1_kubernetes:
+  stage: main_tests
+  only: []
+  script:
+    - pwd
+    - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws,kubernetes]
+    - export TOIL_KUBERNETES_OWNER=toiltest
+    - export TOIL_AWS_SECRET_NAME=shared-s3-credentials
+    - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
+    - export TOIL_WORKDIR=/var/lib/toil
+    - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
+    - mkdir -p ${TOIL_WORKDIR}
+    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance
+    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance_with_caching
+    
+py37_cwl_v1.2_kubernetes:
+  stage: main_tests
+  script:
+    - pwd
+    - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws,kubernetes]
+    - export TOIL_KUBERNETES_OWNER=toiltest
+    - export TOIL_AWS_SECRET_NAME=shared-s3-credentials
+    - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
+    - export TOIL_WORKDIR=/var/lib/toil
+    - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
+    - mkdir -p ${TOIL_WORKDIR}
+    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance
+    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance_with_caching
 
 py37_wdl:
   stage: main_tests
   script:
     - pwd
     - apt update && apt install -y default-jre
-    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all]
+    - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
     - which java &> /dev/null || { echo >&2 "Java is not installed.  Install java to run these tests."; exit 1; }
     - make test tests=src/toil/test/wdl/toilwdlTest.py  # needs java (default-jre) to run "GATK.jar"
     - make test tests=src/toil/test/wdl/builtinTest.py
@@ -105,7 +164,7 @@ py37_jobstore_and_provisioning:
   stage: main_tests
   script:
     - pwd
-    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] && pip install htcondor
     - make test tests=src/toil/test/jobStores/jobStoreTest.py
     - make test tests=src/toil/test/sort/sortTest.py
     - make test tests=src/toil/test/provisioners/aws/awsProvisionerTest.py
@@ -118,7 +177,7 @@ py37_main:
   stage: basic_tests
   script:
     - pwd
-    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] && pip install htcondor
     - make test tests=src/toil/test/src
     - make test tests=src/toil/test/utils
 #    - make test tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testDocker
@@ -127,7 +186,7 @@ py37_appliance_build:
   stage: basic_tests
   script:
     - pwd
-    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && pip install pycparser && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && pip install pycparser && make develop extras=[all] && pip install htcondor awscli==1.16.272
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
     - python setup_gitlab_docker.py
     - make push_docker
@@ -136,7 +195,7 @@ py37_integration:
   stage: integration
   script:
     - pwd
-    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     - export TOIL_TEST_INTEGRATIVE=True
     - export TOIL_AWS_KEYNAME=id_rsa
     - export TOIL_AWS_ZONE=us-west-2a
@@ -149,7 +208,7 @@ py37_provisioner_integration:
   stage: integration
   script:
     - pwd
-    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     - python setup_gitlab_ssh.py && chmod 400 /root/.ssh/id_rsa
     - echo $'Host *\n    AddressFamily inet' > /root/.ssh/config
     - export LIBPROCESS_IP=127.0.0.1
@@ -167,7 +226,7 @@ py37_google_jobstore:
   stage: integration
   script:
     - pwd
-    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     - python setup_gitlab_ssh.py && chmod 400 /root/.ssh/id_rsa
     - echo $'Host *\n    AddressFamily inet' > /root/.ssh/config
     - export LIBPROCESS_IP=127.0.0.1
@@ -182,15 +241,16 @@ py38_main:
   stage: basic_tests
   script:
     - pwd
-    - virtualenv -p python3.8 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - virtualenv -p python3.8 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] && pip install htcondor
     - make test tests=src/toil/test/src
     - make test tests=src/toil/test/utils
+    - make test tests=src/toil/test/lib/test_conversions.py
 
 py38_appliance_build:
   stage: basic_tests
   script:
     - pwd
-    - virtualenv -p python3.8 venv && . venv/bin/activate && make prepare && pip install pycparser && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    - virtualenv -p python3.8 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && pip install pycparser && make develop extras=[all] && pip install htcondor awscli==1.16.272
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
     - python setup_gitlab_docker.py
     - make push_docker
@@ -202,6 +262,7 @@ py37_cactus_integration:
     - set -e
     - virtualenv --system-site-packages --python python3.7 venv
     - . venv/bin/activate
+    - pip install -U pip wheel
     - pip install .[aws,kubernetes]
     - export TOIL_KUBERNETES_OWNER=toiltest
     - export TOIL_AWS_SECRET_NAME=shared-s3-credentials
@@ -220,4 +281,4 @@ py37_cactus_integration:
     - pip install --upgrade .
     - pip install psutil --upgrade
     - toil clean aws:us-west-2:${BUCKET_NAME}
-    - time cactus --batchSystem kubernetes --binariesMode singularity --clean always aws:us-west-2:${BUCKET_NAME} examples/evolverMammals.txt examples/evolverMammals.hal --root mr --defaultDisk "8G" --logDebug --disableCaching false
+    - time cactus --setEnv SINGULARITY_DOCKER_HUB_MIRROR --batchSystem kubernetes --binariesMode singularity --clean always aws:us-west-2:${BUCKET_NAME} examples/evolverMammals.txt examples/evolverMammals.hal --root mr --defaultDisk "8G" --logDebug --disableCaching false

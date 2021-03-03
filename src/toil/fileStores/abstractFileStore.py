@@ -31,14 +31,14 @@ logger = logging.getLogger(__name__)
 class AbstractFileStore(ABC):
     """
     Interface used to allow user code run by Toil to read and write files.
-    
+
     Also provides the interface to other Toil facilities used by user code,
     including:
-    
+
      * normal (non-real-time) logging
      * finding the correct temporary directory for scratch work
      * importing and exporting files into and out of the workflow
-   
+
     Stores user files in the jobStore, but keeps them separate from actual
     jobs.
 
@@ -47,7 +47,7 @@ class AbstractFileStore(ABC):
     Passed as argument to the :meth:`toil.job.Job.run` method.
 
     Access to files is only permitted inside the context manager provided by
-    :meth:`toil.fileStores.abstractFileStore.AbstractFileStore.open`. 
+    :meth:`toil.fileStores.abstractFileStore.AbstractFileStore.open`.
 
     Also responsible for committing completed jobs back to the job store with
     an update operation, and allowing that commit operation to be waited for.
@@ -140,12 +140,12 @@ class AbstractFileStore(ABC):
         The context manager used to conduct tasks prior-to, and after a job has
         been run. File operations are only permitted inside the context
         manager.
-        
+
         Implementations must only yield from within `with super().open(job):`.
 
         :param toil.job.Job job: The job instance of the toil job to run.
         """
-        
+
         failed = True
         try:
             yield
@@ -209,10 +209,10 @@ class AbstractFileStore(ABC):
         be preserved when it is downloaded again.
 
         :param string localFileName: The path to the local file to upload. The
-               last path component (basename of the file) will remain 
+               last path component (basename of the file) will remain
                associated with the file in the file store, if supported by the
                backing JobStore, so that the file can be searched for by name
-               or name glob. 
+               or name glob.
         :param bool cleanup: if True then the copy of the global file will be deleted once the
                job and all its successors have completed running.  If not the global file must be
                deleted manually.
@@ -222,41 +222,48 @@ class AbstractFileStore(ABC):
         raise NotImplementedError()
 
     @contextmanager
-    def writeGlobalFileStream(self, cleanup=False, basename=None):
+    def writeGlobalFileStream(self, cleanup=False, basename=None, encoding=None, errors=None):
         """
         Similar to writeGlobalFile, but allows the writing of a stream to the job store.
         The yielded file handle does not need to and should not be closed explicitly.
 
+        :param str encoding: the name of the encoding used to decode the file. Encodings are the same as
+                for decode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
+
         :param bool cleanup: is as in :func:`toil.fileStores.abstractFileStore.AbstractFileStore.writeGlobalFile`.
-        
+
         :param str basename: If supported by the backing JobStore, use the given
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
-        
+
         :return: A context manager yielding a tuple of
                   1) a file handle which can be written to and
                   2) the toil.fileStores.FileID of the resulting file in the job store.
         """
         
-        with self.jobStore.writeFileStream(self.jobDesc.jobStoreID, cleanup, basename) as (backingStream, fileStoreID):
-            
+        with self.jobStore.writeFileStream(self.jobDesc.jobStoreID, cleanup, basename,
+                encoding, errors) as (backingStream, fileStoreID):
+          
             # We have a string version of the file ID, and the backing stream.
             # We need to yield a stream the caller can write to, and a FileID
             # that accurately reflects the size of the data written to the
             # stream. We assume the stream is not seekable.
-            
+
             # Make and keep a reference to the file ID, which is currently empty
             fileID = FileID(fileStoreID, 0)
-            
+
             # Wrap the stream to increment the file ID's size for each byte written
             wrappedStream = WriteWatchingStream(backingStream)
-            
+
             # When the stream is written to, count the bytes
             def handle(numBytes):
                 # No scope problem here, because we don't assign to a fileID local
                 fileID.size += numBytes
             wrappedStream.onWrite(handle)
-            
+
             yield wrappedStream, fileID
 
     def _dumpAccessLogs(self):
@@ -264,10 +271,10 @@ class AbstractFileStore(ABC):
         When something goes wrong, log a report of the files that were accessed
         while the file store was open.
         """
-        
+
         if len(self._accessLog) > 0:
             logger.warning('Failed job accessed files:')
-        
+
             for item in self._accessLog:
                 # For each access record
                 if len(item) == 2:
@@ -276,17 +283,17 @@ class AbstractFileStore(ABC):
                 else:
                     # Otherwise dump without the name
                     logger.warning('Streamed file \'%s\'', *item)
-                    
+
     def logAccess(self, fileStoreID: Union[FileID, str], destination: Union[str, None] = None):
         """
         Record that the given file was read by the job, to be announced if the
         job fails. If destination is not None, it gives the path that the file
         was downloaded to. Otherwise, assumes that the file was streamed.
-        
+
         Must be called by :meth:`readGlobalFile` and :meth:`readGlobalFileStream`
         implementations.
         """
-        
+
         if destination is not None:
             self._accessLog.append((fileStoreID, destination))
         else:
@@ -298,7 +305,7 @@ class AbstractFileStore(ABC):
         Makes the file associated with fileStoreID available locally. If mutable is True,
         then a copy of the file will be created locally so that the original is not modified
         and does not change the file for other jobs. If mutable is False, then a link can
-        be created to the file, saving disk resources. The file that is downloaded will be 
+        be created to the file, saving disk resources. The file that is downloaded will be
         executable if and only if it was originally uploaded from an executable file on the
         local filesystem.
 
@@ -307,7 +314,7 @@ class AbstractFileStore(ABC):
 
         The destination file must not be deleted by the user; it can only be
         deleted through deleteLocalFile.
-        
+
         Implementations must call :meth:`logAccess` to report the download.
 
         :param toil.fileStores.FileID or str fileStoreID: job store id for the file
@@ -321,10 +328,16 @@ class AbstractFileStore(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def readGlobalFileStream(self, fileStoreID):
+    def readGlobalFileStream(self, fileStoreID, encoding=None, errors=None):
         """
         Similar to readGlobalFile, but allows a stream to be read from the job store. The yielded
         file handle does not need to and should not be closed explicitly.
+
+        :param str encoding: the name of the encoding used to decode the file. Encodings are the same as
+                for decode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         Implementations must call :meth:`logAccess` to report the download.
 
@@ -363,7 +376,7 @@ class AbstractFileStore(ABC):
     def deleteLocalFile(self, fileStoreID):
         """
         Deletes local copies of files associated with the provided job store ID.
-        
+
         Raises an OSError with an errno of errno.ENOENT if no such local copies
         exist. Thus, cannot be called multiple times in succession.
 
@@ -494,7 +507,7 @@ class AbstractFileStore(ABC):
         Blocks while startCommit is running. This function is called by this job's
         successor to ensure that it does not begin modifying the job store until after this job has
         finished doing so.
-        
+
         Might be called when startCommit is never called on a particular
         instance, in which case it does not block.
 

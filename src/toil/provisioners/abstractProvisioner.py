@@ -34,7 +34,7 @@ class ManagedNodesNotSupportedException(RuntimeError):
     Raised when attempting to add managed nodes (which autoscale up and down by
     themselves, without the provisioner doing the work) to a provisioner that
     does not support them.
-    
+
     Polling with this and try/except is the Right Way to check if managed nodes
     are available from a provisioner.
     """
@@ -103,7 +103,7 @@ class Shape(object):
 
     def __str__(self):
         return self.__repr__()
-                
+
     def __hash__(self):
         # Since we replaced __eq__ we need to replace __hash__ as well.
         return hash(
@@ -124,7 +124,7 @@ class AbstractProvisioner(ABC):
     def __init__(self, clusterName=None, clusterType='mesos', zone=None, nodeStorage=50, nodeStorageOverrides=None):
         """
         Initialize provisioner.
-        
+
         Implementations should raise ClusterTypeNotSupportedException if
         presented with an unimplemented clusterType.
 
@@ -135,11 +135,11 @@ class AbstractProvisioner(ABC):
         """
         self.clusterName = clusterName
         self.clusterType = clusterType
-        
+
         if self.clusterType not in self.supportedClusterTypes():
             # This isn't actually a cluster type we can do
             ClusterTypeNotSupportedException(type(self), clusterType)
-        
+
         self._zone = zone
         self._nodeStorage = nodeStorage
         self._nodeStorageOverrides = {}
@@ -179,107 +179,107 @@ class AbstractProvisioner(ABC):
         """
         Initialize class from an existing cluster. This method assumes that
         the instance we are running on is the leader.
-        
+
         Implementations must call _setLeaderWorkerAuthentication().
         """
         raise NotImplementedError
-        
+
     def _setLeaderWorkerAuthentication(self, leader: Node = None):
         """
         Configure authentication between the leader and the workers.
-        
+
         Assumes that we are running on the leader, unless a Node is given, in
         which case credentials will be pulled from or created there.
-        
+
         Configures the backing cluster scheduler so that the leader and workers
         will be able to communicate securely. Authentication may be one-way or
         mutual.
-        
+
         Until this is called, new nodes may not be able to communicate with the
         leader. Afterward, the provisioner will include the necessary
         authentication information when provisioning nodes.
-        
+
         :param leader: Node to pull credentials from, if not the current machine.
         """
-        
+
         if self.clusterType == 'mesos':
             # We're using a Mesos cluster, so set up SSH from leader to workers.
             self._leaderWorkerAuthentication = self._setSSH(leader=leader)
         elif self.clusterType == 'kubernetes':
             # We're using a Kubernetes cluster.
             self._leaderWorkerAuthentication = self._getKubernetesJoiningInfo(leader=leader)
-            
+
     def _clearLeaderWorkerAuthentication(self):
         """
         Forget any authentication information populated by
         _setLeaderWorkerAuthentication(). It will need to be called again to
         provision more workers.
         """
-        
+
         self._leaderWorkerAuthentication = None
-            
+
     def _setSSH(self, leader: Node = None) -> str:
         """
         Generate a key pair, save it in /root/.ssh/id_rsa.pub on the leader,
         and return the public key. The file /root/.sshSuccess is used to
         prevent this operation from running twice.
-        
+
         Also starts the ssh agent on the local node, if operating on the local
         node.
-        
+
         :param leader: Node to operate on, if not the current machine.
-        
+
         :return: Public key, without the "ssh-rsa" part.
         """
-        
+
         # To work locally or remotely we need to do all our setup work as one
         # big bash -c
         command = ['bash', '-c', ('set -e; if [ ! -e /root/.sshSuccess ] ; '
                     'then ssh-keygen -f /root/.ssh/id_rsa -t rsa -N ""; '
                     'touch /root/.sshSuccess; fi; chmod 700 /root/.ssh;')]
-        
+
         if leader is None:
             # Run locally
             subprocess.check_call(command)
-            
+
             # Grab from local file
             with open('/root/.ssh/id_rsa.pub') as f:
                 leaderPublicKey = f.read()
         else:
             # Run remotely
             leader.sshInstance(*command, appliance=True)
-            
+
             # Grab from remote file
             with tempfile.TemporaryDirectory() as tmpdir:
                 localFile = os.path.join(tmpdir, 'id_rsa.pub')
                 leader.extractFile('/root/.ssh/id_rsa.pub', localFile, 'toil_leader')
-                
+
                 with open(localFile) as f:
                     leaderPublicKey = f.read()
-                    
+
         # Drop the key type and keep just the key data
         leaderPublicKey=leaderPublicKey.split(' ')[1]
-        
+
         # confirm it really is an RSA public key
         assert leaderPublicKey.startswith('AAAAB3NzaC1yc2E'), leaderPublicKey
         return leaderPublicKey
-        
+
     def _getKubernetesJoiningInfo(self, leader: Node = None) -> Dict[str, str]:
         """
         Get the Kubernetes joining info created when Kubernetes was set up on
         this node, which is the leader, or on a different specified Node.
-        
+
         Returns a dict of JOIN_TOKEN, JOIN_CERT_HASH, and JOIN_ENDPOINT, which
         can be inserted into our Kubernetes worker setup script and config.
-        
+
         :param leader: Node to operate on, if not the current machine.
         """
-        
+
         # Make a parser for the config
         config = configparser.ConfigParser(interpolation=None)
         # Leave case alone
         config.optionxform = str
-        
+
         if leader is None:
             # This info is always supposed to be set up before the Toil appliance
             # starts, and mounted in at the same path as on the host. So we just go
@@ -291,7 +291,7 @@ class AbstractProvisioner(ABC):
             with tempfile.TemporaryDirectory() as tmpdir:
                 localFile = os.path.join(tmpdir, 'worker.ini')
                 leader.extractFile('/etc/kubernetes/worker.ini', localFile, 'toil_leader')
-                
+
                 with open(localFile) as f:
                     config.read_file(f)
 
@@ -335,7 +335,7 @@ class AbstractProvisioner(ABC):
     def launchCluster(self, *args, **kwargs):
         """
         Initialize a cluster and create a leader node.
-        
+
         Implementations must call _setLeaderWorkerAuthentication() with the
         leader so that workers can be launched.
 
@@ -357,22 +357,22 @@ class AbstractProvisioner(ABC):
         :return: number of nodes successfully added
         """
         raise NotImplementedError
-        
-    
+
+
     def addManagedNodes(self, nodeType, minNodes, maxNodes, preemptable, spotBid=None) -> None:
         """
         Add a group of managed nodes of the given type, up to the given maximum.
         The nodes will automatically be launched and termianted depending on cluster load.
-        
+
         Raises ManagedNodesNotSupportedException if the provisioner
         implementation or cluster configuration can't have managed nodes.
-        
+
         :param minNodes: The minimum number of nodes to scale to
         :param maxNodes: The maximum number of nodes to scale to
         :param preemptable: whether or not the nodes will be preemptable
         :param spotBid: The bid for preemptable nodes if applicable (this can be set in config, also).
         """
-        
+
         # Not available by default
         raise ManagedNodesNotSupportedException("Managed nodes not supported by this provisioner")
 
@@ -426,7 +426,7 @@ class AbstractProvisioner(ABC):
         """
         raise NotImplementedError
 
-    
+
     class InstanceConfiguration:
         """
         Allows defining the initial setup for an instance and then turning it
@@ -441,74 +441,74 @@ class AbstractProvisioner(ABC):
             self.units = []
             # Holds strings like "ssh-rsa actualKeyData" for keys to authorize (independently of cloud provider's system)
             self.sshPublicKeys = []
-            
+
         def addFile(self, path: str, owner: str = 'root', permissions: str = '0755', content: str = ''):
             """
             Make a file on the instance with the given owner, permissions, and content.
             """
-            
+
             self.files.append({'path': path, 'owner': owner, 'permissions': permissions, 'content': content})
-            
+
         def addUnit(self, name: str, command: str = 'start', enable: bool = True, content: str = ''):
             """
             Make a systemd unit on the instance with the given name (including
             .service), and content, and apply the given command to it (default:
             'start'). Units will be enabled by default.
-            
+
             Unit logs can be investigated with:
                 systemctl status whatever.service
             or:
                 journalctl -xe
             """
-            
+
             self.units.append({'name': name, 'command': command, 'enable': enable, 'content': content})
-            
+
         def addSSHRSAKey(self, keyData: str):
             """
             Authorize the given bare, encoded RSA key (without "ssh-rsa").
             """
-            
+
             self.sshPublicKeys.append("ssh-rsa " + keyData)
-           
-            
+
+
         def toCloudConfig(self) -> str:
             """
             Return a CloudConfig configuration describing the desired config.
             """
-            
+
             # Define the base config
             config = {
                 'write_files': self.files,
                 'coreos': {
                     'update': {
                         'reboot-strategy': 'off'
-                    }, 
+                    },
                     'units': self.units
                 }
             }
-            
+
             if len(self.sshPublicKeys) > 0:
                 # Add SSH keys if needed
                 config['ssh_authorized_keys'] = self.sshPublicKeys
-            
+
             # Mark as CloudConfig and serialize as YAML
             return '#cloud-config\n\n' + yaml.dump(config)
-            
-            
+
+
     def getBaseInstanceConfiguration(self) -> InstanceConfiguration:
         """
         Get the base configuration for both leader and worker instances for all cluster types.
         """
-        
+
         config = self.InstanceConfiguration()
-        
+
         # First we have volume mounting. That always happens.
         self.addVolumesService(config)
         # We also always add the service to talk to Prometheus
         self.addNodeExporterService(config)
-        
+
         return config
-        
+
     def addVolumesService(self, config: InstanceConfiguration):
         """
         Add a service to prepare and mount local scratch volumes.
@@ -570,12 +570,12 @@ class AbstractProvisioner(ABC):
             Restart=no
             ExecStart=/usr/bin/bash /home/core/volumes.sh
             """))
-    
+
     def addNodeExporterService(self, config: InstanceConfiguration):
         """
         Add the node exporter service for Prometheus to an instance configuration.
         """
-        
+
         config.addUnit("node-exporter.service", content=textwrap.dedent('''\
             [Unit]
             Description=node-exporter container
@@ -597,20 +597,20 @@ class AbstractProvisioner(ABC):
                 --path.sysfs /host/sys \\
                 --collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
             '''))
-        
+
     def addToilService(self, config: InstanceConfiguration, role: str, keyPath: str = None, preemptable: bool = False):
         """
         Add the Toil leader or worker service to an instance configuration.
-        
+
         Will run Mesos master or agent as appropriate in Mesos clusters.
         For Kubernetes clusters, will just sleep to provide a place to shell
         into on the leader, and shouldn't run on the worker.
-        
+
         :param role: Should be 'leader' or 'worker'. Will not work for 'worker' until leader credentials have been collected.
         :param keyPath: path on the node to a server-side encryption key that will be added to the node after it starts. The service will wait until the key is present before starting.
         :param preemptable: Whether a woeker should identify itself as preemptable or not to the scheduler.
         """
-        
+
         # If keys are rsynced, then the mesos-agent needs to be started after the keys have been
         # transferred. The waitForKey.sh script loops on the new VM until it finds the keyPath file, then it starts the
         # mesos-agent. If there are multiple keys to be transferred, then the last one to be transferred must be
@@ -650,7 +650,7 @@ class AbstractProvisioner(ABC):
         if customDockerInitCommand:
             entryPointArgs = " ".join(["'" + customDockerInitCommand + "'", entryPoint, entryPointArgs])
             entryPoint = "customDockerInit.sh"
-        
+
         config.addUnit(f"toil-{role}.service", content=textwrap.dedent(f'''\
             [Unit]
             Description=toil-{role} container
@@ -678,7 +678,7 @@ class AbstractProvisioner(ABC):
                 {applianceSelf()} \\
                 {entryPointArgs}
             '''))
-            
+
     def getKubernetesValues(self):
         """
         Returns a dict of Kubernetes component versions and paths for formatting into Kubernetes-related templates.
@@ -705,21 +705,21 @@ class AbstractProvisioner(ABC):
             # YAML line that tells the Kubelet to use a cloud provider, if we need one.
             CLOUD_PROVIDER_SPEC=('cloud-provider: ' + self.getKubernetesCloudProvider()) if self.getKubernetesCloudProvider() else ''
         )
-        
+
     def addKubernetesServices(self, config: InstanceConfiguration):
         """
         Add installing Kubernetes and Kubeadm and setting up the Kubelet to run when configured to an instance configuration.
         The same process applies to leaders and workers.
         """
-        
+
         values = self.getKubernetesValues()
-        
+
         # We're going to ship the Kubelet service from Kubernetes' release pipeline via cloud-config
         config.addUnit("kubelet.service", content=textwrap.dedent('''\
             # This came from https://raw.githubusercontent.com/kubernetes/release/v0.4.0/cmd/kubepkg/templates/latest/deb/kubelet/lib/systemd/system/kubelet.service
             # It has been modified to replace /usr/bin with {DOWNLOAD_DIR}
             # License: https://raw.githubusercontent.com/kubernetes/release/v0.4.0/LICENSE
-            
+
             [Unit]
             Description=kubelet: The Kubernetes Node Agent
             Documentation=https://kubernetes.io/docs/home/
@@ -735,13 +735,13 @@ class AbstractProvisioner(ABC):
             [Install]
             WantedBy=multi-user.target
             ''').format(**values))
-        
+
         # It needs this config file
         config.addFile("/etc/systemd/system/kubelet.service.d/10-kubeadm.conf", permissions="0644", content=textwrap.dedent('''\
             # This came from https://raw.githubusercontent.com/kubernetes/release/v0.4.0/cmd/kubepkg/templates/latest/deb/kubeadm/10-kubeadm.conf
             # It has been modified to replace /usr/bin with {DOWNLOAD_DIR}
             # License: https://raw.githubusercontent.com/kubernetes/release/v0.4.0/LICENSE
-            
+
             # Note: This dropin only works with kubeadm and kubelet v1.11+
             [Service]
             Environment="KUBELET_KUBECONFIG_ARGS=--bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf"
@@ -754,15 +754,15 @@ class AbstractProvisioner(ABC):
             ExecStart=
             ExecStart={DOWNLOAD_DIR}/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_KUBEADM_ARGS $KUBELET_EXTRA_ARGS
             ''').format(**values))
-        
+
         # Before we let the kubelet try to start, we have to actually download it (and kubeadm)
         config.addFile("/home/core/install-kubernetes.sh", content=textwrap.dedent('''\
             #!/usr/bin/env bash
             set -e
-            
+
             # Make sure we have Docker enabled; Kubeadm later might complain it isn't.
             systemctl enable docker.service
-            
+
             mkdir -p {CNI_DIR}
             curl -L "https://github.com/containernetworking/plugins/releases/download/{CNI_VERSION}/cni-plugins-linux-amd64-{CNI_VERSION}.tgz" | tar -C {CNI_DIR} -xz
             mkdir -p {DOWNLOAD_DIR}
@@ -784,11 +784,11 @@ class AbstractProvisioner(ABC):
             Restart=no
             ExecStart=/usr/bin/bash /home/core/install-kubernetes.sh
             '''))
-            
+
         # Now we should have the kubeadm command, and the bootlooping kubelet
         # waiting for kubeadm to configure it.
-        
-    
+
+
     def getKubernetesAutoscalerSetupCommands(self, values: Dict[str, str]) -> str:
         """
         Return Bash commands that set up the Kubernetes cluster autoscaler for
@@ -802,26 +802,26 @@ class AbstractProvisioner(ABC):
         :returns: Bash snippet
         """
         raise NotImplementedError()
-        
+
     def getKubernetesCloudProvider(self) -> Optional[str]:
         """
         Return the Kubernetes cloud provider (for example, 'aws'), to pass to
         the kubelets in a Kubernetes cluster provisioned using this provisioner.
-        
+
         Defaults to None if not overridden, in which case no cloud provider
         integration will be used.
 
         :returns: Cloud provider name, or None
         """
         return None
-    
+
     def addKubernetesLeader(self, config: InstanceConfiguration):
         """
         Add services to configure as a Kubernetes leader, if Kubernetes is already set to be installed.
         """
-        
+
         values = self.getKubernetesValues()
-        
+
         # Main kubeadm cluster configuration
         config.addFile("/home/core/kubernetes-leader.yml", permissions="0644", content=textwrap.dedent('''\
             apiVersion: kubeadm.k8s.io/v1beta2
@@ -847,19 +847,19 @@ class AbstractProvisioner(ABC):
             rotateCertificates: true
             cgroupDriver: systemd
             '''.format(**values)))
-            
+
         # Make a script to apply that and the other cluster components
         # Note that we're escaping {{thing}} as {{{{thing}}}} because we need to match mustaches in a yaml we hack up.
         config.addFile("/home/core/create-kubernetes-cluster.sh", content=textwrap.dedent('''\
             #!/usr/bin/env bash
             set -e
-            
+
             export PATH="$PATH:{DOWNLOAD_DIR}"
-            
+
             # We need the kubelet being restarted constantly by systemd while kubeadm is setting up.
             # Systemd doesn't really let us say that in the unit file.
             systemctl start kubelet
-            
+
             kubeadm init --config /home/core/kubernetes-leader.yml
 
             mkdir -p $HOME/.kube
@@ -880,7 +880,7 @@ class AbstractProvisioner(ABC):
             curl -sSL https://github.com/kubernetes-sigs/metrics-server/releases/download/{METRICS_API_VERSION}/components.yaml | \\
                 sed 's/          - --secure-port=4443/          - --secure-port=4443\\n          - --kubelet-preferred-address-types=Hostname/' | \\
                 kubectl apply -f -
-                
+
             # Grab some joining info and make a file we can parse later with configparser
             echo "[DEFAULT]" >/etc/kubernetes/worker.ini
             echo "JOIN_TOKEN=$(kubeadm token create --ttl 0)" >>/etc/kubernetes/worker.ini
@@ -900,7 +900,7 @@ class AbstractProvisioner(ABC):
             Restart=no
             ExecStart=/usr/bin/bash /home/core/create-kubernetes-cluster.sh
             '''))
-            
+
         # We also need a node cleaner service
         config.addFile("/home/core/cleanup-nodes.sh", content=textwrap.dedent('''\
             #!/usr/bin/env bash
@@ -934,29 +934,29 @@ class AbstractProvisioner(ABC):
             [Install]
             WantedBy=multi-user.target
             '''))
-    
+
     def addKubernetesWorker(self, config: InstanceConfiguration, authVars: Dict[str, str], preemptable: bool = False):
         """
         Add services to configure as a Kubernetes worker, if Kubernetes is
         already set to be installed.
-        
+
         Authenticate back to the leader using the JOIN_TOKEN, JOIN_CERT_HASH,
         and JOIN_ENDPOINT set in the given authentication data dict.
-        
+
         :param config: The configuration to add services to
         :param authVars: Dict with authentication info
         :param preemptable: Whether the worker should be labeled as preemptable or not
         """
-        
+
         # Collect one combined set of auth and general settings.
         values = dict(**self.getKubernetesValues(), **authVars)
-        
+
         # Mark the node as preemptable if it is.
         # TODO: We use the same label that EKS uses here, because nothing is standardized.
         # This won't be quite appropriate as we aren't on EKS and we might not
         # even be on AWS, but the batch system should understand it.
         values['WORKER_LABEL_SPEC'] = 'node-labels: "eks.amazonaws.com/capacityType=SPOT"' if preemptable else ''
-        
+
         # Kubeadm worker configuration
         config.addFile("/home/core/kubernetes-worker.yml", permissions="0644", content=textwrap.dedent('''\
             apiVersion: kubeadm.k8s.io/v1beta2
@@ -977,21 +977,21 @@ class AbstractProvisioner(ABC):
             kind: KubeletConfiguration
             cgroupDriver: systemd
             '''.format(**values)))
-            
+
         # Make a script to join the cluster using that configuration
         config.addFile("/home/core/join-kubernetes-cluster.sh", content=textwrap.dedent('''\
             #!/usr/bin/env bash
             set -e
-            
+
             export PATH="$PATH:{DOWNLOAD_DIR}"
-            
+
             # We need the kubelet being restarted constantly by systemd while kubeadm is setting up.
             # Systemd doesn't really let us say that in the unit file.
             systemctl start kubelet
-            
+
             kubeadm join {JOIN_ENDPOINT} --config /home/core/kubernetes-worker.yml
             ''').format(**values))
-            
+
         config.addUnit("join-kubernetes-cluster.service", content=textwrap.dedent('''\
             [Unit]
             Description=Kubernetes cluster membership
@@ -1008,32 +1008,32 @@ class AbstractProvisioner(ABC):
     def _getCloudConfigUserData(self, role, keyPath=None, preemptable=False):
         """
         Return the text (not bytes) user data to pass to a provisioned node.
-        
+
         If leader-worker authentication is currently stored, uses it to connect
         the worker to the leader.
-        
+
         :param str keyPath: The path of a secret key for the worker to wait for the leader to create on it.
         :param bool preemptable: Set to true for a worker node to identify itself as preemptible in the cluster.
         """
 
         # Start with a base config
         config = self.getBaseInstanceConfiguration()
-        
+
         if self.clusterType == 'kubernetes':
             # Install Kubernetes
             self.addKubernetesServices(config)
-            
+
             if role == 'leader':
                 # Set up the cluster
                 self.addKubernetesLeader(config)
-            
+
             # We can't actually set up a Kubernetes worker without credentials
             # to connect back to the leader.
-                
+
         if self.clusterType == 'mesos' or role == 'leader':
             # Leaders, and all nodes in a Mesos cluster, need a Toil service
             self.addToilService(config, role, keyPath, preemptable)
-            
+
         if role == 'worker' and self._leaderWorkerAuthentication is not None:
             # We need to connect the worker to the leader.
             if self.clusterType == 'mesos':
@@ -1046,8 +1046,8 @@ class AbstractProvisioner(ABC):
                 # into the worker config, which probably is accessible by
                 # anyone in the cloud account.
                 self.addKubernetesWorker(config, self._leaderWorkerAuthentication, preemptable=preemptable)
-            
+
         # Make it into a string for CloudConfig
         return config.toCloudConfig()
-        
+
 

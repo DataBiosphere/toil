@@ -87,6 +87,9 @@ There are several environment variables that affect the way Toil runs.
 |                                  | deleted until all associated nodes have been       |
 |                                  | terminated.                                        |
 +----------------------------------+----------------------------------------------------+
+| TOIL_GOOGLE_PROJECTID            | The Google project ID to use when generating       |
+|                                  | Google job store names for tests or CWL workflows. |
++----------------------------------+----------------------------------------------------+
 | TOIL_SLURM_ARGS                  | Arguments for sbatch for the slurm batch system.   |
 |                                  | Do not pass CPU or memory specifications here.     |
 |                                  | Instead, define resource requirements for the job. |
@@ -156,5 +159,9 @@ There are several environment variables that affect the way Toil runs.
 | TOIL_S3_USE_SSL                  | enable or disable the usage of SSL for connecting  |
 |                                  | to S3 (``True`` by default).                       |
 |                                  | Example: ``TOIL_S3_USE_SSL=False``                 |
++----------------------------------+----------------------------------------------------+
+| SINGULARITY_DOCKER_HUB_MIRROR    | An http or https URL for the Singularity wrapper   |
+|                                  | in the Toil Docker container to use as a mirror    |
+|                                  | for Docker Hub.                                    |
 +----------------------------------+----------------------------------------------------+
 .. _standard temporary directory: https://docs.python.org/3/library/tempfile.html#tempfile.gettempdir

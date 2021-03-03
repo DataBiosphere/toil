@@ -6,7 +6,7 @@ import uuid
 
 from contextlib import contextmanager
 from io import BytesIO
-from typing import Union
+from typing import Iterator, Union, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,7 @@ def atomic_install(tmp_path, final_path) -> None:
         os.rename(tmp_path, final_path)
 
 @contextmanager
-def AtomicFileCreate(final_path: str, keep: bool = False) -> None:
+def AtomicFileCreate(final_path: str, keep: bool = False) -> Iterator[str]:
     """Context manager to create a temporary file.  Entering returns path to
     the temporary file in the same directory as finalPath.  If the code in
     context succeeds, the file renamed to its actually name.  If an error
@@ -105,8 +105,10 @@ def AtomicFileCreate(final_path: str, keep: bool = False) -> None:
         raise
 
 
-def atomic_copy(src_path: str, dest_path: str, executable: bool = False) -> None:
+def atomic_copy(src_path: str, dest_path: str, executable: Optional[bool] = None) -> None:
     """Copy a file using posix atomic creations semantics."""
+    if executable is None:
+        executable = os.stat(src_path).st_mode & stat.S_IXUSR != 0
     with AtomicFileCreate(dest_path) as dest_path_tmp:
         shutil.copyfile(src_path, dest_path_tmp)
         if executable:

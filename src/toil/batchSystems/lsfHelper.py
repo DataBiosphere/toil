@@ -21,14 +21,14 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
 import fnmatch
-import math
 import os
 import re
 import subprocess
 
 from packaging import version
+
+from toil.lib.conversions import bytes_in_unit, convert_units
 
 LSB_PARAMS_FILENAME = "lsb.params"
 LSF_CONF_FILENAME = "lsf.conf"
@@ -36,6 +36,7 @@ LSF_CONF_ENV = ["LSF_CONFDIR", "LSF_ENVDIR"]
 DEFAULT_LSF_UNITS = "KB"
 DEFAULT_RESOURCE_UNITS = "MB"
 LSF_JSON_OUTPUT_MIN_VERSION = "10.1.0.2"
+
 
 def find(basedir, string):
     """
@@ -47,6 +48,7 @@ def find(basedir, string):
             matches.append(os.path.join(root, filename))
     return matches
 
+
 def find_first_match(basedir, string):
     """
     return the first file that matches string starting from basedir
@@ -54,12 +56,14 @@ def find_first_match(basedir, string):
     matches = find(basedir, string)
     return matches[0] if matches else matches
 
+
 def get_conf_file(filename, env):
     conf_path = os.environ.get(env)
     if not conf_path:
         return None
     conf_file = find_first_match(conf_path, filename)
     return conf_file
+
 
 def apply_conf_file(fn, conf_filename):
     for env in LSF_CONF_ENV:
@@ -71,17 +75,20 @@ def apply_conf_file(fn, conf_filename):
                 return value
     return None
 
+
 def per_core_reserve_from_stream(stream):
     for k, v in tokenize_conf_stream(stream):
         if k in {"RESOURCE_RESERVE_PER_SLOT", "RESOURCE_RESERVE_PER_TASK"}:
             return v.upper()
     return None
 
+
 def get_lsf_units_from_stream(stream):
     for k, v in tokenize_conf_stream(stream):
         if k == "LSF_UNIT_FOR_LIMITS":
             return v
     return None
+
 
 def tokenize_conf_stream(conf_handle):
     """
@@ -95,6 +102,7 @@ def tokenize_conf_stream(conf_handle):
             continue
         yield (tokens[0].strip(), tokens[1].strip())
 
+
 def apply_bparams(fn):
     """
     apply fn to each line of bparams, returning the result
@@ -105,6 +113,7 @@ def apply_bparams(fn):
     except:
         return None
     return fn(output.split("\n"))
+
 
 def apply_lsadmin(fn):
     """
@@ -118,7 +127,7 @@ def apply_lsadmin(fn):
     return fn(output.split("\n"))
 
 
-def get_lsf_units(resource=False):
+def get_lsf_units(resource: bool = False) -> str:
     """
     check if we can find LSF_UNITS_FOR_LIMITS in lsadmin and lsf.conf
     files, preferring the value in bparams, then lsadmin, then the lsf.conf file
@@ -141,6 +150,7 @@ def get_lsf_units(resource=False):
     else:
         return DEFAULT_LSF_UNITS
 
+
 def get_lsf_version():
     """
     Get current LSF version
@@ -150,7 +160,7 @@ def get_lsf_version():
         output = subprocess.check_output(cmd).decode('utf-8')
     except:
         return None
-    bjobs_search = re.search('IBM Spectrum LSF Standard (.*),',output)
+    bjobs_search = re.search('IBM Spectrum LSF Standard (.*),', output)
     if bjobs_search:
         lsf_version = bjobs_search.group(1)
         return lsf_version
@@ -159,39 +169,34 @@ def get_lsf_version():
 
 
 def check_lsf_json_output_supported():
-    """
-    Check if the current LSF system supports bjobs json output
-    """
-    lsf_version = get_lsf_version()
-    if not lsf_version:
-        return False
+    """Check if the current LSF system supports bjobs json output."""
     try:
-        if version.parse(lsf_version) >= version.parse(LSF_JSON_OUTPUT_MIN_VERSION):
+        lsf_version = get_lsf_version()
+        if lsf_version and (version.parse(lsf_version) >= version.parse(LSF_JSON_OUTPUT_MIN_VERSION)):
             return True
-        else:
-            return False
     except:
         return False
+    return False
 
 
-def parse_memory_resource(mem):
-    """
-    Parse memory parameter for -R
-    """
+def parse_memory_resource(mem: float) -> str:
+    """Parse memory parameter for -R."""
     return parse_memory(mem, True)
 
-def parse_memory_limit(mem):
-    """
-    Parse memory parameter for -M
-    """
+
+def parse_memory_limit(mem: float) -> str:
+    """Parse memory parameter for -M."""
     return parse_memory(mem, False)
 
-def parse_memory(mem, resource):
-    """
-    Parse memory parameter
-    """
+
+def parse_memory(mem: float, resource: bool) -> str:
+    """Parse memory parameter."""
     lsf_unit = get_lsf_units(resource=resource)
-    return convert_mb(float(mem) * 1024, lsf_unit)
+    megabytes_of_mem = convert_units(float(mem) * 1024, src_unit=lsf_unit, dst_unit='MB')
+    if megabytes_of_mem < 1:
+        megabytes_of_mem = 1.0
+    # round as a string here to avoid returning something like 1.231e+12
+    return f'{megabytes_of_mem:.4f}'
 
 
 def per_core_reservation():
@@ -216,20 +221,7 @@ def per_core_reservation():
     per_core = apply_conf_file(per_core_reserve_from_stream, LSB_PARAMS_FILENAME)
     if per_core and per_core.upper() == "Y":
         return True
-    else:
-        return False
     return False
-
-def convert_mb(kb, unit):
-    UNITS = {"B": -2,
-             "KB": -1,
-             "MB": 0,
-             "GB": 1,
-             "TB": 2}
-    assert unit in UNITS, ("%s not a valid unit, valid units are %s."
-                           % (unit, list(UNITS.keys())))
-    return int(float(kb) // float(math.pow(1024, UNITS[unit])))
-
 
 
 if __name__ == "__main__":

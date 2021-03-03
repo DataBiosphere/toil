@@ -40,7 +40,7 @@ class AWSProvisionerBenchTest(ToilTest):
     """
     Tests for the AWS provisioner that don't actually provision anything.
     """
-    
+
     def testAMIFinding(self):
         for zone in ['us-west-2a', 'eu-central-1a', 'sa-east-1b']:
             provisioner = AWSProvisioner('fakename', 'mesos', zone, 10000, None, None)
@@ -65,7 +65,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         assert self.zone is not None, "Could not determine AWS availability zone to test in; is TOIL_AWS_ZONE set?"
         # We can't dump our user script right in /tmp or /home, because hot
         # deploy refuses to zip up those whole directories. So we make sure to
-        # have a subdirectory to upload the script to. 
+        # have a subdirectory to upload the script to.
         self.scriptDir = '/tmp/t'
         # Where should we put our virtualenv?
         self.venvDir = '/tmp/venv'
@@ -76,25 +76,25 @@ class AbstractAWSAutoscaleTest(ToilTest):
         # What filename should we use for our script (without path)?
         # Can be changed by derived tests.
         self.scriptName = 'test_script.py'
-        
+
     def python(self):
         """
         Return the full path to the venv Python on the leader.
         """
         return os.path.join(self.venvDir, 'bin/python')
-        
+
     def pip(self):
         """
         Return the full path to the venv pip on the leader.
         """
         return os.path.join(self.venvDir, 'bin/pip')
-        
+
     def script(self):
         """
         Return the full path to the user script on the leader.
         """
         return os.path.join(self.scriptDir, self.scriptName)
-        
+
     def data(self, filename):
         """
         Return the full path to the data file with the given name on the leader.
@@ -104,7 +104,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
     def destroyCluster(self):
         """
         Destroy the cluster we built, if it exists.
-        
+
         Succeeds if the cluster does not currently exist.
         """
         subprocess.check_call(['toil', 'destroy-cluster', '-p=aws', '-z', self.zone, self.clusterName])
@@ -137,7 +137,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         # Put in non-blocking mode. See https://stackoverflow.com/a/59291466
         os.set_blocking(p.stdout.fileno(), False)
         os.set_blocking(p.stderr.fileno(), False)
-        
+
         out_buffer = b''
         err_buffer = b''
 
@@ -177,13 +177,13 @@ class AbstractAWSAutoscaleTest(ToilTest):
                 loops_since_line = 0
 
             time.sleep(1)
-                
+
         # At the end, log the last lines
         if out_buffer:
             log.info('STDOUT: %s', out_buffer.decode('utf-8', errors='ignore'))
         if err_buffer:
             log.info('STDOUT: %s', err_buffer.decode('utf-8', errors='ignore'))
-        
+
         if p.returncode != 0:
             # It failed
             log.error("Failed to run %s.", str(cmd))
@@ -194,12 +194,12 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
     def createClusterUtil(self, args=None):
         args = [] if args is None else args
-       
+
         command = ['toil', 'launch-cluster', '-p=aws', '-z', self.zone, f'--keyPairName={self.keyName}',
                    '--leaderNodeType=t2.medium', self.clusterName] + args
-       
+
         log.debug('Launching cluster: %s', command)
-       
+
         # Try creating the cluster
         subprocess.check_call(command)
         # If we fail, tearDown will destroy the cluster.
@@ -281,7 +281,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
                        '--logDebug',
                        '--logFile=' + os.path.join(self.scriptDir, 'sort.log')
                        ]
-        
+
         if preemptableJobs:
             toilOptions.extend(['--defaultPreemptable'])
 
@@ -412,7 +412,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         runCommand = [self.python(), self.script(), '--fileToSort=' + self.data('sortFile')]
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
-        
+
 @integrative
 @pytest.mark.timeout(1200)
 class AWSManagedAutoscaleTest(AWSAutoscaleTest):
@@ -516,7 +516,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
 
         script = dedent('\n'.join(getsource(restartScript).split('\n')[1:]))
         self.putScript(script)
-        
+
     def _runScript(self, toilOptions):
         # Use the provisioner in the workflow
         toilOptions.extend(['--provisioner=aws', '--batchSystem=mesos',

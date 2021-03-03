@@ -88,7 +88,7 @@ def awsRetryPredicate(e):
     elif get_error_status(e) == 400 and get_error_code(e) == 'Throttling':
         return True
     return False
-    
+
 def expectedShutdownErrors(e):
     return get_error_status(e) == 400 and 'dependent object' in get_error_body(e)
 
@@ -133,7 +133,7 @@ class AWSProvisioner(AbstractProvisioner):
         self._sseKey = sseKey
         # self._zone will be filled in by base class constructor
         zone = zone if zone else get_current_aws_zone()
-        
+
         if zone is None:
             # Can't proceed without a real zone
             raise RuntimeError('No AWS availability zone specified. Configure in Boto '
@@ -154,7 +154,7 @@ class AWSProvisioner(AbstractProvisioner):
         super(AWSProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
 
 
-            
+
     def supportedClusterTypes(self):
         return {'mesos', 'kubernetes'}
 
@@ -189,7 +189,7 @@ class AWSProvisioner(AbstractProvisioner):
         self._leaderSecurityGroupNames = {rawSecurityGroups} if not isinstance(rawSecurityGroups, list) else set(rawSecurityGroups)
         # Since we have access to the names, we don't also need to use any IDs
         self._leaderSecurityGroupIDs = set()
-        
+
         # Let the base provisioner work out how to deploy duly authorized
         # workers for this leader.
         self._setLeaderWorkerAuthentication()
@@ -218,16 +218,16 @@ class AWSProvisioner(AbstractProvisioner):
         :param awsEc2ExtraSecurityGroupIds: Optionally provide additional security group IDs.
         :return: None
         """
-        
+
         instanceType = E2Instances[leaderNodeType]
-        
+
         if self.clusterType == 'kubernetes':
             if instanceType.cores < 2:
                 # Kubernetes won't run here.
                 raise RuntimeError('Kubernetes requires 2 or more cores, and %s is too small' %
                                    leaderNodeType)
-        
-        
+
+
         self._keyName = keyName
         # This is where we put the leader
         self._vpcSubnet = vpcSubnet
@@ -238,7 +238,7 @@ class AWSProvisioner(AbstractProvisioner):
         bdms = self._getBoto3BlockDeviceMappings(instanceType, rootVolSize=leaderStorage)
 
         userData = self._getCloudConfigUserData('leader')
-            
+
         # Make up the tags
         self._tags = {'Name': self.clusterName,
                       'Owner': owner,
@@ -254,7 +254,7 @@ class AWSProvisioner(AbstractProvisioner):
         # Make tags for the leader specifically
         leader_tags = dict(self._tags)
         leader_tags[_TAG_KEY_TOIL_NODE_TYPE] = 'leader'
-        
+
         instances = create_instances(self.ec2_resource,
                                      image_id=self._discoverAMI(),
                                      num_instances=1,
@@ -271,7 +271,7 @@ class AWSProvisioner(AbstractProvisioner):
         # wait for the leader to exist at all
         leader = instances[0]
         leader.wait_until_exists()
-        
+
         # Don't go on until the leader is started
         leader.wait_until_running()
 
@@ -296,7 +296,7 @@ class AWSProvisioner(AbstractProvisioner):
                           nodeType=instanceType.name, preemptable=False,
                           tags=leader.tags)
         leaderNode.waitForNode('toil_leader')
-        
+
         # Download credentials
         self._setLeaderWorkerAuthentication(leaderNode)
 
@@ -314,12 +314,12 @@ class AWSProvisioner(AbstractProvisioner):
                 sed 's|path: "/etc/ssl/certs/ca-bundle.crt"|path: "/usr/share/ca-certificates/ca-certificates.crt"|' | \\
                 kubectl apply -f -
             ''').format(**values)
-            
+
     def getKubernetesCloudProvider(self) -> Optional[str]:
         """
         Use the "aws" Kubernetes cloud provider when setting up Kubernetes.
         """
-        
+
         return 'aws'
 
     def getNodeShape(self, nodeType: str, preemptable=False) -> Shape:
@@ -377,7 +377,7 @@ class AWSProvisioner(AbstractProvisioner):
                     removed = True
         if removed:
             logger.debug('... Succesfully deleted autoscaling groups')
-            
+
         # Do the workers after the ASGs because some may belong to ASGs
         logger.info('Terminating any remaining workers ...')
         removed = False
@@ -393,7 +393,7 @@ class AWSProvisioner(AbstractProvisioner):
             removed = True
         if removed:
             logger.debug('... Succesfully terminated workers')
-        
+
         logger.info('Deleting launch templates ...')
         removed = False
         for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
@@ -412,15 +412,15 @@ class AWSProvisioner(AbstractProvisioner):
             removed = False
         if removed:
             logger.debug('... Succesfully deleted launch templates')
-            
-        
+
+
         if len(instances) == len(instancesToTerminate):
             # All nodes are gone now.
-            
+
             logger.info('Deleting IAM roles ...')
             self._deleteRoles(self._getRoleNames())
             self._deleteInstanceProfiles(self._getInstanceProfileNames())
-            
+
             logger.info('Deleting security group ...')
             removed = False
             for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
@@ -462,7 +462,7 @@ class AWSProvisioner(AbstractProvisioner):
         if isinstance(userData, str):
             # Spot-market provisioning requires bytes for user data.
             userData = userData.encode('utf-8')
-        
+
         kwargs = {'key_name': self._keyName,
                   'security_group_ids': self._getSecurityGroupIDs(),
                   'instance_type': instanceType.name,
@@ -514,12 +514,12 @@ class AWSProvisioner(AbstractProvisioner):
                 node.coreRsync([self._sseKey, ':' + self._sseKey], applianceName='toil_worker')
         logger.debug('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
-        
+
     def addManagedNodes(self, nodeType, minNodes, maxNodes, preemptable, spotBid=None) -> None:
-        
+
         if self.clusterType != 'kubernetes':
             raise ManagedNodesNotSupportedException("Managed nodes only supported for Kubernetes clusters")
-        
+
         assert self._leaderPrivateIP
         if preemptable and not spotBid:
             if self._spotBidsMap and nodeType in self._spotBidsMap:
@@ -528,15 +528,15 @@ class AWSProvisioner(AbstractProvisioner):
                 raise RuntimeError("No spot bid given for a preemptable node request.")
         if spotBid and not preemptable:
             raise RuntimeError("Spot bid given for a non-preemptable node request.")
-                
+
         # TODO: We assume we only ever do this once per node type...
-        
+
         # Make the template
         launch_template_id = self._createWorkerLaunchTemplate(nodeType, preemptable=preemptable)
         # Make the ASG
         self._createWorkerAutoScalingGroup(launch_template_id, [nodeType], minNodes, maxNodes,
                                            spot_bid=spotBid)
-        
+
     def getProvisionedWorkers(self, nodeType, preemptable) -> List[Node]:
         assert self._leaderPrivateIP
         entireCluster = self._getNodesInCluster(both=True, nodeType=nodeType)
@@ -570,29 +570,29 @@ class AWSProvisioner(AbstractProvisioner):
                  or a compatible replacement like Flatcar.
         :rtype: str
         """
-        
+
         # Take a user override
         ami = os.environ.get('TOIL_AWS_AMI')
         if ami is not None:
             return ami
-        
+
         # CoreOS is dead, long live Flatcar
-        
+
         # Flatcar images, however, only live for 9 months.
         # Rather than hardcode a list of AMIs by region that will die, we use
-        # their JSON feed of the current ones. 
+        # their JSON feed of the current ones.
         JSON_FEED_URL = 'https://stable.release.flatcar-linux.net/amd64-usr/current/flatcar_production_ami_all.json'
-        
+
         # What region do we care about?
         region = zone_to_region(self._zone)
-        
+
         for attempt in old_retry(predicate=lambda e: True):
             # Until we get parseable JSON
             # TODO: What errors do we get for timeout, JSON parse failure, etc?
             with attempt:
                 # Try to get the JSON and parse it.
                 feed = json.loads(urllib.request.urlopen(JSON_FEED_URL).read())
-                
+
         try:
             for ami_record in feed['amis']:
                 # Scan the klist of regions
@@ -605,7 +605,7 @@ class AWSProvisioner(AbstractProvisioner):
         except KeyError:
             # We didn't see a field we need
             raise RuntimeError('Flatcar image feed at {} does not have expected format'.format(JSON_FEED_URL))
-        
+
         if ami is None:
             # We didn't find it
             raise RuntimeError('Flatcar image feed at {} does not have an image for region {}'.format(JSON_FEED_URL, region))
@@ -640,7 +640,7 @@ class AWSProvisioner(AbstractProvisioner):
                 'and restart the job. Incorrect Leader ID: %s' % leader.id
             )
         return leader
-        
+
 
     def getLeader(self, wait=False) -> Node:
         """
@@ -648,7 +648,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
         assert self._boto2
         leader = self._getLeaderInstance()
-        
+
         leaderNode = Node(publicIP=leader.ip_address, privateIP=leader.private_ip_address,
                           name=leader.id, launchTime=leader.launch_time, nodeType=None,
                           preemptable=False, tags=leader.tags)
@@ -730,14 +730,14 @@ class AWSProvisioner(AbstractProvisioner):
                     self.iam_client.delete_role(RoleName=role_name)
                     logger.debug('... Succesfully deleted IAM role %s', role_name)
 
-    
+
     @awsRetry
     def _deleteInstanceProfiles(self, names: List[str]):
         """
         Delete all the given named IAM instance profiles.
         All roles must already be detached.
         """
-        
+
         for profile_name in names:
             for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                 with attempt:
@@ -761,13 +761,13 @@ class AWSProvisioner(AbstractProvisioner):
 
         logger.debug('Device mapping: %s', bdm)
         return bdm
-        
+
     @classmethod
     def _getBoto3BlockDeviceMappings(cls, instanceType: InstanceType, rootVolSize: int = 50) -> List[dict]:
         """
         Get block device mappings for the root volume for a worker.
         """
-        
+
         # Start with the root
         bdms = [{
             'DeviceName': '/dev/xvda',
@@ -777,10 +777,10 @@ class AWSProvisioner(AbstractProvisioner):
                 'VolumeType': 'gp2'
             }
         }]
-        
+
         # Get all the virtual drives we might have
         bdtKeys = ['/dev/xvd{}'.format(c) for c in string.ascii_lowercase]
-        
+
         # The first disk is already attached for us so start with 2nd.
         # Disk count is weirdly a float in our instance database, so make it an int here.
         for disk in range(1, int(instanceType.disks) + 1):
@@ -865,33 +865,33 @@ class AWSProvisioner(AbstractProvisioner):
             if sg.name == self.clusterName and (vpcId is None or sg.vpc_id == vpcId):
                 out.append(sg)
         return [sg.id for sg in out]
-        
+
     @awsRetry
     def _getSecurityGroupIDs(self) -> List[str]:
         """
         Get all the security group IDs to apply to leaders and workers.
         """
-       
+
         # TODO: memoize to save requests.
-       
+
         # Depending on if we enumerated them on the leader or locally, we might
         # know the required security groups by name, ID, or both.
-        sgs = [sg for sg in self._boto2.ec2.get_all_security_groups() 
+        sgs = [sg for sg in self._boto2.ec2.get_all_security_groups()
                if (sg.name in self._leaderSecurityGroupNames or
                    sg.id in self._leaderSecurityGroupIDs)]
         return [sg.id for sg in sgs]
-        
+
     @awsRetry
     def _getLaunchTemplateIDs(self) -> List[str]:
         """
         Find all launch templates associated with the cluster.
-        
+
         Returns a list of launch template IDs.
         """
-        
+
         # How do we match the right templates?
         filters = [{'Name': 'tag:' + _TAG_KEY_TOIL_CLUSTER_NAME, 'Values': [self.clusterName]}]
-        
+
         allTemplateIDs = []
         # Get the first page with no NextToken
         response = self.ec2_client.describe_launch_templates(Filters=filters,
@@ -906,23 +906,23 @@ class AWSProvisioner(AbstractProvisioner):
             else:
                 # No more pages
                 break
-                
+
         return allTemplateIDs
-        
+
     def _createWorkerLaunchTemplate(self, nodeType: str, preemptable: bool = False) -> str:
         """
         Create the launch template for launching worker instances for the cluster.
-        
+
         :param nodeType: Type of node to use in the template. May be overridden
                          by an ASG that uses the template.
-                         
+
         :param preemptable: When the node comes up, does it think it is a spot instance?
-        
+
         :return: The ID of the template created.
         """
-        
+
         # TODO: If we already have one like this, set its storage and/or remake it.
-        
+
         assert self._leaderPrivateIP
         instanceType = E2Instances[nodeType]
         rootVolSize=self._nodeStorageOverrides.get(nodeType, self._nodeStorage)
@@ -930,16 +930,16 @@ class AWSProvisioner(AbstractProvisioner):
 
         keyPath = self._sseKey if self._sseKey else None
         userData = self._getCloudConfigUserData('worker', keyPath, preemptable)
-        
+
         # The name has the cluster name in it
         lt_name = f'{self.clusterName}-lt-{nodeType}'
         if preemptable:
             lt_name += '-spot'
-            
+
         # But really we find it by tag
         tags = dict(self._tags)
         tags[_TAG_KEY_TOIL_NODE_TYPE] = 'worker'
-        
+
         return create_launch_template(self.ec2_client,
                                       template_name=lt_name,
                                       image_id=self._discoverAMI(),
@@ -950,15 +950,15 @@ class AWSProvisioner(AbstractProvisioner):
                                       block_device_map=bdms,
                                       instance_profile_arn=self._leaderProfileArn,
                                       tags=tags)
-                                      
+
     @awsRetry
     def _getAutoScalingGroupNames(self) -> List[str]:
         """
         Find all auto-scaling groups associated with the cluster.
-        
+
         Returns a list of ASG IDs. ASG IDs and ASG names are the same things.
         """
-        
+
         # AWS won't filter ASGs server-side for us in describe_auto_scaling_groups.
         # So we search instances of applied tags for the ASGs they are on.
         # The ASGs tagged with our cluster are our ASGs.
@@ -967,22 +967,30 @@ class AWSProvisioner(AbstractProvisioner):
                     'Values': [_TAG_KEY_TOIL_CLUSTER_NAME]},
                    {'Name': 'value',
                     'Values': [self.clusterName]}]
-        
+
         matchedASGs = []
         # Get the first page with no NextToken
-        response = self.autoscaling_client.describe_tags()
+        response = self.autoscaling_client.describe_tags(Filters=filters)
         while True:
             # Process the current page
-            matchedASGs += [item['ResourceId'] for item in response.get('Tags', [])]
+            matchedASGs += [item['ResourceId'] for item in response.get('Tags', [])
+                            if item['Key'] == _TAG_KEY_TOIL_CLUSTER_NAME and
+                            item['Value'] == self.clusterName]
             if 'NextToken' in response:
                 # There are more pages. Get the next one, supplying the token.
-                response = self.autoscaling_client.describe_tags(NextToken=response['NextToken'])
+                response = self.autoscaling_client.describe_tags(Filters=filters,
+                                                                 NextToken=response['NextToken'])
             else:
                 # No more pages
                 break
-                
+
+        for name in matchedASGs:
+            # Double check to make sure we definitely aren't finding non-Toil
+            # things
+            assert name.startswith('toil-')
+
         return matchedASGs
-    
+
     def _createWorkerAutoScalingGroup(self,
                                       launch_template_id: str,
                                       instance_types: List[str],
@@ -991,7 +999,7 @@ class AWSProvisioner(AbstractProvisioner):
                                       spot_bid: Optional[float] = None) -> str:
         """
         Create an autoscaling group.
-        
+
         :param launch_template_id: ID of the launch template to use.
         :param instance_types: Names of instance types to use. Must have
                at least one. Needed here to calculate the ephemeral storage
@@ -1000,16 +1008,16 @@ class AWSProvisioner(AbstractProvisioner):
         :param min_size: Minimum number of instances to scale to.
         :param max_size: Maximum number of instances to scale to.
         :param spot_bid: Make this a spot ASG with the given bid.
-        
+
         :return: the unique autoscaling group name.
-        
+
         TODO: allow overriding launch template and pooling.
         """
-        
+
         assert self._leaderPrivateIP
-        
+
         assert len(instance_types) >= 1
-        
+
         # Find the minimum storage any instance in the group will provide.
         # For each, we look at the root volume size we would assign it if it were the type used to make the template.
         # TODO: Work out how to apply each instance type's root volume size override independently when they're all in a pool.
@@ -1021,25 +1029,25 @@ class AWSProvisioner(AbstractProvisioner):
             storage_gigs.append(max(rootVolSize - _STORAGE_ROOT_OVERHEAD_GIGS, spec_gigs))
         # Get the min storage we expect to see, but not less than 0.
         min_gigs = max(min(storage_gigs), 0)
-        
+
         # Make tags. These are just for the ASG, not for the node.
         # If are a Kubernetes cluster, this includes the tag for membership.
         tags = dict(self._tags)
-        
+
         # We tag the ASG with the Toil type, although nothing cares.
         tags[_TAG_KEY_TOIL_NODE_TYPE] = 'worker'
-        
+
         if self.clusterType == 'kubernetes':
             # We also need to tag it with Kubernetes autoscaler info (empty tags)
             tags['k8s.io/cluster-autoscaler/' + self.clusterName] = ''
             assert(self.clusterName != 'enabled')
             tags['k8s.io/cluster-autoscaler/enabled'] = ''
-            tags['k8s.io/cluster-autoscaler/node-template/resources/ephemeral-storage'] = f'{min_gigs}G' 
-            
+            tags['k8s.io/cluster-autoscaler/node-template/resources/ephemeral-storage'] = f'{min_gigs}G'
+
         # Now we need to make up a unique name
         # TODO: can we make this more semantic without risking collisions? Maybe count up in memory?
         asg_name = 'toil-' + str(uuid.uuid4())
-        
+
         create_auto_scaling_group(self.autoscaling_client,
                                   asg_name=asg_name,
                                   launch_template_id=launch_template_id,
@@ -1049,39 +1057,39 @@ class AWSProvisioner(AbstractProvisioner):
                                   instance_types=instance_types,
                                   spot_bid=spot_bid,
                                   tags=tags)
-        
+
         return asg_name
-       
+
     @awsRetry
     def _getRoleNames(self) -> List[str]:
         """
         Get all the roles belonging to the cluster, as names.
         """
-        
+
         # TODO: When we drop boto2 and the Boto2Context, keep track of which
         # roles are ours ourselves.
         return [role['role_name'] for role in self._boto2.local_roles()]
-    
+
     @awsRetry
     def _getInstanceProfileNames(self) -> List[str]:
         """
         Get all the instance profiles belonging to the cluster, as names.
         """
-        
+
         # TODO: When we drop boto2 and the Boto2Context, keep track of which
         # instance profiles are ours ourselves.
         return [profile['instance_profile_name'] for profile in self._boto2.local_instance_profiles()]
-    
+
     @awsRetry
     def _getRoleInstanceProfileNames(self, role_name: str) -> List[str]:
         """
         Get all the instance profiles with the IAM role with the given name.
-        
+
         Returns instance profile names.
         """
-        
+
         allProfiles = []
-        
+
         response = self.iam_client.list_instance_profiles_for_role(RoleName=role_name,
                                                                    MaxItems=200)
         while True:
@@ -1095,23 +1103,23 @@ class AWSProvisioner(AbstractProvisioner):
             else:
                 # No more pages
                 break
-                
+
         return allProfiles
-        
+
     @awsRetry
     def _getRolePolicyArns(self, role_name: str) -> List[str]:
         """
         Get all the policies attached to the IAM role with the given name.
-        
+
         These do not include inline policies on the role.
-        
+
         Returns policy ARNs.
         """
-        
+
         # TODO: we don't currently use attached policies.
-        
+
         allPolicies = []
-        
+
         response = self.iam_client.list_attached_role_policies(RoleName=role_name,
                                                                MaxItems=200)
         while True:
@@ -1125,18 +1133,18 @@ class AWSProvisioner(AbstractProvisioner):
             else:
                 # No more pages
                 break
-                
+
         return allPolicies
-        
+
     @awsRetry
     def _getRoleInlinePolicyNames(self, role_name: str) -> List[str]:
         """
         Get all the policies inline in the given IAM role.
         Returns policy names.
         """
-        
+
         allPolicies = []
-        
+
         response = self.iam_client.list_role_policies(RoleName=role_name,
                                                       MaxItems=200)
         while True:
@@ -1150,10 +1158,10 @@ class AWSProvisioner(AbstractProvisioner):
             else:
                 # No more pages
                 break
-                
+
         return allPolicies
-    
-        
+
+
     def full_policy(self, resource: str) -> dict:
         """
         Produce a dict describing the JSON form of a full-access-granting AWS
@@ -1168,13 +1176,13 @@ class AWSProvisioner(AbstractProvisioner):
         <https://github.com/DataBiosphere/toil/wiki/Manual-Autoscaling-Kubernetes-Setup#leader-policy>
         and
         <https://github.com/DataBiosphere/toil/wiki/Manual-Autoscaling-Kubernetes-Setup#worker-policy>.
-        
+
         These are mostly needed to support Kubernetes' AWS CloudProvider, and
         some are for the Kubernetes Cluster Autoscaler's AWS integration.
-        
+
         Some of these are really only needed on the leader.
         """
-        
+
         return dict(Version="2012-10-17", Statement=[dict(Effect="Allow", Resource="*", Action=[
             "ecr:GetAuthorizationToken",
             "ecr:BatchCheckLayerAvailability",
@@ -1227,7 +1235,7 @@ class AWSProvisioner(AbstractProvisioner):
         Create an IAM role and instance profile that grants needed permissions
         for cluster leaders and workers. Naming is handled by the Boto2Context
         and is specific to the cluster.
-        
+
         Returns its ARN.
         """
         assert self._boto2

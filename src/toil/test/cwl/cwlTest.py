@@ -36,6 +36,7 @@ from toil.test import (ToilTest,
                        needs_cwl,
                        needs_docker,
                        needs_gridengine,
+                       needs_kubernetes,
                        needs_lsf,
                        needs_mesos,
                        needs_parasol,
@@ -50,21 +51,43 @@ CONFORMANCE_TEST_TIMEOUT = 3600
 def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selected_tests=None):
     try:
         cmd = ['cwltest',
+               '--verbose',
                '--tool=toil-cwl-runner',
-               f'-j{int(psutil.cpu_count()/2)}',
                f'--test={yml}',
                '--timeout=2400',
                f'--basedir={workDir}']
         if selected_tests:
             cmd.append(f'-n={selected_tests}')
 
-        args_passed_directly_to_toil = [f'--disableCaching={not caching}', '--clean=always']
+        args_passed_directly_to_toil = [f'--disableCaching={not caching}',
+                                        '--clean=always',
+                                        '--logDebug']
+        
+        if 'SINGULARITY_DOCKER_HUB_MIRROR' in os.environ:
+            args_passed_directly_to_toil.append('--setEnv=SINGULARITY_DOCKER_HUB_MIRROR')
+
+        job_store_override = None
+
+        if batchSystem == 'kubernetes':
+            # Run tests in parallel on Kubernetes.
+            # We can throw a bunch at it at once and let Kubernetes schedule.
+            cmd.append('-j8')
+        else:
+            # Run tests in parallel on the local machine
+            cmd.append(f'-j{int(psutil.cpu_count()/2)}')
+
         if batchSystem:
             args_passed_directly_to_toil.append(f"--batchSystem={batchSystem}")
         cmd.extend(['--'] + args_passed_directly_to_toil)
 
         log.info("Running: '%s'", "' '".join(cmd))
-        subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
+        try:
+            subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
+        finally:
+            if job_store_override:
+                # Clean up the job store we used for all the tests, if it is still there.
+                subprocess.run(['toil', 'clean', job_store_override])
+
     except subprocess.CalledProcessError as e:
         only_unsupported = False
         # check output -- if we failed but only have unsupported features, we're okay
@@ -148,8 +171,7 @@ class CWLv10Test(ToilTest):
     def test_s3_as_secondary_file(self):
         from toil.cwl import cwltoil
         st = StringIO()
-        main_args = ['--jobStore', f'aws:us-west-2:deleteme-cwl-s3-secondary-file-test-{str(uuid.uuid4())[-12:]}',
-                     '--outdir', self.outDir,
+        main_args = ['--outdir', self.outDir,
                      os.path.join(self.rootDir, 'src/toil/test/cwl/s3_secondary_file.cwl'),
                      os.path.join(self.rootDir, 'src/toil/test/cwl/s3_secondary_file.json')]
         cwltoil.main(main_args, stdout=st)
@@ -196,7 +218,10 @@ class CWLv10Test(ToilTest):
 
     @slow
     def test_restart(self):
-        """Enable restarts with toil-cwl-runner -- run failing test, re-run correct test."""
+        """
+        Enable restarts with toil-cwl-runner -- run failing test, re-run correct test.
+        Only implemented for single machine.
+        """
         log.info('Running CWL Test Restart.  Expecting failure, then success.')
         from toil.cwl import cwltoil
         from toil.jobStores.abstractJobStore import NoSuchJobStoreException
@@ -239,83 +264,97 @@ class CWLv10Test(ToilTest):
 
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
-    def test_run_conformance(self, batchSystem=None, caching=False):
+    def test_run_conformance(self, batchSystem=None, caching=False, selected_tests=None):
         run_conformance_tests(workDir=self.workDir,
                               yml='conformance_test_v1.0.yaml',
                               caching=caching,
-                              batchSystem=batchSystem)
+                              batchSystem=batchSystem,
+                              selected_tests=selected_tests)
+
+    @slow
+    @needs_lsf
+    @unittest.skip
+    def test_lsf_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="lsf", **kwargs)
+
+    @slow
+    @needs_slurm
+    @unittest.skip
+    def test_slurm_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="slurm", **kwargs)
+
+    @slow
+    @needs_torque
+    @unittest.skip
+    def test_torque_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="torque", **kwargs)
+
+    @slow
+    @needs_gridengine
+    @unittest.skip
+    def test_gridengine_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="grid_engine", **kwargs)
+
+    @slow
+    @needs_mesos
+    @unittest.skip
+    def test_mesos_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="mesos", **kwargs)
+
+    @slow
+    @needs_parasol
+    @unittest.skip
+    def test_parasol_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="parasol", **kwargs)
+
+    @slow
+    @needs_kubernetes
+    @pytest.mark.xfail
+    def test_kubernetes_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="kubernetes",
+                                         **kwargs)
 
     @slow
     @needs_lsf
     @unittest.skip
     def test_lsf_cwl_conformance_with_caching(self):
-        return self.test_run_conformance(batchSystem="lsf", caching=True)
+        return self.test_lsf_cwl_conformance(caching=True)
 
     @slow
     @needs_slurm
     @unittest.skip
     def test_slurm_cwl_conformance_with_caching(self):
-        return self.test_run_conformance(batchSystem="slurm", caching=True)
+        return self.test_slurm_cwl_conformance(caching=True)
 
     @slow
     @needs_torque
     @unittest.skip
     def test_torque_cwl_conformance_with_caching(self):
-        return self.test_run_conformance(batchSystem="torque", caching=True)
+        return self.test_torque_cwl_conformance(caching=True)
 
     @slow
     @needs_gridengine
     @unittest.skip
     def test_gridengine_cwl_conformance_with_caching(self):
-        return self.test_run_conformance(batchSystem="grid_engine", caching=True)
+        return self.test_gridengine_cwl_conformance(caching=True)
 
     @slow
     @needs_mesos
     @unittest.skip
     def test_mesos_cwl_conformance_with_caching(self):
-        return self.test_run_conformance(batchSystem="mesos", caching=True)
+        return self.test_mesos_cwl_conformance(caching=True)
 
     @slow
     @needs_parasol
     @unittest.skip
     def test_parasol_cwl_conformance_with_caching(self):
-        return self.test_run_conformance(batchSystem="parasol", caching=True)
+        return self.test_parasol_cwl_conformance(caching=True)
 
     @slow
-    @needs_lsf
-    @unittest.skip
-    def test_lsf_cwl_conformance(self):
-        return self.test_run_conformance(batchSystem="lsf")
-
-    @slow
-    @needs_slurm
-    @unittest.skip
-    def test_slurm_cwl_conformance(self):
-        return self.test_run_conformance(batchSystem="slurm")
-
-    @slow
-    @needs_torque
-    @unittest.skip
-    def test_torque_cwl_conformance(self):
-        return self.test_run_conformance(batchSystem="torque")
-
-    @slow
-    @needs_gridengine
-    @unittest.skip
-    def test_gridengine_cwl_conformance(self):
-        return self.test_run_conformance(batchSystem="grid_engine")
-
-    @slow
-    @needs_mesos
-    @unittest.skip
-    def test_mesos_cwl_conformance(self):
-        return self.test_run_conformance(batchSystem="mesos")
-
-    @slow
-    @needs_parasol
-    @unittest.skip
-    def test_parasol_cwl_conformance(self):
-        return self.test_run_conformance(batchSystem="parasol")
+    @needs_kubernetes
+    @pytest.mark.xfail
+    def test_kubernetes_cwl_conformance_with_caching(self):
+        return self.test_kubernetes_cwl_conformance(caching=True)
 
     @staticmethod
     def _expected_seqtk_output(outDir):
@@ -381,16 +420,30 @@ class CWLv11Test(ToilTest):
 
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
+    def test_run_conformance(self, **kwargs):
+        run_conformance_tests(workDir=self.cwlSpec,
+                              yml=self.test_yaml,
+                              **kwargs)
+
+    @slow
+    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance_with_caching(self):
         self.test_run_conformance(caching=True)
 
     @slow
-    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
-    def test_run_conformance(self, batchSystem=None, caching=False):
-        run_conformance_tests(workDir=self.cwlSpec,
-                              yml=self.test_yaml,
-                              caching=caching,
-                              batchSystem=batchSystem)
+    @needs_kubernetes
+    @pytest.mark.xfail
+    def test_kubernetes_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="kubernetes",
+                                         **kwargs)
+
+
+    @slow
+    @needs_kubernetes
+    @pytest.mark.xfail
+    def test_kubernetes_cwl_conformance_with_caching(self):
+        return self.test_kubernetes_cwl_conformance(caching=True)
+
 
 @needs_cwl
 class CWLv12Test(ToilTest):
@@ -416,17 +469,29 @@ class CWLv12Test(ToilTest):
 
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
+    def test_run_conformance(self, **kwargs):
+        run_conformance_tests(workDir=self.cwlSpec,
+                              yml=self.test_yaml,
+                              **kwargs)
+
+    @slow
+    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance_with_caching(self):
         self.test_run_conformance(caching=True)
 
     @slow
-    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
-    def test_run_conformance(self, batchSystem=None, caching=False):
-        run_conformance_tests(workDir=self.cwlSpec,
-                              yml=self.test_yaml,
-                              caching=caching,
-                              batchSystem=batchSystem)
+    @needs_kubernetes
+    @pytest.mark.xfail
+    def test_kubernetes_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="kubernetes",
+                                         **kwargs)
 
+
+    @slow
+    @needs_kubernetes
+    @pytest.mark.xfail
+    def test_kubernetes_cwl_conformance_with_caching(self):
+        return self.test_kubernetes_cwl_conformance(caching=True)
 
 @needs_cwl
 class CWLSmallTests(ToilTest):

@@ -28,7 +28,7 @@ from unittest import skipIf
 from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    InsufficientSystemResources)
 # Don't import any batch systems here that depend on extras
-# in order to import properly. Import them later, in tests 
+# in order to import properly. Import them later, in tests
 # protected by annotations.
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
@@ -110,14 +110,14 @@ class hidden(object):
             :rtype: toil.common.Config
             """
             return self.createConfig()
-            
+
         def _mockJobDescription(self, jobStoreID=None, command=None, **kwargs):
             """
             Create a mock-up JobDescription with the given ID, command, and other parameters.
             """
-           
+
             # TODO: Use a real unittest.Mock? For now we make a real instance and just hack it up.
-            
+
             desc = JobDescription(**kwargs)
             # Normally we can't pass in a command or ID, and the job
             # serialization logic takes care of filling them in. We set them
@@ -126,7 +126,7 @@ class hidden(object):
                 desc.command = command
             if jobStoreID is not None:
                 desc.jobStoreID = jobStoreID
-                
+
             return desc
 
         @classmethod
@@ -143,10 +143,10 @@ class hidden(object):
         def tearDown(self):
             self.batchSystem.shutdown()
             super(hidden.AbstractBatchSystemTest, self).tearDown()
-        
+
         def testAvailableCores(self):
             self.assertTrue(cpu_count() >= numCores)
-        
+
         def testRunJobs(self):
             jobDesc1 = self._mockJobDescription(command='sleep 1000', jobName='test1', unitName=None,
                                                 jobStoreID='1', requirements=defaultRequirements)
@@ -205,7 +205,7 @@ class hidden(object):
 
             # Make sure killBatchJobs can handle jobs that don't exist
             self.batchSystem.killBatchJobs([10])
-        
+
         def testSetEnv(self):
             # Parasol disobeys shell rules and stupidly splits the command at
             # the space character into arguments before exec'ing it, whether
@@ -214,8 +214,8 @@ class hidden(object):
             script_shell = 'if [ "x${FOO}" == "xbar" ] ; then exit 23 ; else exit 42 ; fi'
 
             # Escape the semicolons
-            script_protected = script_shell.replace(';', r'\;') 
-             
+            script_protected = script_shell.replace(';', r'\;')
+
             # Turn into a string which convinces bash to take all args and paste them back together and run them
             command = "bash -c \"\\${@}\" bash eval " + script_protected
             jobDesc4 = self._mockJobDescription(command=command, jobName='test4', unitName=None,
@@ -233,7 +233,7 @@ class hidden(object):
             jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             self.assertEqual(jobUpdateInfo.exitStatus, 23)
             self.assertEqual(jobUpdateInfo.jobID, job5)
-        
+
         def testCheckResourceRequest(self):
             if isinstance(self.batchSystem, BatchSystemSupport):
                 checkResourceRequest = self.batchSystem.checkResourceRequest
@@ -250,7 +250,7 @@ class hidden(object):
                 self.assertRaises(AssertionError, checkResourceRequest,
                                   memory=10, cores=None, disk=1000)
                 checkResourceRequest(memory=10, cores=1, disk=100)
-       
+
         def testScalableBatchSystem(self):
             # If instance of scalable batch system
             pass

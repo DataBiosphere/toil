@@ -50,9 +50,9 @@ def down(job, inputFileStoreID, N, path, downCheckpoints, options, memory=sortMe
     a follow on job is then created which merges back the results else
     the file is sorted and placed in the output.
     """
-    
+
     RealtimeLogger.info("Down job starting: %s" % path)
-    
+
     # Read the file
     inputFile = job.fileStore.readGlobalFile(inputFileStoreID, cache=False)
     length = os.path.getsize(inputFile)
@@ -86,7 +86,7 @@ def down(job, inputFileStoreID, N, path, downCheckpoints, options, memory=sortMe
         shutil.copyfile(inputFile, inputFile + '.sort')
         sort(inputFile + '.sort')
         result = job.fileStore.writeGlobalFile(inputFile + '.sort')
-        
+
     RealtimeLogger.info("Down job finished: %s" % path)
     return result
 
@@ -95,9 +95,9 @@ def up(job, inputFileID1, inputFileID2, path, options, memory=sortMemory):
     """
     Merges the two files and places them in the output.
     """
-    
+
     RealtimeLogger.info("Up job starting: %s" % path)
-    
+
     with job.fileStore.writeGlobalFileStream() as (fileHandle, outputFileStoreID):
         fileHandle = codecs.getwriter('utf-8')(fileHandle)
         with job.fileStore.readGlobalFileStream(inputFileID1) as inputFileHandle1:
@@ -110,9 +110,9 @@ def up(job, inputFileID1, inputFileID2, path, options, memory=sortMemory):
         # Cleanup up the input files - these deletes will occur after the completion is successful.
         job.fileStore.deleteGlobalFile(inputFileID1)
         job.fileStore.deleteGlobalFile(inputFileID2)
-        
+
         RealtimeLogger.info("Up job finished: %s" % path)
-        
+
         return outputFileStoreID
 
 
@@ -131,7 +131,7 @@ def sort(file):
 def merge(fileHandle1, fileHandle2, outputFileHandle):
     """
     Merges together two files maintaining sorted order.
-    
+
     All handles must be text-mode streams.
     """
     line2 = fileHandle2.readline()
@@ -204,7 +204,7 @@ def main(options=None):
         parser.add_argument("--sortMemory", dest="sortMemory",
                         help="Memory for jobs that sort chunks of the file.",
                         default=None)
-    
+
         parser.add_argument("--mergeMemory", dest="mergeMemory",
                         help="Memory for jobs that collate results.",
                         default=None)

@@ -40,7 +40,7 @@ example::
             self.message = message
 
         def run(self, fileStore):
-            return "Hello, world!, here's a message: %s" % self.message
+            return "Hello, world! Here's a message: %s" % self.message
 
 
 In the example a class, HelloWorld, is defined. The constructor requests 2
@@ -65,8 +65,8 @@ workflows. For example:
 
 .. note::
 
-    Do not include a `.` in the name of your python script (besides `.py` at the end). 
-    This is to allow toil to import the types and  functions defined in your file while starting a new process. 
+    Do not include a `.` in the name of your python script (besides `.py` at the end).
+    This is to allow toil to import the types and  functions defined in your file while starting a new process.
 
 Alternatively, the more powerful :class:`toil.common.Toil` class can be used to
 run and resume workflows. It is used as a context manager and allows for

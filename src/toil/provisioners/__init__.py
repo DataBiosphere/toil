@@ -21,10 +21,10 @@ def cluster_factory(provisioner, clusterName=None, clusterType='mesos', zone=Non
     """
     Find and instantiate the appropriate provisioner instance to make clusters
     in the given cloud.
-    
+
     Raises ClusterTypeNotSupportedException if the given provisioner does not
     implement clusters of the given type.
-    
+
     :param provisioner: The cloud type of the cluster.
     :param clusterName: The name of the cluster.
     :param clusterType: The type of cluster: 'mesos' or 'kubernetes'.
@@ -52,10 +52,12 @@ def cluster_factory(provisioner, clusterName=None, clusterType='mesos', zone=Non
 def add_provisioner_options(parser):
     group = parser.add_argument_group("Provisioner Options.")
 
-    # TODO: Duplicate "--provisioner" argument in common.py; consolidate
-    group.add_argument('-p', '--provisioner', dest='provisioner', choices=['aws', 'gce'],
-                help=f"The provisioner for cluster auto-scaling. The currently supported choices are"
-                     f"'gce', or 'aws'.")
+    provisioner_choices = ['aws', 'gce']
+    # TODO: Better consolidate this provisioner arg and the one in common.py?
+    group.add_argument('--provisioner', '-p', dest="provisioner", choices=provisioner_choices, default='aws',
+                       help=f"The provisioner for cluster auto-scaling.  This is the '--provisioner' option set for "
+                            f"Toil utils like launch-cluster and destroy-cluster, which always require a provisioner, "
+                            f"and so this defaults to: %(default)s.  Choices: {provisioner_choices}.")
     group.add_argument('-z', '--zone', dest='zone', required=False, default=None,
                        help="The availability zone of the master. This parameter can also be set via the 'TOIL_X_ZONE' "
                             "environment variable, where X is AWS or GCE, or by the ec2_region_name parameter "
@@ -113,7 +115,7 @@ class NoSuchClusterException(Exception):
     """Indicates that the specified cluster does not exist."""
     def __init__(self, cluster_name):
         super(NoSuchClusterException, self).__init__(f"The cluster '{cluster_name}' could not be found")
-        
+
 class ClusterTypeNotSupportedException(Exception):
     """Indicates that a provisioner does not support a given cluster type."""
     def __init__(self, provisioner_class, cluster_type):

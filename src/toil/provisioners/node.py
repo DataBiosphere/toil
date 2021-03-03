@@ -102,7 +102,7 @@ class Node(object):
                 logger.debug("Rsync to new node failed, trying again. Error message: %s" % e)
                 time.sleep(10 * retry)
         raise RuntimeError("Failed to inject file %s to %s with ip %s" % (fromFile, role, self.effectiveIP))
-        
+
     def extractFile(self, fromFile, toFile, role):
         """
         rysnc a file from the container with the given role

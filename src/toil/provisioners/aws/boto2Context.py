@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 class Boto2Context(object):
     """
     Encapsulates all Boto2 connections used by the AWSProvisioner.
-    
+
     Also performs namespacing to keep clusters isolated.
     """
     name_prefix_re = re.compile(r'^(/([0-9a-zA-Z.-][_0-9a-zA-Z.-]*))*')
@@ -324,7 +324,7 @@ class Boto2Context(object):
 
         Illegal paths that would introduce ambiguity need to raise an exception
         >>> ctx.to_aws_name('/_') # doctest: +IGNORE_EXCEPTION_DETAIL
-        Traceback (most recent call last): 
+        Traceback (most recent call last):
         ...
         InvalidPathError: Invalid path '/_'
         >>> ctx.to_aws_name('/_/') # doctest: +IGNORE_EXCEPTION_DETAIL
@@ -332,7 +332,7 @@ class Boto2Context(object):
         ...
         InvalidPathError: Invalid path '/_/'
         >>> ctx.from_aws_name('___') # doctest: +IGNORE_EXCEPTION_DETAIL
-        Traceback (most recent call last): 
+        Traceback (most recent call last):
         ...
         InvalidPathError: Invalid path '/_/'
 
