@@ -25,7 +25,7 @@ def make_public_dir(dirName: str) -> str:
     return dirName
 
 
-def unused_dir_path(prefix: str) -> str:
+def make_unique_public_dir(prefix: str) -> str:
     """
     Try to make a random directory name with length 4 that doesn't exist, with the given prefix.
 
@@ -40,16 +40,16 @@ def unused_dir_path(prefix: str) -> str:
         for _ in range(10):  # make 10 attempts for each length
             truncated_uuid = str(uuid4()).replace('-', '')[:i]
             generated_dir_path = os.path.join(prefix, truncated_uuid)
-            if not os.path.exists(generated_dir_path):
+            try:
+                os.mkdir(generated_dir_path)
+                os.chmod(generated_dir_path, 0o777)
                 return generated_dir_path
+            except FileExistsError:
+                pass
     this_should_never_happen = os.path.join(prefix, str(uuid4()))
-    assert not os.path.exists(this_should_never_happen)
+    os.mkdir(this_should_never_happen)
+    os.chmod(this_should_never_happen, 0o777)
     return this_should_never_happen
-
-
-def make_unique_public_dir(prefix: str) -> str:
-    """Makes a new subdirectory with the given prefix, making sure it is public."""
-    return make_public_dir(unused_dir_path(prefix))
 
 
 class FileID(str):
