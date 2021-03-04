@@ -453,11 +453,14 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     def createBatchSystem(self):
         return SingleMachineBatchSystem(config=self.config,
                                         maxCores=numCores, maxMemory=1e9, maxDisk=2001)
-                                        
-    def testProcessEscape(self):
+                        
+    def testProcessEscape(self, hide: bool = False):
         """
         Test to make sure that child processes and their descendants go away
         when the Toil workflow stops.
+        
+        If hide is true, will try and hide the child processes to make them
+        hard to stop.
         """
         
         def script():
@@ -483,6 +486,13 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
                 if sig != signal.SIGKILL and sig != signal.SIGSTOP:
                     signal.signal(sig, handle_signal)
                 
+            if len(sys.argv) > 2:
+                # Instructed to hide
+                if os.fork():
+                    # Try and hide the first process immediately so getting its
+                    # pgid won't work.
+                    sys.exit(0)
+                
             for depth in range(3):
                 # Bush put into a tree of processes
                 os.fork()
@@ -503,20 +513,33 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
         lockable_path = write_temp_file('')
         
         try:
+            command = f'{sys.executable} {script_path} {lockable_path}'
+            if hide:
+                # Tell the children to stop the first child and hide out in the
+                # process group it made.
+                command += ' hide'
+        
             bs = self.createBatchSystem()
             # Start the job
-            bs.issueBatchJob(self._mockJobDescription(command=f'{sys.executable} {script_path} {lockable_path}', jobName='fork',
+            bs.issueBatchJob(self._mockJobDescription(command=command, jobName='fork',
                                                       jobStoreID='1', requirements=defaultRequirements))
             # Wait
             time.sleep(10)
             
-            # Try to lock the file and make sure it fails
             lockfile = open(lockable_path, 'w')
-            try:
-                fcntl.lockf(lockfile, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                assert False, "Should not be able to lock file while job is running"
-            except OSError:
-                pass
+            
+            if not hide:
+                # In hiding mode the job will finish, and the batch system will
+                # clean up after it promptly. In non-hiding mode the job will
+                # stick around until shutdown, so make sure we can see it.
+                
+                # Try to lock the file and make sure it fails
+                
+                try:
+                    fcntl.lockf(lockfile, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    assert False, "Should not be able to lock file while job is running"
+                except OSError:
+                    pass
             
             # Shut down the batch system
             bs.shutdown()
@@ -529,6 +552,14 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
         finally:
             os.unlink(script_path)
             os.unlink(lockable_path)
+            
+    def testHidingProcessEscape(self):
+        """
+        Test to make sure that child processes and their descendants go away
+        when the Toil workflow stops, even if the job process stops and leaves children.
+        """
+        
+        self.testProcessEscape(hide=True)
 
 
 @slow

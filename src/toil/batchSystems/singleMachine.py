@@ -22,6 +22,7 @@ import traceback
 from contextlib import contextmanager
 from queue import Empty, Queue
 from threading import Condition, Event, Lock, Thread
+from typing import List
 
 import toil
 from toil import worker as toil_worker
@@ -240,16 +241,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             # When we get here, we are shutting down.
             log.debug('Daddy thread cleaning up %d remaining children...', len(self.children))
 
-            for popen in self.children.values():
-                # Kill all the children
-                log.debug('Send shutdown kill to PID %s', popen.pid)
-                # Kill the group, which hopefully hasn't been reused
-                os.killpg(os.getpgid(popen.pid), signal.SIGKILL)
-                # Kill the subprocess again through popen for good measure.
-                popen.kill()
-            for popen in self.children.values():
-                # Reap all the children
-                popen.wait()
+            self._stop_and_wait(self.children.values())
 
             # Then exit the thread.
             return
@@ -266,6 +258,48 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             exc = self.daddyException
             self.daddyException = None
             raise exc
+            
+    def _stop_now(self, popens: List[subprocess.Popen]):
+        """
+        Stop the given child processes and all their children. Does not reap them.
+        """
+        
+        for popen in popens:
+            # Kill all the children
+            
+            if popen.returncode is not None:
+                # Process is not known to be dead. Try and grab its group.
+                try:
+                    pgid = os.getpgid(popen.pid)
+                except OSError:
+                    # It just died. Assume the pgid was its PID.
+                    pgid = popen.pid
+            else:
+                # It is dead. Try it's PID as a PGID and hope we didn't re-use it.
+                pgid = popen.pid
+                
+            if pgid != os.getpgrp():
+                # The child process really is in its own group, and not ours.
+                
+                # Kill the group, which hopefully hasn't been reused
+                log.debug('Send shutdown kill to process group %s', pgid)
+                os.killpg(pgid, signal.SIGKILL)
+            else:
+                # Kill the subprocess again through popen in case it somehow
+                # never managed to make the group.
+                popen.kill()
+               
+    def _stop_and_wait(self, popens: List[subprocess.Popen]):
+        """
+        Stop the given child processes and all their children. Blocks until the
+        processes are gone.
+        """
+        
+        self._stop_now(popens)
+               
+        for popen in popens:
+            # Wait on all the children
+            popen.wait()
 
     def _pollForDoneChildrenIn(self, pid_to_popen):
         """
@@ -401,7 +435,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                         # process group) so that, if the user signals the
                         # workflow, Toil will be responsible for killing the
                         # job. This also makes sure that we can signal the job
-                        # and all its children together.
+                        # and all its children together. We assume that the
+                        # process group ID will equal the PID of the process we
+                        # are starting.
                         popen = subprocess.Popen(jobCommand,
                                                  shell=True,
                                                  env=dict(os.environ, **environment),
@@ -478,6 +514,12 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.childToJob.pop(pid)
         self.children.pop(pid)
 
+        if popen.returncode is None or not callable(getattr(os, 'waitid', None)):
+            # It isn't reaped yet, or we have to reap all children to see if thay're done.
+            # Before we reap it (if possible), kill its PID as a PGID to make sure
+            # it isn't leaving children behind.
+            os.killpg(pid, signal.SIGKILL)
+
         # See how the child did, and reap it.
         statusCode = popen.wait()
         if statusCode != 0 and not info.killIntended:
@@ -534,20 +576,29 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self._checkOnDaddy()
 
         log.debug('Killing jobs: {}'.format(jobIDs))
+        
+        # Collect the popen handles for the jobs we have to stop
+        popens = []
+        
         for jobID in jobIDs:
             if jobID in self.runningJobs:
                 info = self.runningJobs[jobID]
                 info.killIntended = True
                 if info.popen is not None:
-                    log.debug('Send kill to PID %s', info.popen.pid)
-                    info.popen.kill()
-                    log.debug('Sent kill to PID %s', info.popen.pid)
+                    popens.append(info.popen)
                 else:
                     # No popen if running in forkless mode currently
                     assert self.debugWorker
                     log.critical("Can't kill job: %s in debug mode" % jobID)
-                while jobID in self.runningJobs:
-                    pass
+        
+        # Stop them all in a batch. Don't reap, because we need the daddy
+        # thread to reap them to mark the jobs as not running anymore.
+        self._stop_now(popens)
+        
+        for jobID in jobIDs:
+            while jobID in self.runningJobs:
+                # Wait for the daddy thread to collect them.
+                time.sleep(0.01)
 
     def getIssuedBatchJobIDs(self):
         """Just returns all the jobs that have been run, but not yet returned as updated."""
