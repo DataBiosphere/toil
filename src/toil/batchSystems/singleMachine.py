@@ -258,15 +258,15 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             exc = self.daddyException
             self.daddyException = None
             raise exc
-            
+
     def _stop_now(self, popens: List[subprocess.Popen]):
         """
         Stop the given child processes and all their children. Does not reap them.
         """
-        
+
         for popen in popens:
             # Kill all the children
-            
+
             if popen.returncode is not None:
                 # Process is not known to be dead. Try and grab its group.
                 try:
@@ -277,10 +277,10 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             else:
                 # It is dead. Try it's PID as a PGID and hope we didn't re-use it.
                 pgid = popen.pid
-                
+
             if pgid != os.getpgrp():
                 # The child process really is in its own group, and not ours.
-                
+
                 # Kill the group, which hopefully hasn't been reused
                 log.debug('Send shutdown kill to process group %s', pgid)
                 os.killpg(pgid, signal.SIGKILL)
@@ -288,15 +288,15 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 # Kill the subprocess again through popen in case it somehow
                 # never managed to make the group.
                 popen.kill()
-               
+
     def _stop_and_wait(self, popens: List[subprocess.Popen]):
         """
         Stop the given child processes and all their children. Blocks until the
         processes are gone.
         """
-        
+
         self._stop_now(popens)
-               
+
         for popen in popens:
             # Wait on all the children
             popen.wait()
@@ -576,10 +576,10 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self._checkOnDaddy()
 
         log.debug('Killing jobs: {}'.format(jobIDs))
-        
+
         # Collect the popen handles for the jobs we have to stop
         popens = []
-        
+
         for jobID in jobIDs:
             if jobID in self.runningJobs:
                 info = self.runningJobs[jobID]
@@ -590,11 +590,11 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     # No popen if running in forkless mode currently
                     assert self.debugWorker
                     log.critical("Can't kill job: %s in debug mode" % jobID)
-        
+
         # Stop them all in a batch. Don't reap, because we need the daddy
         # thread to reap them to mark the jobs as not running anymore.
         self._stop_now(popens)
-        
+
         for jobID in jobIDs:
             while jobID in self.runningJobs:
                 # Wait for the daddy thread to collect them.

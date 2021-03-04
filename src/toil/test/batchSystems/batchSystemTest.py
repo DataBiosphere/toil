@@ -417,7 +417,7 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
         runningJobIDs = self._waitForJobsToStart(1, tries=20)
         # Make sure job is NOT running
         self.assertEqual(set(runningJobIDs), set({}))
-        
+
 def write_temp_file(s: str) -> str:
     """
     Dump a string into a temp file and return its path.
@@ -433,7 +433,7 @@ def write_temp_file(s: str) -> str:
         return path
     finally:
         os.close(fd)
-        
+
 def save_script(script: Callable) -> str:
     """
     Save the given Python function as a script file and return its path.
@@ -453,16 +453,16 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     def createBatchSystem(self):
         return SingleMachineBatchSystem(config=self.config,
                                         maxCores=numCores, maxMemory=1e9, maxDisk=2001)
-                        
+
     def testProcessEscape(self, hide: bool = False):
         """
         Test to make sure that child processes and their descendants go away
         when the Toil workflow stops.
-        
+
         If hide is true, will try and hide the child processes to make them
         hard to stop.
         """
-        
+
         def script():
             #!/usr/bin/env python3
             import fcntl
@@ -470,80 +470,80 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
             import sys
             import signal
             import time
-            
+
             def handle_signal(sig, frame):
                 sys.stderr.write(f'{os.getpid()} ignoring signal {sig}\n')
-            
+
             if hasattr(signal, 'valid_signals'):
                 # We can just ask about the signals
                 all_signals = signal.valid_signals()
             else:
                 # Fish them out by name
                 all_signals = [getattr(signal, n) for n in dir(signal) if n.startswith('SIG') and not n.startswith('SIG_')]
-            
+
             for sig in all_signals:
                 # Set up to ignore all signals we can and generally be obstinate
                 if sig != signal.SIGKILL and sig != signal.SIGSTOP:
                     signal.signal(sig, handle_signal)
-                
+
             if len(sys.argv) > 2:
                 # Instructed to hide
                 if os.fork():
                     # Try and hide the first process immediately so getting its
                     # pgid won't work.
                     sys.exit(0)
-                
+
             for depth in range(3):
                 # Bush put into a tree of processes
                 os.fork()
-            
+
             if len(sys.argv) > 1:
                 fd = os.open(sys.argv[1], os.O_RDONLY)
                 fcntl.lockf(fd, fcntl.LOCK_SH)
-                
+
             sys.stderr.write(f'{os.getpid()} waiting...\n')
-                
+
             while True:
                 # Wait around forever
                 time.sleep(60)
 
         script_path = save_script(script)
-        
+
         # We will have all the job processes try and lock this file shared while they are alive.
         lockable_path = write_temp_file('')
-        
+
         try:
             command = f'{sys.executable} {script_path} {lockable_path}'
             if hide:
                 # Tell the children to stop the first child and hide out in the
                 # process group it made.
                 command += ' hide'
-        
+
             bs = self.createBatchSystem()
             # Start the job
             bs.issueBatchJob(self._mockJobDescription(command=command, jobName='fork',
                                                       jobStoreID='1', requirements=defaultRequirements))
             # Wait
             time.sleep(10)
-            
+
             lockfile = open(lockable_path, 'w')
-            
+
             if not hide:
                 # In hiding mode the job will finish, and the batch system will
                 # clean up after it promptly. In non-hiding mode the job will
                 # stick around until shutdown, so make sure we can see it.
-                
+
                 # Try to lock the file and make sure it fails
-                
+
                 try:
                     fcntl.lockf(lockfile, fcntl.LOCK_EX | fcntl.LOCK_NB)
                     assert False, "Should not be able to lock file while job is running"
                 except OSError:
                     pass
-            
+
             # Shut down the batch system
             bs.shutdown()
-            
+
             # After the batch system shuts down, we should be able to get the
             # lock immediately, because all the children should be gone.
             fcntl.lockf(lockfile, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -552,13 +552,13 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
         finally:
             os.unlink(script_path)
             os.unlink(lockable_path)
-            
+
     def testHidingProcessEscape(self):
         """
         Test to make sure that child processes and their descendants go away
         when the Toil workflow stops, even if the job process stops and leaves children.
         """
-        
+
         self.testProcessEscape(hide=True)
 
 
@@ -619,7 +619,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                 count(int(sys.argv[2]))
 
         self.scriptPath = save_script(script)
-        
+
     def tearDown(self):
         os.unlink(self.scriptPath)
         os.unlink(self.counterPath)
