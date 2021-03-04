@@ -976,3 +976,23 @@ def collect_by_key(in_array: List[WDLPair]) -> dict:
         map.setdefault(pair.left, []).append(pair.right)
 
     return map
+
+
+def flatten(in_array: List[list]) -> list:
+    """
+    Given an array of arrays, the `flatten` function concatenates all the member
+    arrays in the order to appearance to give the result. It does not deduplicate
+    the elements.
+
+    WDL syntax: Array[X] flatten(Array[Array[X]])
+    """
+    assert isinstance(in_array, list), f'flatten() requires "{in_array}" to be a list!  Not: {type(in_array)}'
+
+    arr = []
+
+    for element in in_array:
+        assert isinstance(element, list), f'flatten() requires all collections to be a list!  Not: {type(element)}'
+
+        arr.extend(flatten(element))
+
+    return arr
