@@ -15,6 +15,7 @@ import fcntl
 import itertools
 import logging
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,7 @@ from abc import ABCMeta, abstractmethod
 from fractions import Fraction
 from inspect import getsource
 from textwrap import dedent
+from typing import Callable
 from unittest import skipIf
 
 from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
@@ -207,10 +209,11 @@ class hidden(object):
             self.batchSystem.killBatchJobs([10])
 
         def testSetEnv(self):
-            # Parasol disobeys shell rules and stupidly splits the command at
-            # the space character into arguments before exec'ing it, whether
-            # the space is quoted, escaped or not.
+            # Parasol disobeys shell rules and splits the command at the space
+            # character into arguments before exec'ing it, whether the space is
+            # quoted, escaped or not.
 
+            # Start with a relatively safe script
             script_shell = 'if [ "x${FOO}" == "xbar" ] ; then exit 23 ; else exit 42 ; fi'
 
             # Escape the semicolons
@@ -414,6 +417,29 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
         runningJobIDs = self._waitForJobsToStart(1, tries=20)
         # Make sure job is NOT running
         self.assertEqual(set(runningJobIDs), set({}))
+        
+def write_temp_file(s: str) -> str:
+    """
+    Dump a string into a temp file and return its path.
+    """
+    fd, path = tempfile.mkstemp()
+    try:
+        encoded = s.encode('utf-8')
+        assert os.write(fd, encoded) == len(encoded)
+    except:
+        os.unlink(path)
+        raise
+    else:
+        return path
+    finally:
+        os.close(fd)
+        
+def save_script(script: Callable) -> str:
+    """
+    Save the given Python function as a script file and return its path.
+    """
+    path = write_temp_file(dedent('\n'.join(getsource(script).split('\n')[1:])))
+    return path
 
 @travis_test
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
@@ -427,6 +453,82 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     def createBatchSystem(self):
         return SingleMachineBatchSystem(config=self.config,
                                         maxCores=numCores, maxMemory=1e9, maxDisk=2001)
+                                        
+    def testProcessEscape(self):
+        """
+        Test to make sure that child processes and their descendants go away
+        when the Toil workflow stops.
+        """
+        
+        def script():
+            #!/usr/bin/env python3
+            import fcntl
+            import os
+            import sys
+            import signal
+            import time
+            
+            def handle_signal(sig, frame):
+                sys.stderr.write(f'{os.getpid()} ignoring signal {sig}\n')
+            
+            if hasattr(signal, 'valid_signals'):
+                # We can just ask about the signals
+                all_signals = signal.valid_signals()
+            else:
+                # Fish them out by name
+                all_signals = [getattr(signal, n) for n in dir(signal) if n.startswith('SIG') and not n.startswith('SIG_')]
+            
+            for sig in all_signals:
+                # Set up to ignore all signals we can and generally be obstinate
+                if sig != signal.SIGKILL and sig != signal.SIGSTOP:
+                    signal.signal(sig, handle_signal)
+                
+            for depth in range(3):
+                # Bush put into a tree of processes
+                os.fork()
+            
+            if len(sys.argv) > 1:
+                fd = os.open(sys.argv[1], os.O_RDONLY)
+                fcntl.lockf(fd, fcntl.LOCK_SH)
+                
+            sys.stderr.write(f'{os.getpid()} waiting...\n')
+                
+            while True:
+                # Wait around forever
+                time.sleep(60)
+
+        script_path = save_script(script)
+        
+        # We will have all the job processes try and lock this file shared while they are alive.
+        lockable_path = write_temp_file('')
+        
+        try:
+            bs = self.createBatchSystem()
+            # Start the job
+            bs.issueBatchJob(self._mockJobDescription(command=f'{sys.executable} {script_path} {lockable_path}', jobName='fork',
+                                                      jobStoreID='1', requirements=defaultRequirements))
+            # Wait
+            time.sleep(10)
+            
+            # Try to lock the file and make sure it fails
+            lockfile = open(lockable_path, 'w')
+            try:
+                fcntl.lockf(lockfile, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                assert False, "Should not be able to lock file while job is running"
+            except OSError:
+                pass
+            
+            # Shut down the batch system
+            bs.shutdown()
+            
+            # After the batch system shuts down, we should be able to get the
+            # lock immediately, because all the children should be gone.
+            fcntl.lockf(lockfile, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # Then we can release it
+            fcntl.lockf(lockfile, fcntl.LOCK_UN)
+        finally:
+            os.unlink(script_path)
+            os.unlink(lockable_path)
 
 
 @slow
@@ -444,22 +546,9 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
     def setUp(self):
         super(MaxCoresSingleMachineBatchSystemTest, self).setUp()
 
-        def writeTempFile(s):
-            fd, path = tempfile.mkstemp()
-            try:
-                encoded = s.encode('utf-8')
-                assert os.write(fd, encoded) == len(encoded)
-            except:
-                os.unlink(path)
-                raise
-            else:
-                return path
-            finally:
-                os.close(fd)
-
         # Write initial value of counter file containing a tuple of two integers (i, n) where i
         # is the number of currently executing tasks and n the maximum observed value of i
-        self.counterPath = writeTempFile('0,0')
+        self.counterPath = write_temp_file('0,0')
 
         def script():
             import fcntl
@@ -498,8 +587,8 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
             else:
                 count(int(sys.argv[2]))
 
-        self.scriptPath = writeTempFile(dedent('\n'.join(getsource(script).split('\n')[1:])))
-
+        self.scriptPath = save_script(script)
+        
     def tearDown(self):
         os.unlink(self.scriptPath)
         os.unlink(self.counterPath)

@@ -14,6 +14,7 @@
 import logging
 import math
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -237,9 +238,14 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
 
             # When we get here, we are shutting down.
+            log.debug('Daddy thread cleaning up %d remaining children...', len(self.children))
 
             for popen in self.children.values():
-                # Kill all the children, going through popen to avoid signaling re-used PIDs.
+                # Kill all the children
+                log.debug('Send shutdown kill to PID %s', popen.pid)
+                # Kill the group, which hopefully hasn't been reused
+                os.killpg(os.getpgid(popen.pid), signal.SIGKILL)
+                # Kill the subprocess again through popen for good measure.
                 popen.kill()
             for popen in self.children.values():
                 # Reap all the children
@@ -390,10 +396,16 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     # So it is important to not lose track of the child process.
 
                     try:
-                        # Launch the job
+                        # Launch the job.
+                        # Make sure it is in its own session (and thus its own
+                        # process group) so that, if the user signals the
+                        # workflow, Toil will be responsible for killing the
+                        # job. This also makes sure that we can signal the job
+                        # and all its children together.
                         popen = subprocess.Popen(jobCommand,
                                                  shell=True,
-                                                 env=dict(os.environ, **environment))
+                                                 env=dict(os.environ, **environment),
+                                                 start_new_session=True)
                     except Exception:
                         # If the job can't start, make sure we release resources now
                         self.coreFractions.release(coreFractions)
