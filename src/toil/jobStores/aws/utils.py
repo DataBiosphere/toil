@@ -103,29 +103,6 @@ class SDBHelper(object):
         return cls._maxChunks() * cls.maxValueSize
 
     @classmethod
-    def binaryToAttributes(cls, binary):
-        """
-        Turn a bytestring, or None, into SimpleDB attributes.
-        """
-        if binary is None: return {u'numChunks': 0}
-        assert isinstance(binary, bytes)
-        assert len(binary) <= cls.maxBinarySize()
-        # The use of compression is just an optimization. We can't include it in the maxValueSize
-        # computation because the compression ratio depends on the input.
-        compressed = bz2.compress(binary)
-        if len(compressed) > len(binary):
-            compressed = b'U' + binary
-        else:
-            compressed = b'C' + compressed
-        encoded = base64.b64encode(compressed)
-        assert len(encoded) <= cls._maxEncodedSize()
-        n = cls.maxValueSize
-        chunks = (encoded[i:i + n] for i in range(0, len(encoded), n))
-        attributes = {cls._chunkName(i): chunk for i, chunk in enumerate(chunks)}
-        attributes.update({u'numChunks': len(attributes)})
-        return attributes
-
-    @classmethod
     def _chunkName(cls, i):
         return str(i).zfill(3)
 

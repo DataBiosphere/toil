@@ -462,8 +462,7 @@ class AWSFile(SDBHelper):
             assert len(sseKey) == 32
             # boto3 encodes the key and calculates the MD5 for us
             return {'SSECustomerAlgorithm': 'AES256', 'SSECustomerKey': sseKey}
-        else:
-            return {}
+        return {}
 
     def __repr__(self):
         aRepr = reprlib.Repr()

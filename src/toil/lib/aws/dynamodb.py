@@ -176,3 +176,43 @@ def update_item(*, table: str, hash_key: str, sort_key: Optional[str] = None, up
         query['ReturnValues'] = return_values
     resp = db.update_item(**query)
     return _format_ddb_response(resp.get('Attributes'))
+
+
+def create_table(table: str, region: Optional[str]):
+    # TODO: Make sure that this is region appropriate
+    return db.create_table(
+        TableName=table,
+        KeySchema=[
+            {
+                'AttributeName': 'filetype',
+                'KeyType': 'HASH'  # Partition key
+            },
+            {
+                'AttributeName': 'id',
+                'KeyType': 'RANGE'  # Sort key
+            }
+        ],
+        AttributeDefinitions=[
+            {
+                'AttributeName': 'filetype',
+                'AttributeType': 'S'
+            },
+            {
+                'AttributeName': 'id',
+                'AttributeType': 'S'
+            },
+
+        ],
+        ProvisionedThroughput={
+            'ReadCapacityUnits': 10,
+            'WriteCapacityUnits': 10
+        }
+    )
+
+
+def table_exists(table: str) -> bool:
+    table = db.Table(table)
+    try:
+        is_table_existing = table.table_status in ("CREATING", "UPDATING", "DELETING", "ACTIVE")
+    except ClientError:
+        return False
