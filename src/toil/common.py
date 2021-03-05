@@ -1389,7 +1389,6 @@ def getDirSizeRecursively(dirPath):
     :param str dirPath: A valid path to a directory or file.
     :return: Total size, in bytes, of the file or directory at dirPath.
     """
-
     # du is often faster than using os.lstat(), sometimes significantly so.
 
     # The call: 'du -s /some/path' should give the number of 512-byte blocks

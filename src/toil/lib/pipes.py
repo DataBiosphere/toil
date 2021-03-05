@@ -7,6 +7,7 @@ from toil.lib.threading import ExceptionalThread
 
 log = logging.getLogger(__name__)
 
+
 class WritablePipe(ABC):
     """
     An object-oriented wrapper for os.pipe. Clients should subclass it, implement
@@ -236,6 +237,7 @@ class ReadablePipe(ABC):
                 # Only raise the child exception if there wasn't
                 # already an exception in the main thread
                 raise
+
 
 class ReadableTransformingPipe(ReadablePipe):
     """

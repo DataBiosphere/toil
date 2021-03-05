@@ -1199,74 +1199,12 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
     def _createJobStore(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
         partSize = self._partSize()
-        return AWSJobStore(self.awsRegion() + ':' + self.namePrefix, partSize=partSize)
+        return AWSJobStore(self.awsRegion() + ':' + self.namePrefix, part_size=partSize)
 
     def _corruptJobStore(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
         assert isinstance(self.jobstore_initialized, AWSJobStore)  # type hinting
         self.jobstore_initialized.destroy()
-
-    def testSDBDomainsDeletedOnFailedJobstoreBucketCreation(self):
-        """
-        This test ensures that SDB domains bound to a jobstore are deleted if the jobstore bucket
-        failed to be created.  We simulate a failed jobstore bucket creation by using a bucket in a
-        different region with the same name.
-        """
-        from botocore.exceptions import ClientError
-        from boto.sdb import connect_to_region
-        from toil.jobStores.aws.jobStore import BucketLocationConflictException
-        from toil.jobStores.aws.utils import retry_s3
-        from toil.jobStores.aws.jobStore import establish_boto3_session
-        externalAWSLocation = 'us-west-1'
-
-        for testRegion in 'us-east-1', 'us-west-2':
-            # We run this test twice, once with the default s3 server us-east-1 as the test region
-            # and once with another server (us-west-2).  The external server is always us-west-1.
-            # This incidentally tests that the BucketLocationConflictException is thrown when using
-            # both the default, and a non-default server.
-            testJobStoreUUID = str(uuid.uuid4())
-            # Create the bucket at the external region
-            bucketName = 'domain-test-' + testJobStoreUUID + '--files'
-            client = establish_boto3_session().client('s3', region_name=externalAWSLocation)
-
-            for attempt in retry_s3(delays=(2, 5, 10, 30, 60), timeout=600):
-                with attempt:
-                    client.create_bucket(Bucket=bucketName,
-                                         CreateBucketConfiguration={'LocationConstraint': externalAWSLocation})
-
-            options = Job.Runner.getDefaultOptions('aws:' + testRegion + ':domain-test-' +
-                                                   testJobStoreUUID)
-            options.logLevel = 'DEBUG'
-            try:
-                with Toil(options) as toil:
-                    pass
-            except BucketLocationConflictException:
-                # Catch the expected BucketLocationConflictException and ensure that the bound
-                # domains don't exist in SDB.
-                sdb = connect_to_region(self.awsRegion())
-                next_token = None
-                allDomainNames = []
-                while True:
-                    domains = sdb.get_all_domains(max_domains=100, next_token=next_token)
-                    allDomainNames.extend([x.name for x in domains])
-                    next_token = domains.next_token
-                    if next_token is None:
-                        break
-                self.assertFalse([d for d in allDomainNames if testJobStoreUUID in d])
-            else:
-                self.fail()
-            finally:
-                try:
-                    for attempt in retry_s3():
-                        with attempt:
-                            client.delete_bucket(Bucket=bucketName)
-                except ClientError as e:
-                    # The actual HTTP code of the error is in status.
-                    if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
-                        # The bucket doesn't exist; maybe a failed delete actually succeeded.
-                        pass
-                    else:
-                        raise
 
     @slow
     def testInlinedFiles(self):

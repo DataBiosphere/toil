@@ -31,7 +31,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchFileException,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
-from toil.jobStores.utils import ReadablePipe, WritablePipe
+from toil.lib.pipes import ReadablePipe, WritablePipe
 from toil.lib.compatibility import compat_bytes
 from toil.lib.io import AtomicFileCreate
 from toil.lib.misc import truncExpBackoff
@@ -501,7 +501,7 @@ class GoogleJobStore(AbstractJobStore):
         :param encrypt: whether or not the file is encrypted
         :type encrypt: bool
         :return: an instance of ReadablePipe.
-        :rtype: :class:`~toil.jobStores.utils.ReadablePipe`
+        :rtype: :class:`~toil.lib.pipes.ReadablePipe`
         """
         blob = self.bucket.get_blob(compat_bytes(fileName), encryption_key=self.sseKey if encrypt else None)
         if blob is None:
