@@ -992,7 +992,6 @@ def flatten(in_array: List[list]) -> list:
 
     for element in in_array:
         assert isinstance(element, list), f'flatten() requires all collections to be a list!  Not: {type(element)}'
-
-        arr.extend(flatten(element))
+        arr.extend(element)
 
     return arr
