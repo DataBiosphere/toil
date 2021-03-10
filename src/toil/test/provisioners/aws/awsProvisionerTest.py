@@ -369,7 +369,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         self.instanceTypes = ["m5a.large:%f" % self.spotBid]
         self.numWorkers = ['2']
         self._test(preemptableJobs=True)
-        
+
     @integrative
     @needs_aws_ec2
     def testSpotAutoScaleBalancingTypes(self):
