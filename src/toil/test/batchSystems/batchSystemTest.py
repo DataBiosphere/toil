@@ -23,6 +23,7 @@ import time
 from abc import ABCMeta, abstractmethod
 from fractions import Fraction
 from inspect import getsource
+from pathlib import Path
 from textwrap import dedent
 from typing import Callable
 from unittest import skipIf
@@ -418,11 +419,13 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
         # Make sure job is NOT running
         self.assertEqual(set(runningJobIDs), set({}))
 
-def write_temp_file(s: str) -> str:
+def write_temp_file(s: str, tmp_path: Path) -> str:
     """
     Dump a string into a temp file and return its path.
     """
-    fd, path = tempfile.mkstemp()
+    # Get a file in the Pytest temp directory, which is cleaned after the test
+    # is done.
+    fd, path = tempfile.mkstemp(dir=tmp_path)
     try:
         encoded = s.encode('utf-8')
         assert os.write(fd, encoded) == len(encoded)
@@ -434,11 +437,11 @@ def write_temp_file(s: str) -> str:
     finally:
         os.close(fd)
 
-def save_script(script: Callable) -> str:
+def save_script(script: Callable, tmp_path: Path) -> str:
     """
     Save the given Python function as a script file and return its path.
     """
-    path = write_temp_file(dedent('\n'.join(getsource(script).split('\n')[1:])))
+    path = write_temp_file(dedent('\n'.join(getsource(script).split('\n')[1:])), tmp_path)
     return path
 
 @travis_test
@@ -454,10 +457,12 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
         return SingleMachineBatchSystem(config=self.config,
                                         maxCores=numCores, maxMemory=1e9, maxDisk=2001)
 
-    def testProcessEscape(self, hide: bool = False):
+    def testProcessEscape(self, tmp_path: Path, hide: bool = False):
         """
         Test to make sure that child processes and their descendants go away
         when the Toil workflow stops.
+        
+        tmp_path is the Pytest temporary path fixture.
 
         If hide is true, will try and hide the child processes to make them
         hard to stop.
@@ -507,10 +512,10 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
                 # Wait around forever
                 time.sleep(60)
 
-        script_path = save_script(script)
+        script_path = save_script(script, tmp_path)
 
         # We will have all the job processes try and lock this file shared while they are alive.
-        lockable_path = write_temp_file('')
+        lockable_path = write_temp_file('', tmp_path)
 
         try:
             command = f'{sys.executable} {script_path} {lockable_path}'
@@ -553,13 +558,13 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
             os.unlink(script_path)
             os.unlink(lockable_path)
 
-    def testHidingProcessEscape(self):
+    def testHidingProcessEscape(self, tmp_path: Path):
         """
         Test to make sure that child processes and their descendants go away
         when the Toil workflow stops, even if the job process stops and leaves children.
         """
 
-        self.testProcessEscape(hide=True)
+        self.testProcessEscape(tmp_path, hide=True)
 
 
 @slow
@@ -574,12 +579,12 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
         super(MaxCoresSingleMachineBatchSystemTest, cls).setUpClass()
         logging.basicConfig(level=logging.DEBUG)
 
-    def setUp(self):
+    def setUp(self, tmp_path: Path):
         super(MaxCoresSingleMachineBatchSystemTest, self).setUp()
 
         # Write initial value of counter file containing a tuple of two integers (i, n) where i
         # is the number of currently executing tasks and n the maximum observed value of i
-        self.counterPath = write_temp_file('0,0')
+        self.counterPath = write_temp_file('0,0', tmp_path)
 
         def script():
             import fcntl
@@ -618,7 +623,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
             else:
                 count(int(sys.argv[2]))
 
-        self.scriptPath = save_script(script)
+        self.scriptPath = save_script(script, tmp_path)
 
     def tearDown(self):
         os.unlink(self.scriptPath)
