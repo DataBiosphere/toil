@@ -17,7 +17,7 @@ import os.path
 import subprocess
 import tempfile
 import textwrap
-import yaml
+import json
 from abc import ABC, abstractmethod
 from functools import total_ordering
 from typing import Dict, Optional, Set
@@ -471,28 +471,30 @@ class AbstractProvisioner(ABC):
             self.sshPublicKeys.append("ssh-rsa " + keyData)
 
 
-        def toCloudConfig(self) -> str:
+        def toIgnitionConfig(self) -> str:
             """
-            Return a CloudConfig configuration describing the desired config.
+            Return a Ignition configuration describing the desired config.
             """
 
             # Define the base config
             config = {
-                'write_files': self.files,
-                'coreos': {
-                    'update': {
-                        'reboot-strategy': 'off'
+                'ignition': {
+                    'version': '3.0.0'
+                },
+                'storage': {
+                    'files': self.files
                     },
+                'systemd': {
                     'units': self.units
                 }
             }
 
             if len(self.sshPublicKeys) > 0:
                 # Add SSH keys if needed
-                config['ssh_authorized_keys'] = self.sshPublicKeys
+                config['passwd']['users']['sshAuthorizedKeys'] = self.sshPublicKeys
 
-            # Mark as CloudConfig and serialize as YAML
-            return '#cloud-config\n\n' + yaml.dump(config)
+            # Serialize as JSON
+            return json.dump(config)
 
 
     def getBaseInstanceConfiguration(self) -> InstanceConfiguration:
@@ -1005,7 +1007,7 @@ class AbstractProvisioner(ABC):
             ExecStart=/usr/bin/bash /home/core/join-kubernetes-cluster.sh
             '''))
 
-    def _getCloudConfigUserData(self, role, keyPath=None, preemptable=False):
+    def _getIgnitionConfigUserData(self, role, keyPath=None, preemptable=False):
         """
         Return the text (not bytes) user data to pass to a provisioned node.
 
@@ -1047,7 +1049,7 @@ class AbstractProvisioner(ABC):
                 # anyone in the cloud account.
                 self.addKubernetesWorker(config, self._leaderWorkerAuthentication, preemptable=preemptable)
 
-        # Make it into a string for CloudConfig
-        return config.toCloudConfig()
+        # Make it into a string for Ignition
+        return config.toIgnitionConfig()
 
 

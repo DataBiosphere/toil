@@ -458,7 +458,7 @@ class AWSProvisioner(AbstractProvisioner):
         bdm = self._getBoto2BlockDeviceMapping(instanceType, rootVolSize=self._nodeStorageOverrides.get(nodeType, self._nodeStorage))
 
         keyPath = self._sseKey if self._sseKey else None
-        userData = self._getCloudConfigUserData('worker', keyPath, preemptable)
+        userData = self._getIgnitionConfigUserData('worker', keyPath, preemptable)
         if isinstance(userData, str):
             # Spot-market provisioning requires bytes for user data.
             userData = userData.encode('utf-8')
@@ -929,7 +929,7 @@ class AWSProvisioner(AbstractProvisioner):
         bdms = self._getBoto3BlockDeviceMappings(instanceType, rootVolSize=rootVolSize)
 
         keyPath = self._sseKey if self._sseKey else None
-        userData = self._getCloudConfigUserData('worker', keyPath, preemptable)
+        userData = self._getIgnitionConfigUserData('worker', keyPath, preemptable)
 
         # The name has the cluster name in it
         lt_name = f'{self.clusterName}-lt-{nodeType}'
