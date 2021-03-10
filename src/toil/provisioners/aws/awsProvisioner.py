@@ -24,7 +24,7 @@ import uuid
 import boto3
 import boto.ec2
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Collection
 from functools import wraps
 from boto.ec2.blockdevicemapping import BlockDeviceMapping as Boto2BlockDeviceMapping, BlockDeviceType as Boto2BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
@@ -447,15 +447,23 @@ class AWSProvisioner(AbstractProvisioner):
     def terminateNodes(self, nodes : List[Node]):
         self._terminateIDs([x.name for x in nodes])
 
-    def addNodes(self, nodeType, numNodes, preemptable, spotBid=None) -> int:
+    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None) -> int:
         assert self._leaderPrivateIP
+        
         if preemptable and not spotBid:
-            if self._spotBidsMap and nodeType in self._spotBidsMap:
-                spotBid = self._spotBidsMap[nodeType]
+            if self._spotBidsMap and frozenset(nodeTypes) in self._spotBidsMap:
+                spotBid = self._spotBidsMap[frozenset(nodeTypes)]
             else:
                 raise RuntimeError("No spot bid given for a preemptable node request.")
-        instanceType = E2Instances[nodeType]
-        bdm = self._getBoto2BlockDeviceMapping(instanceType, rootVolSize=self._nodeStorageOverrides.get(nodeType, self._nodeStorage))
+                
+        # We don't support any balancing here so just pick one of the
+        # equivalent node types
+        node_type = next(iter(nodeTypes))
+                
+        instanceType = E2Instances[node_type]
+        root_vol_size = self._nodeStorageOverrides.get(node_type, self._nodeStorage))
+        bdm = self._getBoto2BlockDeviceMapping(instanceType,
+                                               rootVolSize=root_vol_size)
 
         keyPath = self._sseKey if self._sseKey else None
         userData = self._getCloudConfigUserData('worker', keyPath, preemptable)
@@ -515,7 +523,7 @@ class AWSProvisioner(AbstractProvisioner):
         logger.debug('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
 
-    def addManagedNodes(self, nodeType, minNodes, maxNodes, preemptable, spotBid=None) -> None:
+    def addManagedNodes(self, nodeTypes: Set[str], minNodes, maxNodes, preemptable, spotBid=None) -> None:
 
         if self.clusterType != 'kubernetes':
             raise ManagedNodesNotSupportedException("Managed nodes only supported for Kubernetes clusters")
@@ -523,7 +531,7 @@ class AWSProvisioner(AbstractProvisioner):
         assert self._leaderPrivateIP
         if preemptable and not spotBid:
             if self._spotBidsMap and nodeType in self._spotBidsMap:
-                spotBid = self._spotBidsMap[nodeType]
+                spotBid = self._spotBidsMap[frozenset(nodeTypes)]
             else:
                 raise RuntimeError("No spot bid given for a preemptable node request.")
         if spotBid and not preemptable:
@@ -531,10 +539,10 @@ class AWSProvisioner(AbstractProvisioner):
 
         # TODO: We assume we only ever do this once per node type...
 
-        # Make the template
-        launch_template_id = self._createWorkerLaunchTemplate(nodeType, preemptable=preemptable)
-        # Make the ASG
-        self._createWorkerAutoScalingGroup(launch_template_id, [nodeType], minNodes, maxNodes,
+        # Make one template per node type, so we can apply storage overrides correctly
+        launch_template_ids = {n: self._createWorkerLaunchTemplate(n, preemptable=preemptable) for n in nodeTypes}
+        # Make the ASG across all of them
+        self._createWorkerAutoScalingGroup(launch_template_id, nodeTypes, minNodes, maxNodes,
                                            spot_bid=spotBid)
 
     def getProvisionedWorkers(self, nodeType, preemptable) -> List[Node]:
@@ -989,15 +997,16 @@ class AWSProvisioner(AbstractProvisioner):
         return matchedASGs
 
     def _createWorkerAutoScalingGroup(self,
-                                      launch_template_id: str,
-                                      instance_types: List[str],
+                                      launch_template_ids: Dict[str, str],
+                                      instance_types: Collection[str],
                                       min_size: int,
                                       max_size: int,
                                       spot_bid: Optional[float] = None) -> str:
         """
         Create an autoscaling group.
 
-        :param launch_template_id: ID of the launch template to use.
+        :param launch_template_ids: ID of the launch template to use for
+               each instance type name.
         :param instance_types: Names of instance types to use. Must have
                at least one. Needed here to calculate the ephemeral storage
                provided. The instance type used to create the launch template

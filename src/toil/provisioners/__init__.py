@@ -67,46 +67,72 @@ def add_provisioner_options(parser):
                                            "Must be lowercase and may not contain the '_' character.")
 
 
-def check_valid_node_types(provisioner, node_types):
+def parse_node_types(node_type_specs: str) -> List[Tuple[Set[str], Optional[float]]]:
+    """
+    Parse a specification for zero or more node types.
+
+    Takes a comma-separated list of node types. Each node type is a
+    semicolon-separated list of at least one instance type name (like
+    'm5a.large' for AWS), and an optional bid in dollars after a colon.
+    
+    Raises ValueError if a node type cannot be parsed.
+
+    :param node_type_specs: A string defining node types
+
+    :returns: a list of node types, where each type is the set of
+              instance types, and the float bid, or None.
+    """
+    
+    # Collect together all the node typed
+    parsed = []
+    
+    for node_type_spec in node_type_specs.split(','):
+        try:
+            # Types are comma-separated
+            # Then we have the colon and the bid
+            parts = node_type_spec.split(':')
+            # Instance types are semicolon-separated within an equivalence
+            # class
+            instance_types = set(parts[0].split(';'))
+            # Build the node type tuple
+            parsed.append((instance_types, float(parts[1]) if len(parts) > 1 else None))
+        except:
+            raise ValueError(f'Cound not parse node type "{node_type_spec}"')
+        
+    return parsed
+
+def check_valid_node_types(provisioner, node_types: List[Tuple[Set[str], Optional[float]]]):
     """
     Raises if an invalid nodeType is specified for aws or gce.
 
     :param str provisioner: 'aws' or 'gce' to specify which cloud provisioner used.
-    :param node_types: A list of node types.  Example: ['t2.micro', 't2.medium']
-    :return: Nothing.  Raises if invalid nodeType.
+    :param node_types: A list of node types.  Example: [({'t2.micro'}, None), ({'t2.medium'}, 0.5)]
+    :return: Nothing.  Raises if any instance type int he node type isn't real.
     """
-    if not node_types:
-        return
-    if not isinstance(node_types, list):
-        node_types = [node_types]
-    if not isinstance(node_types[0], str):
-        return
+    
     # check if a valid node type for aws
     from toil.lib.generatedEC2Lists import E2Instances, regionDict
     if provisioner == 'aws':
         from toil.provisioners.aws import get_current_aws_region
         current_region = get_current_aws_region() or 'us-west-2'
         # check if instance type exists in this region
-        for nodeType in node_types:
-            if nodeType and ':' in nodeType:
-                nodeType = nodeType.split(':')[0]
-            if nodeType not in regionDict[current_region]:
-                # They probably misspelled it and can't tell.
-                close = get_close_matches(nodeType, regionDict[current_region], 1)
-                if len(close) > 0:
-                    helpText = ' Did you mean ' + close[0] + '?'
-                else:
-                    helpText = ''
-                raise RuntimeError(f'Invalid nodeType ({nodeType}) specified for AWS in '
-                                   f'region: {current_region}.{helpText}')
+        for node_type in node_types:
+            for instance_type_name in node_type[0]:
+                if instance_type_name not in regionDict[current_region]:
+                    # They probably misspelled it and can't tell.
+                    close = get_close_matches(instance_type_name, regionDict[current_region], 1)
+                    if len(close) > 0:
+                        helpText = ' Did you mean ' + close[0] + '?'
+                    else:
+                        helpText = ''
+                    raise RuntimeError(f'Invalid instance type ({instance_type_name}) specified for AWS in '
+                                       f'region: {current_region}.{helpText}')
     elif provisioner == 'gce':
-        for nodeType in node_types:
-            if nodeType and ':' in nodeType:
-                nodeType = nodeType.split(':')[0]
-
-            if nodeType in E2Instances:
-                raise RuntimeError(f"It looks like you've specified an AWS nodeType with the {provisioner} "
-                                   f"provisioner.  Please specify a nodeType for {provisioner}.")
+        for node_type in node_types:
+            for instance_type_name in node_type[0]:
+                if instance_type_name in E2Instances:
+                    raise RuntimeError(f"It looks like you've specified an AWS nodeType with the {provisioner} "
+                                       f"provisioner. Please specify a nodeType for {provisioner}.")
     else:
         raise RuntimeError(f"Invalid provisioner: {provisioner}")
 

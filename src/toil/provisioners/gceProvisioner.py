@@ -231,8 +231,11 @@ class GCEProvisioner(AbstractProvisioner):
         instancesToKill = [i for i in instances if i.name in nodeNames]
         self._terminateInstances(instancesToKill)
 
-    def addNodes(self, nodeType, numNodes, preemptable, spotBid=None):
+    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None):
         assert self._leaderPrivateIP
+        
+        # We don't support any balancing here so just pick one of the equivalent node types
+        node_type = next(iter(nodeTypes))
 
         # If keys are rsynced, then the mesos-slave needs to be started after the keys have been
         # transferred. The waitForKey.sh script loops on the new VM until it finds the keyPath file, then it starts the
@@ -259,7 +262,7 @@ class GCEProvisioner(AbstractProvisioner):
         disk = {}
         disk['initializeParams'] = {
             'sourceImage': self.SOURCE_IMAGE,
-            'diskSizeGb' : self._nodeStorageOverrides.get(nodeType, self._nodeStorage) }
+            'diskSizeGb' : self._nodeStorageOverrides.get(node_type, self._nodeStorage) }
         disk.update({'boot': True,
              'autoDelete': True })
 
@@ -268,13 +271,12 @@ class GCEProvisioner(AbstractProvisioner):
         #  - ex_create_multiple_nodes is limited to 1000 nodes
         #    - use a different function
         #    - or write a loop over the rest of this function, with 1K nodes max on each iteration
-        #instancesLaunched = driver.ex_create_multiple_nodes(
         retries = 0
         workersCreated = 0
         # Try a few times to create the requested number of workers
         while numNodes-workersCreated > 0 and retries < 3:
             instancesLaunched = self.ex_create_multiple_nodes(
-                                    '', nodeType, imageType, numNodes-workersCreated,
+                                    '', node_type, imageType, numNodes-workersCreated,
                                     location=self._zone,
                                     ex_service_accounts=sa_scopes,
                                     ex_metadata=metadata,

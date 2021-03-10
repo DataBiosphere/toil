@@ -20,7 +20,7 @@ import textwrap
 import yaml
 from abc import ABC, abstractmethod
 from functools import total_ordering
-from typing import Dict, Optional, Set
+from typing import List, Dict, Tuple, Optional, Set
 
 from toil import applianceSelf, customDockerInitCmd, customInitCmd
 from toil.provisioners import ClusterTypeNotSupportedException
@@ -347,7 +347,7 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def addNodes(self, nodeType, numNodes, preemptable, spotBid=None):
+    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None):
         """
         Used to add worker nodes to the cluster
 
@@ -359,7 +359,7 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
 
-    def addManagedNodes(self, nodeType, minNodes, maxNodes, preemptable, spotBid=None) -> None:
+    def addManagedNodes(self, nodeTypes: Set[str], minNodes, maxNodes, preemptable, spotBid=None) -> None:
         """
         Add a group of managed nodes of the given type, up to the given maximum.
         The nodes will automatically be launched and termianted depending on cluster load.
