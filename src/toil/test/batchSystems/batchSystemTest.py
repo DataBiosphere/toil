@@ -418,11 +418,11 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
         # Make sure job is NOT running
         self.assertEqual(set(runningJobIDs), set({}))
 
-def write_temp_file(s: str) -> str:
+def write_temp_file(s: str, temp_dir: str) -> str:
     """
     Dump a string into a temp file and return its path.
     """
-    fd, path = tempfile.mkstemp()
+    fd, path = tempfile.mkstemp(dir=temp_dir)
     try:
         encoded = s.encode('utf-8')
         assert os.write(fd, encoded) == len(encoded)
@@ -433,13 +433,6 @@ def write_temp_file(s: str) -> str:
         return path
     finally:
         os.close(fd)
-
-def save_script(script: Callable) -> str:
-    """
-    Save the given Python function as a script file and return its path.
-    """
-    path = write_temp_file(dedent('\n'.join(getsource(script).split('\n')[1:])))
-    return path
 
 @travis_test
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
@@ -507,10 +500,13 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
                 # Wait around forever
                 time.sleep(60)
 
-        script_path = save_script(script)
+        # Get a directory where we can safely dump files.
+        temp_dir = self._createTempDir()
+
+        script_path = write_temp_file(self._getScriptSource(script), temp_dir)
 
         # We will have all the job processes try and lock this file shared while they are alive.
-        lockable_path = write_temp_file('')
+        lockable_path = write_temp_file('', temp_dir)
 
         try:
             command = f'{sys.executable} {script_path} {lockable_path}'
@@ -577,9 +573,11 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
     def setUp(self):
         super(MaxCoresSingleMachineBatchSystemTest, self).setUp()
 
+        temp_dir = self._createTempDir()
+
         # Write initial value of counter file containing a tuple of two integers (i, n) where i
         # is the number of currently executing tasks and n the maximum observed value of i
-        self.counterPath = write_temp_file('0,0')
+        self.counterPath = write_temp_file('0,0', temp_dir)
 
         def script():
             import fcntl
@@ -618,7 +616,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
             else:
                 count(int(sys.argv[2]))
 
-        self.scriptPath = save_script(script)
+        self.scriptPath = write_temp_file(self._getScriptSource(script), temp_dir)
 
     def tearDown(self):
         os.unlink(self.scriptPath)
