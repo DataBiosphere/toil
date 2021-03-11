@@ -113,7 +113,6 @@ To further break down each of these commands:
 
     **--keyPairName id_rsa** --- The name of your key pair, which should be "id_rsa" if you've followed this tutorial.
 
-.. _Container Linux by CoreOS AMI: https://aws.amazon.com/marketplace/pp/B01H62FDJM/
 .. _AWS account: https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/
 .. _key pair: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html
 .. _Amazon's instructions : http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html#how-to-generate-your-own-key-and-import-it-to-aws
