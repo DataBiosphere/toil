@@ -7,8 +7,3 @@ install:
   - make develop extras=[aws,google,wdl] # adding extras to avoid import errors
 script:
   - TOIL_TEST_QUICK=True make test_offline
-env:
-  # Necessary to get boto to work in Travis's Ubuntu Precise
-  # environment (see #2498). Consider removing this if/when we
-  # transition to the Xenial environment.
-  - BOTO_CONFIG=/dev/null
