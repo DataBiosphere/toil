@@ -5,5 +5,12 @@ install:
   - pip install -U pip
   - make prepare
   - make develop extras=[aws,google,wdl] # adding extras to avoid import errors
-script:
-  - TOIL_TEST_QUICK=True make test_offline
+
+jobs:
+  include:
+    - name: mypy type checking
+      script:
+        - make diff_mypy
+    - name: quick test offiline
+      script:
+        - TOIL_TEST_QUICK=True make test_offline
