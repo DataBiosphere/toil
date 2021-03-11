@@ -1,6 +1,8 @@
 import os
 import shutil
 import subprocess
+import tempfile
+from typing import List
 import unittest
 import uuid
 import zipfile
@@ -39,6 +41,7 @@ class ToilWdlIntegrationTest(ToilTest):
     @classmethod
     def setUpClass(cls) -> None:
         """Runs once for all tests."""
+        super(ToilWdlIntegrationTest, cls).setUpClass()
         cls.program = os.path.abspath("src/toil/wdl/toilwdl.py")
 
         cls.test_directory = os.path.abspath("src/toil/test/wdl/")
@@ -71,7 +74,6 @@ class ToilWdlIntegrationTest(ToilTest):
     @classmethod
     def tearDownClass(cls) -> None:
         """We generate a lot of cruft."""
-        jobstores = ['./toilWorkflowRun', '/mnt/ephemeral/workspace/toil-pull-requests/toilWorkflowRun']
         data_dirs = [cls.gatk_data_dir, cls.wdl_data_dir, cls.encode_data_dir]
         data_zips = [cls.gatk_data, cls.wdl_data, cls.encode_data]
         encode_outputs = ['ENCFF000VOL_chr21.fq.gz',
@@ -102,11 +104,12 @@ class ToilWdlIntegrationTest(ToilTest):
                           'toilwdl_compiled.py',
                           'post_processing.log',
                           'md5.log']
-        for cleanup in jobstores + data_dirs + data_zips + encode_outputs:
+        for cleanup in data_dirs + data_zips + encode_outputs:
             if os.path.isdir(cleanup):
                 shutil.rmtree(cleanup)
             elif os.path.exists(cleanup):
                 os.remove(cleanup)
+        super(ToilWdlIntegrationTest, cls).tearDownClass()
 
     @needs_docker
     def testMD5sum(self):
@@ -137,7 +140,7 @@ class ToilWdlIntegrationTest(ToilTest):
         from toil.common import Toil
         from toil.job import Job
         from toil.wdl.wdl_types import WDLFile
-        options = Job.Runner.getDefaultOptions('./toilWorkflowRun')
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.clean = 'always'
         with Toil(options) as toil:
             small = process_infile(WDLFile(file_path=os.path.abspath('src/toil/test/wdl/testfiles/vocab.wdl')), toil)

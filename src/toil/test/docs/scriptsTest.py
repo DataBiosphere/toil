@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import sys
 import unittest
 
@@ -19,7 +20,7 @@ class ToilDocumentationTest(ToilTest):
         super(ToilTest, cls).setUpClass()
         cls.directory = os.path.dirname(os.path.abspath(__file__))
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         super(ToilTest, self).tearDown()
         # src/toil/test/docs/scripts/cwlExampleFiles/sample_1_output.txt
         output_files = ["sample_1_output.txt", "sample_2_output.txt", "sample_3_output.txt"]
@@ -28,7 +29,7 @@ class ToilDocumentationTest(ToilTest):
             if os.path.exists(output_file):
                 os.remove(output_file)
 
-        jobstores = ['./toilWorkflowRun', '/mnt/ephemeral/workspace/toil-pull-requests/toilWorkflowRun']
+        jobstores = ['/mnt/ephemeral/workspace/toil-pull-requests/toilWorkflowRun']
         for jobstore in jobstores:
             if os.path.exists(jobstore):
                 shutil.rmtree(jobstore)
