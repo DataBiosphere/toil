@@ -237,7 +237,7 @@ class AWSProvisioner(AbstractProvisioner):
         createdSGs = self._createSecurityGroups()
         bdms = self._getBoto3BlockDeviceMappings(instanceType, rootVolSize=leaderStorage)
 
-        userData = self._getCloudConfigUserData('leader')
+        userData = self._getIgnitionConfigUserData('leader')
 
         # Make up the tags
         self._tags = {'Name': self.clusterName,
