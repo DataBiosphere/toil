@@ -6,4 +6,5 @@ install:
   - make prepare
   - make develop extras=[aws,google,wdl] # adding extras to avoid import errors
 script:
+  - make diff_mypy
   - TOIL_TEST_QUICK=True make test_offline
