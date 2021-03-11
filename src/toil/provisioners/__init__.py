@@ -13,6 +13,7 @@
 # limitations under the License.
 import logging
 from difflib import get_close_matches
+from typing import List, Tuple, Set, Optional
 
 logger = logging.getLogger(__name__)
 

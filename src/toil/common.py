@@ -32,6 +32,7 @@ from toil.batchSystems.options import (add_all_batchsystem_options,
 from toil.lib.humanize import bytes2human, human2bytes
 from toil.lib.retry import retry
 from toil.provisioners import (add_provisioner_options,
+                               parse_node_types,
                                check_valid_node_types,
                                cluster_factory)
 from toil.provisioners.aws import zone_to_region
@@ -77,7 +78,6 @@ class Config:
         # Autoscaling options
         self.provisioner = None
         self.nodeTypes = []
-        check_valid_node_types(self.provisioner, self.nodeTypes)
         self.minNodes = None
         self.maxNodes = [10]
         self.targetTime = defaultTargetTime
@@ -867,7 +867,8 @@ class Toil:
                                                 nodeStorage=self.config.nodeStorage,
                                                 nodeStorageOverrides=self.config.nodeStorageOverrides,
                                                 sseKey=self.config.sseKey)
-            self._provisioner.setAutoscaledNodeTypes(self.config.nodeTypes)
+            node_types = parse_node_types(self.config.nodeTypes)
+            self._provisioner.setAutoscaledNodeTypes(node_types)
 
     @classmethod
     def getJobStore(cls, locator):

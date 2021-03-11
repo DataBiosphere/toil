@@ -181,10 +181,10 @@ class GCEProvisioner(AbstractProvisioner):
 
         logger.debug('Launched leader')
 
-    def getNodeShape(self, nodeType, preemptable=False):
+    def getNodeShape(self, instance_type: str, preemptable=False):
         # TODO: read this value only once
         sizes = self._gceDriver.list_sizes(location=self._zone)
-        sizes = [x for x in sizes if x.name == nodeType]
+        sizes = [x for x in sizes if x.name == instance_type]
         assert len(sizes) == 1
         instanceType = sizes[0]
 
@@ -192,7 +192,7 @@ class GCEProvisioner(AbstractProvisioner):
         if disk == 0:
             # This is an EBS-backed instance. We will use the root
             # volume, so add the amount of EBS storage requested forhe root volume
-            disk = self._nodeStorageOverrides.get(nodeType, self._nodeStorage) * 2 ** 30
+            disk = self._nodeStorageOverrides.get(instance_type, self._nodeStorage) * 2 ** 30
 
         # Ram is in M.
         #Underestimate memory by 100M to prevent autoscaler from disagreeing with
@@ -234,7 +234,8 @@ class GCEProvisioner(AbstractProvisioner):
     def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None):
         assert self._leaderPrivateIP
         
-        # We don't support any balancing here so just pick one of the equivalent node types
+        # We don't support any balancing here so just pick one of the
+        # equivalent node types
         node_type = next(iter(nodeTypes))
 
         # If keys are rsynced, then the mesos-slave needs to be started after the keys have been
@@ -312,9 +313,9 @@ class GCEProvisioner(AbstractProvisioner):
             logger.error("Failed to launch %d worker(s)", numNodes-workersCreated)
         return workersCreated
 
-    def getProvisionedWorkers(self, nodeType, preemptable):
+    def getProvisionedWorkers(self, instance_type: Optional[str], preemptable: bool):
         assert self._leaderPrivateIP
-        entireCluster = self._getNodesInCluster(nodeType=nodeType)
+        entireCluster = self._getNodesInCluster(instance_type=instance_type)
         logger.debug('All nodes in cluster: %s', entireCluster)
         workerInstances = []
         for instance in entireCluster:
@@ -359,11 +360,11 @@ class GCEProvisioner(AbstractProvisioner):
         if botoExists:
             node.injectFile(self._botoPath, self.NODE_BOTO_PATH, 'toil_worker')
 
-    def _getNodesInCluster(self, nodeType=None):
+    def _getNodesInCluster(self, instance_type: Optional[str] = None):
         instanceGroup = self._gceDriver.ex_get_instancegroup(self.clusterName, zone=self._zone)
         instances = instanceGroup.list_instances()
-        if nodeType:
-            instances = [instance for instance in instances if instance.size == nodeType]
+        if instance_type:
+            instances = [instance for instance in instances if instance.size == instance_type]
         return instances
 
     def _getDriver(self):

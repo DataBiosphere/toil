@@ -416,9 +416,8 @@ class ClusterScalerTest(ToilTest):
         # the same type. That is the only situation where
         # preemptableCompensation applies.
         self.config.nodeTypes = ['c4.8xlarge:0.6', 'c4.8xlarge']
-        self.provisioner.nodeTypes = ['c4.8xlarge', 'c4.8xlarge']
-        self.provisioner.nodeShapes = [c4_8xlarge_preemptable,
-                                       c4_8xlarge]
+        self.provisioner.getAutoscaledInstanceShapes = MagicMock(return_value={c4_8xlarge_preemptable: 'c4.8xlarge',
+                                                                               c4_8xlarge: 'c4.8xlarge'})
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         estimatedNodeCounts = {c4_8xlarge_preemptable: 5, c4_8xlarge: 0}
         scaler.updateClusterSize(estimatedNodeCounts)
@@ -722,13 +721,11 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
 
     @contextmanager
     def nodeFiltering(self, filter):
-        nodes = self.getProvisionedWorkers(preemptable=True,
-                                           nodeType=None) + self.getProvisionedWorkers(
-            preemptable=False, nodeType=None)
+        nodes = self.getProvisionedWorkers(preemptable=True) + self.getProvisionedWorkers(preemptable=False)
         yield nodes
 
     # AbstractProvisioner methods
-    def getProvisionedWorkers(self, nodeType=None, preemptable=None):
+    def getProvisionedWorkers(self, instance_type=None, preemptable=None):
         """
         Returns a list of Node objects, each representing a worker node in the cluster
 
@@ -736,8 +733,8 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         :return: list of Node
         """
         nodesToWorker = self.nodesToWorker
-        if nodeType:
-            return [node for node in nodesToWorker if node.nodeType == nodeType]
+        if instance_type:
+            return [node for node in nodesToWorker if node.nodeType == instance_type]
         else:
             return list(nodesToWorker.keys())
 

@@ -299,25 +299,36 @@ class AbstractProvisioner(ABC):
         # it.
         return dict(config['DEFAULT'])
 
-    def setAutoscaledNodeTypes(self, nodeTypes):
+    def setAutoscaledNodeTypes(self, nodeTypes: List[Tuple[Set[str], Optional[float]]]):
         """
-        Set node types, shapes and spot bids. Preemptable nodes will have the form "type:spotBid".
-        :param nodeTypes: A list of node types
+        Set node types, shapes and spot bids for Toil-managed autoscaling.
+        :param nodeTypes: A list of node types, as parsed with parse_node_types.
         """
+        # This maps from an equivalence class of instance names to a spot bid.
         self._spotBidsMap = {}
-        self.nodeShapes = []
-        self.nodeTypes = []
-        for nodeTypeStr in nodeTypes:
-            nodeBidTuple = nodeTypeStr.split(":")
-            if len(nodeBidTuple) == 2:
-                # This is a preemptable node type, with a spot bid
-                nodeType, bid = nodeBidTuple
-                self.nodeTypes.append(nodeType)
-                self.nodeShapes.append(self.getNodeShape(nodeType, preemptable=True))
-                self._spotBidsMap[nodeType] = bid
-            else:
-                self.nodeTypes.append(nodeTypeStr)
-                self.nodeShapes.append(self.getNodeShape(nodeTypeStr, preemptable=False))
+        
+        # This maps from a node Shape object to the instance type that has that
+        # shape. TODO: what if multiple instance type sin a cloud provider have
+        # the same shape (e.g. AMD and Intel instances)???
+        self._shape_to_instance_type = {}
+        
+        for node_type in nodeTypes:
+            preemptable = node_type[1] is not None
+            if preemptable:
+                # Record the spot bid for the whole equivalence class
+                self._spotBidsMap[frozenset(node_type[0])] = node_type[1]
+            for instance_type_name in node_type[0]:
+                # Record the instance shape and associated type.
+                shape = self.getNodeShape(instance_type_name, preemptable)
+                self._shape_to_instance_type[shape] = instance_type_name
+
+    def getAutoscaledInstanceShapes(self) -> Dict[Shape, str]:
+        """
+        Get all the node shapes and their named instance types that the Toil
+        autoscaler should manage.
+        """
+        
+        return dict(self._shape_to_instance_type)
 
     @staticmethod
     def retryPredicate(e):
@@ -393,7 +404,7 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def getProvisionedWorkers(self, nodeType, preemptable):
+    def getProvisionedWorkers(self, instance_type: str, preemptable):
         """
         Gets all nodes of the given preemptability from the provisioner.
         Includes both static and autoscaled nodes.
@@ -405,13 +416,13 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def getNodeShape(self, nodeType=None, preemptable=False):
+    def getNodeShape(self, instance_type: str, preemptable=False):
         """
         The shape of a preemptable or non-preemptable node managed by this provisioner. The node
         shape defines key properties of a machine, such as its number of cores or the time
         between billing intervals.
 
-        :param str nodeType: Node type name to return the shape of.
+        :param str instance_type: Instance type name to return the shape of.
 
         :rtype: Shape
         """
