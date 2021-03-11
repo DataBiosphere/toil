@@ -33,26 +33,25 @@ import tempfile
 import textwrap
 import urllib
 import uuid
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    IO,
-    Iterable,
-    Iterator,
-    List,
-    Mapping,
-    MutableMapping,
-    MutableSequence,
-    Optional,
-    Pattern,
-    Text,
-    TextIO,
-    Tuple,
-    TypeVar,
-    Union,
-    cast,
-)
+from typing import (IO,
+                    Any,
+                    Callable,
+                    Dict,
+                    Iterable,
+                    Iterator,
+                    List,
+                    Mapping,
+                    MutableMapping,
+                    MutableSequence,
+                    Optional,
+                    Pattern,
+                    Sized,
+                    Text,
+                    TextIO,
+                    Tuple,
+                    TypeVar,
+                    Union,
+                    cast)
 from urllib import parse as urlparse
 
 import cwltool.builder
@@ -65,41 +64,40 @@ import cwltool.provenance
 import cwltool.resolver
 import cwltool.stdfsaccess
 import schema_salad.ref_resolver
+from cwltool.errors import UnsupportedRequirement
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mpi import MpiConfig
 from cwltool.mutation import MutationManager
-from cwltool.pathmapper import MapperEnt, PathMapper, downloadHttpFile
-from cwltool.process import (
-    Process,
-    add_sizes,
-    compute_checksums,
-    fill_in_defaults,
-    shortname,
-    UnsupportedRequirement
-)
+from cwltool.pathmapper import MapperEnt, PathMapper
+from cwltool.process import (Process,
+                             add_sizes,
+                             compute_checksums,
+                             fill_in_defaults,
+                             shortname)
 from cwltool.secrets import SecretStore
-from cwltool.software_requirements import (
-    DependenciesConfiguration,
-    get_container_from_software_requirements,
-)
-from cwltool.utils import (
-    CWLObjectType,
-    adjustDirObjs,
-    adjustFileObjs,
-    aslist,
-    get_listing,
-    normalizeFilesDirs,
-    visit_class,
-)
+from cwltool.software_requirements import (DependenciesConfiguration,
+                                           get_container_from_software_requirements)
+from cwltool.utils import (CWLObjectType,
+                           CWLOutputType,
+                           adjustDirObjs,
+                           adjustFileObjs,
+                           aslist,
+                           downloadHttpFile,
+                           get_listing,
+                           normalizeFilesDirs,
+                           visit_class)
 from ruamel.yaml.comments import CommentedMap
 from schema_salad import validate
-from schema_salad.schema import Names
+from schema_salad.avro.schema import Names
+from schema_salad.exceptions import ValidationException
 from schema_salad.sourceline import SourceLine
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Config, Toil, addOptions
-from toil.cwl.utils import download_structure, visit_top_cwl_class, visit_cwl_class_and_reduce
+from toil.cwl.utils import (download_structure,
+                            visit_cwl_class_and_reduce,
+                            visit_top_cwl_class)
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job
@@ -132,9 +130,7 @@ DEFAULT_TMPDIR = tempfile.gettempdir()
 DEFAULT_TMPDIR_PREFIX = os.path.join(DEFAULT_TMPDIR, "tmp")
 
 
-
-
-def cwltoil_was_removed():
+def cwltoil_was_removed() -> None:
     """Complain about deprecated entrypoint."""
     raise RuntimeError(
         'Please run with "toil-cwl-runner" instead of "cwltoil" (which has been removed).'
@@ -152,7 +148,7 @@ def cwltoil_was_removed():
 # output object to the correct key of the input object.
 
 
-class UnresolvedDict(dict):
+class UnresolvedDict(Dict[Any, Any]):
     """Tag to indicate a dict contains promises that must be resolved."""
 
 
@@ -216,7 +212,7 @@ class Conditional:
     def __init__(
         self,
         expression: Union[str, None] = None,
-        outputs: Union[dict, None] = None,
+        outputs: Union[Dict[str, CWLObjectType], None] = None,
         requirements: List[CWLObjectType] = [],
     ):
         """
@@ -233,7 +229,7 @@ class Conditional:
         self.outputs = outputs
         self.requirements = requirements
 
-    def is_false(self, job: Union[dict, None]) -> bool:
+    def is_false(self, job: CWLObjectType) -> bool:
         """
         Determine if expression evaluates to False given completed step inputs.
 
@@ -259,7 +255,7 @@ class Conditional:
             "'%s' evaluated to a non-boolean value" % self.expression
         )
 
-    def skipped_outputs(self) -> dict:
+    def skipped_outputs(self) -> Dict[str, SkipNull]:
         """
         Generate a dict of SkipNull objects corresponding to the output structure of the step.
 
@@ -267,12 +263,13 @@ class Conditional:
         """
         outobj = {}
 
-        def sn(n):
+        def sn(n: Union[Mapping[str, str], str]) -> str:
             if isinstance(n, Mapping):
                 return shortname(n["id"])
             if isinstance(n, str):
                 return shortname(n)
 
+        assert self.outputs, "Error, self.outputs was never set!"
         for k in [sn(o) for o in self.outputs]:
             outobj[k] = SkipNull()
 
@@ -282,7 +279,13 @@ class Conditional:
 class ResolveSource:
     """Apply linkMerge and pickValue operators to values coming into a port."""
 
-    def __init__(self, name: str, input: dict, source_key: str, promises: dict):
+    def __init__(
+        self,
+        name: str,
+        input: Dict[str, CWLObjectType],
+        source_key: str,
+        promises: Dict[str, Job],
+    ):
         """
         Construct a container object.
 
@@ -316,9 +319,9 @@ class ResolveSource:
         """
 
         try:
-            return 'ResolveSource(' + repr(self.resolve()) + ')'
+            return "ResolveSource(" + repr(self.resolve()) + ")"
         except:
-            return f'ResolveSource({self.name}, {self.input}, {self.source_key}, {self.promise_tuples})'
+            return f"ResolveSource({self.name}, {self.input}, {self.source_key}, {self.promise_tuples})"
 
     def resolve(self) -> Any:
         """
@@ -336,11 +339,13 @@ class ResolveSource:
         result = filter_skip_null(self.name, result)
         return result
 
-    def link_merge(self, values: dict) -> Union[list, dict]:
+    def link_merge(
+        self, values: CWLObjectType
+    ) -> Union[List[CWLOutputType], CWLOutputType]:
         """
         Apply linkMerge operator to `values` object.
 
-        :param values: dict: result of step
+        :param values: result of step
         """
         link_merge_type = self.input.get("linkMerge", "merge_nested")
 
@@ -348,7 +353,7 @@ class ResolveSource:
             return values
 
         elif link_merge_type == "merge_flattened":
-            result = []  # type: ignore
+            result: List[CWLOutputType] = []
             for v in values:
                 if isinstance(v, MutableSequence):
                     result.extend(v)
@@ -357,11 +362,11 @@ class ResolveSource:
             return result
 
         else:
-            raise validate.ValidationException(
+            raise ValidationException(
                 "Unsupported linkMerge '%s' on %s." % (link_merge_type, self.name)
             )
 
-    def pick_value(self, values: Union[List, Any]) -> Any:
+    def pick_value(self, values: Union[List[Union[str, SkipNull]], Any]) -> Any:
         """
         Apply pickValue operator to `values` object.
 
@@ -369,7 +374,7 @@ class ResolveSource:
                        without modification.
         :return:
         """
-        pick_value_type = self.input.get("pickValue")
+        pick_value_type = cast(str, self.input.get("pickValue"))
 
         if pick_value_type is None:
             return values
@@ -432,7 +437,9 @@ class StepValueFrom:
         self.context = None
         self.req = req
 
-    def eval_prep(self, step_inputs: dict, file_store: AbstractFileStore):
+    def eval_prep(
+        self, step_inputs: CWLObjectType, file_store: AbstractFileStore
+    ) -> None:
         """
         Resolve the contents of any file in a set of inputs.
 
@@ -443,8 +450,7 @@ class StepValueFrom:
         :param step_inputs: Workflow step inputs.
         :param file_store: A toil file store, needed to resolve toilfile:// paths.
         """
-        for v in step_inputs.values():
-            val = cast(CWLObjectType, v)
+        for val in step_inputs.values():
             source_input = getattr(self.source, "input", {})
             if isinstance(val, dict) and isinstance(source_input, dict):
                 if (
@@ -523,8 +529,11 @@ class JustAValue:
 
 
 def resolve_dict_w_promises(
-    dict_w_promises: dict, file_store: AbstractFileStore = None
-) -> dict:
+    dict_w_promises: Union[
+        UnresolvedDict, CWLObjectType, Dict[str, Union[str, StepValueFrom]]
+    ],
+    file_store: Optional[AbstractFileStore] = None,
+) -> CWLObjectType:
     """
     Resolve a dictionary of promises evaluate expressions to produce the actual values.
 
@@ -532,11 +541,15 @@ def resolve_dict_w_promises(
     :return: dictionary of actual values
     """
     if isinstance(dict_w_promises, UnresolvedDict):
-        first_pass_results = {k: v.resolve() for k, v in dict_w_promises.items()}
+        first_pass_results: CWLObjectType = {
+            k: v.resolve() for k, v in dict_w_promises.items()
+        }
     else:
-        first_pass_results = {k: v for k, v in dict_w_promises.items()}
+        first_pass_results = cast(
+            CWLObjectType, {k: v for k, v in dict_w_promises.items()}
+        )
 
-    result = {}
+    result: CWLObjectType = {}
     for k, v in dict_w_promises.items():
         if isinstance(v, StepValueFrom):
             if file_store:
@@ -572,7 +585,7 @@ class ToilPathMapper(PathMapper):
 
     def __init__(
         self,
-        referenced_files: list,
+        referenced_files: List[CWLObjectType],
         basedir: str,
         stagedir: str,
         separateDirs: bool = True,
@@ -670,7 +683,9 @@ class ToilPathMapper(PathMapper):
 
         """
 
-        logger.debug("ToilPathMapper mapping into %s from %s for: %s", stagedir, basedir, obj)
+        logger.debug(
+            "ToilPathMapper mapping into %s from %s for: %s", stagedir, basedir, obj
+        )
 
         # If the file has a dirname set, we can try and put it there instead of
         # wherever else we would stage it.
@@ -679,9 +694,9 @@ class ToilPathMapper(PathMapper):
 
         # Decide where to put the file or directory, as an absolute path.
         tgt = os.path.join(
-                stagedir,
-                cast(str, obj["basename"]),
-            )
+            stagedir,
+            cast(str, obj["basename"]),
+        )
 
         if obj["class"] == "Directory":
             # Whether or not we've already mapped this path, we need to map all
@@ -703,7 +718,9 @@ class ToilPathMapper(PathMapper):
                 # We need to download this directory (or subdirectory)
                 if self.get_file:
                     # We can actually go get it and its contents
-                    resolved = schema_salad.ref_resolver.uri_file_path(self.get_file(location))
+                    resolved = schema_salad.ref_resolver.uri_file_path(
+                        self.get_file(location)
+                    )
                 else:
                     # We are probably staging final outputs on the leader. We
                     # can't go get the directory. Just pass it through.
@@ -717,9 +734,11 @@ class ToilPathMapper(PathMapper):
                 # root-owned files in whatever we mounted for the Docker work
                 # directory, somehow. So make a directory ourselves instead.
                 if self.get_file:
-                    resolved = schema_salad.ref_resolver.uri_file_path(self.get_file("_:"))
+                    resolved = schema_salad.ref_resolver.uri_file_path(
+                        self.get_file("_:")
+                    )
 
-                    if 'listing' in obj and obj['listing'] != []:
+                    if "listing" in obj and obj["listing"] != []:
                         # If there's stuff inside here to stage, we need to copy
                         # this directory here, because we can't Docker mount things
                         # over top of immutable directories.
@@ -733,16 +752,23 @@ class ToilPathMapper(PathMapper):
 
             if location in self._pathmap:
                 # Don't map the same directory twice
-                logger.debug("ToilPathMapper stopping recursion because we have already mapped directory: %s", location)
+                logger.debug(
+                    "ToilPathMapper stopping recursion because we have already mapped directory: %s",
+                    location,
+                )
                 return
 
-            logger.debug("ToilPathMapper adding directory mapping %s -> %s", resolved, tgt)
+            logger.debug(
+                "ToilPathMapper adding directory mapping %s -> %s", resolved, tgt
+            )
             self._pathmap[location] = MapperEnt(
-                resolved, tgt, "WritableDirectory" if (copy or copy_here) else "Directory", staged
+                resolved,
+                tgt,
+                "WritableDirectory" if (copy or copy_here) else "Directory",
+                staged,
             )
 
-
-            if not location.startswith('_:') and not self.stage_listing:
+            if not location.startswith("_:") and not self.stage_listing:
                 # Don't stage anything below here separately, since we are able
                 # to copy the whole directory from somewhere and and we can't
                 # stage files over themselves.
@@ -750,7 +776,7 @@ class ToilPathMapper(PathMapper):
 
             # Keep recursing
             self.visitlisting(
-                cast(List, obj.get("listing", [])),
+                cast(List[CWLObjectType], obj.get("listing", [])),
                 tgt,
                 basedir,
                 copy=copy,
@@ -764,7 +790,10 @@ class ToilPathMapper(PathMapper):
 
             if path in self._pathmap:
                 # Don't map the same file twice
-                logger.debug("ToilPathMapper stopping recursion because we have already mapped file: %s", path)
+                logger.debug(
+                    "ToilPathMapper stopping recursion because we have already mapped file: %s",
+                    path,
+                )
                 return
 
             ab = cwltool.stdfsaccess.abspath(path, basedir)
@@ -780,7 +809,7 @@ class ToilPathMapper(PathMapper):
                 with SourceLine(
                     obj,
                     "location",
-                    validate.ValidationException,
+                    ValidationException,
                     logger.isEnabledFor(logging.DEBUG),
                 ):
                     # If we have access to the Toil file store, we will have a
@@ -808,7 +837,9 @@ class ToilPathMapper(PathMapper):
                     # If we didn't download something that is a toilfile:
                     # reference, we just pass that along.
 
-                    logger.debug("ToilPathMapper adding file mapping %s -> %s", deref, tgt)
+                    logger.debug(
+                        "ToilPathMapper adding file mapping %s -> %s", deref, tgt
+                    )
                     self._pathmap[path] = MapperEnt(
                         deref, tgt, "WritableFile" if copy else "File", staged
                     )
@@ -838,7 +869,7 @@ class ToilSingleJobExecutor(cwltool.executors.SingleJobExecutor):
         process: Process,
         job_order_object: CWLObjectType,
         logger: logging.Logger,
-        runtime_context: cwltool.context.RuntimeContext
+        runtime_context: cwltool.context.RuntimeContext,
     ) -> None:
         """
         Override run_jobs from SingleJobExecutor but say we are not in a top
@@ -846,7 +877,6 @@ class ToilSingleJobExecutor(cwltool.executors.SingleJobExecutor):
         """
         runtime_context.toplevel = False
         return super().run_jobs(process, job_order_object, logger, runtime_context)
-
 
 
 class ToilCommandLineTool(cwltool.command_line_tool.CommandLineTool):
@@ -861,13 +891,10 @@ class ToilCommandLineTool(cwltool.command_line_tool.CommandLineTool):
     ) -> cwltool.pathmapper.PathMapper:
         """Create the appropriate PathMapper for the situation."""
 
-        if runtimeContext.bypass_file_store:
+        if getattr(runtimeContext, "bypass_file_store", False):
             # We only need to understand cwltool's supported URIs
             return PathMapper(
-                reffiles,
-                runtimeContext.basedir,
-                stagedir,
-                separateDirs=separateDirs
+                reffiles, runtimeContext.basedir, stagedir, separateDirs=separateDirs
             )
         else:
             # We need to be able to read from Toil-provided URIs
@@ -876,12 +903,12 @@ class ToilCommandLineTool(cwltool.command_line_tool.CommandLineTool):
                 runtimeContext.basedir,
                 stagedir,
                 separateDirs,
-                getattr(runtimeContext, 'toil_get_file', None)  # type: ignore
+                getattr(runtimeContext, "toil_get_file", None),
             )
 
-
-    def __str__(self):
+    def __str__(self) -> str:
         return f'ToilCommandLineTool({repr(self.tool.get("id", "???"))})'
+
 
 def toil_make_tool(
     toolpath_object: CommentedMap,
@@ -900,35 +927,42 @@ def toil_make_tool(
     return cwltool.workflow.default_make_tool(toolpath_object, loadingContext)
 
 
-def decode_directory(dir_path: str) -> Tuple[Dict, Optional[str], str]:
-        """
-        Given a toildir: path to a directory or a file in it, return the
-        decoded directory dict, the remaining part of the path (which may be
-        None), and the deduplication key string that uniquely identifies the
-        directory.
-        """
+def decode_directory(
+    dir_path: str,
+) -> Tuple[Dict[str, Union[str, Dict[str, Any]]], Optional[str], str]:
+    """
+    Given a toildir: path to a directory or a file in it, return the
+    decoded directory dict, the remaining part of the path (which may be
+    None), and the deduplication key string that uniquely identifies the
+    directory.
+    """
 
-        assert dir_path.startswith("toildir:"), f"Cannot decode non-directory path: {dir_path}"
+    assert dir_path.startswith(
+        "toildir:"
+    ), f"Cannot decode non-directory path: {dir_path}"
 
-        # We will decode the directory and then look inside it
+    # We will decode the directory and then look inside it
 
-        # Since this was encoded by upload_directory we know the
-        # next piece is encoded JSON describing the directory structure,
-        # and it can't contain any slashes.
-        parts = dir_path[len("toildir:"):].split('/', 1)
+    # Since this was encoded by upload_directory we know the
+    # next piece is encoded JSON describing the directory structure,
+    # and it can't contain any slashes.
+    parts = dir_path[len("toildir:") :].split("/", 1)
 
-        # Before the first slash is the encoded data describing the directory contents
-        dir_data = parts[0]
+    # Before the first slash is the encoded data describing the directory contents
+    dir_data = parts[0]
 
-        # Decode what to download
-        contents = json.loads(base64.urlsafe_b64decode(dir_data.encode('utf-8')).decode('utf-8'))
+    # Decode what to download
+    contents = json.loads(
+        base64.urlsafe_b64decode(dir_data.encode("utf-8")).decode("utf-8")
+    )
 
-        if len(parts) == 1 or parts[1] == '/':
-            # We didn't have any subdirectory
-            return contents, None, dir_data
-        else:
-            # We have a path below this
-            return contents, parts[1], dir_data
+    if len(parts) == 1 or parts[1] == "/":
+        # We didn't have any subdirectory
+        return contents, None, dir_data
+    else:
+        # We have a path below this
+        return contents, parts[1], dir_data
+
 
 class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
     """
@@ -937,7 +971,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
     'toildir:' URIs will be fulfilled from the Toil file store.
     """
 
-    def __init__(self, basedir: str, file_store: AbstractFileStore = None):
+    def __init__(self, basedir: str, file_store: AbstractFileStore):
         """Create a FsAccess object for the given Toil Filestore and basedir."""
         self.file_store = file_store
 
@@ -945,7 +979,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         # don't constantly redownload them.
         # Assumes nobody will touch our files via realpath, or that if they do
         # they know what will happen.
-        self.dir_to_download = {}
+        self.dir_to_download: Dict[str, str] = {}
 
         super(ToilFsAccess, self).__init__(basedir)
 
@@ -966,7 +1000,9 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43  # noqa B950
         if path.startswith("toilfile:"):
             # Is a Toil file
-            destination = self.file_store.readGlobalFile(FileID.unpack(path[len("toilfile:"):]), symlink=True)
+            destination = self.file_store.readGlobalFile(
+                FileID.unpack(path[len("toilfile:") :]), symlink=True
+            )
             logger.debug("Downloaded %s to %s", path, destination)
             if not os.path.exists(destination):
                 raise RuntimeError(
@@ -984,7 +1020,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             if cache_key not in self.dir_to_download:
                 # Download to a temp directory.
                 temp_dir = self.file_store.getLocalTempDir()
-                temp_dir += '/toildownload'
+                temp_dir += "/toildownload"
                 os.makedirs(temp_dir)
 
                 logger.debug("ToilFsAccess downloading %s to %s", cache_key, temp_dir)
@@ -1003,15 +1039,14 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
                 destination = self.dir_to_download[cache_key]
             else:
                 # Navigate to the right subdirectory
-                destination = self.dir_to_download[cache_key] + '/' + subpath
+                destination = self.dir_to_download[cache_key] + "/" + subpath
         else:
             # This is just a local file
             destination = path
 
         # Now destination is a local file, so make sure we really do have an
         # absolute path
-        destination = super(ToilFsAccess, self)._abs(destination)
-        return destination
+        return super(ToilFsAccess, self)._abs(destination)
 
     def glob(self, pattern: str) -> List[str]:
         # We know this falls back on _abs
@@ -1034,7 +1069,9 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         # prevent multiple downloads as in
         # https://github.com/DataBiosphere/toil/issues/3665
         if path.startswith("toilfile:"):
-            return self.file_store.getGlobalFileSize(FileID.unpack(path[len("toilfile:"):]))
+            return self.file_store.getGlobalFileSize(
+                FileID.unpack(path[len("toilfile:") :])
+            )
         elif path.startswith("toildir:"):
             # Decode its contents, the path inside it to the file (if any), and
             # the key to use for caching the directory.
@@ -1045,11 +1082,13 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
             for part in subpath.split("/"):
                 # Follow the path inside the directory contents.
-                here = here[part]
+                here = cast(Dict[str, Union[str, Dict[str, Any]]], here[part])
 
             # We ought to end up with a toilfile: URI.
             assert isinstance(here, str), f"Did not find a file at {path}"
-            assert here.startswith("toilfile:"), f"Did not find a filestore file at {path}"
+            assert here.startswith(
+                "toilfile:"
+            ), f"Did not find a filestore file at {path}"
 
             return self.size(here)
         else:
@@ -1089,11 +1128,12 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             path = self._abs(path)
         return os.path.realpath(path)
 
+
 def toil_get_file(
     file_store: AbstractFileStore,
     index: Dict[str, str],
     existing: Dict[str, str],
-    file_store_id: str
+    file_store_id: str,
 ) -> str:
     """
     Set up the given file or directory from the Toil jobstore at a file URI
@@ -1116,11 +1156,13 @@ def toil_get_file(
         # We will go look for the actual file in the encoded directory
         # structure which will tell us where the toilfile: name for the file is.
 
-        parts = file_store_id[len("toildir:"):].split('/')
-        contents = json.loads(base64.urlsafe_b64decode(parts[0].encode('utf-8')).decode('utf-8'))
+        parts = file_store_id[len("toildir:") :].split("/")
+        contents = json.loads(
+            base64.urlsafe_b64decode(parts[0].encode("utf-8")).decode("utf-8")
+        )
 
         for component in parts[1:]:
-            if component != '.':
+            if component != ".":
                 # Index into the contents
                 contents = contents[component]
 
@@ -1136,7 +1178,9 @@ def toil_get_file(
             return schema_salad.ref_resolver.file_uri(dest_path)
     elif file_store_id.startswith("toilfile:"):
         # This is a plain file with no context.
-        src_path = file_store.readGlobalFile(FileID.unpack(file_store_id[len("toilfile:"):]), symlink=True)
+        src_path = file_store.readGlobalFile(
+            FileID.unpack(file_store_id[len("toilfile:") :]), symlink=True
+        )
         # TODO: shouldn't we be using these as a cache?
         index[src_path] = file_store_id
         existing[file_store_id] = src_path
@@ -1147,12 +1191,18 @@ def toil_get_file(
         return schema_salad.ref_resolver.file_uri(dest_path)
     else:
         raise RuntimeError(
-            f'Cannot obtain file {file_store_id} from host '
-            f'{socket.gethostname()}; all imports must happen on the '
-            f'leader!'
+            f"Cannot obtain file {file_store_id} from host "
+            f"{socket.gethostname()}; all imports must happen on the "
+            f"leader!"
         )
 
-def write_file(writeFunc: Any, index: dict, existing: dict, file_uri: str) -> str:
+
+def write_file(
+    writeFunc: Callable[[str], FileID],
+    index: Dict[str, str],
+    existing: Dict[str, str],
+    file_uri: str,
+) -> str:
     """
     Write a file into the Toil jobstore.
 
@@ -1183,7 +1233,8 @@ def write_file(writeFunc: Any, index: dict, existing: dict, file_uri: str) -> st
                 raise
         return index[file_uri]
 
-def path_to_loc(obj: Dict) -> None:
+
+def path_to_loc(obj: CWLObjectType) -> None:
     """
     If a CWL object has a "path" and not a "location", make the
     path into a location instead.
@@ -1192,14 +1243,15 @@ def path_to_loc(obj: Dict) -> None:
         obj["location"] = obj["path"]
         del obj["path"]
 
+
 def import_files(
     import_function: Callable[[str], FileID],
     fs_access: cwltool.stdfsaccess.StdFsAccess,
-    fileindex: Dict,
-    existing: Dict,
-    cwl_object: Dict,
+    fileindex: Dict[str, str],
+    existing: Dict[str, str],
+    cwl_object: CWLObjectType,
     skip_broken: bool = False,
-    bypass_file_store: bool = False
+    bypass_file_store: bool = False,
 ) -> None:
     """
     From the leader or worker, prepare all files and directories inside the
@@ -1239,9 +1291,9 @@ def import_files(
     importing files and directories.
     """
 
-    tool_id = cwl_object.get('id', str(cwl_object))
+    tool_id = cwl_object.get("id", str(cwl_object))
 
-    logger.debug('Importing files for %s', tool_id)
+    logger.debug("Importing files for %s", tool_id)
 
     # We need to upload all files to the Toil filestore, and encode structure
     # recursively into all Directories' locations. But we cannot safely alter
@@ -1254,9 +1306,7 @@ def import_files(
 
     # First do some preliminary preparation of metadata
     visit_class(cwl_object, ("File", "Directory"), path_to_loc)
-    visit_class(
-        cwl_object, ("File",), functools.partial(add_sizes, fs_access)
-    )
+    visit_class(cwl_object, ("File",), functools.partial(add_sizes, fs_access))
     normalizeFilesDirs(cwl_object)
 
     if bypass_file_store:
@@ -1266,7 +1316,9 @@ def import_files(
 
     # Otherwise we actually want to put the things in the file store.
 
-    def visit_file_or_directory_down(rec: MutableMapping) -> Optional[List]:
+    def visit_file_or_directory_down(
+        rec: CWLObjectType,
+    ) -> Optional[List[CWLObjectType]]:
         """
         Visit each CWL File or Directory on the way down.
 
@@ -1289,9 +1341,9 @@ def import_files(
             return None
         elif rec.get("class", None) == "Directory":
             # Pull out the old listing, if any
-            old_listing = rec.get("listing", None)
+            old_listing = cast(Optional[List[CWLObjectType]], rec.get("listing", None))
 
-            if not rec["location"].startswith("_:"):
+            if not cast(str, rec["location"]).startswith("_:"):
                 # This is a thing we can list and not just a literal, so we
                 # want to ensure that we have at least one level of listing.
                 if "listing" in rec and rec["listing"] == []:
@@ -1304,12 +1356,13 @@ def import_files(
                 # its original File objects that we need to process)
 
             return old_listing
+        return None
 
     def visit_file_or_directory_up(
-        rec: MutableMapping,
-        down_result: Optional[List],
-        child_results: List[Dict[str, Union[str, Dict]]]
-    ) -> Dict[str, Union[str, Dict]]:
+        rec: CWLObjectType,
+        down_result: Optional[List[CWLObjectType]],
+        child_results: List[Dict[str, CWLObjectType]],
+    ) -> Dict[str, CWLObjectType]:
         """
         For a CWL File or Directory, make sure it is uploaded and it has a
         location that describes its contents as visible to fs_access.
@@ -1330,19 +1383,15 @@ def import_files(
         if rec.get("class", None) == "File":
             # This is a CWL File
 
-            result = {}
+            result: Dict[str, CWLObjectType] = {}
 
             # Upload the file itself, which will adjust its location.
             upload_file(
-                import_function,
-                fileindex,
-                existing,
-                rec,
-                skip_broken=skip_broken
+                import_function, fileindex, existing, rec, skip_broken=skip_broken
             )
 
             # Make a record for this file under its name
-            result[rec['basename']] = rec['location']
+            result[cast(str, rec["basename"])] = cast(CWLObjectType, rec["location"])
 
             for secondary_file_result in child_results:
                 # Glom in the secondary files, if any
@@ -1354,13 +1403,13 @@ def import_files(
             # This is a CWL Directory
 
             # Restore the original listing, or its absence
-            rec["listing"] = down_result
+            rec["listing"] = cast(Optional[CWLOutputType], down_result)
             if rec["listing"] is None:
                 del rec["listing"]
 
             # We know we have child results from a fully recursive listing.
             # Build them into a contents dict.
-            contents = {}
+            contents: Dict[str, CWLObjectType] = {}
             for child_result in child_results:
                 # Keep each child file or directory or child file's secondary
                 # file under its name
@@ -1370,24 +1419,24 @@ def import_files(
             upload_directory(rec, contents, skip_broken=skip_broken)
 
             # Show those contents as being under our name in our parent.
-            return {rec['basename']: contents}
+            return {cast(str, rec["basename"]): cast(CWLObjectType, contents)}
 
         else:
             raise RuntimeError("Got unexpected class of object: " + str(rec))
-
 
     # Process each file and directory in a recursive traversal
     visit_cwl_class_and_reduce(
         cwl_object,
         ("File", "Directory"),
         visit_file_or_directory_down,
-        visit_file_or_directory_up
+        visit_file_or_directory_up,
     )
 
+
 def upload_directory(
-    directory_metadata: MutableMapping,
-    directory_contents: Dict[str, Union[str, Dict]],
-    skip_broken: bool = False
+    directory_metadata: CWLObjectType,
+    directory_contents: Dict[str, CWLObjectType],
+    skip_broken: bool = False,
 ) -> None:
     """
     Upload a Directory object.
@@ -1404,18 +1453,19 @@ def upload_directory(
     tool, since some tools require it to be cleared or single-level but still
     expect to see its contents in the filesystem.
     """
-    if (directory_metadata["location"].startswith("toilfile:") or
-        directory_metadata["location"].startswith("toildir:") or
-        directory_metadata["location"].startswith("_:")):
+    location = cast(str, directory_metadata["location"])
+    if (
+        location.startswith("toilfile:")
+        or location.startswith("toildir:")
+        or location.startswith("_:")
+    ):
         # Already in Toil; nothing to do
         return
-    if not directory_metadata["location"] and directory_metadata["path"]:
-        directory_metadata["location"] = schema_salad.ref_resolver.file_uri(
-            directory_metadata["path"]
+    if not location and directory_metadata["path"]:
+        location = directory_metadata["location"] = schema_salad.ref_resolver.file_uri(
+            cast(str, directory_metadata["path"])
         )
-    if directory_metadata["location"].startswith("file://") and not os.path.isdir(
-        directory_metadata["location"][len("file://"):]
-    ):
+    if location.startswith("file://") and not os.path.isdir(location[len("file://") :]):
         if skip_broken:
             return
         else:
@@ -1423,18 +1473,24 @@ def upload_directory(
                 "Directory is missing: %s" % directory_metadata["location"]
             )
 
-    logger.debug('Uploading directory at %s with contents %s', directory_metadata["location"], directory_contents)
+    logger.debug(
+        "Uploading directory at %s with contents %s",
+        directory_metadata["location"],
+        directory_contents,
+    )
 
     # Say that the directory location is just its dumped contents.
     # TODO: store these listings as files in the filestore instead?
-    directory_metadata["location"] = 'toildir:' + base64.urlsafe_b64encode(json.dumps(directory_contents).encode('utf-8')).decode('utf-8')
+    directory_metadata["location"] = "toildir:" + base64.urlsafe_b64encode(
+        json.dumps(directory_contents).encode("utf-8")
+    ).decode("utf-8")
 
 
 def upload_file(
-    uploadfunc: Any,
-    fileindex: dict,
-    existing: dict,
-    file_metadata: dict,
+    uploadfunc: Callable[[str], FileID],
+    fileindex: Dict[str, str],
+    existing: Dict[str, str],
+    file_metadata: CWLObjectType,
     skip_broken: bool = False,
 ) -> None:
     """
@@ -1442,19 +1498,22 @@ def upload_file(
 
     Write the file object to the file store if necessary.
     """
-    if (file_metadata["location"].startswith("toilfile:") or
-        file_metadata["location"].startswith("toildir:") or
-        file_metadata["location"].startswith("_:")):
+    location = cast(str, file_metadata["location"])
+    if (
+        location.startswith("toilfile:")
+        or location.startswith("toildir:")
+        or location.startswith("_:")
+    ):
         return
-    if file_metadata["location"] in fileindex:
-        file_metadata["location"] = fileindex[file_metadata["location"]]
+    if location in fileindex:
+        file_metadata["location"] = fileindex[location]
         return
-    if not file_metadata["location"] and file_metadata["path"]:
-        file_metadata["location"] = schema_salad.ref_resolver.file_uri(
-            file_metadata["path"]
+    if not location and file_metadata["path"]:
+        location = file_metadata["location"] = schema_salad.ref_resolver.file_uri(
+            cast(str, file_metadata["path"])
         )
-    if file_metadata["location"].startswith("file://") and not os.path.isfile(
-        file_metadata["location"][len("file://"):]
+    if location.startswith("file://") and not os.path.isfile(
+        location[len("file://") :]
     ):
         if skip_broken:
             return
@@ -1462,14 +1521,12 @@ def upload_file(
             raise cwltool.errors.WorkflowException(
                 "File is missing: %s" % file_metadata["location"]
             )
-    file_metadata["location"] = write_file(
-        uploadfunc, fileindex, existing, file_metadata["location"]
-    )
+    file_metadata["location"] = write_file(uploadfunc, fileindex, existing, location)
 
     logger.debug("Sending file at: %s", file_metadata["location"])
 
 
-def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> str:
+def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> FileID:
     """Wrap writeGlobalFile to accept file:// URIs."""
     fileuri = fileuri if ":/" in fileuri else f"file://{fileuri}"
     return file_store.writeGlobalFile(schema_salad.ref_resolver.uri_file_path(fileuri))
@@ -1486,6 +1543,7 @@ def remove_empty_listings(rec: CWLObjectType) -> None:
         del rec["listing"]
         return
 
+
 class ResolveIndirect(Job):
     """
     Helper Job.
@@ -1494,19 +1552,19 @@ class ResolveIndirect(Job):
     of actual values.
     """
 
-    def __init__(self, cwljob: dict):
+    def __init__(self, cwljob: CWLObjectType):
         """Store the dictionary of promises for later resolution."""
-        super(ResolveIndirect, self).__init__(cores=1, memory=1024^2, disk=0)
+        super(ResolveIndirect, self).__init__(cores=1, memory=1024 ^ 2, disk=0)
         self.cwljob = cwljob
 
-    def run(self, file_store: AbstractFileStore) -> dict:
+    def run(self, file_store: AbstractFileStore) -> CWLObjectType:
         """Evaluate the promises and return their values."""
         return resolve_dict_w_promises(self.cwljob)
 
 
 def toilStageFiles(
     toil: Toil,
-    cwljob: Union[Dict[Text, Any], List[Dict[Text, Any]]],
+    cwljob: Union[CWLObjectType, List[CWLObjectType]],
     outdir: str,
     destBucket: Union[str, None] = None,
 ) -> None:
@@ -1515,8 +1573,8 @@ def toilStageFiles(
     """
 
     def _collectDirEntries(
-        obj: Union[Dict[Text, Any], List[Dict[Text, Any]]]
-    ) -> Iterator[Dict[Text, Any]]:
+        obj: Union[CWLObjectType, List[CWLObjectType]]
+    ) -> Iterator[CWLObjectType]:
         if isinstance(obj, dict):
             if obj.get("class") in ("File", "Directory"):
                 yield obj
@@ -1552,60 +1610,82 @@ def toilStageFiles(
             # not instructed to copy.
             if destBucket:
                 # We are saving to a bucket, directories are fake.
-                if p.type in ["File", "CreateFile", "WritableFile", "CreateWritableFile"]:
+                if p.type in [
+                    "File",
+                    "CreateFile",
+                    "WritableFile",
+                    "CreateWritableFile",
+                ]:
                     # Directories don't need to be created if we're exporting to a bucket
-                    baseName = p.target[len(outdir):]
+                    baseName = p.target[len(outdir) :]
                     file_id_or_contents = p.resolved
 
-                    if (
-                        p.type in ["CreateFile", "CreateWritableFile"]
-                    ):  # TODO: CreateFile for buckets is not under testing
+                    if p.type in [
+                        "CreateFile",
+                        "CreateWritableFile",
+                    ]:  # TODO: CreateFile for buckets is not under testing
 
                         with tempfile.NamedTemporaryFile() as f:
                             # Make a file with the right contents
-                            f.write(file_id_or_contents.encode('utf-8'))
+                            f.write(file_id_or_contents.encode("utf-8"))
                             f.close()
                             # Import it and pack up the file ID so we can turn around and export it.
-                            file_id_or_contents = 'toilfile:' + toil.importFile(f.name).pack()
+                            file_id_or_contents = (
+                                "toilfile:" + toil.importFile(f.name).pack()
+                            )
 
-                    if file_id_or_contents.startswith('toildir:'):
+                    if file_id_or_contents.startswith("toildir:"):
                         # Get the directory contents and the path into them, if any
                         here, subpath, _ = decode_directory(file_id_or_contents)
                         if subpath is not None:
-                            for part in subpath.split('/'):
-                                here = here[part]
+                            for part in subpath.split("/"):
+                                here = cast(
+                                    Dict[str, Union[str, Dict[str, Any]]], here[part]
+                                )
                         # At the end we should get a direct toilfile: URI
-                        file_id_or_contents = here
+                        file_id_or_contents = cast(str, here)
 
-                    if file_id_or_contents.startswith('toilfile:'):
+                    if file_id_or_contents.startswith("toilfile:"):
                         # This is something we can export
                         destUrl = "/".join(s.strip("/") for s in [destBucket, baseName])
-                        toil.exportFile(FileID.unpack(file_id_or_contents[len('toilfile:'):]), destUrl)
+                        toil.exportFile(
+                            FileID.unpack(file_id_or_contents[len("toilfile:") :]),
+                            destUrl,
+                        )
                     # TODO: can a toildir: "file" get here?
             else:
                 # We are saving to the filesystem so we only really need exportFile for actual files.
-                if not os.path.exists(p.target) and p.type in ["Directory", "WritableDirectory"]:
+                if not os.path.exists(p.target) and p.type in [
+                    "Directory",
+                    "WritableDirectory",
+                ]:
                     os.makedirs(p.target)
                 if not os.path.exists(p.target) and p.type in ["File", "WritableFile"]:
-                    if p.resolved.startswith('toilfile:'):
+                    if p.resolved.startswith("toilfile:"):
                         # We can actually export this
                         os.makedirs(os.path.dirname(p.target), exist_ok=True)
                         toil.exportFile(
-                            FileID.unpack(p.resolved[len('toilfile:'):]), "file://" + p.target
+                            FileID.unpack(p.resolved[len("toilfile:") :]),
+                            "file://" + p.target,
                         )
-                    elif p.resolved.startswith('/'):
+                    elif p.resolved.startswith("/"):
                         # Probably staging and bypassing file store. Just copy.
                         os.makedirs(os.path.dirname(p.target), exist_ok=True)
                         shutil.copyfile(p.resolved, p.target)
                     # TODO: can a toildir: "file" get here?
-                if not os.path.exists(p.target) and p.type in ["CreateFile", "CreateWritableFile"]:
+                if not os.path.exists(p.target) and p.type in [
+                    "CreateFile",
+                    "CreateWritableFile",
+                ]:
                     # We just need to make a file with particular contents
                     os.makedirs(os.path.dirname(p.target), exist_ok=True)
                     with open(p.target, "wb") as n:
                         n.write(p.resolved.encode("utf-8"))
 
-    def _check_adjust(f: dict) -> dict:
-        f["location"] = schema_salad.ref_resolver.file_uri(pm.mapper(f["location"])[1])
+    def _check_adjust(f: CWLObjectType) -> CWLObjectType:
+        f["location"] = schema_salad.ref_resolver.file_uri(
+            pm.mapper(cast(str, f["location"]))[1]
+        )
 
         if "contents" in f:
             del f["contents"]
@@ -1625,7 +1705,7 @@ class CWLJobWrapper(Job):
     def __init__(
         self,
         tool: Process,
-        cwljob: dict,
+        cwljob: CWLObjectType,
         runtime_context: cwltool.context.RuntimeContext,
         conditional: Union[Conditional, None] = None,
     ):
@@ -1660,7 +1740,7 @@ class CWLJob(Job):
     def __init__(
         self,
         tool: Process,
-        cwljob: dict,
+        cwljob: CWLObjectType,
         runtime_context: cwltool.context.RuntimeContext,
         conditional: Union[Conditional, None] = None,
     ):
@@ -1691,9 +1771,9 @@ class CWLJob(Job):
                 js_console=False,
                 force_docker_pull=False,
                 loadListing=determine_load_listing(tool),
-                outdir='',
+                outdir="",
                 tmpdir=DEFAULT_TMPDIR,
-                stagedir='/var/lib/cwl',  # TODO: use actual defaults here
+                stagedir="/var/lib/cwl",  # TODO: use actual defaults here
                 cwlVersion=cast(str, self.cwltool.metadata["cwlVersion"]),
             )
 
@@ -1704,7 +1784,7 @@ class CWLJob(Job):
             unitName = " ".join(unitName)
 
         try:
-            displayName = str(self.cwltool.tool["id"])
+            displayName: Optional[str] = str(self.cwltool.tool["id"])
         except KeyError:
             displayName = None
 
@@ -1744,7 +1824,7 @@ class CWLJob(Job):
                 for env_name, env_value in self.required_env_vars(env_var):
                     yield env_name, env_value
 
-    def populate_env_vars(self, cwljob: dict) -> dict:
+    def populate_env_vars(self, cwljob: CWLObjectType) -> Dict[str, str]:
         """
         Prepare environment variables necessary at runtime for the job.
 
@@ -1771,10 +1851,12 @@ class CWLJob(Job):
         # "requirements" so cwltool.requirements need to be overwritten if an
         # env var with the same name is found
         for req in self.cwltool.requirements:
-            for env_def in cast(Dict, req.get("envDef", {})):
-                env_name = env_def.get("envName", "")
-                if env_name in required_env_vars:
-                    env_def["envValue"] = required_env_vars[env_name]
+            if req["class"] == "EnvVarRequirement":
+                envDefs = cast(List[Dict[str, str]], req["envDef"])
+                for env_def in envDefs:
+                    env_name = env_def["envName"]
+                    if env_name in required_env_vars:
+                        env_def["envValue"] = required_env_vars[env_name]
         return required_env_vars
 
     def run(self, file_store: AbstractFileStore) -> Any:
@@ -1785,7 +1867,7 @@ class CWLJob(Job):
         cwllogger.removeHandler(defaultStreamHandler)
         cwllogger.setLevel(logger.getEffectiveLevel())
 
-        logger.debug('Loaded order: %s', self.cwljob)
+        logger.debug("Loaded order: %s", self.cwljob)
 
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
@@ -1817,8 +1899,8 @@ class CWLJob(Job):
             functools.partial(remove_empty_listings),
         )
 
-        index = {}  # type: ignore
-        existing = {}  # type: ignore
+        index: Dict[str, str] = {}
+        existing: Dict[str, str] = {}
 
         # Prepare the run instructions for cwltool
         runtime_context = self.runtime_context.copy()
@@ -1826,7 +1908,7 @@ class CWLJob(Job):
         runtime_context.basedir = os.getcwd()
         runtime_context.preserve_environment = required_env_vars
 
-        if not runtime_context.bypass_file_store:
+        if not getattr(runtime_context, "bypass_file_store", False):
             # Exports temporary directory for batch systems that reset TMPDIR
             os.environ["TMPDIR"] = os.path.realpath(file_store.getLocalTempDir())
             # Make sure temporary files and output files are generated in
@@ -1839,7 +1921,9 @@ class CWLJob(Job):
             # know when all the jobs using a higher-level directory are ready for
             # it to be deleted. The local temp dir, under Toil's workDir, will be
             # cleaned up by Toil.
-            runtime_context.tmp_outdir_prefix = os.path.join(file_store.getLocalTempDir(), "tmp-out")
+            runtime_context.tmp_outdir_prefix = os.path.join(
+                file_store.getLocalTempDir(), "tmp-out"
+            )
 
             runtime_context.tmpdir_prefix = file_store.getLocalTempDir()
 
@@ -1857,9 +1941,9 @@ class CWLJob(Job):
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
 
-        logger.debug('Output disposition: %s', runtime_context.move_outputs)
+        logger.debug("Output disposition: %s", runtime_context.move_outputs)
 
-        logger.debug('Running tool %s with order: %s', self.cwltool, self.cwljob)
+        logger.debug("Running tool %s with order: %s", self.cwltool, self.cwljob)
 
         output, status = ToilSingleJobExecutor().execute(
             process=self.cwltool,
@@ -1879,16 +1963,17 @@ class CWLJob(Job):
 
         # Upload all the Files and set their and the Directories' locations, if
         # needed.
-        import_files(
-            file_import_function,
-            fs_access,
-            index,
-            existing,
-            output,
-            bypass_file_store = runtime_context.bypass_file_store
-        )
+        if output:
+            import_files(
+                file_import_function,
+                fs_access,
+                index,
+                existing,
+                output,
+                bypass_file_store=getattr(runtime_context, "bypass_file_store", False),
+            )
 
-        logger.debug('Emitting output: %s', output)
+        logger.debug("Emitting output: %s", output)
 
         # metadata[process_uuid] = {
         #     'started_at': started_at,
@@ -1902,10 +1987,14 @@ class CWLJob(Job):
 
 def makeJob(
     tool: Process,
-    jobobj: dict,
+    jobobj: CWLObjectType,
     runtime_context: cwltool.context.RuntimeContext,
     conditional: Union[Conditional, None],
-) -> tuple:
+) -> Union[
+    Tuple["CWLWorkflow", ResolveIndirect],
+    Tuple[CWLJob, CWLJob],
+    Tuple[CWLJobWrapper, CWLJobWrapper],
+]:
     """
     Create the correct Toil Job object for the CWL tool.
 
@@ -1914,7 +2003,9 @@ def makeJob(
     :return: "wfjob, followOn" if the input tool is a workflow, and "job, job" otherwise
     """
     logger.debug("Make job for tool: %s", tool)
-    scan_for_unsupported_requirements(tool, bypass_file_store=runtime_context.bypass_file_store)
+    scan_for_unsupported_requirements(
+        tool, bypass_file_store=getattr(runtime_context, "bypass_file_store", False)
+    )
     if tool.tool["class"] == "Workflow":
         wfjob = CWLWorkflow(
             cast(cwltool.workflow.Workflow, tool),
@@ -1962,25 +2053,31 @@ class CWLScatter(Job):
     def __init__(
         self,
         step: cwltool.workflow.WorkflowStep,
-        cwljob: dict,
+        cwljob: CWLObjectType,
         runtime_context: cwltool.context.RuntimeContext,
         conditional: Union[Conditional, None],
     ):
         """Store our context for later execution."""
-        super(CWLScatter, self).__init__(cores=1, memory=100*1024^2, disk=0)
+        super(CWLScatter, self).__init__(cores=1, memory=100 * 1024 ^ 2, disk=0)
         self.step = step
         self.cwljob = cwljob
         self.runtime_context = runtime_context
         self.conditional = conditional
 
     def flat_crossproduct_scatter(
-        self, joborder: dict, scatter_keys: list, outputs: list, postScatterEval: Any
+        self,
+        joborder: CWLObjectType,
+        scatter_keys: List[str],
+        outputs: List[CWLObjectType],
+        postScatterEval: Callable[[CWLObjectType], CWLObjectType],
     ) -> None:
         """Cartesian product of the inputs, then flattened."""
         scatter_key = shortname(scatter_keys[0])
-        for n in range(0, len(joborder[scatter_key])):
+        for n in range(0, len(cast(List[CWLObjectType], joborder[scatter_key]))):
             updated_joborder = copy.copy(joborder)
-            updated_joborder[scatter_key] = joborder[scatter_key][n]
+            updated_joborder[scatter_key] = cast(
+                List[CWLObjectType], joborder[scatter_key]
+            )[n]
             if len(scatter_keys) == 1:
                 updated_joborder = postScatterEval(updated_joborder)
                 subjob, followOn = makeJob(
@@ -1997,14 +2094,19 @@ class CWLScatter(Job):
                 )
 
     def nested_crossproduct_scatter(
-        self, joborder: dict, scatter_keys: list, postScatterEval: Any
-    ) -> list:
+        self,
+        joborder: CWLObjectType,
+        scatter_keys: List[str],
+        postScatterEval: Callable[[CWLObjectType], CWLObjectType],
+    ) -> List[CWLObjectType]:
         """Cartesian product of the inputs."""
         scatter_key = shortname(scatter_keys[0])
-        outputs = []
-        for n in range(0, len(joborder[scatter_key])):
+        outputs: List[CWLObjectType] = []
+        for n in range(0, len(cast(List[CWLObjectType], joborder[scatter_key]))):
             updated_joborder = copy.copy(joborder)
-            updated_joborder[scatter_key] = joborder[scatter_key][n]
+            updated_joborder[scatter_key] = cast(
+                List[CWLObjectType], joborder[scatter_key]
+            )[n]
             if len(scatter_keys) == 1:
                 updated_joborder = postScatterEval(updated_joborder)
                 subjob, followOn = makeJob(
@@ -2017,13 +2119,13 @@ class CWLScatter(Job):
                 outputs.append(followOn.rv())
             else:
                 outputs.append(
-                    self.nested_crossproduct_scatter(
+                    self.nested_crossproduct_scatter(  # type: ignore
                         updated_joborder, scatter_keys[1:], postScatterEval
                     )
                 )
         return outputs
 
-    def run(self, file_store: AbstractFileStore) -> list:
+    def run(self, file_store: AbstractFileStore) -> List[CWLObjectType]:
         """Generate the follow on scatter jobs."""
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
@@ -2043,7 +2145,7 @@ class CWLScatter(Job):
             if "valueFrom" in i
         }
 
-        def postScatterEval(job_dict: dict) -> Any:
+        def postScatterEval(job_dict: CWLObjectType) -> Any:
             shortio = {shortname(k): v for k, v in job_dict.items()}
             for k in valueFrom:
                 job_dict.setdefault(k, None)
@@ -2065,10 +2167,12 @@ class CWLScatter(Job):
             return {k: valueFromFunc(k, v) for k, v in list(job_dict.items())}
 
         if scatterMethod == "dotproduct":
-            for i in range(0, len(cwljob[shortname(scatter[0])])):
+            for i in range(
+                0, len(cast(List[CWLObjectType], cwljob[shortname(scatter[0])]))
+            ):
                 copyjob = copy.copy(cwljob)
                 for sc in [shortname(x) for x in scatter]:
-                    copyjob[sc] = cwljob[sc][i]
+                    copyjob[sc] = cast(List[CWLObjectType], cwljob[sc])[i]
                 copyjob = postScatterEval(copyjob)
                 subjob, follow_on = makeJob(
                     tool=self.step.embedded_tool,
@@ -2084,11 +2188,11 @@ class CWLScatter(Job):
             self.flat_crossproduct_scatter(cwljob, scatter, outputs, postScatterEval)
         else:
             if scatterMethod:
-                raise validate.ValidationException(
+                raise ValidationException(
                     "Unsupported complex scatter type '%s'" % scatterMethod
                 )
             else:
-                raise validate.ValidationException(
+                raise ValidationException(
                     "Must provide scatterMethod to scatter over multiple" " inputs."
                 )
 
@@ -2106,35 +2210,37 @@ class CWLGather(Job):
     def __init__(
         self,
         step: cwltool.workflow.WorkflowStep,
-        outputs: Union[Mapping, MutableSequence],
+        outputs: Union[CWLObjectType, List[CWLObjectType]],
     ):
         """Collect our context for later gathering."""
-        super(CWLGather, self).__init__(cores=1, memory=10*1024^2, disk=0)
+        super(CWLGather, self).__init__(cores=1, memory=10 * 1024 ^ 2, disk=0)
         self.step = step
         self.outputs = outputs
 
     @staticmethod
-    def extract(obj: Union[Mapping, MutableSequence], k: str) -> list:
+    def extract(
+        obj: Union[CWLObjectType, List[CWLObjectType]], k: str
+    ) -> Union[CWLOutputType, List[CWLObjectType]]:
         """
         Extract the given key from the obj.
 
         If the object is a list, extract it from all members of the list.
         """
         if isinstance(obj, Mapping):
-            return obj.get(k)
+            return cast(Union[CWLOutputType, List[CWLObjectType]], obj.get(k))
         elif isinstance(obj, MutableSequence):
-            cp = []
+            cp: List[CWLObjectType] = []
             for item in obj:
-                cp.append(CWLGather.extract(item, k))
+                cp.append(cast(CWLObjectType, CWLGather.extract(item, k)))
             return cp
         else:
-            return []
+            return cast(List[CWLObjectType], [])
 
     def run(self, file_store: AbstractFileStore) -> Dict[str, Any]:
         """Gather all the outputs of the scatter."""
         outobj = {}
 
-        def sn(n):
+        def sn(n: Union[Mapping[str, Any], str]) -> str:
             if isinstance(n, Mapping):
                 return shortname(n["id"])
             if isinstance(n, str):
@@ -2149,13 +2255,13 @@ class CWLGather(Job):
 class SelfJob(Job):
     """Fake job object to facilitate implementation of CWLWorkflow.run()."""
 
-    def __init__(self, j: "CWLWorkflow", v: dict):
+    def __init__(self, j: "CWLWorkflow", v: CWLObjectType):
         """Record the workflow and dictionary."""
-        super(SelfJob, self).__init__(cores=1, memory=1024^2, disk=0)
+        super(SelfJob, self).__init__(cores=1, memory=1024 ^ 2, disk=0)
         self.j = j
         self.v = v
 
-    def rv(self, *path) -> Any:
+    def rv(self, *path: Any) -> Any:
         """Return our properties dictionary."""
         return self.v
 
@@ -2200,19 +2306,21 @@ class CWLWorkflow(Job):
     def __init__(
         self,
         cwlwf: cwltool.workflow.Workflow,
-        cwljob: dict,
+        cwljob: CWLObjectType,
         runtime_context: cwltool.context.RuntimeContext,
         conditional: Union[Conditional, None] = None,
     ):
         """Gather our context for later execution."""
-        super(CWLWorkflow, self).__init__(cores=1, memory=100*1024^2, disk=0)
+        super(CWLWorkflow, self).__init__(cores=1, memory=100 * 1024 ^ 2, disk=0)
         self.cwlwf = cwlwf
         self.cwljob = cwljob
         self.runtime_context = runtime_context
         self.cwlwf = remove_pickle_problems(self.cwlwf)
         self.conditional = conditional or Conditional()
 
-    def run(self, file_store: AbstractFileStore):
+    def run(
+        self, file_store: AbstractFileStore
+    ) -> Union[UnresolvedDict, Dict[str, SkipNull]]:
         """
         Convert a CWL Workflow graph into a Toil job graph.
 
@@ -2254,11 +2362,13 @@ class CWLWorkflow(Job):
                             if s not in promises:
                                 stepinputs_fufilled = False
                     if stepinputs_fufilled:
-                        logger.debug('Ready to make job for workflow step %s', step.tool["id"])
+                        logger.debug(
+                            "Ready to make job for workflow step %s", step.tool["id"]
+                        )
                         jobobj = {}
 
                         for inp in step.tool["inputs"]:
-                            logger.debug('Takes input: %s', inp["id"])
+                            logger.debug("Takes input: %s", inp["id"])
                             key = shortname(inp["id"])
                             if "source" in inp:
                                 jobobj[key] = ResolveSource(
@@ -2287,15 +2397,23 @@ class CWLWorkflow(Job):
                         )
 
                         if "scatter" in step.tool:
-                            wfjob = CWLScatter(
+                            wfjob: Union[
+                                CWLScatter, CWLWorkflow, CWLJob, CWLJobWrapper
+                            ] = CWLScatter(
                                 step,
                                 UnresolvedDict(jobobj),
                                 self.runtime_context,
                                 conditional=conditional,
                             )
-                            followOn = CWLGather(step, wfjob.rv())
+                            followOn: Union[
+                                CWLGather, ResolveIndirect, CWLJob, CWLJobWrapper
+                            ] = CWLGather(step, wfjob.rv())
                             wfjob.addFollowOn(followOn)
-                            logger.debug('Is scatter with job %s and follow-on %s', wfjob, followOn)
+                            logger.debug(
+                                "Is scatter with job %s and follow-on %s",
+                                wfjob,
+                                followOn,
+                            )
                         else:
                             wfjob, followOn = makeJob(
                                 tool=step.embedded_tool,
@@ -2303,7 +2421,11 @@ class CWLWorkflow(Job):
                                 runtime_context=self.runtime_context,
                                 conditional=conditional,
                             )
-                            logger.debug('Is non-scatter with job %s and follow-on %s', wfjob, followOn)
+                            logger.debug(
+                                "Is non-scatter with job %s and follow-on %s",
+                                wfjob,
+                                followOn,
+                            )
 
                         jobs[step.tool["id"]] = followOn
 
@@ -2317,22 +2439,30 @@ class CWLWorkflow(Job):
                                     and not wfjob.hasPredecessor(promises[s])
                                 ):
                                     promises[s].addFollowOn(wfjob)
-                                    logger.debug('Connect as follow-on based on need for %s from %s', s, promises[s])
+                                    logger.debug(
+                                        "Connect as follow-on based on need for %s from %s",
+                                        s,
+                                        promises[s],
+                                    )
                                     connected = True
                                 if not isinstance(
                                     promises[s], (CWLJobWrapper, CWLGather)
                                 ) and not promises[s].hasChild(wfjob):
-                                    logger.debug('Connect as child based on need for %s from %s', s, promises[s])
+                                    logger.debug(
+                                        "Connect as child based on need for %s from %s",
+                                        s,
+                                        promises[s],
+                                    )
                                     promises[s].addChild(wfjob)
                                     connected = True
                         if not connected:
                             # Workflow step is default inputs only & isn't connected
                             # to other jobs, so add it as child of this workflow.
                             self.addChild(wfjob)
-                            logger.debug('Run as direct child')
+                            logger.debug("Run as direct child")
 
                         for out in step.tool["outputs"]:
-                            logger.debug('Provides %s from %s', out["id"], followOn)
+                            logger.debug("Provides %s from %s", out["id"], followOn)
                             promises[out["id"]] = followOn
 
                 for inp in step.tool["inputs"]:
@@ -2361,7 +2491,7 @@ class CWLWorkflow(Job):
 
 def visitSteps(
     cmdline_tool: Process,
-    op: Callable[[Dict], Any],
+    op: Callable[[CommentedMap], None],
 ) -> None:
     """
     Iterate over a CWL Process object, running the op on each tool description
@@ -2379,8 +2509,11 @@ def visitSteps(
         # if they bothered to run the Process __init__.
         op(cmdline_tool.tool)
     else:
-        raise RuntimeError(f"Unsupported type encountered in workflow "
-                           f"traversal: {type(cmdline_tool)}")
+        raise RuntimeError(
+            f"Unsupported type encountered in workflow "
+            f"traversal: {type(cmdline_tool)}"
+        )
+
 
 def rm_unprocessed_secondary_files(job_params: Any) -> None:
     if isinstance(job_params, list):
@@ -2390,7 +2523,9 @@ def rm_unprocessed_secondary_files(job_params: Any) -> None:
         job_params["secondaryFiles"] = filtered_secondary_files(job_params)
 
 
-def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
+def filtered_secondary_files(
+    unfiltered_secondary_files: CWLObjectType,
+) -> List[CWLObjectType]:
     """
     Remove unprocessed secondary files.
 
@@ -2412,30 +2547,36 @@ def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
     intermediate_secondary_files = []
     final_secondary_files = []
     # remove secondary files still containing interpolated strings
-    for sf in unfiltered_secondary_files["secondaryFiles"]:
-        sf_bn = sf.get("basename", "")
-        sf_loc = sf.get("location", "")
+    for sf in cast(List[CWLObjectType], unfiltered_secondary_files["secondaryFiles"]):
+        sf_bn = cast(str, sf.get("basename", ""))
+        sf_loc = cast(str, sf.get("location", ""))
         if ("$(" not in sf_bn) and ("${" not in sf_bn):
             if ("$(" not in sf_loc) and ("${" not in sf_loc):
                 intermediate_secondary_files.append(sf)
     # remove secondary files that are not present in the filestore or pointing
     # to existant things on disk
     for sf in intermediate_secondary_files:
-        sf_loc = sf.get("location", "")
-        if (sf_loc.startswith("toilfile:") or
-            sf_loc.startswith("toildir:") or
-            sf_loc.startswith("_:") or
-            sf.get("class", "") == "Directory"):
+        sf_loc = cast(str, sf.get("location", ""))
+        if (
+            sf_loc.startswith("toilfile:")
+            or sf_loc.startswith("toildir:")
+            or sf_loc.startswith("_:")
+            or sf.get("class", "") == "Directory"
+        ):
             # Pass imported files, and all Directories
             final_secondary_files.append(sf)
-        elif (sf_loc.startswith("file:") and
-              os.path.exists(schema_salad.ref_resolver.uri_file_path(sf_loc))):
+        elif sf_loc.startswith("file:") and os.path.exists(
+            schema_salad.ref_resolver.uri_file_path(sf_loc)
+        ):
             # Pass things that exist on disk (which we presumably declined to
             # import because we aren't using the file store)
             final_secondary_files.append(sf)
     return final_secondary_files
 
-def scan_for_unsupported_requirements(tool: Process, bypass_file_store: bool = False) -> None:
+
+def scan_for_unsupported_requirements(
+    tool: Process, bypass_file_store: bool = False
+) -> None:
     """
     Scan the given CWL tool for any unsupported optional features.
 
@@ -2466,7 +2607,8 @@ def scan_for_unsupported_requirements(tool: Process, bypass_file_store: bool = F
                 "the filesystem are shared."
             )
 
-def determine_load_listing(tool: Process):
+
+def determine_load_listing(tool: Process) -> str:
     """
     Determine the directory.listing feature in CWL.
 
@@ -2506,7 +2648,7 @@ def determine_load_listing(tool: Process):
         if load_listing_req
         else "no_listing"
     )
-    load_listing = tool.tool.get("loadListing", None) or load_listing_tool_req
+    load_listing = cast(str, tool.tool.get("loadListing", load_listing_tool_req))
 
     listing_choices = ("no_listing", "shallow_listing", "deep_listing")
     if load_listing not in listing_choices:
@@ -2515,12 +2657,18 @@ def determine_load_listing(tool: Process):
         )
     return load_listing
 
+
 class NoAvailableJobStoreException(Exception):
     """Indicates that no job store name is available."""
+
     pass
 
-def generate_default_job_store(batch_system_name: Optional[str], provisioner_name: Optional[str],
-                               local_directory: str) -> str:
+
+def generate_default_job_store(
+    batch_system_name: Optional[str],
+    provisioner_name: Optional[str],
+    local_directory: str,
+) -> str:
     """
     Choose a default job store appropriate to the requested batch system and
     provisioner, and installed modules. Raises an error if no good default is
@@ -2546,46 +2694,46 @@ def generate_default_job_store(batch_system_name: Optional[str], provisioner_nam
         situation += f" with the '{provisioner_name}' provisioner"
 
     try:
-        if provisioner_name == 'gce':
+        if provisioner_name == "gce":
             # We can't use a local directory on Google cloud
 
             # Make sure we have the Google job store
             from toil.jobStores.googleJobStore import GoogleJobStore
 
             # Look for a project
-            project = os.getenv('TOIL_GOOGLE_PROJECTID')
-            project_part = (':' + project) if project else ''
+            project = os.getenv("TOIL_GOOGLE_PROJECTID")
+            project_part = (":" + project) if project else ""
 
             # Roll a randomn bucket name, possibly in the project.
-            return f'google{project_part}:toil-cwl-{str(uuid.uuid4())}'
-        elif provisioner_name == 'aws' or batch_system_name in {'mesos', 'kubernetes'}:
+            return f"google{project_part}:toil-cwl-{str(uuid.uuid4())}"
+        elif provisioner_name == "aws" or batch_system_name in {"mesos", "kubernetes"}:
             # We can't use a local directory on AWS or on these cloud batch systems.
             # If we aren't provisioning on Google, we should try an AWS batch system.
 
             # Make sure we have AWS
             from toil.jobStores.aws.jobStore import AWSJobStore
-
             # Find a region
             from toil.provisioners.aws import get_current_aws_region
+
             region = get_current_aws_region()
 
             if not region:
                 # We can't generate an AWS job store without a region
-                situation += ' running outside AWS with no TOIL_AWS_ZONE set'
+                situation += " running outside AWS with no TOIL_AWS_ZONE set"
                 raise NoAvailableJobStoreException()
 
             # Roll a random name
-            return f'aws:{region}:toil-cwl-{str(uuid.uuid4())}'
-        elif provisioner_name is not None and provisioner_name not in ['aws', 'gce']:
+            return f"aws:{region}:toil-cwl-{str(uuid.uuid4())}"
+        elif provisioner_name is not None and provisioner_name not in ["aws", "gce"]:
             # We 've never heard of this provisioner and don't know what kind
             # of job store to use with it.
             raise NoAvailableJobStoreException()
 
     except (ImportError, NoAvailableJobStoreException):
         raise NoAvailableJobStoreException(
-            f'Could not determine a job store appropriate for '
-            f'{situation}. Please specify a jobstore with the '
-            f'--jobStore option.'
+            f"Could not determine a job store appropriate for "
+            f"{situation}. Please specify a jobstore with the "
+            f"--jobStore option."
         )
 
     # Usually use the local directory and a file job store.
@@ -2610,7 +2758,7 @@ usage_message = "\n\n" + textwrap.dedent(
 )
 
 
-def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
+def main(args: Optional[Union[List[str]]] = None, stdout: TextIO = sys.stdout) -> int:
     """Run the main loop for toil-cwl-runner."""
     # Remove cwltool logger's stream handler so it uses Toil's
     cwllogger.removeHandler(defaultStreamHandler)
@@ -2757,17 +2905,17 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         type=str,
         default=None,
         help="Platform specific configuration for MPI (parallel "
-             "launcher, its flag etc). See the cwltool README "
-             "section 'Running MPI-based tools' for details of the format: "
-             "https://github.com/common-workflow-language/cwltool#running-mpi-based-tools-that-need-to-be-launched",
+        "launcher, its flag etc). See the cwltool README "
+        "section 'Running MPI-based tools' for details of the format: "
+        "https://github.com/common-workflow-language/cwltool#running-mpi-based-tools-that-need-to-be-launched",
     )
     parser.add_argument(
         "--bypass-file-store",
         action="store_true",
         default=False,
         help="Do not use Toil's file store and assume all "
-             "paths are accessible in place from all nodes.",
-        dest="bypass_file_store"
+        "paths are accessible in place from all nodes.",
+        dest="bypass_file_store",
     )
 
     provgroup = parser.add_argument_group(
@@ -2859,14 +3007,12 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # Pick a default job store specifier appropriate to our choice of batch
         # system and provisioner and installed modules, given this available
         # local directory name. Fail if no good default can be used.
-        chosen_job_store = generate_default_job_store(options.batchSystem,
-                                                      options.provisioner,
-                                                      workdir)
+        chosen_job_store = generate_default_job_store(
+            options.batchSystem, options.provisioner, workdir
+        )
     else:
         # Since the default won't be used, just pass through the user's choice
         chosen_job_store = options.jobStore
-
-
 
     # Re-parse arguments with the new selected jobstore.
     options = parser.parse_args([chosen_job_store] + args)
@@ -2887,8 +3033,10 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # Applies only on the leader.
         cwllogger.setLevel(options.logLevel.upper())
 
-    logger.debug(f'Using job store {chosen_job_store} from workdir {workdir} with default status {using_default_job_store}')
-    logger.debug(f'Final job store {options.jobStore} and workDir {options.workDir}')
+    logger.debug(
+        f"Using job store {chosen_job_store} from workdir {workdir} with default status {using_default_job_store}"
+    )
+    logger.debug(f"Final job store {options.jobStore} and workDir {options.workDir}")
 
     outdir = os.path.abspath(options.outdir)
     tmp_outdir_prefix = os.path.abspath(options.tmp_outdir_prefix)
@@ -2912,12 +3060,11 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     runtime_context.rm_tmpdir = False
     if options.mpi_config_file is not None:
         runtime_context.mpi_config = MpiConfig.load(options.mpi_config_file)
-    runtime_context.bypass_file_store = options.bypass_file_store
+    setattr(runtime_context, "bypass_file_store", options.bypass_file_store)
     if options.bypass_file_store and options.destBucket:
         # We use the file store to write to buckets, so we can't do this (yet?)
         logger.error("Cannot export outputs to a bucket when bypassing the file store")
         return 1
-
 
     loading_context = cwltool.context.LoadingContext(vars(options))
 
@@ -2937,10 +3084,12 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             except Exception as err:
                 # TODO: We can't import FailedJobsException due to a circular
                 # import but that's what we'd expect here.
-                if getattr(err, 'exit_code') == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
+                if getattr(err, "exit_code") == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
                     # We figured out that we can't support this workflow.
                     logging.error(err)
-                    logging.error('Your workflow uses a CWL requirement that Toil does not support!')
+                    logging.error(
+                        "Your workflow uses a CWL requirement that Toil does not support!"
+                    )
                     return CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
                 else:
                     raise
@@ -2987,9 +3136,13 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             loading_context, workflowobj, uri = cwltool.load_tool.fetch_document(
                 uri, loading_context
             )
+            assert loading_context.loader  # set by load_tool.fetch_document
             loading_context, uri = cwltool.load_tool.resolve_and_validate_document(
                 loading_context, workflowobj, uri
             )
+            assert (
+                loading_context.loader
+            )  # set by load_tool.resolve_and_validate_document
             loading_context.overrides_list.extend(
                 cast(
                     List[CWLObjectType],
@@ -3008,7 +3161,9 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
             try:
                 tool = cwltool.load_tool.make_tool(uri, loading_context)
-                scan_for_unsupported_requirements(tool, bypass_file_store=options.bypass_file_store)
+                scan_for_unsupported_requirements(
+                    tool, bypass_file_store=options.bypass_file_store
+                )
             except UnsupportedRequirement as err:
                 logging.error(err)
                 return CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
@@ -3041,7 +3196,9 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
             for inp in tool.tool["inputs"]:
 
-                def set_secondary(fileobj):
+                def set_secondary(
+                    fileobj: Union[CWLObjectType, MutableSequence[CWLObjectType]]
+                ) -> None:
                     if isinstance(fileobj, Mapping) and fileobj.get("class") == "File":
                         if "secondaryFiles" not in fileobj:
                             # inits all secondary files with 'file://' schema
@@ -3049,7 +3206,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                             fileobj["secondaryFiles"] = [
                                 {
                                     "location": cwltool.builder.substitute(
-                                        fileobj["location"], sf["pattern"]
+                                        cast(str, fileobj["location"]), sf["pattern"]
                                     ),
                                     "class": "File",
                                 }
@@ -3060,8 +3217,15 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                         for entry in fileobj:
                             set_secondary(entry)
 
-                if shortname(inp["id"]) in initialized_job_order and inp.get("secondaryFiles"):
-                    set_secondary(initialized_job_order[shortname(inp["id"])])
+                if shortname(inp["id"]) in initialized_job_order and inp.get(
+                    "secondaryFiles"
+                ):
+                    set_secondary(
+                        cast(
+                            Union[CWLObjectType, MutableSequence[CWLObjectType]],
+                            initialized_job_order[shortname(inp["id"])],
+                        )
+                    )
 
             runtime_context.use_container = not options.no_container
             runtime_context.tmp_outdir_prefix = os.path.realpath(tmp_outdir_prefix)
@@ -3096,10 +3260,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
             # Define something we can call to import a file and get its file
             # ID.
-            file_import_function = functools.partial(
-                toil.importFile,
-                symlink=True
-            )
+            file_import_function = functools.partial(toil.importFile, symlink=True)
 
             # Import all the input files, some of which may be missing optional
             # files.
@@ -3110,21 +3271,22 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 existing,
                 initialized_job_order,
                 skip_broken=True,
-                bypass_file_store=options.bypass_file_store
+                bypass_file_store=options.bypass_file_store,
             )
             # Import all the files associated with tools (binaries, etc.).
             # Not sure why you would have an optional secondary file here, but
             # the spec probably needs us to support them.
             visitSteps(
-                tool, functools.partial(
+                tool,
+                functools.partial(
                     import_files,
                     file_import_function,
                     fs_access,
                     fileindex,
                     existing,
                     skip_broken=True,
-                    bypass_file_store=options.bypass_file_store
-                )
+                    bypass_file_store=options.bypass_file_store,
+                ),
             )
 
             # We always expect to have processed all files that exist
@@ -3152,10 +3314,12 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             except Exception as err:
                 # TODO: We can't import FailedJobsException due to a circular
                 # import but that's what we'd expect here.
-                if getattr(err, 'exit_code') == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
+                if getattr(err, "exit_code") == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
                     # We figured out that we can't support this workflow.
                     logging.error(err)
-                    logging.error('Your workflow uses a CWL requirement that Toil does not support!')
+                    logging.error(
+                        "Your workflow uses a CWL requirement that Toil does not support!"
+                    )
                     return CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
                 else:
                     raise
@@ -3173,7 +3337,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         if runtime_context.research_obj is not None:
             runtime_context.research_obj.create_job(outobj, True)
 
-            def remove_at_id(doc):
+            def remove_at_id(doc: Any) -> None:
                 if isinstance(doc, MutableMapping):
                     for key in list(doc.keys()):
                         if key == "@id":
@@ -3216,11 +3380,10 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
 def find_default_container(
     args: argparse.Namespace, builder: cwltool.builder.Builder
-) -> str:
+) -> Optional[str]:
     """Find the default constuctor by consulting a Toil.options object."""
     if args.default_container:
-        return args.default_container
+        return cast(str, args.default_container)
     if args.beta_use_biocontainers:
         return get_container_from_software_requirements(True, builder)
     return None
-

@@ -373,7 +373,7 @@ class AbstractFileStore(ABC):
             # Someone is mixing FileStore and JobStore file APIs, or serializing FileIDs as strings.
             size = self.jobStore.getFileSize(fileStoreID)
 
-        return cast(int, size)
+        return size
 
     @abstractmethod
     def deleteLocalFile(self, fileStoreID: Union[FileID, str]) -> None:

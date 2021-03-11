@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 class RegularLogTest(ToilTest):
 
-    def setUp(self):
+    def setUp(self) -> None:
         super(RegularLogTest, self).setUp()
         self.tempDir = self._createTempDir(purpose='tempDir')
 

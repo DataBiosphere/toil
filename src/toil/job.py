@@ -24,7 +24,7 @@ import tempfile
 import time
 import uuid
 from abc import ABCMeta, abstractmethod
-from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
 from contextlib import contextmanager
 from io import BytesIO
 from typing import Dict, Optional, Union, Set
@@ -1707,7 +1707,7 @@ class Job:
         Used to setup and run Toil workflow.
         """
         @staticmethod
-        def getDefaultArgumentParser():
+        def getDefaultArgumentParser() -> ArgumentParser:
             """
             Get argument parser with added toil workflow options.
 
@@ -1719,7 +1719,7 @@ class Job:
             return parser
 
         @staticmethod
-        def getDefaultOptions(jobStore):
+        def getDefaultOptions(jobStore: str) -> Namespace:
             """
             Get default options for a toil workflow.
 

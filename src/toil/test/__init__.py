@@ -67,7 +67,7 @@ class ToilTest(unittest.TestCase):
         print(f"\n\n[TEST] {strclass(self.__class__)}:{self._testMethodName} ({timestamp})\n\n")
 
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         super(ToilTest, cls).setUpClass()
         cls._tempDirs = []
         tempBaseDir = os.environ.get('TOIL_TEST_TEMP', None)
@@ -77,7 +77,7 @@ class ToilTest(unittest.TestCase):
         cls._tempBaseDir = tempBaseDir
 
     @classmethod
-    def tearDownClass(cls):
+    def tearDownClass(cls) -> None:
         if cls._tempBaseDir is None:
             while cls._tempDirs:
                 tempDir = cls._tempDirs.pop()
@@ -87,11 +87,11 @@ class ToilTest(unittest.TestCase):
             cls._tempDirs = []
         super(ToilTest, cls).tearDownClass()
 
-    def setUp(self):
+    def setUp(self) -> None:
         logger.info("Setting up %s ...", self.id())
         super(ToilTest, self).setUp()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         super(ToilTest, self).tearDown()
         logger.info("Tore down %s", self.id())
 
@@ -144,11 +144,11 @@ class ToilTest(unittest.TestCase):
         projectRootPath = projectRootPath[:-len(expectedSuffix)]
         return projectRootPath
 
-    def _createTempDir(self, purpose=None):
+    def _createTempDir(self, purpose: str=None) -> str:
         return self._createTempDirEx(self._testMethodName, purpose)
 
     @classmethod
-    def _createTempDirEx(cls, *names):
+    def _createTempDirEx(cls, *names: str) -> str:
         prefix = ['toil', 'test', strclass(cls)]
         prefix.extend([_f for _f in names if _f])
         prefix.append('')

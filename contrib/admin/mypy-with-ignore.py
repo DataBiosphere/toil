@@ -70,7 +70,6 @@ def main():
         'src/toil/batchSystems/mesos/test/__init__.py',
         'src/toil/cwl/conftest.py',
         'src/toil/cwl/__init__.py',
-        'src/toil/cwl/cwltoil.py',
         'src/toil/fileStores/cachingFileStore.py',
         'src/toil/jobStores/utils.py',
         'src/toil/jobStores/conftest.py',
@@ -104,8 +103,7 @@ def main():
     for file_path in all_files_to_check:
         if file_path not in ignore_paths and 'src/toil/test' not in file_path:
             filtered_files_to_check.append(file_path)
-    # follow-imports type checks pypi projects we don't control, so we skip it; why is this their default?
-    args = ['mypy', '--follow-imports=skip'] + filtered_files_to_check
+    args = ['mypy'] + filtered_files_to_check
     p = subprocess.run(args=args, stdout=subprocess.PIPE)
     result = p.stdout.decode()
     print(result)

@@ -6,7 +6,9 @@ stubserver==1.1
 setuptools==51.3.3
 sphinx==3.5.3
 cwltest==2.0.20200626112502
-mypy==0.812
+mypy==0.910
+types-requests
+types-setuptools
 flake8==3.8.4
 flake8-bugbear==20.11.1
 black
