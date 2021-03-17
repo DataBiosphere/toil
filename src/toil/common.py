@@ -1090,7 +1090,7 @@ class Toil:
         # Create a directory unique to each host and workflow in case workDir
         # is on a shared FS. This prevents workers on different nodes from
         # erasing each other's directories.
-        workflowDir = os.path.join(base, f'{workflowID}{getNodeID()}'.replace('-', ''))
+        workflowDir: str = os.path.join(base, f'{workflowID}{getNodeID()}'.replace('-', ''))
         try:
             # Directory creation is atomic
             os.mkdir(workflowDir)
