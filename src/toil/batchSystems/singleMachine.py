@@ -259,7 +259,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             self.daddyException = None
             raise exc
 
-    def _stop_now(self, popens: List[subprocess.Popen]):
+    def _stop_now(self, popens: List[subprocess.Popen]) -> None:
         """
         Stop the given child processes and all their children. Does not reap them.
         """
@@ -289,7 +289,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 # never managed to make the group.
                 popen.kill()
 
-    def _stop_and_wait(self, popens: List[subprocess.Popen]):
+    def _stop_and_wait(self, popens: List[subprocess.Popen]) -> None:
         """
         Stop the given child processes and all their children. Blocks until the
         processes are gone.
