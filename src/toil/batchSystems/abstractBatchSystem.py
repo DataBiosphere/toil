@@ -17,7 +17,7 @@ import os
 import shutil
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from typing import Any, Optional, Tuple, Union, Dict
+from typing import Any, Optional, Tuple, Union, Dict, NamedTuple
 
 from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
                                         DEFAULT_BATCH_SYSTEM)
@@ -37,22 +37,20 @@ EXIT_STATUS_UNAVAILABLE_VALUE = 255
 logger = logging.getLogger(__name__)
 
 
-class UpdatedBatchJobInfo:
-    __slots__ = 'jobID', 'exitStatus', 'exitReason', 'wallTime'
-    jobID: str
-    # The exit status (integer value) of the job. 0 implies successful.
-    # EXIT_STATUS_UNAVAILABLE_VALUE is used when the exit status is not available (e.g. job is lost).
-    exitStatus: int
-    exitReason: Union[int, None]  # The exit reason, if available. One of BatchJobExitReason enum.
-    wallTime: Union[float, int, None]
+UpdatedBatchJobInfo = NamedTuple('UpdatedBatchJobInfo',
+    [('jobID', str),
+     # The exit status (integer value) of the job. 0 implies successful.
+     # EXIT_STATUS_UNAVAILABLE_VALUE is used when the exit status is not available (e.g. job is lost).
+     ('exitStatus', int),
+     ('exitReason', Union[int, None]),  # The exit reason, if available. One of BatchJobExitReason enum.
+     ('wallTime', Union[float, int, None])])
 
 
 # Information required for worker cleanup on shutdown of the batch system.
-class WorkerCleanupInfo:
-    __slots__ = 'workDir', 'workflowID', 'cleanWorkDir'
-    workDir: str  # workdir path (where the cache would go)
-    workflowID: int  # used to identify files specific to this workflow
-    cleanWorkDir: bool
+WorkerCleanupInfo = NamedTuple('WorkerCleanupInfo',
+    [('workDir', str),  # workdir path (where the cache would go)
+     ('workflowID', int),  # used to identify files specific to this workflow
+     ('cleanWorkDir', bool)])
 
 
 class BatchJobExitReason(enum.Enum):
