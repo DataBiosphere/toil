@@ -86,56 +86,56 @@ class Config:
         self.preemptableCompensation = 0.0
         self.nodeStorage = 50
         self.nodeStorageOverrides = []
-        self.metrics = False
+        self.metrics: bool = False
 
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
-        self.maxPreemptableServiceJobs = sys.maxsize
-        self.maxServiceJobs = sys.maxsize
-        self.deadlockWait = 60  # Number of seconds we must be stuck with all services before declaring a deadlock
-        self.deadlockCheckInterval = 30  # Minimum polling delay for deadlocks
-        self.statePollingWait = 1  # Number of seconds to wait before querying job state
+        self.maxPreemptableServiceJobs: int = sys.maxsize
+        self.maxServiceJobs: int = sys.maxsize
+        self.deadlockWait: Union[float, int] = 60  # Number of seconds we must be stuck with all services before declaring a deadlock
+        self.deadlockCheckInterval: Union[float, int] = 30  # Minimum polling delay for deadlocks
+        self.statePollingWait: Union[float, int] = 1  # Number of seconds to wait before querying job state
 
         # Resource requirements
-        self.defaultMemory = 2147483648
-        self.defaultCores = 1
-        self.defaultDisk = 2147483648
-        self.readGlobalFileMutableByDefault = False
-        self.defaultPreemptable = False
-        self.maxCores = sys.maxsize
-        self.maxMemory = sys.maxsize
-        self.maxDisk = sys.maxsize
+        self.defaultMemory: int = 2147483648
+        self.defaultCores: Union[float, int] = 1
+        self.defaultDisk: int = 2147483648
+        self.readGlobalFileMutableByDefault: bool = False
+        self.defaultPreemptable: bool = False
+        self.maxCores: int = sys.maxsize
+        self.maxMemory: int = sys.maxsize
+        self.maxDisk: int = sys.maxsize
 
         # Retrying/rescuing jobs
-        self.retryCount = 1
-        self.enableUnlimitedPreemptableRetries = False
-        self.doubleMem = False
-        self.maxJobDuration = sys.maxsize
-        self.rescueJobsFrequency = 3600
+        self.retryCount: int = 1
+        self.enableUnlimitedPreemptableRetries: bool = False
+        self.doubleMem: bool = False
+        self.maxJobDuration: int = sys.maxsize
+        self.rescueJobsFrequency: int = 3600
 
         # Misc
-        self.disableCaching = False
-        self.disableChaining = False
-        self.disableJobStoreChecksumVerification = False
-        self.maxLogFileSize = 64000
+        self.disableCaching: bool = False
+        self.disableChaining: bool = False
+        self.disableJobStoreChecksumVerification: bool = False
+        self.maxLogFileSize: int = 64000
         self.writeLogs = None
         self.writeLogsGzip = None
-        self.writeLogsFromAllJobs = False
-        self.sseKey = None
-        self.servicePollingInterval = 60
-        self.useAsync = True
-        self.forceDockerAppliance = False
-        self.runCwlInternalJobsOnWorkers = False
-        self.statusWait = 3600
-        self.disableProgress = False
+        self.writeLogsFromAllJobs: bool = False
+        self.sseKey: str = None
+        self.servicePollingInterval: int = 60
+        self.useAsync: bool = True
+        self.forceDockerAppliance: bool = False
+        self.runCwlInternalJobsOnWorkers: bool = False
+        self.statusWait: int = 3600
+        self.disableProgress: bool = False
 
         # Debug options
-        self.debugWorker = False
-        self.disableWorkerOutputCapture = False
+        self.debugWorker: bool = False
+        self.disableWorkerOutputCapture: bool = False
         self.badWorker = 0.0
         self.badWorkerFailInterval = 0.01
 
         # CWL
-        self.cwl = False
+        self.cwl: bool = False
 
     def setOptions(self, options) -> None:
         """Creates a config object from the options object."""
@@ -178,7 +178,7 @@ class Config:
         # TODO: LOG LEVEL STRING
         set_option("workDir")
         if self.workDir is not None:
-            self.workDir = os.path.abspath(self.workDir)
+            self.workDir: Optional[str] = os.path.abspath(self.workDir)
             if not os.path.exists(self.workDir):
                 raise RuntimeError(f"The path provided to --workDir ({self.workDir}) does not exist.")
 
@@ -651,7 +651,7 @@ def parseBool(val):
         raise RuntimeError("Could not interpret \"%s\" as a boolean value" % val)
 
 
-def getNodeID():
+def getNodeID() -> str:
     """
     Return unique ID of the current node (host).
 
