@@ -359,12 +359,12 @@ class BatchSystemSupport(AbstractBatchSystem):
         be on a shared file system) with names containing both the Toil and
         batch system job IDs, for ease of debugging job failures.
 
-        :param: string jobID : Toil job ID
+        :param: string toil_job_id : The unique id that Toil gives a job.
+        :param: cluster_job_id : What the cluster, for example, GridEngine, uses as its internal job id.
         :param: string std : The provenance of the stream (for example: 'err' for 'stderr' or 'out' for 'stdout')
 
         :rtype: string : Formatted filename; however if self.config.noStdOutErr is true,
              returns '/dev/null' or equivalent.
-
         """
         if self.config.noStdOutErr:
             return os.devnull
@@ -375,7 +375,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         return os.path.join(workDir, fileName)
 
     @staticmethod
-    def workerCleanup(info):
+    def workerCleanup(info: WorkerCleanupInfo) -> None:
         """
         Cleans up the worker node on batch system shutdown. Also see :meth:`supportsWorkerCleanup`.
 

@@ -17,14 +17,6 @@ import stat
 from uuid import uuid4
 
 
-def make_public_dir(dirName: str) -> str:
-    """Makes a given subdirectory if it doesn't already exist, making sure it is public."""
-    if not os.path.exists(dirName):
-        os.mkdir(dirName)
-        os.chmod(dirName, 0o777)
-    return dirName
-
-
 def make_unique_public_dir(prefix: str) -> str:
     """
     Try to make a random directory name with length 4 that doesn't exist, with the given prefix.

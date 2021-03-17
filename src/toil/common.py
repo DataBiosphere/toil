@@ -183,7 +183,7 @@ class Config:
                 raise RuntimeError(f"The path provided to --workDir ({self.workDir}) does not exist.")
 
             if len(self.workDir) > 80:
-                logger.warning(f'Length of workDir path "{self.workDir}" is {len(self.workDir)} char long.  '
+                logger.warning(f'Length of workDir path "{self.workDir}" is {len(self.workDir)} characters.  '
                                f'Consider setting a shorter path with --workPath or setting TMPDIR to something '
                                f'like "/tmp" to avoid overly long paths.')
 
