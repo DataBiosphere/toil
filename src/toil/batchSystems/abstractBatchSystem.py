@@ -16,9 +16,8 @@ import logging
 import os
 import shutil
 from abc import ABC, abstractmethod
-from collections import namedtuple
 from contextlib import contextmanager
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Tuple, Union, Dict
 
 from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
                                         DEFAULT_BATCH_SYSTEM)
@@ -33,36 +32,36 @@ except ImportError:
     # CWL extra not installed
     CWL_INTERNAL_JOBS = ()
 
+# Value to use as exitStatus in UpdatedBatchJobInfo.exitStatus when status is not available.
+EXIT_STATUS_UNAVAILABLE_VALUE = 255
 logger = logging.getLogger(__name__)
 
-UpdatedBatchJobInfo = namedtuple('UpdatedBatchJobInfo', (
-    'jobID',
+
+class UpdatedBatchJobInfo:
+    __slots__ = 'jobID', 'exitStatus', 'exitReason', 'wallTime'
+    jobID: str
     # The exit status (integer value) of the job. 0 implies successful.
     # EXIT_STATUS_UNAVAILABLE_VALUE is used when the exit status is not available (e.g. job is lost).
-    'exitStatus',
-    'exitReason',  # The exit reason, if available. One of BatchJobExitReason enum.
-    'wallTime'))
+    exitStatus: int
+    exitReason: Union[int, None]  # The exit reason, if available. One of BatchJobExitReason enum.
+    wallTime: Union[float, int, None]
+
+
+# Information required for worker cleanup on shutdown of the batch system.
+class WorkerCleanupInfo:
+    __slots__ = 'workDir', 'workflowID', 'cleanWorkDir'
+    workDir: str  # workdir path (where the cache would go)
+    workflowID: int  # used to identify files specific to this workflow
+    cleanWorkDir: bool
 
 
 class BatchJobExitReason(enum.Enum):
-    FINISHED = 1  # Successfully finished.
-    FAILED = 2  # Job finished, but failed.
-    LOST = 3  # Preemptable failure (job's executing host went away).
-    KILLED = 4  # Job killed before finishing.
-    ERROR = 5  # Internal error.
-    MEMLIMIT = 6 # Job hit batch system imposed memory limit
-
-# Value to use as exitStatus in UpdatedBatchJobInfo.exitStatus when status is not available.
-EXIT_STATUS_UNAVAILABLE_VALUE = 255
-
-# A class containing the information required for worker cleanup on shutdown of the batch system.
-WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
-    # A path to the value of config.workDir (where the cache would go)
-    'workDir',
-    # The value of config.workflowID (used to identify files specific to this workflow)
-    'workflowID',
-    # The value of the cleanWorkDir flag
-    'cleanWorkDir'))
+    FINISHED: int = 1  # Successfully finished.
+    FAILED: int = 2  # Job finished, but failed.
+    LOST: int = 3  # Preemptable failure (job's executing host went away).
+    KILLED: int = 4  # Job killed before finishing.
+    ERROR: int = 5  # Internal error.
+    MEMLIMIT: int = 6  # Job hit batch system imposed memory limit
 
 
 class AbstractBatchSystem(ABC):
@@ -276,10 +275,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         self.maxCores = maxCores
         self.maxMemory = maxMemory
         self.maxDisk = maxDisk
-        self.environment = {}
-        """
-        :type: dict[str,str]
-        """
+        self.environment: Dict[str, str] = {}
         self.workerCleanupInfo = WorkerCleanupInfo(workDir=self.config.workDir,
                                                    workflowID=self.config.workflowID,
                                                    cleanWorkDir=self.config.cleanWorkDir)
