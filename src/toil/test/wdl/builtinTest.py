@@ -498,6 +498,9 @@ class WdlStandardLibraryWorkflowsTest(WdlWorkflowsTest):
         # NOTE: this result is expected according to the spec but differs from Cromwell.
         self.check_function('collect_by_key', cases=['as_input'], expected_result='{"a":[1,3],"b":[2]}')
 
+    def test_flatten(self):
+        self.check_function('flatten', cases=['as_input'], expected_result='[1,2,3,1,21,22]')
+
 
 if __name__ == "__main__":
     unittest.main()
