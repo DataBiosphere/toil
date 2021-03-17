@@ -369,9 +369,8 @@ class BatchSystemSupport(AbstractBatchSystem):
         if self.config.noStdOutErr:
             return os.devnull
 
-        toil_workflow_id = self.config.workflowID
-        workDir = Toil.getToilWorkDir(self.config.workDir)
-        fileName = f'toil_{toil_workflow_id}.{toil_job_id}.{cluster_job_id}.{std}.log'
+        fileName: str = f'toil_{self.config.workflowID}.{toil_job_id}.{cluster_job_id}.{std}.log'
+        workDir: str = Toil.getToilWorkDir(self.config.workDir)
         return os.path.join(workDir, fileName)
 
     @staticmethod
