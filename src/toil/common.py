@@ -1053,7 +1053,7 @@ class Toil:
         self._jobCache[job.jobStoreID] = job
 
     @staticmethod
-    def getToilWorkDir(configWorkDir=None):
+    def getToilWorkDir(configWorkDir: Optional[str] = None) -> str:
         """
         Returns a path to a writable directory under which per-workflow
         directories exist.  This directory is always required to exist on a
@@ -1065,11 +1065,9 @@ class Toil:
         :return: Path to the Toil work directory, constant across all machines
         :rtype: str
         """
-
         workDir = configWorkDir or os.getenv('TOIL_WORKDIR') or tempfile.gettempdir()
         if not os.path.exists(workDir):
-            raise RuntimeError("The directory specified by --workDir or TOIL_WORKDIR (%s) does not "
-                               "exist." % workDir)
+            raise RuntimeError(f"The directory specified by --workDir or TOIL_WORKDIR ({workDir}) does not exist.")
         return workDir
 
     @classmethod
