@@ -50,26 +50,26 @@ class Config:
     """Class to represent configuration operations for a toil workflow run."""
     def __init__(self):
         # Core options
-        self.workflowID = None
+        self.workflowID: Optional[str] = None
         """This attribute uniquely identifies the job store and therefore the workflow. It is
         necessary in order to distinguish between two consecutive workflows for which
         self.jobStore is the same, e.g. when a job store name is reused after a previous run has
         finished sucessfully and its job store has been clean up."""
         self.workflowAttemptNumber = None
         self.jobStore = None
-        self.logLevel = logging.getLevelName(root_logger.getEffectiveLevel())
-        self.workDir = None
-        self.noStdOutErr = False
-        self.stats = False
+        self.logLevel: str = logging.getLevelName(root_logger.getEffectiveLevel())
+        self.workDir: Optional[str] = None
+        self.noStdOutErr: bool = False
+        self.stats: bool = False
 
         # Because the stats option needs the jobStore to persist past the end of the run,
         # the clean default value depends the specified stats option and is determined in setOptions
         self.clean = None
-        self.cleanWorkDir = None
+        self.cleanWorkDir: Optional[bool] = None
         self.clusterStats = None
 
         # Restarting the workflow options
-        self.restart = False
+        self.restart: bool = False
 
         # Batch system options
         set_batchsystem_config_defaults(self)

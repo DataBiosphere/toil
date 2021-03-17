@@ -21,7 +21,7 @@ from typing import Any, Optional, Tuple, Union, Dict
 
 from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
                                         DEFAULT_BATCH_SYSTEM)
-from toil.common import Toil, cacheDirName
+from toil.common import Toil, cacheDirName, Config
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.threading import LastProcessStandingArena
@@ -253,7 +253,7 @@ class BatchSystemSupport(AbstractBatchSystem):
     Partial implementation of AbstractBatchSystem, support methods.
     """
 
-    def __init__(self, config, maxCores, maxMemory, maxDisk):
+    def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int):
         """
         Initializes initial state of the object
 
