@@ -49,28 +49,22 @@ class NonCachingFileStore(AbstractFileStore):
         self.jobStateFile = self._createJobStateFile()
         freeSpace, diskSize = getFileSystemSize(self.localTempDir)
         if freeSpace <= 0.1 * diskSize:
-            logger.warning('Starting job %s with less than 10%% of disk space remaining.',
-                           self.jobName)
+            logger.warning(f'Starting job {self.jobName} with less than 10%% of disk space remaining.')
         try:
             os.chdir(self.localTempDir)
             with super().open(job):
                 yield
         finally:
-            diskUsed = getDirSizeRecursively(self.localTempDir)
-            logString = ("Job {jobName} used {percent:.2f}% ({humanDisk}B [{disk}B] used, "
-                         "{humanRequestedDisk}B [{requestedDisk}B] requested) at the end of "
-                         "its run.".format(jobName=self.jobName,
-                                           percent=(float(diskUsed) / jobReqs * 100 if
-                                                    jobReqs > 0 else 0.0),
-                                           humanDisk=bytes2human(diskUsed),
-                                           disk=diskUsed,
-                                           humanRequestedDisk=bytes2human(jobReqs),
-                                           requestedDisk=jobReqs))
-            self.logToMaster(logString, level=logging.DEBUG)
-            if diskUsed > jobReqs:
-                self.logToMaster("Job used more disk than requested. Consider modifying the user "
-                                 "script to avoid the chance of failure due to incorrectly "
-                                 "requested resources. " + logString, level=logging.WARNING)
+            disk = getDirSizeRecursively(self.localTempDir)
+            percent = float(disk) / jobReqs * 100 if jobReqs > 0 else 0.0
+            disk_usage = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(disk)}B [{disk}B] used, "
+                          f"{bytes2human(jobReqs)}B [{jobReqs}B] requested).")
+            if disk > jobReqs:
+                self.logToMaster("Job used more disk than requested. For CWL, consider increasing the outdirMin "
+                                 f"requirement, otherwise, consider increasing the disk requirement. {disk_usage}",
+                                 level=logging.WARNING)
+            else:
+                self.logToMaster(disk_usage, level=logging.DEBUG)
             os.chdir(startingDir)
             # Finally delete the job from the worker
             os.remove(self.jobStateFile)

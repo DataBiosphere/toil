@@ -996,22 +996,16 @@ class CachingFileStore(AbstractFileStore):
             # See how much disk space is used at the end of the job.
             # Not a real peak disk usage, but close enough to be useful for warning the user.
             # TODO: Push this logic into the abstract file store
-            diskUsed = getDirSizeRecursively(self.localTempDir)
-            logString = ("Job {jobName} used {percent:.2f}% ({humanDisk}B [{disk}B] used, "
-                         "{humanRequestedDisk}B [{requestedDisk}B] requested) at the end of "
-                         "its run.".format(jobName=self.jobName,
-                                           percent=(float(diskUsed) / self.jobDiskBytes * 100 if
-                                                    self.jobDiskBytes > 0 else 0.0),
-                                           humanDisk=bytes2human(diskUsed),
-                                           disk=diskUsed,
-                                           humanRequestedDisk=bytes2human(self.jobDiskBytes),
-                                           requestedDisk=self.jobDiskBytes))
-            self.logToMaster(logString, level=logging.DEBUG)
-            if diskUsed > self.jobDiskBytes:
-                self.logToMaster("Job used more disk than requested. Please reconsider modifying "
-                                 "the user script to avoid the chance  of failure due to "
-                                 "incorrectly requested resources. " + logString,
+            disk = getDirSizeRecursively(self.localTempDir)
+            percent = float(disk) / self.jobDiskBytes * 100 if self.jobDiskBytes > 0 else 0.0
+            disk_usage = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(disk)}B [{disk}B] used, "
+                          f"{bytes2human(self.jobDiskBytes)}B [{self.jobDiskBytes}B] requested).")
+            if disk > self.jobDiskBytes:
+                self.logToMaster("Job used more disk than requested. For CWL, consider increasing the outdirMin "
+                                 f"requirement, otherwise, consider increasing the disk requirement. {disk_usage}",
                                  level=logging.WARNING)
+            else:
+                self.logToMaster(disk_usage, level=logging.DEBUG)
 
             # Go back up to the per-worker local temp directory.
             os.chdir(startingDir)
