@@ -130,8 +130,8 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                 raise RuntimeError("must specify PE in TOIL_GRIDENGINE_PE environment variable when using multiple CPUs. "
                                    "Run qconf -spl and your local documentation for possible values")
 
-            stdoutfile = self.boss.formatStdOutErrPath(jobID, '$JOB_ID', 'out')
-            stderrfile = self.boss.formatStdOutErrPath(jobID, '$JOB_ID', 'err')
+            stdoutfile: str = self.boss.formatStdOutErrPath(jobID, '$JOB_ID', 'out')
+            stderrfile: str = self.boss.formatStdOutErrPath(jobID, '$JOB_ID', 'err')
             qsubline.extend(['-o', stdoutfile, '-e', stderrfile])
 
             return qsubline

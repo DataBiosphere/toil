@@ -41,7 +41,7 @@ class NonCachingFileStore(AbstractFileStore):
     def open(self, job):
         jobReqs = job.disk
         startingDir = os.getcwd()
-        self.localTempDir = make_unique_public_dir(prefix=self.localTempDir)
+        self.localTempDir: str = make_unique_public_dir(prefix=self.localTempDir)
         self._removeDeadJobs(self.workDir)
         self.jobStateFile = self._createJobStateFile()
         freeSpace, diskSize = getFileSystemSize(self.localTempDir)
