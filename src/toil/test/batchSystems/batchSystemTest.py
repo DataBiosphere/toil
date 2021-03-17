@@ -27,7 +27,8 @@ from textwrap import dedent
 from typing import Callable
 from unittest import skipIf
 
-from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
+from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
+                                                   BatchSystemSupport,
                                                    InsufficientSystemResources)
 # Don't import any batch systems here that depend on extras
 # in order to import properly. Import them later, in tests
@@ -80,10 +81,7 @@ class hidden(object):
         """
 
         @abstractmethod
-        def createBatchSystem(self):
-            """
-            :rtype: AbstractBatchSystem
-            """
+        def createBatchSystem(self) -> AbstractBatchSystem:
             raise NotImplementedError
 
         def supportsWallTime(self):
@@ -440,14 +438,14 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     Tests against the single-machine batch system
     """
 
-    def supportsWallTime(self):
+    def supportsWallTime(self) -> None:
         return True
 
-    def createBatchSystem(self):
+    def createBatchSystem(self) -> AbstractBatchSystem:
         return SingleMachineBatchSystem(config=self.config,
                                         maxCores=numCores, maxMemory=1e9, maxDisk=2001)
 
-    def testProcessEscape(self, hide: bool = False):
+    def testProcessEscape(self, hide: bool = False) -> None:
         """
         Test to make sure that child processes and their descendants go away
         when the Toil workflow stops.
@@ -456,15 +454,16 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
         hard to stop.
         """
 
-        def script():
+        def script() -> None:
             #!/usr/bin/env python3
             import fcntl
             import os
             import sys
             import signal
             import time
+            from typing import Any
 
-            def handle_signal(sig, frame):
+            def handle_signal(sig: Any, frame: Any) -> None:
                 sys.stderr.write(f'{os.getpid()} ignoring signal {sig}\n')
 
             if hasattr(signal, 'valid_signals'):
@@ -566,11 +565,11 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
     """
 
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         super(MaxCoresSingleMachineBatchSystemTest, cls).setUpClass()
         logging.basicConfig(level=logging.DEBUG)
 
-    def setUp(self):
+    def setUp(self) -> None:
         super(MaxCoresSingleMachineBatchSystemTest, self).setUp()
 
         temp_dir = self._createTempDir()
@@ -579,12 +578,12 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
         # is the number of currently executing tasks and n the maximum observed value of i
         self.counterPath = write_temp_file('0,0', temp_dir)
 
-        def script():
+        def script() -> None:
             import fcntl
             import os
             import sys
             import time
-            def count(delta):
+            def count(delta: int) -> None:
                 """
                 Adjust the first integer value in a file by the given amount. If the result
                 exceeds the second integer value, set the second one to the first.
@@ -618,11 +617,11 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
 
         self.scriptPath = write_temp_file(self._getScriptSource(script), temp_dir)
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         os.unlink(self.scriptPath)
         os.unlink(self.counterPath)
 
-    def scriptCommand(self):
+    def scriptCommand(self) -> str:
         return ' '.join([sys.executable, self.scriptPath, self.counterPath])
 
     def test(self):
@@ -740,7 +739,7 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         config.jobStore = self._createTempDir('jobStore')
         return config
 
-    def createBatchSystem(self):
+    def createBatchSystem(self) -> AbstractBatchSystem:
         memory = int(3e9)
         self._startParasol(numCores=numCores, memory=memory)
 
@@ -805,7 +804,7 @@ class GridEngineBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     Tests against the GridEngine batch system
     """
 
-    def createBatchSystem(self):
+    def createBatchSystem(self) -> AbstractBatchSystem:
         from toil.batchSystems.gridengine import GridEngineBatchSystem
         return GridEngineBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9,
                                      maxDisk=1e9)
@@ -825,7 +824,7 @@ class SlurmBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     Tests against the Slurm batch system
     """
 
-    def createBatchSystem(self):
+    def createBatchSystem(self) -> AbstractBatchSystem:
         from toil.batchSystems.slurm import SlurmBatchSystem
         return SlurmBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9,
                                 maxDisk=1e9)
@@ -844,7 +843,7 @@ class LSFBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     """
     Tests against the LSF batch system
     """
-    def createBatchSystem(self):
+    def createBatchSystem(self) -> AbstractBatchSystem:
         from toil.batchSystems.lsf import LSFBatchSystem
         return LSFBatchSystem(config=self.config, maxCores=numCores,
                               maxMemory=1000e9, maxDisk=1e9)
@@ -863,7 +862,7 @@ class TorqueBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
         config.jobStore = self._createTempDir('jobStore')
         return config
 
-    def createBatchSystem(self):
+    def createBatchSystem(self) -> AbstractBatchSystem:
         from toil.batchSystems.torque import TorqueBatchSystem
         return TorqueBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9,
                                      maxDisk=1e9)
@@ -882,7 +881,7 @@ class HTCondorBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     Tests against the HTCondor batch system
     """
 
-    def createBatchSystem(self):
+    def createBatchSystem(self) -> AbstractBatchSystem:
         from toil.batchSystems.htcondor import HTCondorBatchSystem
         return HTCondorBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9,
                                        maxDisk=1e9)

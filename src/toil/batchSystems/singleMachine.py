@@ -22,9 +22,10 @@ import traceback
 from contextlib import contextmanager
 from queue import Empty, Queue
 from threading import Condition, Event, Lock, Thread
-from typing import List
+from typing import Dict, List, Optional, Sequence
 
 import toil
+import toil.job
 from toil import worker as toil_worker
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchSystemSupport,
@@ -119,10 +120,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.jobIndexLock = Lock()
 
         # A dictionary mapping IDs of submitted jobs to the command line
-        self.jobs = {}
-        """
-        :type: dict[str,toil.job.JobDescription]
-        """
+        self.jobs: Dict[str, toil.job.JobDescription] = {}
 
         # A queue of jobs waiting to be executed. Consumed by the daddy thread.
         self.inputQueue = Queue()
@@ -131,24 +129,15 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.outputQueue = Queue()
 
         # A dictionary mapping IDs of currently running jobs to their Info objects
-        self.runningJobs = {}
-        """
-        :type: dict[str,Info]
-        """
+        self.runningJobs: Dict[str, Info] = {}
 
         # These next two are only used outside debug-worker mode
 
         # A dict mapping PIDs to Popen objects for running jobs.
         # Jobs that don't fork are executed one at a time in the main thread.
-        self.children = {}
-        """
-        :type: dict[int,subprocess.Popen]
-        """
+        self.children: Dict[int, subprocess.Popen] = {}
         # A dict mapping child PIDs to the Job IDs they are supposed to be running.
-        self.childToJob = {}
-        """
-        :type: dict[int,str]
-        """
+        self.childToJob: Dict[int, str] = {}
 
         # A pool representing available CPU in units of minCores
         self.coreFractions = ResourcePool(int(self.maxCores / self.minCores), 'cores')
@@ -167,7 +156,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # Also takes care of resource accounting.
         self.daddyThread = None
         # If it breaks it will fill this in
-        self.daddyException = None
+        self.daddyException: Optional[Exception] = None
 
         if self.debugWorker:
             log.debug('Started in worker debug mode.')
@@ -257,9 +246,12 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             log.critical('Propagating unhandled exception in daddy thread to main thread')
             exc = self.daddyException
             self.daddyException = None
-            raise exc
+            if isinstance(exc, Exception):
+                raise exc
+            else:
+                raise TypeError(f'Daddy thread failed with non-exception: {exc}')
 
-    def _stop_now(self, popens: List[subprocess.Popen]) -> None:
+    def _stop_now(self, popens: Sequence[subprocess.Popen]) -> None:
         """
         Stop the given child processes and all their children. Does not reap them.
         """
@@ -289,7 +281,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 # never managed to make the group.
                 popen.kill()
 
-    def _stop_and_wait(self, popens: List[subprocess.Popen]) -> None:
+    def _stop_and_wait(self, popens: Sequence[subprocess.Popen]) -> None:
         """
         Stop the given child processes and all their children. Blocks until the
         processes are gone.
@@ -492,7 +484,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # Report that.
         return None
 
-    def _handleChild(self, pid):
+    def _handleChild(self, pid: int) -> None:
         """
         Handle a child process PID that has finished.
         The PID must be for a child job we started.
@@ -570,7 +562,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         return jobID
 
-    def killBatchJobs(self, jobIDs):
+    def killBatchJobs(self, jobIDs: Sequence[str]) -> None:
         """Kills jobs by ID."""
 
         self._checkOnDaddy()
@@ -578,7 +570,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         log.debug('Killing jobs: {}'.format(jobIDs))
 
         # Collect the popen handles for the jobs we have to stop
-        popens = []
+        popens: List[subprocess.Popen] = []
 
         for jobID in jobIDs:
             if jobID in self.runningJobs:
