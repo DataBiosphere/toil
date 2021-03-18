@@ -20,28 +20,32 @@ import sys
 import uuid
 from collections import defaultdict
 from contextlib import contextmanager
+from typing import Callable, Dict, Optional, Generator
 
 import dill
 
 from toil.common import getDirSizeRecursively, getFileSystemSize
 from toil.fileStores import FileID, make_public_dir
 from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.humanize import bytes2human
 from toil.lib.io import robust_rmtree
 from toil.lib.threading import get_process_name, process_name_exists
+from toil.job import Job, JobDescription
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class NonCachingFileStore(AbstractFileStore):
-    def __init__(self, jobStore, jobDesc, localTempDir, waitForPreviousCommit):
-        super(NonCachingFileStore, self).__init__(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
+    def __init__(self, jobStore: AbstractJobStore, jobDesc: JobDescription, localTempDir: str, waitForPreviousCommit: Callable[[], None]) -> None:
+        super().__init__(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
         # This will be defined in the `open` method.
-        self.jobStateFile = None
-        self.localFileMap = defaultdict(list)
+        self.jobStateFile: Optional[str] = None
+        self.localFileMap: Dict[str, str] = {}
+        self.localFileMap = defaultdict(list)  # type: ignore
 
     @contextmanager
-    def open(self, job):
+    def open(self, job: Job) -> Generator[None, None, None]:
         jobReqs = job.disk
         startingDir = os.getcwd()
         self.localTempDir = make_public_dir(os.path.join(self.localTempDir, str(uuid.uuid4())))
@@ -160,7 +164,7 @@ class NonCachingFileStore(AbstractFileStore):
         """
 
     @classmethod
-    def _removeDeadJobs(cls, nodeInfo, batchSystemShutdown=False):
+    def _removeDeadJobs(cls, nodeInfo: str, batchSystemShutdown: bool=False) -> None:
         """
         Look at the state of all jobs registered in the individual job state files, and handle them
         (clean up the disk)
@@ -184,7 +188,7 @@ class NonCachingFileStore(AbstractFileStore):
                 try:
                     # Try and lock it
                     fcntl.lockf(dirFD, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                except IOError as e:
+                except OSError as e:
                     # We lost the race. Someone else is alive and has it locked.
                     os.close(dirFD)
                 else:
@@ -224,7 +228,7 @@ class NonCachingFileStore(AbstractFileStore):
         for filename in jobStateFiles:
             try:
                 yield NonCachingFileStore._readJobState(filename)
-            except IOError as e:
+            except OSError as e:
                 if e.errno == 2:
                     # job finished & deleted its jobState file since the jobState files were discovered
                     continue
@@ -237,7 +241,7 @@ class NonCachingFileStore(AbstractFileStore):
             state = dill.load(fH)
         return state
 
-    def _createJobStateFile(self):
+    def _createJobStateFile(self) -> str:
         """
         Create the job state file for the current job and fill in the required
         values.

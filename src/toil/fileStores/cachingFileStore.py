@@ -24,14 +24,17 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
+from typing import Any, Callable, Generator, Optional
 
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.fileStores import FileID, make_public_dir
 from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.humanize import bytes2human
 from toil.lib.io import atomic_copy, atomic_copyobj, robust_rmtree
 from toil.lib.retry import ErrorCondition, retry
 from toil.lib.threading import get_process_name, process_name_exists
+from toil.job import Job, JobDescription
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +172,7 @@ class CachingFileStore(AbstractFileStore):
 
     """
 
-    def __init__(self, jobStore, jobDesc, localTempDir, waitForPreviousCommit):
+    def __init__(self, jobStore: AbstractJobStore, jobDesc: JobDescription, localTempDir: str, waitForPreviousCommit: Callable[[],None]) -> None:
         super(CachingFileStore, self).__init__(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
 
         # For testing, we have the ability to force caching to be non-free, by never linking from the file store
@@ -196,12 +199,12 @@ class CachingFileStore(AbstractFileStore):
 
         # Since each worker has it's own unique CachingFileStore instance, and only one Job can run
         # at a time on a worker, we can track some stuff about the running job in ourselves.
-        self.jobName = str(self.jobDesc)
+        self.jobName: str = str(self.jobDesc)
         self.jobID = self.jobDesc.jobStoreID
         logger.debug('Starting job (%s) with ID (%s).', self.jobName, self.jobID)
 
         # When the job actually starts, we will fill this in with the job's disk requirement.
-        self.jobDiskBytes = None
+        self.jobDiskBytes: Optional[float] = None
 
         # We need to track what attempt of the workflow we are, to prevent crosstalk between attempts' caches.
         self.workflowAttemptNumber = self.jobStore.config.workflowAttemptNumber
@@ -967,7 +970,7 @@ class CachingFileStore(AbstractFileStore):
     # Normal AbstractFileStore API
 
     @contextmanager
-    def open(self, job):
+    def open(self, job: Job) -> Generator[None, None, None]:
         """
         This context manager decorated method allows cache-specific operations to be conducted
         before and after the execution of a job in worker.py
@@ -996,9 +999,11 @@ class CachingFileStore(AbstractFileStore):
             # See how much disk space is used at the end of the job.
             # Not a real peak disk usage, but close enough to be useful for warning the user.
             # TODO: Push this logic into the abstract file store
-            disk = getDirSizeRecursively(self.localTempDir)
-            percent = float(disk) / self.jobDiskBytes * 100 if self.jobDiskBytes > 0 else 0.0
-            disk_usage = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(disk)}B [{disk}B] used, "
+            disk: int = getDirSizeRecursively(self.localTempDir)
+            percent: float = 0.0
+            if self.jobDiskBytes and self.jobDiskBytes > 0:
+                percent = float(disk) / self.jobDiskBytes * 100
+            disk_usage: str = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(disk)}B [{disk}B] used, "
                           f"{bytes2human(self.jobDiskBytes)}B [{self.jobDiskBytes}B] requested).")
             if disk > self.jobDiskBytes:
                 self.logToMaster("Job used more disk than requested. For CWL, consider increasing the outdirMin "
