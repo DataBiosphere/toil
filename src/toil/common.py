@@ -978,13 +978,16 @@ class Toil:
                     userScript = None
         else:
             # This branch is hit on restarts
-            from toil.jobStores.abstractJobStore import NoSuchFileException
-            try:
-                with self._jobStore.readSharedFileStream('userScript') as f:
-                    userScript = safeUnpickleFromStream(f)
-            except NoSuchFileException:
-                logger.debug('User script neither set explicitly nor present in the job store.')
-                userScript = None
+            if (self._batchSystem.supportsAutoDeployment() and
+                not self.config.disableAutoDeployment):
+                # We could deploy a user script
+                from toil.jobStores.abstractJobStore import NoSuchFileException
+                try:
+                    with self._jobStore.readSharedFileStream('userScript') as f:
+                        userScript = safeUnpickleFromStream(f)
+                except NoSuchFileException:
+                    logger.debug('User script neither set explicitly nor present in the job store.')
+                    userScript = None
         if userScript is None:
             logger.debug('No user script to auto-deploy.')
         else:
