@@ -185,8 +185,8 @@ class GoogleJobStore(AbstractJobStore):
         return jobDescription
 
     @googleRetry
-    def exists(self, jobStoreID):
-        return self.bucket.blob(compat_bytes(jobStoreID), encryption_key=self.sseKey).exists()
+    def job_exists(self, jobStoreID):
+        return self.bucket.blob(compat_bytes(jobStoreID), encryption_key=self.sseKey).job_exists()
 
     @googleRetry
     def getPublicUrl(self, fileName):
@@ -198,7 +198,7 @@ class GoogleJobStore(AbstractJobStore):
     def getSharedPublicUrl(self, sharedFileName):
         return self.getPublicUrl(sharedFileName)
 
-    def load(self, jobStoreID):
+    def load_job(self, jobStoreID):
         try:
             jobString = self._readContents(jobStoreID)
         except NoSuchFileException:
@@ -211,11 +211,11 @@ class GoogleJobStore(AbstractJobStore):
         job.assignConfig(self.config)
         return job
 
-    def update(self, job):
+    def update_job(self, job):
         self._writeBytes(job.jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL), update=True)
 
     @googleRetry
-    def delete(self, jobStoreID):
+    def delete_job(self, jobStoreID):
         self._delete(jobStoreID)
 
         # best effort delete associated files
@@ -242,7 +242,7 @@ class GoogleJobStore(AbstractJobStore):
         for blob in self.bucket.list_blobs(prefix=b'job'):
             jobStoreID = blob.name
             if len(jobStoreID) == 39:  # 'job' + uuid length
-                yield self.load(jobStoreID)
+                yield self.load_job(jobStoreID)
 
     def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
         fileID = self._newID(isFile=True, jobStoreID=jobStoreID if cleanup else None)
@@ -284,7 +284,7 @@ class GoogleJobStore(AbstractJobStore):
 
     @googleRetry
     def fileExists(self, jobStoreFileID):
-        return self.bucket.blob(compat_bytes(jobStoreFileID), encryption_key=self.sseKey).exists()
+        return self.bucket.blob(compat_bytes(jobStoreFileID), encryption_key=self.sseKey).job_exists()
 
     @googleRetry
     def getFileSize(self, jobStoreFileID):
@@ -450,9 +450,9 @@ class GoogleJobStore(AbstractJobStore):
         blob = self.bucket.blob(compat_bytes(jobStoreID), encryption_key=self.sseKey if encrypt else None)
         if not update:
             # TODO: should probably raise a special exception and be added to all jobStores
-            assert not blob.exists()
+            assert not blob.job_exists()
         else:
-            if not blob.exists():
+            if not blob.job_exists():
                 raise NoSuchFileException(jobStoreID)
         blob.upload_from_file(fileObj)
 
@@ -483,7 +483,7 @@ class GoogleJobStore(AbstractJobStore):
         class UploadPipe(WritablePipe):
             def readFrom(self, readable):
                 if not update:
-                    assert not blob.exists()
+                    assert not blob.job_exists()
                 blob.upload_from_file(readable)
 
         with UploadPipe() as writable:

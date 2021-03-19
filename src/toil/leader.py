@@ -71,7 +71,7 @@ class FailedJobsException(Exception):
             self.msg += ": %s" % ", ".join((str(failedJob) for failedJob in failedJobs))
             for jobDesc in failedJobs:
                 # Reload from JobStore. TODO: avoid this!
-                jobDesc = jobStore.load(jobDesc.jobStoreID)
+                jobDesc = jobStore.load_job(jobDesc.jobStoreID)
                 if jobDesc.logJobStoreFileID:
                     with jobDesc.getLogFileHandle(jobStore) as fH:
                         self.msg += "\n" + StatsAndLogging.formatLogStream(fH, jobDesc)
@@ -244,7 +244,7 @@ class Leader(object):
                     self.toilMetrics.shutdown()
 
             # Filter the failed jobs
-            self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.jobStore.exists(j.jobStoreID)]
+            self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.jobStore.job_exists(j.jobStoreID)]
 
             try:
                 self.create_status_sentinel_file(self.toilState.totalFailedJobs)
@@ -324,7 +324,7 @@ class Leader(object):
         # Get the successor JobDescription, which is cached
         if successor.jobStoreID not in self.toilState.jobsToBeScheduledWithMultiplePredecessors:
             # TODO: We're loading from the job store in an ad-hoc way!
-            loaded = self.jobStore.load(successor.jobStoreID)
+            loaded = self.jobStore.load_job(successor.jobStoreID)
             self.toilState.jobsToBeScheduledWithMultiplePredecessors[successor.jobStoreID] = loaded
         # TODO: we're clobbering a JobDescription we're passing around by value.
         successor = self.toilState.jobsToBeScheduledWithMultiplePredecessors[successor.jobStoreID]
@@ -387,7 +387,7 @@ class Leader(object):
         successors = []
         for successorID in predecessor.stack[-1]:
             try:
-                successor = self.jobStore.load(successorID)
+                successor = self.jobStore.load_job(successorID)
             except NoSuchJobException:
                 # Job already done and gone
                 logger.warning("Job %s is a successor of %s but is already done and gone.", successorID, predecessor.jobStoreID)
@@ -469,7 +469,7 @@ class Leader(object):
             for serviceJobList in readyJob.serviceHostIDsInBatches():
                 for serviceID in serviceJobList:
                     assert serviceID not in self.toilState.serviceJobStoreIDToPredecessorJob
-                    serviceHost = self.jobStore.load(serviceID)
+                    serviceHost = self.jobStore.load_job(serviceID)
                     self.toilState.serviceJobStoreIDToPredecessorJob[serviceID] = readyJob
                     self.toilState.servicesIssued[readyJob.jobStoreID][serviceID] = serviceHost
 
@@ -953,11 +953,11 @@ class Leader(object):
         jobStoreID = issuedJob.jobStoreID
         if wallTime is not None and self.clusterScaler is not None:
             self.clusterScaler.addCompletedJob(issuedJob, wallTime)
-        if self.jobStore.exists(jobStoreID):
+        if self.jobStore.job_exists(jobStoreID):
             logger.debug("Job %s continues to exist (i.e. has more to do)", issuedJob)
             try:
                 # Reload the job as modified by the worker
-                replacementJob = self.jobStore.load(jobStoreID)
+                replacementJob = self.jobStore.load_job(jobStoreID)
             except NoSuchJobException:
                 # Avoid importing AWSJobStore as the corresponding extra might be missing
                 if self.jobStore.__class__.__name__ == 'AWSJobStore':
@@ -1021,7 +1021,7 @@ class Leader(object):
                                 logger.warning('The batch system left an empty file %s' % batchSystemFile)
 
                 replacementJob.setupJobAfterFailure(exitReason=exitReason)
-                self.jobStore.update(replacementJob)
+                self.jobStore.update_job(replacementJob)
 
                 # Show job as failed in progress (and take it from completed)
                 self.progress_overall.update(incr=-1)
@@ -1067,8 +1067,8 @@ class Leader(object):
 
                         # Recurse if job exists
                         # (job may not exist if already completed)
-                        if jobStore.exists(successorID):
-                            loaded = jobStore.load(successorID)
+                        if jobStore.job_exists(successorID):
+                            loaded = jobStore.load_job(successorID)
                             successorRecursion(loaded)
 
         successorRecursion(jobDesc)  # Recurse from passed job

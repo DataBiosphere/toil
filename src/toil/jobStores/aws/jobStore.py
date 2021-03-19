@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
+import json
 import logging
 import pickle
 import re
@@ -20,8 +21,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from io import BytesIO
 from contextlib import contextmanager
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 from botocore.exceptions import ClientError
 
@@ -35,6 +37,7 @@ from toil.jobStores.aws.file_info import AWSFile
 from toil.lib.compatibility import compat_bytes
 from toil.lib.ec2 import establish_boto3_session
 from toil.lib.aws.dynamodb import (put_item,
+                                   delete_item,
                                    get_item,
                                    get_primary_key_items,
                                    table_exists,
@@ -44,52 +47,42 @@ from toil.lib.aws.s3 import (create_bucket,
                              bucket_exists,
                              bucket_is_registered_with_toil)
 from toil.lib.ec2nodes import EC2Regions
+from toil.lib.checksum import compute_checksum_for_bytesio, compute_checksum_for_file
 from toil.lib.retry import retry
 
-boto3_session = establish_boto3_session()
-s3_boto3_resource = boto3_session.resource('s3')
-s3_boto3_client = boto3_session.client('s3')
-logger = logging.getLogger(__name__)
 
 DEFAULT_AWS_PART_SIZE = 52428800
+logger = logging.getLogger(__name__)
 
 
-def parse_jobstore_identifier(jobstore_identifier: str) -> Tuple[str, str]:
-    region, jobstore_name = jobstore_identifier.split(':')
+class AWSKeyNotFoundError(Exception):
+    pass
 
-    bucket_name, dynamodb_table_name = f'{jobstore_name}--toil'
 
-    regions = EC2Regions.keys()
-    if region not in regions:
-        raise ValueError(f'AWS Region "{region}" is not one of: {regions}')
-
-    if not 3 <= len(jobstore_name) <= 56:
-        raise ValueError(f'AWS jobstore name must be between 3 and 56 chars: '
-                         f'{jobstore_name} (len: {len(jobstore_name)})')
-
-    if not re.compile(r'^[a-z0-9][a-z0-9-]+[a-z0-9]$').match(jobstore_name):
-        raise ValueError(f"Invalid AWS jobstore name: '{jobstore_name}'.  Must contain only digits, "
-                         f"lower-case letters, and hyphens.  Must also not start or end in a hyphen.")
-
-    if '--' in jobstore_name:
-        raise ValueError(f"AWS jobstore names may not contain '--': {jobstore_name}")
-
-    if bucket_exists(bucket_name):
-        response = s3_boto3_client.get_bucket_location(Bucket=bucket_name)
-        if response["LocationConstraint"] != region:
-            raise ValueError(f'Bucket region conflict.  Bucket already exists in region '
-                             f'"{response["LocationConstraint"]}" but "{region}" was specified '
-                             f'in the jobstore_identifier: {jobstore_identifier}')
-    return region, bucket_name, dynamodb_table_name
+class AWSKeyAlreadyExistsError(Exception):
+    pass
 
 
 class AWSJobStore(AbstractJobStore):
     """
-    A job store that uses Amazon's S3 for file storage and SimpleDB for storing job info and
-    enforcing strong consistency on the S3 file storage. There will be SDB domains for jobs and
-    files and a versioned S3 bucket for file contents. Job objects are pickled, compressed,
-    partitioned into chunks of 1024 bytes and each chunk is stored as a an attribute of the SDB
-    item representing the job. UUIDs are used to identify jobs and files.
+    Create a new jobstore in AWS or load an existing one from there.
+
+    The AWS jobstore is a versioned AWS bucket and an accompanying dynamodb table.
+
+    These two components centralize and track all input and output files for the workflow.
+
+    The AWS jobstore stores files, while the dynamodb table tracks file metadata that may be
+    computationally expensive, like the size and md5sum.  Because the dynamodb table is kept in
+    sync with the files in s3, it can be used as a proxy to check for file existence/updates.
+
+    The AWS jobstore stores 3 things:
+        - jobs: these are pickled files that contain the information necessary to run a job when unpickled
+        - files: the inputs and outputs of jobs, imported into the jobstore
+        - logs: the written log files of jobs that have run
+
+    :param int part_size: The size of each individual part used for multipart operations like
+           upload and copy, must be >= 5 MiB but large enough to not exceed 10k parts for the
+           whole file
     """
     # A dummy job ID under which all shared files are stored
     sharedFileOwnerID = '891f7db6-e4d9-4221-a58e-ab6cc4395f94'
@@ -100,45 +93,34 @@ class AWSJobStore(AbstractJobStore):
     # A dummy job ID under which all read stats files are stored
     readStatsFileOwnerID = 'e77fc3aa-d232-4255-ae04-f64ee8eb0bfa'
 
-    items_per_batch_delete = items_per_batch_upload = 25
-
     def __init__(self, locator: str, part_size: int = DEFAULT_AWS_PART_SIZE):
-        """
-        Create a new jobstore in AWS or load an existing one from there.
-
-        The AWS jobstore is a versioned AWS bucket and an accompanying dynamodb table.
-
-        These two components centralize and track all input and output files for the workflow.
-
-        The AWS jobstore stores files, while the dynamodb table tracks file metadata that may be
-        computationally expensive, like the size and md5sum.  Because the dynamodb table is kept in
-        sync with the files in s3, it can be used as a proxy to check for file existence/updates.
-
-        The AWS jobstore stores 3 things:
-            - jobs: these are pickled files that contain the information necessary to run a job when unpickled
-            - files: the inputs and outputs of jobs, imported into the jobstore
-            - logs: the written log files of jobs that have run
-
-        :param int part_size: The size of each individual part used for multipart operations like
-               upload and copy, must be >= 5 MiB but large enough to not exceed 10k parts for the
-               whole file
-        """
         super(AWSJobStore, self).__init__()
 
-        self.region, self.bucket_name, self.dynamodb_table_name = parse_jobstore_identifier(locator)
+        self.region, self.bucket_name, self.dynamodb_table_name = self.parse_jobstore_identifier(locator)
         logger.debug(f"Instantiating {self.__class__} for region {self.region} with bucket: '{self.bucket_name}'")
         self.locator = locator
         self.partSize = part_size
-        self.sse_key = self.config.sseKey
 
-        # these are either created during self.initialize() or loaded using self.resume()
+        self.sse_key = None
+        self.encryption_args = {}
+        if self.config.sseKey:
+            with open(self.config.sseKey, 'rb') as f:
+                self.sse_key = f.read()
+            assert len(self.sse_key) == 32
+            self.encryption_args = {'SSECustomerAlgorithm': 'AES256', 'SSECustomerKey': self.sse_key}
+
+        # these are either created anew during self.initialize() or loaded using self.resume()
         self.table = None
         self.bucket = None
 
-        self.s3_resource = boto3_session.resource('s3', region_name=self.region)
+        boto3_session = establish_boto3_session()
+        self.s3_resource = boto3_session.resource('s3', region_name=self.region, **self.boto_args())
         self.s3_client = self.s3_resource.meta.client
 
+        self._batchedUpdates = []
+
     def initialize(self, config):
+        """Called when starting a new jobstore with a non-existent bucket and dynamodb table."""
         if bucket_exists(self.bucket_name) or table_exists(self.dynamodb_table_name):
             raise JobStoreExistsException(self.locator)
         self.bucket = create_bucket(self.bucket_name, versioning=True)
@@ -146,110 +128,92 @@ class AWSJobStore(AbstractJobStore):
         super(AWSJobStore, self).initialize(config)
 
     def resume(self):
+        """Called when reusing an old jobstore with an existing bucket and dynamodb table."""
         if self.bucket is None:
             self.bucket = bucket_exists(self.bucket_name)
             self.table = table_exists(self.dynamodb_table_name)
         if not self.bucket or not self.table:
+            # TODO: allow option here to rebuild db from bucket
             raise NoSuchJobStoreException(self.locator)
         super(AWSJobStore, self).resume()
 
-    def job_from_item(self, item: dict):
-        with self.readFileStream(item["fileID"]) as fh:
+    def unpickle_job(self, file_id: str):
+        """Use a file_id to unpickle and return a job from the jobstore's s3 bucket."""
+        with self.readFileStream(file_id) as fh:
             job = pickle.loads(fh.read())
         if job is not None:
             job.assignConfig(self.config)
         return job
 
-    def job_to_item(self, job) -> dict:
-        binary = pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL)
-        with self.writeFileStream() as (writable, fileID):
-            writable.write(binary)
-        return {'numChunks': 0, 'fileID': fileID}
+    def pickle_job(self, job) -> str:
+        """Pickle a job object, save it in the jobstore's s3 bucket, and return its job_id reference."""
+        with self.writeFileStream() as (writable, job_id):
+            writable.write(pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL))
+        return job_id
 
     @contextmanager
     def batch(self):
-        self._batchedUpdates = []
         yield
-        jobs_per_batch = 25
-        batches = [self._batchedUpdates[i:i + jobs_per_batch] for i in
-                   range(0, len(self._batchedUpdates), jobs_per_batch)]
-
-        for batch in batches:
-            items = {compat_bytes(jobDescription.jobStoreID): self.job_to_item(jobDescription) for jobDescription in batch}
-            assert self.jobsDomain.batch_put_attributes(items)
-        self._batchedUpdates = None
+        for jobDescription in self._batchedUpdates:
+            self.pickle_job(jobDescription)
+        self._batchedUpdates = []
 
     def assignID(self, jobDescription):
-        jobDescription.jobStoreID = jobstore_id = str(uuid.uuid4())
+        jobDescription.jobStoreID = str(uuid.uuid4())
         cmd = '<no command>' if jobDescription.command is None else jobDescription.command
-        logger.debug(f"Assigning ID to job {jobstore_id} for '{cmd}'")
+        logger.debug(f"Assigning ID to job {jobDescription.jobStoreID} for '{cmd}'")
 
     def create(self, jobDescription):
-        if hasattr(self, "_batchedUpdates") and self._batchedUpdates is not None:
-            self._batchedUpdates.append(jobDescription)
-        else:
-            self.update(jobDescription)
+        self.pickle_job(jobDescription)
+        put_item(table=self.table, hash_key='jobs', sort_key=jobDescription.jobStoreID)
         return jobDescription
 
-    def exists(self, jobStoreID):
-        # check metadata in db/bucket
-        return
+    def job_exists(self, job_id: str, check: bool = False):
+        """Checks if the job_id is found in s3."""
+        if get_item(table=self.table, hash_key='jobs', sort_key=job_id):
+            return True
+        if check:
+            raise NoSuchJobException(job_id)
+        return False
 
     def jobs(self):
-        for jobItem in get_primary_key_items(table=self.table, key='jobs'):
-            yield self.job_from_item(jobItem)
+        for job_id in get_primary_key_items(table=self.table, key='jobs', return_key='sort_key'):
+            yield self.unpickle_job(job_id)
 
-    def load(self, jobStoreID):
-        item = self.jobsDomain.get_attributes(compat_bytes(jobStoreID), consistent_read=True)
-        if not item:
-            raise NoSuchJobException(jobStoreID)
-        job = self.job_from_item(item)
+    def load_job(self, file_id):
+        job = self.unpickle_job(file_id)
         if job is None:
-            raise NoSuchJobException(jobStoreID)
-        logger.debug("Loaded job %s", jobStoreID)
+            raise NoSuchJobException(file_id)
         return job
 
-    def update(self, jobDescription):
-        logger.debug(f"Updating job {jobDescription.jobStoreID}", )
-        item = self.job_to_item(jobDescription)
-        assert self.jobsDomain.put_attributes(compat_bytes(jobDescription.jobStoreID), item)
+    def update_job(self, jobDescription):
+        self.pickle_job(jobDescription)
 
-    itemsPerBatchDelete = 25
-
-    def delete(self, jobStoreID):
-        # remove job and replace with jobStoreId.
+    def delete_job(self, jobStoreID):
         logger.debug("Deleting job %s", jobStoreID)
-
-        item = self.jobsDomain.get_attributes(compat_bytes(jobStoreID), consistent_read=True)
-        self._checkItem(item)
-        self.deleteFile(item["fileID"])
-        self.jobsDomain.delete_attributes(item_name=compat_bytes(jobStoreID))
-        items = list(self.filesDomain.select(
-                    consistent_read=True,
-                    query="select version from `%s` where ownerID='%s'" % (
-                        self.filesDomain.name, jobStoreID)))
-        assert items is not None
-        if items:
-            logger.debug("Deleting %d file(s) associated with job %s", len(items), jobStoreID)
-            n = self.itemsPerBatchDelete
-            batches = [items[i:i + n] for i in range(0, len(items), n)]
-            for batch in batches:
-                itemsDict = {item.name: None for item in batch}
-                self.filesDomain.batch_delete_attributes(itemsDict)
-            for item in items:
-                obj = {'Bucket': self.bucket.name, 'Key': compat_bytes(item.name)}
-                version = item.get('version')
-                if version:
-                    obj['VersionId'] = version
-                self.s3_client.delete_object(obj)
+        associated_files = get_item(table=self.table, hash_key='jobs', sort_key=jobStoreID)
+        delete_item(table=self.table, hash_key='jobs', sort_key=jobStoreID)
+        logger.debug("Deleting %d file(s) associated with job %s", len(associated_files), jobStoreID)
+        for item in associated_files:
+            # TODO: Delete each item from dynamodb 'files' table?
+            self.s3_client.delete_object({'Bucket': self.bucket.name, 'Key': compat_bytes(item.name)})
 
     def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
-        info = AWSFile.create(jobStoreID if cleanup else None)
-        with info.uploadStream():
-            pass
-        info.save()
-        logger.debug("Created %r.", info)
-        return info.fileID
+        new_file_id = str(uuid.uuid4())
+        metadata = json.loads({'owner': jobStoreID if cleanup else None,
+                               'encrypt': self.sse_key is not None})
+        put_item(table=self.table, hash_key='files', sort_key=new_file_id, value=metadata)
+        self.s3_client.upload_fileobj(Bucket=self.bucket_name,
+                                       Key=new_file_id,
+                                       Fileobj=BytesIO(b''),
+                                       ExtraArgs=self.encryption_args)
+
+        # use head_object with the SSE headers content_length
+        response = self.s3_client.head_object(Bucket=self.bucket_name,
+                                              Key=new_file_id,
+                                              **self.encryption_args)
+        assert 0 == response.get('ContentLength', None)
+        return new_file_id
 
     def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False, symlink=False):
         if issubclass(otherCls, AWSJobStore):
@@ -267,8 +231,7 @@ class AWSJobStore(AbstractJobStore):
             info.save()
             return FileID(info.fileID, size) if sharedFileName is None else None
         else:
-            return super(AWSJobStore, self)._importFile(otherCls, url,
-                                                        sharedFileName=sharedFileName)
+            return super(AWSJobStore, self)._importFile(otherCls, url, sharedFileName=sharedFileName)
 
     def _exportFile(self, otherCls, jobStoreFileID, url):
         if issubclass(otherCls, AWSJobStore):
@@ -279,65 +242,69 @@ class AWSJobStore(AbstractJobStore):
             super(AWSJobStore, self)._defaultExportFile(otherCls, jobStoreFileID, url)
 
     @classmethod
-    def getSize(cls, url):
-        return cls._getObjectForUrl(url, existing=True).content_length
+    def getSize(cls, url: str):
+        try:
+            return cls._getObjectForUrl(url, existing=True).content_length
+        except AWSKeyNotFoundError:
+            return 0
 
     @classmethod
     def _readFromUrl(cls, url, writable):
         srcObj = cls._getObjectForUrl(url, existing=True)
         srcObj.download_fileobj(writable)
-        return (
-            srcObj.content_length,
-            False  # executable bit is always False
-        )
+        executable = False
+        return srcObj.content_length, executable
 
-    @classmethod
-    def _writeToUrl(cls, readable, url, executable=False):
-        dstObj = cls._getObjectForUrl(url)
-
-        logger.debug("Uploading %s", dstObj.key)
+    def _writeToUrl(self, readable, url, executable=False):
+        dstObj = self._getObjectForUrl(url)
         uploadFile(readable=readable,
-                   resource=s3_boto3_resource,
+                   resource=self.s3_resource,
                    bucketName=dstObj.bucket_name,
                    fileID=dstObj.key,
                    partSize=DEFAULT_AWS_PART_SIZE)
 
-    def _getObjectForUrl(self, url, existing: Optional[bool] = None):
-        """
-        Extracts a key (object) from a given s3:// URL.
-
-        :param bool existing: If True, key is expected to exist. If False, key is expected not to
-               exists and it will be created. If None, the key will be created if it doesn't exist.
-
-        :rtype: S3.Object
-        """
-        keyName = url.path[1:]
-        bucketName = url.netloc
-
-        botoargs = {}
+    def boto_args(self):
         host = os.environ.get('TOIL_S3_HOST', None)
         port = os.environ.get('TOIL_S3_PORT', None)
         protocol = 'https'
         if os.environ.get('TOIL_S3_USE_SSL', True) == 'False':
             protocol = 'http'
         if host:
-            botoargs['endpoint_url'] = f'{protocol}://{host}' + f':{port}' if port else ''
+            return {'endpoint_url': f'{protocol}://{host}' + f':{port}' if port else ''}
+        return {}
 
-        s3 = boto3_session.resource('s3', region_name=self.region, **botoargs)
-        obj = s3.Object(bucketName, keyName)
-        objExists = True
+    def load_or_create(self, file_id, owner, encrypt):
+        pass
+
+    def load_or_fail(self, file_id):
+        pass
+
+    def _getObjectForUrl(self, uri: str, existing: Optional[bool] = None):
+        """
+        Extracts a key (object) from a given s3:// URL.
+
+        :param bool existing: If True, key is expected to exist. If False or None, key is
+            expected not to exist and it will be created.
+
+        :rtype: S3.Object
+        """
+        if uri.startswith('s3://'):
+            raise ValueError(f'Invalid schema.  Expecting s3 prefix, not: {uri}')
+        bucket_name, key_name = uri[len('s3://'):].split('/', 1)
+        obj = self.s3_resource.Object(bucket_name, key_name)
 
         try:
             obj.load()
+            objExists = True
         except ClientError as e:
             if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
                 objExists = False
             else:
                 raise
         if existing is True and not objExists:
-            raise RuntimeError(f"Key '{keyName}' does not exist in bucket '{bucketName}'.")
+            raise AWSKeyNotFoundError(f"Key '{key_name}' does not exist in bucket '{bucket_name}'.")
         elif existing is False and objExists:
-            raise RuntimeError(f"Key '{keyName}' exists in bucket '{bucketName}'.")
+            raise AWSKeyAlreadyExistsError(f"Key '{key_name}' exists in bucket '{bucket_name}'.")
 
         if not objExists:
             obj.put()  # write an empty file
@@ -351,7 +318,6 @@ class AWSJobStore(AbstractJobStore):
         info = AWSFile.create(jobStoreID if cleanup else None)
         info.upload(localFilePath, not self.config.disableJobStoreChecksumVerification)
         info.save()
-        logger.debug("Wrote %r of from %r", info, localFilePath)
         return info.fileID
 
     @contextmanager
@@ -360,53 +326,44 @@ class AWSJobStore(AbstractJobStore):
         with info.uploadStream() as writable:
             yield writable, info.fileID
         info.save()
-        logger.debug("Wrote %r.", info)
 
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=None):
         self._requireValidSharedFileName(sharedFileName)
-        info = AWSFile.loadOrCreate(jobStoreFileID=self._sharedFileID(sharedFileName),
-                                          ownerID=self.sharedFileOwnerID,
-                                          encrypted=isProtected)
+        self.load_or_create(file_id=self._sharedFileID(sharedFileName),
+                            owner=self.sharedFileOwnerID,
+                            encrypt=isProtected)
         with info.uploadStream() as writable:
             yield writable
         info.save()
-        logger.debug("Wrote %r for shared file %r.", info, sharedFileName)
 
     def updateFile(self, jobStoreFileID, localFilePath):
-        info = AWSFile.loadOrFail(jobStoreFileID)
+        self.load_or_fail(jobStoreFileID)
         info.upload(localFilePath, not self.config.disableJobStoreChecksumVerification)
         info.save()
-        logger.debug("Wrote %r from path %r.", info, localFilePath)
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
-        info = AWSFile.loadOrFail(jobStoreFileID)
+        self.load_or_fail(jobStoreFileID)
         with info.uploadStream() as writable:
             yield writable
         info.save()
-        logger.debug("Wrote %r from stream.", info)
 
     def fileExists(self, jobStoreFileID):
         return AWSFile.exists(jobStoreFileID)
 
     def getFileSize(self, jobStoreFileID):
-        if not self.fileExists(jobStoreFileID):
-            return 0
-        info = AWSFile.loadOrFail(jobStoreFileID)
-        return info.getSize()
+        return self.getSize(f's3://{self.bucket_name}/{jobStoreFileID}')
 
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
-        info = AWSFile.loadOrFail(jobStoreFileID)
-        logger.debug("Reading %r into %r.", info, localFilePath)
+        self.load_or_fail(jobStoreFileID)
         info.download(localFilePath, not self.config.disableJobStoreChecksumVerification)
         if getattr(jobStoreFileID, 'executable', False):
             os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
 
     @contextmanager
     def readFileStream(self, jobStoreFileID):
-        info = AWSFile.loadOrFail(jobStoreFileID)
-        logger.debug("Reading %r into stream.", info)
+        self.load_or_fail(jobStoreFileID)
         with info.downloadStream() as readable:
             yield readable
 
@@ -414,30 +371,40 @@ class AWSJobStore(AbstractJobStore):
     def readSharedFileStream(self, sharedFileName):
         self._requireValidSharedFileName(sharedFileName)
         jobStoreFileID = self._sharedFileID(sharedFileName)
-        info = AWSFile.loadOrFail(jobStoreFileID, customName=sharedFileName)
-        logger.debug("Reading %r for shared file %r into stream.", info, sharedFileName)
+        self.load_or_fail(jobStoreFileID, customName=sharedFileName)
         with info.downloadStream() as readable:
             yield readable
 
-    def deleteFile(self, jobStoreFileID):
-        info = AWSFile.load(jobStoreFileID)
-        if info is None:
-            logger.debug("File %s does not exist, skipping deletion.", jobStoreFileID)
-        else:
+    def deleteFile(self, file_id):
+        info = AWSFile.load(file_id)
+        if info:
             info.delete()
 
-    def writeStatsAndLogging(self, statsAndLoggingString):
+    def writeStatsAndLogging(self, log_msg: Union[bytes, str]):
+        if isinstance(log_msg, str):
+            log_msg = log_msg.encode('utf-8', errors='ignore')
+        file_obj = BytesIO(log_msg)
+
         info = AWSFile.create(self.statsFileOwnerID)
-        with info.uploadStream(multipart=False) as writeable:
-            if isinstance(statsAndLoggingString, str):
-                # This stream is for binary data, so encode any non-encoded things
-                statsAndLoggingString = statsAndLoggingString.encode('utf-8', errors='ignore')
-            writeable.write(statsAndLoggingString)
+        info.checksum = compute_checksum_for_bytesio(file_obj)
+
+        headerArgs = info._s3EncryptionArgs()
+
+        self.s3_client.upload_fileobj(Bucket=self.bucket_name,
+                                       Key=compat_bytes(info.fileID),
+                                       Fileobj=BytesIO(log_msg),
+                                       ExtraArgs=headerArgs)
+
+        # use head_object with the SSE headers to access versionId and content_length attributes
+        response = self.s3_client.head_object(Bucket=self.bucket_name,
+                                               Key=compat_bytes(info.fileID),
+                                               **headerArgs)
+        # TODO: raise if no ContentLength?
+        assert len(log_msg) == response.get('ContentLength', None)
         info.save()
 
     def readStatsAndLogging(self, callback, readAll=False):
         itemsProcessed = 0
-
         for info in self._readStatsAndLogging(callback, self.statsFileOwnerID):
             info._ownerID = self.readStatsFileOwnerID
             info.save()
@@ -449,13 +416,8 @@ class AWSJobStore(AbstractJobStore):
 
         return itemsProcessed
 
-    def _readStatsAndLogging(self, callback, ownerId):
-        items = list(self.filesDomain.select(
-            consistent_read=True,
-            query="select * from `%s` where ownerID='%s'" % (
-                self.filesDomain.name, ownerId)))
-        assert items is not None
-        for item in items:
+    def _readStatsAndLogging(self, callback, ownerId=None):
+        for item in get_primary_key_items(table=self.table, key='logs'):
             info = AWSFile.fromItem(item)
             with info.downloadStream() as readable:
                 callback(readable)
@@ -502,3 +464,32 @@ class AWSJobStore(AbstractJobStore):
     @retry()
     def destroy(self):
         delete_bucket(self.bucket.name)
+        # delete dynamodb table
+
+    def parse_jobstore_identifier(self, jobstore_identifier: str) -> Tuple[str, str, str]:
+        region, jobstore_name = jobstore_identifier.split(':')
+
+        bucket_name = dynamodb_table_name = f'{jobstore_name}--toil'
+
+        regions = EC2Regions.keys()
+        if region not in regions:
+            raise ValueError(f'AWS Region "{region}" is not one of: {regions}')
+
+        if not 3 <= len(jobstore_name) <= 56:
+            raise ValueError(f'AWS jobstore name must be between 3 and 56 chars: '
+                             f'{jobstore_name} (len: {len(jobstore_name)})')
+
+        if not re.compile(r'^[a-z0-9][a-z0-9-]+[a-z0-9]$').match(jobstore_name):
+            raise ValueError(f"Invalid AWS jobstore name: '{jobstore_name}'.  Must contain only digits, "
+                             f"lower-case letters, and hyphens.  Must also not start or end in a hyphen.")
+
+        if '--' in jobstore_name:
+            raise ValueError(f"AWS jobstore names may not contain '--': {jobstore_name}")
+
+        if bucket_exists(bucket_name):
+            response = self.s3_client.get_bucket_location(Bucket=bucket_name)
+            if response["LocationConstraint"] != region:
+                raise ValueError(f'Bucket region conflict.  Bucket already exists in region '
+                                 f'"{response["LocationConstraint"]}" but "{region}" was specified '
+                                 f'in the jobstore_identifier: {jobstore_identifier}')
+        return region, bucket_name, dynamodb_table_name

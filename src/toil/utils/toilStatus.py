@@ -234,7 +234,7 @@ class ToilStatus:
         jobsToReport = []
         for jobID in jobs:
             try:
-                jobsToReport.append(self.jobStore.load(jobID))
+                jobsToReport.append(self.jobStore.load_job(jobID))
             except JobException:
                 print('The job %s could not be found.' % jobID, file=sys.stderr)
                 raise
@@ -263,17 +263,17 @@ class ToilStatus:
         # Traverse jobs in stack
         for jobs in rootJob.stack:
             for successorJobStoreID in jobs:
-                if successorJobStoreID not in foundJobStoreIDs and self.jobStore.exists(successorJobStoreID):
-                    self.traverseJobGraph(self.jobStore.load(successorJobStoreID), jobsToReport, foundJobStoreIDs)
+                if successorJobStoreID not in foundJobStoreIDs and self.jobStore.job_exists(successorJobStoreID):
+                    self.traverseJobGraph(self.jobStore.load_job(successorJobStoreID), jobsToReport, foundJobStoreIDs)
 
         # Traverse service jobs
         for jobs in rootJob.services:
             for serviceJobStoreID in jobs:
-                if self.jobStore.exists(serviceJobStoreID):
+                if self.jobStore.job_exists(serviceJobStoreID):
                     if serviceJobStoreID in foundJobStoreIDs:
                         raise RuntimeError('Service job was unexpectedly found while traversing ')
                     foundJobStoreIDs.add(serviceJobStoreID)
-                    jobsToReport.append(self.jobStore.load(serviceJobStoreID))
+                    jobsToReport.append(self.jobStore.load_job(serviceJobStoreID))
 
         return jobsToReport
 

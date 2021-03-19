@@ -1768,7 +1768,7 @@ class CachingFileStore(AbstractFileStore):
                 # Complete the job
                 self.jobStore.update(self.jobDesc)
                 # Delete any remnant jobs
-                list(map(self.jobStore.delete, self.jobsToDelete))
+                list(map(self.jobStore.delete_job, self.jobsToDelete))
                 # Delete any remnant files
                 list(map(self.jobStore.deleteFile, self.filesToDelete))
                 # Remove the files to delete list, having successfully removed the files

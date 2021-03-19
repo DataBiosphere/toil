@@ -140,7 +140,7 @@ class FileJobStore(AbstractJobStore):
             self._batchedUpdates.append(jobDescription)
         else:
             # Save it now
-            self.update(jobDescription)
+            self.update_job(jobDescription)
         return jobDescription
 
     @contextmanager
@@ -148,7 +148,7 @@ class FileJobStore(AbstractJobStore):
         self._batchedUpdates = []
         yield
         for jobDescription in self._batchedUpdates:
-            self.update(jobDescription)
+            self.update_job(jobDescription)
         self._batchedUpdates = None
 
     def _waitForExists(self, jobStoreID, maxTries=35, sleepTime=1):
@@ -185,7 +185,7 @@ class FileJobStore(AbstractJobStore):
             time.sleep(sleepTime)
         return False
 
-    def exists(self, jobStoreID):
+    def job_exists(self, jobStoreID):
         return os.path.exists(self._getJobFileName(jobStoreID))
 
     def getPublicUrl(self, jobStoreFileID):
@@ -203,7 +203,7 @@ class FileJobStore(AbstractJobStore):
         else:
             raise NoSuchFileException(sharedFileName)
 
-    def load(self, jobStoreID):
+    def load_job(self, jobStoreID):
         self._checkJobStoreIdExists(jobStoreID)
         # Load a valid version of the job
         jobFile = self._getJobFileName(jobStoreID)
@@ -221,7 +221,7 @@ class FileJobStore(AbstractJobStore):
             job.setupJobAfterFailure()
         return job
 
-    def update(self, job):
+    def update_job(self, job):
         assert job.jobStoreID is not None, f"Tried to update job {job} without an ID"
         assert not isinstance(job.jobStoreID, TemporaryID), f"Tried to update job {job} without an assigned ID"
 
@@ -234,10 +234,10 @@ class FileJobStore(AbstractJobStore):
         # This should be atomic for the file system
         os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
 
-    def delete(self, jobStoreID):
+    def delete_job(self, jobStoreID):
         # The jobStoreID is the relative path to the directory containing the job,
         # removing this directory deletes the job.
-        if self.exists(jobStoreID):
+        if self.job_exists(jobStoreID):
             # Remove the job-associated files in need of cleanup, which may or
             # may not live under the job's directory.
             robust_rmtree(self._getJobFilesCleanupDir(jobStoreID))
@@ -255,8 +255,8 @@ class FileJobStore(AbstractJobStore):
                     # This is a job instance directory
                     jobId = self._getJobIdFromDir(os.path.join(tempDir, i))
                     try:
-                        if self.exists(jobId):
-                            yield self.load(jobId)
+                        if self.job_exists(jobId):
+                            yield self.load_job(jobId)
                     except NoSuchJobException:
                         # An orphaned job may leave an empty or incomplete job file which we can safely ignore
                         pass

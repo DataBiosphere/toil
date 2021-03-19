@@ -200,10 +200,10 @@ class AbstractJobStore(ABC):
                 rootJobStoreID = f.read().decode('utf-8')
         except NoSuchFileException:
             raise JobException('No job has been set as the root in this job store')
-        if not self.exists(rootJobStoreID):
+        if not self.job_exists(rootJobStoreID):
             raise JobException("The root job '%s' doesn't exist. Either the Toil workflow "
                                "is finished or has never been started" % rootJobStoreID)
-        return self.load(rootJobStoreID)
+        return self.load_job(rootJobStoreID)
 
     # FIXME: This is only used in tests, why do we have it?
 
@@ -493,9 +493,9 @@ class AbstractJobStore(ABC):
                 try:
                     return jobCache[jobId]
                 except KeyError:
-                    return self.load(jobId)
+                    return self.load_job(jobId)
             else:
-                return self.load(jobId)
+                return self.load_job(jobId)
 
         def haveJob(jobId):
             assert len(jobId) > 1, "Job ID {} too short; is a string being used as a list?".format(jobId)
@@ -503,19 +503,19 @@ class AbstractJobStore(ABC):
                 if jobId in jobCache:
                     return True
                 else:
-                    return self.exists(jobId)
+                    return self.job_exists(jobId)
             else:
-                return self.exists(jobId)
+                return self.job_exists(jobId)
 
         def deleteJob(jobId):
             if jobCache is not None:
                 if jobId in jobCache:
                     del jobCache[jobId]
-            self.delete(jobId)
+            self.delete_job(jobId)
 
         def updateJobDescription(jobDescription):
             jobCache[jobDescription.jobStoreID] = jobDescription
-            self.update(jobDescription)
+            self.update_job(jobDescription)
 
         def getJobDescriptions():
             if jobCache is not None:
@@ -749,7 +749,7 @@ class AbstractJobStore(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def exists(self, jobStoreID):
+    def job_exists(self, jobStoreID):
         """
         Indicates whether a description of the job with the specified jobStoreID exists in the job store
 
@@ -794,7 +794,7 @@ class AbstractJobStore(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def load(self, jobStoreID):
+    def load_job(self, jobStoreID):
         """
         Loads the description of the job referenced by the given ID, assigns it
         the job store's config, and returns it.
@@ -812,7 +812,7 @@ class AbstractJobStore(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def update(self, jobDescription):
+    def update_job(self, jobDescription):
         """
         Persists changes to the state of the given JobDescription in this store atomically.
 
@@ -821,7 +821,7 @@ class AbstractJobStore(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def delete(self, jobStoreID):
+    def delete_job(self, jobStoreID):
         """
         Removes the JobDescription from the store atomically. You may not then
         subsequently call load(), write(), update(), etc. with the same

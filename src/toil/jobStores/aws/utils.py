@@ -13,11 +13,8 @@
 # limitations under the License.
 import base64
 import bz2
-import errno
 import logging
 import os
-import socket
-from ssl import SSLError
 from typing import Optional
 
 from boto3.s3.transfer import TransferConfig
@@ -215,6 +212,7 @@ def uploadFile(readable,
         multipart_chunksize=partSize,
         use_threads=True
     )
+    logger.debug("Uploading %s", fileID)
     if isinstance(readable, str):
         client.upload_file(Filename=readable,
                            Bucket=bucketName,
@@ -304,18 +302,6 @@ def copyKeyMultipart(resource,
                                             Key=dstObject.key,
                                             **destEncryptionArgs)
     return info.get('VersionId', None)
-
-
-def connection_reset(e):
-    # For some reason we get 'error: [Errno 104] Connection reset by peer' where the
-    # English description suggests that errno is 54 (ECONNRESET) while the actual
-    # errno is listed as 104. To be safe, we check for both:
-    return isinstance(e, socket.error) and e.errno in (errno.ECONNRESET, 104)
-
-
-def retryable_ssl_error(e):
-    # https://github.com/BD2KGenomics/toil/issues/978
-    return isinstance(e, SSLError) and e.reason == 'DECRYPTION_FAILED_OR_BAD_RECORD_MAC'
 
 
 def region_to_bucket_location(region):

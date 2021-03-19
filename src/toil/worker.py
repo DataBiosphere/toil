@@ -88,7 +88,7 @@ def nextChainable(predecessor, jobStore, config):
     successorID = next(iter(jobs))
 
     # Load the successor JobDescription
-    successor = jobStore.load(successorID)
+    successor = jobStore.load_job(successorID)
 
     #We check the requirements of the successor to see if we can run it
     #within the current worker
@@ -299,7 +299,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         #Load the JobDescription
         ##########################################
 
-        jobDesc = jobStore.load(jobStoreID)
+        jobDesc = jobStore.load_job(jobStoreID)
         listOfJobs[0] = str(jobDesc)
         logger.debug("Parsed job description")
 
@@ -310,7 +310,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         if jobDesc.command == None:
             logger.debug("Job description has no body to run.")
             # Cleanup jobs already finished
-            predicate = lambda jID: jobStore.exists(jID)
+            predicate = lambda jID: jobStore.job_exists(jID)
             jobDesc.filterSuccessors(predicate)
             jobDesc.filterServiceHosts(predicate)
             logger.debug("Cleaned up any references to completed successor jobs")
@@ -514,7 +514,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
 
         # Clobber any garbage state we have for this job from failing with
         # whatever good state is still stored in the JobStore
-        jobDesc = jobStore.load(jobStoreID)
+        jobDesc = jobStore.load_job(jobStoreID)
         # Remember that we failed
         jobAttemptFailed = True
 

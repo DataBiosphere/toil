@@ -50,6 +50,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
 from toil.lib.pipes import (ReadablePipe,
                             ReadableTransformingPipe,
                             WritablePipe)
+from toil.lib.checksum import compute_checksum_for_file
 from toil.lib.compatibility import compat_bytes
 from toil.lib.ec2 import establish_boto3_session
 from toil.lib.aws.s3 import MultiPartPipe, SinglePartPipe
@@ -200,39 +201,13 @@ class AWSFile(SDBHelper):
         # Create a new Resource in case it needs to be on its own thread
         resource = boto3_session.resource('s3', region_name=self.outer.region)
 
-        self.checksum = self._get_file_checksum(localFilePath) if calculateChecksum else None
+        self.checksum = compute_checksum_for_file(localFilePath) if calculateChecksum else None
         self.version = uploadFromPath(localFilePath,
                                       resource=resource,
                                       bucketName=self.outer.filesBucket.name,
                                       fileID=compat_bytes(self.fileID),
                                       headerArgs=headerArgs,
                                       partSize=self.outer.partSize)
-
-    def _start_checksum(self, to_match=None, algorithm='sha1'):
-        """
-        Get a hasher that can be used with _update_checksum and
-        _finish_checksum.
-
-        If to_match is set, it is a precomputed checksum which we expect
-        the result to match.
-
-        The right way to compare checksums is to feed in the checksum to be
-        matched, so we can see its algorithm, instead of getting a new one
-        and comparing. If a checksum to match is fed in, _finish_checksum()
-        will raise a ChecksumError if it isn't matched.
-        """
-
-        # If we have an expexted result it will go here.
-        expected = None
-
-        if to_match is not None:
-            parts = to_match.split('$')
-            algorithm = parts[0]
-            expected = parts[1]
-
-        wrapped = getattr(hashlib, algorithm)()
-        logger.debug(f'Starting {algorithm} checksum to match {expected}')
-        return algorithm, wrapped, expected
 
     def _update_checksum(self, checksum_in_progress, data):
         """
@@ -257,15 +232,6 @@ class AWSFile(SDBHelper):
 
         return '$'.join([checksum_in_progress[0], result_hash])
 
-    def _get_file_checksum(self, localFilePath, to_match=None):
-        with open(localFilePath, 'rb') as f:
-            hasher = self._start_checksum(to_match=to_match)
-            contents = f.read(1024 * 1024)
-            while contents != b'':
-                self._update_checksum(hasher, contents)
-                contents = f.read(1024 * 1024)
-            return self._finish_checksum(hasher)
-
     @contextmanager
     def uploadStream(self, multipart=True, allowInlining=True):
         """
@@ -280,8 +246,6 @@ class AWSFile(SDBHelper):
 
         info = self
         store = self.outer
-
-
 
         pipe = MultiPartPipe() if multipart else SinglePartPipe()
         with pipe as writable:
@@ -360,14 +324,13 @@ class AWSFile(SDBHelper):
                 obj.download_file(Filename=tmpPath, ExtraArgs={'VersionId': self.version, **headerArgs})
 
             if verifyChecksum and self.checksum:
-                try:
-                    # This automatically compares the result and matches the algorithm.
-                    self._get_file_checksum(localFilePath, self.checksum)
-                except ChecksumError as e:
-                    # Annotate checksum mismatches with file name
-                    raise ChecksumError('Checksums do not match for file %s.' % localFilePath) from e
-                    # The error will get caught and result in a retry of the download until we run out of retries.
-                    # TODO: handle obviously truncated downloads by resuming instead.
+                algorithm, expected_checksum = self.checksum.split('$')
+                computed = compute_checksum_for_file(localFilePath, algorithm=algorithm)
+                if self.checksum != computed:
+                    raise ChecksumError(f'Checksum mismatch for file {localFilePath}. '
+                                        f'Expected: {self.checksum} Actual: {computed}')
+                # The error will get caught and result in a retry of the download until we run out of retries.
+                # TODO: handle obviously truncated downloads by resuming instead.
         else:
             assert False
 
@@ -396,10 +359,11 @@ class AWSFile(SDBHelper):
             """
 
             def transform(self, readable, writable):
-                hasher = info._start_checksum(to_match=info.checksum)
+                algorithm, _ = info.checksum.split('$')
+                hasher = getattr(hashlib, algorithm)()
                 contents = readable.read(1024 * 1024)
                 while contents != b'':
-                    info._update_checksum(hasher, contents)
+                    hasher.update(contents)
                     try:
                         writable.write(contents)
                     except BrokenPipeError:
@@ -409,7 +373,9 @@ class AWSFile(SDBHelper):
                     contents = readable.read(1024 * 1024)
                 # We reached EOF in the input.
                 # Finish checksumming and verify.
-                info._finish_checksum(hasher)
+                result_hash = hasher.hexdigest()
+                if f'{algorithm}${result_hash}' != info.checksum:
+                    raise ChecksumError('')
                 # Now stop so EOF happens in the output.
 
         with DownloadPipe() as readable:

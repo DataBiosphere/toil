@@ -231,7 +231,7 @@ class ServiceManager( object ):
                         for serviceJobID in onlyBatch:
                             # Load up the service object.
                             # TODO: cache?
-                            serviceJobDesc = jobStore.load(serviceJobID)
+                            serviceJobDesc = jobStore.load_job(serviceJobID)
                             # Remember the parent job
                             serviceToParentJobDescription[serviceJobDesc] = jobDesc
                             # We should now start to monitor this service to see if
@@ -289,7 +289,7 @@ def blockUntilServiceGroupIsStarted(jobDesc, jobDescriptionsWithServicesThatHave
         for serviceJobID in serviceJobList:
             # Load up the service object.
             # TODO: cache?
-            serviceJobDesc = jobStore.load(serviceJobID)
+            serviceJobDesc = jobStore.load_job(serviceJobID)
             logger.debug("Service manager is starting service job: %s, start ID: %s", serviceJobDesc, serviceJobDesc.startJobStoreID)
             assert jobStore.fileExists(serviceJobDesc.startJobStoreID)
             # At this point the terminateJobStoreID and errorJobStoreID could have been deleted!

@@ -111,8 +111,7 @@ def awsRetry(f):
 def awsFilterImpairedNodes(nodes, ec2):
     # if TOIL_AWS_NODE_DEBUG is set don't terminate nodes with
     # failing status checks so they can be debugged
-    nodeDebug = os.environ.get('TOIL_AWS_NODE_DEBUG') in ('True', 'TRUE', 'true', True)
-    if not nodeDebug:
+    if not os.environ.get('TOIL_AWS_NODE_DEBUG') in ('True', 'TRUE', 'true', True):
         return nodes
     nodeIDs = [node.id for node in nodes]
     statuses = ec2.get_all_instance_status(instance_ids=nodeIDs)

@@ -916,8 +916,8 @@ class CheckpointJobDescription(JobDescription):
                 def recursiveDelete(jobDesc):
                     # Recursive walk the stack to delete all remaining jobs
                     for otherJobID in jobDesc.successorsAndServiceHosts():
-                        if jobStore.exists(otherJobID):
-                            recursiveDelete(jobStore.load(otherJobID))
+                        if jobStore.job_exists(otherJobID):
+                            recursiveDelete(jobStore.load_job(otherJobID))
                         else:
                             logger.debug("Job %s has already been deleted", otherJobID)
                     if jobDesc.jobStoreID != self.jobStoreID:

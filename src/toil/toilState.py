@@ -126,7 +126,7 @@ class ToilState:
             if jobCache is not None:
                 if jobId in jobCache:
                     return jobCache[jobId]
-            return jobStore.load(jobId)
+            return jobStore.load_job(jobId)
 
         # If the job description has a command, is a checkpoint, has services
         # or is ready to be deleted it is ready to be processed

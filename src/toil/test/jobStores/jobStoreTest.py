@@ -144,8 +144,8 @@ class AbstractJobStoreTest(object):
         @travis_test
         def testInitialState(self):
             """Ensure proper handling of nonexistant files."""
-            self.assertFalse(self.jobstore_initialized.exists('nonexistantFile'))
-            self.assertRaises(NoSuchJobException, self.jobstore_initialized.load, 'nonexistantFile')
+            self.assertFalse(self.jobstore_initialized.job_exists('nonexistantFile'))
+            self.assertRaises(NoSuchJobException, self.jobstore_initialized.load_job, 'nonexistantFile')
 
         @travis_test
         def testJobCreation(self):
@@ -169,7 +169,7 @@ class AbstractJobStoreTest(object):
 
             self.assertEqual(created, job)
 
-            self.assertTrue(jobstore.exists(job.jobStoreID))
+            self.assertTrue(jobstore.job_exists(job.jobStoreID))
             self.assertEqual(job.command, 'parent1')
             self.assertEqual(job.memory, self.parentJobReqs['memory'])
             self.assertEqual(job.cores, self.parentJobReqs['cores'])
@@ -204,7 +204,7 @@ class AbstractJobStoreTest(object):
             self.jobstore_initialized.create(jobDesc1)
 
             # Load it from the second jobstore
-            jobDesc2 = self.jobstore_resumed_noconfig.load(jobDesc1.jobStoreID)
+            jobDesc2 = self.jobstore_resumed_noconfig.load_job(jobDesc1.jobStoreID)
 
             self.assertEqual(jobDesc1.command, jobDesc2.command)
 
@@ -225,7 +225,7 @@ class AbstractJobStoreTest(object):
             job.addChild(childJob.jobStoreID)
             self.jobstore_initialized.update(job)
 
-            self.assertEqual(self.jobstore_initialized.load(list(job.allSuccessors())[0]).command, childJob.command)
+            self.assertEqual(self.jobstore_initialized.load_job(list(job.allSuccessors())[0]).command, childJob.command)
 
         @travis_test
         def testPersistantFilesToDelete(self):
@@ -246,7 +246,7 @@ class AbstractJobStoreTest(object):
             self.jobstore_initialized.create(job)
             job.filesToDelete = ['1', '2']
             self.jobstore_initialized.update(job)
-            self.assertEqual(self.jobstore_initialized.load(job.jobStoreID).filesToDelete, ['1', '2'])
+            self.assertEqual(self.jobstore_initialized.load_job(job.jobStoreID).filesToDelete, ['1', '2'])
 
         @travis_test
         def testUpdateBehavior(self):
@@ -268,7 +268,7 @@ class AbstractJobStoreTest(object):
 
             jobstore1.assignID(job1)
             jobstore1.create(job1)
-            job2 = jobstore2.load(job1.jobStoreID)
+            job2 = jobstore2.load_job(job1.jobStoreID)
 
             # Create child jobs.
             jobstore2.assignID(childJob1)
@@ -286,15 +286,15 @@ class AbstractJobStoreTest(object):
             self.assertNotEqual([sorted(x) for x in job2.stack], [sorted(x) for x in job1.stack])
 
             # Reload parent job on jobstore, "refreshing" the job.
-            job1 = jobstore1.load(job1.jobStoreID)
+            job1 = jobstore1.load_job(job1.jobStoreID)
             self.assertEqual([sorted(x) for x in job2.stack], [sorted(x) for x in job1.stack])
 
             # Jobs still shouldn't *actually* be equal, even if their contents are the same.
             self.assertNotEqual(job2, job1)
 
             # Load children on jobstore and check against equivalence
-            self.assertNotEqual(jobstore1.load(childJob1.jobStoreID), childJob1)
-            self.assertNotEqual(jobstore1.load(childJob2.jobStoreID), childJob2)
+            self.assertNotEqual(jobstore1.load_job(childJob1.jobStoreID), childJob1)
+            self.assertNotEqual(jobstore1.load_job(childJob2.jobStoreID), childJob2)
 
         @travis_test
         def testJobDeletions(self):
@@ -331,7 +331,7 @@ class AbstractJobStoreTest(object):
             jobstore.update(job)
 
             # Go get the children
-            childJobs = [jobstore.load(childID) for childID in job.nextSuccessors()]
+            childJobs = [jobstore.load_job(childID) for childID in job.nextSuccessors()]
 
             # Test job iterator - the results of the iterator are effected by eventual
             # consistency. We cannot guarantee all jobs will appear but we can assert that all
@@ -342,16 +342,16 @@ class AbstractJobStoreTest(object):
 
             # Test job deletions
             # First delete parent, this should have no effect on the children
-            self.assertTrue(jobstore.exists(job.jobStoreID))
+            self.assertTrue(jobstore.job_exists(job.jobStoreID))
             jobstore.delete(job.jobStoreID)
-            self.assertFalse(jobstore.exists(job.jobStoreID))
+            self.assertFalse(jobstore.job_exists(job.jobStoreID))
 
             # Check the deletion of children
             for childJob in childJobs:
-                self.assertTrue(jobstore.exists(childJob.jobStoreID))
+                self.assertTrue(jobstore.job_exists(childJob.jobStoreID))
                 jobstore.delete(childJob.jobStoreID)
-                self.assertFalse(jobstore.exists(childJob.jobStoreID))
-                self.assertRaises(NoSuchJobException, jobstore.load, childJob.jobStoreID)
+                self.assertFalse(jobstore.job_exists(childJob.jobStoreID))
+                self.assertRaises(NoSuchJobException, jobstore.load_job, childJob.jobStoreID)
 
             try:
                 with jobstore.readSharedFileStream('missing') as _:
@@ -508,7 +508,7 @@ class AbstractJobStoreTest(object):
 
             # Delete parent
             jobstore1.delete(jobOnJobStore1.jobStoreID)
-            self.assertFalse(jobstore1.exists(jobOnJobStore1.jobStoreID))
+            self.assertFalse(jobstore1.job_exists(jobOnJobStore1.jobStoreID))
             # TODO: Who deletes the shared files?
 
         @travis_test
@@ -541,7 +541,7 @@ class AbstractJobStoreTest(object):
                     jobstore.create(overlargeJob)
                     jobs.append(overlargeJob)
             for job in jobs:
-                self.assertTrue(jobstore.exists(job.jobStoreID))
+                self.assertTrue(jobstore.job_exists(job.jobStoreID))
 
         @travis_test
         def testGrowingAndShrinkingJob(self):
@@ -556,12 +556,12 @@ class AbstractJobStoreTest(object):
             # Make the job grow
             job.foo_attribute = arbitraryLargeData
             self.jobstore_initialized.update(job)
-            check_job = self.jobstore_initialized.load(job.jobStoreID)
+            check_job = self.jobstore_initialized.load_job(job.jobStoreID)
             self.assertEqual(check_job.foo_attribute, arbitraryLargeData)
             # Make the job shrink back close to its original size
             job.foo_attribute = None
             self.jobstore_initialized.update(job)
-            check_job = self.jobstore_initialized.load(job.jobStoreID)
+            check_job = self.jobstore_initialized.load_job(job.jobStoreID)
             self.assertEqual(check_job.foo_attribute, None)
 
         def _prepareTestFile(self, store, size=None):
@@ -1232,8 +1232,8 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             overlargeJob.jobName = str(random.read(512 * 1024))
         jobstore.assignID(overlargeJob)
         jobstore.create(overlargeJob)
-        self.assertTrue(jobstore.exists(overlargeJob.jobStoreID))
-        overlargeJobDownloaded = jobstore.load(overlargeJob.jobStoreID)
+        self.assertTrue(jobstore.job_exists(overlargeJob.jobStoreID))
+        overlargeJobDownloaded = jobstore.load_job(overlargeJob.jobStoreID)
         # Because jobs lack equality comparison, we stringify for comparison.
         jobsInJobStore = [str(job) for job in jobstore.jobs()]
         self.assertEqual(jobsInJobStore, [str(overlargeJob)])
@@ -1254,7 +1254,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def _hashTestFile(self, url):
         from toil.jobStores.aws.jobStore import AWSJobStore
-        key = AWSJobStore._getObjectForUrl(urlparse.urlparse(url), existing=True)
+        key = AWSJobStore._getObjectForUrl(url, existing=True)
         contents = key.get().get('Body').read()
         return hashlib.md5(contents).hexdigest()
 

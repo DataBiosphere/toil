@@ -106,7 +106,7 @@ class WritablePipe(ABC):
     def __exit__(self, exc_type, exc_val, exc_tb):
         # Closeing the writable end will send EOF to the readable and cause the reader thread
         # to finish.
-        # TODO: Can close() fail? If so, whould we try and clean up after the reader?
+        # TODO: Can close() fail? If so, would we try and clean up after the reader?
         self.writable.close()
         try:
             if self.thread is not None:
