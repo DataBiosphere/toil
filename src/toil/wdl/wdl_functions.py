@@ -48,6 +48,13 @@ class WDLJSONEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 
+def resolve_expr(expr: Any) -> Any:
+    """
+
+    """
+    return expr
+
+
 def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
     '''
     Creates a bashscript to inject into a docker container for the job.

@@ -434,18 +434,21 @@ class AnalyzeV1WDL(AnalyzeWDL):
         Returns the primitive literal as a string.
         """
         is_bool = ctx.BoolLiteral()
+        element = ctx.children[0]
+
         if is_bool:
             val = is_bool.getText()
             if val not in ('true', 'false'):
                 raise TypeError(f'Parsed boolean ({val}) must be expressed as "true" or "false".')
             return val.capitalize()
-        elif is_context(ctx.children[0], 'StringContext'):
-            return self.visit_string(ctx.children[0])
-        elif is_context(ctx.children[0], ('TerminalNodeImpl',  # this also includes variables
-                                          'NumberContext')):
-            return ctx.children[0].getText()
+        elif is_context(element, 'StringContext'):
+            return self.visit_string(element)
+        elif is_context(element, 'NumberContext'):
+            return element.getText()
+        elif is_context(element, 'TerminalNodeImpl'):
+            return f'resolve_expr({element.getText()})'
         else:
-            raise RuntimeError(f'Primitive literal has unknown child: {type(ctx.children[0])}.')
+            raise RuntimeError(f'Primitive literal has unknown child: {type(element)}.')
 
     def visit_number(self, ctx):
         """
@@ -767,6 +770,9 @@ class AnalyzeV1WDL(AnalyzeWDL):
         if identifier in ('left', 'right'):
             # hack-y way to make sure pair.left and pair.right are parsed correctly.
             return f'({expr_core}.{identifier})'
+
+        # remove resolve_expr() function call
+        expr_core = expr_core[len('resolve_expr('):-1]
 
         return f'({expr_core}_{identifier})'
 

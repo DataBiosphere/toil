@@ -572,11 +572,13 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
                         raise TypeError('Parsed boolean ({}) must be expressed as "true" or "false".'
                                         ''.format(expressionAST.source_string))
                 elif expressionAST.str == 'string':
-                    parsed_string = self.translate_wdl_string_to_python_string(expressionAST.source_string)
-                    return '{string}'.format(string=parsed_string)
+                    return self.translate_wdl_string_to_python_string(expressionAST.source_string)
+                elif expressionAST.str in ('integer', 'float'):
+                    return expressionAST.source_string
+                elif expressionAST.str == 'identifier':
+                    return f'resolve_expr({expressionAST.source_string})'
                 else:
-                    # integers, floats, and variables
-                    return '{string}'.format(string=expressionAST.source_string)
+                    raise NotImplementedError(f'Unknown AST: {expressionAST.str}')
             elif isinstance(expressionAST, wdl_parser.Ast):
                 if expressionAST.name == 'Add':
                     es = es + self.parse_declaration_expressn_operator(expressionAST.attr('lhs'),
@@ -695,7 +697,8 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
                 rhsAST.source_string == 'left' or rhsAST.source_string == 'right'):
             es = es + '.'
         else:
-            es = es + '_'
+            # remove resolve_expr() function call
+            es = es[len('resolve_expr('):-1] + '_'
 
         if isinstance(rhsAST, wdl_parser.Terminal):
             es = es + rhsAST.source_string
@@ -932,7 +935,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         elif isinstance(i, wdl_parser.AstList):
             for ast in i:
                 if ast.name == 'IOMapping':
-                    key = self.parse_declaration_expressn(ast.attr("key"), es='')
+                    key = ast.attr("key").source_string
                     value = self.parse_declaration_expressn(ast.attr("value"), es='')
                     io_map[key] = value
                 else:

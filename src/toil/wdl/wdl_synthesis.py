@@ -108,6 +108,7 @@ class SynthesizeWDL:
                     from toil.wdl.wdl_types import WDLPair
                     from toil.wdl.wdl_functions import generate_docker_bashscript_file
                     from toil.wdl.wdl_functions import generate_stdout_file
+                    from toil.wdl.wdl_functions import resolve_expr
                     from toil.wdl.wdl_functions import select_first
                     from toil.wdl.wdl_functions import sub
                     from toil.wdl.wdl_functions import size
