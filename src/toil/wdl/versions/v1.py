@@ -772,7 +772,8 @@ class AnalyzeV1WDL(AnalyzeWDL):
             return f'({expr_core}.{identifier})'
 
         # remove resolve_expr() function call
-        expr_core = expr_core[len('resolve_expr('):-1]
+        if expr_core.startswith('resolve_expr('):
+            expr_core = expr_core[13:-1]
 
         return f'({expr_core}_{identifier})'
 

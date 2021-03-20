@@ -689,7 +689,10 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
             es = es + lhsAST.source_string
         elif isinstance(lhsAST, wdl_parser.Ast):
             # remove resolve_expr() function call
-            es = es + self.parse_declaration_expressn(lhsAST, es)[len('resolve_expr('):-1]
+            lhs = self.parse_declaration_expressn(lhsAST, es)
+            if lhs.startswith('resolve_expr('):
+                lhs = lhs[13:-1]
+            es = es + lhs
         elif isinstance(lhsAST, wdl_parser.AstList):
             raise NotImplementedError
 
