@@ -688,7 +688,8 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         if isinstance(lhsAST, wdl_parser.Terminal):
             es = es + lhsAST.source_string
         elif isinstance(lhsAST, wdl_parser.Ast):
-            es = es + self.parse_declaration_expressn(lhsAST, es)
+            # remove resolve_expr() function call
+            es = es + self.parse_declaration_expressn(lhsAST, es)[len('resolve_expr('):-1]
         elif isinstance(lhsAST, wdl_parser.AstList):
             raise NotImplementedError
 
@@ -697,8 +698,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
                 rhsAST.source_string == 'left' or rhsAST.source_string == 'right'):
             es = es + '.'
         else:
-            # remove resolve_expr() function call
-            es = es[len('resolve_expr('):-1] + '_'
+            es = es + '_'
 
         if isinstance(rhsAST, wdl_parser.Terminal):
             es = es + rhsAST.source_string
