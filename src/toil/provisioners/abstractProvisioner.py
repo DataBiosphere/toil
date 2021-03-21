@@ -479,11 +479,14 @@ class AbstractProvisioner(ABC):
             # Define the base config
             config = {
                 'ignition': {
-                    'version': '3.0.0'
+                    'version': '3.2.0'
                 },
                 'storage': {
                     'files': self.files
-                    },
+                },
+                'locksmith': {
+                    'reboot-strategy': 'off'
+                },
                 'systemd': {
                     'units': self.units
                 }
@@ -494,7 +497,7 @@ class AbstractProvisioner(ABC):
                 config['passwd']['users']['sshAuthorizedKeys'] = self.sshPublicKeys
 
             # Serialize as JSON
-            return json.dump(config)
+            return json.dumps(config)
 
 
     def getBaseInstanceConfiguration(self) -> InstanceConfiguration:
