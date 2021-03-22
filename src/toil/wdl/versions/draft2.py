@@ -816,11 +816,15 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
                     return es + '_toil_wdl_internal__stdout_file'
                 elif name.source_string == 'stderr':
                     return es + '_toil_wdl_internal__stderr_file'
-                elif name.source_string in ('range', 'zip'):
+
+                # wrap the function as a WDLFunctionCall class
+                # e.g.: "basename(arg1, arg2)" turns into "WDLFunctionCall(basename, arg1, arg2)"
+                es += 'WDLFunctionCall('
+                if name.source_string in ('range', 'zip'):
                     # replace python built-in functions
-                    es += f'wdl_{name.source_string}('
+                    es += f'wdl_{name.source_string}, '
                 else:
-                    es = es + name.source_string + '('
+                    es = es + name.source_string + ', '
             else:
                 raise NotImplementedError
         elif isinstance(name, wdl_parser.Ast):

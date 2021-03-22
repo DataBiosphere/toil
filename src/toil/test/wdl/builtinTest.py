@@ -501,7 +501,6 @@ class WdlStandardLibraryWorkflowsTest(WdlWorkflowsTest):
     def test_flatten(self):
         self.check_function('flatten', cases=['as_input'], expected_result='[1,2,3,1,21,22]')
 
-    @unittest.skip('broken: see: https://github.com/DataBiosphere/toil/issues/2759')
     def test_basename(self):
         self.check_function('basename', cases=['as_command'], expected_result='bash')
 

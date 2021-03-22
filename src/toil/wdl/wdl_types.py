@@ -47,7 +47,7 @@ class WDLType:
             else:
                 raise WDLRuntimeError(f"Required input for '{self.name}' type not specified.")
 
-        if isinstance(value, Promise):
+        if hasattr(value, '_resolve'):
             return value
 
         return self._create(value)

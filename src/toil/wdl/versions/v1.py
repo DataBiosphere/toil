@@ -704,7 +704,9 @@ class AnalyzeV1WDL(AnalyzeWDL):
             # replace python built-in functions
             return f'wdl_{fn}'
 
-        call = f'{fn}({params}'
+        # wrap the function as a WDLFunctionCall class
+        # e.g.: "basename(arg1, arg2)" turns into "WDLFunctionCall(basename, arg1, arg2)"
+        call = f'WDLFunctionCall({fn}, {params}'
 
         # append necessary params for i/o functions
         if fn == 'glob':

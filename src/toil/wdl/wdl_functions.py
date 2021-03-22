@@ -48,10 +48,39 @@ class WDLJSONEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 
-def resolve_expr(expr: Any) -> Any:
+class WDLFunctionCall:
+    """
+    An encapsulation of a WDL function call that can be resolved when ready.
     """
 
+    def __init__(self, fn, *args):
+        """
+        :param fn: A function class that references the actual Python function.
+        :param args: Arguments that go with the function.
+        """
+        self.fn = fn
+        self.args = args
+
+    def resolve(self):
+        """
+        Resolve this function call. All arguments that were Promise objects
+        should be resolved at this point.
+        """
+        return self._resolve()
+
+    def _resolve(self):
+        return self.fn(*self.args)
+
+
+def resolve_expr(expr: Any) -> Any:
     """
+    Calls when when the given expression is evaluated in the generated WDL script.
+    """
+
+    # evaluate function calls when the variable is referenced.
+    if isinstance(expr, WDLFunctionCall):
+        return expr.resolve()
+
     return expr
 
 
