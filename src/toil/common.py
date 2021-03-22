@@ -23,7 +23,7 @@ import time
 import uuid
 
 from argparse import _ArgumentGroup, ArgumentParser, ArgumentDefaultsHelpFormatter
-from typing import Optional, Callable, Any, List
+from typing import Optional, Callable, Any, List, Tuple
 
 from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import (add_all_batchsystem_options,
@@ -1372,7 +1372,7 @@ def cacheDirName(workflowID):
     return f'cache-{workflowID}'
 
 
-def getDirSizeRecursively(dirPath):
+def getDirSizeRecursively(dirPath: str) -> int:
     """
     This method will return the cumulative number of bytes occupied by the files
     on disk in the directory and its subdirectories.
@@ -1404,7 +1404,7 @@ def getDirSizeRecursively(dirPath):
         return 0
 
 
-def getFileSystemSize(dirPath):
+def getFileSystemSize(dirPath: str) -> Tuple[int, int]:
     """
     Return the free space, and total size of the file system hosting `dirPath`.
 

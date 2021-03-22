@@ -1,5 +1,7 @@
 # http://code.activestate.com/recipes/578019-bytes-to-human-human-to-bytes-converter/
 
+from typing import Optional, SupportsInt
+
 """
 Bytes-to-human / human-to-bytes converter.
 Based on: http://goo.gl/kTQMs
@@ -16,7 +18,7 @@ SYMBOLS = {
     'iec_ext'       : ('byte', 'kibi', 'mebi', 'gibi', 'tebi', 'pebi', 'exbi', 'zebi', 'yobi'),
 }
 
-def bytes2human(n, fmt='%(value).1f %(symbol)s', symbols='customary'):
+def bytes2human(n: SupportsInt, fmt: Optional[str] = None, symbols: Optional[str] = None) -> str:
     """
     Convert n bytes into a human readable string based on format.
     symbols can be either "customary", "customary_ext", "iec" or "iec_ext",
@@ -25,7 +27,12 @@ def bytes2human(n, fmt='%(value).1f %(symbol)s', symbols='customary'):
     n = int(n)
     if n < 0:
         raise ValueError("n < 0")
-    symbols = SYMBOLS[symbols]
+    if not fmt:
+        fmt = '%(value).1f %(symbol)s'
+    if not symbols:
+        symbols = SYMBOLS['customary']
+    else:
+        symbols = SYMBOLS[symbols]
     prefix = {}
     for i, s in enumerate(symbols[1:]):
         prefix[s] = 1 << (i+1)*10

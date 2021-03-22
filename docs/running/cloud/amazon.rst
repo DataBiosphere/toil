@@ -28,8 +28,6 @@ during the computation of a workflow, first set up and configure an account with
 
 #. If necessary, create and activate an `AWS account`_
 
-#. Only needed once, but AWS requires that users "subscribe" to use the `Container Linux by CoreOS AMI`_.  You will encounter errors if this is not done.
-
 #. Next, generate a key pair for AWS with the command (do NOT generate your key pair with the Amazon browser): ::
 
     $ ssh-keygen -t rsa
@@ -115,7 +113,6 @@ To further break down each of these commands:
 
     **--keyPairName id_rsa** --- The name of your key pair, which should be "id_rsa" if you've followed this tutorial.
 
-.. _Container Linux by CoreOS AMI: https://aws.amazon.com/marketplace/pp/B01H62FDJM/
 .. _AWS account: https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/
 .. _key pair: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html
 .. _Amazon's instructions : http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html#how-to-generate-your-own-key-and-import-it-to-aws

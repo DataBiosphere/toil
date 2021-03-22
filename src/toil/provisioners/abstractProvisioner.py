@@ -872,7 +872,7 @@ class AbstractProvisioner(ABC):
             chown $(id -u):$(id -g) $HOME/.kube/config
 
             # Install network
-            kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/{FLANNEL_VERSION}/Documentation/kube-flannel.yml
+            kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/{FLANNEL_VERSION}/Documentation/kube-flannel.yml
 
             # Deploy rubber stamp CSR signing bot
             kubectl apply -f https://raw.githubusercontent.com/kontena/kubelet-rubber-stamp/release/{RUBBER_STAMP_VERSION}/deploy/service_account.yaml
