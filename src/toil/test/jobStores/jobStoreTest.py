@@ -21,7 +21,6 @@ import socketserver
 import tempfile
 import threading
 import time
-import unittest
 import urllib.parse as urlparse
 import uuid
 from abc import ABCMeta, abstractmethod
@@ -1340,8 +1339,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         self.assertEqual(jobsInJobStore, [str(overlargeJob)])
         jobstore.delete(overlargeJob.jobStoreID)
 
-    @unittest.skip('WIP')
-    def testMultiThreadImportFile(self) -> None:
+    def testMultithreadImportFile(self) -> None:
         """ Tests that importFile is thread-safe."""
 
         from toil.jobStores.abstractJobStore import AbstractJobStore
@@ -1350,10 +1348,11 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         import timeit
 
         threads = (
-            # 2,
+            2,
             multiprocessing.cpu_count(),  # maximum
         )
-        size = 5 << 20 + 1
+        numOfFiles = 5
+        size = 1 << 16 + 1
 
         # The string in otherCls() is arbitrary as long as it returns a class that has access
         # to ._externalStore() and ._prepareTestFile()
@@ -1361,8 +1360,8 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         store = other._externalStore()
 
         # prepare test files to import
-        srcUrl_1, srcMd5_1 = other._prepareTestFile(store, size)
-        srcUrl_2, srcMd5_2 = other._prepareTestFile(store, size)
+        logger.info(f'Preparing {numOfFiles} test files for testMultithreadImportFile().')
+        testFiles = [other._prepareTestFile(store, size) for _ in range(numOfFiles)]
 
         def asyncImportFile(jobStore: AbstractJobStore, url: str) -> str:
             """ Imports the file at the given URL into the jobStore."""
@@ -1371,15 +1370,24 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
         for thread_count in threads:
             with self.subTest(f'Testing threaded importFile with "{thread_count}" threads.'):
-                startTime = timeit.default_timer()
+                # startTime = timeit.default_timer()
+                results = []
 
                 with ThreadPoolExecutor(max_workers=thread_count) as executor:
-                    A = executor.submit(asyncImportFile, self.jobstore_initialized, srcUrl_1)
-                    B = executor.submit(asyncImportFile, self.jobstore_initialized, srcUrl_2)
+                    for url, expected_md5 in testFiles:
+                        future = executor.submit(asyncImportFile, self.jobstore_initialized, url)
+                        results.append((future, expected_md5))
 
                 # check results
-                logger.warning(A.result())
-                logger.warning(B.result())
+                self.assertEqual(len(results), numOfFiles)
+
+                for future, expected_md5 in results:
+                    jobStoreFileID = future.result()
+                    self.assertIsInstance(jobStoreFileID, FileID)
+
+                    with self.jobstore_initialized.readFileStream(jobStoreFileID) as f:
+                        fileMD5 = hashlib.md5(f.read()).hexdigest()
+                    self.assertEqual(fileMD5, expected_md5)
 
     def _prepareTestFile(self, bucket, size=None):
         from toil.jobStores.aws.utils import retry_s3
