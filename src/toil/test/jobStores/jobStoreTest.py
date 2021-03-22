@@ -21,6 +21,7 @@ import socketserver
 import tempfile
 import threading
 import time
+import unittest
 import urllib.parse as urlparse
 import uuid
 from abc import ABCMeta, abstractmethod
@@ -1338,6 +1339,47 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         jobsInJobStore = [str(job) for job in jobstore.jobs()]
         self.assertEqual(jobsInJobStore, [str(overlargeJob)])
         jobstore.delete(overlargeJob.jobStoreID)
+
+    @unittest.skip('WIP')
+    def testMultiThreadImportFile(self) -> None:
+        """ Tests that importFile is thread-safe."""
+
+        from toil.jobStores.abstractJobStore import AbstractJobStore
+        from concurrent.futures.thread import ThreadPoolExecutor
+        import multiprocessing
+        import timeit
+
+        threads = (
+            # 2,
+            multiprocessing.cpu_count(),  # maximum
+        )
+        size = 5 << 20 + 1
+
+        # The string in otherCls() is arbitrary as long as it returns a class that has access
+        # to ._externalStore() and ._prepareTestFile()
+        other = AWSJobStoreTest('testSharedFiles')
+        store = other._externalStore()
+
+        # prepare test files to import
+        srcUrl_1, srcMd5_1 = other._prepareTestFile(store, size)
+        srcUrl_2, srcMd5_2 = other._prepareTestFile(store, size)
+
+        def asyncImportFile(jobStore: AbstractJobStore, url: str) -> str:
+            """ Imports the file at the given URL into the jobStore."""
+            logger.info(f'Importing "{url}" into the jobStore...')
+            return jobStore.importFile(url)
+
+        for thread_count in threads:
+            with self.subTest(f'Testing threaded importFile with "{thread_count}" threads.'):
+                startTime = timeit.default_timer()
+
+                with ThreadPoolExecutor(max_workers=thread_count) as executor:
+                    A = executor.submit(asyncImportFile, self.jobstore_initialized, srcUrl_1)
+                    B = executor.submit(asyncImportFile, self.jobstore_initialized, srcUrl_2)
+
+                # check results
+                logger.warning(A.result())
+                logger.warning(B.result())
 
     def _prepareTestFile(self, bucket, size=None):
         from toil.jobStores.aws.utils import retry_s3
