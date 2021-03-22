@@ -341,6 +341,7 @@ class WdlLanguageSpecWorkflowsTest(WdlWorkflowsTest):
         super(WdlLanguageSpecWorkflowsTest, cls).setUpClass()
         cls.test_path = os.path.abspath("src/toil/test/wdl/wdl_specification")
 
+    @unittest.skip('WIP')
     def test_type_pair(self):
         # NOTE: these tests depend on read_lines(), write_json(), and select_first().
 

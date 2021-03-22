@@ -958,7 +958,7 @@ class SynthesizeWDL:
             if return_values:
                 fn_section += '        rvDict = {'
             for return_value in return_values:
-                fn_section += '"{rv}": resolve_expr({rv}), '.format(rv=return_value)
+                fn_section += '"{rv}": {rv}, '.format(rv=return_value)
             if fn_section.endswith(', '):
                 fn_section = fn_section[:-2]
             if return_values:

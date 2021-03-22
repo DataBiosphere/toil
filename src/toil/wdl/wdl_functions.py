@@ -53,16 +53,26 @@ class WDLFunctionCall:
     An encapsulation of a WDL function call that can be resolved when ready.
     """
 
-    def __init__(self, fn, *args):
+    def __init__(self, fn, *args, **kwargs):
         """
         :param fn: A function class that references the actual Python function.
         :param args: Arguments that go with the function.
         """
         self.fn = fn
         self.args = args
+        self.kwargs = kwargs
 
     def __getitem__(self, item: Any) -> Any:
         return self.resolve()[item]
+
+    def __getattr__(self, item: Any) -> Any:
+        if item.startswith('_') or item in self.__dict__:
+            return super(WDLFunctionCall, self).__getattr__(item)
+
+        return getattr(self.resolve(), item)
+
+    def __str__(self) -> Any:
+        return str(self.resolve())
 
     def resolve(self) -> Any:
         """
@@ -72,7 +82,7 @@ class WDLFunctionCall:
         return self._resolve()
 
     def _resolve(self) -> Any:
-        return self.fn(*self.args)
+        return self.fn(*self.args, **self.kwargs)
 
 
 def resolve_expr(expr: Any) -> Any:
