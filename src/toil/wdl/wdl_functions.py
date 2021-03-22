@@ -61,14 +61,17 @@ class WDLFunctionCall:
         self.fn = fn
         self.args = args
 
-    def resolve(self):
+    def __getitem__(self, item: Any) -> Any:
+        return self.resolve()[item]
+
+    def resolve(self) -> Any:
         """
         Resolve this function call. All arguments that were Promise objects
         should be resolved at this point.
         """
         return self._resolve()
 
-    def _resolve(self):
+    def _resolve(self) -> Any:
         return self.fn(*self.args)
 
 

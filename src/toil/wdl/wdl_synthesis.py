@@ -935,7 +935,7 @@ class SynthesizeWDL:
             for output in self.tasks_dictionary[job]['outputs']:
                 output_name = output[0]
                 output_type = output[1]
-                output_value = output[2]
+                output_value = f'resolve_expr({output[2]})'
 
                 if self.needs_file_import(output_type):
                     nonglob_dict = {
