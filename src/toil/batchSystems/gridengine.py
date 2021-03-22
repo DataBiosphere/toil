@@ -94,7 +94,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
         """
         Implementation-specific helper methods
         """
-        def prepareQsub(self, cpu, mem, jobID):
+        def prepareQsub(self, cpu: int, mem: int, jobID: int) -> List[str]:
             qsubline = ['qsub', '-V', '-b', 'y', '-terse', '-j', 'y', '-cwd',
                         '-N', 'toil_job_' + str(jobID)]
 

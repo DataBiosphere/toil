@@ -16,6 +16,7 @@ import logging
 import math
 import os
 import time
+from typing import Any
 
 import htcondor
 
@@ -30,7 +31,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
         # Override the createJobs method so that we can use htcondor.Submit objects
         # and so that we can get disk allocation requests and ceil the CPU request.
-        def createJobs(self, newJob):
+        def createJobs(self, newJob: Any) -> bool:
             activity = False
 
             if newJob is not None:
@@ -42,7 +43,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 jobID, cpu, memory, disk, jobName, command = self.waitingJobs.pop(0)
 
                 # Prepare the htcondor.Submit object
-                submitObj = self.prepareSubmission(cpu, memory, disk, jobID, jobName, command)
+                submitObj: htcondor.Submit = self.prepareHTSubmission(cpu, memory, disk, jobID, jobName, command)
                 logger.debug("Submitting %r", submitObj)
 
                 # Submit job and get batch system ID (i.e. the ClusterId)
@@ -60,12 +61,12 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
             return activity
 
-        def prepareSubmission(self, cpu, memory, disk, jobID, jobName, command):
+        def prepareHTSubmission(self, cpu: int, memory: int, disk: int, jobID: int, jobName: str, command: str) -> htcondor.Submit:
 
             # Convert resource requests
             cpu = int(math.ceil(cpu)) # integer CPUs
-            memory = float(memory)/1024 # memory in KB
-            disk = float(disk)/1024 # disk in KB
+            ht_memory = float(memory)/1024 # memory in KB
+            ht_disk = float(disk)/1024 # disk in KB
 
             # NOTE: formatStdOutErrPath() puts files in the Toil workflow directory, which defaults
             # to being in the system temporary directory ($TMPDIR, /tmp) which is unlikely to be on
@@ -89,8 +90,8 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 'error': stderrfile,
                 'log': condorlogfile,
                 'request_cpus': '{0}'.format(cpu),
-                'request_memory': '{0:.3f}KB'.format(memory),
-                'request_disk': '{0:.3f}KB'.format(disk),
+                'request_memory': '{0:.3f}KB'.format(ht_memory),
+                'request_disk': '{0:.3f}KB'.format(ht_disk),
                 'leave_in_queue': '(JobStatus == 4)',
                 '+IsToilJob': 'True',
                 '+ToilJobID': '{0}'.format(jobID),

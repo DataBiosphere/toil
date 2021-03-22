@@ -25,6 +25,7 @@ import re
 import subprocess
 from datetime import datetime
 from random import randint
+from typing import List
 
 from dateutil.parser import parse
 from dateutil.tz import tzlocal
@@ -226,7 +227,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         """
         Implementation-specific helper methods
         """
-        def prepareBsub(self, cpu, mem, jobID):
+        def prepareBsub(self, cpu: int, mem: int, jobID: int) -> List[str]:
             """
             Make a bsub commandline to execute.
 
