@@ -456,7 +456,7 @@ class WdlStandardLibraryWorkflowsTest(WdlWorkflowsTest):
 
         self.check_function('range', cases=['as_input'],
                             json_file_name='range_invalid',
-                            expected_exception='WDLRuntimeError')
+                            expected_exception='RuntimeError')
 
     def test_transpose(self):
         # NOTE: this test depends on write_tsv().
