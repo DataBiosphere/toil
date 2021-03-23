@@ -25,7 +25,6 @@ import urllib.parse
 import urllib.request
 import uuid
 from contextlib import contextmanager
-from io import BytesIO
 from typing import Optional
 
 import boto.sdb
@@ -49,7 +48,6 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       monkeyPatchSdbConnection,
                                       no_such_sdb_domain,
                                       region_to_bucket_location,
-                                      retry_s3,
                                       retry_sdb,
                                       retryable_s3_errors,
                                       sdb_unavailable)
@@ -57,7 +55,15 @@ from toil.jobStores.utils import (ReadablePipe,
                                   ReadableTransformingPipe,
                                   WritablePipe)
 from toil.lib.compatibility import compat_bytes
-from toil.lib.ec2 import establish_boto3_session
+from toil.lib.aws.s3 import (create_multipart_upload,
+                             upload_part,
+                             abort_multipart_upload,
+                             upload_fileobj,
+                             complete_multipart_upload,
+                             head_object,
+                             retry_s3,
+                             list_multipart_uploads)
+from toil.lib.aws.credentials import s3_boto3_resource, s3_boto3_client, boto3_session
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.exceptions import panic
 from toil.lib.memoize import strict_bool
@@ -65,9 +71,6 @@ from toil.lib.io import AtomicFileCreate
 from toil.lib.objects import InnerClass
 from toil.lib.retry import retry
 
-boto3_session = establish_boto3_session()
-s3_boto3_resource = boto3_session.resource('s3')
-s3_boto3_client = boto3_session.client('s3')
 logger = logging.getLogger(__name__)
 
 
@@ -1163,6 +1166,9 @@ class AWSJobStore(AbstractJobStore):
 
             info = self
             store = self.outer
+            client = store.s3_client
+            bucket_name = store.filesBucket.name
+            headerArgs = info._s3EncryptionArgs()
 
             class MultiPartPipe(WritablePipe):
                 def readFrom(self, readable):
@@ -1181,35 +1187,24 @@ class AWSJobStore(AbstractJobStore):
                         logger.debug('Updating checksum with %d bytes', len(buf))
                         info._update_checksum(hasher, buf)
 
-                        client = store.s3_client
-                        bucket_name = store.filesBucket.name
-                        headerArgs = info._s3EncryptionArgs()
-
-                        for attempt in retry_s3():
-                            with attempt:
-                                logger.debug('Starting multipart upload')
-                                # low-level clients are thread safe
-                                upload = client.create_multipart_upload(Bucket=bucket_name,
-                                                                        Key=compat_bytes(info.fileID),
-                                                                        **headerArgs)
-                                uploadId = upload['UploadId']
-                                parts = []
+                        response = create_multipart_upload(client=client,
+                                                           bucket=bucket_name,
+                                                           key=compat_bytes(info.fileID),
+                                                           extra_args=headerArgs)
+                        uploadId = response['UploadId']
+                        parts = []
 
                         try:
                             for part_num in itertools.count():
-                                for attempt in retry_s3():
-                                    with attempt:
-                                        logger.debug('Uploading part %d of %d bytes', part_num + 1, len(buf))
-                                        # TODO: include the Content-MD5 header:
-                                        #  https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.complete_multipart_upload
-                                        part = client.upload_part(Bucket=bucket_name,
-                                                                  Key=compat_bytes(info.fileID),
-                                                                  PartNumber=part_num + 1,
-                                                                  UploadId=uploadId,
-                                                                  Body=BytesIO(buf),
-                                                                  **headerArgs)
-
-                                        parts.append({"PartNumber": part_num + 1, "ETag": part["ETag"]})
+                                part_num = part_num + 1
+                                response = upload_part(client=client,
+                                                       bucket=bucket_name,
+                                                       key=compat_bytes(info.fileID),
+                                                       part_num=part_num,
+                                                       upload_id=uploadId,
+                                                       body=buf,
+                                                       extra_args=headerArgs)
+                                parts.append({"PartNumber": part_num, "ETag": response["ETag"]})
 
                                 # Get the next block of data we want to put
                                 buf = readable.read(info.outer.partSize)
@@ -1220,12 +1215,10 @@ class AWSJobStore(AbstractJobStore):
                                 info._update_checksum(hasher, buf)
                         except:
                             with panic(log=logger):
-                                for attempt in retry_s3():
-                                    with attempt:
-                                        client.abort_multipart_upload(Bucket=bucket_name,
-                                                                      Key=compat_bytes(info.fileID),
-                                                                      UploadId=uploadId)
-
+                                abort_multipart_upload(client=client,
+                                                       bucket=bucket_name,
+                                                       key=compat_bytes(info.fileID),
+                                                       upload_id=uploadId)
                         else:
 
                             while not store._getBucketVersioning(store.filesBucket.name):
@@ -1236,34 +1229,25 @@ class AWSJobStore(AbstractJobStore):
                             # Save the checksum
                             info.checksum = info._finish_checksum(hasher)
 
-                            for attempt in retry_s3():
-                                with attempt:
-                                    logger.debug('Attempting to complete upload...')
-                                    completed = client.complete_multipart_upload(
-                                        Bucket=bucket_name,
-                                        Key=compat_bytes(info.fileID),
-                                        UploadId=uploadId,
-                                        MultipartUpload={"Parts": parts})
-
-                                    logger.debug('Completed upload object of type %s: %s', str(type(completed)),
-                                                 repr(completed))
-                                    info.version = completed['VersionId']
-                                    logger.debug('Completed upload with version %s', str(info.version))
+                            response = complete_multipart_upload(client=client,
+                                                                 bucket=bucket_name,
+                                                                 key=compat_bytes(info.fileID),
+                                                                 upload_id=uploadId,
+                                                                 parts=parts)
+                            info.version = response['VersionId']
+                            logger.debug('Completed upload with version %s', str(info.version))
 
                             if info.version is None:
                                 # Somehow we don't know the version. Try and get it.
-                                for attempt in retry_s3(predicate=lambda e: retryable_s3_errors(e) or isinstance(e, AssertionError)):
-                                    with attempt:
-                                        version = client.head_object(Bucket=bucket_name,
-                                                                     Key=compat_bytes(info.fileID),
-                                                                     **headerArgs).get('VersionId', None)
-                                        logger.warning('Loaded key for upload with no version and got version %s',
-                                                       str(version))
-                                        info.version = version
-                                        assert info.version is not None
-
+                                response = head_object(client=client,
+                                                       bucket=bucket_name,
+                                                       key=compat_bytes(info.fileID),
+                                                       extra_args=headerArgs,
+                                                       check_version=True)
+                                info.version = response.get('VersionId', None)
+                        logger.debug('Upload received version %s', str(info.version))
                     # Make sure we actually wrote something, even if an empty file
-                    assert (bool(info.version) or info.content is not None)
+                    assert info.version or info.content is not None
 
             class SinglePartPipe(WritablePipe):
                 def readFrom(self, readable):
@@ -1283,44 +1267,29 @@ class AWSJobStore(AbstractJobStore):
 
                         bucket_name = store.filesBucket.name
                         headerArgs = info._s3EncryptionArgs()
-                        client = store.s3_client
-
-                        buf = BytesIO(buf)
 
                         while not store._getBucketVersioning(bucket_name):
-                            logger.warning('Versioning does not appear to be enabled yet. Deferring single part '
-                                           'upload...')
+                            logger.warning('Versioning not enabled yet. Deferring single part upload...')
                             time.sleep(1)
 
-                        for attempt in retry_s3():
-                            with attempt:
-                                logger.debug('Uploading single part of %d bytes', dataLength)
-                                client.upload_fileobj(Bucket=bucket_name,
-                                                      Key=compat_bytes(info.fileID),
-                                                      Fileobj=buf,
-                                                      ExtraArgs=headerArgs)
+                        logger.debug('Uploading single part of %d bytes', dataLength)
+                        upload_fileobj(client=client,
+                                       bucket=bucket_name,
+                                       key=compat_bytes(info.fileID),
+                                       fileobj=buf,
+                                       extra_args=headerArgs)
 
-                                # use head_object with the SSE headers to access versionId and content_length attributes
-                                headObj = client.head_object(Bucket=bucket_name,
-                                                             Key=compat_bytes(info.fileID),
-                                                             **headerArgs)
-                                assert dataLength == headObj.get('ContentLength', None)
-                                info.version = headObj.get('VersionId', None)
-                                logger.debug('Upload received version %s', str(info.version))
-
-                        if info.version is None:
-                            # Somehow we don't know the version
-                            for attempt in retry_s3(predicate=lambda e: retryable_s3_errors(e) or isinstance(e, AssertionError)):
-                                with attempt:
-                                    headObj = client.head_object(Bucket=bucket_name,
-                                                                 Key=compat_bytes(info.fileID),
-                                                                 **headerArgs)
-                                    info.version = headObj.get('VersionId', None)
-                                    logger.warning('Reloaded key with no version and got version %s', str(info.version))
-                                    assert info.version is not None
-
+                        # use head_object with the SSE headers to access versionId and content_length attributes
+                        response = head_object(client=client,
+                                               bucket=bucket_name,
+                                               key=compat_bytes(info.fileID),
+                                               extra_args=headerArgs,
+                                               check_version=True)
+                        assert dataLength == response.get('ContentLength', None)
+                        info.version = response.get('VersionId', None)
+                        logger.debug('Upload received version %s', str(info.version))
                     # Make sure we actually wrote something, even if an empty file
-                    assert (bool(info.version) or info.content is not None)
+                    assert info.version or info.content is not None
 
             if multipart:
                 pipe = MultiPartPipe(encoding=encoding, errors=errors)
@@ -1334,17 +1303,13 @@ class AWSJobStore(AbstractJobStore):
                 logger.debug('Version: {} Content: {}'.format(self.version, self.content))
                 raise RuntimeError('Escaped context manager without written data being read!')
 
-            # We check our work to make sure we have exactly one of embedded
-            # content or a real object version.
-
-            if self.content is None:
-                if not bool(self.version):
-                    logger.debug('Version: {} Content: {}'.format(self.version, self.content))
-                    raise RuntimeError('No content added and no version created')
-            else:
-                if bool(self.version):
-                    logger.debug('Version: {} Content: {}'.format(self.version, self.content))
-                    raise RuntimeError('Content added and version created')
+            # We make sure to have exactly one of embedded content or a real object version.
+            if self.content is None and not self.version:
+                logger.warning('Version: {} Content: {}'.format(self.version, self.content))
+                raise RuntimeError('No content added and no version created.')
+            elif self.content is not None and self.version:
+                logger.warning('Version: {} Content: {}'.format(self.version, self.content))
+                raise RuntimeError('Content added and version created.')
 
         def copyFrom(self, srcObj):
             """
@@ -1599,28 +1564,25 @@ class AWSJobStore(AbstractJobStore):
                     if not no_such_sdb_domain(e):
                         raise
 
-    def _delete_bucket(self, bucket):
-        """
-        :param bucket: S3.Bucket
-        """
-        for attempt in retry_s3():
-            with attempt:
-                try:
-                    uploads = s3_boto3_client.list_multipart_uploads(Bucket=bucket.name).get('Uploads')
-                    if uploads:
-                        for u in uploads:
-                            s3_boto3_client.abort_multipart_upload(Bucket=bucket.name,
-                                                                   Key=u["Key"],
-                                                                   UploadId=u["UploadId"])
+    def _delete_bucket(self, bucket: s3_boto3_resource.Bucket):
+        try:
+            response = list_multipart_uploads(client=s3_boto3_client, bucket=bucket.name)
+            uploads = response.get('Uploads') or []
+            for u in uploads:
+                abort_multipart_upload(
+                    client=s3_boto3_client,
+                    bucket=bucket.name,
+                    key=u["Key"],
+                    upload_id=u["UploadId"])
 
-                    bucket.objects.all().delete()
-                    bucket.object_versions.delete()
-                    bucket.delete()
-                except s3_boto3_client.exceptions.NoSuchBucket:
-                    pass
-                except ClientError as e:
-                    if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') != 404:
-                        raise
+            bucket.objects.all().delete()
+            bucket.object_versions.delete()
+            bucket.delete()
+        except s3_boto3_client.exceptions.NoSuchBucket:
+            pass
+        except ClientError as e:
+            if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') != 404:
+                raise
 
 
 aRepr = reprlib.Repr()

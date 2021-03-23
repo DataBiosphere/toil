@@ -21,10 +21,9 @@ import time
 import urllib.request
 import uuid
 
-import boto3
 import boto.ec2
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 from functools import wraps
 from boto.ec2.blockdevicemapping import BlockDeviceMapping as Boto2BlockDeviceMapping, BlockDeviceType as Boto2BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
@@ -37,17 +36,15 @@ from toil.lib.ec2 import (a_short_time,
                           create_launch_template,
                           create_ondemand_instances,
                           create_spot_instances,
-                          establish_boto3_session,
                           wait_instances_running,
-                          wait_transition,
-                          zone_to_region)
+                          wait_transition)
 from toil.lib.ec2nodes import InstanceType
 from toil.lib.generatedEC2Lists import E2Instances
 from toil.lib.memoize import memoize
 from toil.lib.misc import truncExpBackoff
+from toil.lib.aws.credentials import establish_boto3_session
 from toil.lib.retry import (get_error_body,
                             get_error_code,
-                            get_error_message,
                             get_error_status,
                             old_retry)
 from toil.provisioners import NoSuchClusterException
