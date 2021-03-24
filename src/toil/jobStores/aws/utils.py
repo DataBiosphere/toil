@@ -428,8 +428,8 @@ def retryable_s3_errors(e):
             # boto3 errors
             or (isinstance(e, S3ResponseError) and e.error_code in THROTTLED_ERROR_CODES)
             or (isinstance(e, ClientError) and 'BucketNotEmpty' in str(e))
-            or (e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 409 and 'try again' in str(e))
-            or (e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') in (404, 429, 500, 502, 503, 504)))
+            or (isinstance(e, ClientError) and e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 409 and 'try again' in str(e))
+            or (isinstance(e, ClientError) and e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') in (404, 429, 500, 502, 503, 504)))
 
 
 def retry_s3(delays=default_delays, timeout=default_timeout, predicate=retryable_s3_errors):
