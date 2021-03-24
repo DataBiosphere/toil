@@ -23,7 +23,8 @@ from typing import Optional
 
 from boto.exception import (
     BotoServerError,
-    SDBResponseError
+    SDBResponseError,
+    S3ResponseError
 )
 from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
@@ -400,22 +401,35 @@ def retryable_sdb_errors(e):
 
 def retry_sdb(delays=default_delays, timeout=default_timeout, predicate=retryable_sdb_errors):
     return old_retry(delays=delays, timeout=timeout, predicate=predicate)
+# https://github.com/boto/botocore/blob/49f87350d54f55b687969ec8bf204df785975077/botocore/retries/standard.py#L316
+THROTTLED_ERROR_CODES = [
+        'Throttling',
+        'ThrottlingException',
+        'ThrottledException',
+        'RequestThrottledException',
+        'TooManyRequestsException',
+        'ProvisionedThroughputExceededException',
+        'TransactionInProgressException',
+        'RequestLimitExceeded',
+        'BandwidthLimitExceeded',
+        'LimitExceededException',
+        'RequestThrottled',
+        'SlowDown',
+        'PriorRequestNotComplete',
+        'EC2ThrottledException',
+]
 
 
+# TODO: Replace with: @retry and ErrorCondition
 def retryable_s3_errors(e):
-    return (connection_reset(e)
-            or (isinstance(e, BotoServerError) and e.status == 500)
-            # Throttling response sometimes received on bucket creation
-            or (isinstance(e, BotoServerError) and e.status == 503 and e.code == 'SlowDown')
+    return    (connection_reset(e)
+            or (isinstance(e, BotoServerError) and e.status in (429, 500))
+            or (isinstance(e, BotoServerError) and e.code in THROTTLED_ERROR_CODES)
             # boto3 errors
-            # TODO: switch to @retry decorators
-            or (isinstance(e, ClientError) and
-                ('BucketNotEmpty' in str(e)
-                 # TODO: test these!
-                 or (e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 409
-                     and 'try again' in str(e))
-                 or e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') in (
-                     404, 500, 502, 503, 504))))
+            or (isinstance(e, S3ResponseError) and e.error_code in THROTTLED_ERROR_CODES)
+            or (isinstance(e, ClientError) and 'BucketNotEmpty' in str(e))
+            or (e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 409 and 'try again' in str(e))
+            or (e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') in (404, 429, 500, 502, 503, 504)))
 
 
 def retry_s3(delays=default_delays, timeout=default_timeout, predicate=retryable_s3_errors):
