@@ -566,8 +566,7 @@ class AWSProvisioner(AbstractProvisioner):
     @memoize
     def _discoverAMI(self) -> str:
         """
-        :return: The AMI ID (a string like 'ami-0a9a5d2b65cce04eb') for CoreOS
-                 or a compatible replacement like Flatcar.
+        :return: The AMI ID (a string like 'ami-0a9a5d2b65cce04eb') for Flatcar.
         :rtype: str
         """
 
@@ -576,9 +575,7 @@ class AWSProvisioner(AbstractProvisioner):
         if ami is not None:
             return ami
 
-        # CoreOS is dead, long live Flatcar
-
-        # Flatcar images, however, only live for 9 months.
+        # Flatcar images only live for 9 months.
         # Rather than hardcode a list of AMIs by region that will die, we use
         # their JSON feed of the current ones.
         JSON_FEED_URL = 'https://stable.release.flatcar-linux.net/amd64-usr/current/flatcar_production_ami_all.json'
@@ -970,16 +967,24 @@ class AWSProvisioner(AbstractProvisioner):
 
         matchedASGs = []
         # Get the first page with no NextToken
-        response = self.autoscaling_client.describe_tags()
+        response = self.autoscaling_client.describe_tags(Filters=filters)
         while True:
             # Process the current page
-            matchedASGs += [item['ResourceId'] for item in response.get('Tags', [])]
+            matchedASGs += [item['ResourceId'] for item in response.get('Tags', [])
+                            if item['Key'] == _TAG_KEY_TOIL_CLUSTER_NAME and
+                            item['Value'] == self.clusterName]
             if 'NextToken' in response:
                 # There are more pages. Get the next one, supplying the token.
-                response = self.autoscaling_client.describe_tags(NextToken=response['NextToken'])
+                response = self.autoscaling_client.describe_tags(Filters=filters,
+                                                                 NextToken=response['NextToken'])
             else:
                 # No more pages
                 break
+
+        for name in matchedASGs:
+            # Double check to make sure we definitely aren't finding non-Toil
+            # things
+            assert name.startswith('toil-')
 
         return matchedASGs
 

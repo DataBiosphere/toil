@@ -17,14 +17,15 @@ import tempfile
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from threading import Event, Semaphore
-from typing import Union
+from typing import Callable, Generator, Union
 
 import dill
 
 from toil.common import cacheDirName
 from toil.fileStores import FileID
+from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.io import WriteWatchingStream
-
+from toil.job import Job, JobDescription
 logger = logging.getLogger(__name__)
 
 
@@ -57,7 +58,7 @@ class AbstractFileStore(ABC):
     _pendingFileWrites = set()
     _terminateEvent = Event()  # Used to signify crashes in threads
 
-    def __init__(self, jobStore, jobDesc, localTempDir, waitForPreviousCommit):
+    def __init__(self, jobStore: AbstractJobStore, jobDesc: JobDescription, localTempDir: str, waitForPreviousCommit: Callable[[],None]) -> None:
         """
         Create a new file store object.
 
@@ -78,10 +79,10 @@ class AbstractFileStore(ABC):
         """
         self.jobStore = jobStore
         self.jobDesc = jobDesc
-        self.localTempDir = os.path.abspath(localTempDir)
+        self.localTempDir: str = os.path.abspath(localTempDir)
         self.workFlowDir = os.path.dirname(self.localTempDir)
-        self.workDir = os.path.dirname(self.localTempDir)
-        self.jobName = self.jobDesc.command.split()[1]
+        self.workDir: str = os.path.dirname(self.localTempDir)
+        self.jobName: str = self.jobDesc.command.split()[1]
         self.waitForPreviousCommit = waitForPreviousCommit
         self.loggingMessages = []
         # Records file IDs of files deleted during the current job. Doesn't get
@@ -135,7 +136,7 @@ class AbstractFileStore(ABC):
             NonCachingFileStore.shutdown(workflowDir)
 
     @contextmanager
-    def open(self, job):
+    def open(self, job: Job) -> Generator[None, None, None]:
         """
         The context manager used to conduct tasks prior-to, and after a job has
         been run. File operations are only permitted inside the context
@@ -222,10 +223,16 @@ class AbstractFileStore(ABC):
         raise NotImplementedError()
 
     @contextmanager
-    def writeGlobalFileStream(self, cleanup=False, basename=None):
+    def writeGlobalFileStream(self, cleanup=False, basename=None, encoding=None, errors=None):
         """
         Similar to writeGlobalFile, but allows the writing of a stream to the job store.
         The yielded file handle does not need to and should not be closed explicitly.
+
+        :param str encoding: the name of the encoding used to decode the file. Encodings are the same as
+                for decode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :param bool cleanup: is as in :func:`toil.fileStores.abstractFileStore.AbstractFileStore.writeGlobalFile`.
 
@@ -237,9 +244,10 @@ class AbstractFileStore(ABC):
                   1) a file handle which can be written to and
                   2) the toil.fileStores.FileID of the resulting file in the job store.
         """
-
-        with self.jobStore.writeFileStream(self.jobDesc.jobStoreID, cleanup, basename) as (backingStream, fileStoreID):
-
+        
+        with self.jobStore.writeFileStream(self.jobDesc.jobStoreID, cleanup, basename,
+                encoding, errors) as (backingStream, fileStoreID):
+          
             # We have a string version of the file ID, and the backing stream.
             # We need to yield a stream the caller can write to, and a FileID
             # that accurately reflects the size of the data written to the
@@ -321,10 +329,16 @@ class AbstractFileStore(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def readGlobalFileStream(self, fileStoreID):
+    def readGlobalFileStream(self, fileStoreID, encoding=None, errors=None):
         """
         Similar to readGlobalFile, but allows a stream to be read from the job store. The yielded
         file handle does not need to and should not be closed explicitly.
+
+        :param str encoding: the name of the encoding used to decode the file. Encodings are the same as
+                for decode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         Implementations must call :meth:`logAccess` to report the download.
 
@@ -463,7 +477,7 @@ class AbstractFileStore(ABC):
             os.rename(fileName + '.tmp', fileName)
 
     # Functions related to logging
-    def logToMaster(self, text, level=logging.INFO):
+    def logToMaster(self, text: str, level: int =logging.INFO) -> None:
         """
         Send a logging message to the leader. The message will also be \
         logged by the worker at the same level.

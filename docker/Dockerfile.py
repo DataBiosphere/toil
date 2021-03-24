@@ -98,7 +98,7 @@ print(heredoc('''
         mv go /usr/local/
 
     # Build Singularity, but only keep the binaries and scrap the GOPATH to
-    # save space
+    # save space. Hide its binary so we can wrap it.
     RUN mkdir -p $(go env GOPATH)/src/github.com/sylabs && \
         cd $(go env GOPATH)/src/github.com/sylabs && \
         git clone https://github.com/sylabs/singularity.git && \
@@ -109,22 +109,25 @@ print(heredoc('''
         make -j4 && \
         make install && \
         cd && \
-        rm -Rf $(go env GOPATH)
-
+        rm -Rf $(go env GOPATH) \
+        && mkdir -p /usr/local/libexec/toil && \
+        mv /usr/local/bin/singularity /usr/local/libexec/toil/singularity-real
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh
 
     ADD waitForKey.sh /usr/bin/waitForKey.sh
 
     ADD customDockerInit.sh /usr/bin/customDockerInit.sh
+    
+    ADD singularity-wrapper.sh /usr/local/bin/singularity
 
-    RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh
+    RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/local/bin/singularity
 
     # fixes an incompatibility updating pip on Ubuntu 16 w/ python3.8
     RUN sed -i "s/platform.linux_distribution()/('Ubuntu', '16.04', 'xenial')/g" /usr/lib/python3/dist-packages/pip/download.py
 
     # The stock pip is too old and can't install from sdist with extras
-    RUN {pip} install --upgrade pip==20.0.2
+    RUN {pip} install --upgrade pip==21.0.1
 
     # Default setuptools is too old
     RUN {pip} install --upgrade setuptools==45

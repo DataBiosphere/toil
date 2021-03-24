@@ -144,6 +144,9 @@ class SynthesizeWDL:
                     from toil.wdl.wdl_functions import cross
                     from toil.wdl.wdl_functions import as_pairs
                     from toil.wdl.wdl_functions import as_map
+                    from toil.wdl.wdl_functions import keys
+                    from toil.wdl.wdl_functions import collect_by_key
+                    from toil.wdl.wdl_functions import flatten
                     import fnmatch
                     import textwrap
                     import subprocess

@@ -89,11 +89,12 @@ from schema_salad import validate
 from schema_salad.schema import Names
 from schema_salad.sourceline import SourceLine
 
+from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Config, Toil, addOptions
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job
-from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobStoreException
+from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
@@ -732,7 +733,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43  # noqa B950
         if path.startswith("toilfs:"):
             logger.debug("Need to download file to get a local absolute path.")
-            destination = self.file_store.readGlobalFile(FileID.unpack(path[7:]))
+            destination = self.file_store.readGlobalFile(FileID.unpack(path[7:]), symlink=True)
             logger.debug("Downloaded %s to %s", path, destination)
             if not os.path.exists(destination):
                 raise RuntimeError(
@@ -751,9 +752,9 @@ def toil_get_file(
     """Get path to input file from Toil jobstore."""
     if not file_store_id.startswith("toilfs:"):
         return file_store.jobStore.getPublicUrl(
-            file_store.jobStore.importFile(file_store_id)
+            file_store.jobStore.importFile(file_store_id, symlink=True)
         )
-    src_path = file_store.readGlobalFile(FileID.unpack(file_store_id[7:]))
+    src_path = file_store.readGlobalFile(FileID.unpack(file_store_id[7:]), symlink=True)
     index[src_path] = file_store_id
     existing[file_store_id] = src_path
     return schema_salad.ref_resolver.file_uri(src_path)
@@ -1805,6 +1806,82 @@ def determine_load_listing(tool: ToilCommandLineTool):
         )
     return load_listing
 
+class NoAvailableJobStoreException(Exception):
+    """Indicates that no job store name is available."""
+    pass
+
+def generate_default_job_store(batch_system_name: Optional[str], provisioner_name: Optional[str],
+                               local_directory: str) -> str:
+    """
+    Choose a default job store appropriate to the requested batch system and
+    provisioner, and installed modules. Raises an error if no good default is
+    available and the user must choose manually.
+
+    :param batch_system_name: Registry name of the batch system the user has
+           requested, if any. If no name has been requested, should be None.
+    :param provisioner_name: Name of the provisioner the user has requested,
+           if any. Recognized provisioners include 'aws' and 'gce'. None
+           indicates that no provisioner is in use.
+    :param local_directory: Path to a nonexistent local directory suitable for
+           use as a file job store.
+
+    :return str: Job store specifier for a usable job store.
+    """
+
+    # Apply default batch system
+    batch_system_name = batch_system_name or DEFAULT_BATCH_SYSTEM
+
+    # Work out how to describe where we are
+    situation = f"the '{batch_system_name}' batch system"
+    if provisioner_name:
+        situation += f" with the '{provisioner_name}' provisioner"
+
+    try:
+        if provisioner_name == 'gce':
+            # We can't use a local directory on Google cloud
+
+            # Make sure we have the Google job store
+            from toil.jobStores.googleJobStore import GoogleJobStore
+
+            # Look for a project
+            project = os.getenv('TOIL_GOOGLE_PROJECTID')
+            project_part = (':' + project) if project else ''
+
+            # Roll a randomn bucket name, possibly in the project.
+            return f'google{project_part}:toil-cwl-{str(uuid.uuid4())}'
+        elif provisioner_name == 'aws' or batch_system_name in {'mesos', 'kubernetes'}:
+            # We can't use a local directory on AWS or on these cloud batch systems.
+            # If we aren't provisioning on Google, we should try an AWS batch system.
+
+            # Make sure we have AWS
+            from toil.jobStores.aws.jobStore import AWSJobStore
+
+            # Find a region
+            from toil.provisioners.aws import get_current_aws_region
+            region = get_current_aws_region()
+
+            if not region:
+                # We can't generate an AWS job store without a region
+                situation += ' running outside AWS with no TOIL_AWS_ZONE set'
+                raise NoAvailableJobStoreException()
+
+            # Roll a random name
+            return f'aws:{region}:toil-cwl-{str(uuid.uuid4())}'
+        elif provisioner_name is not None and provisioner_name not in ['aws', 'gce']:
+            # We 've never heard of this provisioner and don't know what kind
+            # of job store to use with it.
+            raise NoAvailableJobStoreException()
+
+    except (ImportError, NoAvailableJobStoreException):
+        raise NoAvailableJobStoreException(
+            f'Could not determine a job store appropriate for '
+            f'{situation}. Please specify a jobstore with the '
+            f'--jobStore option.'
+        )
+
+    # Usually use the local directory and a file job store.
+    return local_directory
+
 
 usage_message = "\n\n" + textwrap.dedent(
     f"""
@@ -2023,43 +2100,54 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     # Problem: we want to keep our job store somewhere auto-generated based on
     # our options, unless overridden by... an option. So we will need to parse
-    # options twice, because we need to feed the parser the job store.
+    # options twice, because we need to feed the parser a job store.
 
     # Propose a local workdir, probably under /tmp.
     # mkdtemp actually creates the directory, but
     # toil requires that the directory not exist,
-    # since it is going to be our jobstore,
+    # since it might become our jobstore,
     # so make it and delete it and allow
     # toil to create it again (!)
     workdir = tempfile.mkdtemp()
     os.rmdir(workdir)
 
-    # we use the workdir as the default jobStore:
+    # we use the workdir as the default jobStore for the first parsing pass:
     options = parser.parse_args([workdir] + args)
+
+    # Determine if our default will actually be in use
+    using_default_job_store = options.jobStore == workdir
 
     # if tmpdir_prefix is not the default value, set workDir if unset, and move
     # workdir and the job store under it
     if options.tmpdir_prefix != "tmp":
         workdir = cwltool.utils.create_tmp_dir(options.tmpdir_prefix)
         os.rmdir(workdir)
-        # Re-parse arguments with the new default jobstore under the temp dir.
-        # It still might be overridden by a --jobStore option
-        options = parser.parse_args([workdir] + args)
-        if options.workDir is None:
-            # We need to override workDir because by default Toil will pick
-            # somewhere under the system temp directory if unset, ignoring
-            # --tmpdir-prefix.
-            #
-            # If set, workDir needs to exist, so we directly use the prefix
-            options.workDir = cwltool.utils.create_tmp_dir(options.tmpdir_prefix)
 
-    if options.provisioner and not options.jobStore:
-        raise NoSuchJobStoreException(
-            "Please specify a jobstore with the --jobStore option when "
-            "specifying a provisioner."
-        )
+    if using_default_job_store:
+        # Pick a default job store specifier appropriate to our choice of batch
+        # system and provisioner and installed modules, given this available
+        # local directory name. Fail if no good default can be used.
+        chosen_job_store = generate_default_job_store(options.batchSystem,
+                                                      options.provisioner,
+                                                      workdir)
+    else:
+        # Since the default won't be used, just pass through the user's choice
+        chosen_job_store = options.jobStore
+
+
+
+    # Re-parse arguments with the new selected jobstore.
+    options = parser.parse_args([chosen_job_store] + args)
+    if options.tmpdir_prefix != "tmp" and options.workDir is None:
+        # We need to override workDir because by default Toil will pick
+        # somewhere under the system temp directory if unset, ignoring
+        # --tmpdir-prefix.
+        #
+        # If set, workDir needs to exist, so we directly use the prefix
+        options.workDir = cwltool.utils.create_tmp_dir(options.tmpdir_prefix)
 
     if options.batchSystem == "kubernetes":
+        # Containers under Kubernetes can only run in Singularity
         options.singularity = True
 
     use_container = not options.no_container
@@ -2068,6 +2156,9 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # Make sure cwltool uses Toil's log level.
         # Applies only on the leader.
         cwllogger.setLevel(options.logLevel.upper())
+
+    logger.debug(f'Using job store {chosen_job_store} from workdir {workdir} with default status {using_default_job_store}')
+    logger.debug(f'Final job store {options.jobStore} and workDir {options.workDir}')
 
     outdir = os.path.abspath(options.outdir)
     tmp_outdir_prefix = os.path.abspath(options.tmp_outdir_prefix)
@@ -2262,7 +2353,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     inner_tool,
                     functools.partial(
                         uploadFile,
-                        toil.importFile,
+                        functools.partial(toil.importFile, symlink=True),
                         fileindex,
                         existing,
                         skip_broken=True,
