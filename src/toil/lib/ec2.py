@@ -513,7 +513,7 @@ def create_auto_scaling_group(autoscaling_client: BaseClient,
         """
         Get a LaunchTemplateSpecification for the given instance type.
         """
-        return {'LaunchTemplateId': launch_template_ids[instance_type], 'Version': '$Default'},
+        return {'LaunchTemplateId': launch_template_ids[instance_type], 'Version': '$Default'}
 
     # We always write the ASG with a MixedInstancesPolicy even when we have only one type.
     # And we use a separate launch template for every instance type, and apply it as an override.
