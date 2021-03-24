@@ -449,7 +449,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None) -> int:
         assert self._leaderPrivateIP
-        
+
         if preemptable and spotBid is None:
             if self._spotBidsMap and frozenset(nodeTypes) in self._spotBidsMap:
                 spotBid = self._spotBidsMap[frozenset(nodeTypes)]
@@ -467,11 +467,11 @@ class AWSProvisioner(AbstractProvisioner):
                     raise RuntimeError("No spot bid given for a preemptable node request.")
             else:
                 raise RuntimeError("No spot bid given for a preemptable node request.")
-                
+
         # We don't support any balancing here so just pick one of the
         # equivalent node types
         node_type = next(iter(nodeTypes))
-                
+
         instanceType = E2Instances[node_type]
         root_vol_size = self._nodeStorageOverrides.get(node_type, self._nodeStorage)
         bdm = self._getBoto2BlockDeviceMapping(instanceType,
@@ -541,7 +541,7 @@ class AWSProvisioner(AbstractProvisioner):
             raise ManagedNodesNotSupportedException("Managed nodes only supported for Kubernetes clusters")
 
         assert self._leaderPrivateIP
-        
+
         if preemptable and spotBid is None:
             if self._spotBidsMap and frozenset(nodeTypes) in self._spotBidsMap:
                 spotBid = self._spotBidsMap[frozenset(nodeTypes)]
@@ -955,16 +955,16 @@ class AWSProvisioner(AbstractProvisioner):
 
         :return: The ID of the template.
         """
-        
+
         lt_name = self._name_worker_launch_template(instance_type, preemptable=preemptable)
-        
+
         # How do we match the right templates?
         filters = [{'Name': 'launch-template-name', 'Values': [lt_name]}]
 
         # Get the first page (the only one we care about)
         response = self.ec2_client.describe_launch_templates(Filters=filters,
                                                              MaxResults=2)
-                                                             
+
         templates = response.get('LaunchTemplates', [])
         if len(templates) > 1:
             # There shouldn't ever be multiple templates with our reserved name
@@ -977,25 +977,25 @@ class AWSProvisioner(AbstractProvisioner):
         else:
             # There must be exactly one template
             return templates[0]['LaunchTemplateId']
-        
-        
+
+
     def _name_worker_launch_template(self, instance_type: str, preemptable: bool = False) -> str:
         """
         Get the name we should use for the launch template with the given parameters.
-        
+
         :param instance_type: Type of node to use in the template. May be overridden
                               by an ASG that uses the template.
 
         :param preemptable: When the node comes up, does it think it is a spot instance?
         """
-    
+
         # The name has the cluster name in it
         lt_name = f'{self.clusterName}-lt-{instance_type}'
         if preemptable:
             lt_name += '-spot'
-            
+
         return lt_name
-    
+
     def _create_worker_launch_template(self, instance_type: str, preemptable: bool = False) -> str:
         """
         Create the launch template for launching worker instances for the cluster.
@@ -1017,7 +1017,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         keyPath = self._sseKey if self._sseKey else None
         userData = self._getCloudConfigUserData('worker', keyPath, preemptable)
-        
+
         lt_name = self._name_worker_launch_template(instance_type, preemptable=preemptable)
 
         # But really we find it by tag
@@ -1358,3 +1358,4 @@ class AWSProvisioner(AbstractProvisioner):
             with attempt:
                 self._boto2.iam.add_role_to_instance_profile(iamRoleName, iamRoleName)
         return profile_arn
+
