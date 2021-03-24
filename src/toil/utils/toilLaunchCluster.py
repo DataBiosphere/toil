@@ -64,10 +64,10 @@ def main():
     parser.add_argument("--nodeTypes", dest='nodeTypes', default=None, type=str,
                         help="Comma-separated list of node types to create while launching the "
                              "leader. The syntax for each node type depends on the provisioner "
-                             "used. For the aws provisioner this is a semicolon-separated list "
-                             "of equivalent EC2 instance types followed by a colon and the price "
+                             "used. For the aws provisioner this is a slash-separated list of "
+                             "equivalent EC2 instance types followed by a colon and the price "
                              "in dollars to bid for a spot instance. For example: "
-                             "'c5.4xlarge;c5a.4xlarge:0.42'. Must also provide the --workers "
+                             "'c5.4xlarge/c5a.4xlarge:0.42'. Must also provide the --workers "
                              "argument to specify how many workers of each node type to create.")
     parser.add_argument("-w", "--workers", dest='workers', default=None, type=str,
                         help="Comma-separated list of the ranges of numbers of workers of each "

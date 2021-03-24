@@ -151,10 +151,10 @@ the logging module:
                         List of worker node types separated by commas. The
                         syntax for each node type depends on the provisioner
                         used.  For the AWS provisioner this is a
-                        semicolon-separated list of equivalent EC2 instance
-                        types followed by a colon and the price in dollars to
-                        bid for a spot instance. For example:
-                        'c5.4xlarge;c5a.4xlarge:0.42'.
+                        slash-separated list of equivalent EC2 instance types
+                        followed by a colon and the price in dollars to bid for
+                        a spot instance. For example:
+                        'c5.4xlarge/c5a.4xlarge:0.42'.
                         If no spot bid is specified, nodes of this type will be
                         non-preemptable (non-discounted and not subject to
                         potential early termination based on the availability

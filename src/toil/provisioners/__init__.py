@@ -73,8 +73,8 @@ def parse_node_types(node_type_specs: str) -> List[Tuple[Set[str], Optional[floa
     Parse a specification for zero or more node types.
 
     Takes a comma-separated list of node types. Each node type is a
-    semicolon-separated list of at least one instance type name (like
-    'm5a.large' for AWS), and an optional bid in dollars after a colon.
+    slash-separated list of at least one instance type name (like 'm5a.large'
+    for AWS), and an optional bid in dollars after a colon.
     
     Raises ValueError if a node type cannot be parsed.
 
@@ -92,9 +92,9 @@ def parse_node_types(node_type_specs: str) -> List[Tuple[Set[str], Optional[floa
             # Types are comma-separated
             # Then we have the colon and the bid
             parts = node_type_spec.split(':')
-            # Instance types are semicolon-separated within an equivalence
+            # Instance types are slash-separated within an equivalence
             # class
-            instance_types = set(parts[0].split(';'))
+            instance_types = set(parts[0].split('/'))
             # Build the node type tuple
             parsed.append((instance_types, float(parts[1]) if len(parts) > 1 else None))
         except:
