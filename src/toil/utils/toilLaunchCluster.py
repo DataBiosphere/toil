@@ -99,7 +99,7 @@ def main():
 
     # Get worker node types
     worker_node_types = parse_node_types(options.nodeTypes)
-    check_valid_node_types(options.provisioner, worker_node_types + [(set(options.leaderNodeType), None)])
+    check_valid_node_types(options.provisioner, worker_node_types + [({options.leaderNodeType}, None)])
 
     # Holds string ranges, like "5", or "3-10"
     worker_node_ranges = options.workers.split(',') if options.workers else []
