@@ -24,7 +24,7 @@ import uuid
 import boto3
 import boto.ec2
 
-from typing import List, Dict, Any, Optional, Collection
+from typing import List, Dict, Any, Optional, Set, Collection
 from functools import wraps
 from boto.ec2.blockdevicemapping import BlockDeviceMapping as Boto2BlockDeviceMapping, BlockDeviceType as Boto2BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
@@ -453,7 +453,7 @@ class AWSProvisioner(AbstractProvisioner):
         if preemptable and spotBid is None:
             if self._spotBidsMap and frozenset(nodeTypes) in self._spotBidsMap:
                 spotBid = self._spotBidsMap[frozenset(nodeTypes)]
-            else if len(nodeTypes) == 1:
+            elif len(nodeTypes) == 1:
                 # The Toil autoscaler forgets the equivalence classes. Find
                 # some plausible equivalence class.
                 instance_type = next(iter(nodeTypes))
@@ -473,7 +473,7 @@ class AWSProvisioner(AbstractProvisioner):
         node_type = next(iter(nodeTypes))
                 
         instanceType = E2Instances[node_type]
-        root_vol_size = self._nodeStorageOverrides.get(node_type, self._nodeStorage))
+        root_vol_size = self._nodeStorageOverrides.get(node_type, self._nodeStorage)
         bdm = self._getBoto2BlockDeviceMapping(instanceType,
                                                rootVolSize=root_vol_size)
 
@@ -545,7 +545,7 @@ class AWSProvisioner(AbstractProvisioner):
         if preemptable and spotBid is None:
             if self._spotBidsMap and frozenset(nodeTypes) in self._spotBidsMap:
                 spotBid = self._spotBidsMap[frozenset(nodeTypes)]
-            else if len(nodeTypes) == 1:
+            elif len(nodeTypes) == 1:
                 # The Toil autoscaler forgets the equivalence classes. Find
                 # some plausible equivalence class.
                 instance_type = next(iter(nodeTypes))
@@ -566,7 +566,7 @@ class AWSProvisioner(AbstractProvisioner):
         # TODO: deduplicate these if the same instance type appears in multiple sets?
         launch_template_ids = {n: self._createWorkerLaunchTemplate(n, preemptable=preemptable) for n in nodeTypes}
         # Make the ASG across all of them
-        self._createWorkerAutoScalingGroup(launch_template_id, nodeTypes, minNodes, maxNodes,
+        self._createWorkerAutoScalingGroup(launch_template_ids, nodeTypes, minNodes, maxNodes,
                                            spot_bid=spotBid)
 
     def getProvisionedWorkers(self, instance_type: Optional[str], preemptable: bool) -> List[Node]:
