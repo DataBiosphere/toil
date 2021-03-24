@@ -292,10 +292,13 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             memargs = ["bjobs", "-l", str(jobID)]
             try:
                 bjobs = subprocess.check_output(memargs, universal_newlines=True)
-                memregex = r"MAX MEM: (.*?);"
-                meminfo = re.search(memregex, bjobs)
+                # Handle hard wrapping in the middle of words and arbitrary
+                # indents. May drop spaces at the starts of lines that aren't
+                # meant to be part of the indent.
                 s =' '.join(re.sub(r"\n\s*", "", bjobs).split(','))
-                command = re.search(r"Command <(.*?)>", s)
+                memregex = r"MAX ?MEM: ?(.*?);"
+                meminfo = re.search(memregex, s)
+                command = re.search(r"Command ?<(.*?)>", s)
                 if meminfo:
                     if not command:
                         logger.info("Cannot Parse Max Memory Due to Missing Command String: %s", bjobs)
