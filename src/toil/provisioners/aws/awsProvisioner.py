@@ -564,7 +564,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Make one template per node type, so we can apply storage overrides correctly
         # TODO: deduplicate these if the same instance type appears in multiple sets?
-        launch_template_ids = {n: self._createWorkerLaunchTemplate(n, preemptable=preemptable) for n in nodeTypes}
+        launch_template_ids = {n: self._get_worker_launch_template(n, preemptable=preemptable) for n in nodeTypes}
         # Make the ASG across all of them
         self._createWorkerAutoScalingGroup(launch_template_ids, nodeTypes, minNodes, maxNodes,
                                            spot_bid=spotBid)
@@ -931,14 +931,72 @@ class AWSProvisioner(AbstractProvisioner):
             if 'NextToken' in response:
                 # There are more pages. Get the next one, supplying the token.
                 response = self.ec2_client.describe_launch_templates(Filters=filters,
-                                                              NextToken=response['NextToken'], MaxResults=200)
+                                                                     NextToken=response['NextToken'],
+                                                                     MaxResults=200)
             else:
                 # No more pages
                 break
 
         return allTemplateIDs
 
-    def _createWorkerLaunchTemplate(self, instance_type: str, preemptable: bool = False) -> str:
+    @awsRetry
+    def _get_worker_launch_template(self, instance_type: str, preemptable: bool = False) -> str:
+        """
+        Get a launch template for instances with the given parameters. Only one
+        such launch template will be rcreated, no matter how many times the
+        function is called.
+
+        Not thread safe.
+
+        :param instance_type: Type of node to use in the template. May be overridden
+                              by an ASG that uses the template.
+
+        :param preemptable: When the node comes up, does it think it is a spot instance?
+
+        :return: The ID of the template.
+        """
+        
+        lt_name = self._name_worker_launch_template(instance_type, preemptable=preemptable)
+        
+        # How do we match the right templates?
+        filters = [{'Name': 'launch-template-name', 'Values': [lt_name]}]
+
+        # Get the first page (the only one we care about)
+        response = self.ec2_client.describe_launch_templates(Filters=filters,
+                                                             MaxResults=2)
+                                                             
+        templates = response.get('LaunchTemplates', [])
+        if len(templates) > 1:
+            # There shouldn't ever be multiple templates with our reserved name
+            raise RuntimeError(f"Multiple launch templates already exist named {lt_name}; "
+                                "something else is operating in our cluster namespace.")
+        elif len(templates) == 0:
+            # Template doesn't exist so we can create it.
+            # Assumes read-your-own-writes consistency from the API.
+            return self._create_worker_launch_template(instance_type, preemptable=preemptable)
+        else:
+            # There must be exactly one template
+            return templates[0]['LaunchTemplateId']
+        
+        
+    def _name_worker_launch_template(self, instance_type: str, preemptable: bool = False) -> str:
+        """
+        Get the name we should use for the launch template with the given parameters.
+        
+        :param instance_type: Type of node to use in the template. May be overridden
+                              by an ASG that uses the template.
+
+        :param preemptable: When the node comes up, does it think it is a spot instance?
+        """
+    
+        # The name has the cluster name in it
+        lt_name = f'{self.clusterName}-lt-{instance_type}'
+        if preemptable:
+            lt_name += '-spot'
+            
+        return lt_name
+    
+    def _create_worker_launch_template(self, instance_type: str, preemptable: bool = False) -> str:
         """
         Create the launch template for launching worker instances for the cluster.
 
@@ -959,11 +1017,8 @@ class AWSProvisioner(AbstractProvisioner):
 
         keyPath = self._sseKey if self._sseKey else None
         userData = self._getCloudConfigUserData('worker', keyPath, preemptable)
-
-        # The name has the cluster name in it
-        lt_name = f'{self.clusterName}-lt-{instance_type}'
-        if preemptable:
-            lt_name += '-spot'
+        
+        lt_name = self._name_worker_launch_template(instance_type, preemptable=preemptable)
 
         # But really we find it by tag
         tags = dict(self._tags)
