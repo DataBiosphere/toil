@@ -462,6 +462,7 @@ def create_launch_template(ec2_client: BaseClient,
 
     return ec2_client.create_launch_template(**request)['LaunchTemplate']['LaunchTemplateId']
 
+
 @retry(intervals=[5, 5, 10, 20, 20, 20, 20], errors=INCONSISTENCY_ERRORS)
 def create_auto_scaling_group(autoscaling_client: BaseClient,
                               asg_name: str,
@@ -581,12 +582,11 @@ def official_flatcar_ami_release(ec2_client: BaseClient) -> Optional[str]:
                 response = ec2_client.describe_images(Filters=[{'Name': 'image-id', 'Values': [ami]}])
                 if len(response['Images']) == 1 and response['Images'][0]['State'] == 'available':
                     return ami
+        # We didn't find it
+        logger.warning(f'Flatcar image feed at {JSON_FEED_URL} does not have an image for region {region}')
     except KeyError:
         # We didn't see a field we need
         logger.warning(f'Flatcar image feed at {JSON_FEED_URL} does not have expected format')
-
-    # We didn't find it
-    logger.warning(f'Flatcar image feed at {JSON_FEED_URL} does not have an image for region {region}')
 
 
 @retry()  # TODO: What errors do we get for timeout, JSON parse failure, etc?
