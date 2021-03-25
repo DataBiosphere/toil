@@ -1,4 +1,7 @@
 import boto3
+import os
+import urllib.request
+import json
 import logging
 import re
 import time
@@ -24,7 +27,8 @@ from toil.lib.retry import (get_error_code,
 
 a_short_time = 5
 a_long_time = 60 * 60
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+
 
 class UserError(RuntimeError):
     def __init__(self, message=None, cause=None):
@@ -33,6 +37,7 @@ class UserError(RuntimeError):
         super(
             UserError, self).__init__(
             message if cause is None else cause.message)
+
 
 def not_found(e):
     try:
@@ -141,12 +146,12 @@ def wait_instances_running(ec2, instances: Iterable[Boto2Instance]) -> Iterable[
                 assert i.id not in other_ids
                 other_ids.add(i.id)
                 yield i
-        log.info('%i instance(s) pending, %i running, %i other.',
-                 *list(map(len, (pending_ids, running_ids, other_ids))))
+        logger.info('%i instance(s) pending, %i running, %i other.',
+                    *list(map(len, (pending_ids, running_ids, other_ids))))
         if not pending_ids:
             break
         seconds = max(a_short_time, min(len(pending_ids), 10 * a_short_time))
-        log.info('Sleeping for %is', seconds)
+        logger.info('Sleeping for %is', seconds)
         time.sleep(seconds)
         for attempt in retry_ec2():
             with attempt:
@@ -175,7 +180,7 @@ def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], time
     open_ids = None
 
     def cancel():
-        log.warning('Cancelling remaining %i spot requests.', len(open_ids))
+        logger.warning('Cancelling remaining %i spot requests.', len(open_ids))
         ec2.cancel_spot_instance_requests(list(open_ids))
 
     def spot_request_not_found(e):
@@ -193,7 +198,7 @@ def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], time
                     elif r.status.code == 'pending-fulfillment':
                         fulfill_ids.add(r.id)
                     else:
-                        log.info(
+                        logger.info(
                             'Request %s entered status %s indicating that it will not be '
                             'fulfilled anytime soon.', r.id, r.status.code)
                 elif r.state == 'active':
@@ -206,16 +211,16 @@ def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], time
                     batch.append(r)
             if batch:
                 yield batch
-            log.info('%i spot requests(s) are open (%i of which are pending evaluation and %i '
+            logger.info('%i spot requests(s) are open (%i of which are pending evaluation and %i '
                      'are pending fulfillment), %i are active and %i are in another state.',
-                     *list(map(len, (open_ids, eval_ids, fulfill_ids, active_ids, other_ids))))
+                        *list(map(len, (open_ids, eval_ids, fulfill_ids, active_ids, other_ids))))
             if not open_ids or tentative and not eval_ids and not fulfill_ids:
                 break
             sleep_time = 2 * a_short_time
             if timeout is not None and time.time() + sleep_time >= timeout:
-                log.warning('Timed out waiting for spot requests.')
+                logger.warning('Timed out waiting for spot requests.')
                 break
-            log.info('Sleeping for %is', sleep_time)
+            logger.info('Sleeping for %is', sleep_time)
             time.sleep(sleep_time)
             for attempt in retry_ec2(retry_while=spot_request_not_found):
                 with attempt:
@@ -223,7 +228,7 @@ def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], time
                         list(open_ids))
     except BaseException:
         if open_ids:
-            with panic(log):
+            with panic(logger):
                 cancel()
         raise
     else:
@@ -263,7 +268,7 @@ def create_spot_instances(ec2, price, image_id, spec, num_instances=1, timeout=N
                 instance_ids.append(request.instance_id)
                 num_active += 1
             else:
-                log.info(
+                logger.info(
                     'Request %s in unexpected state %s.',
                     request.id,
                     request.state)
@@ -275,11 +280,11 @@ def create_spot_instances(ec2, price, image_id, spec, num_instances=1, timeout=N
     if not num_active:
         message = 'None of the spot requests entered the active state'
         if tentative:
-            log.warning(message + '.')
+            logger.warning(message + '.')
         else:
             raise RuntimeError(message)
     if num_other:
-        log.warning('%i request(s) entered a state other than active.', num_other)
+        logger.warning('%i request(s) entered a state other than active.', num_other)
 
 
 def create_ondemand_instances(ec2, image_id, spec, num_instances=1) -> List[Boto2Instance]:
@@ -290,7 +295,7 @@ def create_ondemand_instances(ec2, image_id, spec, num_instances=1) -> List[Boto
     :rtype: List[Boto2Instance]
     """
     instance_type = spec['instance_type']
-    log.info('Creating %s instance(s) ... ', instance_type)
+    logger.info('Creating %s instance(s) ... ', instance_type)
     for attempt in retry_ec2(retry_for=a_long_time,
                              retry_while=inconsistencies_detected):
         with attempt:
@@ -353,7 +358,7 @@ def create_instances(ec2_resource: ServiceResource,
 
     Tags, if given, are applied to the instances, and all volumes.
     """
-    log.info('Creating %s instance(s) ... ', instance_type)
+    logger.info('Creating %s instance(s) ... ', instance_type)
 
     if isinstance(user_data, str):
         user_data = user_data.encode('utf-8')
@@ -415,7 +420,7 @@ def create_launch_template(ec2_client: BaseClient,
 
 
     """
-    log.info('Creating launch template for %s instances ... ', instance_type)
+    logger.info('Creating launch template for %s instances ... ', instance_type)
 
     if isinstance(user_data, str):
         # Make sure we have bytes
@@ -530,3 +535,68 @@ def create_auto_scaling_group(autoscaling_client: BaseClient,
 
     # Don't prune the ASG because MinSize and MaxSize are required and may be 0.
     autoscaling_client.create_auto_scaling_group(**asg)
+
+
+def get_flatcar_ami(ec2_client: BaseClient) -> str:
+    """
+    Retrieve the flatcar AMI image to use as the base for all Toil autoscaling instances.
+
+    AMI must be available to the user on AWS (attempting to launch will return a 403 otherwise).
+
+    Priority is:
+      1. User specified AMI via TOIL_AWS_AMI
+      2. Official AMI from stable.release.flatcar-linux.net
+      3. Search the AWS Marketplace
+
+    If all of these sources fail, we raise an error to complain.
+    """
+    # Take a user override
+    ami = os.environ.get('TOIL_AWS_AMI')
+    if not ami:
+        ami = official_flatcar_ami_release(ec2_client=ec2_client)
+    if not ami:
+        ami = aws_marketplace_flatcar_ami_search(ec2_client=ec2_client)
+    if not ami:
+        raise RuntimeError('Unable to fetch the latest flatcar image.')
+    return ami
+
+
+@retry()  # TODO: What errors do we get for timeout, JSON parse failure, etc?
+def official_flatcar_ami_release(ec2_client: BaseClient) -> Optional[str]:
+    """Check stable.release.flatcar-linux.net for the latest flatcar AMI.  Verify it's on AWS."""
+    # Flatcar images only live for 9 months.
+    # Rather than hardcode a list of AMIs by region that will die, we use
+    # their JSON feed of the current ones.
+    JSON_FEED_URL = 'https://stable.release.flatcar-linux.net/amd64-usr/current/flatcar_production_ami_all.json'
+    region = ec2_client._client_config.region_name
+    feed = json.loads(urllib.request.urlopen(JSON_FEED_URL).read())
+
+    try:
+        for ami_record in feed['amis']:
+            # Scan the klist of regions
+            if ami_record['name'] == region:
+                # When we find ours, return the AMI ID
+                ami = ami_record['hvm']
+                # verify it exists on AWS
+                response = ec2_client.describe_images(Filters=[{'Name': 'image-id', 'Values': [ami]}])
+                if len(response['Images']) == 1 and response['Images'][0]['State'] == 'available':
+                    return ami
+    except KeyError:
+        # We didn't see a field we need
+        logger.warning(f'Flatcar image feed at {JSON_FEED_URL} does not have expected format')
+
+    # We didn't find it
+    logger.warning(f'Flatcar image feed at {JSON_FEED_URL} does not have an image for region {region}')
+
+
+@retry()  # TODO: What errors do we get for timeout, JSON parse failure, etc?
+def aws_marketplace_flatcar_ami_search(ec2_client: BaseClient) -> Optional[str]:
+    """Query AWS for all AMI names matching 'Flatcar-stable-*' and return the most recent one."""
+    response: dict = ec2_client.describe_images(Owners=['aws-marketplace'],
+                                                Filters=[{'Name': 'name', 'Values': ['Flatcar-stable-*']}])
+    latest: dict = {'CreationDate': '0lder than atoms.'}
+    for image in response['Images']:
+        if image["Architecture"] == "x86_64" and image["State"] == "available":
+            if image['CreationDate'] > latest['CreationDate']:
+                latest = image
+    return latest.get('ImageId', None)
