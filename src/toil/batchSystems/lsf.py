@@ -36,7 +36,8 @@ from toil.batchSystems.abstractGridEngineBatchSystem import \
 from toil.batchSystems.lsfHelper import (check_lsf_json_output_supported,
                                          parse_memory_limit,
                                          parse_memory_resource,
-                                         per_core_reservation)
+                                         per_core_reservation,
+                                         parse_mem_and_cmd_from_output)
 from toil.lib.misc import call_command
 
 logger = logging.getLogger(__name__)
@@ -286,32 +287,22 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             """
             Parse the maximum memory from job.
 
-            params:
-            jobID: ID number of the job
+            :param jobID: ID number of the job
             """
-            memargs = ["bjobs", "-l", str(jobID)]
             try:
-                bjobs = subprocess.check_output(memargs, universal_newlines=True)
-                # Handle hard wrapping in the middle of words and arbitrary
-                # indents. May drop spaces at the starts of lines that aren't
-                # meant to be part of the indent.
-                s =' '.join(re.sub(r"\n\s*", "", bjobs).split(','))
-                memregex = r"MAX ?MEM: ?(.*?);"
-                meminfo = re.search(memregex, s)
-                command = re.search(r"Command ?<(.*?)>", s)
-                if meminfo:
-                    if not command:
-                        logger.info("Cannot Parse Max Memory Due to Missing Command String: %s", bjobs)
-                    else:
-                        logger.info("[job ID %s, Command %s] the maximum memory used was: %s",
-                                    str(jobID), command.group(1), meminfo.group(1))
+                output = subprocess.check_output(["bjobs", "-l", str(jobID)], universal_newlines=True)
+                max_mem, command = parse_mem_and_cmd_from_output(output=output)
+                if not max_mem:
+                    logger.warning(f"[job ID {jobID}] Unable to Collect Maximum Memory Usage: {output}")
+                    return
+
+                if not command:
+                    logger.warning(f"[job ID {jobID}] Cannot Parse Max Memory Due to Missing Command String: {output}")
                 else:
-                    logger.debug("[job ID %s] Unable to collect maximum memory usage: %s",
-                                 str(jobID), bjobs)
-                return meminfo
-            except subprocess.CalledProcessError as err:
-                logger.debug("[job ID %s] Unable to collect maximum memory usage: %s",
-                             str(jobID), str(err))
+                    logger.info(f"[job ID {jobID}, Command {command.group(1)}] Max Memory Used: {max_mem.group(1)}")
+                return max_mem
+            except subprocess.CalledProcessError as e:
+                logger.warning(f"[job ID {jobID}] Unable to Collect Maximum Memory Usage: {e}")
 
     def getWaitDuration(self):
         """We give LSF a second to catch its breath (in seconds)"""
