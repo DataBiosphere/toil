@@ -1363,21 +1363,16 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         logger.debug(f'Preparing {num_of_files} test files for testMultiThreadImportFile().')
         test_files = [other._prepareTestFile(store, size) for _ in range(num_of_files)]
 
-        def async_import_file(job_store: AbstractJobStore, url: str) -> Optional["FileID"]:
-            """ Imports the file at the given URL into the jobStore."""
-            logger.debug(f'Importing "{url}" into the jobStore...')
-            return job_store.importFile(url)
-
         for thread_count in threads:
             with self.subTest(f'Testing threaded importFile with "{thread_count}" threads.'):
                 results = []
 
                 with ThreadPoolExecutor(max_workers=thread_count) as executor:
                     for url, expected_md5 in test_files:
-                        future = executor.submit(async_import_file, self.jobstore_initialized, url)
+                        # run jobStore.importFile() asynchronously
+                        future = executor.submit(self.jobstore_initialized.importFile, url)
                         results.append((future, expected_md5))
 
-                # check results
                 self.assertEqual(len(results), num_of_files)
 
                 for future, expected_md5 in results:
