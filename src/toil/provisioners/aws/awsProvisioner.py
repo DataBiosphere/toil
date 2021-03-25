@@ -402,7 +402,7 @@ class AWSProvisioner(AbstractProvisioner):
                 # We'll set this to True if we don't get a proper response
                 # for some LuanchTemplate.
                 mistake = False
-                for ltID in self._getLaunchTemplateIDs():
+                for ltID in self._get_launch_template_ids():
                     response = self.ec2_client.delete_launch_template(LaunchTemplateId=ltID)
                     if 'LaunchTemplate' not in response:
                         mistake = True
@@ -912,19 +912,25 @@ class AWSProvisioner(AbstractProvisioner):
         return [sg.id for sg in sgs]
 
     @awsRetry
-    def _getLaunchTemplateIDs(self) -> List[str]:
+    def _get_launch_template_ids(self, filters: Optional[List[Dict[str, List[str]]]] = None) -> List[str]:
         """
         Find all launch templates associated with the cluster.
 
         Returns a list of launch template IDs.
         """
+        
 
         # How do we match the right templates?
-        filters = [{'Name': 'tag:' + _TAG_KEY_TOIL_CLUSTER_NAME, 'Values': [self.clusterName]}]
+        combined_filters = [{'Name': 'tag:' + _TAG_KEY_TOIL_CLUSTER_NAME, 'Values': [self.clusterName]}]
+
+        if filters:
+            # Add any user-specified filters
+            for f in filters:
+                combined_filters.append(f)
 
         allTemplateIDs = []
         # Get the first page with no NextToken
-        response = self.ec2_client.describe_launch_templates(Filters=filters,
+        response = self.ec2_client.describe_launch_templates(Filters=combined_filters,
                                                              MaxResults=200)
         while True:
             # Process the current page
@@ -965,13 +971,9 @@ class AWSProvisioner(AbstractProvisioner):
         # How do we match the right templates?
         filters = [{'Name': 'launch-template-name', 'Values': [lt_name]}]
 
-        # Get the first page (the only one we care about)
-        response = self.ec2_client.describe_launch_templates(Filters=filters,
-                                                             MaxResults=2)
-
-        logger.info('For launch template %s got results: %s', lt_name, response)
-
-        templates = response.get('LaunchTemplates', [])
+        # Get the templates
+        templates = self._get_launch_template_ids(filters=filters)
+        
         if len(templates) > 1:
             # There shouldn't ever be multiple templates with our reserved name
             raise RuntimeError(f"Multiple launch templates already exist named {lt_name}; "
@@ -984,13 +986,14 @@ class AWSProvisioner(AbstractProvisioner):
                 if get_error_code(e) == 'InvalidLaunchTemplateName.AlreadyExistsException':
                     # Someone got to it before us (or we couldn't read our own
                     # writes). Recurse to try again, because now it exists.
+                    logger.info('Waiting %f seconds for template %s to be available', backoff, lt_name)
                     time.sleep(backoff)
                     return self._get_worker_launch_template(instance_type, preemptable=preemptable, backoff=backoff*2)
                 else:
                     raise
         else:
             # There must be exactly one template
-            return templates[0]['LaunchTemplateId']
+            return templates[0]
 
 
     def _name_worker_launch_template(self, instance_type: str, preemptable: bool = False) -> str:
