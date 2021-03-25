@@ -574,7 +574,7 @@ def official_flatcar_ami_release(ec2_client: BaseClient) -> Optional[str]:
 
     try:
         for ami_record in feed['amis']:
-            # Scan the klist of regions
+            # Scan the list of regions
             if ami_record['name'] == region:
                 # When we find ours, return the AMI ID
                 ami = ami_record['hvm']
