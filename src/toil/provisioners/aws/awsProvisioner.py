@@ -22,6 +22,7 @@ import urllib.request
 import uuid
 
 import boto3
+from botocore.exceptions import ClientError
 import boto.ec2
 
 from typing import List, Dict, Any, Optional, Set, Collection
@@ -940,7 +941,7 @@ class AWSProvisioner(AbstractProvisioner):
         return allTemplateIDs
 
     @awsRetry
-    def _get_worker_launch_template(self, instance_type: str, preemptable: bool = False) -> str:
+    def _get_worker_launch_template(self, instance_type: str, preemptable: bool = False, backoff: float = 1.0) -> str:
         """
         Get a launch template for instances with the given parameters. Only one
         such launch template will be rcreated, no matter how many times the
@@ -952,6 +953,9 @@ class AWSProvisioner(AbstractProvisioner):
                               by an ASG that uses the template.
 
         :param preemptable: When the node comes up, does it think it is a spot instance?
+
+        :param backoff: How long to wait if it seems like we aren't reading our
+                        own writes before trying again.
 
         :return: The ID of the template.
         """
@@ -965,6 +969,8 @@ class AWSProvisioner(AbstractProvisioner):
         response = self.ec2_client.describe_launch_templates(Filters=filters,
                                                              MaxResults=2)
 
+        logger.info('For launch template %s got results: %s', lt_name, response)
+
         templates = response.get('LaunchTemplates', [])
         if len(templates) > 1:
             # There shouldn't ever be multiple templates with our reserved name
@@ -972,8 +978,16 @@ class AWSProvisioner(AbstractProvisioner):
                                 "something else is operating in our cluster namespace.")
         elif len(templates) == 0:
             # Template doesn't exist so we can create it.
-            # Assumes read-your-own-writes consistency from the API.
-            return self._create_worker_launch_template(instance_type, preemptable=preemptable)
+            try:
+                return self._create_worker_launch_template(instance_type, preemptable=preemptable)
+            except ClientError as e:
+                if get_error_code(e) == 'InvalidLaunchTemplateName.AlreadyExistsException':
+                    # Someone got to it before us (or we couldn't read our own
+                    # writes). Recurse to try again, because now it exists.
+                    time.sleep(backoff)
+                    return self._get_worker_launch_template(instance_type, preemptable=preemptable, backoff=backoff*2)
+                else:
+                    raise
         else:
             # There must be exactly one template
             return templates[0]['LaunchTemplateId']
@@ -1358,4 +1372,5 @@ class AWSProvisioner(AbstractProvisioner):
             with attempt:
                 self._boto2.iam.add_role_to_instance_profile(iamRoleName, iamRoleName)
         return profile_arn
+
 
