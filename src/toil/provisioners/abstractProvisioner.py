@@ -430,7 +430,7 @@ class AbstractProvisioner(ABC):
     class InstanceConfiguration:
         """
         Allows defining the initial setup for an instance and then turning it
-        into a CloudConfig configuration for instance user data.
+        into a Ignition configuration for instance user data.
         """
 
         def __init__(self):
@@ -442,14 +442,14 @@ class AbstractProvisioner(ABC):
             # Holds strings like "ssh-rsa actualKeyData" for keys to authorize (independently of cloud provider's system)
             self.sshPublicKeys = []
 
-        def addFile(self, path: str, owner: str = 'root', permissions: str = '0755', content: str = ''):
+        def addFile(self, path: str, user: str = 'root', mode: int = 755, contents: str = ''):
             """
-            Make a file on the instance with the given owner, permissions, and content.
+            Make a file on the instance with the given owner, mode, and contents.
             """
 
-            self.files.append({'path': path, 'owner': owner, 'permissions': permissions, 'content': content})
+            self.files.append({'path': path, 'user': {'name': user}, 'mode': mode, 'contents': {'source': contents}})
 
-        def addUnit(self, name: str, command: str = 'start', enable: bool = True, content: str = ''):
+        def addUnit(self, name: str, enabled: bool = True, contents: str = ''):
             """
             Make a systemd unit on the instance with the given name (including
             .service), and content, and apply the given command to it (default:
@@ -461,7 +461,7 @@ class AbstractProvisioner(ABC):
                 journalctl -xe
             """
 
-            self.units.append({'name': name, 'command': command, 'enable': enable, 'content': content})
+            self.units.append({'name': name, 'enabled': enabled, 'contents': contents})
 
         def addSSHRSAKey(self, keyData: str):
             """
@@ -483,9 +483,6 @@ class AbstractProvisioner(ABC):
                 },
                 'storage': {
                     'files': self.files
-                },
-                'locksmith': {
-                    'reboot-strategy': 'off'
                 },
                 'systemd': {
                     'units': self.units
