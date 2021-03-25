@@ -1365,7 +1365,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
         def async_import_file(job_store: AbstractJobStore, url: str) -> Optional["FileID"]:
             """ Imports the file at the given URL into the jobStore."""
-            logger.info(f'Importing "{url}" into the jobStore...')
+            logger.debug(f'Importing "{url}" into the jobStore...')
             return job_store.importFile(url)
 
         for thread_count in threads:
