@@ -27,6 +27,7 @@ from abc import ABCMeta, abstractmethod
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from contextlib import contextmanager
 from io import BytesIO
+from typing import Dict, Optional, Union
 
 import dill
 
@@ -310,7 +311,7 @@ class Requirer:
         return dict(self._requirementOverrides)
 
     @property
-    def disk(self):
+    def disk(self) -> int:
         """
         The maximum number of bytes of disk required.
 
@@ -372,7 +373,7 @@ class JobDescription(Requirer):
     their specific parameters.
     """
 
-    def __init__(self, requirements, jobName, unitName='', displayName='', command=None):
+    def __init__(self, requirements: Dict[str, Union[int, str, bool]], jobName: str, unitName: str='', displayName: str='', command: Optional[str]=None) -> None:
         """
         Create a new JobDescription.
 
@@ -415,7 +416,7 @@ class JobDescription(Requirer):
         # Gets replaced with/rewritten into the real, executable command when
         # the leader passes the description off to the batch system to be
         # executed.
-        self.command = command
+        self.command: Optional[str] = command
 
         # Set scheduling properties that the leader read to think about scheduling.
 
@@ -1050,7 +1051,7 @@ class Job:
     # requirements through to the JobDescription.
 
     @property
-    def disk(self):
+    def disk(self) -> int:
         """
         The maximum number of bytes of disk the job will require to run.
 

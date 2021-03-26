@@ -331,6 +331,22 @@ class hidden:
 
             assert initialPermissions == currentPermissions
 
+        def testReadWriteFileStreamTextMode(self):
+            """
+            Checks if text mode is compatibile with file streams.
+            """
+            with Toil(self.options) as toil:
+                A = Job.wrapJobFn(_testReadWriteFileStreamTextMode)
+                toil.start(A)
+
+        @staticmethod
+        def _testReadWriteFileStreamTextMode(job):
+            with job.fileStore.writeGlobalFileStream(encoding='utf-8') as (stream, fileID):
+                stream.write('foo')
+            job.fileStore.readGlobalFileStream(fileID)
+            with job.fileStore.readGlobalFileStream(fileID, encoding='utf-8') as stream2:
+                assert 'foo' == stream2.read()
+
         @staticmethod
         def _writeFileToJobStore(job, isLocalFile, nonLocalDir=None, fileMB=1):
             """

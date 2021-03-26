@@ -321,19 +321,19 @@ class AWSJobStore(AbstractJobStore):
         return info.fileID
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None):
-        info = AWSFile.create(jobStoreID if cleanup else None)
-        with info.uploadStream() as writable:
+    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None, encoding=None, errors=None):
+        info = self.FileInfo.create(jobStoreID if cleanup else None)
+        with info.uploadStream(encoding=encoding, errors=errors) as writable:
             yield writable, info.fileID
         info.save()
 
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName, isProtected=None):
+    def writeSharedFileStream(self, sharedFileName, isProtected=None, encoding=None, errors=None):
         self._requireValidSharedFileName(sharedFileName)
-        self.load_or_create(file_id=self._sharedFileID(sharedFileName),
-                            owner=self.sharedFileOwnerID,
-                            encrypt=isProtected)
-        with info.uploadStream() as writable:
+        info = self.FileInfo.loadOrCreate(jobStoreFileID=self._sharedFileID(sharedFileName),
+                                          ownerID=str(self.sharedFileOwnerID),
+                                          encrypted=isProtected)
+        with info.uploadStream(encoding=encoding, errors=errors) as writable:
             yield writable
         info.save()
 
@@ -343,9 +343,9 @@ class AWSJobStore(AbstractJobStore):
         info.save()
 
     @contextmanager
-    def updateFileStream(self, jobStoreFileID):
-        self.load_or_fail(jobStoreFileID)
-        with info.uploadStream() as writable:
+    def updateFileStream(self, jobStoreFileID, encoding=None, errors=None):
+        info = self.FileInfo.loadOrFail(jobStoreFileID)
+        with info.uploadStream(encoding=encoding, errors=errors) as writable:
             yield writable
         info.save()
 
@@ -362,17 +362,19 @@ class AWSJobStore(AbstractJobStore):
             os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
 
     @contextmanager
-    def readFileStream(self, jobStoreFileID):
-        self.load_or_fail(jobStoreFileID)
-        with info.downloadStream() as readable:
+    def readFileStream(self, jobStoreFileID, encoding=None, errors=None):
+        info = self.FileInfo.loadOrFail(jobStoreFileID)
+        logger.debug("Reading %r into stream.", info)
+        with info.downloadStream(encoding=encoding, errors=errors) as readable:
             yield readable
 
     @contextmanager
-    def readSharedFileStream(self, sharedFileName):
+    def readSharedFileStream(self, sharedFileName, encoding=None, errors=None):
         self._requireValidSharedFileName(sharedFileName)
         jobStoreFileID = self._sharedFileID(sharedFileName)
-        self.load_or_fail(jobStoreFileID, customName=sharedFileName)
-        with info.downloadStream() as readable:
+        info = self.FileInfo.loadOrFail(jobStoreFileID, customName=sharedFileName)
+        logger.debug("Reading %r for shared file %r into stream.", info, sharedFileName)
+        with info.downloadStream(encoding=encoding, errors=errors) as readable:
             yield readable
 
     def deleteFile(self, file_id):

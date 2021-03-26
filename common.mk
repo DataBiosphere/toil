@@ -26,7 +26,7 @@ export TOIL_APPLIANCE_SELF?=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(TOIL_D
 export TOIL_AWS_ZONE?=us-west-2a
 export TOIL_AWS_NODE_DEBUG?=False  # Don't shut down EC2 instances that fail so that they can be debugged
 
-# TOIL_AWS_AMI=''  # ID of the (normally CoreOS) AMI to use in node provisioning.  Defaults to latest.
+# TOIL_AWS_AMI=''  # ID of the Flatcar AMI to use in node provisioning.  Defaults to latest.
 
 #######################
 ### KUBERNETES ONLY ###

@@ -17,6 +17,11 @@ import logging
 import os
 from typing import Optional
 
+from boto.exception import (
+    BotoServerError,
+    SDBResponseError,
+    S3ResponseError
+)
 from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
 
@@ -302,6 +307,70 @@ def copyKeyMultipart(resource,
                                             Key=dstObject.key,
                                             **destEncryptionArgs)
     return info.get('VersionId', None)
+
+
+
+
+
+default_delays = (0, 1, 1, 4, 16, 64)
+default_timeout = 300
+
+
+def connection_reset(e):
+    # For some reason we get 'error: [Errno 104] Connection reset by peer' where the
+    # English description suggests that errno is 54 (ECONNRESET) while the actual
+    # errno is listed as 104. To be safe, we check for both:
+    return isinstance(e, socket.error) and e.errno in (errno.ECONNRESET, 104)
+
+
+def sdb_unavailable(e):
+    return isinstance(e, BotoServerError) and e.status in (500, 503)
+
+
+def no_such_sdb_domain(e):
+    return (isinstance(e, SDBResponseError)
+            and e.error_code
+            and e.error_code.endswith('NoSuchDomain'))
+
+
+def retryable_ssl_error(e):
+    # https://github.com/BD2KGenomics/toil/issues/978
+    return isinstance(e, SSLError) and e.reason == 'DECRYPTION_FAILED_OR_BAD_RECORD_MAC'
+
+
+# https://github.com/boto/botocore/blob/49f87350d54f55b687969ec8bf204df785975077/botocore/retries/standard.py#L316
+THROTTLED_ERROR_CODES = [
+        'Throttling',
+        'ThrottlingException',
+        'ThrottledException',
+        'RequestThrottledException',
+        'TooManyRequestsException',
+        'ProvisionedThroughputExceededException',
+        'TransactionInProgressException',
+        'RequestLimitExceeded',
+        'BandwidthLimitExceeded',
+        'LimitExceededException',
+        'RequestThrottled',
+        'SlowDown',
+        'PriorRequestNotComplete',
+        'EC2ThrottledException',
+]
+
+
+# TODO: Replace with: @retry and ErrorCondition
+def retryable_s3_errors(e):
+    return    (connection_reset(e)
+            or (isinstance(e, BotoServerError) and e.status in (429, 500))
+            or (isinstance(e, BotoServerError) and e.code in THROTTLED_ERROR_CODES)
+            # boto3 errors
+            or (isinstance(e, S3ResponseError) and e.error_code in THROTTLED_ERROR_CODES)
+            or (isinstance(e, ClientError) and 'BucketNotEmpty' in str(e))
+            or (isinstance(e, ClientError) and e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 409 and 'try again' in str(e))
+            or (isinstance(e, ClientError) and e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') in (404, 429, 500, 502, 503, 504)))
+
+
+def retry_s3(delays=default_delays, timeout=default_timeout, predicate=retryable_s3_errors):
+    return old_retry(delays=delays, timeout=timeout, predicate=predicate)
 
 
 def region_to_bucket_location(region):
