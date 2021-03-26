@@ -489,9 +489,11 @@ class AbstractProvisioner(ABC):
                 }
             }
 
+            '''
             if len(self.sshPublicKeys) > 0:
                 # Add SSH keys if needed
                 config['passwd']['users']['sshAuthorizedKeys'] = self.sshPublicKeys
+            '''
 
             # Serialize as JSON
             return json.dumps(config)
