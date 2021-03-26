@@ -237,17 +237,7 @@ class AWSFile(SDBHelper):
         """
         Context manager that gives out a binary-mode upload stream to upload data.
         """
-
-        # Note that we have to handle already having a content or a version
-        # if we are overwriting something.
-
-        # But make sure we don't have both.
-        assert not (bool(self.version) and self.content is not None)
-
-        info = self
-        store = self.outer
-
-        pipe = MultiPartPipe() if multipart else SinglePartPipe()
+        pipe = MultiPartPipe()
         with pipe as writable:
             yield writable
 
@@ -417,7 +407,7 @@ class AWSFile(SDBHelper):
         else:
             with open(sseKeyPath, 'rb') as f:
                 sseKey = f.read()
-                return sseKey
+            return sseKey
 
     def _s3EncryptionArgs(self):
         # the keys of the returned dictionary are unpacked to the corresponding boto3 optional

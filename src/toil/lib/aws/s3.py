@@ -40,7 +40,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       bucket_location_to_region,
                                       uploadFile,
                                       region_to_bucket_location)
-from toil.lib.checksum import compute_checksum_for_bytesio
+from toil.lib.checksum import compute_checksum_for_content
 from toil.lib.compatibility import compat_bytes
 from toil.lib.ec2 import establish_boto3_session
 from toil.lib.pipes import WritablePipe
@@ -135,38 +135,30 @@ class MultiPartPipe(WritablePipe):
 
         # We will compute a checksum
         hasher = hashlib.sha1()
-        logger.debug('Updating checksum with %d bytes', len(buf))
         hasher.update(buf)
 
         client = store.s3_client
         bucket_name = store.filesBucket.name
         headerArgs = info._s3EncryptionArgs()
 
-        for attempt in retry_s3():
-            with attempt:
-                logger.debug('Starting multipart upload')
-                # low-level clients are thread safe
-                upload = client.create_multipart_upload(Bucket=bucket_name,
-                                                        Key=compat_bytes(info.fileID),
-                                                        **headerArgs)
-                uploadId = upload['UploadId']
-                parts = []
-
+        # low-level clients are thread safe
+        upload = client.create_multipart_upload(Bucket=bucket_name,
+                                                Key=compat_bytes(info.fileID),
+                                                **headerArgs)
+        uploadId = upload['UploadId']
+        parts = []
         try:
             for part_num in itertools.count():
-                for attempt in retry_s3():
-                    with attempt:
-                        logger.debug('Uploading part %d of %d bytes', part_num + 1, len(buf))
-                        # TODO: include the Content-MD5 header:
-                        #  https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.complete_multipart_upload
-                        part = client.upload_part(Bucket=bucket_name,
-                                                  Key=compat_bytes(info.fileID),
-                                                  PartNumber=part_num + 1,
-                                                  UploadId=uploadId,
-                                                  Body=BytesIO(buf),
-                                                  **headerArgs)
-
-                        parts.append({"PartNumber": part_num + 1, "ETag": part["ETag"]})
+                logger.debug('Uploading part %d of %d bytes', part_num + 1, len(buf))
+                # TODO: include the Content-MD5 header:
+                #  https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.complete_multipart_upload
+                part = client.upload_part(Bucket=bucket_name,
+                                          Key=compat_bytes(info.fileID),
+                                          PartNumber=part_num + 1,
+                                          UploadId=uploadId,
+                                          Body=BytesIO(buf),
+                                          **headerArgs)
+                parts.append({"PartNumber": part_num + 1, "ETag": part["ETag"]})
 
                 # Get the next block of data we want to put
                 buf = readable.read(info.outer.partSize)
@@ -174,64 +166,18 @@ class MultiPartPipe(WritablePipe):
                 if len(buf) == 0:
                     # Don't allow any part other than the very first to be empty.
                     break
-                hasher[1].update(buf)
+                hasher.update(buf)
         except:
-            with panic(log=logger):
-                for attempt in retry_s3():
-                    with attempt:
-                        client.abort_multipart_upload(Bucket=bucket_name,
-                                                      Key=compat_bytes(info.fileID),
-                                                      UploadId=uploadId)
-
+            client.abort_multipart_upload(Bucket=bucket_name,
+                                          Key=compat_bytes(info.fileID),
+                                          UploadId=uploadId)
         else:
             # Save the checksum
-            info.checksum = info._finish_checksum(hasher)
+            checksum = info._finish_checksum(hasher)
 
-            for attempt in retry_s3():
-                with attempt:
-                    logger.debug('Attempting to complete upload...')
-                    completed = client.complete_multipart_upload(
-                        Bucket=bucket_name,
-                        Key=compat_bytes(info.fileID),
-                        UploadId=uploadId,
-                        MultipartUpload={"Parts": parts})
-
-                    logger.debug('Completed upload object of type %s: %s', str(type(completed)),
-                                 repr(completed))
-                    info.version = completed['VersionId']
-                    logger.debug('Completed upload with version %s', str(info.version))
-
-            if info.version is None:
-                # Somehow we don't know the version. Try and get it.
-                for attempt in retry_s3(
-                        predicate=lambda e: retryable_s3_errors(e) or isinstance(e, AssertionError)):
-                    with attempt:
-                        version = client.head_object(Bucket=bucket_name,
-                                                     Key=compat_bytes(info.fileID),
-                                                     **headerArgs).get('VersionId', None)
-                        logger.warning('Loaded key for upload with no version and got version %s',
-                                       str(version))
-                        info.version = version
-                        assert info.version is not None
-
-        # Make sure we actually wrote something, even if an empty file
-        assert (bool(info.version) or info.content is not None)
-
-
-class SinglePartPipe(WritablePipe):
-    def readFrom(self, readable):
-        checksum = compute_checksum_for_bytesio(readable)
-
-        bucket_name = store.filesBucket.name
-        headerArgs = info._s3EncryptionArgs()
-
-        s3_boto3_client.upload_fileobj(Bucket=bucket_name,
-                                       Key=compat_bytes(info.fileID),
-                                       Fileobj=readable,
-                                       ExtraArgs=headerArgs)
-
-        # use head_object with the SSE headers to access versionId and content_length attributes
-        response = s3_boto3_client.head_object(Bucket=bucket_name,
-                                               Key=compat_bytes(info.fileID),
-                                               **headerArgs)
-        assert len(readable.read()) == response.get('ContentLength', None)
+            logger.debug('Attempting to complete upload...')
+            completed = client.complete_multipart_upload(
+                Bucket=bucket_name,
+                Key=compat_bytes(info.fileID),
+                UploadId=uploadId,
+                MultipartUpload={"Parts": parts})

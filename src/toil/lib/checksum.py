@@ -35,11 +35,11 @@ def compute_checksum_for_file(local_file_path: str, algorithm: str = 'sha1'):
     will raise a ChecksumError if it isn't matched.
     """
     with open(local_file_path, 'rb') as fh:
-        checksum_result = compute_checksum_for_bytesio(fh, algorithm=algorithm)
+        checksum_result = compute_checksum_for_content(fh, algorithm=algorithm)
     return checksum_result
 
 
-def compute_checksum_for_bytesio(fh: Union[BinaryIO, BytesIO], algorithm: str = 'sha1'):
+def compute_checksum_for_content(fh: Union[BinaryIO, BytesIO], algorithm: str = 'sha1'):
     """
     If to_match is set, it is a precomputed checksum which we expect
     the result to match.
@@ -56,23 +56,3 @@ def compute_checksum_for_bytesio(fh: Union[BinaryIO, BytesIO], algorithm: str = 
         contents = fh.read(1024 * 1024)
 
     return f'{algorithm}${hash_object.hexdigest()}'
-
-
-# def compute_checksum(local_file_path: str, algorithm='sha1'):
-#     """
-#     If to_match is set, it is a precomputed checksum which we expect
-#     the result to match.
-#
-#     The right way to compare checksums is to feed in the checksum to be
-#     matched, so we can see its algorithm, instead of getting a new one
-#     and comparing. If a checksum to match is fed in, _finish_checksum()
-#     will raise a ChecksumError if it isn't matched.
-#     """
-#     hash_object = getattr(hashlib, algorithm)()
-#     with open(local_file_path, 'rb') as f:
-#         contents = f.read(1024 * 1024)
-#         while contents != b'':
-#             hash_object.update(contents)
-#             contents = f.read(1024 * 1024)
-#
-#     return f'{algorithm}${hash_object.hexdigest()}'

@@ -47,7 +47,7 @@ from toil.lib.aws.s3 import (create_bucket,
                              bucket_exists,
                              bucket_is_registered_with_toil)
 from toil.lib.ec2nodes import EC2Regions
-from toil.lib.checksum import compute_checksum_for_bytesio, compute_checksum_for_file
+from toil.lib.checksum import compute_checksum_for_content, compute_checksum_for_file
 from toil.lib.retry import retry
 
 
@@ -386,7 +386,7 @@ class AWSJobStore(AbstractJobStore):
         file_obj = BytesIO(log_msg)
 
         info = AWSFile.create(self.statsFileOwnerID)
-        info.checksum = compute_checksum_for_bytesio(file_obj)
+        info.checksum = compute_checksum_for_content(file_obj)
 
         headerArgs = info._s3EncryptionArgs()
 
