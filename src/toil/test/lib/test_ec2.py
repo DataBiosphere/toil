@@ -18,12 +18,13 @@ from toil.lib.ec2 import (get_flatcar_ami,
                           official_flatcar_ami_release,
                           aws_marketplace_flatcar_ami_search,
                           establish_boto3_session)
-from toil.test import ToilTest
+from toil.test import ToilTest, needs_aws_ec2
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
 
+@needs_aws_ec2
 class AMITest(ToilTest):
     @classmethod
     def setUpClass(cls):
