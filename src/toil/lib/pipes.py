@@ -84,8 +84,8 @@ class WritablePipe(ABC):
     def _reader(self):
         with os.fdopen(self.readable_fh, 'rb') as readable:
             # TODO: If the reader somehow crashes here, both threads might try
-            # to close readable_fh.  Fortunately we don't do anything that
-            # should be able to fail here.
+            #  to close readable_fh.  Fortunately we don't do anything that
+            #  should be able to fail here.
             self.readable_fh = None  # signal to parent thread that we've taken over
             self.readFrom(readable)
             self.reader_done = True
@@ -294,8 +294,6 @@ class ReadableTransformingPipe(ReadablePipe):
     See also: :class:`toil.lib.misc.WriteWatchingStream`.
 
     """
-
-    
     def __init__(self, source, encoding=None, errors=None):
         """
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same

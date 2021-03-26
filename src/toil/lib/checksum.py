@@ -15,7 +15,7 @@ import hashlib
 import logging
 
 from io import BytesIO
-from typing import Optional, BinaryIO, Union
+from typing import BinaryIO, Union
 
 logger = logging.getLogger(__name__)
 
@@ -24,31 +24,13 @@ class ChecksumError(Exception):
     """Raised when a download does not contain the correct data."""
 
 
-def compute_checksum_for_file(local_file_path: str, algorithm: str = 'sha1'):
-    """
-    If to_match is set, it is a precomputed checksum which we expect
-    the result to match.
-
-    The right way to compare checksums is to feed in the checksum to be
-    matched, so we can see its algorithm, instead of getting a new one
-    and comparing. If a checksum to match is fed in, _finish_checksum()
-    will raise a ChecksumError if it isn't matched.
-    """
+def compute_checksum_for_file(local_file_path: str, algorithm: str = 'sha1') -> str:
     with open(local_file_path, 'rb') as fh:
         checksum_result = compute_checksum_for_content(fh, algorithm=algorithm)
     return checksum_result
 
 
-def compute_checksum_for_content(fh: Union[BinaryIO, BytesIO], algorithm: str = 'sha1'):
-    """
-    If to_match is set, it is a precomputed checksum which we expect
-    the result to match.
-
-    The right way to compare checksums is to feed in the checksum to be
-    matched, so we can see its algorithm, instead of getting a new one
-    and comparing. If a checksum to match is fed in, _finish_checksum()
-    will raise a ChecksumError if it isn't matched.
-    """
+def compute_checksum_for_content(fh: Union[BinaryIO, BytesIO], algorithm: str = 'sha1') -> str:
     hash_object = getattr(hashlib, algorithm)()
     contents = fh.read(1024 * 1024)
     while contents != b'':

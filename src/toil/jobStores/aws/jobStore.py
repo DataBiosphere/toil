@@ -204,9 +204,9 @@ class AWSJobStore(AbstractJobStore):
                                'encrypt': self.sse_key is not None})
         put_item(table=self.table, hash_key='files', sort_key=new_file_id, value=metadata)
         self.s3_client.upload_fileobj(Bucket=self.bucket_name,
-                                       Key=new_file_id,
-                                       Fileobj=BytesIO(b''),
-                                       ExtraArgs=self.encryption_args)
+                                      Key=new_file_id,
+                                      Fileobj=BytesIO(b''),
+                                      ExtraArgs=self.encryption_args)
 
         # use head_object with the SSE headers content_length
         response = self.s3_client.head_object(Bucket=self.bucket_name,
@@ -393,9 +393,9 @@ class AWSJobStore(AbstractJobStore):
         headerArgs = info._s3EncryptionArgs()
 
         self.s3_client.upload_fileobj(Bucket=self.bucket_name,
-                                       Key=compat_bytes(info.fileID),
-                                       Fileobj=BytesIO(log_msg),
-                                       ExtraArgs=headerArgs)
+                                      Key=compat_bytes(info.fileID),
+                                      Fileobj=BytesIO(log_msg),
+                                      ExtraArgs=headerArgs)
 
         # use head_object with the SSE headers to access versionId and content_length attributes
         response = self.s3_client.head_object(Bucket=self.bucket_name,

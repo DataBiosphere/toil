@@ -11,55 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import hashlib
-import itertools
 import logging
-import pickle
-import re
 import reprlib
-import stat
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
 import uuid
 from contextlib import contextmanager
-from io import BytesIO
-from typing import Optional, Tuple
-
-import boto.sdb
-from boto.exception import SDBResponseError
-from botocore.exceptions import ClientError
-
-import toil.lib.encryption as encryption
-from toil.fileStores import FileID
-from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             ConcurrentFileModificationException,
-                                             JobStoreExistsException,
-                                             NoSuchFileException,
-                                             NoSuchJobException,
-                                             NoSuchJobStoreException)
-from toil.jobStores.aws.utils import (SDBHelper,
-                                      bucket_location_to_region,
-                                      uploadFromPath,
-                                      uploadFile,
-                                      copyKeyMultipart,
-                                      fileSizeAndTime,
-                                      region_to_bucket_location)
-from toil.lib.pipes import (ReadablePipe,
-                            ReadableTransformingPipe,
-                            WritablePipe)
+from toil.jobStores.aws.utils import uploadFromPath, copyKeyMultipart
+from toil.lib.pipes import ReadablePipe, ReadableTransformingPipe
 from toil.lib.checksum import compute_checksum_for_file
 from toil.lib.compatibility import compat_bytes
 from toil.lib.ec2 import establish_boto3_session
-from toil.lib.aws.s3 import MultiPartPipe, SinglePartPipe
-from toil.lib.ec2nodes import EC2Regions
-from toil.lib.exceptions import panic
-from toil.lib.memoize import strict_bool
+from toil.lib.aws.s3 import MultiPartPipe
 from toil.lib.io import AtomicFileCreate
-from toil.lib.objects import InnerClass
-from toil.lib.retry import retry
 
 boto3_session = establish_boto3_session()
 s3_boto3_resource = boto3_session.resource('s3')
@@ -71,7 +34,7 @@ class ChecksumError(Exception):
     """Raised when a download from AWS does not contain the correct data."""
 
 
-class AWSFile(SDBHelper):
+class AWSFile:
     def __init__(self,
                  fileID,
                  ownerID,
@@ -209,29 +172,6 @@ class AWSFile(SDBHelper):
                                       headerArgs=headerArgs,
                                       partSize=self.outer.partSize)
 
-    def _update_checksum(self, checksum_in_progress, data):
-        """
-        Update a checksum in progress from _start_checksum with new data.
-        """
-        checksum_in_progress[1].update(data)
-
-    def _finish_checksum(self, checksum_in_progress):
-        """
-        Complete a checksum in progress from _start_checksum and return the
-        checksum result string.
-        """
-
-        result_hash = checksum_in_progress[1].hexdigest()
-
-        logger.debug(f'Completed checksum with hash {result_hash} vs. expected {checksum_in_progress[2]}')
-        if checksum_in_progress[2] is not None:
-            # We expected a particular hash
-            if result_hash != checksum_in_progress[2]:
-                raise ChecksumError('Checksum mismatch. Expected: %s Actual: %s' %
-                                    (checksum_in_progress[2], result_hash))
-
-        return '$'.join([checksum_in_progress[0], result_hash])
-
     @contextmanager
     def uploadStream(self, multipart=True, allowInlining=True):
         """
@@ -242,7 +182,7 @@ class AWSFile(SDBHelper):
             yield writable
 
         if not pipe.reader_done:
-            logger.debug('Version: {} Content: {}'.format(self.version, self.content))
+            logger.debug(f'[uploadStream] Version: {self.version} Content: {self.content}')
             raise RuntimeError('Escaped context manager without written data being read!')
 
         # We check our work to make sure we have exactly one of embedded
@@ -250,11 +190,11 @@ class AWSFile(SDBHelper):
 
         if self.content is None:
             if not bool(self.version):
-                logger.debug('Version: {} Content: {}'.format(self.version, self.content))
+                logger.debug(f'[uploadStream] Version: {self.version} Content: {self.content}')
                 raise RuntimeError('No content added and no version created')
         else:
             if bool(self.version):
-                logger.debug('Version: {} Content: {}'.format(self.version, self.content))
+                logger.debug(f'[uploadStream] Version: {self.version} Content: {self.content}')
                 raise RuntimeError('Content added and version created')
 
     def copyFrom(self, srcObj):
@@ -264,7 +204,7 @@ class AWSFile(SDBHelper):
         :param S3.Object srcObj: The key (object) that will be copied from
         """
         assert srcObj.content_length is not None
-        if srcObj.content_length <= self.maxInlinedSize():
+        if srcObj.content_length <= 256:
             self.content = srcObj.get().get('Body').read()
         else:
             # Create a new Resource in case it needs to be on its own thread

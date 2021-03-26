@@ -661,22 +661,12 @@ def in_contexts(contexts):
             with in_contexts(rest):
                 yield
 
+
 def main(argv=None):
     if argv is None:
         argv = sys.argv
 
-    # Parse our command line
     options = parse_args(argv)
-
-    # Parse input args
-    jobName = argv[1]
-    jobStoreLocator = argv[2]
-    jobStoreID = argv[3]
-
-    ##########################################
-    #Load the jobStore/config file
-    ##########################################
-
     jobStore = Toil.resumeJobStore(options.jobStoreLocator)
     config = jobStore.config
 

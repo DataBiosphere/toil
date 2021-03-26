@@ -11,40 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import logging
-import pickle
 import hashlib
-import re
-import reprlib
-import stat
+import itertools
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
-import uuid
-from contextlib import contextmanager
 from io import BytesIO
 from typing import Optional, Tuple, Union
 
-import boto.sdb
-from boto.exception import SDBResponseError
 from botocore.exceptions import ClientError
-
-from toil.fileStores import FileID
-from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             JobStoreExistsException,
-                                             NoSuchJobException,
-                                             NoSuchJobStoreException)
-from toil.jobStores.aws.utils import (SDBHelper,
-                                      bucket_location_to_region,
-                                      uploadFile,
-                                      region_to_bucket_location)
-from toil.lib.checksum import compute_checksum_for_content
 from toil.lib.compatibility import compat_bytes
 from toil.lib.ec2 import establish_boto3_session
 from toil.lib.pipes import WritablePipe
-from toil.lib.ec2nodes import EC2Regions
 from toil.lib.retry import retry
 
 boto3_session = establish_boto3_session()
@@ -128,56 +105,57 @@ def bucket_is_registered_with_toil(bucket: str) -> Union[bool, s3_boto3_resource
 
 
 class MultiPartPipe(WritablePipe):
+    def __init__(self, part_size, s3_client, bucket_name, file_id, encryption_args):
+        self.part_size = part_size
+        self.s3_client = s3_client
+        self.bucket_name = bucket_name
+        self.file_id = file_id
+        self.encryption_args = encryption_args
+        super(MultiPartPipe, self).__init__()
+
     def readFrom(self, readable):
         # Get the first block of data we want to put
-        buf = readable.read(store.partSize)
+        buf = readable.read(self.part_size)
         assert isinstance(buf, bytes)
 
         # We will compute a checksum
         hasher = hashlib.sha1()
         hasher.update(buf)
 
-        client = store.s3_client
-        bucket_name = store.filesBucket.name
-        headerArgs = info._s3EncryptionArgs()
-
         # low-level clients are thread safe
-        upload = client.create_multipart_upload(Bucket=bucket_name,
-                                                Key=compat_bytes(info.fileID),
-                                                **headerArgs)
-        uploadId = upload['UploadId']
+        upload = self.s3_client.create_multipart_upload(Bucket=self.bucket_name,
+                                                        Key=self.file_id,
+                                                        **self.encryption_args)
+        upload_id = upload['UploadId']
         parts = []
         try:
             for part_num in itertools.count():
                 logger.debug('Uploading part %d of %d bytes', part_num + 1, len(buf))
                 # TODO: include the Content-MD5 header:
                 #  https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.complete_multipart_upload
-                part = client.upload_part(Bucket=bucket_name,
-                                          Key=compat_bytes(info.fileID),
-                                          PartNumber=part_num + 1,
-                                          UploadId=uploadId,
-                                          Body=BytesIO(buf),
-                                          **headerArgs)
+                part = self.s3_client.upload_part(Bucket=self.bucket_name,
+                                                  Key=compat_bytes(self.file_id),
+                                                  PartNumber=part_num + 1,
+                                                  UploadId=upload_id,
+                                                  Body=BytesIO(buf),
+                                                  **self.encryption_args)
                 parts.append({"PartNumber": part_num + 1, "ETag": part["ETag"]})
 
                 # Get the next block of data we want to put
-                buf = readable.read(info.outer.partSize)
-                assert isinstance(buf, bytes)
+                buf = readable.read(self.part_size)
                 if len(buf) == 0:
                     # Don't allow any part other than the very first to be empty.
                     break
                 hasher.update(buf)
         except:
-            client.abort_multipart_upload(Bucket=bucket_name,
-                                          Key=compat_bytes(info.fileID),
-                                          UploadId=uploadId)
+            self.s3_client.abort_multipart_upload(Bucket=self.bucket_name,
+                                                  Key=self.file_id,
+                                                  UploadId=upload_id)
         else:
             # Save the checksum
-            checksum = info._finish_checksum(hasher)
-
+            checksum = f'sha1${hasher.hexdigest()}'
             logger.debug('Attempting to complete upload...')
-            completed = client.complete_multipart_upload(
-                Bucket=bucket_name,
-                Key=compat_bytes(info.fileID),
-                UploadId=uploadId,
-                MultipartUpload={"Parts": parts})
+            response = self.s3_client.complete_multipart_upload(Bucket=self.bucket_name,
+                                                                Key=self.file_id,
+                                                                UploadId=upload_id,
+                                                                MultipartUpload={"Parts": parts})
