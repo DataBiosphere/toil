@@ -515,7 +515,7 @@ class AbstractProvisioner(ABC):
         """
         Add a service to prepare and mount local scratch volumes.
         """
-        config.addFile("/home/core/volumes.sh", content=textwrap.dedent("""\
+        config.addFile("/home/core/volumes.sh", contents=textwrap.dedent("""\
             #!/bin/bash
             set -x
             ephemeral_count=0
@@ -562,7 +562,7 @@ class AbstractProvisioner(ABC):
                 sudo mount --bind /mnt/ephemeral/var/lib/$directory /var/lib/$directory
             done
             """))
-        config.addUnit("volume-mounting.service", content=textwrap.dedent("""\
+        config.addUnit("volume-mounting.service", contents=textwrap.dedent("""\
             [Unit]
             Description=mounts ephemeral volumes & bind mounts toil directories
             Before=docker.service
@@ -578,7 +578,7 @@ class AbstractProvisioner(ABC):
         Add the node exporter service for Prometheus to an instance configuration.
         """
 
-        config.addUnit("node-exporter.service", content=textwrap.dedent('''\
+        config.addUnit("node-exporter.service", contents=textwrap.dedent('''\
             [Unit]
             Description=node-exporter container
             After=docker.service
@@ -653,7 +653,7 @@ class AbstractProvisioner(ABC):
             entryPointArgs = " ".join(["'" + customDockerInitCommand + "'", entryPoint, entryPointArgs])
             entryPoint = "customDockerInit.sh"
 
-        config.addUnit(f"toil-{role}.service", content=textwrap.dedent(f'''\
+        config.addUnit(f"toil-{role}.service", contents=textwrap.dedent(f'''\
             [Unit]
             Description=toil-{role} container
             After=docker.service
@@ -717,7 +717,7 @@ class AbstractProvisioner(ABC):
         values = self.getKubernetesValues()
 
         # We're going to ship the Kubelet service from Kubernetes' release pipeline via cloud-config
-        config.addUnit("kubelet.service", content=textwrap.dedent('''\
+        config.addUnit("kubelet.service", contents=textwrap.dedent('''\
             # This came from https://raw.githubusercontent.com/kubernetes/release/v0.4.0/cmd/kubepkg/templates/latest/deb/kubelet/lib/systemd/system/kubelet.service
             # It has been modified to replace /usr/bin with {DOWNLOAD_DIR}
             # License: https://raw.githubusercontent.com/kubernetes/release/v0.4.0/LICENSE
@@ -739,7 +739,7 @@ class AbstractProvisioner(ABC):
             ''').format(**values))
 
         # It needs this config file
-        config.addFile("/etc/systemd/system/kubelet.service.d/10-kubeadm.conf", permissions="0644", content=textwrap.dedent('''\
+        config.addFile("/etc/systemd/system/kubelet.service.d/10-kubeadm.conf", mode="0644", contents=textwrap.dedent('''\
             # This came from https://raw.githubusercontent.com/kubernetes/release/v0.4.0/cmd/kubepkg/templates/latest/deb/kubeadm/10-kubeadm.conf
             # It has been modified to replace /usr/bin with {DOWNLOAD_DIR}
             # License: https://raw.githubusercontent.com/kubernetes/release/v0.4.0/LICENSE
@@ -758,7 +758,7 @@ class AbstractProvisioner(ABC):
             ''').format(**values))
 
         # Before we let the kubelet try to start, we have to actually download it (and kubeadm)
-        config.addFile("/home/core/install-kubernetes.sh", content=textwrap.dedent('''\
+        config.addFile("/home/core/install-kubernetes.sh", contents=textwrap.dedent('''\
             #!/usr/bin/env bash
             set -e
 
@@ -774,7 +774,7 @@ class AbstractProvisioner(ABC):
             curl -L --remote-name-all https://storage.googleapis.com/kubernetes-release/release/{KUBERNETES_VERSION}/bin/linux/amd64/{{kubeadm,kubelet,kubectl}}
             chmod +x {{kubeadm,kubelet,kubectl}}
             ''').format(**values))
-        config.addUnit("install-kubernetes.service", content=textwrap.dedent('''\
+        config.addUnit("install-kubernetes.service", contents=textwrap.dedent('''\
             [Unit]
             Description=base Kubernetes installation
             Wants=network-online.target
@@ -825,7 +825,7 @@ class AbstractProvisioner(ABC):
         values = self.getKubernetesValues()
 
         # Main kubeadm cluster configuration
-        config.addFile("/home/core/kubernetes-leader.yml", permissions="0644", content=textwrap.dedent('''\
+        config.addFile("/home/core/kubernetes-leader.yml", mode="0644", contents=textwrap.dedent('''\
             apiVersion: kubeadm.k8s.io/v1beta2
             kind: InitConfiguration
             nodeRegistration:
@@ -852,7 +852,7 @@ class AbstractProvisioner(ABC):
 
         # Make a script to apply that and the other cluster components
         # Note that we're escaping {{thing}} as {{{{thing}}}} because we need to match mustaches in a yaml we hack up.
-        config.addFile("/home/core/create-kubernetes-cluster.sh", content=textwrap.dedent('''\
+        config.addFile("/home/core/create-kubernetes-cluster.sh", contents=textwrap.dedent('''\
             #!/usr/bin/env bash
             set -e
 
@@ -889,7 +889,7 @@ class AbstractProvisioner(ABC):
             echo "JOIN_CERT_HASH=sha256:$(openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //')" >>/etc/kubernetes/worker.ini
             echo "JOIN_ENDPOINT=$(hostname):6443" >>/etc/kubernetes/worker.ini
             ''').format(**values))
-        config.addUnit("create-kubernetes-cluster.service", content=textwrap.dedent('''\
+        config.addUnit("create-kubernetes-cluster.service", contents=textwrap.dedent('''\
             [Unit]
             Description=Kubernetes cluster bootstrap
             After=install-kubernetes.service
@@ -904,7 +904,7 @@ class AbstractProvisioner(ABC):
             '''))
 
         # We also need a node cleaner service
-        config.addFile("/home/core/cleanup-nodes.sh", content=textwrap.dedent('''\
+        config.addFile("/home/core/cleanup-nodes.sh", contents=textwrap.dedent('''\
             #!/usr/bin/env bash
             # cleanup-nodes.sh: constantly clean up NotReady nodes that are tainted as having been deleted
             set -e
@@ -924,7 +924,7 @@ class AbstractProvisioner(ABC):
                 sleep 300
             done
             ''').format(**values))
-        config.addUnit("cleanup-nodes.service", content=textwrap.dedent('''\
+        config.addUnit("cleanup-nodes.service", contents=textwrap.dedent('''\
             [Unit]
             Description=Remove scaled-in nodes
             After=install-kubernetes.service
@@ -960,7 +960,7 @@ class AbstractProvisioner(ABC):
         values['WORKER_LABEL_SPEC'] = 'node-labels: "eks.amazonaws.com/capacityType=SPOT"' if preemptable else ''
 
         # Kubeadm worker configuration
-        config.addFile("/home/core/kubernetes-worker.yml", permissions="0644", content=textwrap.dedent('''\
+        config.addFile("/home/core/kubernetes-worker.yml", mode="0644", contents=textwrap.dedent('''\
             apiVersion: kubeadm.k8s.io/v1beta2
             kind: JoinConfiguration
             nodeRegistration:
@@ -981,7 +981,7 @@ class AbstractProvisioner(ABC):
             '''.format(**values)))
 
         # Make a script to join the cluster using that configuration
-        config.addFile("/home/core/join-kubernetes-cluster.sh", content=textwrap.dedent('''\
+        config.addFile("/home/core/join-kubernetes-cluster.sh", contents=textwrap.dedent('''\
             #!/usr/bin/env bash
             set -e
 
@@ -994,7 +994,7 @@ class AbstractProvisioner(ABC):
             kubeadm join {JOIN_ENDPOINT} --config /home/core/kubernetes-worker.yml
             ''').format(**values))
 
-        config.addUnit("join-kubernetes-cluster.service", content=textwrap.dedent('''\
+        config.addUnit("join-kubernetes-cluster.service", contents=textwrap.dedent('''\
             [Unit]
             Description=Kubernetes cluster membership
             After=install-kubernetes.service
