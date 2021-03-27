@@ -57,7 +57,7 @@ class NonCachingFileStore(AbstractFileStore):
             with super().open(job):
                 yield
         finally:
-            disk = get_dir_size_recursively(self.localTempDir)
+            disk: int = get_dir_size_recursively(self.localTempDir)
             percent = float(disk) / jobReqs * 100 if jobReqs > 0 else 0.0
             disk_usage = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(disk)}B [{disk}B] used, "
                           f"{bytes2human(jobReqs)}B [{jobReqs}B] requested).")

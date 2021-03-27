@@ -24,7 +24,7 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
-from typing import Callable, Generator, Optional
+from typing import Callable, Generator, Optional, Tuple
 
 from toil.common import cacheDirName
 from toil.fileStores import FileID, make_public_dir
