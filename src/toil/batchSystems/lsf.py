@@ -36,7 +36,8 @@ from toil.batchSystems.abstractGridEngineBatchSystem import \
 from toil.batchSystems.lsfHelper import (check_lsf_json_output_supported,
                                          parse_memory_limit,
                                          parse_memory_resource,
-                                         per_core_reservation)
+                                         per_core_reservation,
+                                         parse_mem_and_cmd_from_output)
 from toil.lib.misc import call_command
 
 logger = logging.getLogger(__name__)
@@ -193,40 +194,32 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
         def fallbackGetJobExitCode(self, job):
             args = ["bjobs", "-l", str(job)]
-            logger.debug("Checking job exit code for job via bjobs (fallback): "
-                         "{}".format(job))
+            logger.debug(f"Checking job exit code for job via bjobs (fallback): {job}")
             stdout = call_command(args)
             output = stdout.replace("\n                     ", "")
             process_output = output.split('\n')
             started = 0
             for line in process_output:
                 if "Done successfully" in line or "Status <DONE>" in line:
-                    logger.debug("bjobs detected job completed for job: "
-                                 "{}".format(job))
+                    logger.debug(f"bjobs detected job completed for job: {job}")
                     return 0
                 elif "New job is waiting for scheduling" in line:
-                    logger.debug("bjobs detected job pending scheduling for "
-                                 "job: {}".format(job))
+                    logger.debug(f"bjobs detected job pending scheduling for job: {job}")
                     return None
                 elif "PENDING REASONS" in line or "Status <PEND>" in line:
-                    logger.debug("bjobs detected job pending for job: "
-                                 "{}".format(job))
+                    logger.debug(f"bjobs detected job pending for job: {job}")
                     return None
                 elif "Exited with exit code" in line:
-                    exit = int(line[line.find("Exited with exit code ")+22:]
-                               .split('.')[0])
-                    logger.error("bjobs detected job exit code "
-                                 "{} for job {}".format(exit, job))
+                    exit = int(line[line.find("Exited with exit code ")+22:].split('.')[0])
+                    logger.error(f"bjobs detected job exit code {exit} for job {job}")
                     return exit
                 elif "Completed <exit>" in line:
-                    logger.error("bjobs detected job failed for job: "
-                                 "{}".format(job))
+                    logger.error(f"bjobs detected job failed for job: {job}")
                     return 1
                 elif line.find("Started on ") > -1 or "Status <RUN>" in line:
                     started = 1
             if started == 1:
-                logger.debug("bjobs detected job started but not completed: "
-                             "{}".format(job))
+                logger.debug(f"bjobs detected job started but not completed: {job}")
                 return None
 
             return self.getJobExitCodeBACCT(job)
@@ -243,23 +236,19 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
               mem: number of bytes of memory needed
               jobID: ID number of the job
             """
+            bsubMem = []
             if mem:
-                if per_core_reservation():
-                    mem = float(mem)/1024**3/math.ceil(cpu)
-                    mem_resource = parse_memory_resource(mem)
-                    mem_limit = parse_memory_limit(mem)
-                else:
-                    mem = float(mem) / 1024**3
-                    mem_resource = parse_memory_resource(mem)
-                    mem_limit = parse_memory_limit(mem)
-
-                bsubMem = ['-R', 'select[mem > {m}] '
-                           'rusage[mem={m}]'.format(m=mem_resource),
-                           '-M', str(mem_limit)]
-            else:
-                bsubMem = []
+                mem = float(mem) / 1024 ** 3
+                if per_core_reservation() and cpu:
+                    mem = mem / math.ceil(cpu)
+                mem_resource = parse_memory_resource(mem)
+                mem_limit = parse_memory_limit(mem)
+                bsubMem = ['-R',
+                           f'select[mem>{mem_resource}] '
+                           f'rusage[mem={mem_resource}]',
+                           '-M', mem_limit]
             bsubCpu = [] if cpu is None else ['-n', str(math.ceil(cpu))]
-            bsubline = ["bsub", "-cwd", ".", "-J", "toil_job_{}".format(jobID)]
+            bsubline = ["bsub", "-cwd", ".", "-J", f"toil_job_{jobID}"]
             bsubline.extend(bsubMem)
             bsubline.extend(bsubCpu)
             stdoutfile = self.boss.formatStdOutErrPath(jobID, 'lsf', '%J', 'std_output')
@@ -298,29 +287,22 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             """
             Parse the maximum memory from job.
 
-            params:
-            jobID: ID number of the job
+            :param jobID: ID number of the job
             """
-            memargs = ["bjobs", "-l", str(jobID)]
             try:
-                bjobs = subprocess.check_output(memargs, universal_newlines=True)
-                memregex = r"MAX MEM: (.*?);"
-                meminfo = re.search(memregex, bjobs)
-                s = " ".join(bjobs.split())
-                command = re.search(r"Command <(.*?)>", s)
-                if meminfo:
-                    if not command:
-                        logger.info("Cannot Parse Max Memory Due to Missing Command String: %s", bjobs)
-                    else:
-                        logger.info("[job ID %s, Command %s] the maximum memory used was: %s",
-                                    str(jobID), command.group(1), meminfo.group(1))
+                output = subprocess.check_output(["bjobs", "-l", str(jobID)], universal_newlines=True)
+                max_mem, command = parse_mem_and_cmd_from_output(output=output)
+                if not max_mem:
+                    logger.warning(f"[job ID {jobID}] Unable to Collect Maximum Memory Usage: {output}")
+                    return
+
+                if not command:
+                    logger.warning(f"[job ID {jobID}] Cannot Parse Max Memory Due to Missing Command String: {output}")
                 else:
-                    logger.debug("[job ID %s] Unable to collect maximum memory usage: %s",
-                                 str(jobID), bjobs)
-                return meminfo
-            except subprocess.CalledProcessError as err:
-                logger.debug("[job ID %s] Unable to collect maximum memory usage: %s",
-                             str(jobID), str(err))
+                    logger.info(f"[job ID {jobID}, Command {command.group(1)}] Max Memory Used: {max_mem.group(1)}")
+                return max_mem
+            except subprocess.CalledProcessError as e:
+                logger.warning(f"[job ID {jobID}] Unable to Collect Maximum Memory Usage: {e}")
 
     def getWaitDuration(self):
         """We give LSF a second to catch its breath (in seconds)"""

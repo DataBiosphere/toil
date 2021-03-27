@@ -33,7 +33,7 @@ class UserDefinedJobArgTypeTest(ToilTest):
         options.logLevel = "INFO"
         options.foo = Foo()
         self.options = options
-    
+
     @travis_test
     def testJobFunction(self):
         """Test with first job being a function"""
@@ -43,12 +43,12 @@ class UserDefinedJobArgTypeTest(ToilTest):
     def testJobClass(self):
         """Test with first job being an instance of a class"""
         Job.Runner.startToil(JobClass(0, Foo()), self.options)
-    
+
     @travis_test
     def testJobFunctionFromMain(self):
         """Test with first job being a function defined in __main__"""
         self._testFromMain()
-    
+
     @travis_test
     def testJobClassFromMain(self):
         """Test with first job being an instance of a class defined in __main__"""

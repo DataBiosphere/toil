@@ -15,6 +15,7 @@ import errno
 import hashlib
 import logging
 import os
+import stat
 import re
 import shutil
 import sqlite3
@@ -23,14 +24,17 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
+from typing import Any, Callable, Generator, Optional
 
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.fileStores import FileID, make_public_dir
 from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.humanize import bytes2human
-from toil.lib.misc import atomic_copy, atomic_copyobj, robust_rmtree
+from toil.lib.io import atomic_copy, atomic_copyobj, robust_rmtree
 from toil.lib.retry import ErrorCondition, retry
 from toil.lib.threading import get_process_name, process_name_exists
+from toil.job import Job, JobDescription
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +172,7 @@ class CachingFileStore(AbstractFileStore):
 
     """
 
-    def __init__(self, jobStore, jobDesc, localTempDir, waitForPreviousCommit):
+    def __init__(self, jobStore: AbstractJobStore, jobDesc: JobDescription, localTempDir: str, waitForPreviousCommit: Callable[[],None]) -> None:
         super(CachingFileStore, self).__init__(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
 
         # For testing, we have the ability to force caching to be non-free, by never linking from the file store
@@ -195,12 +199,12 @@ class CachingFileStore(AbstractFileStore):
 
         # Since each worker has it's own unique CachingFileStore instance, and only one Job can run
         # at a time on a worker, we can track some stuff about the running job in ourselves.
-        self.jobName = str(self.jobDesc)
+        self.jobName: str = str(self.jobDesc)
         self.jobID = self.jobDesc.jobStoreID
         logger.debug('Starting job (%s) with ID (%s).', self.jobName, self.jobID)
 
         # When the job actually starts, we will fill this in with the job's disk requirement.
-        self.jobDiskBytes = None
+        self.jobDiskBytes: Optional[float] = None
 
         # We need to track what attempt of the workflow we are, to prevent crosstalk between attempts' caches.
         self.workflowAttemptNumber = self.jobStore.config.workflowAttemptNumber
@@ -243,7 +247,7 @@ class CachingFileStore(AbstractFileStore):
         # time.
         self.commitThread = None
 
-    
+
     @staticmethod
     @retry(infinite_retries=True,
            errors=[
@@ -966,7 +970,7 @@ class CachingFileStore(AbstractFileStore):
     # Normal AbstractFileStore API
 
     @contextmanager
-    def open(self, job):
+    def open(self, job: Job) -> Generator[None, None, None]:
         """
         This context manager decorated method allows cache-specific operations to be conducted
         before and after the execution of a job in worker.py
@@ -995,22 +999,18 @@ class CachingFileStore(AbstractFileStore):
             # See how much disk space is used at the end of the job.
             # Not a real peak disk usage, but close enough to be useful for warning the user.
             # TODO: Push this logic into the abstract file store
-            diskUsed = getDirSizeRecursively(self.localTempDir)
-            logString = ("Job {jobName} used {percent:.2f}% ({humanDisk}B [{disk}B] used, "
-                         "{humanRequestedDisk}B [{requestedDisk}B] requested) at the end of "
-                         "its run.".format(jobName=self.jobName,
-                                           percent=(float(diskUsed) / self.jobDiskBytes * 100 if
-                                                    self.jobDiskBytes > 0 else 0.0),
-                                           humanDisk=bytes2human(diskUsed),
-                                           disk=diskUsed,
-                                           humanRequestedDisk=bytes2human(self.jobDiskBytes),
-                                           requestedDisk=self.jobDiskBytes))
-            self.logToMaster(logString, level=logging.DEBUG)
-            if diskUsed > self.jobDiskBytes:
-                self.logToMaster("Job used more disk than requested. Please reconsider modifying "
-                                 "the user script to avoid the chance  of failure due to "
-                                 "incorrectly requested resources. " + logString,
+            disk: int = getDirSizeRecursively(self.localTempDir)
+            percent: float = 0.0
+            if self.jobDiskBytes and self.jobDiskBytes > 0:
+                percent = float(disk) / self.jobDiskBytes * 100
+            disk_usage: str = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(disk)}B [{disk}B] used, "
+                          f"{bytes2human(self.jobDiskBytes)}B [{self.jobDiskBytes}B] requested).")
+            if disk > self.jobDiskBytes:
+                self.logToMaster("Job used more disk than requested. For CWL, consider increasing the outdirMin "
+                                 f"requirement, otherwise, consider increasing the disk requirement. {disk_usage}",
                                  level=logging.WARNING)
+            else:
+                self.logToMaster(disk_usage, level=logging.DEBUG)
 
             # Go back up to the per-worker local temp directory.
             os.chdir(startingDir)
@@ -1020,8 +1020,10 @@ class CachingFileStore(AbstractFileStore):
             # its temp dir and database entry.
             self._deallocateSpaceForJob()
 
-    def writeGlobalFile(self, localFileName, cleanup=False):
-
+    def writeGlobalFile(self, localFileName, cleanup=False, executable=False):
+        """
+        Creates a file in the jobstore and returns a FileID reference.
+        """
         # Work out the file itself
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
 
@@ -1035,7 +1037,6 @@ class CachingFileStore(AbstractFileStore):
         # Make sure to pass along the file basename.
         # TODO: this empty file could leak if we die now...
         fileID = self.jobStore.getEmptyFileStoreID(creatorID, cleanup, os.path.basename(localFileName))
-
         # Work out who we are
         me = get_process_name(self.workDir)
 
@@ -1120,7 +1121,10 @@ class CachingFileStore(AbstractFileStore):
         else:
             # We do not want to use the cache
             finalPath = self._readGlobalFileWithoutCache(fileStoreID, localFilePath, mutable, symlink, readerID)
-            
+
+        if getattr(fileStoreID, 'executable', False):
+            os.chmod(finalPath, os.stat(finalPath).st_mode | stat.S_IXUSR)
+
         # Record access in case the job crashes and we have to log it
         self.logAccess(fileStoreID, finalPath)
         return finalPath
@@ -1169,7 +1173,7 @@ class CachingFileStore(AbstractFileStore):
             if self.forceDownloadDelay is not None:
                 # Wait around to simulate a big file for testing
                 time.sleep(self.forceDownloadDelay)
-            
+
             atomic_copy(cachedPath, localFilePath)
 
             # Change the reference to mutable
@@ -1330,11 +1334,11 @@ class CachingFileStore(AbstractFileStore):
                         time.sleep(self.contentionBackoff)
 
                     # OK, now we have space to make a copy.
-                    
+
                     if self.forceDownloadDelay is not None:
                         # Wait around to simulate a big file for testing
                         time.sleep(self.forceDownloadDelay)
-                    
+
                     # Make the copy
                     atomic_copy(cachedPath, localFilePath)
 
@@ -1596,21 +1600,21 @@ class CachingFileStore(AbstractFileStore):
                     # Wait for other people's downloads to progress.
                     time.sleep(self.contentionBackoff)
 
-    def readGlobalFileStream(self, fileStoreID):
+    def readGlobalFileStream(self, fileStoreID, encoding=None, errors=None):
         if str(fileStoreID) in self.filesToDelete:
             # File has already been deleted
             raise FileNotFoundError('Attempted to read deleted file: {}'.format(fileStoreID))
-        
+
         self.logAccess(fileStoreID)
-        
+
         # TODO: can we fulfil this from the cache if the file is in the cache?
         # I think we can because if a job is keeping the file data on disk due to having it open, it must be paying for it itself.
-        return self.jobStore.readFileStream(fileStoreID)
+        return self.jobStore.readFileStream(fileStoreID, encoding=encoding, errors=errors)
 
     def deleteLocalFile(self, fileStoreID):
         # What job are we operating as?
         jobID = self.jobID
-        
+
         # What paths did we delete
         deleted = []
         # What's the first path, if any, that was missing? If we encounter a
@@ -1788,23 +1792,23 @@ class CachingFileStore(AbstractFileStore):
 
         if os.path.isdir(dir_):
             # There is a directory to clean up
-       
-       
+
+
             # We need the database for the most recent workflow attempt so we
             # can clean up job temp directories.
-            
+
             # We don't have access to a class instance, nor do we have access
             # to the workflow attempt number that we would need in order to
             # find the right database by just going to it. We can't have a link
             # to the current database because opening SQLite databases under
             # multiple names breaks SQLite's atomicity guarantees (because you
             # can't find the journal).
-            
+
             # So we just go and find the cache-n.db with the largest n value,
             # and use that.
             dbFilename = None
             dbAttempt = float('-inf')
-            
+
             for dbCandidate in os.listdir(dir_):
                 # For each thing in the directory
                 match = re.match('cache-([0-9]+).db', dbCandidate)
@@ -1813,14 +1817,14 @@ class CachingFileStore(AbstractFileStore):
                     # number than any other one we have seen, use it.
                     dbFilename = dbCandidate
                     dbAttempt = int(match.group(1))
-            
+
             if dbFilename is not None:
                 # We found a caching database
-                
+
                 logger.debug('Connecting to latest caching database %s for cleanup', dbFilename)
-            
+
                 dbPath = os.path.join(dir_, dbFilename)
-                
+
                 if os.path.exists(dbPath):
                     try:
                         # The database exists, see if we can open it
@@ -1842,7 +1846,7 @@ class CachingFileStore(AbstractFileStore):
                         con.close()
             else:
                 logger.debug('No caching database found in %s', dir_)
-            
+
             # Whether or not we found a database, we need to clean up the cache
             # directory. Delete the state DB if any and everything cached.
             robust_rmtree(dir_)

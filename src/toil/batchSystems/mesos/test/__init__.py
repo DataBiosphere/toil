@@ -35,14 +35,14 @@ class MesosTestSupport(object):
 
         # Bad Things will happen if the master is not yet ready when Toil tries to use it.
         self.wait_for_master()
-        
+
         log.info('Mesos is ready! Running test.')
 
     def _stopProcess(self, process, timeout=10):
         """
         Gracefully stop a process on a timeout, given the Popen object for the process.
         """
-        
+
         process.terminate()
         waited = 0
         while waited < timeout and process.poll() is None:
@@ -80,7 +80,7 @@ class MesosTestSupport(object):
             if isinstance(names, str):
                 # Handle a single string
                 names = [names]
-        
+
             for name in names:
                 try:
                     return which(name)
@@ -92,13 +92,13 @@ class MesosTestSupport(object):
                         return which(name, path='/usr/local/sbin')
                     except StopIteration:
                         pass
-            
+
             # If we get here, nothing we can use is present. We need to complain.
             if len(names) == 1:
                 sought = "binary '%s'" % names[0]
             else:
                 sought = 'any binary in %s' % str(names)
-            
+
             raise RuntimeError("Cannot find %s. Make sure Mesos is installed "
                                 "and it's 'bin' directory is present on the PATH." % sought)
 
@@ -117,7 +117,7 @@ class MesosTestSupport(object):
             # We also make sure to point it explicitly at the right temp work directory, and
             # to disable systemd support because we have to be root to make systemd make us
             # things and we probably aren't when testing.
-            return [self.findMesosBinary(['mesos-agent', 'mesos-slave']),
+            return [self.findMesosBinary(['mesos-agent']),
                     '--ip=127.0.0.1',
                     '--master=127.0.0.1:5050',
                     '--attributes=preemptable:False',

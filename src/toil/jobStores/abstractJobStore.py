@@ -22,20 +22,25 @@ from datetime import timedelta
 from http.client import BadStatusLine
 from urllib.request import urlopen
 from uuid import uuid4
-
+from typing import Set, Union
 from requests.exceptions import HTTPError
 
 from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
 from toil.job import (CheckpointJobDescription,
+                      TemporaryID,
                       JobException,
                       ServiceJobDescription)
 from toil.lib.memoize import memoize
-from toil.lib.misc import WriteWatchingStream
+from toil.lib.io import WriteWatchingStream
 from toil.lib.retry import ErrorCondition, retry
 
 logger = logging.getLogger(__name__)
 
+try:
+    from botocore.exceptions import ProxyConnectionError
+except ImportError:
+    ProxyConnectionError = None
 
 class InvalidImportExportUrlException(Exception):
     def __init__(self, url):
@@ -104,14 +109,14 @@ class JobStoreExistsException(Exception):
 class AbstractJobStore(ABC):
     """
     Represents the physical storage for the jobs and files in a Toil workflow.
-    
+
     JobStores are responsible for storing :class:`toil.job.JobDescription`
     (which relate jobs to each other) and files.
-    
+
     Actual :class:`toil.job.Job` objects are stored in files, referenced by
     JobDescriptions. All the non-file CRUD methods the JobStore provides deal
     in JobDescriptions and not full, executable Jobs.
-    
+
     To actually get ahold of a :class:`toil.job.Job`, use
     :meth:`toil.job.Job.loadJob` with a JobStore and the relevant JobDescription.
     """
@@ -242,7 +247,7 @@ class AbstractJobStore(ABC):
             from importlib import import_module
             try:
                 module = import_module(moduleName)
-            except ImportError:
+            except (ImportError, ProxyConnectionError):
                 logger.debug("Unable to import '%s' as is expected if the corresponding extra was "
                              "omitted at installation time.", moduleName)
             else:
@@ -264,11 +269,12 @@ class AbstractJobStore(ABC):
         raise RuntimeError("No job store implementation supports %sporting for URL '%s'" %
                            ('ex' if export else 'im', url.geturl()))
 
-    def importFile(self, srcUrl, sharedFileName=None, hardlink=False):
+    def importFile(self, srcUrl, sharedFileName=None, hardlink=False, symlink=False):
         """
         Imports the file at the given URL into job store. The ID of the newly imported file is
         returned. If the name of a shared file name is provided, the file will be imported as
-        such and None is returned.
+        such and None is returned. If an executable file on the local filesystem is uploaded, its
+        executability will be preserved when it is downloaded.
 
         Currently supported schemes are:
 
@@ -298,9 +304,9 @@ class AbstractJobStore(ABC):
         # subclasses of AbstractJobStore.
         srcUrl = urlparse.urlparse(srcUrl)
         otherCls = self._findJobStoreForUrl(srcUrl)
-        return self._importFile(otherCls, srcUrl, sharedFileName=sharedFileName, hardlink=hardlink)
+        return self._importFile(otherCls, srcUrl, sharedFileName=sharedFileName, hardlink=hardlink, symlink=symlink)
 
-    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False):
+    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False, symlink=False):
         """
         Import the file at the given URL using the given job store class to retrieve that file.
         See also :meth:`.importFile`. This method applies a generic approach to importing: it
@@ -319,8 +325,8 @@ class AbstractJobStore(ABC):
         """
         if sharedFileName is None:
             with self.writeFileStream() as (writable, jobStoreFileID):
-                size = otherCls._readFromUrl(url, writable)
-                return FileID(jobStoreFileID, size)
+                size, executable = otherCls._readFromUrl(url, writable)
+                return FileID(jobStoreFileID, size, executable)
         else:
             self._requireValidSharedFileName(sharedFileName)
             with self.writeSharedFileStream(sharedFileName) as writable:
@@ -329,7 +335,9 @@ class AbstractJobStore(ABC):
 
     def exportFile(self, jobStoreFileID, dstUrl):
         """
-        Exports file to destination pointed at by the destination URL.
+        Exports file to destination pointed at by the destination URL. The exported file will be
+        executable if and only if it was originally uploaded from an executable file on the
+        local filesystem.
 
         Refer to :meth:`.AbstractJobStore.importFile` documentation for currently supported URL schemes.
 
@@ -373,8 +381,11 @@ class AbstractJobStore(ABC):
 
         :param urlparse.ParseResult url: The parsed URL of the file to export to.
         """
+        executable = False
         with self.readFileStream(jobStoreFileID) as readable:
-            otherCls._writeToUrl(readable, url)
+            if getattr(jobStoreFileID, 'executable', False):
+                executable = jobStoreFileID.executable
+            otherCls._writeToUrl(readable, url, executable)
 
     @classmethod
     @abstractmethod
@@ -401,7 +412,8 @@ class AbstractJobStore(ABC):
 
         :param writable: a writable stream
 
-        :return int: returns the size of the file in bytes
+        :return: The size of the file in bytes and whether the executable permission bit is set
+        :rtype: Tuple[int, bool]
         """
         raise NotImplementedError()
 
@@ -475,8 +487,7 @@ class AbstractJobStore(ABC):
         if jobCache is None:
             logger.warning("Cleaning jobStore recursively. This may be slow.")
 
-        # Functions to get and check the existence of jobs, using the jobCache
-        # if present
+        # Functions to get and check the existence of jobs, using the jobCache if present
         def getJobDescription(jobId):
             if jobCache is not None:
                 try:
@@ -495,13 +506,13 @@ class AbstractJobStore(ABC):
                     return self.exists(jobId)
             else:
                 return self.exists(jobId)
-                
+
         def deleteJob(jobId):
             if jobCache is not None:
                 if jobId in jobCache:
                     del jobCache[jobId]
             self.delete(jobId)
-            
+
         def updateJobDescription(jobDescription):
             jobCache[jobDescription.jobStoreID] = jobDescription
             self.update(jobDescription)
@@ -512,47 +523,65 @@ class AbstractJobStore(ABC):
             else:
                 return self.jobs()
 
-        # Iterate from the root JobDescription and collate all jobs that are reachable from it
-        # All other jobs returned by self.jobs() are orphaned and can be removed
-        reachableFromRoot = set()
+        def get_jobs_reachable_from_root() -> Set[Union[TemporaryID, str]]:
+            """
+            Traverse the job graph from the root job and return a flattened set of all active jobstore IDs.
 
-        def getConnectedJobs(jobDescription):
-            if jobDescription.jobStoreID in reachableFromRoot:
-                return
-            reachableFromRoot.add(jobDescription.jobStoreID)
-            # Traverse jobs in stack
-            for jobs in jobDescription.stack:
-                for successorJobStoreID in jobs:
-                    if (successorJobStoreID not in reachableFromRoot
-                        and haveJob(successorJobStoreID)):
-                        getConnectedJobs(getJobDescription(successorJobStoreID))
-            # Traverse service jobs
-            for serviceJobStoreID in jobDescription.services:
-                if haveJob(serviceJobStoreID):
-                    assert serviceJobStoreID not in reachableFromRoot
-                    reachableFromRoot.add(serviceJobStoreID)
+            Note: Jobs returned by self.jobs(), but not this function, are orphaned, and can be removed as dead jobs.
+            """
+            # Iterate from the root JobDescription and collate all jobs that are reachable from it.
+            root_job_description = self.loadRootJob()
+            reachable_from_root = set()
 
-        logger.debug("Checking job graph connectivity...")
-        getConnectedJobs(self.loadRootJob())
-        logger.debug("%d jobs reachable from root." % len(reachableFromRoot))
+            # Add first root job outside of the loop below.
+            reachable_from_root.add(root_job_description.jobStoreID)
+            # add all of root's linked service jobs as well
+            for service_jobstore_id in root_job_description.services:
+                if haveJob(service_jobstore_id):
+                    reachable_from_root.add(service_jobstore_id)
+
+            # Unprocessed means it might have successor jobs we need to add.
+            unprocessed_job_descriptions = [root_job_description]
+
+            while unprocessed_job_descriptions:
+                new_job_descriptions_to_process = []  # Reset.
+                for job_description in unprocessed_job_descriptions:
+                    for jobs in job_description.stack:
+                        for successor_jobstore_id in jobs:
+                            if successor_jobstore_id not in reachable_from_root and haveJob(successor_jobstore_id):
+                                successor_job_description = getJobDescription(successor_jobstore_id)
+
+                                # Add each successor job.
+                                reachable_from_root.add(successor_job_description.jobStoreID)
+                                # Add all of the successor's linked service jobs as well.
+                                for service_jobstore_id in successor_job_description.services:
+                                    if haveJob(service_jobstore_id):
+                                        reachable_from_root.add(service_jobstore_id)
+
+                                new_job_descriptions_to_process.append(successor_job_description)
+                unprocessed_job_descriptions = new_job_descriptions_to_process
+
+            logger.debug(f"{len(reachable_from_root)} jobs reachable from root.")
+            return reachable_from_root
+
+        reachable_from_root = get_jobs_reachable_from_root()
 
         # Cleanup jobs that are not reachable from the root, and therefore orphaned
-        jobsToDelete = [x for x in getJobDescriptions() if x.jobStoreID not in reachableFromRoot]
+        # TODO: Avoid reiterating reachable_from_root (which may be very large)
+        jobsToDelete = [x for x in getJobDescriptions() if x.jobStoreID not in reachable_from_root]
         for jobDescription in jobsToDelete:
             # clean up any associated files before deletion
             for fileID in jobDescription.filesToDelete:
                 # Delete any files that should already be deleted
-                logger.warning("Deleting file '%s'. It is marked for deletion but has not yet been "
-                            "removed.", fileID)
+                logger.warning(f"Deleting file '{fileID}'. It is marked for deletion but has not yet been removed.")
                 self.deleteFile(fileID)
             # Delete the job from us and the cache
             deleteJob(jobDescription.jobStoreID)
 
-        jobDescriptionsReachableFromRoot = {id: getJobDescription(id) for id in reachableFromRoot}
+        jobDescriptionsReachableFromRoot = {id: getJobDescription(id) for id in reachable_from_root}
 
         # Clean up any checkpoint jobs -- delete any successors it
-        # may have launched, and restore the job to a pristine
-        # state
+        # may have launched, and restore the job to a pristine state
         jobsDeletedByCheckpoints = set()
         for jobDescription in [desc for desc in jobDescriptionsReachableFromRoot.values() if isinstance(desc, CheckpointJobDescription)]:
             if jobDescription.jobStoreID in jobsDeletedByCheckpoints:
@@ -611,7 +640,7 @@ class AbstractJobStore(ABC):
 
                 # Load the jobDescription for the service and initialise the link
                 serviceJobDescription = getJobDescription(jobStoreID)
-                
+
                 # Make sure it really is a service
                 assert isinstance(serviceJobDescription, ServiceJobDescription)
 
@@ -650,7 +679,7 @@ class AbstractJobStore(ABC):
             jobDescription.filterServiceHosts(haveJob)
 
             for serviceID in jobDescription.services:
-                replaceFlagsIfNeeded(getJobDescription(serviceID)) 
+                replaceFlagsIfNeeded(getJobDescription(serviceID))
 
             if servicesSizeFn() != startServicesSize:
                 changed[0] = True
@@ -687,14 +716,14 @@ class AbstractJobStore(ABC):
     # The following methods deal with creating/loading/updating/writing/checking for the
     # existence of jobs
     ##########################################
-    
+
     @abstractmethod
     def assignID(self, jobDescription):
         """
         Get a new jobStoreID to be used by the described job, and assigns it to the JobDescription.
-        
+
         Files associated with the assigned ID will be accepted even if the JobDescription has never been created or updated.
-        
+
         :param toil.job.JobDescription jobDescription: The JobDescription to give an ID to
         """
         raise NotImplementedError()
@@ -713,12 +742,12 @@ class AbstractJobStore(ABC):
     def create(self, jobDescription):
         """
         Writes the given JobDescription to the job store. The job must have an ID assigned already.
-       
+
         :return: The JobDescription passed.
         :rtype: toil.job.JobDescription
         """
         raise NotImplementedError()
-        
+
     @abstractmethod
     def exists(self, jobStoreID):
         """
@@ -769,10 +798,10 @@ class AbstractJobStore(ABC):
         """
         Loads the description of the job referenced by the given ID, assigns it
         the job store's config, and returns it.
-        
+
         May declare the job to have failed (see
         :meth:`toil.job.JobDescription.setupJobAfterFailure`) if there is
-        evidence of a failed update attempt. 
+        evidence of a failed update attempt.
 
         :param str jobStoreID: the ID of the job to load
 
@@ -834,7 +863,7 @@ class AbstractJobStore(ABC):
         :param str localFilePath: the path to the local file that will be uploaded to the job store.
                The last path component (basename of the file) will remain
                associated with the file in the file store, if supported, so
-               that the file can be searched for by name or name glob. 
+               that the file can be searched for by name or name glob.
 
         :param str jobStoreID: the id of a job, or None. If specified, the may be associated
                with that job in a job-store-specific way. This may influence the returned ID.
@@ -858,7 +887,7 @@ class AbstractJobStore(ABC):
 
     @abstractmethod
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None):
+    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None, encoding=None, errors=None):
         """
         Similar to writeFile, but returns a context manager yielding a tuple of
         1) a file handle which can be written to and 2) the ID of the resulting
@@ -873,10 +902,16 @@ class AbstractJobStore(ABC):
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
-               
+
         :param str basename: If supported by the implementation, use the given
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
+
+        :param str encoding: the name of the encoding used to encode the file. Encodings are the same
+                as for encode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -903,7 +938,7 @@ class AbstractJobStore(ABC):
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
-               
+
         :param str basename: If supported by the implementation, use the given
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
@@ -926,7 +961,9 @@ class AbstractJobStore(ABC):
         appear in the local file system until the copy has completed.
 
         The file at the given local path may not be modified after this method returns!
-
+        
+        Note!  Implementations of readFile need to respect/provide the executable attribute on FileIDs.
+        
         :param str jobStoreFileID: ID of the file to be copied
 
         :param str localFilePath: the local path indicating where to place the contents of the
@@ -939,12 +976,18 @@ class AbstractJobStore(ABC):
 
     @abstractmethod
     @contextmanager
-    def readFileStream(self, jobStoreFileID):
+    def readFileStream(self, jobStoreFileID, encoding=None, errors=None):
         """
         Similar to readFile, but returns a context manager yielding a file handle which can be
         read from. The yielded file handle does not need to and should not be closed explicitly.
 
         :param str jobStoreFileID: ID of the file to get a readable file handle for
+
+        :param str encoding: the name of the encoding used to decode the file. Encodings are the same as
+                for decode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
         """
         raise NotImplementedError()
 
@@ -1003,13 +1046,19 @@ class AbstractJobStore(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def updateFileStream(self, jobStoreFileID):
+    def updateFileStream(self, jobStoreFileID, encoding=None, errors=None):
         """
         Replaces the existing version of a file in the job store. Similar to writeFile, but
         returns a context manager yielding a file handle which can be written to. The
         yielded file handle does not need to and should not be closed explicitly.
 
         :param str jobStoreFileID: the ID of the file in the job store to be updated
+
+        :param str encoding: the name of the encoding used to encode the file. Encodings are the same
+                as for encode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -1029,7 +1078,7 @@ class AbstractJobStore(ABC):
 
     @abstractmethod
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName, isProtected=None):
+    def writeSharedFileStream(self, sharedFileName, isProtected=None, encoding=None, errors=None):
         """
         Returns a context manager yielding a writable file handle to the global file referenced
         by the given name.  File will be created in an atomic manner.
@@ -1040,6 +1089,12 @@ class AbstractJobStore(ABC):
         :param bool isProtected: True if the file must be encrypted, None if it may be encrypted or
                False if it must be stored in the clear.
 
+        :param str encoding: the name of the encoding used to encode the file. Encodings are the same
+                as for encode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
+
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
         """
@@ -1047,13 +1102,19 @@ class AbstractJobStore(ABC):
 
     @abstractmethod
     @contextmanager
-    def readSharedFileStream(self, sharedFileName):
+    def readSharedFileStream(self, sharedFileName, encoding=None, errors=None):
         """
         Returns a context manager yielding a readable file handle to the global file referenced
         by the given name.
 
         :param str sharedFileName: A file name matching AbstractJobStore.fileNameRegex, unique within
                this job store
+
+        :param str encoding: the name of the encoding used to decode the file. Encodings are the same
+                as for decode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
         """
         raise NotImplementedError()
 
@@ -1152,4 +1213,4 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
 
             # Do the download
             shutil.copyfileobj(readable, counter)
-            return size[0]
+            return size[0], False

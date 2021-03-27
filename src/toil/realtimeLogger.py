@@ -29,19 +29,19 @@ logger = logging.getLogger(__name__)
 class LoggingDatagramHandler(SocketServer.BaseRequestHandler):
     """
     Receive logging messages from the jobs and display them on the leader.
-    
+
     Uses bare JSON message encoding.
     """
 
     def handle(self):
         """
         Handle a single message. SocketServer takes care of splitting out the messages.
-        
+
         Messages are JSON-encoded logging module records.
         """
         # Unpack the data from the request
         data, socket = self.request
-        
+
         try:
             # Parse it as JSON
             message_attrs = json.loads(data.decode('utf-8'))
@@ -70,7 +70,7 @@ class LoggingDatagramHandler(SocketServer.BaseRequestHandler):
 class JSONDatagramHandler(logging.handlers.DatagramHandler):
     """
     Send logging records over UDP serialized as JSON.
-    
+
     They have to fit in a single UDP datagram, so don't try to log more than 64kb at once.
     """
     def makePickle(self, record):

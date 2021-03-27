@@ -66,6 +66,7 @@ If using Toil for your research, please cite
    :maxdepth: 2
 
    contributing/contributing
+   contributing/checklists
 
 .. toctree::
    :caption: Appendices

@@ -23,9 +23,9 @@ def run_setup():
     Calls setup(). This function exists so the setup() invocation preceded more internal
     functionality. The `version` module is imported dynamically by import_version() below.
     """
-    boto = 'boto==2.48.0'
-    boto3 = 'boto3>=1.7.50, <2.0'
-    futures = 'futures==3.1.1'
+    boto = 'boto>=2.48.0, <3'
+    boto3 = 'boto3>=1.7.50, <2'
+    futures = 'futures>=3.1.1, <4'
     pycryptodome = 'pycryptodome==3.5.1'
     pymesos = 'pymesos==0.3.15'
     psutil = 'psutil >= 3.0.1, <6'
@@ -36,15 +36,17 @@ def run_setup():
     cwltool = 'cwltool==3.0.20201203173111'
     galaxyToolUtil = 'galaxy-tool-util'
     htcondor = 'htcondor>=8.6.0'
-    kubernetes = 'kubernetes>=10, <11'
+    kubernetes = 'kubernetes>=12.0.1, <13'
     idna = 'idna>=2'
     pytz = 'pytz>=2012'
+    pyyaml = 'pyyaml>=5, <6'
     dill = 'dill>=0.3.2, <0.4'
     requests = 'requests>=2, <3'
     docker = 'docker==4.3.1'
     dateutil = 'python-dateutil'
     addict = 'addict>=2.2.1, <2.3'
     enlighten = 'enlighten>=1.5.2, <2'
+    wdlparse = 'wdlparse==0.1.0'
 
     core_reqs = [
         dill,
@@ -54,6 +56,7 @@ def run_setup():
         psutil,
         addict,
         pytz,
+        pyyaml,
         enlighten]
     aws_reqs = [
         boto,
@@ -73,11 +76,13 @@ def run_setup():
         htcondor]
     kubernetes_reqs = [
         kubernetes,
-        idna] # Kubernetes's urllib3 can mange to use idna without really depending on it.
+        idna]  # Kubernetes's urllib3 can mange to use idna without really depending on it.
     mesos_reqs = [
         pymesos,
         psutil]
-    wdl_reqs = []
+    wdl_reqs = [
+        wdlparse
+    ]
 
     # htcondor is not supported by apple
     # this is tricky to conditionally support in 'all' due
@@ -89,7 +94,8 @@ def run_setup():
         encryption_reqs + \
         google_reqs + \
         kubernetes_reqs + \
-        mesos_reqs
+        mesos_reqs + \
+        wdl_reqs
 
     setup(
         name='toil',

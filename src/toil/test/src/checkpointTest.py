@@ -19,7 +19,7 @@ from toil.test import ToilTest, slow, travis_test
 
 
 class CheckpointTest(ToilTest):
-    
+
     @travis_test
     def testCheckpointNotRetried(self):
         """A checkpoint job should not be retried if the workflow has a retryCount of 0."""

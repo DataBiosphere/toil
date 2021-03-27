@@ -310,14 +310,12 @@ def needs_google(test_item):
     """Use as a decorator before test classes or methods to run only if Google is usable."""
     test_item = _mark_test('google', test_item)
     try:
-        from boto import config
+        from google.cloud import storage
     except ImportError:
         return unittest.skip("Install Toil with the 'google' extra to include this test.")(test_item)
 
     if not os.getenv('TOIL_GOOGLE_PROJECTID'):
         return unittest.skip("Set TOIL_GOOGLE_PROJECTID to include this test.")(test_item)
-    elif not config.get('Credentials'):  # TODO: Deprecate this check?  Needed by only by the ancients.
-        return unittest.skip("Configure ~/.boto with Google Cloud credentials to include this test.")(test_item)
     return test_item
 
 
@@ -353,7 +351,7 @@ def needs_kubernetes(test_item):
 def needs_mesos(test_item):
     """Use as a decorator before test classes or methods to run only if Mesos is installed."""
     test_item = _mark_test('mesos', test_item)
-    if not (which('mesos-master') or which('mesos-slave')):
+    if not (which('mesos-master') or which('mesos-agent')):
         return unittest.skip("Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
     try:
         import psutil
@@ -465,7 +463,7 @@ def needs_cwl(test_item):
         return test_item
 
 
-def needs_appliance(test_item):
+def needs_local_appliance(test_item):
     """
     Use as a decorator before test classes or methods to only run them if
     the Toil appliance Docker image is downloaded.
@@ -478,6 +476,11 @@ def needs_appliance(test_item):
 
     try:
         image = applianceSelf()
+    except ApplianceImageNotFound:
+        return unittest.skip(f"Appliance image is not published. Use 'make test' target to automatically build appliance, or "
+                             f"just run 'make push_docker' prior to running this test.")(test_item)
+
+    try:
         stdout, stderr = subprocess.Popen(['docker', 'inspect', '--format="{{json .RepoTags}}"', image],
                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
         if image in stdout.decode("utf-8"):
@@ -485,7 +488,7 @@ def needs_appliance(test_item):
     except:
         pass
 
-    return unittest.skip(f"Cannot find appliance {image}. Use 'make test' target to automatically build appliance, or "
+    return unittest.skip(f"Cannot find appliance {image} locally. Use 'make test' target to automatically build appliance, or "
                          f"just run 'make push_docker' prior to running this test.")(test_item)
 
 
@@ -715,7 +718,7 @@ class ApplianceTestSupport(ToilTest):
                Beware that if KEY is a path to a directory, its entire content will be deleted
                when the cluster is torn down.
 
-        :param int numCores: The number of cores to be offered by the Mesos slave process running
+        :param int numCores: The number of cores to be offered by the Mesos agent process running
                in the worker container.
 
         :rtype: (ApplianceTestSupport.Appliance, ApplianceTestSupport.Appliance)
@@ -880,7 +883,7 @@ class ApplianceTestSupport(ToilTest):
             super(ApplianceTestSupport.WorkerThread, self).__init__(outer, mounts)
 
         def _entryPoint(self):
-            return 'mesos-slave'
+            return 'mesos-agent'
 
         def _getRole(self):
             return 'worker'

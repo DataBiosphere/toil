@@ -24,7 +24,7 @@ import time
 import urllib.parse as urlparse
 import uuid
 from abc import ABCMeta, abstractmethod
-from io import StringIO
+from io import BytesIO
 from itertools import chain, islice
 from queue import Queue
 from threading import Thread
@@ -39,7 +39,6 @@ from toil.job import Job, JobDescription, TemporaryID
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobException)
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.lib.exceptions import panic
 from toil.lib.memoize import memoize
 from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
@@ -84,6 +83,10 @@ class AbstractJobStoreTest(object):
             super(AbstractJobStoreTest.Test, cls).setUpClass()
             logging.basicConfig(level=logging.DEBUG)
             logging.getLogger('boto').setLevel(logging.CRITICAL)
+            logging.getLogger('boto').setLevel(logging.WARNING)
+            logging.getLogger('boto3.resources').setLevel(logging.WARNING)
+            logging.getLogger('botocore.auth').setLevel(logging.WARNING)
+            logging.getLogger('botocore.hooks').setLevel(logging.WARNING)
 
         # The use of @memoize ensures that we only have one instance of per class even with the
         # generative import/export tests attempts to instantiate more. This in turn enables us to
@@ -221,7 +224,7 @@ class AbstractJobStoreTest(object):
             self.jobstore_initialized.create(childJob)
             job.addChild(childJob.jobStoreID)
             self.jobstore_initialized.update(job)
-            
+
             self.assertEqual(self.jobstore_initialized.load(list(job.allSuccessors())[0]).command, childJob.command)
 
         @travis_test
@@ -285,7 +288,7 @@ class AbstractJobStoreTest(object):
             # Reload parent job on jobstore, "refreshing" the job.
             job1 = jobstore1.load(job1.jobStoreID)
             self.assertEqual([sorted(x) for x in job2.stack], [sorted(x) for x in job1.stack])
-            
+
             # Jobs still shouldn't *actually* be equal, even if their contents are the same.
             self.assertNotEqual(job2, job1)
 
@@ -313,7 +316,7 @@ class AbstractJobStoreTest(object):
             child2 = JobDescription(command='job1',
                                     requirements=self.childJobReqs2,
                                     jobName='test3', unitName='onChild2')
-                                    
+
             # Add children to parent.
             jobstore.assignID(child1)
             jobstore.create(child1)
@@ -322,11 +325,11 @@ class AbstractJobStoreTest(object):
             job.addChild(child1.jobStoreID)
             job.addChild(child2.jobStoreID)
             jobstore.update(job)
-            
+
             # Get it ready to run children
             job.command = None
             jobstore.update(job)
-            
+
             # Go get the children
             childJobs = [jobstore.load(childID) for childID in job.nextSuccessors()]
 
@@ -378,6 +381,44 @@ class AbstractJobStoreTest(object):
                 f.write(bar)
             self.assertUrl(jobstore1.getSharedPublicUrl('nonEncrypted'))
             self.assertRaises(NoSuchFileException, jobstore1.getSharedPublicUrl, 'missing')
+
+        def testReadWriteSharedFilesTextMode(self):
+            """Checks if text mode is compatible for shared file streams."""
+            jobstore1 = self.jobstore_initialized
+            jobstore2 = self.jobstore_resumed_noconfig
+
+            bar = 'bar'
+
+            with jobstore1.writeSharedFileStream('foo', encoding='utf-8') as f:
+                f.write(bar)
+
+            with jobstore2.readSharedFileStream('foo', encoding='utf-8') as f:
+                self.assertEqual(bar, f.read())
+
+            with jobstore1.readSharedFileStream('foo', encoding='utf-8') as f:
+                self.assertEqual(bar, f.read())
+
+        def testReadWriteFileStreamTextMode(self):
+            """Checks if text mode is compatible for file streams."""
+            jobstore = self.jobstore_initialized
+            job = self.arbitraryJob()
+            jobstore.assignID(job)
+            jobstore.create(job)
+
+            foo = 'foo'
+            bar = 'bar'
+
+            with jobstore.writeFileStream(job.jobStoreID, encoding='utf-8') as (f, fileID):
+                f.write(foo)
+
+            with jobstore.readFileStream(fileID, encoding='utf-8') as f:
+                self.assertEqual(foo, f.read())
+
+            with jobstore.updateFileStream(fileID, encoding='utf-8') as f:
+                f.write(bar)
+
+            with jobstore.readFileStream(fileID, encoding='utf-8') as f:
+                self.assertEqual(bar, f.read())
 
         @travis_test
         def testPerJobFiles(self):
@@ -462,7 +503,7 @@ class AbstractJobStoreTest(object):
             jobOnJobStore1 = JobDescription(command='job1',
                                             requirements=self.parentJobReqs,
                                             jobName='test1', unitName='onJobStore1')
-            
+
             jobstore1.assignID(jobOnJobStore1)
             jobstore1.create(jobOnJobStore1)
 
@@ -683,7 +724,7 @@ class AbstractJobStoreTest(object):
             def testImportSharedFile(self, otherCls):
                 """
                 :param AbstractJobStoreTest.Test self: the current test case
-                
+
                 :param AbstractJobStoreTest.Test otherCls: the test case class for the job store
                        to import from or export to
                 """
@@ -964,7 +1005,7 @@ class AbstractJobStoreTest(object):
             """Test whether readFileStream will deadlock on a partial read."""
             job = self.arbitraryJob()
             self.jobstore_initialized.assignID(job)
-            self.jobstore_initialized.create(job) 
+            self.jobstore_initialized.create(job)
             with self.jobstore_initialized.writeFileStream(job.jobStoreID, cleanup=True) as (f, fileID):
                 # Write enough data to make sure the writer thread
                 # will get blocked on the write. Technically anything
@@ -1114,7 +1155,7 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
 
     @travis_test
     def testPreserveFileName(self):
-        "Check that the fileID ends with the given file name."
+        """Check that the fileID ends with the given file name."""
         fh, path = tempfile.mkstemp()
         try:
             os.close(fh)
@@ -1165,8 +1206,8 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
             return url
         with open('/dev/urandom', 'rb') as readable:
             contents = str(readable.read(size))
-        GoogleJobStore._writeToUrl(StringIO(contents), urlparse.urlparse(url))
-        return url, hashlib.md5(contents).hexdigest()
+        GoogleJobStore._writeToUrl(BytesIO(bytes(contents, 'utf-8')), urlparse.urlparse(url))
+        return url, hashlib.md5(contents.encode()).hexdigest()
 
     def _hashTestFile(self, url):
         from toil.jobStores.googleJobStore import GoogleJobStore
@@ -1209,13 +1250,13 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         failed to be created.  We simulate a failed jobstore bucket creation by using a bucket in a
         different region with the same name.
         """
-        from boto.exception import S3ResponseError
-        from boto.s3.connection import Location, S3Connection
+        from botocore.exceptions import ClientError
         from boto.sdb import connect_to_region
-
         from toil.jobStores.aws.jobStore import BucketLocationConflictException
         from toil.jobStores.aws.utils import retry_s3
-        externalAWSLocation = Location.USWest
+        from toil.jobStores.aws.jobStore import establish_boto3_session
+        externalAWSLocation = 'us-west-1'
+
         for testRegion in 'us-east-1', 'us-west-2':
             # We run this test twice, once with the default s3 server us-east-1 as the test region
             # and once with another server (us-west-2).  The external server is always us-west-1.
@@ -1223,11 +1264,14 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             # both the default, and a non-default server.
             testJobStoreUUID = str(uuid.uuid4())
             # Create the bucket at the external region
-            s3 = S3Connection()
+            bucketName = 'domain-test-' + testJobStoreUUID + '--files'
+            client = establish_boto3_session().client('s3', region_name=externalAWSLocation)
+
             for attempt in retry_s3(delays=(2, 5, 10, 30, 60), timeout=600):
                 with attempt:
-                    bucket = s3.create_bucket('domain-test-' + testJobStoreUUID + '--files',
-                                              location=externalAWSLocation)
+                    client.create_bucket(Bucket=bucketName,
+                                         CreateBucketConfiguration={'LocationConstraint': externalAWSLocation})
+
             options = Job.Runner.getDefaultOptions('aws:' + testRegion + ':domain-test-' +
                                                    testJobStoreUUID)
             options.logLevel = 'DEBUG'
@@ -1253,12 +1297,10 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                 try:
                     for attempt in retry_s3():
                         with attempt:
-                            s3.delete_bucket(bucket=bucket)
-                except S3ResponseError as e:
+                            client.delete_bucket(Bucket=bucketName)
+                except ClientError as e:
                     # The actual HTTP code of the error is in status.
-                    # See https://github.com/boto/boto/blob/91ba037e54ef521c379263b0ac769c66182527d7/boto/exception.py#L77-L80
-                    # See also: https://github.com/boto/boto/blob/91ba037e54ef521c379263b0ac769c66182527d7/boto/exception.py#L154-L156
-                    if e.status == 404:
+                    if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
                         # The bucket doesn't exist; maybe a failed delete actually succeeded.
                         pass
                     else:
@@ -1298,42 +1340,41 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         jobstore.delete(overlargeJob.jobStoreID)
 
     def _prepareTestFile(self, bucket, size=None):
+        from toil.jobStores.aws.utils import retry_s3
+
         fileName = 'testfile_%s' % uuid.uuid4()
         url = 's3://%s/%s' % (bucket.name, fileName)
         if size is None:
             return url
         with open('/dev/urandom', 'rb') as readable:
-            bucket.new_key(fileName).set_contents_from_string(str(readable.read(size)))
-        return url, hashlib.md5(bucket.get_key(fileName).get_contents_as_string()).hexdigest()
+            for attempt in retry_s3():
+                with attempt:
+                    bucket.put_object(Key=fileName, Body=str(readable.read(size)))
+        return url, hashlib.md5(bucket.Object(fileName).get().get('Body').read()).hexdigest()
 
     def _hashTestFile(self, url):
         from toil.jobStores.aws.jobStore import AWSJobStore
-        key = AWSJobStore._getKeyForUrl(urlparse.urlparse(url), existing=True)
-        try:
-            contents = key.get_contents_as_string()
-        finally:
-            key.bucket.connection.close()
+        key = AWSJobStore._getObjectForUrl(urlparse.urlparse(url), existing=True)
+        contents = key.get().get('Body').read()
         return hashlib.md5(contents).hexdigest()
 
     def _createExternalStore(self):
-        import boto.s3
-
+        """A S3.Bucket instance is returned"""
+        from toil.jobStores.aws.utils import retry_s3
         from toil.jobStores.aws.utils import region_to_bucket_location
-        s3 = boto.s3.connect_to_region(self.awsRegion())
-        try:
-            return s3.create_bucket(bucket_name='import-export-test-%s' % uuid.uuid4(),
-                                    location=region_to_bucket_location(self.awsRegion()))
-        except:
-            with panic(log=logger):
-                s3.close()
+        from toil.jobStores.aws.jobStore import establish_boto3_session
+        resource = establish_boto3_session().resource('s3', region_name=self.awsRegion())
+        bucket = resource.Bucket('import-export-test-%s' % uuid.uuid4())
+
+        for attempt in retry_s3():
+            with attempt:
+                bucket.create(CreateBucketConfiguration={'LocationConstraint': region_to_bucket_location(self.awsRegion())})
+                bucket.wait_until_exists()
+                return bucket
 
     def _cleanUpExternalStore(self, bucket):
-        try:
-            for key in bucket.list():
-                key.delete()
-            bucket.delete()
-        finally:
-            bucket.connection.close()
+        bucket.objects.all().delete()
+        bucket.delete()
 
     def _largeLogEntrySize(self):
         from toil.jobStores.aws.jobStore import AWSJobStore

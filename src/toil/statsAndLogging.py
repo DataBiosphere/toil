@@ -42,7 +42,7 @@ class StatsAndLogging:
     def start(self):
         """Start the stats and logging thread."""
         self._worker.start()
-        
+
     @classmethod
     def formatLogStream(cls, stream: Union[TextIO, BinaryIO], job_name: Optional[str] = None):
         """
@@ -61,11 +61,11 @@ class StatsAndLogging:
             if isinstance(line, bytes):
                 line = line.decode('utf-8', errors='replace')
             lines.append('\t' + line.rstrip('\n'))
-            
+
         lines.append('<=========')
-        
+
         return '\n'.join(lines)
-    
+
 
     @classmethod
     def logWithFormatting(cls, jobStoreID, jobLogs, method=logger.debug, message=None):
@@ -74,7 +74,7 @@ class StatsAndLogging:
 
         # Format and log the logs, identifying the job with its job store ID.
         method(cls.formatLogStream(jobLogs, jobStoreID))
-        
+
     @classmethod
     def writeLogFiles(cls, jobNames, jobLogList, config, failed=False):
         def createName(logPath, jobName, logExtension, failed=False):
@@ -173,7 +173,7 @@ class StatsAndLogging:
         # Finish the stats file
         text = json.dumps(dict(total_time=str(time.time() - startTime),
                                total_clock=str(get_total_cpu_time() - startClock)), ensure_ascii=True)
-        jobStore.writeStatsAndLogging(text)
+        jobStore.writeStatsAndLogging(bytes(text, 'utf-8'))
 
     def check(self):
         """

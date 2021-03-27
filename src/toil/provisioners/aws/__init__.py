@@ -14,11 +14,14 @@
 import datetime
 import logging
 import os
+import socket
 from collections import namedtuple
 from operator import attrgetter
 from statistics import mean, stdev
 from urllib.error import URLError
 from urllib.request import urlopen
+
+from toil.lib.ec2 import zone_to_region
 
 logger = logging.getLogger(__name__)
 
@@ -38,15 +41,8 @@ def running_on_ec2():
     try:
         urlopen('http://169.254.169.254/latest/dynamic/instance-identity/document', timeout=1)
         return True
-    except URLError:
+    except (URLError, socket.timeout):
         return False
-
-
-def zone_to_region(zone):
-    """Get a region (e.g. us-west-2) from a zone (e.g. us-west-1c)."""
-    from toil.lib.context import Context
-    return Context.availability_zone_re.match(zone).group(1)
-
 
 def get_current_aws_region():
     aws_zone = get_current_aws_zone()
@@ -54,17 +50,13 @@ def get_current_aws_region():
 
 
 def get_current_aws_zone(spotBid=None, nodeType=None, ctx=None):
-    try:
-        import boto
-        from boto.utils import get_instance_metadata
-    except ImportError:
-        return None
-
     zone = os.environ.get('TOIL_AWS_ZONE', None)
     if not zone and running_on_ec2():
         try:
+            import boto
+            from boto.utils import get_instance_metadata
             zone = get_instance_metadata()['placement']['availability-zone']
-        except KeyError:
+        except (KeyError, ImportError):
             pass
     if not zone and spotBid:
         # if spot bid is present, all the other parameters must be as well
@@ -73,9 +65,13 @@ def get_current_aws_zone(spotBid=None, nodeType=None, ctx=None):
         # choice based on the spot history
         return optimize_spot_bid(ctx=ctx, instance_type=nodeType, spot_bid=float(spotBid))
     if not zone:
-        zone = boto.config.get('Boto', 'ec2_region_name')
-        if zone is not None:
-            zone += 'a'  # derive an availability zone in the region
+        try:
+            import boto
+            zone = boto.config.get('Boto', 'ec2_region_name')
+            if zone is not None:
+                zone += 'a'  # derive an availability zone in the region
+        except ImportError:
+            pass
 
     return zone
 
