@@ -28,7 +28,10 @@ from io import BytesIO
 from itertools import chain, islice
 from queue import Queue
 from threading import Thread
-from typing import Optional
+from typing import (Optional,
+                    Any,
+                    List,
+                    Tuple)
 from urllib.request import Request, urlopen
 
 import pytest
@@ -1343,45 +1346,41 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
     def testMultiThreadImportFile(self) -> None:
         """ Tests that importFile is thread-safe."""
 
-        from toil.jobStores.abstractJobStore import AbstractJobStore
+        from concurrent.futures import Future
         from concurrent.futures.thread import ThreadPoolExecutor
         from toil.lib.threading import cpu_count
 
-        threads = (
-            2,
-            cpu_count(),
-        )
-        num_of_files = 5
-        size = 1 << 16 + 1
+        threads: Tuple[int, ...] = (2, cpu_count()) if cpu_count() > 2 else (2, )
+        num_of_files: int = 5
+        size: int = 1 << 16 + 1
 
         # The string in otherCls() is arbitrary as long as it returns a class that has access
         # to ._externalStore() and ._prepareTestFile()
-        other = AWSJobStoreTest('testSharedFiles')
-        store = other._externalStore()
+        other: AbstractJobStoreTest.Test = AWSJobStoreTest('testSharedFiles')
+        store: Any = other._externalStore()
 
         # prepare test files to import
         logger.debug(f'Preparing {num_of_files} test files for testMultiThreadImportFile().')
-        test_files = [other._prepareTestFile(store, size) for _ in range(num_of_files)]
+        test_files: List[Tuple[str, str]] = [other._prepareTestFile(store, size) for _ in range(num_of_files)]
 
         for thread_count in threads:
             with self.subTest(f'Testing threaded importFile with "{thread_count}" threads.'):
-                results = []
+                results: List[Optional[Tuple[Future[FileID], str]]] = []
 
                 with ThreadPoolExecutor(max_workers=thread_count) as executor:
                     for url, expected_md5 in test_files:
                         # run jobStore.importFile() asynchronously
-                        future = executor.submit(self.jobstore_initialized.importFile, url)
+                        future: Future[FileID] = executor.submit(self.jobstore_initialized.importFile, url)
                         results.append((future, expected_md5))
 
                 self.assertEqual(len(results), num_of_files)
 
                 for future, expected_md5 in results:
-                    file_id = future.result()
+                    file_id: Optional[FileID] = future.result()
                     self.assertIsInstance(file_id, FileID)
 
                     with self.jobstore_initialized.readFileStream(file_id) as f:
-                        file_md5 = hashlib.md5(f.read()).hexdigest()
-                    self.assertEqual(file_md5, expected_md5)
+                        self.assertEqual(hashlib.md5(f.read()).hexdigest(), expected_md5)
 
     def _prepareTestFile(self, bucket, size=None):
         from toil.jobStores.aws.utils import retry_s3
@@ -1396,7 +1395,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                     bucket.put_object(Key=file_name, Body=str(readable.read(size)))
         return url, hashlib.md5(bucket.Object(file_name).get().get('Body').read()).hexdigest()
 
-    def _hashTestFile(self, url):
+    def _hashTestFile(self, url: str) -> str:
         from toil.jobStores.aws.jobStore import AWSJobStore
         key = AWSJobStore._getObjectForUrl(urlparse.urlparse(url), existing=True)
         contents = key.get().get('Body').read()
