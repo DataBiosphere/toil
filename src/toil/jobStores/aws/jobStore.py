@@ -34,6 +34,7 @@ import boto.s3.connection
 import botocore.credentials
 import botocore.session
 from boto.exception import S3CreateError, S3ResponseError, SDBResponseError
+from typing import Optional
 
 import toil.lib.encryption as encryption
 from toil.fileStores import FileID
@@ -1476,14 +1477,12 @@ class AWSJobStore(AbstractJobStore):
             else:
                 return 0
 
-        def _getSSEKey(self):
+        def _getSSEKey(self) -> Optional[bytes]:
             sseKeyPath = self.outer.sseKeyPath
-            if sseKeyPath is None:
-                return None
-            else:
+            if sseKeyPath:
                 with open(sseKeyPath, 'rb') as f:
                     sseKey = f.read()
-                    return sseKey
+                return sseKey
 
         def _s3EncryptionHeaders(self):
             if self.encrypted:

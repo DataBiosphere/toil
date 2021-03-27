@@ -78,19 +78,3 @@ def delete_s3_bucket(bucket: str, region: Optional[str], quiet: bool = True):
             s3_client.delete_object(Bucket=bucket, Key=version['Key'], VersionId=version['VersionId'])
     s3_resource.Bucket(bucket).delete()
     printq(f'\n * Deleted s3 bucket successfully: {bucket}\n\n', quiet)
-
-
-def bucket_in_use():
-    pass
-
-
-def iam_instance_profile_in_use():
-    pass
-
-
-def sdb_domain_in_use():
-    pass
-
-
-def iam_role_in_use():
-    pass
