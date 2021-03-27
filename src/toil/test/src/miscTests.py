@@ -56,7 +56,7 @@ class MiscTests(ToilTest):
         This test generates a number of random directories and randomly sized
         files to test this using getDirSizeRecursively.
         '''
-        from toil.common import getDirSizeRecursively
+        from toil.lib.resources import get_dir_size_recursively
 
         # a list of the directories used in the test
         directories = [self.testDir]
@@ -84,7 +84,7 @@ class MiscTests(ToilTest):
                 os.link(linkSrc, fileName)
                 files[fileName] = 'Link to %s' % linkSrc
 
-        computedDirectorySize = getDirSizeRecursively(self.testDir)
+        computedDirectorySize = get_dir_size_recursively(self.testDir)
         totalExpectedSize = sum([x for x in list(files.values()) if isinstance(x, int)])
         self.assertGreaterEqual(computedDirectorySize, totalExpectedSize)
 

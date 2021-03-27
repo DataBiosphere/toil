@@ -1372,53 +1372,6 @@ def cacheDirName(workflowID):
     return f'cache-{workflowID}'
 
 
-def getDirSizeRecursively(dirPath: str) -> int:
-    """
-    This method will return the cumulative number of bytes occupied by the files
-    on disk in the directory and its subdirectories.
-
-    If the method is unable to access a file or directory (due to insufficient
-    permissions, or due to the file or directory having been removed while this
-    function was attempting to traverse it), the error will be handled
-    internally, and a (possibly 0) lower bound on the size of the directory
-    will be returned.
-
-    The environment variable 'BLOCKSIZE'='512' is set instead of the much cleaner
-    --block-size=1 because Apple can't handle it.
-
-    :param str dirPath: A valid path to a directory or file.
-    :return: Total size, in bytes, of the file or directory at dirPath.
-    """
-
-    # du is often faster than using os.lstat(), sometimes significantly so.
-
-    # The call: 'du -s /some/path' should give the number of 512-byte blocks
-    # allocated with the environment variable: BLOCKSIZE='512' set, and we
-    # multiply this by 512 to return the filesize in bytes.
-
-    try:
-        return int(subprocess.check_output(['du', '-s', dirPath],
-                                           env=dict(os.environ, BLOCKSIZE='512')).decode('utf-8').split()[0]) * 512
-    except subprocess.CalledProcessError:
-        # Something was inaccessible or went away
-        return 0
-
-
-def getFileSystemSize(dirPath: str) -> Tuple[int, int]:
-    """
-    Return the free space, and total size of the file system hosting `dirPath`.
-
-    :param str dirPath: A valid path to a directory.
-    :return: free space and total size of file system
-    :rtype: tuple
-    """
-    assert os.path.exists(dirPath)
-    diskStats = os.statvfs(dirPath)
-    freeSpace = diskStats.f_frsize * diskStats.f_bavail
-    diskSize = diskStats.f_frsize * diskStats.f_blocks
-    return freeSpace, diskSize
-
-
 def safeUnpickleFromStream(stream):
     string = stream.read()
     return pickle.loads(string)

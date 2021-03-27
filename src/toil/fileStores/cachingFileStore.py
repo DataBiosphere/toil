@@ -24,14 +24,15 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
-from typing import Any, Callable, Generator, Optional
+from typing import Callable, Generator, Optional
 
-from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
+from toil.common import cacheDirName
 from toil.fileStores import FileID, make_public_dir
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.humanize import bytes2human
 from toil.lib.io import atomic_copy, atomic_copyobj, robust_rmtree
+from toil.lib.resources import get_dir_size_recursively, get_file_system_size
 from toil.lib.retry import ErrorCondition, retry
 from toil.lib.threading import get_process_name, process_name_exists
 from toil.job import Job, JobDescription
@@ -232,7 +233,7 @@ class CachingFileStore(AbstractFileStore):
         self._ensureTables(self.con)
 
         # Initialize the space accounting properties
-        freeSpace, _ = getFileSystemSize(self.localCacheDir)
+        freeSpace, _ = get_file_system_size(self.localCacheDir)
         self._write([('INSERT OR IGNORE INTO properties VALUES (?, ?)', ('maxSpace', freeSpace))])
 
         # Space used by caching and by jobs is accounted with queries
@@ -999,7 +1000,7 @@ class CachingFileStore(AbstractFileStore):
             # See how much disk space is used at the end of the job.
             # Not a real peak disk usage, but close enough to be useful for warning the user.
             # TODO: Push this logic into the abstract file store
-            disk: int = getDirSizeRecursively(self.localTempDir)
+            disk: int = get_dir_size_recursively(self.localTempDir)
             percent: float = 0.0
             if self.jobDiskBytes and self.jobDiskBytes > 0:
                 percent = float(disk) / self.jobDiskBytes * 100

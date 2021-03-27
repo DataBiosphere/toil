@@ -14,7 +14,6 @@
 import errno
 import logging
 import os
-import stat
 import pickle
 import random
 import re
@@ -32,7 +31,9 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchFileException,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
+from toil.lib.humanize import bytes2human
 from toil.lib.io import AtomicFileCreate, atomic_copy, atomic_copyobj, robust_rmtree
+from toil.lib.resources import get_file_system_size
 
 logger = logging.getLogger(__name__)
 
@@ -105,11 +106,23 @@ class FileJobStore(AbstractJobStore):
         os.makedirs(self.sharedFilesDir, exist_ok=True)
         self.linkImports = config.linkImports
         self.moveExports = config.moveExports
+        available_disk_space, total_disk_size = get_file_system_size(self.jobStoreDir)
+        logger.info(
+            f'Starting Local JobStore with: '
+            f'{bytes2human(available_disk_space)}b Free Space Left / {bytes2human(total_disk_size)}b Total Disk '
+            f'( {self.jobStoreDir} )'
+        )
         super(FileJobStore, self).initialize(config)
 
     def resume(self):
         if not os.path.isdir(self.jobStoreDir):
             raise NoSuchJobStoreException(self.jobStoreDir)
+        available_disk_space, total_disk_size = get_file_system_size(self.jobStoreDir)
+        logger.info(
+            f'Resuming Local JobStore with: '
+            f'{bytes2human(available_disk_space)}b Free Space Left / {bytes2human(total_disk_size)}b Total Disk '
+            f'( {self.jobStoreDir} )'
+        )
         super(FileJobStore, self).resume()
 
     def destroy(self):
