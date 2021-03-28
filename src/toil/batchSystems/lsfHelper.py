@@ -151,6 +151,17 @@ def get_lsf_units(resource: bool = False) -> str:
         return DEFAULT_LSF_UNITS
 
 
+def parse_mem_and_cmd_from_output(output: str):
+    """Use regex to find "MAX MEM" and "Command" inside of an output."""
+    # Handle hard wrapping in the middle of words and arbitrary
+    # indents. May drop spaces at the starts of lines that aren't
+    # meant to be part of the indent.
+    cleaned_up_output = ' '.join(re.sub(r"\n\s*", "", output).split(','))
+    max_mem = re.search(r"MAX ?MEM: ?(.*?);", cleaned_up_output)
+    command = re.search(r"Command ?<(.*?)>", cleaned_up_output)
+    return max_mem, command
+
+
 def get_lsf_version():
     """
     Get current LSF version
