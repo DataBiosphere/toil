@@ -28,10 +28,7 @@ from io import BytesIO
 from itertools import chain, islice
 from queue import Queue
 from threading import Thread
-from typing import (Optional,
-                    Any,
-                    List,
-                    Tuple)
+from typing import Any, Tuple
 from urllib.request import Request, urlopen
 
 import pytest
@@ -1346,7 +1343,6 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
     def testMultiThreadImportFile(self) -> None:
         """ Tests that importFile is thread-safe."""
 
-        from concurrent.futures import Future
         from concurrent.futures.thread import ThreadPoolExecutor
         from toil.lib.threading import cpu_count
 
@@ -1361,22 +1357,22 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
         # prepare test files to import
         logger.debug(f'Preparing {num_of_files} test files for testMultiThreadImportFile().')
-        test_files: List[Tuple[str, str]] = [other._prepareTestFile(store, size) for _ in range(num_of_files)]
+        test_files = [other._prepareTestFile(store, size) for _ in range(num_of_files)]
 
         for thread_count in threads:
             with self.subTest(f'Testing threaded importFile with "{thread_count}" threads.'):
-                results: List[Optional[Tuple[Future[FileID], str]]] = []
+                results = []
 
                 with ThreadPoolExecutor(max_workers=thread_count) as executor:
                     for url, expected_md5 in test_files:
                         # run jobStore.importFile() asynchronously
-                        future: Future[FileID] = executor.submit(self.jobstore_initialized.importFile, url)
+                        future = executor.submit(self.jobstore_initialized.importFile, url)
                         results.append((future, expected_md5))
 
                 self.assertEqual(len(results), num_of_files)
 
                 for future, expected_md5 in results:
-                    file_id: Optional[FileID] = future.result()
+                    file_id = future.result()
                     self.assertIsInstance(file_id, FileID)
 
                     with self.jobstore_initialized.readFileStream(file_id) as f:
