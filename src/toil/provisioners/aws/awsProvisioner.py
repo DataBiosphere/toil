@@ -11,20 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import json
 import logging
 import os
 import socket
 import string
 import textwrap
 import time
-import urllib.request
 import uuid
 
-import boto3
 import boto.ec2
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 from functools import wraps
 from boto.ec2.blockdevicemapping import BlockDeviceMapping as Boto2BlockDeviceMapping, BlockDeviceType as Boto2BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
@@ -43,6 +40,7 @@ from toil.lib.ec2 import (a_short_time,
                           zone_to_region)
 from toil.lib.ec2nodes import InstanceType
 from toil.lib.generatedEC2Lists import E2Instances
+from toil.lib.ec2 import get_flatcar_ami
 from toil.lib.memoize import memoize
 from toil.lib.misc import truncExpBackoff
 from toil.lib.retry import (get_error_body,
@@ -569,45 +567,7 @@ class AWSProvisioner(AbstractProvisioner):
         :return: The AMI ID (a string like 'ami-0a9a5d2b65cce04eb') for Flatcar.
         :rtype: str
         """
-
-        # Take a user override
-        ami = os.environ.get('TOIL_AWS_AMI')
-        if ami is not None:
-            return ami
-
-        # Flatcar images only live for 9 months.
-        # Rather than hardcode a list of AMIs by region that will die, we use
-        # their JSON feed of the current ones.
-        JSON_FEED_URL = 'https://stable.release.flatcar-linux.net/amd64-usr/current/flatcar_production_ami_all.json'
-
-        # What region do we care about?
-        region = zone_to_region(self._zone)
-
-        for attempt in old_retry(predicate=lambda e: True):
-            # Until we get parseable JSON
-            # TODO: What errors do we get for timeout, JSON parse failure, etc?
-            with attempt:
-                # Try to get the JSON and parse it.
-                feed = json.loads(urllib.request.urlopen(JSON_FEED_URL).read())
-
-        try:
-            for ami_record in feed['amis']:
-                # Scan the klist of regions
-                if ami_record['name'] == region:
-                    # When we find ours
-                    # Save the AMI ID
-                    ami = ami_record['hvm']
-                    # And stop scanning
-                    break
-        except KeyError:
-            # We didn't see a field we need
-            raise RuntimeError('Flatcar image feed at {} does not have expected format'.format(JSON_FEED_URL))
-
-        if ami is None:
-            # We didn't find it
-            raise RuntimeError('Flatcar image feed at {} does not have an image for region {}'.format(JSON_FEED_URL, region))
-
-        return ami
+        return get_flatcar_ami(self.ec2_client)
 
     def _toNameSpace(self) -> str:
         assert isinstance(self.clusterName, (str, bytes))
