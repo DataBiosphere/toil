@@ -430,7 +430,7 @@ class AbstractProvisioner(ABC):
     class InstanceConfiguration:
         """
         Allows defining the initial setup for an instance and then turning it
-        into a Ignition configuration for instance user data.
+        into an Ignition configuration for instance user data.
         """
 
         def __init__(self):
@@ -447,7 +447,7 @@ class AbstractProvisioner(ABC):
             Make a file on the instance with the given owner, mode, and contents.
             """
 
-            self.files.append({'path': path, 'filesystem': user, 'mode': mode, 'contents': contents})
+            self.files.append({'path': path, 'filesystem': filesystem, 'mode': mode, 'contents': contents})
 
         def addUnit(self, name: str, enabled: bool = True, contents: str = ''):
             """
@@ -473,7 +473,7 @@ class AbstractProvisioner(ABC):
 
         def toIgnitionConfig(self) -> str:
             """
-            Return a Ignition configuration describing the desired config.
+            Return an Ignition configuration describing the desired config.
             """
 
             # Define the base config
