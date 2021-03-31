@@ -442,12 +442,12 @@ class AbstractProvisioner(ABC):
             # Holds strings like "ssh-rsa actualKeyData" for keys to authorize (independently of cloud provider's system)
             self.sshPublicKeys = []
 
-        def addFile(self, path: str, user: str = 'root', mode: int = 755, contents: str = ''):
+        def addFile(self, path: str, filesystem: str = 'root', mode: int = 755, contents: str = ''):
             """
             Make a file on the instance with the given owner, mode, and contents.
             """
 
-            self.files.append({'path': path, 'user': {'name': user}, 'mode': mode, 'contents': {'source': contents}})
+            self.files.append({'path': path, 'filesystem': user, 'mode': mode, 'contents': contents})
 
         def addUnit(self, name: str, enabled: bool = True, contents: str = ''):
             """
@@ -479,7 +479,7 @@ class AbstractProvisioner(ABC):
             # Define the base config
             config = {
                 'ignition': {
-                    'version': '3.2.0'
+                    'version': '2.2.0'
                 },
                 'storage': {
                     'files': self.files
@@ -741,7 +741,7 @@ class AbstractProvisioner(ABC):
             ''').format(**values))
 
         # It needs this config file
-        config.addFile("/etc/systemd/system/kubelet.service.d/10-kubeadm.conf", mode="0644", contents=textwrap.dedent('''\
+        config.addFile("/etc/systemd/system/kubelet.service.d/10-kubeadm.conf", mode=644, contents=textwrap.dedent('''\
             # This came from https://raw.githubusercontent.com/kubernetes/release/v0.4.0/cmd/kubepkg/templates/latest/deb/kubeadm/10-kubeadm.conf
             # It has been modified to replace /usr/bin with {DOWNLOAD_DIR}
             # License: https://raw.githubusercontent.com/kubernetes/release/v0.4.0/LICENSE
@@ -827,7 +827,7 @@ class AbstractProvisioner(ABC):
         values = self.getKubernetesValues()
 
         # Main kubeadm cluster configuration
-        config.addFile("/home/core/kubernetes-leader.yml", mode="0644", contents=textwrap.dedent('''\
+        config.addFile("/home/core/kubernetes-leader.yml", mode=644, contents=textwrap.dedent('''\
             apiVersion: kubeadm.k8s.io/v1beta2
             kind: InitConfiguration
             nodeRegistration:
@@ -962,7 +962,7 @@ class AbstractProvisioner(ABC):
         values['WORKER_LABEL_SPEC'] = 'node-labels: "eks.amazonaws.com/capacityType=SPOT"' if preemptable else ''
 
         # Kubeadm worker configuration
-        config.addFile("/home/core/kubernetes-worker.yml", mode="0644", contents=textwrap.dedent('''\
+        config.addFile("/home/core/kubernetes-worker.yml", mode=644, contents=textwrap.dedent('''\
             apiVersion: kubeadm.k8s.io/v1beta2
             kind: JoinConfiguration
             nodeRegistration:
