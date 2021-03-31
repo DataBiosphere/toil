@@ -545,3 +545,6 @@ def old_retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: Fals
             yield
 
         yield single_attempt( )
+
+
+retry_flaky_test = functools.partial(retry, intervals=[1, 1, 1])
