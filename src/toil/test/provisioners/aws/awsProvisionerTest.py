@@ -41,6 +41,8 @@ class AWSProvisionerBenchTest(ToilTest):
     Tests for the AWS provisioner that don't actually provision anything.
     """
 
+    # Needs to talk to EC2 for image discovery
+    @needs_aws_ec2
     def testAMIFinding(self):
         for zone in ['us-west-2a', 'eu-central-1a', 'sa-east-1b']:
             provisioner = AWSProvisioner('fakename', 'mesos', zone, 10000, None, None)
