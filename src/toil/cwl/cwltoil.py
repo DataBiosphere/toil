@@ -2037,6 +2037,15 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         help="Specify a default docker container that will be "
         "used if the workflow fails to specify one.",
     )
+    parser.add_argument(
+        "--mpi-config-file",
+        type=str,
+        default=None,
+        help="Platform specific configuration for MPI (parallel "
+             "launcher, its flag etc). See the cwltool README "
+             "section 'Running MPI-based tools' for details of the format: "
+             "https://github.com/common-workflow-language/cwltool#running-mpi-based-tools-that-need-to-be-launched",
+    )
 
     provgroup = parser.add_argument_group(
         "Options for recording provenance " "information of the execution"
@@ -2149,8 +2158,6 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     if options.batchSystem == "kubernetes":
         # Containers under Kubernetes can only run in Singularity
         options.singularity = True
-
-    use_container = not options.no_container
 
     if options.logLevel:
         # Make sure cwltool uses Toil's log level.
@@ -2310,7 +2317,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 ):
                     set_secondary(initialized_job_order[shortname(inp["id"])])
 
-            runtime_context.use_container = use_container
+            runtime_context.use_container = not options.no_container
             runtime_context.tmp_outdir_prefix = os.path.realpath(tmp_outdir_prefix)
             runtime_context.job_script_provider = job_script_provider
             runtime_context.force_docker_pull = options.force_docker_pull
