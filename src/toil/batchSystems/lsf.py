@@ -25,6 +25,7 @@ import re
 import subprocess
 from datetime import datetime
 from random import randint
+from typing import List
 
 from dateutil.parser import parse
 from dateutil.tz import tzlocal
@@ -227,7 +228,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         """
         Implementation-specific helper methods
         """
-        def prepareBsub(self, cpu, mem, jobID):
+        def prepareBsub(self, cpu: int, mem: int, jobID: int) -> List[str]:
             """
             Make a bsub commandline to execute.
 
@@ -251,8 +252,8 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             bsubline = ["bsub", "-cwd", ".", "-J", f"toil_job_{jobID}"]
             bsubline.extend(bsubMem)
             bsubline.extend(bsubCpu)
-            stdoutfile = self.boss.formatStdOutErrPath(jobID, 'lsf', '%J', 'std_output')
-            stderrfile = self.boss.formatStdOutErrPath(jobID, 'lsf', '%J', 'std_error')
+            stdoutfile: str = self.boss.formatStdOutErrPath(jobID, '%J', 'out')
+            stderrfile: str = self.boss.formatStdOutErrPath(jobID, '%J', 'err')
             bsubline.extend(['-o', stdoutfile, '-e', stderrfile])
             lsfArgs = os.getenv('TOIL_LSF_ARGS')
             if lsfArgs:
