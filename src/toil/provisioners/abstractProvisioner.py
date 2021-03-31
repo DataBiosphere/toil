@@ -517,44 +517,60 @@ class AbstractProvisioner(ABC):
             #!/bin/bash
             set -x
             ephemeral_count=0
-            drives=""
-            directories="toil mesos docker cwl"
+            drives=()
+            directories=(toil mesos docker cwl)
             for drive in /dev/xvd{a..z} /dev/nvme{0..26}n1; do
-                echo checking for $drive
+                echo "checking for ${drive}"
                 if [ -b $drive ]; then
-                    echo found it
-                    if mount | grep $drive; then
+                    echo "found it"
+                    while [ "$(readlink -f "${drive}")" != "${drive}" ] ; do
+                        drive="$(readlink -f "${drive}")"
+                        echo "was a symlink to ${drive}"
+                    done
+                    seen=0
+                    for other_drive in "${drives[@]}" ; do
+                        if [ "${other_drive}" == "${drive}" ] ; then
+                            seen=1
+                            break
+                        fi
+                    done
+                    if (( "${seen}" == "1" )) ; then
+                        echo "already discovered via another name"
+                        continue
+                    fi
+                    if mount | grep "^${drive}"; then
                         echo "already mounted, likely a root device"
                     else
                         ephemeral_count=$((ephemeral_count + 1 ))
-                        drives="$drives $drive"
-                        echo increased ephemeral count by one
+                        drives+=("${drive}")
+                        echo "increased ephemeral count by one"
                     fi
                 fi
             done
             if (("$ephemeral_count" == "0" )); then
-                echo no ephemeral drive
-                for directory in $directories; do
+                echo "no ephemeral drive"
+                for directory in "${directories[@]}"; do
                     sudo mkdir -p /var/lib/$directory
                 done
                 exit 0
             fi
             sudo mkdir /mnt/ephemeral
             if (("$ephemeral_count" == "1" )); then
-                echo one ephemeral drive to mount
-                sudo mkfs.ext4 -F $drives
-                sudo mount $drives /mnt/ephemeral
+                echo "one ephemeral drive to mount"
+                sudo mkfs.ext4 -F "${drives[@]}"
+                sudo mount "${drives[@]}" /mnt/ephemeral
             fi
             if (("$ephemeral_count" > "1" )); then
-                echo multiple drives
-                for drive in $drives; do
-                    dd if=/dev/zero of=$drive bs=4096 count=1024
+                echo "multiple drives"
+                for drive in "${drives[@]}"; do
+                    sudo dd if=/dev/zero of=$drive bs=4096 count=1024
                 done
-                sudo mdadm --create -f --verbose /dev/md0 --level=0 --raid-devices=$ephemeral_count $drives # determine force flag
+                # determine force flag
+                sudo mdadm --create -f --verbose /dev/md0 --level=0 --raid-devices=$ephemeral_count "${drives[@]}" 
                 sudo mkfs.ext4 -F /dev/md0
                 sudo mount /dev/md0 /mnt/ephemeral
             fi
-            for directory in $directories; do
+            for directory in "${directories[@]}"; do
                 sudo mkdir -p /mnt/ephemeral/var/lib/$directory
                 sudo mkdir -p /var/lib/$directory
                 sudo mount --bind /mnt/ephemeral/var/lib/$directory /var/lib/$directory
