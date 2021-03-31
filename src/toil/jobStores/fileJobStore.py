@@ -226,10 +226,13 @@ class FileJobStore(AbstractJobStore):
         assert not isinstance(job.jobStoreID, TemporaryID), f"Tried to update job {job} without an assigned ID"
 
         # The job is serialised to a file suffixed by ".new"
+        # We insist on creating the file; an existing .new file indicates
+        # multiple simultaneous attempts to update the job, which will lose
+        # updates.
         # The file is then moved to its correct path.
         # Atomicity guarantees use the fact the underlying file systems "move"
         # function is atomic.
-        with open(self._getJobFileName(job.jobStoreID) + ".new", 'wb') as f:
+        with open(self._getJobFileName(job.jobStoreID) + ".new", 'xb') as f:
             pickle.dump(job, f)
         # This should be atomic for the file system
         os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
