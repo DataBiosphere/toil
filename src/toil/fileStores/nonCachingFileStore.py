@@ -15,8 +15,6 @@ import errno
 import fcntl
 import logging
 import os
-import stat
-import sys
 import uuid
 from collections import defaultdict
 from contextlib import contextmanager
@@ -24,12 +22,12 @@ from typing import Callable, Dict, Optional, Generator
 
 import dill
 
-from toil.common import getDirSizeRecursively, getFileSystemSize
 from toil.fileStores import FileID, make_public_dir
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.humanize import bytes2human
 from toil.lib.io import robust_rmtree
+from toil.lib.resources import get_dir_size_recursively, get_file_system_size
 from toil.lib.threading import get_process_name, process_name_exists
 from toil.job import Job, JobDescription
 
@@ -51,7 +49,7 @@ class NonCachingFileStore(AbstractFileStore):
         self.localTempDir = make_public_dir(os.path.join(self.localTempDir, str(uuid.uuid4())))
         self._removeDeadJobs(self.workDir)
         self.jobStateFile = self._createJobStateFile()
-        freeSpace, diskSize = getFileSystemSize(self.localTempDir)
+        freeSpace, diskSize = get_file_system_size(self.localTempDir)
         if freeSpace <= 0.1 * diskSize:
             logger.warning(f'Starting job {self.jobName} with less than 10%% of disk space remaining.')
         try:
@@ -59,7 +57,7 @@ class NonCachingFileStore(AbstractFileStore):
             with super().open(job):
                 yield
         finally:
-            disk = getDirSizeRecursively(self.localTempDir)
+            disk: int = get_dir_size_recursively(self.localTempDir)
             percent = float(disk) / jobReqs * 100 if jobReqs > 0 else 0.0
             disk_usage = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(disk)}B [{disk}B] used, "
                           f"{bytes2human(jobReqs)}B [{jobReqs}B] requested).")
