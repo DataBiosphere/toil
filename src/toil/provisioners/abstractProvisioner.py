@@ -529,7 +529,7 @@ class AbstractProvisioner(ABC):
             set -x
             ephemeral_count=0
             drives=()
-            directories=(toil mesos docker cwl)
+            directories=(toil mesos docker kubelet cwl)
             for drive in /dev/xvd{a..z} /dev/nvme{0..26}n1; do
                 echo "checking for ${drive}"
                 if [ -b $drive ]; then
