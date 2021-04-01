@@ -94,7 +94,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
         """
         Implementation-specific helper methods
         """
-        def prepareQsub(self, cpu, mem, jobID):
+        def prepareQsub(self, cpu: int, mem: int, jobID: int) -> List[str]:
             qsubline = ['qsub', '-V', '-b', 'y', '-terse', '-j', 'y', '-cwd',
                         '-N', 'toil_job_' + str(jobID)]
 
@@ -130,8 +130,8 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                 raise RuntimeError("must specify PE in TOIL_GRIDENGINE_PE environment variable when using multiple CPUs. "
                                    "Run qconf -spl and your local documentation for possible values")
 
-            stdoutfile = self.boss.formatStdOutErrPath(jobID, 'gridengine', '$JOB_ID', 'std_output')
-            stderrfile = self.boss.formatStdOutErrPath(jobID, 'gridengine', '$JOB_ID', 'std_error')
+            stdoutfile: str = self.boss.formatStdOutErrPath(jobID, '$JOB_ID', 'out')
+            stderrfile: str = self.boss.formatStdOutErrPath(jobID, '$JOB_ID', 'err')
             qsubline.extend(['-o', stdoutfile, '-e', stderrfile])
 
             return qsubline

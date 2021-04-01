@@ -15,6 +15,7 @@ import logging
 import math
 import os
 from pipes import quote
+from typing import List
 
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
@@ -158,7 +159,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         Implementation-specific helper methods
         """
 
-        def prepareSbatch(self, cpu, mem, jobID, jobName):
+        def prepareSbatch(self, cpu: int, mem: int, jobID: int, jobName: str) -> List[str]:
             #  Returns the sbatch command line before the script to run
             sbatch_line = ['sbatch', '-J', 'toil_job_{}_{}'.format(jobID, jobName)]
 
@@ -177,8 +178,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if cpu is not None:
                 sbatch_line.append(f'--cpus-per-task={math.ceil(cpu)}')
 
-            stdoutfile = self.boss.formatStdOutErrPath(jobID, 'slurm', '%j', 'std_output')
-            stderrfile = self.boss.formatStdOutErrPath(jobID, 'slurm', '%j', 'std_error')
+            stdoutfile: str = self.boss.formatStdOutErrPath(jobID, '%j', 'out')
+            stderrfile: str = self.boss.formatStdOutErrPath(jobID, '%j', 'err')
             sbatch_line.extend(['-o', stdoutfile, '-e', stderrfile])
 
             # "Native extensions" for SLURM (see DRMAA or SAGA)
