@@ -13,7 +13,7 @@
 # limitations under the License.
 import logging
 
-from toil.lib.conversions import convert_units
+from toil.lib.conversions import convert_units, MemoryString
 from toil.test import ToilTest
 
 logger = logging.getLogger(__name__)
@@ -85,4 +85,21 @@ class ConversionTest(ToilTest):
                 for dst_unit in ['B', 'KB', 'MB', 'GB', 'TB']:
                     converted = convert_units(i, src_unit, dst_unit)
                     results[f'{i} {src_unit}'] = f'{converted:.4f} {dst_unit}'
-        assert results == expected_conversions
+        self.assertEqual(results, expected_conversions)
+
+    def test_memory_string(self):
+        self.assertEqual(str(MemoryString('0')), '0.0')
+        self.assertEqual(str(MemoryString('1024')), '1024.0')
+        self.assertEqual(str(MemoryString('1024 MB')), '1024.0M')
+        self.assertEqual(str(MemoryString('1024.000 MB')), '1024.0M')
+
+        self.assertEqual(MemoryString('0'), MemoryString('0M'))
+        self.assertEqual(MemoryString('1024'), MemoryString('1K'))
+        self.assertEqual(MemoryString('1024.000M'), MemoryString('1G'))
+        self.assertEqual(MemoryString('1024G'), MemoryString('1T'))
+
+        self.assertEqual(MemoryString('0').bytes, 0)
+        self.assertEqual(MemoryString('1K').bytes, 1024)
+        self.assertEqual(MemoryString('1MB').bytes, 1048576)
+        self.assertEqual(MemoryString('1024MB').bytes, 1073741824)
+        self.assertEqual(MemoryString('1GB').bytes, 1073741824)
