@@ -51,26 +51,26 @@ class Config:
     """Class to represent configuration operations for a toil workflow run."""
     def __init__(self):
         # Core options
-        self.workflowID = None
+        self.workflowID: Optional[str] = None
         """This attribute uniquely identifies the job store and therefore the workflow. It is
         necessary in order to distinguish between two consecutive workflows for which
         self.jobStore is the same, e.g. when a job store name is reused after a previous run has
         finished sucessfully and its job store has been clean up."""
         self.workflowAttemptNumber = None
         self.jobStore = None
-        self.logLevel = logging.getLevelName(root_logger.getEffectiveLevel())
-        self.workDir = None
-        self.noStdOutErr = False
-        self.stats = False
+        self.logLevel: str = logging.getLevelName(root_logger.getEffectiveLevel())
+        self.workDir: Optional[str] = None
+        self.noStdOutErr: bool = False
+        self.stats: bool = False
 
         # Because the stats option needs the jobStore to persist past the end of the run,
         # the clean default value depends the specified stats option and is determined in setOptions
         self.clean = None
-        self.cleanWorkDir = None
+        self.cleanWorkDir: Optional[bool] = None
         self.clusterStats = None
 
         # Restarting the workflow options
-        self.restart = False
+        self.restart: bool = False
 
         # Batch system options
         set_batchsystem_config_defaults(self)
@@ -86,56 +86,56 @@ class Config:
         self.preemptableCompensation = 0.0
         self.nodeStorage = 50
         self.nodeStorageOverrides = []
-        self.metrics = False
+        self.metrics: bool = False
 
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
-        self.maxPreemptableServiceJobs = sys.maxsize
-        self.maxServiceJobs = sys.maxsize
-        self.deadlockWait = 60  # Number of seconds we must be stuck with all services before declaring a deadlock
-        self.deadlockCheckInterval = 30  # Minimum polling delay for deadlocks
-        self.statePollingWait = 1  # Number of seconds to wait before querying job state
+        self.maxPreemptableServiceJobs: int = sys.maxsize
+        self.maxServiceJobs: int = sys.maxsize
+        self.deadlockWait: Union[float, int] = 60  # Number of seconds we must be stuck with all services before declaring a deadlock
+        self.deadlockCheckInterval: Union[float, int] = 30  # Minimum polling delay for deadlocks
+        self.statePollingWait: Union[float, int] = 1  # Number of seconds to wait before querying job state
 
         # Resource requirements
-        self.defaultMemory = 2147483648
-        self.defaultCores = 1
-        self.defaultDisk = 2147483648
-        self.readGlobalFileMutableByDefault = False
-        self.defaultPreemptable = False
-        self.maxCores = sys.maxsize
-        self.maxMemory = sys.maxsize
-        self.maxDisk = sys.maxsize
+        self.defaultMemory: int = 2147483648
+        self.defaultCores: Union[float, int] = 1
+        self.defaultDisk: int = 2147483648
+        self.readGlobalFileMutableByDefault: bool = False
+        self.defaultPreemptable: bool = False
+        self.maxCores: int = sys.maxsize
+        self.maxMemory: int = sys.maxsize
+        self.maxDisk: int = sys.maxsize
 
         # Retrying/rescuing jobs
-        self.retryCount = 1
-        self.enableUnlimitedPreemptableRetries = False
-        self.doubleMem = False
-        self.maxJobDuration = sys.maxsize
-        self.rescueJobsFrequency = 3600
+        self.retryCount: int = 1
+        self.enableUnlimitedPreemptableRetries: bool = False
+        self.doubleMem: bool = False
+        self.maxJobDuration: int = sys.maxsize
+        self.rescueJobsFrequency: int = 3600
 
         # Misc
-        self.disableCaching = False
-        self.disableChaining = False
-        self.disableJobStoreChecksumVerification = False
-        self.maxLogFileSize = 64000
+        self.disableCaching: bool = False
+        self.disableChaining: bool = False
+        self.disableJobStoreChecksumVerification: bool = False
+        self.maxLogFileSize: int = 64000
         self.writeLogs = None
         self.writeLogsGzip = None
-        self.writeLogsFromAllJobs = False
-        self.sseKey = None
-        self.servicePollingInterval = 60
-        self.useAsync = True
-        self.forceDockerAppliance = False
-        self.runCwlInternalJobsOnWorkers = False
-        self.statusWait = 3600
-        self.disableProgress = False
+        self.writeLogsFromAllJobs: bool = False
+        self.sseKey: str = None
+        self.servicePollingInterval: int = 60
+        self.useAsync: bool = True
+        self.forceDockerAppliance: bool = False
+        self.runCwlInternalJobsOnWorkers: bool = False
+        self.statusWait: int = 3600
+        self.disableProgress: bool = False
 
         # Debug options
-        self.debugWorker = False
-        self.disableWorkerOutputCapture = False
+        self.debugWorker: bool = False
+        self.disableWorkerOutputCapture: bool = False
         self.badWorker = 0.0
         self.badWorkerFailInterval = 0.01
 
         # CWL
-        self.cwl = False
+        self.cwl: bool = False
 
     def setOptions(self, options) -> None:
         """Creates a config object from the options object."""
@@ -178,9 +178,15 @@ class Config:
         # TODO: LOG LEVEL STRING
         set_option("workDir")
         if self.workDir is not None:
-            self.workDir = os.path.abspath(self.workDir)
+            self.workDir: Optional[str] = os.path.abspath(self.workDir)
             if not os.path.exists(self.workDir):
                 raise RuntimeError(f"The path provided to --workDir ({self.workDir}) does not exist.")
+
+            if len(self.workDir) > 80:
+                logger.warning(f'Length of workDir path "{self.workDir}" is {len(self.workDir)} characters.  '
+                               f'Consider setting a shorter path with --workPath or setting TMPDIR to something '
+                               f'like "/tmp" to avoid overly long paths.')
+
         set_option("noStdOutErr")
         set_option("stats")
         set_option("cleanWorkDir")
@@ -645,7 +651,7 @@ def parseBool(val):
         raise RuntimeError("Could not interpret \"%s\" as a boolean value" % val)
 
 
-def getNodeID():
+def getNodeID() -> str:
     """
     Return unique ID of the current node (host).
 
@@ -1051,7 +1057,7 @@ class Toil:
         self._jobCache[job.jobStoreID] = job
 
     @staticmethod
-    def getToilWorkDir(configWorkDir=None):
+    def getToilWorkDir(configWorkDir: Optional[str] = None) -> str:
         """
         Returns a path to a writable directory under which per-workflow
         directories exist.  This directory is always required to exist on a
@@ -1063,11 +1069,9 @@ class Toil:
         :return: Path to the Toil work directory, constant across all machines
         :rtype: str
         """
-
         workDir = configWorkDir or os.getenv('TOIL_WORKDIR') or tempfile.gettempdir()
         if not os.path.exists(workDir):
-            raise RuntimeError("The directory specified by --workDir or TOIL_WORKDIR (%s) does not "
-                               "exist." % workDir)
+            raise RuntimeError(f"The directory specified by --workDir or TOIL_WORKDIR ({workDir}) does not exist.")
         return workDir
 
     @classmethod
@@ -1088,7 +1092,7 @@ class Toil:
         # Create a directory unique to each host and workflow in case workDir
         # is on a shared FS. This prevents workers on different nodes from
         # erasing each other's directories.
-        workflowDir = os.path.join(base, 'node-%s-%s' % (workflowID, getNodeID()))
+        workflowDir: str = os.path.join(base, f'{workflowID}{getNodeID()}'.replace('-', ''))
         try:
             # Directory creation is atomic
             os.mkdir(workflowDir)

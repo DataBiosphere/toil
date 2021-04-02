@@ -26,9 +26,10 @@ import urllib.request
 import uuid
 from contextlib import contextmanager
 from io import BytesIO
-from typing import Optional
 
 import boto.sdb
+import boto.s3.connection
+from typing import Optional
 from boto.exception import SDBResponseError
 from botocore.exceptions import ClientError
 
@@ -1538,14 +1539,12 @@ class AWSJobStore(AbstractJobStore):
             else:
                 return 0
 
-        def _getSSEKey(self):
+        def _getSSEKey(self) -> Optional[bytes]:
             sseKeyPath = self.outer.sseKeyPath
-            if sseKeyPath is None:
-                return None
-            else:
+            if sseKeyPath:
                 with open(sseKeyPath, 'rb') as f:
                     sseKey = f.read()
-                    return sseKey
+                return sseKey
 
         def _s3EncryptionArgs(self):
             # the keys of the returned dictionary are unpacked to the corresponding boto3 optional
