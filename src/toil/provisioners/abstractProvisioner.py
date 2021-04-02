@@ -481,9 +481,6 @@ class AbstractProvisioner(ABC):
                 'ignition': {
                     'version': '2.2.0'
                 },
-                'storage': {
-                    'files': self.files
-                },
                 'systemd': {
                     'units': self.units
                 }
