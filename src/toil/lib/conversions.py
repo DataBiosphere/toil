@@ -1,7 +1,6 @@
 """Conversion utilities for mapping memory, disk, core declarations from strings to numbers and vice versa."""
 # TODO: Consolidate all conversion utilities here to use the same functions:
 #  src/toil/lib/humanize.py (bytes2human; human2bytes)
-#  src/toil/batchSystems/__init__.py (MemoryString)
 #
 from functools import total_ordering
 
@@ -45,8 +44,8 @@ class MemoryString:
 
     Comparable based on the actual number of bytes instead of string value.
     """
-    def __init__(self, string):
-        if string[-1] == 'K' or string[-1] == 'M' or string[-1] == 'G' or string[-1] == 'T': #10K
+    def __init__(self, string: str):
+        if string[-1] == 'K' or string[-1] == 'M' or string[-1] == 'G' or string[-1] == 'T':  # 10K
             self.unit = string[-1]
             self.val = float(string[:-1])
         elif len(string) >= 3 and (string[-2] == 'k' or string[-2] == 'M' or string[-2] == 'G' or string[-2] == 'T'):
@@ -55,25 +54,20 @@ class MemoryString:
         else:
             self.unit = 'B'
             self.val = float(string)
-        self.bytes = self.byteVal()
+        self.bytes = self.byte_val()
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.unit != 'B':
             return str(self.val) + self.unit
         else:
             return str(self.val)
 
-    def byteVal(self):
-        if self.unit == 'B':
-            return self.val
-        elif self.unit == 'K':
-            return self.val * 1024
-        elif self.unit == 'M':
-            return self.val * 1048576
-        elif self.unit == 'G':
-            return self.val * 1073741824
-        elif self.unit == 'T':
-            return self.val * 1099511627776
+    def byte_val(self) -> float:
+        """ Returns the amount of bytes as a float."""
+        if self.unit != 'B':
+            # assume kB, MB, GB, and TB represent the binary versions KiB, MiB, GiB, and TiB
+            return self.val * bytes_in_unit(self.unit + 'ib')
+        return self.val
 
     def __eq__(self, other):
         return self.bytes == other.bytes

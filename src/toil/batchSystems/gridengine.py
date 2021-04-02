@@ -17,7 +17,7 @@ import os
 import time
 from pipes import quote
 
-from toil.batchSystems import MemoryString
+from toil.lib.conversions import MemoryString
 from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 

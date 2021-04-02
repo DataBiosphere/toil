@@ -30,7 +30,7 @@ from typing import List
 from dateutil.parser import parse
 from dateutil.tz import tzlocal
 
-from toil.batchSystems import MemoryString
+from toil.lib.conversions import MemoryString
 from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem

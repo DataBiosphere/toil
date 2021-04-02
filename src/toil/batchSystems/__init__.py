@@ -38,3 +38,9 @@ class MemoryString(ActualMemoryString):
 
     Comparable based on the actual number of bytes instead of string value.
     """
+
+    def byteVal(self) -> float:
+        """
+        Deprecated.  Please use `self.byte_val()` instead.
+        """
+        return super(MemoryString, self).byte_val()
