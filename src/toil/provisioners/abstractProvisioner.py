@@ -19,6 +19,7 @@ import tempfile
 import textwrap
 import json
 from abc import ABC, abstractmethod
+from datauri import DataURI
 from functools import total_ordering
 from typing import Dict, Optional, Set
 
@@ -447,7 +448,9 @@ class AbstractProvisioner(ABC):
             Make a file on the instance with the given owner, mode, and contents.
             """
 
-            self.files.append({'path': path, 'filesystem': filesystem, 'mode': mode, 'contents': contents})
+            contents = DataURI.make('text/plain', charset='us-ascii', base64=False, data=contents)
+
+            self.files.append({'path': path, 'filesystem': filesystem, 'mode': mode, 'contents': {'source': contents}})
 
         def addUnit(self, name: str, enabled: bool = True, contents: str = ''):
             """
@@ -480,6 +483,9 @@ class AbstractProvisioner(ABC):
             config = {
                 'ignition': {
                     'version': '2.2.0'
+                },
+                'storage': {
+                    'files': self.files
                 },
                 'systemd': {
                     'units': self.units
