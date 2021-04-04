@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from toil.lib.conversions import MemoryString as ActualMemoryString
 
 
 class DeadlockException(Exception):
@@ -28,19 +27,3 @@ class DeadlockException(Exception):
         Stringify the exception, including the message.
         """
         return self.msg
-
-
-class MemoryString(ActualMemoryString):
-    """
-    Deprecated by toil.lib.conversions.MemoryString.
-
-    Represents an amount of bytes, as a string, using suffixes for the unit.
-
-    Comparable based on the actual number of bytes instead of string value.
-    """
-
-    def byteVal(self) -> float:
-        """
-        Deprecated.  Please use `self.byte_val()` instead.
-        """
-        return super(MemoryString, self).byte_val()

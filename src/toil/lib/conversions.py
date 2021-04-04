@@ -3,6 +3,7 @@
 #  src/toil/lib/humanize.py (bytes2human; human2bytes)
 #
 from functools import total_ordering
+from typing import Tuple, Optional
 
 
 def bytes_in_unit(unit: str = 'B') -> int:
@@ -29,12 +30,27 @@ def bytes_in_unit(unit: str = 'B') -> int:
 
 def convert_units(num: float,
                   src_unit: str,
-                  dst_unit: str) -> float:
+                  dst_unit: Optional[str] = 'B') -> float:
     """Returns a float representing the converted input in dst_units."""
-    units = ['B', 'KB', 'MB', 'GB', 'TB']
-    assert src_unit in units, f"{src_unit} not a valid unit, valid units are {units}."
-    assert dst_unit in units, f"{dst_unit} not a valid unit, valid units are {units}."
+    units = ['b', 'k', 'm', 'g', 't', 'kb', 'mb', 'gb', 'tb',
+             'ki', 'mi', 'gi', 'ti', 'kib', 'mib', 'gib', 'tib']
+    assert src_unit.lower() in units, f"{src_unit} not a valid unit, valid units are {units}."
+    assert dst_unit.lower() in units, f"{dst_unit} not a valid unit, valid units are {units}."
     return (num * bytes_in_unit(src_unit)) / bytes_in_unit(dst_unit)
+
+
+def parse_unit(string: str) -> Tuple[float, str]:
+    """Given a memory string, separates the floating-point number from its unit."""
+    for index, char in enumerate(string):
+        # find the first character of the unit
+        if char not in '0123456789. ':
+            val = float(string[:index])
+            unit = string[index:].strip()
+            break
+    else:
+        val = float(string)
+        unit = 'B'
+    return val, unit
 
 
 @total_ordering
@@ -45,15 +61,11 @@ class MemoryString:
     Comparable based on the actual number of bytes instead of string value.
     """
     def __init__(self, string: str):
-        if string[-1] == 'K' or string[-1] == 'M' or string[-1] == 'G' or string[-1] == 'T':  # 10K
-            self.unit = string[-1]
-            self.val = float(string[:-1])
-        elif len(string) >= 3 and (string[-2] == 'k' or string[-2] == 'M' or string[-2] == 'G' or string[-2] == 'T'):
-            self.unit = string[-2]
-            self.val = float(string[:-2])
-        else:
-            self.unit = 'B'
-            self.val = float(string)
+        val, unit = parse_unit(string)
+        assert unit.lower() in ['b', 'k', 'm', 'g', 't', 'kb', 'mb', 'gb', 'tb']
+
+        self.val = val
+        self.unit = unit[0]
         self.bytes = self.byte_val()
 
     def __str__(self) -> str:
@@ -66,7 +78,7 @@ class MemoryString:
         """ Returns the amount of bytes as a float."""
         if self.unit != 'B':
             # assume kB, MB, GB, and TB represent the binary versions KiB, MiB, GiB, and TiB
-            return self.val * bytes_in_unit(self.unit + 'ib')
+            return self.val * bytes_in_unit(self.unit + 'i')
         return self.val
 
     def __eq__(self, other):
