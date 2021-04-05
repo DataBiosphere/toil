@@ -67,7 +67,7 @@ extensions = [
     'fulltoc',
 ]
 
-intersphinx_mapping = {'python': ('https://docs.python.org/2', None),}
+intersphinx_mapping = {'python': ('https://docs.python.org/3', None),}
 
 # Link definitions available everywhere so we don't need to keep repeating ourselves.
 rst_epilog = """
