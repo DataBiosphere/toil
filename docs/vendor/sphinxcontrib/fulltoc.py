@@ -1,5 +1,3 @@
-# -*- encoding: utf-8 -*-
-#
 # Copyright © 2012 New Dream Network, LLC (DreamHost)
 # Copyright © 2020 Regents of the University of California
 #
@@ -16,8 +14,6 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations
 # under the License.
-
-
 from sphinx import addnodes
 
 
