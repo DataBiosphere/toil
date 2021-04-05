@@ -29,7 +29,8 @@ from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import (add_all_batchsystem_options,
                                        set_batchsystem_config_defaults,
                                        set_batchsystem_options)
-from toil.lib.humanize import bytes2human, human2bytes
+from toil.lib.humanize import bytes2human
+from toil.lib.conversions import human2bytes
 from toil.lib.retry import retry
 from toil.provisioners import (add_provisioner_options,
                                check_valid_node_types,

@@ -30,7 +30,7 @@ from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    NodeInfo)
 from toil.common import Config, defaultTargetTime
 from toil.job import JobDescription
-from toil.lib.humanize import human2bytes as h2b
+from toil.lib.conversions import human2bytes as h2b
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.clusterScaler import (BinPackedFit,
                                              ClusterScaler,

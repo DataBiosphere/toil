@@ -3,7 +3,11 @@
 #  src/toil/lib/humanize.py (bytes2human; human2bytes)
 #
 from functools import total_ordering
-from typing import Tuple, Optional
+from typing import Optional
+
+
+VALID_UNITS = ['b', 'k', 'm', 'g', 't', 'kb', 'mb', 'gb', 'tb',
+               'ki', 'mi', 'gi', 'ti', 'kib', 'mib', 'gib', 'tib']
 
 
 def bytes_in_unit(unit: str = 'B') -> int:
@@ -32,15 +36,13 @@ def convert_units(num: float,
                   src_unit: str,
                   dst_unit: Optional[str] = 'B') -> float:
     """Returns a float representing the converted input in dst_units."""
-    units = ['b', 'k', 'm', 'g', 't', 'kb', 'mb', 'gb', 'tb',
-             'ki', 'mi', 'gi', 'ti', 'kib', 'mib', 'gib', 'tib']
-    assert src_unit.lower() in units, f"{src_unit} not a valid unit, valid units are {units}."
-    assert dst_unit.lower() in units, f"{dst_unit} not a valid unit, valid units are {units}."
+    assert src_unit.lower() in VALID_UNITS, f"{src_unit} not a valid unit, valid units are {VALID_UNITS}."
+    assert dst_unit.lower() in VALID_UNITS, f"{dst_unit} not a valid unit, valid units are {VALID_UNITS}."
     return (num * bytes_in_unit(src_unit)) / bytes_in_unit(dst_unit)
 
 
-def parse_unit(string: str) -> Tuple[float, str]:
-    """Given a memory string, separates the floating-point number from its unit."""
+def human2bytes(string: str) -> int:
+    """Returns the amount of bytes, given a memory string."""
     for index, char in enumerate(string):
         # find the first character of the unit
         if char not in '0123456789. ':
@@ -50,7 +52,12 @@ def parse_unit(string: str) -> Tuple[float, str]:
     else:
         val = float(string)
         unit = 'B'
-    return val, unit
+    assert unit.lower() in VALID_UNITS, f"{unit} not a valid unit, valid units are {VALID_UNITS}."
+
+    if unit != 'B':
+        # assume kB, MB, GB, and TB represent the binary versions KiB, MiB, GiB, and TiB
+        return int(convert_units(val, src_unit=unit[0] + 'i', dst_unit='B'))
+    return int(val)
 
 
 @total_ordering
@@ -61,25 +68,11 @@ class MemoryString:
     Comparable based on the actual number of bytes instead of string value.
     """
     def __init__(self, string: str):
-        val, unit = parse_unit(string)
-        assert unit.lower() in ['b', 'k', 'm', 'g', 't', 'kb', 'mb', 'gb', 'tb']
-
-        self.val = val
-        self.unit = unit[0]
-        self.bytes = self.byte_val()
+        self.string = string
+        self.bytes = human2bytes(string)
 
     def __str__(self) -> str:
-        if self.unit != 'B':
-            return str(self.val) + self.unit
-        else:
-            return str(self.val)
-
-    def byte_val(self) -> float:
-        """ Returns the amount of bytes as a float."""
-        if self.unit != 'B':
-            # assume kB, MB, GB, and TB represent the binary versions KiB, MiB, GiB, and TiB
-            return self.val * bytes_in_unit(self.unit + 'i')
-        return self.val
+        return self.string
 
     def __eq__(self, other):
         return self.bytes == other.bytes

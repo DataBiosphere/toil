@@ -13,7 +13,7 @@
 # limitations under the License.
 import logging
 
-from toil.lib.conversions import convert_units, MemoryString
+from toil.lib.conversions import convert_units, MemoryString, human2bytes
 from toil.test import ToilTest
 
 logger = logging.getLogger(__name__)
@@ -88,11 +88,6 @@ class ConversionTest(ToilTest):
         self.assertEqual(results, expected_conversions)
 
     def test_memory_string(self):
-        self.assertEqual(str(MemoryString('0')), '0.0')
-        self.assertEqual(str(MemoryString('1024')), '1024.0')
-        self.assertEqual(str(MemoryString('1024 MB')), '1024.0M')
-        self.assertEqual(str(MemoryString('1024.000 MB')), '1024.0M')
-
         self.assertEqual(MemoryString('0'), MemoryString('0M'))
         self.assertEqual(MemoryString('1024'), MemoryString('1K'))
         self.assertEqual(MemoryString('1024.000M'), MemoryString('1G'))
@@ -103,3 +98,57 @@ class ConversionTest(ToilTest):
         self.assertEqual(MemoryString('1MB').bytes, 1048576)
         self.assertEqual(MemoryString('1024MB').bytes, 1073741824)
         self.assertEqual(MemoryString('1GB').bytes, 1073741824)
+
+    def test_human2bytes(self):
+        expected_results = {
+            '0 K': 0,
+            '0 M': 0,
+            '0 G': 0,
+            '0 T': 0,
+            '0.1 K': 102,
+            '0.1 M': 104857,
+            '0.1 G': 107374182,
+            '0.1 T': 109951162777,
+            '0.5 K': 512,
+            '0.5 M': 524288,
+            '0.5 G': 536870912,
+            '0.5 T': 549755813888,
+            '0.9 K': 921,
+            '0.9 M': 943718,
+            '0.9 G': 966367641,
+            '0.9 T': 989560464998,
+            '1 K': 1024,
+            '1 M': 1048576,
+            '1 G': 1073741824,
+            '1 T': 1099511627776,
+            '7 K': 7168,
+            '7 M': 7340032,
+            '7 G': 7516192768,
+            '7 T': 7696581394432,
+            '7.42423 K': 7602,
+            '7.42423 M': 7784869,
+            '7.42423 G': 7971706261,
+            '7.42423 T': 8163027212283,
+            '10 K': 10240,
+            '10 M': 10485760,
+            '10 G': 10737418240,
+            '10 T': 10995116277760,
+            '100 K': 102400,
+            '100 M': 104857600,
+            '100 G': 107374182400,
+            '100 T': 109951162777600,
+            '1000 K': 1024000,
+            '1000 M': 1048576000,
+            '1000 G': 1073741824000,
+            '1000 T': 1099511627776000,
+            '11234234 K': 11503855616,
+            '11234234 M': 11779948150784,
+            '11234234 G': 12062666906402816,
+            '11234234 T': 12352170912156483584
+        }
+
+        results = {}
+        for i in (0, 0.1, 0.5, 0.9, 1, 7, 7.42423, 10, 100, 1000, 11234234):
+            for src_unit in ['K', 'M', 'G', 'T']:
+                results[f'{i} {src_unit}'] = human2bytes(f'{i} {src_unit}')
+        self.assertEqual(results, expected_results)
