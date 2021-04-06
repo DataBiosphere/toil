@@ -157,14 +157,14 @@ htmlhelp_basename = 'Toildoc'
 latex_elements = {}
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title, author, documentclass [howto, manual, or own class]).
-latex_documents = [(master_doc, 'Toil.tex', u'Toil Documentation', u'UCSC Computational Genomics Lab', 'manual')]
+latex_documents = [(master_doc, 'Toil.tex', 'Toil Documentation', author, 'manual')]
 
 # -- Options for manual page output ---------------------------------------
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
-man_pages = [(master_doc, 'toil', u'Toil Documentation', [author], 1)]
+man_pages = [(master_doc, 'toil', 'Toil Documentation', [author], 1)]
 
 # -- Options for Texinfo output -------------------------------------------
 # Grouping the document tree into Texinfo files. List of tuples
 # (source start file, target name, title, author, dir menu entry, description, category)
-texinfo_documents = [(master_doc, 'Toil', u'Toil Documentation', author, 'Toil', 'One line description of project.', 'Miscellaneous')]
+texinfo_documents = [(master_doc, project, 'Toil Documentation', author, project, project, 'Miscellaneous')]
