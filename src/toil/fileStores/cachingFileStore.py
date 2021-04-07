@@ -767,8 +767,6 @@ class CachingFileStore(AbstractFileStore):
 
         return uploadedCount
 
-
-
     def _allocateSpaceForJob(self, newJobReqs):
         """
         A new job is starting that needs newJobReqs space.
@@ -1372,9 +1370,6 @@ class CachingFileStore(AbstractFileStore):
         :param str cachedPath: absolute source path in the cache.
         :param str localFilePath: absolute destination path. Already known not to exist.
         """
-
-
-
         if self.getCacheAvailable() < 0:
             self._tryToFreeUpSpace()
 
@@ -1912,6 +1907,6 @@ class CachingFileStore(AbstractFileStore):
             # If we did win, delete the job and its files and temp dir
             cls._removeJob(con, cur, jobID)
 
-            logger.debug('Cleaned up orphanded job %s', jobID)
+            logger.debug('Cleaned up orphaned job %s', jobID)
 
         # Now we have cleaned up all the jobs that belonged to dead workers that were dead when we entered this function.

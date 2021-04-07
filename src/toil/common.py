@@ -54,7 +54,7 @@ class Config:
         """This attribute uniquely identifies the job store and therefore the workflow. It is
         necessary in order to distinguish between two consecutive workflows for which
         self.jobStore is the same, e.g. when a job store name is reused after a previous run has
-        finished sucessfully and its job store has been clean up."""
+        finished successfully and its job store has been clean up."""
         self.workflowAttemptNumber = None
         self.jobStore = None
         self.logLevel: str = logging.getLevelName(root_logger.getEffectiveLevel())
@@ -1088,7 +1088,7 @@ class Toil:
 
         # Create a directory unique to each host in case workDir is on a shared FS.
         # This prevents workers on different nodes from erasing each other's directories.
-        workflowDir: str = os.path.join(base, str(uuid.uuid5(uuid.UUID(getNodeID()), workflowID)).replace('-', ''))
+        workflowDir: str = os.path.join(base, str(uuid.uuid5(uuid.UUID(getNodeID()), workflowID)).replace('-', ''))[8:]
         try:
             # Directory creation is atomic
             os.mkdir(workflowDir)

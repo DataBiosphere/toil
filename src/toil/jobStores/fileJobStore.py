@@ -88,7 +88,7 @@ class FileJobStore(AbstractJobStore):
         self.moveExports = None
 
     def __repr__(self):
-        return 'FileJobStore({})'.format(self.jobStoreDir)
+        return f'FileJobStore({self.jobStoreDir})'
 
     def initialize(self, config):
         try:
@@ -198,10 +198,9 @@ class FileJobStore(AbstractJobStore):
 
     def getSharedPublicUrl(self, sharedFileName):
         jobStorePath = os.path.join(self.sharedFilesDir, sharedFileName)
-        if os.path.exists(jobStorePath):
-            return 'file:' + jobStorePath
-        else:
+        if not os.path.exists(jobStorePath):
             raise NoSuchFileException(sharedFileName)
+        return 'file:' + jobStorePath
 
     def load(self, jobStoreID):
         self._checkJobStoreIdExists(jobStoreID)
@@ -681,7 +680,6 @@ class FileJobStore(AbstractJobStore):
         if not self._waitForFile(self._getJobDirFromId(jobStoreID)):
             raise NoSuchJobException(jobStoreID)
 
-
     def _checkJobStoreIdExists(self, jobStoreID):
         """
         Raises a NoSuchJobException if the job with ID jobStoreID does not exist.
@@ -931,8 +929,7 @@ class FileJobStore(AbstractJobStore):
             self._checkJobStoreIdAssigned(jobStoreID)
             # Find where all its created files should live, depending on if
             # they need to go away when the job is deleted or not.
-            jobFilesDir = self._getJobFilesDir(jobStoreID) if not cleanup \
-                else self._getJobFilesCleanupDir(jobStoreID)
+            jobFilesDir = self._getJobFilesDir(jobStoreID) if not cleanup else self._getJobFilesCleanupDir(jobStoreID)
 
             # Lazily create the parent directory.
             # We don't want our tree filled with confusingly empty directories.
