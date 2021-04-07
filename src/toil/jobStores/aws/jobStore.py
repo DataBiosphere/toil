@@ -37,7 +37,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
 from toil.jobStores.aws.utils import uploadFile
-from toil.jobStores.aws.file_info import AWSFile
+from toil.jobStores.aws.file_info import AWSFile, AWSFileMetadata
 from toil.lib.compatibility import compat_bytes
 from toil.lib.ec2 import establish_boto3_session
 from toil.lib.aws.dynamodb import (put_item,
@@ -49,7 +49,10 @@ from toil.lib.aws.dynamodb import (put_item,
 from toil.lib.aws.s3 import (create_bucket,
                              delete_bucket,
                              bucket_exists,
-                             bucket_is_registered_with_toil)
+                             bucket_is_registered_with_toil,
+                             copy_s3_to_s3,
+                             boto_args,
+                             parse_s3_uri)
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.checksum import compute_checksum_for_content, compute_checksum_for_file
 from toil.lib.retry import retry
@@ -108,7 +111,7 @@ class AWSJobStore(AbstractJobStore):
         self.sse_key = None
         self.encryption_args = {}
         if self.config.sseKey:
-            with open(self.config.sseKey, 'rb') as f:
+            with open(self.config.sseKey, 'r') as f:
                 self.sse_key = f.read()
             assert len(self.sse_key) == 32
             self.encryption_args = {'SSECustomerAlgorithm': 'AES256', 'SSECustomerKey': self.sse_key}
@@ -118,7 +121,7 @@ class AWSJobStore(AbstractJobStore):
         self.bucket = None
 
         boto3_session = establish_boto3_session()
-        self.s3_resource = boto3_session.resource('s3', region_name=self.region, **self.boto_args())
+        self.s3_resource = boto3_session.resource('s3', region_name=self.region, **boto_args())
         self.s3_client = self.s3_resource.meta.client
 
         self._batchedUpdates = []
@@ -184,16 +187,16 @@ class AWSJobStore(AbstractJobStore):
         for job_id in get_primary_key_items(table=self.table, key='jobs', return_key='sort_key'):
             yield self.unpickle_job(job_id)
 
-    def load_job(self, file_id):
-        job = self.unpickle_job(file_id)
+    def load_job(self, job_id: str):
+        job = self.unpickle_job(job_id)
         if job is None:
-            raise NoSuchJobException(file_id)
+            raise NoSuchJobException(job_id)
         return job
 
     def update_job(self, jobDescription):
         self.pickle_job(jobDescription)
 
-    def delete_job(self, jobStoreID):
+    def delete_job(self, jobStoreID: str):
         logger.debug("Deleting job %s", jobStoreID)
         associated_files = get_item(table=self.table, hash_key='jobs', sort_key=jobStoreID)
         delete_item(table=self.table, hash_key='jobs', sort_key=jobStoreID)
@@ -219,38 +222,46 @@ class AWSJobStore(AbstractJobStore):
         assert 0 == response.get('ContentLength', None)
         return new_file_id
 
-    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False, symlink=False):
+    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False, symlink=False) -> FileID:
+        """
+        Upload a file into the s3 bucket jobstore from the source uri and  store the file's
+        metadata inside of dynamodb.
+
+        This db entry's existence should always be in sync with the file's existence (when one exists,
+        so must the other).
+        """
+        # we are uploading from s3 to s3
         if issubclass(otherCls, AWSJobStore):
-            srcObj = self._getObjectForUrl(url, existing=True)
-            size = srcObj.content_length
-            if sharedFileName is None:
-                info = AWSFile.create(srcObj.key)
-            else:
-                self._requireValidSharedFileName(sharedFileName)
-                jobStoreFileID = self._sharedFileID(sharedFileName)
-                info = AWSFile.loadOrCreate(jobStoreFileID=jobStoreFileID,
-                                            ownerID=self.sharedFileOwnerID,
-                                            encrypted=None)
-            info.copyFrom(srcObj)
-            info.save()
-            return FileID(info.fileID, size) if sharedFileName is None else None
+            # make sure the object exists and provide access to s3_blob.content_length
+            s3_blob = self._getObjectForUrl(url, existing=True)
+
+            file_id = str(uuid.uuid4()) if not sharedFileName else self._sharedFileID(sharedFileName)
+            owner_id = s3_blob.key if not sharedFileName else self.sharedFileOwnerID
+
+            # stow file's metadata in db
+            metadata = json.loads(dict(file_id=file_id, owner_id=owner_id, sse_key_path=self.sse_key))
+            put_item(table=self.table, hash_key='files', sort_key=file_id, value=metadata)
+
+            # upload the uri to our s3 jobstore bucket
+            # , sse_key=self.sse_key
+            copy_s3_to_s3(src_bucket=s3_blob.bucket_name, src_key=s3_blob.key,
+                          dst_bucket=self.bucket_name, dst_key=file_id)
+            return FileID(fileStoreID=file_id, size=s3_blob.content_length) if sharedFileName is None else None
         else:
             return super(AWSJobStore, self)._importFile(otherCls, url, sharedFileName=sharedFileName)
 
-    def _exportFile(self, otherCls, jobStoreFileID, url):
+    def _exportFile(self, otherCls, jobStoreFileID, url) -> None:
         if issubclass(otherCls, AWSJobStore):
-            dstObj = self._getObjectForUrl(url)
-            info = AWSFile.loadOrFail(jobStoreFileID)
-            info.copyTo(dstObj)
+            s3_blob = self._getObjectForUrl(url)
+            # fail if db fetch does not exist
+            # needed?
+            get_item(table=self.table, hash_key='files', sort_key=jobStoreFileID)
+            # upload the uri to our s3 jobstore bucket
+            # , sse_key=self.sse_key
+            copy_s3_to_s3(src_bucket=self.bucket_name, src_key=jobStoreFileID,
+                          dst_bucket=s3_blob.bucket_name, dst_key=s3_blob.key)
         else:
             super(AWSJobStore, self)._defaultExportFile(otherCls, jobStoreFileID, url)
-
-    @classmethod
-    def getSize(cls, url: str):
-        try:
-            return cls._getObjectForUrl(url, existing=True).content_length
-        except AWSKeyNotFoundError:
-            return 0
 
     @classmethod
     def _readFromUrl(cls, url, writable):
@@ -267,22 +278,6 @@ class AWSJobStore(AbstractJobStore):
                    fileID=dstObj.key,
                    partSize=DEFAULT_AWS_PART_SIZE)
 
-    def boto_args(self):
-        host = os.environ.get('TOIL_S3_HOST', None)
-        port = os.environ.get('TOIL_S3_PORT', None)
-        protocol = 'https'
-        if os.environ.get('TOIL_S3_USE_SSL', True) == 'False':
-            protocol = 'http'
-        if host:
-            return {'endpoint_url': f'{protocol}://{host}' + f':{port}' if port else ''}
-        return {}
-
-    def load_or_create(self, file_id, owner, encrypt):
-        pass
-
-    def load_or_fail(self, file_id):
-        pass
-
     def _getObjectForUrl(self, uri: str, existing: Optional[bool] = None):
         """
         Extracts a key (object) from a given s3:// URL.
@@ -292,9 +287,7 @@ class AWSJobStore(AbstractJobStore):
 
         :rtype: S3.Object
         """
-        if uri.startswith('s3://'):
-            raise ValueError(f'Invalid schema.  Expecting s3 prefix, not: {uri}')
-        bucket_name, key_name = uri[len('s3://'):].split('/', 1)
+        bucket_name, key_name = parse_s3_uri(uri)
         obj = self.s3_resource.Object(bucket_name, key_name)
 
         try:
@@ -319,7 +312,26 @@ class AWSJobStore(AbstractJobStore):
         return url.scheme.lower() == 's3'
 
     def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
-        info = AWSFile.create(jobStoreID if cleanup else None)
+        file_id = jobStoreID if cleanup else None
+        copy_local_to_s3(localFilePath, dst_bucket, dst_key)
+        # file_size, file_time = fileSizeAndTime(localFilePath)
+        # if file_size <= self.maxInlinedSize():
+        #     with open(localFilePath, 'rb') as f:
+        #         self.content = f.read()
+        #     # Clear out any old checksum in case of overwrite
+        #     self.checksum = ''
+        # else:
+        #     headerArgs = self._s3EncryptionArgs()
+        #     # Create a new Resource in case it needs to be on its own thread
+        #     resource = boto3_session.resource('s3', region_name=self.outer.region)
+        #
+        #     self.checksum = self._get_file_checksum(localFilePath) if calculateChecksum else None
+        #     self.version = uploadFromPath(localFilePath,
+        #                                   resource=resource,
+        #                                   bucketName=self.outer.filesBucket.name,
+        #                                   fileID=compat_bytes(self.fileID),
+        #                                   headerArgs=headerArgs,
+        #                                   partSize=self.outer.partSize)
         info.upload(localFilePath, not self.config.disableJobStoreChecksumVerification)
         info.save()
         return info.fileID
@@ -356,8 +368,12 @@ class AWSJobStore(AbstractJobStore):
     def fileExists(self, jobStoreFileID):
         return AWSFile.exists(jobStoreFileID)
 
-    def getFileSize(self, jobStoreFileID):
-        return self.getSize(f's3://{self.bucket_name}/{jobStoreFileID}')
+    def getFileSize(self, jobStoreFileID: str) -> int:
+        url = f's3://{self.bucket_name}/{jobStoreFileID}'
+        try:
+            return self._getObjectForUrl(url, existing=True).content_length
+        except AWSKeyNotFoundError:
+            return 0
 
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
         self.load_or_fail(jobStoreFileID)

@@ -214,5 +214,5 @@ def table_exists(table: str) -> bool:
     table = db.Table(table)
     try:
         is_table_existing = table.table_status in ("CREATING", "UPDATING", "DELETING", "ACTIVE")
-    except ClientError:
+    except db.ClientError:
         return False

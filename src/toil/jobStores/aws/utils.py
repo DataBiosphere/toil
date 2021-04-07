@@ -13,6 +13,8 @@
 # limitations under the License.
 import logging
 import os
+import socket
+import errno
 from typing import Optional
 
 from boto.exception import (
@@ -24,7 +26,7 @@ from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
 
 from toil.lib.compatibility import compat_bytes
-from toil.lib.retry import retry, ErrorCondition
+from toil.lib.retry import retry, ErrorCondition, old_retry
 
 logger = logging.getLogger(__name__)
 

@@ -15,7 +15,9 @@ import hashlib
 import logging
 import reprlib
 import uuid
+from collections import namedtuple
 from contextlib import contextmanager
+from typing import Optional
 from toil.jobStores.aws.utils import uploadFromPath, copyKeyMultipart
 from toil.lib.pipes import ReadablePipe, ReadableTransformingPipe
 from toil.lib.checksum import compute_checksum_for_file
@@ -32,6 +34,20 @@ logger = logging.getLogger(__name__)
 
 class ChecksumError(Exception):
     """Raised when a download from AWS does not contain the correct data."""
+
+
+class AWSFileMetadata:
+    def __init__(self,
+                 file_id: str,
+                 owner_id: str,
+                 number_of_chunks: int = 0,
+                 checksum: Optional[str] = None,
+                 sse_key_path: Optional[str] = None):
+        self.file_id = file_id
+        self.owner_id = owner_id
+        self.number_of_chunks = number_of_chunks
+        self.checksum = checksum
+        self.sse_key_path = sse_key_path
 
 
 class AWSFile:

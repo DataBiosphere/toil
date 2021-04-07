@@ -15,6 +15,7 @@ import logging
 import hashlib
 import itertools
 import time
+import os
 from io import BytesIO
 from typing import Optional, Tuple, Union
 
@@ -92,9 +93,23 @@ def bucket_exists(bucket: str) -> Union[bool, s3_boto3_resource.Bucket]:
 
 # TODO: Determine specific retries
 @retry()
-def bucket_versioning_enabled(self, bucket: str):
+def copy_s3_to_s3(src_bucket, src_key, dst_bucket, dst_key):
+    source = {'Bucket': src_bucket, 'Key': src_key}
+    dest = s3_boto3_resource.Bucket(dst_bucket)
+    dest.copy(source, dst_key)
+
+
+# TODO: Determine specific retries
+@retry()
+def copy_local_to_s3(local_file_path, dst_bucket, dst_key):
+    s3_boto3_client.upload_file(local_file_path, dst_bucket, dst_key)
+
+
+# TODO: Determine specific retries
+@retry()
+def bucket_versioning_enabled(bucket: str):
     versionings = dict(Enabled=True, Disabled=False, Suspended=None)
-    status = self.s3_resource.BucketVersioning(bucket).status
+    status = s3_boto3_resource.BucketVersioning(bucket).status
     return versionings.get(status) if status else False
 
 
@@ -159,3 +174,21 @@ class MultiPartPipe(WritablePipe):
                                                                 Key=self.file_id,
                                                                 UploadId=upload_id,
                                                                 MultipartUpload={"Parts": parts})
+
+
+def parse_s3_uri(uri: str) -> Tuple[str, str]:
+    if not uri.startswith('s3://'):
+        raise ValueError(f'Invalid schema.  Expecting s3 prefix, not: {uri}')
+    bucket_name, key_name = uri[len('s3://'):].split('/', 1)
+    return bucket_name, key_name
+
+
+def boto_args():
+    host = os.environ.get('TOIL_S3_HOST', None)
+    port = os.environ.get('TOIL_S3_PORT', None)
+    protocol = 'https'
+    if os.environ.get('TOIL_S3_USE_SSL', True) == 'False':
+        protocol = 'http'
+    if host:
+        return {'endpoint_url': f'{protocol}://{host}' + f':{port}' if port else ''}
+    return {}
