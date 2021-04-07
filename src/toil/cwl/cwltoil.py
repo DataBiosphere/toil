@@ -2128,7 +2128,6 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     # we use the workdir as the default jobStore for the first parsing pass:
     options = parser.parse_args([workdir] + args)
     cwltool.main.setup_schema(args=options, custom_schema_callback=None)
-    print(cwltool.process.custom_schemas)
 
     # Determine if our default will actually be in use
     using_default_job_store = options.jobStore == workdir
@@ -2231,7 +2230,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     loading_context.fetcher_constructor,
                 )
             except schema_salad.exceptions.ValidationException:
-                print(
+                cwllogger.warning(
                     "\nYou may be getting this error because your arguments are incorrect or out of order."
                     + usage_message,
                     file=sys.stderr,

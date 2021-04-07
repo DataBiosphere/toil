@@ -46,7 +46,7 @@ class NonCachingFileStore(AbstractFileStore):
     def open(self, job: Job) -> Generator[None, None, None]:
         jobReqs = job.disk
         startingDir = os.getcwd()
-        self.localTempDir = tempfile.mkdtemp()
+        self.localTempDir = tempfile.mkdtemp()  # permissions are "drwx------"; modify this for introspection?
         self._removeDeadJobs(self.workDir)
         self.jobStateFile = self._createJobStateFile()
         freeSpace, diskSize = getFileSystemSize(self.localTempDir)
