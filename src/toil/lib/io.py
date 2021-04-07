@@ -125,8 +125,8 @@ def atomic_copyobj(src_fh: BytesIO, dest_path: str, length: int = 16384, executa
             os.chmod(dest_path_tmp, os.stat(dest_path_tmp).st_mode | stat.S_IXUSR)
 
 
-def make_public_dir():
-    dir_name = tempfile.mkdtemp()
+def make_public_dir(in_directory: Optional[str] = None):
+    dir_name = tempfile.mkdtemp(dir=in_directory)
     shutil.rmtree(dir_name)
     os.mkdir(dir_name, mode=0o755)
     return dir_name
