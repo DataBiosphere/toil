@@ -8,9 +8,6 @@ install:
 
 jobs:
   include:
-    - name: mypy type checking
-      script:
-        - make diff_mypy
-    - name: quick test offiline
+    - name: quick test offline
       script:
         - TOIL_TEST_QUICK=True make test_offline
