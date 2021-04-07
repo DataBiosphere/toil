@@ -155,9 +155,9 @@ def filter_skip_null(name: str, value: Any) -> Any:
     value = _filter_skip_null(value, err_flag)
     if err_flag[0]:
         logger.warning(
-            "In %s, SkipNull result found and cast to None. \n"
+            f"In {name}, SkipNull result found and cast to None. \n"
             "You had a conditional step that did not run, "
-            "but you did not use pickValue to handle the skipped input." % name
+            "but you did not use pickValue to handle the skipped input."
         )
     return value
 
@@ -2230,7 +2230,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     loading_context.fetcher_constructor,
                 )
             except schema_salad.exceptions.ValidationException:
-                cwllogger.warning(
+                print(
                     "\nYou may be getting this error because your arguments are incorrect or out of order."
                     + usage_message,
                     file=sys.stderr,
@@ -2287,7 +2287,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 )
             except SystemExit as e:
                 if e.code == 2:  # raised by argparse's parse_args() function
-                    logger.warning(
+                    print(
                         "\nIf both a CWL file and an input object (YAML/JSON) file were "
                         "provided, this may be the argument order." + usage_message,
                         file=sys.stderr,
