@@ -23,7 +23,7 @@ import time
 import uuid
 
 from argparse import _ArgumentGroup, ArgumentParser, ArgumentDefaultsHelpFormatter
-from typing import Optional, Callable, Any, List, Tuple
+from typing import Optional, Callable, Any, List, Tuple, Union
 
 from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import (add_all_batchsystem_options,
@@ -1088,9 +1088,8 @@ class Toil:
         # Get the global Toil work directory. This ensures that it exists.
         base = cls.getToilWorkDir(configWorkDir=configWorkDir)
 
-        # Create a directory unique to each host and workflow in case workDir
-        # is on a shared FS. This prevents workers on different nodes from
-        # erasing each other's directories.
+        # Create a directory unique to each host in case workDir is on a shared FS.
+        # This prevents workers on different nodes from erasing each other's directories.
         workflowDir: str = os.path.join(base, getNodeID())
         try:
             # Directory creation is atomic
