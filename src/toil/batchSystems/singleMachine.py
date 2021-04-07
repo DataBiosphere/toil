@@ -87,7 +87,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 log.warning('Not enough memory! User limited to %i bytes but we only have %i bytes.', maxMemory, self.physicalMemory)
             maxMemory = self.physicalMemory
 
-        workdir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)  # config.workDir may be None; this sets a real directory
+        workdir = Toil.getLocalWorkflowDir(config.workDir)  # config.workDir may be None; this sets a real directory
         self.physicalDisk = toil.physicalDisk(workdir)
         if maxDisk > self.physicalDisk:
             if maxDisk != sys.maxsize:

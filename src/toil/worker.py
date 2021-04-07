@@ -214,9 +214,8 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     ##########################################
     #Setup the temporary directories.
     ##########################################
-
     # Dir to put all this worker's temp files in.
-    localWorkerTempDir = tempfile.mkdtemp(dir=config.workDir)
+    localWorkerTempDir = Toil.getLocalWorkflowDir(config.workDir)
     os.chmod(localWorkerTempDir, 0o755)
 
     ##########################################

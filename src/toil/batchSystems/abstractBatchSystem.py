@@ -376,7 +376,7 @@ class BatchSystemSupport(AbstractBatchSystem):
                for cleaning up the worker.
         """
         assert isinstance(info, WorkerCleanupInfo)
-        workflowDir = Toil.getLocalWorkflowDir(info.workflowID, info.workDir)
+        workflowDir = Toil.getLocalWorkflowDir(info.workDir)
         DeferredFunctionManager.cleanupWorker(workflowDir)
         workflowDirContents = os.listdir(workflowDir)
         AbstractFileStore.shutdownFileStore(workflowDir, info.workflowID)

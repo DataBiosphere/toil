@@ -1074,12 +1074,11 @@ class Toil:
         return workDir
 
     @classmethod
-    def getLocalWorkflowDir(cls, workflowID, configWorkDir=None):
+    def getLocalWorkflowDir(cls, configWorkDir=None):
         """
         Returns a path to the directory where worker directories and the cache will be located
         for this workflow on this machine.
 
-        :param str workflowID: Unique identifier for the workflow
         :param str configWorkDir: Value passed to the program using the --workDir flag
         :return: Path to the local workflow directory on this machine
         :rtype: str
