@@ -24,6 +24,7 @@ from unittest import skipIf
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.job import Job
 from toil.leader import DeadlockException, FailedJobsException
+from toil.lib.retry import retry_flaky_test
 from toil.test import get_temp_file
 from toil.test import ToilTest, slow
 
@@ -134,6 +135,7 @@ class JobServiceTest(ToilTest):
 
     @slow
     @skipIf(SingleMachineBatchSystem.numCores < 4, 'Need at least four cores to run this test')
+    @retry_flaky_test()
     def testServiceParallelRecursive(self, checkpoint=True):
         """
         Tests the creation of a Job.Service, creating parallel chains of services and accessing jobs.

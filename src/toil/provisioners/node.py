@@ -26,7 +26,7 @@ a_short_time = 5
 logger = logging.getLogger(__name__)
 
 
-class Node(object):
+class Node:
     maxWaitTime = 7 * 60
 
     def __init__(self, publicIP, privateIP, name, launchTime, nodeType, preemptable, tags=None):
