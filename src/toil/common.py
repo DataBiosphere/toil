@@ -1074,7 +1074,7 @@ class Toil:
         return workDir
 
     @classmethod
-    def getLocalWorkflowDir(cls, configWorkDir=None):
+    def getLocalWorkflowDir(cls, workflowID, configWorkDir=None):
         """
         Returns a path to the directory where worker directories and the cache will be located
         for this workflow on this machine.
@@ -1083,13 +1083,12 @@ class Toil:
         :return: Path to the local workflow directory on this machine
         :rtype: str
         """
-
         # Get the global Toil work directory. This ensures that it exists.
         base = cls.getToilWorkDir(configWorkDir=configWorkDir)
 
         # Create a directory unique to each host in case workDir is on a shared FS.
         # This prevents workers on different nodes from erasing each other's directories.
-        workflowDir: str = os.path.join(base, getNodeID())
+        workflowDir: str = os.path.join(base, str(uuid.uuid5(uuid.UUID(getNodeID()), workflowID)).replace('-', ''))
         try:
             # Directory creation is atomic
             os.mkdir(workflowDir)
