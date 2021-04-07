@@ -2287,7 +2287,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 )
             except SystemExit as e:
                 if e.code == 2:  # raised by argparse's parse_args() function
-                    print(
+                    logger.warning(
                         "\nIf both a CWL file and an input object (YAML/JSON) file were "
                         "provided, this may be the argument order." + usage_message,
                         file=sys.stderr,
