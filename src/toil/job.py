@@ -27,7 +27,7 @@ from abc import ABCMeta, abstractmethod
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from contextlib import contextmanager
 from io import BytesIO
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Union, Set
 
 import dill
 
@@ -1496,14 +1496,12 @@ class Job:
         self.checkJobGraphAcylic()
         self.checkNewCheckpointsAreLeafVertices()
 
-    def getRootJobs(self):
+    def getRootJobs(self) -> Set['Job']:
         """
-        :return: The roots of the connected component of jobs that contains this job.
-        A root is a job with no predecessors.
+        Returns the set of root job objects that contain this job.
+        A root job is a job with no predecessors (i.e. which are not children, follow-ons, or services).
 
         Only deals with jobs created here, rather than loaded from the job store.
-
-        :rtype : set of Job objects with no predecessors (i.e. which are not children, follow-ons, or services)
         """
 
         # Start assuming all jobs are roots
