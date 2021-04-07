@@ -17,6 +17,7 @@ from abc import ABCMeta, abstractmethod
 from datetime import datetime
 from queue import Empty, Queue
 from threading import Lock, Thread
+from typing import Any, List
 
 from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
                                                    BatchSystemCleanupSupport,
@@ -34,7 +35,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
 
     class Worker(Thread, metaclass=ABCMeta):
 
-        def __init__(self, newJobsQueue, updatedJobsQueue, killQueue, killedJobsQueue, boss):
+        def __init__(self, newJobsQueue: Queue, updatedJobsQueue: Queue, killQueue: Queue, killedJobsQueue: Queue, boss: 'AbstractGridEngineBatchSystem') -> None:
             """
             Abstract worker interface class. All instances are created with five
             initial arguments (below). Note the Queue instances passed are empty.
@@ -55,7 +56,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             self.updatedJobsQueue = updatedJobsQueue
             self.killQueue = killQueue
             self.killedJobsQueue = killedJobsQueue
-            self.waitingJobs = list()
+            self.waitingJobs: List[Any] = list()
             self.runningJobs = set()
             self.runningJobsLock = Lock()
             self.batchJobIDs = dict()
@@ -90,7 +91,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 self.runningJobs.remove(jobID)
             del self.batchJobIDs[jobID]
 
-        def createJobs(self, newJob):
+        def createJobs(self, newJob: Any) -> bool:
             """
             Create a new job with the Toil job ID.
 

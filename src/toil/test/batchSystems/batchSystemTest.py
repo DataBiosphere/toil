@@ -37,6 +37,7 @@ from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config
 from toil.job import Job, JobDescription
 from toil.lib.threading import cpu_count
+from toil.lib.retry import retry_flaky_test
 from toil.test import (ToilTest,
                        needs_aws_s3,
                        needs_fetchable_appliance,
@@ -147,6 +148,7 @@ class hidden(object):
         def testAvailableCores(self):
             self.assertTrue(cpu_count() >= numCores)
 
+        @retry_flaky_test()
         def testRunJobs(self):
             jobDesc1 = self._mockJobDescription(command='sleep 1000', jobName='test1', unitName=None,
                                                 jobStoreID='1', requirements=defaultRequirements)
@@ -507,6 +509,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
     def scriptCommand(self):
         return ' '.join([sys.executable, self.scriptPath, self.counterPath])
 
+    @retry_flaky_test()
     def test(self):
         # We'll use fractions to avoid rounding errors. Remember that not every fraction can be
         # represented as a floating point number.
@@ -782,6 +785,7 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
         return "single_machine"
 
     @slow
+    @retry_flaky_test()
     def testConcurrencyWithDisk(self):
         """
         Tests that the batch system is allocating disk resources properly

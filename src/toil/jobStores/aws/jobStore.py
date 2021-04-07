@@ -25,6 +25,10 @@ from io import BytesIO
 from contextlib import contextmanager
 from typing import Optional, Tuple, Union
 
+import boto.sdb
+import boto.s3.connection
+from typing import Optional
+from boto.exception import SDBResponseError
 from botocore.exceptions import ClientError
 
 from toil.fileStores import FileID
