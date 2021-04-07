@@ -1055,9 +1055,9 @@ class CWLJob(Job):
                 js_console=False,
                 force_docker_pull=False,
                 loadListing=determine_load_listing(tool),
-                outdir="",
-                tmpdir="/tmp",  # TODO: use actual defaults here
-                stagedir="/var/lib/cwl",  # TODO: use actual defaults here
+                outdir='',
+                tmpdir='/tmp',  # TODO: use actual defaults here
+                stagedir='/var/lib/cwl',  # TODO: use actual defaults here
                 cwlVersion=cast(str, self.cwltool.metadata["cwlVersion"]),
             )
 
@@ -1926,6 +1926,12 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         action="store_true",
         help="Enable loading and running development versions of CWL",
     )
+    parser.add_argument(
+        "--enable-ext",
+        action="store_true",
+        help="Enable loading and running 'cwltool:' extensions to the CWL standards.",
+        default=False,
+    )
     parser.add_argument("--quiet", dest="logLevel", action="store_const", const="ERROR")
     parser.add_argument("--basedir", type=str)  # TODO: Might be hard-coded?
     parser.add_argument("--outdir", type=str, default=os.getcwd())
@@ -2106,7 +2112,6 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         default=os.environ.get("CWL_FULL_NAME", ""),
         type=Text,
     )
-
     # Problem: we want to keep our job store somewhere auto-generated based on
     # our options, unless overridden by... an option. So we will need to parse
     # options twice, because we need to feed the parser a job store.
@@ -2122,6 +2127,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     # we use the workdir as the default jobStore for the first parsing pass:
     options = parser.parse_args([workdir] + args)
+    cwltool.main.setup_schema(args=options, custom_schema_callback=None)
+    print(cwltool.process.custom_schemas)
 
     # Determine if our default will actually be in use
     using_default_job_store = options.jobStore == workdir

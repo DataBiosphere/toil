@@ -22,12 +22,11 @@ import sqlite3
 import tempfile
 import threading
 import time
-import uuid
 from contextlib import contextmanager
-from typing import Any, Callable, Generator, Optional
+from typing import Callable, Generator, Optional
 
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
-from toil.fileStores import FileID, make_public_dir
+from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.humanize import bytes2human
@@ -194,8 +193,7 @@ class CachingFileStore(AbstractFileStore):
         # local temp dirs for all of the jobs run on this machine.
         # At this point in worker startup, when we are setting up caching,
         # localTempDir is the worker directory, not the job directory.
-        self.localCacheDir = os.path.join(os.path.dirname(localTempDir),
-                                          cacheDirName(self.jobStore.config.workflowID))
+        self.localCacheDir = os.path.join(os.path.dirname(localTempDir), cacheDirName(self.jobStore.config.workflowID))
 
         # Since each worker has it's own unique CachingFileStore instance, and only one Job can run
         # at a time on a worker, we can track some stuff about the running job in ourselves.
@@ -217,7 +215,7 @@ class CachingFileStore(AbstractFileStore):
         # the workflow left one behind without cleaning up properly; we need to
         # be able to tell that from showing up on a machine where a cache has
         # already been created.
-        self.dbPath = os.path.join(self.localCacheDir, 'cache-{}.db'.format(self.workflowAttemptNumber))
+        self.dbPath = os.path.join(self.localCacheDir, f'cache-{self.workflowAttemptNumber}.db')
         # We need to hold onto both a connection (to commit) and a cursor (to actually use the database)
         self.con = sqlite3.connect(self.dbPath, timeout=SQLITE_TIMEOUT_SECS)
         self.cur = self.con.cursor()
@@ -382,7 +380,6 @@ class CachingFileStore(AbstractFileStore):
 
         raise RuntimeError('Unable to retrieve cache limit')
 
-
     def getCacheUsed(self):
         """
         Return the total number of bytes used in the cache.
@@ -544,7 +541,6 @@ class CachingFileStore(AbstractFileStore):
             return row[0]
         return 0
 
-
     def cachingIsFree(self):
         """
         Return true if files can be cached for free, without taking up space.
@@ -592,9 +588,7 @@ class CachingFileStore(AbstractFileStore):
         # Return true if we said caching was free
         return free == 1
 
-
     # Internal caching logic
-
     def _getNewCachingPath(self, fileStoreID):
         """
         Get a path at which the given file ID can be cached.
@@ -978,7 +972,7 @@ class CachingFileStore(AbstractFileStore):
         # Create a working directory for the job
         startingDir = os.getcwd()
         # Move self.localTempDir from the worker directory set up in __init__ to a per-job directory.
-        self.localTempDir = make_public_dir(os.path.join(self.localTempDir, str(uuid.uuid4())))
+        self.localTempDir = tempfile.mkdtemp()
         # Check the status of all jobs on this node. If there are jobs that started and died before
         # cleaning up their presence from the database, clean them up ourselves.
         self._removeDeadJobs(self.workDir, self.con)
@@ -1004,7 +998,7 @@ class CachingFileStore(AbstractFileStore):
             if self.jobDiskBytes and self.jobDiskBytes > 0:
                 percent = float(disk) / self.jobDiskBytes * 100
             disk_usage: str = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(disk)}B [{disk}B] used, "
-                          f"{bytes2human(self.jobDiskBytes)}B [{self.jobDiskBytes}B] requested).")
+                               f"{bytes2human(self.jobDiskBytes)}B [{self.jobDiskBytes}B] requested).")
             if disk > self.jobDiskBytes:
                 self.logToMaster("Job used more disk than requested. For CWL, consider increasing the outdirMin "
                                  f"requirement, otherwise, consider increasing the disk requirement. {disk_usage}",

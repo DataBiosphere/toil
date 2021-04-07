@@ -663,13 +663,15 @@ def getNodeID():
                 with open(idSourceFile, "r") as inp:
                     nodeID = inp.readline().strip()
             except EnvironmentError:
-                logger.warning(("Exception when trying to read ID file {}. Will try next method to get node ID.").format(idSourceFile), exc_info=True)
+                logger.warning(f"Exception when trying to read ID file {idSourceFile}.  "
+                               f"Will try next method to get node ID.", exc_info=True)
             else:
                 if len(nodeID.split()) == 1:
-                    logger.debug("Obtained node ID {} from file {}".format(nodeID, idSourceFile))
+                    logger.debug(f"Obtained node ID {nodeID} from file {idSourceFile}")
                     break
                 else:
-                    logger.warning(("Node ID {} from file {} contains spaces. Will try next method to get node ID.").format(nodeID, idSourceFile))
+                    logger.warning(f"Node ID {nodeID} from file {idSourceFile} contains spaces.  "
+                                   f"Will try next method to get node ID.")
     else:
         nodeIDs = []
         for i_call in range(2):
@@ -677,22 +679,20 @@ def getNodeID():
             if len(nodeID.split()) == 1:
                 nodeIDs.append(nodeID)
             else:
-                logger.warning("Node ID {} from uuid.getnode() contains spaces".format(nodeID))
+                logger.warning(f"Node ID {nodeID} from uuid.getnode() contains spaces")
         nodeID = ""
         if len(nodeIDs) == 2:
             if nodeIDs[0] == nodeIDs[1]:
                 nodeID = nodeIDs[0]
             else:
-                logger.warning(
-                    "Different node IDs {} received from repeated calls to uuid.getnode(). You should use " \
-                    "another method to generate node ID.".format(nodeIDs))
+                logger.warning(f"Different node IDs {nodeIDs} received from repeated calls to uuid.getnode().  "
+                               f"You should use another method to generate node ID.")
 
-            logger.debug("Obtained node ID {} from uuid.getnode()".format(nodeID))
+            logger.debug(f"Obtained node ID {nodeID} from uuid.getnode()")
     if not nodeID:
-        logger.warning(
-            "Failed to generate stable node ID, returning empty string. If you see this message with a " \
-            "work dir on a shared file system when using workers running on multiple nodes, you might experience " \
-            "cryptic job failures")
+        logger.warning("Failed to generate stable node ID, returning empty string. If you see this message with a "
+                       "work dir on a shared file system when using workers running on multiple nodes, you might "
+                       "experience cryptic job failures")
     return nodeID
 
 
@@ -1062,8 +1062,7 @@ class Toil:
 
         workDir = configWorkDir or os.getenv('TOIL_WORKDIR') or tempfile.gettempdir()
         if not os.path.exists(workDir):
-            raise RuntimeError("The directory specified by --workDir or TOIL_WORKDIR (%s) does not "
-                               "exist." % workDir)
+            raise RuntimeError(f'The directory specified by --workDir or TOIL_WORKDIR ({workDir}) does not exist.')
         return workDir
 
     @classmethod
@@ -1084,7 +1083,7 @@ class Toil:
         # Create a directory unique to each host and workflow in case workDir
         # is on a shared FS. This prevents workers on different nodes from
         # erasing each other's directories.
-        workflowDir = os.path.join(base, 'node-%s-%s' % (workflowID, getNodeID()))
+        workflowDir = os.path.join(base, getNodeID())
         try:
             # Directory creation is atomic
             os.mkdir(workflowDir)
