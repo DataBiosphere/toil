@@ -164,4 +164,5 @@ There are several environment variables that affect the way Toil runs.
 |                                  | in the Toil Docker container to use as a mirror    |
 |                                  | for Docker Hub.                                    |
 +----------------------------------+----------------------------------------------------+
+
 .. _standard temporary directory: https://docs.python.org/3/library/tempfile.html#tempfile.gettempdir
