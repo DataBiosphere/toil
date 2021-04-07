@@ -2,6 +2,7 @@ import logging
 import os
 import stat
 import shutil
+import tempfile
 import uuid
 
 from contextlib import contextmanager
@@ -122,6 +123,13 @@ def atomic_copyobj(src_fh: BytesIO, dest_path: str, length: int = 16384, executa
             shutil.copyfileobj(src_fh, dest_path_fh, length=length)
         if executable:
             os.chmod(dest_path_tmp, os.stat(dest_path_tmp).st_mode | stat.S_IXUSR)
+
+
+def make_public_dir():
+    dir_name = tempfile.mkdtemp()
+    shutil.rmtree(dir_name)
+    os.mkdir(dir_name, mode=0o755)
+    return dir_name
 
 
 class WriteWatchingStream:

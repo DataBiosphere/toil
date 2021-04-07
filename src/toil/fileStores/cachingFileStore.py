@@ -30,7 +30,7 @@ from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.humanize import bytes2human
-from toil.lib.io import atomic_copy, atomic_copyobj, robust_rmtree
+from toil.lib.io import atomic_copy, atomic_copyobj, robust_rmtree, make_public_dir
 from toil.lib.retry import ErrorCondition, retry
 from toil.lib.threading import get_process_name, process_name_exists
 from toil.job import Job, JobDescription
@@ -972,7 +972,7 @@ class CachingFileStore(AbstractFileStore):
         # Create a working directory for the job
         startingDir = os.getcwd()
         # Move self.localTempDir from the worker directory set up in __init__ to a per-job directory.
-        self.localTempDir = tempfile.mkdtemp()  # permissions are "drwx------"; modify this for introspection?
+        self.localTempDir = make_public_dir()
         # Check the status of all jobs on this node. If there are jobs that started and died before
         # cleaning up their presence from the database, clean them up ourselves.
         self._removeDeadJobs(self.workDir, self.con)

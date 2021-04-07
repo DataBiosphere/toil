@@ -15,7 +15,6 @@ import errno
 import fcntl
 import logging
 import os
-import tempfile
 from collections import defaultdict
 from contextlib import contextmanager
 from typing import Callable, Dict, Optional, Generator
@@ -27,7 +26,7 @@ from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.humanize import bytes2human
-from toil.lib.io import robust_rmtree
+from toil.lib.io import robust_rmtree, make_public_dir
 from toil.lib.threading import get_process_name, process_name_exists
 from toil.job import Job, JobDescription
 
@@ -46,7 +45,7 @@ class NonCachingFileStore(AbstractFileStore):
     def open(self, job: Job) -> Generator[None, None, None]:
         jobReqs = job.disk
         startingDir = os.getcwd()
-        self.localTempDir = tempfile.mkdtemp()  # permissions are "drwx------"; modify this for introspection?
+        self.localTempDir = make_public_dir()
         self._removeDeadJobs(self.workDir)
         self.jobStateFile = self._createJobStateFile()
         freeSpace, diskSize = getFileSystemSize(self.localTempDir)

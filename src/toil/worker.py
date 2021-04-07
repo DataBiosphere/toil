@@ -211,14 +211,12 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             if e != '':
                 sys.path.append(e)
 
-    toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
-
     ##########################################
     #Setup the temporary directories.
     ##########################################
 
     # Dir to put all this worker's temp files in.
-    localWorkerTempDir = tempfile.mkdtemp()
+    localWorkerTempDir = tempfile.mkdtemp(dir=config.workDir)
     os.chmod(localWorkerTempDir, 0o755)
 
     ##########################################
@@ -293,7 +291,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         ##########################################
         #Connect to the deferred function system
         ##########################################
-        deferredFunctionManager = DeferredFunctionManager(toilWorkflowDir)
+        deferredFunctionManager = DeferredFunctionManager(config.workDir)
 
         ##########################################
         #Load the JobDescription
