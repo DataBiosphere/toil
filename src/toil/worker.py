@@ -290,7 +290,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         ##########################################
         #Connect to the deferred function system
         ##########################################
-        deferredFunctionManager = DeferredFunctionManager(config.workDir)
+        deferredFunctionManager = DeferredFunctionManager(localWorkerTempDir)
 
         ##########################################
         #Load the JobDescription
