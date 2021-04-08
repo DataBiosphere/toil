@@ -47,6 +47,7 @@ def run_setup():
     addict = 'addict>=2.2.1, <2.3'
     enlighten = 'enlighten>=1.5.2, <2'
     wdlparse = 'wdlparse==0.1.0'
+    miniwdl = 'miniwdl'
 
     core_reqs = [
         dill,
@@ -81,7 +82,8 @@ def run_setup():
         pymesos,
         psutil]
     wdl_reqs = [
-        wdlparse
+        wdlparse,
+        miniwdl
     ]
 
     # htcondor is not supported by apple
@@ -154,7 +156,8 @@ def run_setup():
                 '_toil_worker = toil.worker:main',
                 'cwltoil = toil.cwl.cwltoil:cwltoil_was_removed [cwl]',
                 'toil-cwl-runner = toil.cwl.cwltoil:main [cwl]',
-                'toil-wdl-runner = toil.wdl.toilwdl:main',
+                'toil-wdl-runner = toil.wdl.toilwdl:main [wdl]',
+                'neo-toil-wdl-runner = toil.neowdl.main:main [wdl]',
                 '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]',
                 '_toil_kubernetes_executor = toil.batchSystems.kubernetes:executor [kubernetes]']})
 
