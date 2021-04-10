@@ -27,7 +27,6 @@ from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.conversions import bytes2human
 from toil.lib.io import robust_rmtree, make_public_dir
-from toil.lib.io import robust_rmtree
 from toil.lib.threading import get_process_name, process_name_exists
 from toil.job import Job, JobDescription
 
