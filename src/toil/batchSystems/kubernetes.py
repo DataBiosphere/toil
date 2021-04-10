@@ -1049,7 +1049,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         try:
             self._try_kubernetes_expecting_gone(self._api('batch').delete_collection_namespaced_job,
                                                             self.namespace,
-                                                            label_selector="toil_run={}".format(self.runID))
+                                                            label_selector="toil_run={}".format(self.runID),
+                                                            propagation_policy='Background')
             logger.debug('Killed jobs with delete_collection_namespaced_job; cleaned up')
         except ApiException as e:
             if e.status != 404:

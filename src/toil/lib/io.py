@@ -2,6 +2,7 @@ import logging
 import os
 import stat
 import shutil
+import tempfile
 import uuid
 
 from contextlib import contextmanager
@@ -122,6 +123,30 @@ def atomic_copyobj(src_fh: BytesIO, dest_path: str, length: int = 16384, executa
             shutil.copyfileobj(src_fh, dest_path_fh, length=length)
         if executable:
             os.chmod(dest_path_tmp, os.stat(dest_path_tmp).st_mode | stat.S_IXUSR)
+
+
+def make_public_dir(in_directory: Optional[str] = None) -> str:
+    """
+    Try to make a random directory name with length 4 that doesn't exist, with the given prefix.
+    Otherwise, try length 5, length 6, etc, up to a max of 32 (len of uuid4 with dashes replaced).
+    This function's purpose is mostly to avoid having long file names when generating directories.
+    If somehow this fails, which should be incredibly unlikely, default to a normal uuid4, which was
+    our old default.
+    """
+    for i in range(4, 32 + 1):  # make random uuids and truncate to lengths starting at 4 and working up to max 32
+        for _ in range(10):  # make 10 attempts for each length
+            truncated_uuid: str = str(uuid.uuid4()).replace('-', '')[:i]
+            generated_dir_path: str = os.path.join(in_directory, truncated_uuid)
+            try:
+                os.mkdir(generated_dir_path)
+                os.chmod(generated_dir_path, 0o777)
+                return generated_dir_path
+            except FileExistsError:
+                pass
+    this_should_never_happen: str = os.path.join(in_directory, str(uuid.uuid4()))
+    os.mkdir(this_should_never_happen)
+    os.chmod(this_should_never_happen, 0o777)
+    return this_should_never_happen
 
 
 class WriteWatchingStream:
