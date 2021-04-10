@@ -32,7 +32,7 @@ from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 from toil.common import Toil, ToilMetrics
 from toil.job import CheckpointJobDescription, ServiceJobDescription
 from toil.jobStores.abstractJobStore import NoSuchJobException
-from toil.lib.humanize import bytes2human
+from toil.lib.conversions import bytes2human
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.clusterScaler import ScalerThread
 from toil.serviceManager import ServiceManager

@@ -29,7 +29,7 @@ from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.fileStores import FileID, make_unique_public_dir
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.jobStores.abstractJobStore import AbstractJobStore
-from toil.lib.humanize import bytes2human
+from toil.lib.conversions import bytes2human
 from toil.lib.io import atomic_copy, atomic_copyobj, robust_rmtree
 from toil.lib.retry import ErrorCondition, retry
 from toil.lib.threading import get_process_name, process_name_exists
@@ -1003,7 +1003,7 @@ class CachingFileStore(AbstractFileStore):
             if self.jobDiskBytes and self.jobDiskBytes > 0:
                 percent = float(disk) / self.jobDiskBytes * 100
             disk_usage: str = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(disk)}B [{disk}B] used, "
-                          f"{bytes2human(self.jobDiskBytes)}B [{self.jobDiskBytes}B] requested).")
+                               f"{bytes2human(self.jobDiskBytes)}B [{self.jobDiskBytes}B] requested).")
             if disk > self.jobDiskBytes:
                 self.logToMaster("Job used more disk than requested. For CWL, consider increasing the outdirMin "
                                  f"requirement, otherwise, consider increasing the disk requirement. {disk_usage}",

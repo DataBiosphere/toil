@@ -1,13 +1,9 @@
 """Conversion utilities for mapping memory, disk, core declarations from strings to numbers and vice versa."""
-# TODO: Consolidate all conversion utilities here to use the same functions:
-#  src/toil/lib/humanize.py (bytes2human; human2bytes)
-#
 from functools import total_ordering
-from typing import Optional
+from typing import Optional, SupportsInt
 
-
-VALID_UNITS = ['b', 'k', 'm', 'g', 't', 'kb', 'mb', 'gb', 'tb',
-               'ki', 'mi', 'gi', 'ti', 'kib', 'mib', 'gib', 'tib']
+VALID_UNITS = ['b', 'k', 'm', 'g', 't', 'p', 'e', 'kb', 'mb', 'gb', 'tb', 'pb', 'eb',
+               'ki', 'mi', 'gi', 'ti', 'pi', 'ei', 'kib', 'mib', 'gib', 'tib', 'pib', 'eib']
 
 
 def bytes_in_unit(unit: str = 'B') -> int:
@@ -20,6 +16,10 @@ def bytes_in_unit(unit: str = 'B') -> int:
         num_bytes = 1 << 30
     if unit.lower() in ['ti', 'tib']:
         num_bytes = 1 << 40
+    if unit.lower() in ['pi', 'pib']:
+        num_bytes = 1 << 50
+    if unit.lower() in ['ei', 'eib']:
+        num_bytes = 1 << 60
 
     if unit.lower() in ['k', 'kb']:
         num_bytes = 1000
@@ -29,6 +29,10 @@ def bytes_in_unit(unit: str = 'B') -> int:
         num_bytes = 1000 ** 3
     if unit.lower() in ['t', 'tb']:
         num_bytes = 1000 ** 4
+    if unit.lower() in ['p', 'pb']:
+        num_bytes = 1000 ** 5
+    if unit.lower() in ['e', 'eb']:
+        num_bytes = 1000 ** 6
     return num_bytes
 
 
@@ -42,10 +46,10 @@ def convert_units(num: float,
 
 
 def human2bytes(string: str) -> int:
-    """Returns the amount of bytes, given a memory string."""
+    """Returns the amount of bytes, in binary format, given a memory string."""
     for index, char in enumerate(string):
         # find the first character of the unit
-        if char not in '0123456789. ':
+        if char not in '0123456789.-_ ':
             val = float(string[:index])
             unit = string[index:].strip()
             break
@@ -55,9 +59,37 @@ def human2bytes(string: str) -> int:
     assert unit.lower() in VALID_UNITS, f"{unit} not a valid unit, valid units are {VALID_UNITS}."
 
     if unit != 'B':
-        # assume kB, MB, GB, and TB represent the binary versions KiB, MiB, GiB, and TiB
+        # return the binary version of unit
         return int(convert_units(val, src_unit=unit[0] + 'i', dst_unit='B'))
     return int(val)
+
+
+def bytes2human(n: SupportsInt,
+                fmt: Optional[str] = '%(value).1f %(symbol)s',
+                iec: Optional[bool] = False) -> str:
+    """
+    Bytes-to-human converter.
+
+    Based on: http://goo.gl/kTQMs
+    Author: Giampaolo Rodola' <g.rodola [AT] gmail [DOT] com>
+    License: MIT
+
+    Adapted from: http://code.activestate.com/recipes/578019-bytes-to-human-human-to-bytes-converter/
+    """
+    n = int(n)
+    if n < 0:
+        raise ValueError("n < 0")
+    if iec:
+        symbols = ('Bi', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei')
+    else:
+        symbols = ('B', 'K', 'M', 'G', 'T', 'P', 'E')
+    prefix = {unit: bytes_in_unit(unit) for unit in symbols[1:]}
+
+    for symbol in reversed(symbols[1:]):
+        if n >= prefix[symbol]:
+            value = float(n) // prefix[symbol]
+            return fmt % locals()
+    return fmt % dict(symbol=symbols[0], value=n)
 
 
 @total_ordering
