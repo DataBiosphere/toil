@@ -43,4 +43,4 @@ class MemoryString(ActualMemoryString):
         """
         Deprecated.  Please use `self.bytes` instead.
         """
-        return super(MemoryString, self).bytes
+        return self.bytes
