@@ -23,7 +23,6 @@ import shutil
 import signal
 import socket
 import sys
-import tempfile
 import time
 import traceback
 from contextlib import contextmanager
@@ -34,6 +33,7 @@ from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import CheckpointJobDescription, Job
 from toil.lib.expando import MagicExpando
+from toil.lib.io import make_public_dir
 from toil.lib.resources import (get_total_cpu_time,
                                 get_total_cpu_time_and_memory_usage)
 from toil.statsAndLogging import configure_root_logger, set_log_level
@@ -45,6 +45,7 @@ except ImportError:
     CWL_INTERNAL_JOBS = ()
 
 logger = logging.getLogger(__name__)
+
 
 def nextChainable(predecessor, jobStore, config):
     """
@@ -211,14 +212,12 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             if e != '':
                 sys.path.append(e)
 
-    toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
-
     ##########################################
     #Setup the temporary directories.
     ##########################################
-
     # Dir to put all this worker's temp files in.
-    localWorkerTempDir = tempfile.mkdtemp(dir=toilWorkflowDir)
+    toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
+    localWorkerTempDir = make_public_dir(in_directory=toilWorkflowDir)
     os.chmod(localWorkerTempDir, 0o755)
 
     ##########################################
@@ -660,6 +659,7 @@ def in_contexts(contexts):
             # It might set up stuff so we can decode later ones.
             with in_contexts(rest):
                 yield
+
 
 def main(argv=None):
     if argv is None:
