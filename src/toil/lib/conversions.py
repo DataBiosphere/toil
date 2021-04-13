@@ -1,10 +1,8 @@
 """Conversion utilities for mapping memory, disk, core declarations from strings to numbers and vice versa."""
-from functools import total_ordering
+import math
 from typing import Optional, SupportsInt, Tuple
 
 # See https://en.wikipedia.org/wiki/Binary_prefix
-import math
-
 BINARY_PREFIXES = ['ki', 'mi', 'gi', 'ti', 'pi', 'ei', 'kib', 'mib', 'gib', 'tib', 'pib', 'eib']
 DECIMAL_PREFIXES = ['b', 'k', 'm', 'g', 't', 'p', 'e', 'kb', 'mb', 'gb', 'tb', 'pb', 'eb']
 VALID_PREFIXES = BINARY_PREFIXES + DECIMAL_PREFIXES
@@ -82,24 +80,3 @@ def bytes2human(n: SupportsInt) -> str:
     unit = ('b', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei')[power_level]
     value = convert_units(n, "b", unit)
     return f'{value:.1f} {unit}'
-
-
-@total_ordering
-class MemoryString:
-    """
-    Represents an amount of bytes, as a string, using suffixes for the unit.
-
-    Comparable based on the actual number of bytes instead of string value.
-    """
-    def __init__(self, string: str):
-        self.string = string
-        self.bytes = human2bytes(string)
-
-    def __str__(self) -> str:
-        return self.string
-
-    def __eq__(self, other):
-        return self.bytes == other.bytes
-
-    def __lt__(self, other):
-        return self.bytes < other.bytes

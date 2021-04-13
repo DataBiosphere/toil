@@ -13,7 +13,7 @@
 # limitations under the License.
 import logging
 
-from toil.lib.conversions import convert_units, MemoryString, human2bytes
+from toil.lib.conversions import convert_units, human2bytes
 from toil.test import ToilTest
 
 logger = logging.getLogger(__name__)
@@ -86,18 +86,6 @@ class ConversionTest(ToilTest):
                     converted = convert_units(i, src_unit, dst_unit)
                     results[f'{i} {src_unit}'] = f'{converted:.4f} {dst_unit}'
         self.assertEqual(results, expected_conversions)
-
-    def test_memory_string(self):
-        self.assertEqual(MemoryString('0'), MemoryString('0M'))
-        self.assertEqual(MemoryString('1024'), MemoryString('1K'))
-        self.assertEqual(MemoryString('1024.000M'), MemoryString('1G'))
-        self.assertEqual(MemoryString('1024G'), MemoryString('1T'))
-
-        self.assertEqual(MemoryString('0').bytes, 0)
-        self.assertEqual(MemoryString('1K').bytes, 1024)
-        self.assertEqual(MemoryString('1MB').bytes, 1048576)
-        self.assertEqual(MemoryString('1024MB').bytes, 1073741824)
-        self.assertEqual(MemoryString('1GB').bytes, 1073741824)
 
     def test_human2bytes(self):
         expected_results = {
