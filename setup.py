@@ -101,8 +101,8 @@ def run_setup():
         name='toil',
         version=version.distVersion,
         description='Pipeline management software for clusters.',
-        author='Benedict Paten',
-        author_email='benedict@soe.usc.edu',
+        author='Benedict Paten and the Toil community',
+        author_email='toil-community@googlegroups.com',
         url="https://github.com/DataBiosphere/toil",
         classifiers=[
           'Development Status :: 5 - Production/Stable',
