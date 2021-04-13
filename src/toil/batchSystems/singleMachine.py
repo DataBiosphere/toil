@@ -355,10 +355,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         May only be called in debug-worker mode.
         Assumes resources are available.
         """
-
         assert self.debugWorker
-
-
         # TODO: It is not possible to kill running jobs in forkless mode,
         # because they are run immediately in the main thread.
         info = Info(time.time(), None, None, killIntended=False)

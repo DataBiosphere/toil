@@ -77,14 +77,14 @@ class AbstractFileStore(ABC):
                they did race, it might be possible for the later job to be fully
                marked as completed in the job store before the eralier job was.
         """
-        self.jobStore = jobStore
-        self.jobDesc = jobDesc
-        self.localTempDir: str = os.path.abspath(localTempDir)
-        self.workFlowDir = os.path.dirname(self.localTempDir)
-        self.workDir: str = os.path.dirname(self.localTempDir)
-        self.jobName: str = self.jobDesc.command.split()[1]
+        self.jobStore              = jobStore
+        self.jobDesc               = jobDesc
+        self.localTempDir: str     = os.path.abspath(localTempDir)
+        self.workFlowDir: str      = os.path.dirname(self.localTempDir)
+        self.workDir: str          = os.path.dirname(self.localTempDir)
+        self.jobName: str          = self.jobDesc.command.split()[1]
         self.waitForPreviousCommit = waitForPreviousCommit
-        self.loggingMessages = []
+        self.loggingMessages       = []
         # Records file IDs of files deleted during the current job. Doesn't get
         # committed back until the job is completely successful, because if the
         # job is re-run it will need to be able to re-delete these files.
@@ -168,7 +168,7 @@ class AbstractFileStore(ABC):
                  terminates, removing all files it contains recursively.
         :rtype: str
         """
-        return os.path.abspath(tempfile.mkdtemp(prefix="t", dir=self.localTempDir))
+        return os.path.abspath(tempfile.mkdtemp(dir=self.localTempDir))
 
     def getLocalTempFile(self):
         """

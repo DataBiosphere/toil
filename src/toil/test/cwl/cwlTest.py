@@ -167,15 +167,31 @@ class CWLv10Test(ToilTest):
                   input_location,
                   self._expected_download_output(self.outDir))
 
+    def test_mpi(self):
+        from toil.cwl import cwltoil
+        stdout = StringIO()
+        main_args = ['--outdir', self.outDir,
+                     '--enable-dev',
+                     '--enable-ext',
+                     '--mpi-config-file', os.path.join(self.rootDir, 'src/toil/test/cwl/mock_mpi/fake_mpi.yml'),
+                     os.path.join(self.rootDir, 'src/toil/test/cwl/mpi_simple.cwl')]
+        cwltoil.main(main_args, stdout=stdout)
+        out = json.loads(stdout.getvalue())
+        with open(out.get('pids', {}).get('location')[len('file://'):], 'r') as f:
+            two_pids = [int(i) for i in f.read().split()]
+        self.assertEqual(len(two_pids), 2)
+        self.assertTrue(isinstance(two_pids[0], int))
+        self.assertTrue(isinstance(two_pids[1], int))
+
     @needs_aws_s3
     def test_s3_as_secondary_file(self):
         from toil.cwl import cwltoil
-        st = StringIO()
+        stdout = StringIO()
         main_args = ['--outdir', self.outDir,
                      os.path.join(self.rootDir, 'src/toil/test/cwl/s3_secondary_file.cwl'),
                      os.path.join(self.rootDir, 'src/toil/test/cwl/s3_secondary_file.json')]
-        cwltoil.main(main_args, stdout=st)
-        out = json.loads(st.getvalue())
+        cwltoil.main(main_args, stdout=stdout)
+        out = json.loads(stdout.getvalue())
         self.assertEqual(out['output']['checksum'], 'sha1$d14dd02e354918b4776b941d154c18ebc15b9b38')
         self.assertEqual(out['output']['size'], 24)
         with open(out['output']['location'][len('file://'):], 'r') as f:
