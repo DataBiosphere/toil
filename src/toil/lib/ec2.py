@@ -554,11 +554,15 @@ def get_flatcar_ami(ec2_client: BaseClient) -> str:
     # Take a user override
     ami = os.environ.get('TOIL_AWS_AMI')
     if not ami:
+        logger.debug("No AMI found in TOIL_AWS_AMI; checking Flatcar release feed")
         ami = official_flatcar_ami_release(ec2_client=ec2_client)
     if not ami:
+        logger.warning("No available AMI found in Flatcar release feed; checking marketplace")
         ami = aws_marketplace_flatcar_ami_search(ec2_client=ec2_client)
     if not ami:
+        logger.critical("No available AMI found in marketplace")
         raise RuntimeError('Unable to fetch the latest flatcar image.')
+    logger.info("Selected Flatcar AMI: %s", ami)
     return ami
 
 
