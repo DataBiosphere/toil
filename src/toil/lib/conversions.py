@@ -1,9 +1,13 @@
 """Conversion utilities for mapping memory, disk, core declarations from strings to numbers and vice versa."""
 from functools import total_ordering
-from typing import Optional, SupportsInt
+from typing import Optional, SupportsInt, Tuple
 
-VALID_UNITS = ['b', 'k', 'm', 'g', 't', 'p', 'e', 'kb', 'mb', 'gb', 'tb', 'pb', 'eb',
-               'ki', 'mi', 'gi', 'ti', 'pi', 'ei', 'kib', 'mib', 'gib', 'tib', 'pib', 'eib']
+# See https://en.wikipedia.org/wiki/Binary_prefix
+import math
+
+BINARY_PREFIXES = ['ki', 'mi', 'gi', 'ti', 'pi', 'ei', 'kib', 'mib', 'gib', 'tib', 'pib', 'eib']
+DECIMAL_PREFIXES = ['b', 'k', 'm', 'g', 't', 'p', 'e', 'kb', 'mb', 'gb', 'tb', 'pb', 'eb']
+VALID_PREFIXES = BINARY_PREFIXES + DECIMAL_PREFIXES
 
 
 def bytes_in_unit(unit: str = 'B') -> int:
@@ -40,56 +44,44 @@ def convert_units(num: float,
                   src_unit: str,
                   dst_unit: Optional[str] = 'B') -> float:
     """Returns a float representing the converted input in dst_units."""
-    assert src_unit.lower() in VALID_UNITS, f"{src_unit} not a valid unit, valid units are {VALID_UNITS}."
-    assert dst_unit.lower() in VALID_UNITS, f"{dst_unit} not a valid unit, valid units are {VALID_UNITS}."
+    assert src_unit.lower() in VALID_PREFIXES, f"{src_unit} not a valid unit, valid units are {VALID_PREFIXES}."
+    assert dst_unit.lower() in VALID_PREFIXES, f"{dst_unit} not a valid unit, valid units are {VALID_PREFIXES}."
     return (num * bytes_in_unit(src_unit)) / bytes_in_unit(dst_unit)
 
 
-def human2bytes(string: str) -> int:
-    """Returns the amount of bytes, in binary format, given a memory string."""
-    for index, char in enumerate(string):
+def parse_memory_string(string: str) -> Tuple[float, str]:
+    """
+    Given a string representation of some memory (i.e. '1024 Mib'), return the
+    number and unit.
+    """
+    for i, character in enumerate(string):
         # find the first character of the unit
-        if char not in '0123456789.-_ ':
-            val = float(string[:index])
-            unit = string[index:].strip()
-            break
-    else:
-        val = float(string)
-        unit = 'B'
-    assert unit.lower() in VALID_UNITS, f"{unit} not a valid unit, valid units are {VALID_UNITS}."
-
-    if unit != 'B':
-        # return the binary version of unit
-        return int(convert_units(val, src_unit=unit[0] + 'i', dst_unit='B'))
-    return int(val)
+        if character not in '0123456789.-_ ':
+            units = string[i:].strip()
+            assert units.lower() in VALID_PREFIXES, f"{units} not a valid unit, valid units are {VALID_PREFIXES}."
+            return float(string[:i]), units
+    return float(string), 'b'
 
 
-def bytes2human(n: SupportsInt,
-                fmt: Optional[str] = '%(value).1f %(symbol)s',
-                iec: Optional[bool] = False) -> str:
+def human2bytes(string: str) -> int:
     """
-    Bytes-to-human converter.
-
-    Based on: http://goo.gl/kTQMs
-    Author: Giampaolo Rodola' <g.rodola [AT] gmail [DOT] com>
-    License: MIT
-
-    Adapted from: http://code.activestate.com/recipes/578019-bytes-to-human-human-to-bytes-converter/
+    Given a string representation of some memory (i.e. '1024 Mib'), return the
+    integer number of bytes.
     """
+    value, unit = parse_memory_string(string)
+    return int(convert_units(value, src_unit=unit, dst_unit='b'))
+
+
+def bytes2human(n: SupportsInt) -> str:
+    """Return a binary value as a human readable string with units."""
     n = int(n)
     if n < 0:
         raise ValueError("n < 0")
-    if iec:
-        symbols = ('Bi', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei')
-    else:
-        symbols = ('B', 'K', 'M', 'G', 'T', 'P', 'E')
-    prefix = {unit: bytes_in_unit(unit) for unit in symbols[1:]}
 
-    for symbol in reversed(symbols[1:]):
-        if n >= prefix[symbol]:
-            value = float(n) // prefix[symbol]
-            return fmt % locals()
-    return fmt % dict(symbol=symbols[0], value=n)
+    power_level = math.floor(math.log(n, 1024))
+    unit = ('b', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei')[power_level]
+    value = convert_units(n, "b", unit)
+    return f'{value:.1f} {unit}'
 
 
 @total_ordering
