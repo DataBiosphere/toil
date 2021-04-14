@@ -124,7 +124,7 @@ def main():
         'src/toil/lib/objects.py',
         'src/toil/lib/io.py',
         'src/toil/lib/docker.py',
-        'src/toil/lib/encryption/_nacl.py',
+        # 'src/toil/lib/encryption/_nacl.py',
         'src/toil/lib/encryption/_dummy.py',
         'src/toil/lib/encryption/conftest.py',
         'src/toil/lib/encryption/__init__.py',
