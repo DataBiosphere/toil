@@ -129,7 +129,14 @@ def main():
         'src/toil/lib/encryption/conftest.py',
         'src/toil/lib/encryption/__init__.py',
         'src/toil/lib/aws/utils.py',
-        'src/toil/lib/aws/__init__.py'
+        'src/toil/lib/aws/__init__.py',
+        'src/toil/lib/pipes.py',
+        'src/toil/lib/checksum.py',
+        'src/toil/lib/aws/ami.py',
+        'src/toil/lib/aws/s3.py',
+        'src/toil/lib/aws/dynamodb.py',
+        'src/toil/lib/aws/credentials.py'
+
     ]]
 
     filtered_files_to_check = []
