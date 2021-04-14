@@ -159,11 +159,11 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.daddyException: Optional[Exception] = None
 
         if self.debugWorker:
-            log.debug('Started in worker debug mode.')
+            log.debug('Started batch system %s in worker debug mode.', id(self))
         else:
             self.daddyThread = Thread(target=self.daddy, daemon=True)
             self.daddyThread.start()
-            log.debug('Started in normal mode.')
+            log.debug('Started batch system %s in normal mode.', id(self))
 
     def daddy(self):
         """
@@ -181,7 +181,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """
 
         try:
-            log.debug('Started daddy thread.')
+            log.debug('Started daddy thread for batch system %s.', id(self))
 
             while not self.shuttingDown.is_set():
                 # Main loop
@@ -228,14 +228,16 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
 
             # When we get here, we are shutting down.
-            log.debug('Daddy thread cleaning up %d remaining children...', len(self.children))
+            log.debug('Daddy thread cleaning up %d remaining children for batch system %s...', len(self.children), id(self))
 
             self._stop_and_wait(self.children.values())
+
+            log.debug('Daddy thread for batch system %s finishing because no children should now exist', id(self))
 
             # Then exit the thread.
             return
         except Exception as e:
-            log.critical('Unhandled exception in daddy thread: %s', traceback.format_exc())
+            log.critical('Unhandled exception in daddy thread for batch system %s: %s', id(self), traceback.format_exc())
             # Pass the exception back to the main thread so it can stop the next person who calls into us.
             self.daddyException = e
             raise
@@ -251,15 +253,22 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             else:
                 raise TypeError(f'Daddy thread failed with non-exception: {exc}')
 
-    def _stop_now(self, popens: Sequence[subprocess.Popen]) -> None:
+    def _stop_now(self, popens: Sequence[subprocess.Popen]) -> List[int]:
         """
         Stop the given child processes and all their children. Does not reap them.
+
+        Returns a list of PGIDs killed, where processes may exist that have not
+        yet received their kill signals.
         """
+
+        # We will potentially need to poll these PGIDs to ensure that all
+        # processes in them are gone.
+        pgids = []
 
         for popen in popens:
             # Kill all the children
 
-            if popen.returncode is not None:
+            if popen.returncode is None:
                 # Process is not known to be dead. Try and grab its group.
                 try:
                     pgid = os.getpgid(popen.pid)
@@ -274,12 +283,22 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 # The child process really is in its own group, and not ours.
 
                 # Kill the group, which hopefully hasn't been reused
-                log.debug('Send shutdown kill to process group %s', pgid)
-                os.killpg(pgid, signal.SIGKILL)
+                log.debug('Send shutdown kill to process group %s known to batch system %s', pgid, id(self))
+                try:
+                    os.killpg(pgid, signal.SIGKILL)
+                    pgids.append(pgid)
+                except ProcessLookupError:
+                    # It is dead already
+                    pass
+                except PermissionError:
+                    # It isn't ours actually. Ours is dead.
+                    pass
             else:
                 # Kill the subprocess again through popen in case it somehow
                 # never managed to make the group.
                 popen.kill()
+
+        return pgids
 
     def _stop_and_wait(self, popens: Sequence[subprocess.Popen]) -> None:
         """
@@ -287,11 +306,32 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         processes are gone.
         """
 
-        self._stop_now(popens)
+        pgids = self._stop_now(popens)
 
         for popen in popens:
             # Wait on all the children
             popen.wait()
+
+            log.debug('Process %s known to batch system %s is stopped; it returned %s', popen.pid, id(self), popen.returncode)
+
+        for pgid in pgids:
+            try:
+                while True:
+                    # Send a kill to the group again, to see if anything in it
+                    # is still alive. Our first kill might not have been
+                    # delivered yet.
+                    os.killpg(pgid, signal.SIGKILL)
+                    # If that worked it is still alive, so wait for the kernel
+                    # to stop fooling around and kill it.
+                    log.debug('Sent redundant shutdown kill to surviving process group %s known to batch system %s', pgid, id(self))
+                    time.sleep(0.1)
+            except ProcessLookupError:
+                # The group is actually gone now.
+                pass
+            except PermissionError:
+                # The group is not only gone but reused
+                pass
+
 
     def _pollForDoneChildrenIn(self, pid_to_popen):
         """
