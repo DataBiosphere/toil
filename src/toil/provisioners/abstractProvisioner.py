@@ -308,7 +308,7 @@ class AbstractProvisioner(ABC):
         self._spotBidsMap = {}
         
         # This maps from a node Shape object to the instance type that has that
-        # shape. TODO: what if multiple instance type sin a cloud provider have
+        # shape. TODO: what if multiple instance types in a cloud provider have
         # the same shape (e.g. AMD and Intel instances)???
         self._shape_to_instance_type = {}
         
@@ -327,8 +327,13 @@ class AbstractProvisioner(ABC):
         Get all the node shapes and their named instance types that the Toil
         autoscaler should manage.
         """
-        
-        return dict(self._shape_to_instance_type)
+
+        if hasattr(self, '_shape_to_instance_type'):
+            # We have had Toil-managed autoscaling set up
+            return dict(self._shape_to_instance_type)
+        else:
+            # Nobody has called setAutoscaledNodeTypes yet, so nothing is to be autoscaled.
+            return {}
 
     @staticmethod
     def retryPredicate(e):
