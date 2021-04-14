@@ -488,7 +488,7 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
                     sys.exit(0)
 
             for depth in range(3):
-                # Bush put into a tree of processes
+                # Bush out into a tree of processes
                 os.fork()
 
             if len(sys.argv) > 1:
@@ -516,10 +516,9 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
                 # process group it made.
                 command += ' hide'
 
-            bs = self.createBatchSystem()
             # Start the job
-            bs.issueBatchJob(self._mockJobDescription(command=command, jobName='fork',
-                                                      jobStoreID='1', requirements=defaultRequirements))
+            self.batchSystem.issueBatchJob(self._mockJobDescription(command=command, jobName='fork',
+                                                                    jobStoreID='1', requirements=defaultRequirements))
             # Wait
             time.sleep(10)
 
@@ -539,7 +538,7 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
                     pass
 
             # Shut down the batch system
-            bs.shutdown()
+            self.batchSystem.shutdown()
 
             # After the batch system shuts down, we should be able to get the
             # lock immediately, because all the children should be gone.
