@@ -17,9 +17,6 @@ import logging
 import pickle
 import re
 import stat
-import urllib.error
-import urllib.parse
-import urllib.request
 import uuid
 from io import BytesIO
 from contextlib import contextmanager
@@ -34,7 +31,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
 from toil.lib.compatibility import compat_bytes
-from toil.lib.ec2 import establish_boto3_session
+from toil.lib.aws.credentials import resource
 from toil.lib.aws.dynamodb import (put_item,
                                    delete_item,
                                    get_item,
@@ -57,7 +54,7 @@ from toil.lib.aws.s3 import (create_bucket,
                              download_stream)
 from toil.lib.conversions import modify_url
 from toil.lib.ec2nodes import EC2Regions
-from toil.lib.checksum import compute_checksum_for_content, compute_checksum_for_file, ChecksumError
+from toil.lib.checksum import compute_checksum_for_file, ChecksumError
 from toil.lib.io import AtomicFileCreate
 from toil.lib.retry import retry
 
@@ -115,8 +112,7 @@ class AWSJobStore(AbstractJobStore):
         self.table = None
         self.bucket = None
 
-        boto3_session = establish_boto3_session()
-        self.s3_resource = boto3_session.resource('s3', region_name=self.region, **boto_args())
+        self.s3_resource = resource('s3', region_name=self.region, **boto_args())
         self.s3_client = self.s3_resource.meta.client
 
         self._batchedUpdates = []
@@ -276,7 +272,7 @@ class AWSJobStore(AbstractJobStore):
     def _writeToUrl(self, readable, url, executable=False):
         dstObj = self._getObjectForUrl(url)
         uploadFile(readable=readable,
-                   resource=self.s3_resource,
+                   s3_resource=self.s3_resource,
                    bucketName=dstObj.bucket_name,
                    fileID=dstObj.key,
                    partSize=DEFAULT_AWS_PART_SIZE)

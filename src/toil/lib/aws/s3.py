@@ -23,28 +23,30 @@ from typing import Optional
 from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
 
-from toil.lib.ec2 import establish_boto3_session
+from toil.lib.aws.credentials import client, resource
 from toil.lib.pipes import WritablePipe
 from toil.lib.compatibility import compat_bytes
 from toil.lib.pipes import ReadablePipe, HashingPipe
 from toil.lib.retry import retry, ErrorCondition
 
-boto3_session = establish_boto3_session()
-s3_boto3_resource = boto3_session.resource('s3')
-s3_boto3_client = boto3_session.client('s3')
+
 logger = logging.getLogger(__name__)
+
+"""
+Clients and resources for s3 don't NEED the correct regions, but it's more efficient and saves on redirects:
+https://stackoverflow.com/questions/64850820/python-boto3-checking-for-valid-bucket-within-region
+"""
 
 
 # TODO: Determine specific retries
 @retry()
-def create_bucket(bucket: str, region: Optional[str] = None) -> s3_boto3_resource.Bucket:
+def create_bucket(bucket: str, region: Optional[str] = None) -> resource.Bucket:
     logger.debug(f"Creating AWS bucket: {bucket}")
-    if region is None:
-        s3_client = boto3_session.client('s3')
-        bucket = s3_client.create_bucket(Bucket=bucket)
+    s3_client = client(region_name=region)
+    if region:
+        bucket = client.create_bucket(Bucket=bucket, CreateBucketConfiguration={'LocationConstraint': region})
     else:
-        s3_client = boto3_session.client('s3', region_name=region)
-        bucket = s3_client.create_bucket(Bucket=bucket, CreateBucketConfiguration={'LocationConstraint': region})
+        bucket = client.create_bucket(Bucket=bucket)
     bucket.wait_until_exists()
     logger.debug(f"Successfully created new bucket '{bucket.name}'")
     return bucket
@@ -52,18 +54,20 @@ def create_bucket(bucket: str, region: Optional[str] = None) -> s3_boto3_resourc
 
 # TODO: Determine specific retries
 @retry()
-def delete_bucket(bucket: str) -> None:
+def delete_bucket(bucket: str, region: Optional[str] = None) -> None:
     logger.debug(f"Deleting AWS bucket: {bucket}")
-    bucket = s3_boto3_resource.Bucket(bucket)
+    s3_resource = resource(region_name=region)
+    s3_client = s3_resource.meta.client
+    bucket = s3_resource.Bucket(bucket)
     try:
-        uploads = s3_boto3_client.list_multipart_uploads(Bucket=bucket.name).get('Uploads') or list()
+        uploads = s3_client.list_multipart_uploads(Bucket=bucket.name).get('Uploads') or list()
         for u in uploads:
-            s3_boto3_client.abort_multipart_upload(Bucket=bucket.name, Key=u["Key"], UploadId=u["UploadId"])
+            s3_client.abort_multipart_upload(Bucket=bucket.name, Key=u["Key"], UploadId=u["UploadId"])
 
         bucket.objects.all().delete()
         bucket.object_versions.delete()
         bucket.delete()
-    except s3_boto3_client.exceptions.NoSuchBucket:
+    except s3_client.exceptions.NoSuchBucket:
         pass
     except ClientError as e:
         if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') != 404:
@@ -73,10 +77,12 @@ def delete_bucket(bucket: str) -> None:
 
 # TODO: Determine specific retries
 @retry()
-def bucket_exists(bucket: str) -> Union[bool, s3_boto3_resource.Bucket]:
+def bucket_exists(bucket: str, region: Optional[str] = None) -> Union[bool, resource.Bucket]:
+    s3_resource = resource(region_name=region)
+    s3_client = s3_resource.meta.client
     try:
-        s3_boto3_client.head_bucket(Bucket=bucket)
-        return s3_boto3_resource.Bucket(bucket)
+        s3_client.head_bucket(Bucket=bucket)
+        return s3_resource.Bucket(bucket)
     except ClientError as e:
         error_code = e.response.get('ResponseMetadata', {}).get('HTTPStatusCode')
         if error_code == 404:
@@ -87,29 +93,32 @@ def bucket_exists(bucket: str) -> Union[bool, s3_boto3_resource.Bucket]:
 
 # TODO: Determine specific retries
 @retry()
-def copy_s3_to_s3(src_bucket, src_key, dst_bucket, dst_key):
+def copy_s3_to_s3(src_bucket, src_key, dst_bucket, dst_key, region: Optional[str] = None):
+    s3_resource = resource(region_name=region)
     source = {'Bucket': src_bucket, 'Key': src_key}
-    dest = s3_boto3_resource.Bucket(dst_bucket)
+    dest = s3_resource.Bucket(dst_bucket)
     dest.copy(source, dst_key)
 
 
 # TODO: Determine specific retries
 @retry()
-def copy_local_to_s3(local_file_path, dst_bucket, dst_key):
-    s3_boto3_client.upload_file(local_file_path, dst_bucket, dst_key)
+def copy_local_to_s3(local_file_path, dst_bucket, dst_key, region: Optional[str] = None):
+    s3_client = client(region_name=region)
+    s3_client.upload_file(local_file_path, dst_bucket, dst_key)
 
 
 # TODO: Determine specific retries
 @retry()
-def bucket_versioning_enabled(bucket: str):
+def bucket_versioning_enabled(bucket: str, region: Optional[str] = None):
+    s3_resource = resource(region_name=region)
     versionings = dict(Enabled=True, Disabled=False, Suspended=None)
-    status = s3_boto3_resource.BucketVersioning(bucket).status
+    status = s3_resource.BucketVersioning(bucket).status
     return versionings.get(status) if status else False
 
 
 # TODO: Determine specific retries
 @retry()
-def bucket_is_registered_with_toil(bucket: str) -> Union[bool, s3_boto3_resource.Bucket]:
+def bucket_is_registered_with_toil(bucket: str) -> Union[bool, resource.Bucket]:
     return False
 
 
@@ -179,8 +188,9 @@ def parse_s3_uri(uri: str) -> Tuple[str, str]:
     return bucket_name, key_name
 
 
-def generate_presigned_url(bucket: str, key_name: str, expiration: int) -> Tuple[str, str]:
-    return s3_boto3_client.generate_presigned_url(
+def generate_presigned_url(bucket: str, key_name: str, expiration: int, region: Optional[str] = None) -> Tuple[str, str]:
+    s3_client = client(region_name=region)
+    return s3_client.generate_presigned_url(
         'get_object',
         Params={'Bucket': bucket, 'Key': key_name},
         ExpiresIn=expiration)
@@ -197,15 +207,16 @@ def boto_args():
     return {}
 
 
-def list_s3_items(bucket, prefix):
-    paginator = s3_boto3_client.get_paginator('list_objects_v2')
+def list_s3_items(bucket, prefix, region: Optional[str] = None):
+    s3_client = client(region_name=region)
+    paginator = s3_client.get_paginator('list_objects_v2')
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
         yield page['Contents']
 
 
 @retry(errors=[ErrorCondition(error=ClientError, error_codes=[404, 500, 502, 503, 504])])
 def uploadFile(readable,
-               resource,
+               s3_resource,
                bucketName: str,
                fileID: str,
                headerArgs: Optional[dict] = None,
@@ -224,7 +235,7 @@ def uploadFile(readable,
     if headerArgs is None:
         headerArgs = {}
 
-    client = resource.meta.client
+    client = s3_resource.meta.client
     config = TransferConfig(
         multipart_threshold=partSize,
         multipart_chunksize=partSize,
@@ -245,7 +256,7 @@ def uploadFile(readable,
                               Config=config)
 
         # Wait until the object exists before calling head_object
-        object_summary = resource.ObjectSummary(bucketName, fileID)
+        object_summary = s3_resource.ObjectSummary(bucketName, fileID)
         object_summary.wait_until_exists(**headerArgs)
 
 

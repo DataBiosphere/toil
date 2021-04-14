@@ -4,7 +4,7 @@ from typing import Generator, Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
-db = boto3.resource('dynamodb')
+db = boto3.resource('dynamodb', region_name='us-west-2')
 
 
 class DynamoDBItemNotFound(Exception):

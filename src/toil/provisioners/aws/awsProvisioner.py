@@ -34,13 +34,12 @@ from toil.lib.ec2 import (a_short_time,
                           create_launch_template,
                           create_ondemand_instances,
                           create_spot_instances,
-                          establish_boto3_session,
                           wait_instances_running,
-                          wait_transition,
-                          zone_to_region)
+                          wait_transition)
 from toil.lib.ec2nodes import InstanceType
+from toil.lib.aws.credentials import client, resource
 from toil.lib.generatedEC2Lists import E2Instances
-from toil.lib.ec2 import get_flatcar_ami
+from toil.lib.aws.ami import get_flatcar_ami
 from toil.lib.memoize import memoize
 from toil.lib.misc import truncExpBackoff
 from toil.lib.retry import (get_error_body,
@@ -137,27 +136,20 @@ class AWSProvisioner(AbstractProvisioner):
                                'configuration file, TOIL_AWS_ZONE environment variable, or '
                                'on the command line.')
 
-
-        # establish boto3 clients
-        self.session = establish_boto3_session(region_name=zone_to_region(zone))
         # Boto3 splits functionality between a "resource" and a "client" for the same AWS aspect.
-        self.ec2_resource = self.session.resource('ec2')
-        self.ec2_client = self.session.client('ec2')
-        self.autoscaling_client = self.session.client('autoscaling')
-        self.iam_client = self.session.client('iam')
+        self.ec2_resource = resource('ec2', region_name=zone_to_region(zone))
+        self.ec2_client = self.ec2_resource.meta.client
+        self.autoscaling_client = client('autoscaling', region_name=zone_to_region(zone))
+        self.iam_client = client('iam', region_name=zone_to_region(zone))
 
-        # Call base class constructor, which will call createClusterSettings()
-        # or readClusterSettings()
+        # Call base class constructor, which will call createClusterSettings() or readClusterSettings()
         super(AWSProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
-
-
 
     def supportedClusterTypes(self):
         return {'mesos', 'kubernetes'}
 
     def createClusterSettings(self):
-        # All we need to do for a new cluster is build the context and fill in
-        # self._boto2
+        # All we need to do for a new cluster is build the context and fill in self._boto2
         self._buildContext()
 
     def readClusterSettings(self):

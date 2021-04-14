@@ -16,7 +16,7 @@ import logging
 from typing import Optional
 from toil.lib.misc import printq
 from toil.lib.retry import retry
-from toil.lib import aws
+from toil.lib.aws.credentials import client, resource
 
 try:
     from boto.exception import BotoServerError
@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 @retry(errors=[BotoServerError])
 def delete_iam_role(role_name: str, region: Optional[str] = None, quiet: bool = True):
     from boto.iam.connection import IAMConnection
-    iam_client = aws.client('iam', region_name=region)
-    iam_resource = aws.resource('iam', region_name=region)
+    iam_client = client('iam', region_name=region)
+    iam_resource = resource('iam', region_name=region)
     boto_iam_connection = IAMConnection()
     role = iam_resource.Role(role_name)
     # normal policies
@@ -48,7 +48,7 @@ def delete_iam_role(role_name: str, region: Optional[str] = None, quiet: bool = 
 
 @retry(errors=[BotoServerError])
 def delete_iam_instance_profile(instance_profile_name: str, region: Optional[str] = None, quiet: bool = True):
-    iam_resource = aws.resource('iam', region_name=region)
+    iam_resource = resource('iam', region_name=region)
     instance_profile = iam_resource.InstanceProfile(instance_profile_name)
     for role in instance_profile.roles:
         printq(f'Now dissociating role: {role.name} from instance profile {instance_profile_name}', quiet)
@@ -59,7 +59,7 @@ def delete_iam_instance_profile(instance_profile_name: str, region: Optional[str
 
 @retry(errors=[BotoServerError])
 def delete_sdb_domain(sdb_domain_name: str, region: Optional[str] = None, quiet: bool = True):
-    sdb_client = aws.client('sdb', region_name=region)
+    sdb_client = client('sdb', region_name=region)
     sdb_client.delete_domain(DomainName=sdb_domain_name)
     printq(f'SBD Domain: "{sdb_domain_name}" successfully deleted.', quiet)
 
@@ -67,8 +67,8 @@ def delete_sdb_domain(sdb_domain_name: str, region: Optional[str] = None, quiet:
 @retry(errors=[BotoServerError])
 def delete_s3_bucket(bucket: str, region: Optional[str], quiet: bool = True):
     printq(f'Deleting s3 bucket in region "{region}": {bucket}', quiet)
-    s3_client = aws.client('s3', region_name=region)
-    s3_resource = aws.resource('s3', region_name=region)
+    s3_client = client('s3', region_name=region)
+    s3_resource = resource('s3', region_name=region)
 
     paginator = s3_client.get_paginator('list_object_versions')
     for response in paginator.paginate(Bucket=bucket):
