@@ -140,7 +140,7 @@ class NonCachingFileStore(AbstractFileStore):
             # the job wrapper is completed.
             self.jobDesc.filesToDelete = list(self.filesToDelete)
             # Complete the job
-            self.jobStore.update(self.jobDesc)
+            self.jobStore.update_job(self.jobDesc)
             # Delete any remnant jobs
             list(map(self.jobStore.delete_job, self.jobsToDelete))
             # Delete any remnant files
@@ -149,7 +149,7 @@ class NonCachingFileStore(AbstractFileStore):
             if len(self.filesToDelete) > 0:
                 self.jobDesc.filesToDelete = []
                 # Update, removing emptying files to delete
-                self.jobStore.update(self.jobDesc)
+                self.jobStore.update_job(self.jobDesc)
         except:
             self._terminateEvent.set()
             raise
