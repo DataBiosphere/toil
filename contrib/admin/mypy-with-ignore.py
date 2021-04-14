@@ -136,7 +136,6 @@ def main():
         'src/toil/lib/aws/s3.py',
         'src/toil/lib/aws/dynamodb.py',
         'src/toil/lib/aws/credentials.py'
-
     ]]
 
     filtered_files_to_check = []

@@ -905,7 +905,7 @@ class CheckpointJobDescription(JobDescription):
             else:
                 self.command = self.checkpoint
 
-            jobStore.update(self) # Update immediately to ensure that checkpoint
+            jobStore.update_job(self) # Update immediately to ensure that checkpoint
             # is made before deleting any remaining successors
 
             if self.childIDs or self.followOnIDs or self.serviceTree:
@@ -924,7 +924,7 @@ class CheckpointJobDescription(JobDescription):
                     if jobDesc.jobStoreID != self.jobStoreID:
                         # Delete everything under us except us.
                         logger.debug("Checkpoint is deleting old successor job: %s", jobDesc.jobStoreID)
-                        jobStore.delete(jobDesc.jobStoreID)
+                        jobStore.delete_job(jobDesc.jobStoreID)
                         successorsDeleted.append(jobDesc.jobStoreID)
                 recursiveDelete(self)
 
@@ -932,7 +932,7 @@ class CheckpointJobDescription(JobDescription):
                 self.clearSuccessorsAndServiceHosts()
 
                 # Update again to commit the removal of successors.
-                jobStore.update(self)
+                jobStore.update_job(self)
         return successorsDeleted
 
 class Job:
