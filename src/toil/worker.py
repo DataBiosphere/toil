@@ -319,7 +319,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         oldLogFile = jobDesc.logJobStoreFileID
         if oldLogFile != None:
             jobDesc.logJobStoreFileID = None
-            jobStore.update(jobDesc) #Update first, before deleting any files
+            jobStore.update_job(jobDesc) #Update first, before deleting any files
             jobStore.deleteFile(oldLogFile)
 
         ##########################################
@@ -565,7 +565,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                 # Dump the possibly-invalid-Unicode bytes into the log file
                 w.write(f.read()) # TODO load file using a buffer
         # Commit log file reference back to JobStore
-        jobStore.update(jobDesc)
+        jobStore.update_job(jobDesc)
 
     elif ((debugging or (config.writeLogsFromAllJobs and not jobName.startswith(CWL_INTERNAL_JOBS)))
           and redirectOutputToLogFile):  # write log messages
@@ -593,8 +593,8 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     if (not jobAttemptFailed) and jobDesc.command == None and next(jobDesc.successorsAndServiceHosts(), None) is None:
         # We can now safely get rid of the JobDescription, and all jobs it chained up
         for otherID in jobDesc.jobsToDelete:
-            jobStore.delete(otherID)
-        jobStore.delete(jobDesc.jobStoreID)
+            jobStore.delete_job(otherID)
+        jobStore.delete_job(jobDesc.jobStoreID)
 
     if jobAttemptFailed:
         return 1

@@ -29,7 +29,7 @@ from toil.lib.compatibility import compat_bytes
 from toil.lib.pipes import ReadablePipe, HashingPipe
 from toil.lib.retry import retry, ErrorCondition
 
-
+Bucket = resource('s3').Bucket
 logger = logging.getLogger(__name__)
 
 """
@@ -40,7 +40,7 @@ https://stackoverflow.com/questions/64850820/python-boto3-checking-for-valid-buc
 
 # TODO: Determine specific retries
 @retry()
-def create_bucket(bucket: str, region: Optional[str] = None) -> resource().Bucket:
+def create_bucket(bucket: str, region: Optional[str] = None) -> Bucket:
     logger.debug(f"Creating AWS bucket: {bucket}")
     s3_client = client(region_name=region)
     if region:
@@ -77,7 +77,7 @@ def delete_bucket(bucket: str, region: Optional[str] = None) -> None:
 
 # TODO: Determine specific retries
 @retry()
-def bucket_exists(bucket: str, region: Optional[str] = None) -> Union[bool, resource().Bucket]:
+def bucket_exists(bucket: str, region: Optional[str] = None) -> Union[bool, Bucket]:
     s3_resource = resource(region_name=region)
     s3_client = s3_resource.meta.client
     try:
@@ -118,7 +118,7 @@ def bucket_versioning_enabled(bucket: str, region: Optional[str] = None):
 
 # TODO: Determine specific retries
 @retry()
-def bucket_is_registered_with_toil(bucket: str) -> Union[bool, resource().Bucket]:
+def bucket_is_registered_with_toil(bucket: str) -> Union[bool, Bucket]:
     return False
 
 

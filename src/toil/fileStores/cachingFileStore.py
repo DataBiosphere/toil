@@ -1754,7 +1754,7 @@ class CachingFileStore(AbstractFileStore):
                 # the job wrapper is completed.
                 self.jobDesc.filesToDelete = list(self.filesToDelete)
                 # Complete the job
-                self.jobStore.update(self.jobDesc)
+                self.jobStore.update_job(self.jobDesc)
                 # Delete any remnant jobs
                 list(map(self.jobStore.delete_job, self.jobsToDelete))
                 # Delete any remnant files
@@ -1763,7 +1763,7 @@ class CachingFileStore(AbstractFileStore):
                 if len(self.filesToDelete) > 0:
                     self.jobDesc.filesToDelete = []
                     # Update, removing emptying files to delete
-                    self.jobStore.update(self.jobDesc)
+                    self.jobStore.update_job(self.jobDesc)
         except:
             self._terminateEvent.set()
             raise
@@ -1773,7 +1773,7 @@ class CachingFileStore(AbstractFileStore):
     @classmethod
     def shutdown(cls, dir_):
         """
-        :param dir_: The workflow diorectory for the node, which is used as the
+        :param dir_: The workflow directory for the node, which is used as the
                      cache directory, containing cache state database. Job
                      local temp directories will be removed due to their
                      appearance in the database.
