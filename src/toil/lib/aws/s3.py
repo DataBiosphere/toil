@@ -14,16 +14,20 @@
 import logging
 import hashlib
 import itertools
-import time
 import os
 from io import BytesIO
 from typing import Optional, Tuple, Union
 
+from contextlib import contextmanager
+from typing import Optional
+from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
-from toil.lib.compatibility import compat_bytes
+
 from toil.lib.ec2 import establish_boto3_session
 from toil.lib.pipes import WritablePipe
-from toil.lib.retry import retry
+from toil.lib.compatibility import compat_bytes
+from toil.lib.pipes import ReadablePipe, HashingPipe
+from toil.lib.retry import retry, ErrorCondition
 
 boto3_session = establish_boto3_session()
 s3_boto3_resource = boto3_session.resource('s3')
@@ -197,3 +201,72 @@ def list_s3_items(bucket, prefix):
     paginator = s3_boto3_client.get_paginator('list_objects_v2')
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
         yield page['Contents']
+
+
+@retry(errors=[ErrorCondition(error=ClientError, error_codes=[404, 500, 502, 503, 504])])
+def uploadFile(readable,
+               resource,
+               bucketName: str,
+               fileID: str,
+               headerArgs: Optional[dict] = None,
+               partSize: int = 50 << 20):
+    """
+    Upload a readable object to s3, using multipart uploading if applicable.
+
+    :param readable: a readable stream or a file path to upload to s3
+    :param S3.Resource resource: boto3 resource
+    :param str bucketName: name of the bucket to upload to
+    :param str fileID: the name of the file to upload to
+    :param dict headerArgs: http headers to use when uploading - generally used for encryption purposes
+    :param int partSize: max size of each part in the multipart upload, in bytes
+    :return: version of the newly uploaded file
+    """
+    if headerArgs is None:
+        headerArgs = {}
+
+    client = resource.meta.client
+    config = TransferConfig(
+        multipart_threshold=partSize,
+        multipart_chunksize=partSize,
+        use_threads=True
+    )
+    logger.debug("Uploading %s", fileID)
+    if isinstance(readable, str):
+        client.upload_file(Filename=readable,
+                           Bucket=bucketName,
+                           Key=fileID,
+                           ExtraArgs=headerArgs,
+                           Config=config)
+    else:
+        client.upload_fileobj(Fileobj=readable,
+                              Bucket=bucketName,
+                              Key=fileID,
+                              ExtraArgs=headerArgs,
+                              Config=config)
+
+        # Wait until the object exists before calling head_object
+        object_summary = resource.ObjectSummary(bucketName, fileID)
+        object_summary.wait_until_exists(**headerArgs)
+
+
+
+@contextmanager
+def download_stream(s3_object, checksum_to_verify: Optional[str] = None, extra_args: Optional[dict] = None, encoding=None, errors=None):
+    """Context manager that gives out a download stream to download data."""
+    class DownloadPipe(ReadablePipe):
+        def writeTo(self, writable):
+            s3_object.download_fileobj(writable, ExtraArgs=extra_args)
+
+    if checksum_to_verify:
+        with DownloadPipe() as readable:
+            # Interpose a pipe to check the hash
+            with HashingPipe(readable,
+                             encoding=encoding,
+                             errors=errors,
+                             checksum_to_verify=checksum_to_verify) as verified:
+                yield verified
+    else:
+        # Readable end of pipe produces text mode output if encoding specified
+        with DownloadPipe(encoding=encoding, errors=errors) as readable:
+            # No true checksum available, so don't hash
+            yield readable

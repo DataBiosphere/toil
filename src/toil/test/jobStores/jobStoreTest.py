@@ -11,9 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import hashlib
-import http
+import http.server
 import logging
 import os
 import shutil
@@ -21,8 +20,12 @@ import socketserver
 import tempfile
 import threading
 import time
+import pytest
 import urllib.parse as urlparse
 import uuid
+import socket
+import errno
+
 from abc import ABCMeta, abstractmethod
 from io import BytesIO
 from itertools import chain, islice
@@ -30,15 +33,14 @@ from queue import Queue
 from threading import Thread
 from typing import Any, Tuple
 from urllib.request import Request, urlopen
-
-import pytest
 from stubserver import FTPStubServer
+from boto.exception import BotoServerError, S3ResponseError
+from botocore.exceptions import ClientError
 
-from toil.common import Config, Toil
+from toil.common import Config
 from toil.fileStores import FileID
-from toil.job import Job, JobDescription, TemporaryID
-from toil.jobStores.abstractJobStore import (NoSuchFileException,
-                                             NoSuchJobException)
+from toil.job import JobDescription, TemporaryID
+from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobException
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.lib.memoize import memoize
 from toil.statsAndLogging import StatsAndLogging
@@ -49,9 +51,7 @@ from toil.test import (ToilTest,
                        needs_google,
                        slow,
                        travis_test)
-
-# noinspection PyPackageRequirements
-# (installed by `make prepare`)
+from toil.lib.retry import old_retry
 
 
 # Need googleRetry decorator even if google is not available, so make one up.
@@ -69,6 +69,41 @@ logger = logging.getLogger(__name__)
 
 def tearDownModule():
     AbstractJobStoreTest.Test.cleanUpExternalStores()
+
+
+# https://github.com/boto/botocore/blob/49f87350d54f55b687969ec8bf204df785975077/botocore/retries/standard.py#L316
+THROTTLED_ERROR_CODES = [
+        'Throttling',
+        'ThrottlingException',
+        'ThrottledException',
+        'RequestThrottledException',
+        'TooManyRequestsException',
+        'ProvisionedThroughputExceededException',
+        'TransactionInProgressException',
+        'RequestLimitExceeded',
+        'BandwidthLimitExceeded',
+        'LimitExceededException',
+        'RequestThrottled',
+        'SlowDown',
+        'PriorRequestNotComplete',
+        'EC2ThrottledException',
+]
+
+
+# TODO: Replace with: @retry and ErrorCondition
+def retryable_s3_errors(e):
+    return    ((isinstance(e, socket.error) and e.errno in (errno.ECONNRESET, 104))
+            or (isinstance(e, BotoServerError) and e.status in (429, 500))
+            or (isinstance(e, BotoServerError) and e.code in THROTTLED_ERROR_CODES)
+            # boto3 errors
+            or (isinstance(e, S3ResponseError) and e.error_code in THROTTLED_ERROR_CODES)
+            or (isinstance(e, ClientError) and 'BucketNotEmpty' in str(e))
+            or (isinstance(e, ClientError) and e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 409 and 'try again' in str(e))
+            or (isinstance(e, ClientError) and e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') in (404, 429, 500, 502, 503, 504)))
+
+
+def retry_s3(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=retryable_s3_errors):
+    return old_retry(delays=delays, timeout=timeout, predicate=predicate)
 
 
 class AbstractJobStoreTest(object):
@@ -1317,8 +1352,6 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                         self.assertEqual(hashlib.md5(f.read()).hexdigest(), expected_md5)
 
     def _prepareTestFile(self, bucket, size=None):
-        from toil.jobStores.aws.utils import retry_s3
-
         file_name = 'testfile_%s' % uuid.uuid4()
         url = 's3://%s/%s' % (bucket.name, file_name)
         if size is None:
@@ -1337,15 +1370,13 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def _createExternalStore(self):
         """A S3.Bucket instance is returned"""
-        from toil.jobStores.aws.utils import retry_s3
-        from toil.jobStores.aws.utils import region_to_bucket_location
         from toil.jobStores.aws.jobStore import establish_boto3_session
         resource = establish_boto3_session().resource('s3', region_name=self.awsRegion())
         bucket = resource.Bucket('import-export-test-%s' % uuid.uuid4())
 
         for attempt in retry_s3():
             with attempt:
-                bucket.create(CreateBucketConfiguration={'LocationConstraint': region_to_bucket_location(self.awsRegion())})
+                bucket.create(CreateBucketConfiguration={'LocationConstraint': '' if self.awsRegion() == 'us-east-1' else self.awsRegion()})
                 bucket.wait_until_exists()
                 return bucket
 

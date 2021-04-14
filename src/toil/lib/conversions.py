@@ -3,6 +3,7 @@
 #  src/toil/lib/humanize.py (bytes2human; human2bytes)
 #  src/toil/batchSystems/__init__.py (MemoryString)
 #
+import urllib.parse
 
 
 def bytes_in_unit(unit: str = 'B') -> int:
@@ -35,3 +36,17 @@ def convert_units(num: float,
     assert src_unit in units, f"{src_unit} not a valid unit, valid units are {units}."
     assert dst_unit in units, f"{dst_unit} not a valid unit, valid units are {units}."
     return (num * bytes_in_unit(src_unit)) / bytes_in_unit(dst_unit)
+
+
+def modify_url(url: str, remove: list) -> str:
+    """
+    Given a valid URL string, split out the params, remove any offending
+    params in 'remove', and return the cleaned URL.
+    """
+    scheme, netloc, path, query, fragment = urllib.parse.urlsplit(url)
+    params = urllib.parse.parse_qs(query)
+    for param_key in remove:
+        if param_key in params:
+            del params[param_key]
+    query = urllib.parse.urlencode(params, doseq=True)
+    return urllib.parse.urlunsplit((scheme, netloc, path, query, fragment))

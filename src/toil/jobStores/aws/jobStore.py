@@ -33,8 +33,6 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              JobStoreExistsException,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
-from toil.jobStores.aws.utils import uploadFile
-from toil.jobStores.aws.file_info import AWSFile
 from toil.lib.compatibility import compat_bytes
 from toil.lib.ec2 import establish_boto3_session
 from toil.lib.aws.dynamodb import (put_item,
@@ -54,8 +52,10 @@ from toil.lib.aws.s3 import (create_bucket,
                              parse_s3_uri,
                              MultiPartPipe,
                              generate_presigned_url,
-                             list_s3_items)
-from toil.jobStores.aws.utils import download_stream, modify_url
+                             list_s3_items,
+                             uploadFile,
+                             download_stream)
+from toil.lib.conversions import modify_url
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.checksum import compute_checksum_for_content, compute_checksum_for_file, ChecksumError
 from toil.lib.io import AtomicFileCreate
