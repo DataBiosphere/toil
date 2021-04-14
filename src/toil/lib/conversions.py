@@ -75,8 +75,12 @@ def bytes2human(n: SupportsInt) -> str:
     n = int(n)
     if n < 0:
         raise ValueError("n < 0")
+    elif n < 1:
+        return '0 b'
 
     power_level = math.floor(math.log(n, 1024))
-    unit = ('b', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei')[power_level]
+    units = ('b', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei')
+
+    unit = units[power_level if power_level < len(units) else -1]
     value = convert_units(n, "b", unit)
     return f'{value:.1f} {unit}'
