@@ -1069,7 +1069,7 @@ class Toil:
         :return: Path to the Toil work directory, constant across all machines
         :rtype: str
         """
-        workDir = configWorkDir or os.getenv('TOIL_WORKDIR') or tempfile.gettempdir()
+        workDir = os.getenv('TOIL_WORKDIR_OVERRIDE') or configWorkDir or os.getenv('TOIL_WORKDIR') or tempfile.gettempdir()
         if not os.path.exists(workDir):
             raise RuntimeError(f"The directory specified by --workDir or TOIL_WORKDIR ({workDir}) does not exist.")
         return workDir
