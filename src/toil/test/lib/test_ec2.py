@@ -14,7 +14,7 @@
 import logging
 import os
 
-from toil.lib.aws.credentials import establish_boto3_session
+from toil.lib.aws.credentials import client
 from toil.lib.aws.ami import get_flatcar_ami, official_flatcar_ami_release, aws_marketplace_flatcar_ami_search
 from toil.test import ToilTest, needs_aws_ec2
 
@@ -26,8 +26,7 @@ logging.basicConfig(level=logging.DEBUG)
 class AMITest(ToilTest):
     @classmethod
     def setUpClass(cls):
-        session = establish_boto3_session(region_name='us-west-2')
-        cls.ec2_client = session.client('ec2')
+        cls.ec2_client = client('ec2')
 
     def test_fetch_flatcar(self):
         with self.subTest('Test flatcar AMI from user is prioritized.'):
