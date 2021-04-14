@@ -31,6 +31,11 @@ There are several environment variables that affect the way Toil runs.
 |                                  | the Mesos sandbox. In all other cases, the         |
 |                                  | system's `standard temporary directory`_ is used.  |
 +----------------------------------+----------------------------------------------------+
+| TOIL_WORKDIR_OVERRIDE            | An absolute path to a directory where Toil will    |
+|                                  | write its temporary files. This overrides          |
+|                                  | ``TOIL_WORKDIR`` and the  ``--workDir`` command    |
+|                                  | line option.                                       |
++----------------------------------+----------------------------------------------------+
 | TOIL_KUBERNETES_HOST_PATH        | A path on Kubernetes hosts that will be mounted as |
 |                                  | /tmp in the workers, to allow for shared caching.  |
 +----------------------------------+----------------------------------------------------+
