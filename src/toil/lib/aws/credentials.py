@@ -11,7 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Caches all boto3 clients we instantiate."""
+"""
+Acts as the one place to get AWS credentials.
+
+Each of session, resource, and client should all cache the same session if within the same region.
+
+AWS recommends a new Session object for each thread to be thread-safe, so there are thread-safe versions as well:
+https://boto3.amazonaws.com/v1/documentation/api/latest/guide/session.html#multithreading-or-multiprocessing-with-sessions
+"""
 from functools import lru_cache
 from typing import Optional
 from boto3 import Session
@@ -21,20 +28,20 @@ from botocore.session import get_session
 
 @lru_cache(maxsize=None)
 def session(region_name: Optional[str] = None) -> Session:
-    """Use this to quickly retrieve and use cached sessions, unless you're going to be spinning out on multiple threads."""
+    """Quickly retrieve and use cached sessions.  The Session object itself is cached here, not just credentials."""
     return thread_safe_session(region_name)
 
 
 @lru_cache(maxsize=None)
 def client(*args, **kwargs):
-    """Use this to quickly retrieve and use cached clients, unless you're going to be spinning out on multiple threads."""
+    """Quickly retrieve and use cached clients."""
     boto3_session = session(region_name=kwargs.get('region_name'))
     return boto3_session.client(*args, **kwargs)
 
 
 @lru_cache(maxsize=None)
 def resource(*args, **kwargs):
-    """Use this to quickly retrieve and use cached resources, unless you're going to be spinning out on multiple threads."""
+    """Quickly retrieve and use cached resources."""
     boto3_session = session(region_name=kwargs.get('region_name'))
     return boto3_session.resource(*args, **kwargs)
 
