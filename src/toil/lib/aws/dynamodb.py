@@ -210,6 +210,11 @@ def create_table(table: str, region: Optional[str]):
     )
 
 
+def delete_table(table: str, region: Optional[str]):
+    # TODO: Make sure that this is region appropriate
+    return db.Table(table).delete()
+
+
 def table_exists(table: str) -> bool:
     table = db.Table(table)
     try:

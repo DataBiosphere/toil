@@ -1154,18 +1154,9 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError()
 
-    ## Helper methods for subclasses
-
-    def _defaultTryCount(self):
-        return int(self.config.retryCount + 1)
-
-    @classmethod
-    def _validateSharedFileName(cls, sharedFileName):
-        return bool(cls.sharedFileNameRegex.match(sharedFileName))
-
     @classmethod
     def _requireValidSharedFileName(cls, sharedFileName):
-        if not cls._validateSharedFileName(sharedFileName):
+        if not cls.sharedFileNameRegex.match(sharedFileName):
             raise ValueError("Not a valid shared file name: '%s'." % sharedFileName)
 
 
