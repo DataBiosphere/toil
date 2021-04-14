@@ -173,7 +173,7 @@ class GoogleJobStore(AbstractJobStore):
     def _newJobID(self):
         return "job"+str(uuid.uuid4())
 
-    def assignID(self, jobDescription):
+    def assign_job_id(self, jobDescription):
         jobStoreID = self._newJobID()
         log.debug("Assigning ID to job %s for '%s'",
                   jobStoreID, '<no command>' if jobDescription.command is None else jobDescription.command)

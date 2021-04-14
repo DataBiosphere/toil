@@ -719,7 +719,7 @@ class AbstractJobStore(ABC):
     ##########################################
 
     @abstractmethod
-    def assignID(self, jobDescription):
+    def assign_job_id(self, jobDescription):
         """
         Get a new jobStoreID to be used by the described job, and assigns it to the JobDescription.
 

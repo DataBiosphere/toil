@@ -52,7 +52,10 @@ from toil.lib.aws.s3 import (create_bucket,
                              copy_local_to_s3,
                              boto_args,
                              parse_s3_uri,
-                             MultiPartPipe)
+                             MultiPartPipe,
+                             generate_presigned_url,
+                             list_s3_items)
+from toil.jobStores.aws.utils import download_stream, modify_url
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.checksum import compute_checksum_for_content, compute_checksum_for_file, ChecksumError
 from toil.lib.io import AtomicFileCreate
@@ -97,12 +100,6 @@ class AWSJobStore(AbstractJobStore):
     """
     # A dummy job ID under which all shared files are stored
     sharedFileOwnerID = '891f7db6-e4d9-4221-a58e-ab6cc4395f94'
-
-    # A dummy job ID under which all unread stats files are stored
-    statsFileOwnerID = 'bfcf5286-4bc7-41ef-a85d-9ab415b69d53'
-
-    # A dummy job ID under which all read stats files are stored
-    readStatsFileOwnerID = 'e77fc3aa-d232-4255-ae04-f64ee8eb0bfa'
 
     def __init__(self, locator: str, part_size: int = DEFAULT_AWS_PART_SIZE):
         super(AWSJobStore, self).__init__()
@@ -169,10 +166,10 @@ class AWSJobStore(AbstractJobStore):
     def batch(self):
         yield
         for jobDescription in self._batchedUpdates:
-            self.pickle_job(jobDescription)
+            self.create(jobDescription)
         self._batchedUpdates = []
 
-    def assignID(self, jobDescription):
+    def assign_job_id(self, jobDescription):
         jobDescription.jobStoreID = str(uuid.uuid4())
         cmd = '<no command>' if jobDescription.command is None else jobDescription.command
         logger.debug(f"Assigning ID to job {jobDescription.jobStoreID} for '{cmd}'")
@@ -356,13 +353,21 @@ class AWSJobStore(AbstractJobStore):
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=None, encoding=None, errors=None):
         self._requireValidSharedFileName(sharedFileName)
+        file_id = self._sharedFileID(sharedFileName)
         metadata = self.create_metadata(file=None,
-                                        file_id=self._sharedFileID(sharedFileName),
+                                        file_id=file_id,
                                         owner_id=str(self.sharedFileOwnerID),
                                         encrypted=isProtected)
-        with info.uploadStream(encoding=encoding, errors=errors) as writable:
+        pipe = MultiPartPipe(encoding=encoding,
+                             errors=errors,
+                             part_size=self.partSize,
+                             s3_client=self.s3_client,
+                             bucket_name=self.bucket_name,
+                             file_id=file_id,
+                             encryption_args=self.encryption_args)
+        with pipe as writable:
             yield writable
-        put_item(table=self.table, hash_key='files', sort_key=self._sharedFileID(sharedFileName), value=json.dumps(metadata))
+        put_item(table=self.table, hash_key='files', sort_key=file_id, value=json.dumps(metadata))
 
     def updateFile(self, jobStoreFileID, localFilePath):
         # fetch database entry containing metadata for the file
@@ -373,13 +378,23 @@ class AWSJobStore(AbstractJobStore):
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID, encoding=None, errors=None):
-        info = self.FileInfo.loadOrFail(jobStoreFileID)
-        with info.uploadStream(encoding=encoding, errors=errors) as writable:
+        metadata = get_item(table=self.table, hash_key='files', sort_key=jobStoreFileID)
+        pipe = MultiPartPipe(encoding=encoding,
+                             errors=errors,
+                             part_size=self.partSize,
+                             s3_client=self.s3_client,
+                             bucket_name=self.bucket_name,
+                             file_id=jobStoreFileID,
+                             encryption_args=self.encryption_args)
+        with pipe as writable:
             yield writable
-        info.save()
 
     def fileExists(self, jobStoreFileID):
-        return AWSFile.exists(jobStoreFileID)
+        try:
+            self._getObjectForUrl(f's3://{self.bucket_name}/{jobStoreFileID}', existing=True)
+            return True
+        except AWSKeyNotFoundError:
+            return False
 
     def getFileSize(self, jobStoreFileID: str) -> int:
         try:
@@ -406,94 +421,89 @@ class AWSJobStore(AbstractJobStore):
 
     @contextmanager
     def readFileStream(self, jobStoreFileID, encoding=None, errors=None):
-        info = self.FileInfo.loadOrFail(jobStoreFileID)
-        logger.debug("Reading %r into stream.", info)
-        with info.downloadStream(encoding=encoding, errors=errors) as readable:
+        metadata = get_item(table=self.table, hash_key='files', sort_key=jobStoreFileID)
+        obj = self._getObjectForUrl(f'{self.bucket_name}/{jobStoreFileID}')
+        logger.debug("Reading into stream.")
+        with download_stream(s3_object=obj,
+                             checksum_to_verify=metadata['checksum'],
+                             extra_args=self.encryption_args,
+                             encoding=encoding,
+                             errors=errors) as readable:
             yield readable
 
     @contextmanager
     def readSharedFileStream(self, sharedFileName, encoding=None, errors=None):
         self._requireValidSharedFileName(sharedFileName)
         jobStoreFileID = self._sharedFileID(sharedFileName)
-        info = self.FileInfo.loadOrFail(jobStoreFileID, customName=sharedFileName)
-        logger.debug("Reading %r for shared file %r into stream.", info, sharedFileName)
-        with info.downloadStream(encoding=encoding, errors=errors) as readable:
+        metadata = get_item(table=self.table, hash_key='files', sort_key=jobStoreFileID)
+        obj = self._getObjectForUrl(f'{self.bucket_name}/{jobStoreFileID}')
+        with download_stream(s3_object=obj,
+                             checksum_to_verify=metadata['checksum'],
+                             extra_args=self.encryption_args,
+                             encoding=encoding,
+                             errors=errors) as readable:
             yield readable
 
     def deleteFile(self, file_id):
-        info = AWSFile.load(file_id)
-        if info:
-            info.delete()
+        # delete metadata reference in database
+        delete_item(table=self.table, hash_key='files', sort_key=file_id)
+        # delete actual file in bucket
+        self.s3_client.delete_object(Bucket=self.bucket.name, Key=file_id)
 
     def writeStatsAndLogging(self, log_msg: Union[bytes, str]):
         if isinstance(log_msg, str):
             log_msg = log_msg.encode('utf-8', errors='ignore')
-        new_file_id = str(uuid.uuid4())
         file_obj = BytesIO(log_msg)
 
-        owner_id = self.statsFileOwnerID
-        checksum = compute_checksum_for_content(file_obj)
-
+        key_name = f'logs/unread/{uuid.uuid4()}'
         self.s3_client.upload_fileobj(Bucket=self.bucket_name,
-                                      Key=new_file_id,
+                                      Key=key_name,
                                       Fileobj=file_obj,
                                       ExtraArgs=self.encryption_args)
 
         # use head_object with the SSE headers to access versionId and content_length attributes
         response = self.s3_client.head_object(Bucket=self.bucket_name,
-                                              Key=new_file_id,
+                                              Key=key_name,
                                               **self.encryption_args)
-        # TODO: raise if no ContentLength?
-        assert len(log_msg) == response.get('ContentLength', None)
-        # update db metadata
+        # checking message length is sufficient; don't checksum log messages
+        assert len(log_msg) == response.get('ContentLength')
 
     def readStatsAndLogging(self, callback, readAll=False):
+        """
+        Owner ID specifies either logs that have already been read, or not.
+
+        This fetches all referenced logs in the database from s3 as readable objects and runs "callback()" on them.
+
+        We then return the database items in case we want to use the information to transition unread items to read items.
+        """
+        prefix = 'logs/' if readAll else 'logs/unread/'
         itemsProcessed = 0
-        for info in self._readStatsAndLogging(callback, self.statsFileOwnerID):
-            info._ownerID = self.readStatsFileOwnerID
-            info.save()
-            itemsProcessed += 1
-
-        if readAll:
-            for _ in self._readStatsAndLogging(callback, self.readStatsFileOwnerID):
-                itemsProcessed += 1
-
-        return itemsProcessed
-
-    def _readStatsAndLogging(self, callback, ownerId=None):
-        for item in get_primary_key_items(table=self.table, key='logs'):
-            info = AWSFile.fromItem(item)
-            with info.downloadStream() as readable:
+        for log in list_s3_items(bucket=self.bucket.name, prefix=prefix):
+            obj = self._getObjectForUrl(f'{self.bucket.name}/{log}')
+            with download_stream(s3_object=obj) as readable:
                 callback(readable)
-            yield info
+            if not readAll:
+                # move unread logs to read; tag instead?
+                pass
+            itemsProcessed += 1
+        return itemsProcessed
 
     # TODO: Make this retry more specific?
     #  example: https://github.com/DataBiosphere/toil/issues/3378
     @retry()
-    def getPublicUrl(self, jobStoreFileID):
-        info = AWSFile.loadOrFail(jobStoreFileID)
-        if info.content is not None:
-            with info.uploadStream(allowInlining=False) as f:
-                f.write(info.content)
-
-        self.bucket.Object(compat_bytes(jobStoreFileID)).Acl().put(ACL='public-read')
-        url = self.s3_client.generate_presigned_url('get_object',
-                                                    Params={'Bucket': self.bucket.name,
-                                                            'Key': compat_bytes(jobStoreFileID),
-                                                            'VersionId': info.version},
-                                                    ExpiresIn=self.publicUrlExpiration.total_seconds())
-
+    def getPublicUrl(self, jobStoreFileID: str):
+        """Turn s3:// into http:// and put a public-read ACL on it."""
+        metadata = get_item(table=self.table, hash_key='files', sort_key=jobStoreFileID)
+        self.bucket.Object(jobStoreFileID).Acl().put(ACL='public-read')
+        url = generate_presigned_url(bucket=self.bucket.name,
+                                     key_name=jobStoreFileID,
+                                     expiration=self.publicUrlExpiration.total_seconds())
         # boto doesn't properly remove the x-amz-security-token parameter when
         # query_auth is False when using an IAM role (see issue #2043). Including the
         # x-amz-security-token parameter without the access key results in a 403,
         # even if the resource is public, so we need to remove it.
-        scheme, netloc, path, query, fragment = urllib.parse.urlsplit(url)
-        params = urllib.parse.parse_qs(query)
-        for param_key in ['x-amz-security-token', 'AWSAccessKeyId', 'Signature']:
-            if param_key in params:
-                del params[param_key]
-        query = urllib.parse.urlencode(params, doseq=True)
-        url = urllib.parse.urlunsplit((scheme, netloc, path, query, fragment))
+        # TODO: verify that this is still the case
+        url = modify_url(url, remove=['x-amz-security-token', 'AWSAccessKeyId', 'Signature'])
         return url
 
     def getSharedPublicUrl(self, sharedFileName):

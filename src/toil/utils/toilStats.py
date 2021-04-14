@@ -36,8 +36,7 @@ class ColumnWidths:
             for field in self.fields_count:
                 self.setWidth(category, field, 8)
     def title(self, category):
-        """ Return the total printed length of this category item.
-        """
+        """Return the total printed length of this category item."""
         return sum(
             [self.getWidth(category, x) for x in self.fields])
     def getWidth(self, category, field):
@@ -77,8 +76,7 @@ def prettyMemory(k, field=None, isBytes=False):
 
 
 def prettyTime(t, field=None):
-    """ Given input t as seconds, return a nicely formatted string.
-    """
+    """Given input t as seconds, return a nicely formatted string."""
     from math import floor
     pluralDict = {True: "s", False: ""}
     if t < 120:
@@ -144,8 +142,7 @@ def reportNumber(n, field=None):
 
 
 def sprintTag(key, tag, options, columnWidths=None):
-    """ Generate a pretty-print ready string from a JTTag().
-    """
+    """Generate a pretty-print ready string from a JTTag()."""
     if columnWidths is None:
         columnWidths = ColumnWidths()
     header = "  %7s " % decorateTitle("Count", options)
@@ -217,17 +214,17 @@ def sprintTag(key, tag, options, columnWidths=None):
     out_str += tag_str + "\n"
     return out_str
 
+
 def decorateTitle(title, options):
-    """ Add a marker to TITLE if the TITLE is sorted on.
-    """
+    """Add a marker to TITLE if the TITLE is sorted on."""
     if title.lower() == options.sortCategory:
         return "%s*" % title
     else:
         return title
 
+
 def decorateSubHeader(title, columnWidths, options):
-    """ Add a marker to the correct field if the TITLE is sorted on.
-    """
+    """Add a marker to the correct field if the TITLE is sorted on."""
     title = title.lower()
     if title != options.sortCategory:
         s = "| %*s%*s%*s%*s%*s " % (
@@ -313,8 +310,7 @@ def reportPrettyData(root, worker, job, job_types, options):
 
 
 def computeColumnWidths(job_types, worker, job, options):
-    """ Return a ColumnWidths() object with the correct max widths.
-    """
+    """Return a ColumnWidths() object with the correct max widths."""
     cw = ColumnWidths()
     for t in job_types:
         updateColumnWidths(t, cw, options)
@@ -324,8 +320,7 @@ def computeColumnWidths(job_types, worker, job, options):
 
 
 def updateColumnWidths(tag, cw, options):
-    """ Update the column width attributes for this tag's fields.
-    """
+    """Update the column width attributes for this tag's fields."""
     longforms = {"med": "median",
                  "ave": "average",
                  "min": "min",
@@ -347,8 +342,7 @@ def updateColumnWidths(tag, cw, options):
 
 
 def buildElement(element, items, itemName):
-    """ Create an element for output.
-    """
+    """Create an element for output."""
     def assertNonnegative(i,name):
         if i < 0:
             raise RuntimeError("Negative value %s reported for %s" %(i,name) )
@@ -421,8 +415,7 @@ def createSummary(element, containingItems, containingItemName, getFn):
 
 
 def getStats(jobStore):
-    """ Collect and return the stats and config data.
-    """
+    """Collect stats and config data."""
     def aggregateStats(fileHandle,aggregateObject):
         try:
             stats = json.load(fileHandle, object_hook=Expando)
@@ -442,9 +435,7 @@ def getStats(jobStore):
 
 
 def processData(config, stats):
-    """
-    Collate the stats and report
-    """
+    """Collate stats and report."""
     if 'total_time' not in stats or 'total_clock' not in stats:
         # toil job not finished yet
         stats.total_time = [0.0]

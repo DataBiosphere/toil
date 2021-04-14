@@ -11,10 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import hashlib
 import logging
 import os
 import socket
+import urllib
 import errno
+from contextlib import contextmanager
 from typing import Optional
 
 from boto.exception import (
@@ -25,7 +28,9 @@ from boto.exception import (
 from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
 
+from toil.lib.checksum import ChecksumError
 from toil.lib.compatibility import compat_bytes
+from toil.lib.pipes import ReadablePipe, HashingPipe
 from toil.lib.retry import retry, ErrorCondition, old_retry
 
 logger = logging.getLogger(__name__)
@@ -237,3 +242,39 @@ def region_to_bucket_location(region):
 
 def bucket_location_to_region(location):
     return 'us-east-1' if location == '' else location
+
+
+@contextmanager
+def download_stream(s3_object, checksum_to_verify: Optional[str] = None, extra_args: Optional[dict] = None, encoding=None, errors=None):
+    """Context manager that gives out a download stream to download data."""
+    class DownloadPipe(ReadablePipe):
+        def writeTo(self, writable):
+            s3_object.download_fileobj(writable, ExtraArgs=extra_args)
+
+    if checksum_to_verify:
+        with DownloadPipe() as readable:
+            # Interpose a pipe to check the hash
+            with HashingPipe(readable,
+                             encoding=encoding,
+                             errors=errors,
+                             checksum_to_verify=checksum_to_verify) as verified:
+                yield verified
+    else:
+        # Readable end of pipe produces text mode output if encoding specified
+        with DownloadPipe(encoding=encoding, errors=errors) as readable:
+            # No true checksum available, so don't hash
+            yield readable
+
+
+def modify_url(url: str, remove: list) -> str:
+    """
+    Given a valid URL string, split out the params, remove any offending
+    params in 'remove', and return the cleaned URL.
+    """
+    scheme, netloc, path, query, fragment = urllib.parse.urlsplit(url)
+    params = urllib.parse.parse_qs(query)
+    for param_key in params:
+        if param_key in params:
+            del params[param_key]
+    query = urllib.parse.urlencode(params, doseq=True)
+    return urllib.parse.urlunsplit((scheme, netloc, path, query, fragment))

@@ -1,8 +1,10 @@
 import errno
 import logging
 import os
+import hashlib
 from abc import ABC, abstractmethod
 
+from toil.lib.checksum import ChecksumError
 from toil.lib.threading import ExceptionalThread
 
 log = logging.getLogger(__name__)
@@ -319,3 +321,38 @@ class ReadableTransformingPipe(ReadablePipe):
 
     def writeTo(self, writable):
         self.transform(self.source, writable)
+
+
+class HashingPipe(ReadableTransformingPipe):
+    """
+    Class which checksums all the data read through it. If it
+    reaches EOF and the checksum isn't correct, raises ChecksumError.
+
+    Assumes info actually has a checksum.
+    """
+    def __init__(self, source, encoding=None, errors=None, checksum_to_verify=None):
+        """
+        :param str encoding: the name of the encoding used to encode the file. Encodings are the same
+                as for encode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
+        """
+        super(HashingPipe, self).__init__(source=source, encoding=encoding, errors=errors)
+        self.checksum_to_verify = checksum_to_verify
+
+    def transform(self, readable, writable):
+        hash_object = hashlib.sha1()
+        contents = readable.read(1024 * 1024)
+        while contents != b'':
+            hash_object.update(contents)
+            try:
+                writable.write(contents)
+            except BrokenPipeError:
+                # Read was stopped early by user code.
+                # Can't check the checksum.
+                return
+            contents = readable.read(1024 * 1024)
+        final_computed_checksum = f'sha1${hash_object.hexdigest()}'
+        if not self.checksum_to_verify == final_computed_checksum:
+            raise ChecksumError(f'Checksum mismatch. Expected: {self.checksum_to_verify} Actual: {final_computed_checksum}')

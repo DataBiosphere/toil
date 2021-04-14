@@ -68,7 +68,11 @@ class StatsAndLogging:
 
 
     @classmethod
-    def logWithFormatting(cls, jobStoreID, jobLogs, method=logger.debug, message=None):
+    def logWithFormatting(cls,
+                          jobStoreID: Optional[str],
+                          jobLogs: Union[TextIO, BinaryIO],
+                          method=logger.debug,
+                          message=None):
         if message is not None:
             method(message)
 
@@ -158,7 +162,8 @@ class StatsAndLogging:
                 # we may have multiple jobs per worker
                 jobNames = logs.names
                 messages = logs.messages
-                cls.logWithFormatting(jobNames[0], messages,
+                cls.logWithFormatting(jobNames[0],
+                                      messages,
                                       message='Received Toil worker log. Disable debug level logging to hide this output')
                 cls.writeLogFiles(jobNames, messages, config=config)
 

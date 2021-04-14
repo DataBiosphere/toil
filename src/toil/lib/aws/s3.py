@@ -175,6 +175,13 @@ def parse_s3_uri(uri: str) -> Tuple[str, str]:
     return bucket_name, key_name
 
 
+def generate_presigned_url(bucket: str, key_name: str, expiration: int) -> Tuple[str, str]:
+    return s3_boto3_client.generate_presigned_url(
+        'get_object',
+        Params={'Bucket': bucket, 'Key': key_name},
+        ExpiresIn=expiration)
+
+
 def boto_args():
     host = os.environ.get('TOIL_S3_HOST', None)
     port = os.environ.get('TOIL_S3_PORT', None)
@@ -184,3 +191,9 @@ def boto_args():
     if host:
         return {'endpoint_url': f'{protocol}://{host}' + f':{port}' if port else ''}
     return {}
+
+
+def list_s3_items(bucket, prefix):
+    paginator = s3_boto3_client.get_paginator('list_objects_v2')
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        yield page['Contents']

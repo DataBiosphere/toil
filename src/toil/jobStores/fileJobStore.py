@@ -121,7 +121,7 @@ class FileJobStore(AbstractJobStore):
     # existence of jobs
     ##########################################
 
-    def assignID(self, jobDescription):
+    def assign_job_id(self, jobDescription):
         # Get the job's name. We want to group jobs with the same name together.
         # This will be e.g. the function name for wrapped-function jobs.
         # Make sure to render it filename-safe
