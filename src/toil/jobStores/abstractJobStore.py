@@ -42,6 +42,7 @@ try:
 except ImportError:
     ProxyConnectionError = None
 
+
 class InvalidImportExportUrlException(Exception):
     def __init__(self, url):
         """
@@ -1166,12 +1167,7 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
         return url.scheme.lower() in ('http', 'https', 'ftp') and not export
 
     @classmethod
-    @retry(errors=[BadStatusLine] + [
-                         ErrorCondition(
-                             error=HTTPError,
-                             error_codes=[408, 500, 503]
-                         )
-                     ])
+    @retry(errors=[BadStatusLine, ErrorCondition(error=HTTPError, error_codes=[408, 500, 503])])
     def getSize(cls, url):
         if url.scheme.lower() == 'ftp':
             return None
@@ -1181,12 +1177,7 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
             return int(size) if size is not None else None
 
     @classmethod
-    @retry(errors=[BadStatusLine] + [
-                         ErrorCondition(
-                             error=HTTPError,
-                             error_codes=[408, 500, 503]
-                         )
-                     ])
+    @retry(errors=[BadStatusLine, ErrorCondition(error=HTTPError, error_codes=[408, 500, 503])])
     def _readFromUrl(cls, url, writable):
         # We can only retry on errors that happen as responses to the request.
         # If we start getting file data, and the connection drops, we fail.

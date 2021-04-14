@@ -216,8 +216,8 @@ def delete_table(table: str, region: Optional[str]):
 
 
 def table_exists(table: str) -> bool:
-    table = db.Table(table)
     try:
-        is_table_existing = table.table_status in ("CREATING", "UPDATING", "DELETING", "ACTIVE")
+        table = db.Table(table)
+        return table.table_status in ("CREATING", "UPDATING", "DELETING", "ACTIVE")
     except db.ClientError:
         return False

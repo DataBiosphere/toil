@@ -36,26 +36,11 @@ class ChecksumError(Exception):
     """Raised when a download from AWS does not contain the correct data."""
 
 
-class AWSFileMetadata:
-    def __init__(self,
-                 file_id: str,
-                 owner_id: str,
-                 number_of_chunks: int = 0,
-                 checksum: Optional[str] = None,
-                 sse_key_path: Optional[str] = None):
-        self.file_id = file_id
-        self.owner_id = owner_id
-        self.number_of_chunks = number_of_chunks
-        self.checksum = checksum
-        self.sse_key_path = sse_key_path
-
-
 class AWSFile:
     def __init__(self,
                  fileID,
                  ownerID,
                  encrypted,
-                 version=None,
                  content=None,
                  numContentChunks=0,
                  checksum=None,
@@ -91,88 +76,11 @@ class AWSFile:
         self.fileID = fileID
         self.ownerID = ownerID
         self.encrypted = encrypted
-        self._version = version
-        self._previousVersion = version
         assert content is None or isinstance(content, bytes)
         self._content = content
         self.checksum = checksum
         self._numContentChunks = numContentChunks
         self.sseKeyPath = sseKeyPath
-
-    @property
-    def previousVersion(self):
-        return self._previousVersion
-
-    @property
-    def version(self):
-        return self._version
-
-    @version.setter
-    def version(self, version):
-        # Version should only change once
-        assert self._previousVersion == self._version
-        self._version = version
-        if version:
-            self.content = None
-
-    @property
-    def content(self):
-        return self._content
-
-    @content.setter
-    def content(self, content):
-        assert content is None or isinstance(content, bytes)
-        self._content = content
-        if content is not None:
-            self.version = ''
-
-    def create(self, ownerID):
-        return AWSFile(str(uuid.uuid4()), ownerID, encrypted=self.sseKeyPath is not None)
-
-    @classmethod
-    def exists(cls, jobStoreFileID):
-        # add retry
-        # check if jobStoreFileID key in dynamodb
-        return True
-
-    @classmethod
-    def load(cls, jobStoreFileID, check: bool = True):
-        """If check if True, this will raise if the file does not exist."""
-        # add retry
-        # return dictionary value from jobStoreFileID key in dynamodb
-        return# item
-
-    def fromItem(self, item):
-        """Convert a DB item to an instance of this class."""
-        return AWSFile(fileID=item.name,
-                       ownerID=item.get('ownerID', None),
-                       encrypted=item.get('encrypted', None),
-                       version=item.get('version', None),
-                       checksum=item.get('checksum', None))
-
-    def toItem(self):
-        """
-        Convert this instance to an attribute dictionary suitable for SDB put_attributes().
-
-        :rtype: (dict,int)
-
-        :return: the attributes dict and an integer specifying the the number of chunk
-                 attributes in the dictionary that are used for storing inlined content.
-        """
-        return dict(fileID=self.fileID,
-                    ownerID=self.ownerID,
-                    encrypted=self.encrypted,
-                    version=self.version or None,
-                    checksum=self.checksum or None)
-
-    @staticmethod
-    def maxInlinedSize():
-        return 256
-
-    def save(self):
-        # delete old version of object
-        # put metadata into db/bucket
-        pass
 
     def upload(self, localFilePath, calculateChecksum=True):
         # actually upload content into s3
@@ -198,20 +106,7 @@ class AWSFile:
             yield writable
 
         if not pipe.reader_done:
-            logger.debug(f'[uploadStream] Version: {self.version} Content: {self.content}')
             raise RuntimeError('Escaped context manager without written data being read!')
-
-        # We check our work to make sure we have exactly one of embedded
-        # content or a real object version.
-
-        if self.content is None:
-            if not bool(self.version):
-                logger.debug(f'[uploadStream] Version: {self.version} Content: {self.content}')
-                raise RuntimeError('No content added and no version created')
-        else:
-            if bool(self.version):
-                logger.debug(f'[uploadStream] Version: {self.version} Content: {self.content}')
-                raise RuntimeError('Content added and version created')
 
     def copyFrom(self, srcObj):
         """
@@ -355,37 +250,3 @@ class AWSFile:
             return obj.content_length
         else:
             return 0
-
-    def _getSSEKey(self):
-        sseKeyPath = self.outer.sseKeyPath
-        if sseKeyPath is None:
-            return None
-        else:
-            with open(sseKeyPath, 'rb') as f:
-                sseKey = f.read()
-            return sseKey
-
-    def _s3EncryptionArgs(self):
-        # the keys of the returned dictionary are unpacked to the corresponding boto3 optional
-        # parameters and will be used to set the http headers
-        if self.encrypted:
-            sseKey = self._getSSEKey()
-            assert sseKey is not None, 'Content is encrypted but no key was provided.'
-            assert len(sseKey) == 32
-            # boto3 encodes the key and calculates the MD5 for us
-            return {'SSECustomerAlgorithm': 'AES256', 'SSECustomerKey': sseKey}
-        return {}
-
-    def __repr__(self):
-        aRepr = reprlib.Repr()
-        aRepr.maxstring = 38  # so UUIDs don't get truncated (36 for UUID plus 2 for quotes)
-        r = custom_repr = aRepr.repr
-        d = (('fileID', r(self.fileID)),
-             ('ownerID', r(self.ownerID)),
-             ('encrypted', r(self.encrypted)),
-             ('version', r(self.version)),
-             ('previousVersion', r(self.previousVersion)),
-             ('content', r(self.content)),
-             ('checksum', r(self.checksum)),
-             ('_numContentChunks', r(self._numContentChunks)))
-        return "{}({})".format(type(self).__name__, ', '.join('%s=%s' % (k, v) for k, v in d))

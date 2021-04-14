@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 # TODO: Determine specific retries
 @retry()
-def create_bucket(bucket: str, region: Optional[str] = None, versioning: bool = False) -> s3_boto3_resource.Bucket:
+def create_bucket(bucket: str, region: Optional[str] = None) -> s3_boto3_resource.Bucket:
     logger.debug(f"Creating AWS bucket: {bucket}")
     if region is None:
         s3_client = boto3_session.client('s3')
@@ -42,17 +42,7 @@ def create_bucket(bucket: str, region: Optional[str] = None, versioning: bool = 
         s3_client = boto3_session.client('s3', region_name=region)
         bucket = s3_client.create_bucket(Bucket=bucket, CreateBucketConfiguration={'LocationConstraint': region})
     bucket.wait_until_exists()
-
-    if versioning:
-        bucket.Versioning().enable()
-        # Now wait until versioning is actually on. Some uploads
-        # would come back with no versions; maybe they were
-        # happening too fast and this setting isn't sufficiently consistent?
-        time.sleep(1)
-        while not bucket_versioning_enabled(bucket.name):
-            logger.debug(f"Waiting for versioning activation on bucket '{bucket.name}'...")
-            time.sleep(1)
-    logger.debug(f"Successfully created new bucket '{bucket.name}' with versioning '{versioning}'")
+    logger.debug(f"Successfully created new bucket '{bucket.name}'")
     return bucket
 
 
@@ -120,7 +110,9 @@ def bucket_is_registered_with_toil(bucket: str) -> Union[bool, s3_boto3_resource
 
 
 class MultiPartPipe(WritablePipe):
-    def __init__(self, part_size, s3_client, bucket_name, file_id, encryption_args):
+    def __init__(self, part_size, s3_client, bucket_name, file_id, encryption_args, encoding, errors):
+        self.encoding = encoding
+        self.errors = errors
         self.part_size = part_size
         self.s3_client = s3_client
         self.bucket_name = bucket_name

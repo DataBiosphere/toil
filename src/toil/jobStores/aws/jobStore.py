@@ -25,10 +25,7 @@ from io import BytesIO
 from contextlib import contextmanager
 from typing import Optional, Tuple, Union
 
-import boto.sdb
-import boto.s3.connection
 from typing import Optional
-from boto.exception import SDBResponseError
 from botocore.exceptions import ClientError
 
 from toil.fileStores import FileID
@@ -37,7 +34,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
 from toil.jobStores.aws.utils import uploadFile
-from toil.jobStores.aws.file_info import AWSFile, AWSFileMetadata
+from toil.jobStores.aws.file_info import AWSFile
 from toil.lib.compatibility import compat_bytes
 from toil.lib.ec2 import establish_boto3_session
 from toil.lib.aws.dynamodb import (put_item,
@@ -81,7 +78,7 @@ class AWSJobStore(AbstractJobStore):
     These two components centralize and track all files for the workflow, including inputs/outputs, logs, and the
     jobs themselves (which are pickled and saved as files).
 
-    The dynamodb table tracks file metadata that may be computationally expensive, like the size and md5sum.
+    The dynamodb table tracks file metadata, like the size and md5sum, to verify file integrity when moving around.
     Because the dynamodb table is kept in sync with the files in s3, it can be used as a proxy to check for
     file existence/updates.
 
@@ -95,9 +92,8 @@ class AWSJobStore(AbstractJobStore):
     This class also, importantly, inherits self.config, the options/config set by the user.  When jobs are
     loaded/unpickled, they must re-incorporate this.  This also is the source of truth for how things are encrypted.
 
-    :param int part_size: The size of each individual part used for multipart operations like
-           upload and copy, must be >= 5 MiB but large enough to not exceed 10k parts for the
-           whole file
+    :param int part_size: The size of each individual part used for multipart operations like upload and copy,
+                          must be >= 5 MiB but large enough to not exceed 10k parts for the whole file.
     """
     # A dummy job ID under which all shared files are stored
     sharedFileOwnerID = '891f7db6-e4d9-4221-a58e-ab6cc4395f94'
@@ -141,7 +137,7 @@ class AWSJobStore(AbstractJobStore):
         """Called when starting a new jobstore with a non-existent bucket and dynamodb table."""
         if bucket_exists(self.bucket_name) or table_exists(self.dynamodb_table_name):
             raise JobStoreExistsException(self.locator)
-        self.bucket = create_bucket(self.bucket_name, versioning=True)
+        self.bucket = create_bucket(self.bucket_name)
         self.table = create_table(self.dynamodb_table_name)
         super(AWSJobStore, self).initialize(config)
 
@@ -218,15 +214,14 @@ class AWSJobStore(AbstractJobStore):
 
     def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
         new_file_id = str(uuid.uuid4())
-        metadata = json.loads({'owner': jobStoreID if cleanup else None,
-                               'encrypt': self.sse_key})
-        put_item(table=self.table, hash_key='files', sort_key=new_file_id, value=metadata)
+        metadata = self.create_metadata(file=None, file_id=new_file_id, owner_id=jobStoreID if cleanup else None)
+        put_item(table=self.table, hash_key='files', sort_key=new_file_id, value=json.dumps(metadata))
         self.s3_client.upload_fileobj(Bucket=self.bucket_name,
                                       Key=new_file_id,
                                       Fileobj=BytesIO(b''),
                                       ExtraArgs=self.encryption_args)
 
-        # use head_object with the SSE headers content_length
+        # use head_object with the SSE headers to fetch content_length
         response = self.s3_client.head_object(Bucket=self.bucket_name,
                                               Key=new_file_id,
                                               **self.encryption_args)
@@ -250,8 +245,8 @@ class AWSJobStore(AbstractJobStore):
             owner_id = s3_blob.key if not sharedFileName else self.sharedFileOwnerID
 
             # stow file's metadata in db
-            metadata = json.loads(dict(file_id=file_id, owner_id=owner_id, sse_key_path=self.sse_key))
-            put_item(table=self.table, hash_key='files', sort_key=file_id, value=metadata)
+            metadata = dict(file_id=file_id, owner_id=owner_id, sse_key_path=self.sse_key)
+            put_item(table=self.table, hash_key='files', sort_key=file_id, value=json.dumps(metadata))
 
             # upload the uri to our s3 jobstore bucket
             # , sse_key=self.sse_key
@@ -322,13 +317,13 @@ class AWSJobStore(AbstractJobStore):
     def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() == 's3'
 
-    def create_metadata(self, file_id: str, file: Optional[str] = None, owner_id: Optional[str] = None):
+    def create_metadata(self, file_id: str, file: Optional[str] = None, owner_id: Optional[str] = None, encrypted: Optional[bool] = None):
         """Crunch metadata for a local file, or an empty template if no file provided."""
         checksum = compute_checksum_for_file(file) if file else None
         file_size = os.stat(file).st_size if file else None
         return dict(checksum=checksum,
                     file_size=file_size,
-                    encryption=self.sse_key,
+                    encryption=bool(self.sse_key) if encrypted is None else encrypted,
                     owner_id=owner_id,
                     file_id=file_id)
 
@@ -336,30 +331,38 @@ class AWSJobStore(AbstractJobStore):
         owner_id = jobStoreID if cleanup else None
         file_id = str(uuid.uuid4())
         copy_local_to_s3(local_file_path=localFilePath, dst_bucket=self.bucket_name, dst_key=file_id)
-        metadata = json.dumps(self.create_metadata(file=localFilePath, file_id=file_id, owner_id=owner_id))
-        put_item(table=self.table, hash_key='files', sort_key=file_id, value=metadata)
+        metadata = self.create_metadata(file=localFilePath, file_id=file_id, owner_id=owner_id)
+        put_item(table=self.table, hash_key='files', sort_key=file_id, value=json.dumps(metadata))
         return file_id
 
     @contextmanager
     def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None, encoding=None, errors=None):
         owner_id = jobStoreID if cleanup else None
         file_id = str(uuid.uuid4())
-        metadata = json.dumps(self.create_metadata(file=None, file_id=file_id, owner_id=owner_id))
+        metadata = self.create_metadata(file=None, file_id=file_id, owner_id=owner_id)
 
-        pipe = MultiPartPipe(encoding=encoding, errors=errors)
+        pipe = MultiPartPipe(encoding=encoding,
+                             errors=errors,
+                             part_size=self.partSize,
+                             s3_client=self.s3_client,
+                             bucket_name=self.bucket_name,
+                             file_id=file_id,
+                             encryption_args=self.encryption_args)
         with pipe as writable:
             yield writable, file_id
-        put_item(table=self.table, hash_key='files', sort_key=file_id, value=metadata)
+        put_item(table=self.table, hash_key='files', sort_key=file_id, value=json.dumps(metadata))
 
+    # determine isProtected from presence of sse_path?  why is this an input here?
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=None, encoding=None, errors=None):
         self._requireValidSharedFileName(sharedFileName)
-        info = self.FileInfo.loadOrCreate(jobStoreFileID=self._sharedFileID(sharedFileName),
-                                          ownerID=str(self.sharedFileOwnerID),
-                                          encrypted=isProtected)
+        metadata = self.create_metadata(file=None,
+                                        file_id=self._sharedFileID(sharedFileName),
+                                        owner_id=str(self.sharedFileOwnerID),
+                                        encrypted=isProtected)
         with info.uploadStream(encoding=encoding, errors=errors) as writable:
             yield writable
-        info.save()
+        put_item(table=self.table, hash_key='files', sort_key=self._sharedFileID(sharedFileName), value=json.dumps(metadata))
 
     def updateFile(self, jobStoreFileID, localFilePath):
         # fetch database entry containing metadata for the file
@@ -396,7 +399,8 @@ class AWSJobStore(AbstractJobStore):
             algorithm, expected_checksum = previously_computed_checksum.split('$')
             checksum = compute_checksum_for_file(localFilePath, algorithm=algorithm)
             if previously_computed_checksum != checksum:
-                raise ChecksumError(f'Checksum mismatch for file {localFilePath}.  Expected: {self.checksum} Actual: {checksum}')
+                raise ChecksumError(f'Checksum mismatch for file {localFilePath}.  '
+                                    f'Expected: {previously_computed_checksum} Actual: {checksum}')
         if getattr(jobStoreFileID, 'executable', False):
             os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
 
@@ -424,23 +428,24 @@ class AWSJobStore(AbstractJobStore):
     def writeStatsAndLogging(self, log_msg: Union[bytes, str]):
         if isinstance(log_msg, str):
             log_msg = log_msg.encode('utf-8', errors='ignore')
+        new_file_id = str(uuid.uuid4())
         file_obj = BytesIO(log_msg)
 
-        info = AWSFile.create(self.statsFileOwnerID)
-        info.checksum = compute_checksum_for_content(file_obj)
+        owner_id = self.statsFileOwnerID
+        checksum = compute_checksum_for_content(file_obj)
 
         self.s3_client.upload_fileobj(Bucket=self.bucket_name,
-                                      Key=compat_bytes(info.fileID),
-                                      Fileobj=BytesIO(log_msg),
+                                      Key=new_file_id,
+                                      Fileobj=file_obj,
                                       ExtraArgs=self.encryption_args)
 
         # use head_object with the SSE headers to access versionId and content_length attributes
         response = self.s3_client.head_object(Bucket=self.bucket_name,
-                                               Key=compat_bytes(info.fileID),
-                                               **self.encryption_args)
+                                              Key=new_file_id,
+                                              **self.encryption_args)
         # TODO: raise if no ContentLength?
         assert len(log_msg) == response.get('ContentLength', None)
-        info.save()
+        # update db metadata
 
     def readStatsAndLogging(self, callback, readAll=False):
         itemsProcessed = 0
