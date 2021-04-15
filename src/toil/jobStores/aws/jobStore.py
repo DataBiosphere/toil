@@ -71,6 +71,11 @@ s3_boto3_resource = boto3_session.resource('s3')
 s3_boto3_client = boto3_session.client('s3')
 logger = logging.getLogger(__name__)
 
+# Sometimes we have to wait for multipart uploads to become real. How long
+# should we wait?
+CONSISTENCY_TICKS = 5
+CONSISTENCY_TIME = 1
+
 
 class ChecksumError(Exception):
     """Raised when a download from AWS does not contain the correct data."""
@@ -1195,12 +1200,25 @@ class AWSJobStore(AbstractJobStore):
                                                                         **headerArgs)
                                 uploadId = upload['UploadId']
                                 parts = []
+                                logger.debug('Multipart upload started as %s', uploadId)
+
+                        for i in range(CONSISTENCY_TICKS):
+                            # Sometimes we can create a multipart upload and not see it. Wait around for it.
+                            response = client.list_multipart_uploads(Bucket=bucket_name,
+                                                                     MaxUploads=1,
+                                                                     Prefix=compat_bytes(info.fileID))
+                            if len(response['Uploads']) != 0 and response['Uploads'][0]['UploadId'] == uploadId:
+                                logger.debug('Multipart upload visible as %s', uploadId)
+                                break
+                            else:
+                                logger.debug('Multipart upload %s is not visible; we see %s', uploadId, response['Uploads'])
+                                time.sleep(CONSISTENCY_TIME * 2 ** i)
 
                         try:
                             for part_num in itertools.count():
                                 for attempt in retry_s3():
                                     with attempt:
-                                        logger.debug('Uploading part %d of %d bytes', part_num + 1, len(buf))
+                                        logger.debug('Uploading part %d of %d bytes to %s', part_num + 1, len(buf), uploadId)
                                         # TODO: include the Content-MD5 header:
                                         #  https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.complete_multipart_upload
                                         part = client.upload_part(Bucket=bucket_name,
