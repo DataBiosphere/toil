@@ -106,32 +106,35 @@ class AWSJobStore(AbstractJobStore):
         self.locator = locator
         self.partSize = part_size
 
-        self.sse_key, self.encryption_args = self.set_encryption_from_config()
-
-        # these are either created anew during self.initialize() or loaded using self.resume()
+        # created anew during self.initialize() or loaded using self.resume()
         self.table = None
         self.bucket = None
+
+        # needs "self.config", which is not set until self.initialize() or self.resume() are called
+        self.sse_key = None
+        self.encryption_args = None
 
         self.s3_resource = resource('s3', region_name=self.region, **boto_args())
         self.s3_client = self.s3_resource.meta.client
 
         self._batchedUpdates = []
 
-    def set_encryption_from_config(self):
-        if self.config.sseKey:
-            with open(self.config.sseKey, 'r') as f:
+    def set_encryption_from_config(self, config):
+        if config.sseKey:
+            with open(config.sseKey, 'r') as f:
                 sse_key = f.read()
-            assert len(self.sse_key) == 32
-            return sse_key, {'SSECustomerAlgorithm': 'AES256', 'SSECustomerKey': self.sse_key}
+            assert len(sse_key) == 32
+            return sse_key, {'SSECustomerAlgorithm': 'AES256', 'SSECustomerKey': sse_key}
         else:
             return None, {}
 
     def initialize(self, config):
         """Called when starting a new jobstore with a non-existent bucket and dynamodb table."""
+        self.sse_key, self.encryption_args = self.set_encryption_from_config(config)
         if bucket_exists(self.bucket_name) or table_exists(self.dynamodb_table_name):
             raise JobStoreExistsException(self.locator)
-        self.bucket = create_bucket(self.bucket_name)
-        self.table = create_table(self.dynamodb_table_name)
+        self.bucket = create_bucket(self.bucket_name, region=self.region)
+        self.table = create_table(self.dynamodb_table_name, region=self.region)
         super(AWSJobStore, self).initialize(config)
 
     def resume(self):
@@ -142,7 +145,8 @@ class AWSJobStore(AbstractJobStore):
         if not self.bucket or not self.table:
             # TODO: allow option here to rebuild db from bucket
             raise NoSuchJobStoreException(self.locator)
-        super(AWSJobStore, self).resume()
+        super(AWSJobStore, self).resume()  # self.config does not exist before this
+        self.sse_key, self.encryption_args = self.set_encryption_from_config(self.config)
 
     def unpickle_job(self, job_id: str):
         """Use a job_id to unpickle and return a job from the jobstore's s3 bucket."""
@@ -393,8 +397,13 @@ class AWSJobStore(AbstractJobStore):
             return False
 
     def getFileSize(self, jobStoreFileID: str) -> int:
+        """Do we need both getFileSize and getSize???"""
+        return self.getSize(url=f's3://{self.bucket_name}/{jobStoreFileID}')
+
+    def getSize(self, url: str) -> int:
+        """Do we need both getFileSize and getSize???"""
         try:
-            return self._getObjectForUrl(f's3://{self.bucket_name}/{jobStoreFileID}', existing=True).content_length
+            return self._getObjectForUrl(url, existing=True).content_length
         except AWSKeyNotFoundError:
             return 0
 

@@ -1,4 +1,5 @@
 import boto3
+from botocore.exceptions import ClientError
 import logging
 from typing import Generator, Optional, Dict, Any
 
@@ -219,5 +220,5 @@ def table_exists(table: str) -> bool:
     try:
         table = db.Table(table)
         return table.table_status in ("CREATING", "UPDATING", "DELETING", "ACTIVE")
-    except db.ClientError:
+    except ClientError:
         return False
