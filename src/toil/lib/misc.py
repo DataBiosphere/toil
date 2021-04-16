@@ -1,10 +1,16 @@
 import logging
 import os
 import random
+import shutil
 import subprocess
 import sys
 
 logger = logging.getLogger(__name__)
+
+
+def printq(msg, quiet: bool):
+    if not quiet:
+        print(msg)
 
 
 def truncExpBackoff():

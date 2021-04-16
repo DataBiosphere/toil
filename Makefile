@@ -47,9 +47,11 @@ set the 'tests' variable to run a particular test, e.g.
 
 	make test tests=src/toil/test/sort/sortTest.py::SortTest::testSort
     
+The 'cov' variable can be set to '' to suppress the test coverage report.
+    
 The 'test_offline' target is similar, but runs only tests that don't need
-Internet or Docker by default.  The 'test_offline' target takes the same tests
-argument as the 'test' target.
+Internet or Docker by default.  The 'test_offline' target takes the same
+arguments as the 'test' target.
 
     make test_offline tests=src/toil/test/src/threadingTest.py
 
@@ -78,6 +80,7 @@ help:
 # This Makefile uses bash features like printf and <()
 SHELL=bash
 tests=src/toil/test
+cov="--cov=toil"
 extras=
 sdist_name:=toil-$(shell python version_template.py distVersion).tar.gz
 
@@ -113,7 +116,7 @@ clean_sdist:
 # We always claim to be Travis, so that local test runs will not skip Travis tests.
 test: check_venv check_build_reqs
 	TRAVIS=true \
-	    python -m pytest --cov=toil --durations=0 --log-level DEBUG --log-cli-level INFO -r s $(tests)
+	    python -m pytest --durations=0 --log-level DEBUG --log-cli-level INFO -r s $(cov) $(tests)
 
 
 # This target will skip building docker and all docker based tests
@@ -122,7 +125,7 @@ test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
 	TRAVIS=true \
-	    python -m pytest -vv --timeout=530 --cov=toil $(tests)
+	    python -m pytest -vv --timeout=530 --log-level DEBUG --log-cli-level INFO $(cov) $(tests)
 
 ifdef TOIL_DOCKER_REGISTRY
 
@@ -243,14 +246,11 @@ format: $(wildcard src/toil/cwl/*.py)
 	black $^
 
 mypy:
-	mypy --ignore-missing-imports --no-strict-optional \
-		--warn-redundant-casts --warn-unused-ignores \
-		$(CURDIR)/src/toil/cwl/cwltoil.py
 	$(CURDIR)/contrib/admin/mypy-with-ignore.py
 
 diff_mypy:
 	mypy --cobertura-xml-report . src/toil || true
-	diff-cover --fail-under=98 cobertura.xml
+	diff-cover --fail-under=100 cobertura.xml
 
 flake8: $(PYSOURCES)
 	flake8 --ignore=E501,W293,W291,E265,E302,E722,E126,E303,E261,E201,E202,W503,W504,W391,E128,E301,E127,E502,E129,E262,E111,E117,E306,E203,E231,E226,E741,E122,E251,E305,E701,E222,E225,E241,E305,E123,E121,E703,E704,E125,E402 $^

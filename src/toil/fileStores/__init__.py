@@ -15,14 +15,6 @@ import os
 import stat
 
 
-def make_public_dir(dirName: str) -> str:
-    """Makes a given subdirectory if it doesn't already exist, making sure it is public."""
-    if not os.path.exists(dirName):
-        os.mkdir(dirName)
-        os.chmod(dirName, 0o777)
-    return dirName
-
-
 class FileID(str):
     """
     A small wrapper around Python's builtin string class. It is used to represent a file's ID in the file store, and

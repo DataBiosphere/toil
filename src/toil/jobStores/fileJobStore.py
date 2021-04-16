@@ -88,7 +88,7 @@ class FileJobStore(AbstractJobStore):
         self.moveExports = None
 
     def __repr__(self):
-        return 'FileJobStore({})'.format(self.jobStoreDir)
+        return f'FileJobStore({self.jobStoreDir})'
 
     def initialize(self, config):
         try:
@@ -198,10 +198,9 @@ class FileJobStore(AbstractJobStore):
 
     def getSharedPublicUrl(self, sharedFileName):
         jobStorePath = os.path.join(self.sharedFilesDir, sharedFileName)
-        if os.path.exists(jobStorePath):
-            return 'file:' + jobStorePath
-        else:
+        if not os.path.exists(jobStorePath):
             raise NoSuchFileException(sharedFileName)
+        return 'file:' + jobStorePath
 
     def load(self, jobStoreID):
         self._checkJobStoreIdExists(jobStoreID)
@@ -226,10 +225,13 @@ class FileJobStore(AbstractJobStore):
         assert not isinstance(job.jobStoreID, TemporaryID), f"Tried to update job {job} without an assigned ID"
 
         # The job is serialised to a file suffixed by ".new"
+        # We insist on creating the file; an existing .new file indicates
+        # multiple simultaneous attempts to update the job, which will lose
+        # updates.
         # The file is then moved to its correct path.
         # Atomicity guarantees use the fact the underlying file systems "move"
         # function is atomic.
-        with open(self._getJobFileName(job.jobStoreID) + ".new", 'wb') as f:
+        with open(self._getJobFileName(job.jobStoreID) + ".new", 'xb') as f:
             pickle.dump(job, f)
         # This should be atomic for the file system
         os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
@@ -681,7 +683,6 @@ class FileJobStore(AbstractJobStore):
         if not self._waitForFile(self._getJobDirFromId(jobStoreID)):
             raise NoSuchJobException(jobStoreID)
 
-
     def _checkJobStoreIdExists(self, jobStoreID):
         """
         Raises a NoSuchJobException if the job with ID jobStoreID does not exist.
@@ -931,8 +932,7 @@ class FileJobStore(AbstractJobStore):
             self._checkJobStoreIdAssigned(jobStoreID)
             # Find where all its created files should live, depending on if
             # they need to go away when the job is deleted or not.
-            jobFilesDir = self._getJobFilesDir(jobStoreID) if not cleanup \
-                else self._getJobFilesCleanupDir(jobStoreID)
+            jobFilesDir = self._getJobFilesDir(jobStoreID) if not cleanup else self._getJobFilesCleanupDir(jobStoreID)
 
             # Lazily create the parent directory.
             # We don't want our tree filled with confusingly empty directories.

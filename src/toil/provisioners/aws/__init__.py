@@ -14,6 +14,7 @@
 import datetime
 import logging
 import os
+import socket
 from collections import namedtuple
 from operator import attrgetter
 from statistics import mean, stdev
@@ -40,7 +41,7 @@ def running_on_ec2():
     try:
         urlopen('http://169.254.169.254/latest/dynamic/instance-identity/document', timeout=1)
         return True
-    except URLError:
+    except (URLError, socket.timeout):
         return False
 
 def get_current_aws_region():

@@ -19,6 +19,7 @@ import time
 import toil.test.batchSystems.batchSystemTest as batchSystemTest
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.job import Job, PromisedRequirement
+from toil.lib.retry import retry_flaky_test
 from toil.test import needs_mesos, slow, travis_test
 
 log = logging.getLogger(__name__)
@@ -53,6 +54,7 @@ class hidden(object):
                 self.assertEqual(maxValue, self.cpuCount // coresPerJob)
 
         @slow
+        @retry_flaky_test()
         def testConcurrencyStatic(self):
             """
             Asserts that promised core resources are allocated properly using a static DAG
