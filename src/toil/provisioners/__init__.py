@@ -68,7 +68,7 @@ def add_provisioner_options(parser):
                                            "Must be lowercase and may not contain the '_' character.")
 
 
-def parse_node_types(node_type_specs: str) -> List[Tuple[Set[str], Optional[float]]]:
+def parse_node_types(node_type_specs: Optional[str]) -> List[Tuple[Set[str], Optional[float]]]:
     """
     Parse a specification for zero or more node types.
 
@@ -84,22 +84,24 @@ def parse_node_types(node_type_specs: str) -> List[Tuple[Set[str], Optional[floa
               instance types, and the float bid, or None.
     """
     
-    # Collect together all the node typed
+    # Collect together all the node types
     parsed = []
     
-    for node_type_spec in node_type_specs.split(','):
-        try:
-            # Types are comma-separated
-            # Then we have the colon and the bid
-            parts = node_type_spec.split(':')
-            # Instance types are slash-separated within an equivalence
-            # class
-            instance_types = set(parts[0].split('/'))
-            # Build the node type tuple
-            parsed.append((instance_types, float(parts[1]) if len(parts) > 1 else None))
-        except:
-            raise ValueError(f'Cound not parse node type "{node_type_spec}"')
-        
+    if node_type_specs:
+        # Some node types were actually specified
+        for node_type_spec in node_type_specs.split(','):
+            try:
+                # Types are comma-separated
+                # Then we have the colon and the bid
+                parts = node_type_spec.split(':')
+                # Instance types are slash-separated within an equivalence
+                # class
+                instance_types = set(parts[0].split('/'))
+                # Build the node type tuple
+                parsed.append((instance_types, float(parts[1]) if len(parts) > 1 else None))
+            except:
+                raise ValueError(f'Cound not parse node type "{node_type_spec}"')
+
     return parsed
 
 def check_valid_node_types(provisioner, node_types: List[Tuple[Set[str], Optional[float]]]):
