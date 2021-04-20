@@ -936,7 +936,7 @@ class hidden:
                               jobDisk=2 * 1024 * 1024 * 1024,
                               initialCachedSize=0,
                               nonLocalDir=workdir,
-                              numIters=30, disk='2G')
+                              numIters=30, disk='2Gi')
             Job.Runner.startToil(F, self.options)
 
         @staticmethod
