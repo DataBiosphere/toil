@@ -25,6 +25,7 @@ log = logging.getLogger(__name__)
 class ProvisionerTest(ToilTest):
 
     def test_node_type_parsing(self) -> None:
+        assert parse_node_types(None) == []
         assert parse_node_types('') == []
         assert parse_node_types('red beans') == [({'red beans'}, None)]
         assert parse_node_types('red beans,rice') == [({'red beans'}, None), ({'rice'}, None)]
@@ -33,7 +34,13 @@ class ProvisionerTest(ToilTest):
         assert parse_node_types('red beans/black beans:999,rice,red beans/black beans') == [({'red beans', 'black beans'}, 999), ({'rice'}, None), ({'red beans', 'black beans'}, None)]
         with pytest.raises(ValueError):
             parse_node_types('your thoughts:penny')
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError) as err:
             parse_node_types(',,,')
+        assert 'empty' in str(err.value)
         with pytest.raises(ValueError):
             parse_node_types('now hear this:')
+        with pytest.raises(ValueError) as err:
+            parse_node_types('miles I will walk:500:500')
+        assert 'multiple' in str(err.value)
+        with pytest.raises(ValueError):
+            parse_node_types('red beans:500/black beans:500,rice')

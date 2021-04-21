@@ -99,19 +99,27 @@ def parse_node_types(node_type_specs: Optional[str]) -> List[Tuple[Set[str], Opt
                 # Types are comma-separated
                 # Then we have the colon and the bid
                 parts = node_type_spec.split(':')
+
+                if len(parts) > 2:
+                    # Only one bid allowed
+                    raise ValueError(f'Cound not parse node type "{node_type_spec}": multiple bids')
+
                 # Instance types are slash-separated within an equivalence
                 # class
                 instance_types = set(parts[0].split('/'))
 
                 for instance_type in instance_types:
                     if instance_type == '':
-                        # No empty instance types
-                        raise ValueError(f'Cound not parse node type "{node_type_spec}"')
+                        # No empty instance types allowed
+                        raise ValueError(f'Cound not parse node type "{node_type_spec}": empty instance type')
 
                 # Build the node type tuple
                 parsed.append((instance_types, float(parts[1]) if len(parts) > 1 else None))
-            except:
-                raise ValueError(f'Cound not parse node type "{node_type_spec}"')
+            except Exception as e:
+                if isinstance(e, ValueError):
+                    raise
+                else:
+                    raise ValueError(f'Cound not parse node type "{node_type_spec}"')
 
     return parsed
 
