@@ -78,6 +78,11 @@ def parse_node_types(node_type_specs: Optional[str]) -> List[Tuple[Set[str], Opt
     
     Raises ValueError if a node type cannot be parsed.
 
+    Inputs should look something like this:
+
+    >>> parse_node_types('c5.4xlarge/c5a.4xlarge:0.42,t2.large')
+    [({'c5.4xlarge', 'c5a.4xlarge'}, 0.42), ({'t2.large'}, None)]
+
     :param node_type_specs: A string defining node types
 
     :returns: a list of node types, where each type is the set of
