@@ -97,6 +97,12 @@ def parse_node_types(node_type_specs: Optional[str]) -> List[Tuple[Set[str], Opt
                 # Instance types are slash-separated within an equivalence
                 # class
                 instance_types = set(parts[0].split('/'))
+
+                for instance_type in instance_types:
+                    if instance_type == '':
+                        # No empty instance types
+                        raise ValueError(f'Cound not parse node type "{node_type_spec}"')
+
                 # Build the node type tuple
                 parsed.append((instance_types, float(parts[1]) if len(parts) > 1 else None))
             except:
