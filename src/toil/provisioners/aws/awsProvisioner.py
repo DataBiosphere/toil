@@ -219,10 +219,10 @@ class AWSProvisioner(AbstractProvisioner):
         :return: None
         """
 
-        instanceType = E2Instances[leaderNodeType]
+        leader_type = E2Instances[leaderNodeType]
 
         if self.clusterType == 'kubernetes':
-            if instanceType.cores < 2:
+            if leader_type.cores < 2:
                 # Kubernetes won't run here.
                 raise RuntimeError('Kubernetes requires 2 or more cores, and %s is too small' %
                                    leaderNodeType)
@@ -235,7 +235,7 @@ class AWSProvisioner(AbstractProvisioner):
         profileArn = awsEc2ProfileArn or self._createProfileArn()
         # the security group name is used as the cluster identifier
         createdSGs = self._createSecurityGroups()
-        bdms = self._getBoto3BlockDeviceMappings(instanceType, rootVolSize=leaderStorage)
+        bdms = self._getBoto3BlockDeviceMappings(leader_type, rootVolSize=leaderStorage)
 
         userData = self._getCloudConfigUserData('leader')
 
@@ -260,7 +260,7 @@ class AWSProvisioner(AbstractProvisioner):
                                      num_instances=1,
                                      key_name=self._keyName,
                                      security_group_ids=createdSGs + awsEc2ExtraSecurityGroupIds,
-                                     instance_type=instanceType.name,
+                                     instance_type=leader_type.name,
                                      user_data=userData,
                                      block_device_map=bdms,
                                      instance_profile_arn=profileArn,
@@ -293,7 +293,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         leaderNode = Node(publicIP=leader.public_ip_address, privateIP=leader.private_ip_address,
                           name=leader.id, launchTime=leader.launch_time,
-                          nodeType=instanceType.name, preemptable=False,
+                          nodeType=leader_type.name, preemptable=False,
                           tags=leader.tags)
         leaderNode.waitForNode('toil_leader')
 
@@ -326,9 +326,9 @@ class AWSProvisioner(AbstractProvisioner):
         """
         Get the Shape for the given instance type (e.g. 't2.medium').
         """
-        instanceType = E2Instances[instance_type]
+        type_info = E2Instances[instance_type]
 
-        disk = instanceType.disks * instanceType.disk_capacity * 2 ** 30
+        disk = type_info.disks * type_info.disk_capacity * 2 ** 30
         if disk == 0:
             # This is an EBS-backed instance. We will use the root
             # volume, so add the amount of EBS storage requested for
@@ -337,10 +337,10 @@ class AWSProvisioner(AbstractProvisioner):
 
         #Underestimate memory by 100M to prevent autoscaler from disagreeing with
         #mesos about whether a job can run on a particular node type
-        memory = (instanceType.memory - 0.1) * 2** 30
+        memory = (type_info.memory - 0.1) * 2** 30
         return Shape(wallTime=60 * 60,
                      memory=memory,
-                     cores=instanceType.cores,
+                     cores=type_info.cores,
                      disk=disk,
                      preemptable=preemptable)
 
@@ -472,9 +472,9 @@ class AWSProvisioner(AbstractProvisioner):
         # equivalent node types
         node_type = next(iter(nodeTypes))
 
-        instanceType = E2Instances[node_type]
+        type_info = E2Instances[node_type]
         root_vol_size = self._nodeStorageOverrides.get(node_type, self._nodeStorage)
-        bdm = self._getBoto2BlockDeviceMapping(instanceType,
+        bdm = self._getBoto2BlockDeviceMapping(type_info,
                                                rootVolSize=root_vol_size)
 
         keyPath = self._sseKey if self._sseKey else None
@@ -485,7 +485,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         kwargs = {'key_name': self._keyName,
                   'security_group_ids': self._getSecurityGroupIDs(),
-                  'instance_type': instanceType.name,
+                  'instance_type': type_info.name,
                   'user_data': userData,
                   'block_device_map': bdm,
                   'instance_profile_arn': self._leaderProfileArn,
@@ -505,7 +505,7 @@ class AWSProvisioner(AbstractProvisioner):
                                                                   spec=kwargs, num_instances=numNodes)
                 else:
                     logger.debug('Launching %s preemptable nodes', numNodes)
-                    kwargs['placement'] = get_current_aws_zone(spotBid, instanceType.name, self._boto2)
+                    kwargs['placement'] = get_current_aws_zone(spotBid, type_info.name, self._boto2)
                     # force generator to evaluate
                     instancesLaunched = list(create_spot_instances(ec2=self._boto2.ec2,
                                                                    price=spotBid,
@@ -736,7 +736,7 @@ class AWSProvisioner(AbstractProvisioner):
                     logger.debug('... Succesfully deleted instance profile %s', profile_name)
 
     @classmethod
-    def _getBoto2BlockDeviceMapping(cls, instanceType: InstanceType, rootVolSize: int = 50) -> Boto2BlockDeviceMapping:
+    def _getBoto2BlockDeviceMapping(cls, type_info: InstanceType, rootVolSize: int = 50) -> Boto2BlockDeviceMapping:
         # determine number of ephemeral drives via cgcloud-lib (actually this is moved into toil's lib
         bdtKeys = [''] + ['/dev/xvd{}'.format(c) for c in string.ascii_lowercase[1:]]
         bdm = Boto2BlockDeviceMapping()
@@ -746,7 +746,7 @@ class AWSProvisioner(AbstractProvisioner):
         bdm["/dev/xvda"] = root_vol
         # The first disk is already attached for us so start with 2nd.
         # Disk count is weirdly a float in our instance database, so make it an int here.
-        for disk in range(1, int(instanceType.disks) + 1):
+        for disk in range(1, int(type_info.disks) + 1):
             bdm[bdtKeys[disk]] = Boto2BlockDeviceType(
                 ephemeral_name='ephemeral{}'.format(disk - 1))  # ephemeral counts start at 0
 
@@ -754,7 +754,7 @@ class AWSProvisioner(AbstractProvisioner):
         return bdm
 
     @classmethod
-    def _getBoto3BlockDeviceMappings(cls, instanceType: InstanceType, rootVolSize: int = 50) -> List[dict]:
+    def _getBoto3BlockDeviceMappings(cls, type_info: InstanceType, rootVolSize: int = 50) -> List[dict]:
         """
         Get block device mappings for the root volume for a worker.
         """
@@ -774,7 +774,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         # The first disk is already attached for us so start with 2nd.
         # Disk count is weirdly a float in our instance database, so make it an int here.
-        for disk in range(1, int(instanceType.disks) + 1):
+        for disk in range(1, int(type_info.disks) + 1):
             # Make a block device mapping to attach the ephemeral disk to a
             # virtual block device in the VM
             bdms.append({
