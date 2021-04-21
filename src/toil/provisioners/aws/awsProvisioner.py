@@ -993,9 +993,9 @@ class AWSProvisioner(AbstractProvisioner):
         # TODO: If we already have one like this, set its storage and/or remake it.
 
         assert self._leaderPrivateIP
-        inst = E2Instances[instance_type]
+        type_info = E2Instances[instance_type]
         rootVolSize=self._nodeStorageOverrides.get(instance_type, self._nodeStorage)
-        bdms = self._getBoto3BlockDeviceMappings(inst, rootVolSize=rootVolSize)
+        bdms = self._getBoto3BlockDeviceMappings(type_info, rootVolSize=rootVolSize)
 
         keyPath = self._sseKey if self._sseKey else None
         userData = self._getCloudConfigUserData('worker', keyPath, preemptable)
