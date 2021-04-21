@@ -129,7 +129,7 @@ def check_valid_node_types(provisioner, node_types: List[Tuple[Set[str], Optiona
 
     :param str provisioner: 'aws' or 'gce' to specify which cloud provisioner used.
     :param node_types: A list of node types.  Example: [({'t2.micro'}, None), ({'t2.medium'}, 0.5)]
-    :return: Nothing.  Raises if any instance type int he node type isn't real.
+    :return: Nothing.  Raises if any instance type in the node type isn't real.
     """
     
     # check if a valid node type for aws
