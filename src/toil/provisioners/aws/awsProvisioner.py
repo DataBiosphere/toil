@@ -915,7 +915,7 @@ class AWSProvisioner(AbstractProvisioner):
     def _get_worker_launch_template(self, instance_type: str, preemptable: bool = False, backoff: float = 1.0) -> str:
         """
         Get a launch template for instances with the given parameters. Only one
-        such launch template will be rcreated, no matter how many times the
+        such launch template will be created, no matter how many times the
         function is called.
 
         Not thread safe.
