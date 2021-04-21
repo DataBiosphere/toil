@@ -523,6 +523,11 @@ def create_auto_scaling_group(autoscaling_client: BaseClient,
 
     # We always write the ASG with a MixedInstancesPolicy even when we have only one type.
     # And we use a separate launch template for every instance type, and apply it as an override.
+    # Overrides is the only way to get multiple instance types into one ASG; see:
+    # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.create_auto_scaling_group
+    # We need to use a launch template per instance type so that different
+    # instance types with specified EBS storage size overrides will get their
+    # storage.
     mip = {'LaunchTemplate': {'LaunchTemplateSpecification': get_launch_template_spec(next(iter(instance_types))),
                               'Overrides': [{'InstanceType': t, 'LaunchTemplateSpecification': get_launch_template_spec(t)} for t in instance_types]}}
 
