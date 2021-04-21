@@ -891,8 +891,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         if filters:
             # Add any user-specified filters
-            for f in filters:
-                combined_filters.append(f)
+            combined_filters += filters
 
         allTemplateIDs = []
         # Get the first page with no NextToken
