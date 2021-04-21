@@ -62,13 +62,23 @@ def main():
                         help="VPC subnet ID to launch cluster in. Uses default subnet if not "
                         "specified. This subnet needs to have auto assign IPs turned on.")
     parser.add_argument("--nodeTypes", dest='nodeTypes', default=None, type=str,
-                        help="Comma-separated list of node types to create while launching the "
-                             "leader. The syntax for each node type depends on the provisioner "
-                             "used. For the aws provisioner this is a slash-separated list of "
-                             "equivalent EC2 instance types followed by a colon and the price "
-                             "in dollars to bid for a spot instance. For example: "
-                             "'c5.4xlarge/c5a.4xlarge:0.42'. Must also provide the --workers "
-                             "argument to specify how many workers of each node type to create.")
+                        help="Specifies a list of comma-separated node types, each of which is "
+                             "composed of slash-separated instance types, and an optional spot "
+                             "bid set off by a colon, making the node type preemptable. Instance "
+                             "types may appear in multiple node types, and the same node type "
+                             "may appear as both preemptable and non-preemptable.\n"
+                             "Valid argument specifying two node types:\n"
+                             "\tc5.4xlarge/c5a.4xlarge:0.42,t2.large\n"
+                             "Node types:\n"
+                             "\tc5.4xlarge/c5a.4xlarge:0.42 and t2.large\n"
+                             "Instance types:\n"
+                             "\tc5.4xlarge, c5a.4xlarge, and t2.large\n"
+                             "Semantics:\n"
+                             "\tBid $0.42/hour for either c5.4xlarge or c5a.4xlarge instances,\n"
+                             "\ttreated interchangeably, while they are available at that price,\n"
+                             "\tand buy t2.large instances at full price\n"
+                             "Must also provide the --workers argument to specify how many "
+                             "workers of each node type to create.")
     parser.add_argument("-w", "--workers", dest='workers', default=None, type=str,
                         help="Comma-separated list of the ranges of numbers of workers of each "
                              "node type to launch, such as '0-2,5,1-3'. If a range is given, "

@@ -424,17 +424,21 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
                                           f"machine and non-auto-scaling batch systems.  The currently supported "
                                           f"choices are {provisioner_choices}.  The default is {config.provisioner}.")
     autoscaling_options.add_argument('--nodeTypes', default=None,
-                                     help="List of worker node types separated by commas. The syntax for each node "
-                                          "type depends on the provisioner used.  For the AWS provisioner this is "
-                                          "a semicolon-separated list of equivalent EC2 instance types followed by "
-                                          "a colon and the price in dollars to bid for a spot instance. For example: "
-                                          "'c5.4xlarge;c5a.4xlarge:0.42'  If no spot bid is specified, nodes of this "
-                                          "type will be non-preemptable (non-discounted and not subject to potential "
-                                          "early termination based on the availability of discounted instances).  It "
-                                          "is acceptable to specify an instance as both preemptable and "
-                                          "non-preemptable, including it twice in the list. In that case, preemptable "
-                                          "nodes of that type will be preferred when creating new nodes once the "
-                                          "maximum number of preemptable-nodes has been reached.")
+                                     help="Specifies a list of comma-separated node types, each of which is "
+                                          "composed of slash-separated instance types, and an optional spot "
+                                          "bid set off by a colon, making the node type preemptable. Instance "
+                                          "types may appear in multiple node types, and the same node type "
+                                          "may appear as both preemptable and non-preemptable.\n"
+                                          "Valid argument specifying two node types:\n"
+                                          "\tc5.4xlarge/c5a.4xlarge:0.42,t2.large\n"
+                                          "Node types:\n"
+                                          "\tc5.4xlarge/c5a.4xlarge:0.42 and t2.large\n"
+                                          "Instance types:\n"
+                                          "\tc5.4xlarge, c5a.4xlarge, and t2.large\n"
+                                          "Semantics:\n"
+                                          "\tBid $0.42/hour for either c5.4xlarge or c5a.4xlarge instances,\n"
+                                          "\ttreated interchangeably, while they are available at that price,\n"
+                                          "\tand buy t2.large instances at full price")
     autoscaling_options.add_argument('--minNodes', default=None,
                                      help="Mininum number of nodes of each type in the cluster, if using "
                                           "auto-scaling.  This should be provided as a comma-separated list of the "
