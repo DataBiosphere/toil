@@ -29,7 +29,6 @@ logger = logging.getLogger(__name__)
 
 class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
-
     # class-specific Worker
     class Worker(AbstractGridEngineBatchSystem.Worker):
 
@@ -196,25 +195,12 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             stdoutfile: str = self.boss.formatStdOutErrPath(jobID, r'${PBS_JOBID}', 'out')
             stderrfile: str = self.boss.formatStdOutErrPath(jobID, r'${PBS_JOBID}', 'err')
 
-            _, tmpFile = tempfile.mkstemp(suffix='.sh', prefix='torque_wrapper')
-            fh = open(tmpFile , 'w')
-            fh.write("#!/bin/sh\n")
-            fh.write("#PBS -o {}\n".format(stdoutfile))
-            fh.write("#PBS -e {}\n".format(stderrfile))
-            fh.write("cd $PBS_O_WORKDIR\n\n")
-            fh.write(command + "\n")
+            _, tmp_file = tempfile.mkstemp(suffix='.sh', prefix='torque_wrapper')
+            with open(tmp_file, 'w') as f:
+                f.write("#!/bin/sh\n")
+                f.write("#PBS -o {}\n".format(stdoutfile))
+                f.write("#PBS -e {}\n".format(stderrfile))
+                f.write("cd $PBS_O_WORKDIR\n\n")
+                f.write(command + "\n")
 
-            fh.close
-
-            return tmpFile
-
-
-    @classmethod
-    def obtainSystemConstants(cls):
-
-        # See: https://github.com/BD2KGenomics/toil/pull/1617#issuecomment-293525747
-        logger.debug("PBS/Torque does not need obtainSystemConstants to assess global cluster resources.")
-
-
-        #return maxCPU, maxMEM
-        return None, None
+            return tmp_file

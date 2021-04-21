@@ -45,7 +45,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
                                                    UpdatedBatchJobInfo)
 from toil.common import Toil
 from toil.job import JobDescription
-from toil.lib.humanize import human2bytes
+from toil.lib.conversions import human2bytes
 from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
 from toil.statsAndLogging import configure_root_logger, set_log_level
