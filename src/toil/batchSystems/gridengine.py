@@ -17,11 +17,11 @@ import os
 import time
 from pipes import quote
 
-from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)
+
 
 class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
 
@@ -143,37 +143,3 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
     @classmethod
     def getWaitDuration(cls):
         return 1
-
-    @classmethod
-    def obtainSystemConstants(cls):
-        # expect qhost output is in the form:
-        # HOSTNAME                ARCH         NCPU NSOC NCOR NTHR NLOAD  MEMTOT  MEMUSE  SWAPTO  SWAPUS
-        # ----------------------------------------------------------------------------------------------
-        # global                  -               -    -    -    -     -       -       -       -       -
-        # compute-1-1             lx-amd64       72    2   36   72  0.49  188.8G   79.6G   92.7G   19.2G
-        # compute-1-10            lx-amd64       72    2   36   72  0.22  188.8G   51.1G   92.7G    2.8G
-        lines = call_command(["qhost"]).strip().split('\n')
-        items = lines[0].strip().split()
-        num_columns = len(items)
-        cpu_index = None
-        mem_index = None
-        for i in range(num_columns):
-            if items[i] == 'NCPU':
-                cpu_index = i
-            elif items[i] == 'MEMTOT':
-                mem_index = i
-        if cpu_index is None or mem_index is None:
-            raise RuntimeError('qhost command does not return NCPU or MEMTOT columns')
-        maxCPU = 0
-        maxMEM = MemoryString("0")
-        for line in lines[2:]:
-            items = line.strip().split()
-            if len(items) < num_columns:
-                raise RuntimeError('qhost output has a varying number of columns')
-            if items[cpu_index] != '-' and int(items[cpu_index]) > maxCPU:
-                maxCPU = int(items[cpu_index])
-            if items[mem_index] != '-' and MemoryString(items[mem_index]) > maxMEM:
-                maxMEM = MemoryString(items[mem_index])
-        if maxCPU == 0 or maxMEM == MemoryString("0"):
-            raise RuntimeError('qhost returned null NCPU or MEMTOT info')
-        return maxCPU, maxMEM
