@@ -447,26 +447,45 @@ class AWSProvisioner(AbstractProvisioner):
     def terminateNodes(self, nodes : List[Node]):
         self._terminateIDs([x.name for x in nodes])
 
-    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None) -> int:
-        assert self._leaderPrivateIP
-
-        if preemptable and spotBid is None:
-            if self._spotBidsMap and frozenset(nodeTypes) in self._spotBidsMap:
-                spotBid = self._spotBidsMap[frozenset(nodeTypes)]
-            elif len(nodeTypes) == 1:
+    def _recover_node_type_bid(node_type: Set[str], spot_bid: Optional[float]) -> Optional[float]:
+        """
+        The old Toil-managed autoscaler will tell us to make some nodes of
+        particular instance types, and to just work out a bid, but it doesn't
+        know anything about instance type equivalence classes within a node
+        type. So we need to do some work to infer how much to bid by guessing
+        some node type an instance type could belong to.
+        
+        If we get a set of instance types corresponding to a known node type
+        with a bid, we use that bid instead.
+        
+        :return: the guessed spot bid
+        """
+        if spot_bid is None:
+            if self._spotBidsMap and frozenset(node_type) in self._spotBidsMap:
+                spot_bid = self._spotBidsMap[frozenset(node_type)]
+            elif len(node_type) == 1:
                 # The Toil autoscaler forgets the equivalence classes. Find
                 # some plausible equivalence class.
-                instance_type = next(iter(nodeTypes))
+                instance_type = next(iter(node_type))
                 for types, bid in self._spotBidsMap.items():
                     if instance_type in types:
                         # We bid on a class that includes this type
-                        spotBid = bid
+                        spot_bid = bid
                         break
-                if spotBid is None:
+                if spot_bid is None:
                     # We didn't bid on any class including this type either
                     raise RuntimeError("No spot bid given for a preemptable node request.")
             else:
                 raise RuntimeError("No spot bid given for a preemptable node request.")
+
+        return spotBid
+
+    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None) -> int:
+        assert self._leaderPrivateIP
+
+        if preemptable:
+            # May need to provide a spot bid
+            spotBid = self._recover_node_type_bid(nodeTypes, spotBid)
 
         # We don't support any balancing here so just pick one of the
         # equivalent node types
@@ -542,23 +561,9 @@ class AWSProvisioner(AbstractProvisioner):
 
         assert self._leaderPrivateIP
 
-        if preemptable and spotBid is None:
-            if self._spotBidsMap and frozenset(nodeTypes) in self._spotBidsMap:
-                spotBid = self._spotBidsMap[frozenset(nodeTypes)]
-            elif len(nodeTypes) == 1:
-                # The Toil autoscaler forgets the equivalence classes. Find
-                # some plausible equivalence class.
-                instance_type = next(iter(nodeTypes))
-                for types, bid in self._spotBidsMap.items():
-                    if instance_type in types:
-                        # We bid on a class that includes this type
-                        spotBid = bid
-                        break
-                if spotBid is None:
-                    # We didn't bid on any class including this type either
-                    raise RuntimeError("No spot bid given for a preemptable node request.")
-            else:
-                raise RuntimeError("No spot bid given for a preemptable node request.")
+        if preemptable:
+            # May need to provide a spot bid
+            spotBid = self._recover_node_type_bid(nodeTypes, spotBid)
 
         # TODO: We assume we only ever do this once per node type...
 
