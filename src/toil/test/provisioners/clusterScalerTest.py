@@ -705,7 +705,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
 
     @contextmanager
     def nodeFiltering(self, filter):
-        nodes = self.getProvisionedWorkers(preemptable=True) + self.getProvisionedWorkers(preemptable=False)
+        nodes = self.getProvisionedWorkers()
         yield nodes
 
     # AbstractProvisioner methods
@@ -721,10 +721,14 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         :return: list of Node
         """
         nodesToWorker = self.nodesToWorker
+        results = []
         if instance_type:
-            return [node for node in nodesToWorker if node.nodeType == instance_type]
+            results = [node for node in nodesToWorker if node.nodeType == instance_type]
         else:
-            return list(nodesToWorker.keys())
+            results = list(nodesToWorker.keys())
+        if preemptable is not None:
+            results = [node for node in results if node.preemptable == preemptable]
+        return results
 
     def terminateNodes(self, nodes):
         self._removeNodes(nodes)

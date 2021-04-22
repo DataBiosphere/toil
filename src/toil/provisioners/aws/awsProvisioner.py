@@ -574,18 +574,19 @@ class AWSProvisioner(AbstractProvisioner):
         self._createWorkerAutoScalingGroup(launch_template_ids, nodeTypes, minNodes, maxNodes,
                                            spot_bid=spotBid)
 
-    def getProvisionedWorkers(self, instance_type: Optional[str], preemptable: bool) -> List[Node]:
+    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptable: Optional[bool] = None) -> List[Node]:
         assert self._leaderPrivateIP
         entireCluster = self._getNodesInCluster(instance_type=instance_type, both=True)
         logger.debug('All nodes in cluster: %s', entireCluster)
         workerInstances = [i for i in entireCluster if i.private_ip_address != self._leaderPrivateIP]
         logger.debug('All workers found in cluster: %s', workerInstances)
-        workerInstances = [i for i in workerInstances if preemptable != (i.spot_instance_request_id is None)]
-        logger.debug('%spreemptable workers found in cluster: %s', 'non-' if not preemptable else '', workerInstances)
+        if preemptable is not None:
+            workerInstances = [i for i in workerInstances if preemptable == (i.spot_instance_request_id is not None)]
+            logger.debug('%spreemptable workers found in cluster: %s', 'non-' if not preemptable else '', workerInstances)
         workerInstances = awsFilterImpairedNodes(workerInstances, self._boto2.ec2)
         return [Node(publicIP=i.ip_address, privateIP=i.private_ip_address,
                      name=i.id, launchTime=i.launch_time, nodeType=i.instance_type,
-                     preemptable=preemptable, tags=i.tags)
+                     preemptable=i.spot_instance_request_id is not None, tags=i.tags)
                 for i in workerInstances]
 
     def _buildContext(self):

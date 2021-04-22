@@ -350,7 +350,7 @@ class ClusterScaler(object):
             for preemptable in (True, False):
                 nodes = []
                 for nodeShape, instance_type in self.nodeShapeToType.items():
-                    nodes_thisType = leader.provisioner.getProvisionedWorkers(instance_type,
+                    nodes_thisType = leader.provisioner.getProvisionedWorkers(instance_type=instance_type,
                                                                               preemptable=preemptable)
                     totalNodes[nodeShape] += len(nodes_thisType)
                     nodes.extend(nodes_thisType)
@@ -871,7 +871,7 @@ class ScalerThread(ExceptionalThread):
                     for nodeShape in self.scaler.nodeShapes:
                         instance_type = self.scaler.nodeShapeToType[nodeShape]
                         currentNodeCounts[nodeShape] = len(
-                            self.scaler.leader.provisioner.getProvisionedWorkers(instance_type,
+                            self.scaler.leader.provisioner.getProvisionedWorkers(instance_type=instance_type,
                                                                                  preemptable=nodeShape.preemptable))
                     estimatedNodeCounts = self.scaler.getEstimatedNodeCounts(queuedJobShapes,
                                                                              currentNodeCounts)

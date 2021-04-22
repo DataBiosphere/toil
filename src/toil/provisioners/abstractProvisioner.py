@@ -419,13 +419,14 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def getProvisionedWorkers(self, instance_type: str, preemptable):
+    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptable: Optional[bool] = None):
         """
-        Gets all nodes of the given preemptability from the provisioner.
-        Includes both static and autoscaled nodes.
+        Gets all nodes, optionally of the given instance type or
+        preemptability, from the provisioner. Includes both static and
+        autoscaled nodes.
 
-        :param preemptable: Boolean value indicating whether to return preemptable nodes or
-           non-preemptable nodes
+        :param preemptable: Boolean value to restrict to preemptable
+               nodes or non-preemptable nodes
         :return: list of Node objects
         """
         raise NotImplementedError

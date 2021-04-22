@@ -313,16 +313,17 @@ class GCEProvisioner(AbstractProvisioner):
             logger.error("Failed to launch %d worker(s)", numNodes-workersCreated)
         return workersCreated
 
-    def getProvisionedWorkers(self, instance_type: Optional[str], preemptable: bool):
+    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptable: Optional[bool] = None):
         assert self._leaderPrivateIP
         entireCluster = self._getNodesInCluster(instance_type=instance_type)
         logger.debug('All nodes in cluster: %s', entireCluster)
         workerInstances = []
         for instance in entireCluster:
-            scheduling = instance.extra.get('scheduling')
-            # If this field is not found in the extra meta-data, assume the node is not preemptable.
-            if scheduling and scheduling.get('preemptible', False) != preemptable:
-                continue
+            if preemptable is not None:
+                scheduling = instance.extra.get('scheduling')
+                # If this field is not found in the extra meta-data, assume the node is not preemptable.
+                if scheduling and scheduling.get('preemptible', False) != preemptable:
+                    continue
             isWorker = True
             for ip in instance.private_ips:
                 if ip == self._leaderPrivateIP:
@@ -334,7 +335,7 @@ class GCEProvisioner(AbstractProvisioner):
         logger.debug('All workers found in cluster: %s', workerInstances)
         return [Node(publicIP=i.public_ips[0], privateIP=i.private_ips[0],
                      name=i.name, launchTime=i.created_at, nodeType=i.size,
-                     preemptable=preemptable, tags=None)
+                     preemptable=i.extra.get('scheduling', {}).get('preemptible', False), tags=None)
                 for i in workerInstances]
 
     def getLeader(self):
