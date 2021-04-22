@@ -213,7 +213,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.createClusterUtil()
 
     def getRootVolID(self):
-        instances = self.cluster._getNodesInCluster(nodeType=None, both=True)
+        instances = self.cluster._getNodesInCluster(both=True)
         instances.sort(key=lambda x: x.launch_time)
         leader = instances[0]  # assume leader was launched first
 
