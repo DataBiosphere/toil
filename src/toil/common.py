@@ -219,7 +219,7 @@ class Config:
 
         # Autoscaling options
         set_option("provisioner")
-        set_option("nodeTypes", parse_str_list)
+        set_option("nodeTypes", parse_node_types)
         set_option("minNodes", parse_int_list)
         set_option("maxNodes", parse_int_list)
         set_option("targetTime", int)
@@ -239,11 +239,11 @@ class Config:
             for override in overrides:
                 tokens = override.split(":")
                 assert len(tokens) == 2, \
-                    'Each component of --nodeStorageOverrides must have nodeType:nodeStorage'
-                assert any(tokens[0] in n for n in self.nodeTypes), \
-                    'nodeType of --nodeStorageOverrides must be among --nodeTypes'
+                    'Each component of --nodeStorageOverrides must be of the form <instance type>:<storage in GiB>'
+                assert any(tokens[0] in n[0] for n in self.nodeTypes), \
+                    'instance type in --nodeStorageOverrides must be used in --nodeTypes'
                 assert tokens[1].isdigit(), \
-                    'nodeStorage must be an integer in --nodeStorageOverrides'
+                    'storage must be an integer in --nodeStorageOverrides'
         set_option("nodeStorageOverrides", parse_str_list, check_function=check_nodestoreage_overrides)
 
         # Parameters to limit service jobs / detect deadlocks
@@ -877,8 +877,7 @@ class Toil:
                                                 nodeStorage=self.config.nodeStorage,
                                                 nodeStorageOverrides=self.config.nodeStorageOverrides,
                                                 sseKey=self.config.sseKey)
-            node_types = parse_node_types(self.config.nodeTypes)
-            self._provisioner.setAutoscaledNodeTypes(node_types)
+            self._provisioner.setAutoscaledNodeTypes(self.config.nodeTypes)
 
     @classmethod
     def getJobStore(cls, locator):
