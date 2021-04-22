@@ -22,7 +22,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 from queue import Empty, Queue
 from threading import Event, Thread
-from typing import Set
+from typing import Set, List, Optional, Tuple
 
 from mock import MagicMock
 
@@ -70,8 +70,8 @@ t2_micro = Shape(wallTime=3600,
 
 class BinPackingTest(ToilTest):
     def setUp(self):
-        self.nodeShapes = [c4_8xlarge_preemptable, r3_8xlarge]
-        self.bpf = BinPackedFit(self.nodeShapes)
+        self.node_shapes_for_testing = [c4_8xlarge_preemptable, r3_8xlarge]
+        self.bpf = BinPackedFit(self.node_shapes_for_testing)
 
     @travis_test
     def testPackingOneShape(self):
@@ -214,8 +214,8 @@ class BinPackingTest(ToilTest):
         """Test packing 1000 jobs on t2.micros.  Depending on the targetTime and resources,
         these should pack differently.
         """
-        nodeShapes = [t2_micro]
-        bpf = BinPackedFit(nodeShapes, targetTime=globalTargetTime)
+        node_shapes_for_testing = [t2_micro]
+        bpf = BinPackedFit(node_shapes_for_testing, targetTime=globalTargetTime)
 
         for _ in range(1000):
             bpf.addJobShape(Shape(wallTime=jobTime,
@@ -278,7 +278,7 @@ class ClusterScalerTest(ToilTest):
         # It is also a full mock provisioner, so configure it to be that as well
         self.provisioner = self.leader
         # Pretend that Shapes are actually strings we can use for instance type names.
-        self.provisioner.setAutoscaledNodeTypes([(t, None) for t in self.config.nodeTypes])
+        self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.nodeTypes])
 
     @travis_test
     def testRounding(self):
@@ -368,7 +368,7 @@ class ClusterScalerTest(ToilTest):
         # the same type. That is the only situation where
         # preemptableCompensation applies.
         self.config.nodeTypes = [c4_8xlarge_preemptable, c4_8xlarge]
-        self.provisioner.setAutoscaledNodeTypes([(t, None) for t in self.config.nodeTypes])
+        self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.nodeTypes])
         
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         # Simulate a situation where a previous run caused a
@@ -385,7 +385,7 @@ class ClusterScalerTest(ToilTest):
         # We don't care about the estimated size of the preemptable
         # nodes. All we want to know is if we responded to the deficit
         # properly: 0.5 * 5 (preemptableCompensation * the deficit) = 3 (rounded up).
-        self.assertEqual(estimatedNodeCounts[self.provisioner.nodeShapes[1]], 3)
+        self.assertEqual(estimatedNodeCounts[self.provisioner.node_shapes_for_testing[1]], 3)
 
     @travis_test
     def testPreemptableDeficitIsSet(self):
@@ -405,7 +405,7 @@ class ClusterScalerTest(ToilTest):
         # the same type. That is the only situation where
         # preemptableCompensation applies.
         self.config.nodeTypes = [c4_8xlarge_preemptable, c4_8xlarge]
-        self.provisioner.setAutoscaledNodeTypes([(t, None) for t in self.config.nodeTypes])
+        self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.nodeTypes])
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         estimatedNodeCounts = {c4_8xlarge_preemptable: 5, c4_8xlarge: 0}
         scaler.updateClusterSize(estimatedNodeCounts)
@@ -425,7 +425,7 @@ class ClusterScalerTest(ToilTest):
         the delta was able to be met by unignoring nodes.
         """
         # We have only one node type for simplicity
-        self.provisioner.setAutoscaledNodeTypes([(c4_8xlarge, None)])
+        self.provisioner.setAutoscaledNodeTypes([({c4_8xlarge}, None)])
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         # Pretend there is one ignored worker in the cluster
         self.provisioner.getProvisionedWorkers = MagicMock(
@@ -468,7 +468,7 @@ class ScalerThreadTest(ToilTest):
         # number of worker nodes used.
 
         mock = MockBatchSystemAndProvisioner(config, secondsPerJob=2.0)
-        mock.setAutoscaledNodeTypes([(t, None) for t in config.nodeTypes])
+        mock.setAutoscaledNodeTypes([({t}, None) for t in config.nodeTypes])
         mock.start()
         clusterScaler = ScalerThread(mock, mock, config)
         clusterScaler.start()
@@ -579,7 +579,7 @@ class ScalerThreadTest(ToilTest):
         config.scaleInterval = 3
 
         mock = MockBatchSystemAndProvisioner(config, secondsPerJob=2.0)
-        mock.setAutoscaledNodeTypes([(t, None) for t in config.nodeTypes])
+        mock.setAutoscaledNodeTypes([({t}, None) for t in config.nodeTypes])
         clusterScaler = ScalerThread(mock, mock, config)
         clusterScaler.start()
         mock.start()
@@ -657,7 +657,6 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         self.secondsPerJob = secondsPerJob
         self.provisioner = self
         self.batchSystem = self
-        self.nodeShapes.sort()
         self.jobQueue = Queue()
         self.updatedJobsQueue = Queue()
         self.jobBatchSystemIDToIssuedJob = {}
@@ -665,10 +664,8 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         self.totalWorkerTime = 0.0  # Total time spent in worker threads
         self.toilMetrics = None
         self.nodesToWorker = {}  # Map from Node to instances of the Worker class
-        self.workers = {nodeShape: [] for nodeShape in
-                        self.nodeShapes}  # Instances of the Worker class
-        self.maxWorkers = {nodeShape: 0 for nodeShape in
-                           self.nodeShapes}  # Maximum number of workers
+        self.workers = defaultdict(list)  # Instances of the Worker class, by node shape
+        self.maxWorkers = defaultdict(int)  # Maximum number of workers, by node shape
         self.running = False
         self.leaderThread = Thread(target=self._leaderFn)
 
@@ -712,6 +709,10 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         yield nodes
 
     # AbstractProvisioner methods
+    def setAutoscaledNodeTypes(self, node_types: List[Tuple[Set[Shape], Optional[float]]]):
+        self.node_shapes_for_testing = sorted([it for t in node_types for it in t[0]])
+        super().setAutoscaledNodeTypes(node_types)
+
     def getProvisionedWorkers(self, instance_type=None, preemptable=None):
         """
         Returns a list of Node objects, each representing a worker node in the cluster
