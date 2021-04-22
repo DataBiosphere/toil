@@ -278,14 +278,7 @@ class ClusterScalerTest(ToilTest):
         # It is also a full mock provisioner, so configure it to be that as well
         self.provisioner = self.leader
         # Pretend that Shapes are actually strings we can use for instance type names.
-        setattr(self.provisioner, 'nodeTypes', [r3_8xlarge, 
-                                                c4_8xlarge_preemptable])
-        setattr(self.provisioner, 'nodeShapes', [r3_8xlarge,
-                                                 c4_8xlarge_preemptable])
-        setattr(self.provisioner, '_shape_to_instance_type', {r3_8xlarge: r3_8xlarge,
-                                                              c4_8xlarge_preemptable: c4_8xlarge_preemptable})
-
-        
+        self.provisioner.setAutoscaledNodeTypes([(t, None) for t in self.config.nodeTypes])
 
     @travis_test
     def testRounding(self):
@@ -375,12 +368,7 @@ class ClusterScalerTest(ToilTest):
         # the same type. That is the only situation where
         # preemptableCompensation applies.
         self.config.nodeTypes = [c4_8xlarge_preemptable, c4_8xlarge]
-        setattr(self.provisioner, 'nodeTypes', [c4_8xlarge_preemptable, 
-                                                c4_8xlarge])
-        setattr(self.provisioner, 'nodeShapes', [c4_8xlarge_preemptable,
-                                                 c4_8xlarge])
-        setattr(self.provisioner, '_shape_to_instance_type', {c4_8xlarge_preemptable: c4_8xlarge_preemptable,
-                                                              c4_8xlarge: c4_8xlarge})
+        self.provisioner.setAutoscaledNodeTypes([(t, None) for t in self.config.nodeTypes])
         
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         # Simulate a situation where a previous run caused a
@@ -417,12 +405,7 @@ class ClusterScalerTest(ToilTest):
         # the same type. That is the only situation where
         # preemptableCompensation applies.
         self.config.nodeTypes = [c4_8xlarge_preemptable, c4_8xlarge]
-        setattr(self.provisioner, 'nodeTypes', [c4_8xlarge_preemptable, 
-                                                c4_8xlarge])
-        setattr(self.provisioner, 'nodeShapes', [c4_8xlarge_preemptable,
-                                                 c4_8xlarge])
-        setattr(self.provisioner, '_shape_to_instance_type', {c4_8xlarge_preemptable: c4_8xlarge_preemptable,
-                                                              c4_8xlarge: c4_8xlarge})
+        self.provisioner.setAutoscaledNodeTypes([(t, None) for t in self.config.nodeTypes])
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         estimatedNodeCounts = {c4_8xlarge_preemptable: 5, c4_8xlarge: 0}
         scaler.updateClusterSize(estimatedNodeCounts)
@@ -442,9 +425,7 @@ class ClusterScalerTest(ToilTest):
         the delta was able to be met by unignoring nodes.
         """
         # We have only one node type for simplicity
-        setattr(self.provisioner, 'nodeTypes', [c4_8xlarge])
-        setattr(self.provisioner, 'nodeShapes', [c4_8xlarge])
-        setattr(self.provisioner, '_shape_to_instance_type', {c4_8xlarge: c4_8xlarge})
+        self.provisioner.setAutoscaledNodeTypes([(c4_8xlarge, None)])
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         # Pretend there is one ignored worker in the cluster
         self.provisioner.getProvisionedWorkers = MagicMock(
@@ -487,9 +468,7 @@ class ScalerThreadTest(ToilTest):
         # number of worker nodes used.
 
         mock = MockBatchSystemAndProvisioner(config, secondsPerJob=2.0)
-        setattr(mock, 'nodeTypes', config.nodeTypes)
-        setattr(mock, 'nodeShapes', config.nodeTypes)
-        setattr(mock, '_shape_to_instance_type', dict(zip(config.nodeTypes, config.nodeTypes)))
+        mock.setAutoscaledNodeTypes([(t, None) for t in config.nodeTypes])
         mock.start()
         clusterScaler = ScalerThread(mock, mock, config)
         clusterScaler.start()
@@ -600,9 +579,7 @@ class ScalerThreadTest(ToilTest):
         config.scaleInterval = 3
 
         mock = MockBatchSystemAndProvisioner(config, secondsPerJob=2.0)
-        setattr(mock, 'nodeTypes', config.nodeTypes)
-        setattr(mock, 'nodeShapes', config.nodeTypes)
-        setattr(mock, '_shape_to_instance_type', dict(zip(config.nodeTypes, config.nodeTypes)))
+        mock.setAutoscaledNodeTypes([(t, None) for t in config.nodeTypes])
         clusterScaler = ScalerThread(mock, mock, config)
         clusterScaler.start()
         mock.start()
@@ -680,8 +657,6 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         self.secondsPerJob = secondsPerJob
         self.provisioner = self
         self.batchSystem = self
-        self.nodeTypes = config.nodeTypes
-        self.nodeShapes = self.nodeTypes
         self.nodeShapes.sort()
         self.jobQueue = Queue()
         self.updatedJobsQueue = Queue()

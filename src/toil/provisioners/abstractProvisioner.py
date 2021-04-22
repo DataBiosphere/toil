@@ -306,12 +306,12 @@ class AbstractProvisioner(ABC):
         """
         # This maps from an equivalence class of instance names to a spot bid.
         self._spotBidsMap = {}
-        
+
         # This maps from a node Shape object to the instance type that has that
         # shape. TODO: what if multiple instance types in a cloud provider have
         # the same shape (e.g. AMD and Intel instances)???
         self._shape_to_instance_type = {}
-        
+
         for node_type in nodeTypes:
             preemptable = node_type[1] is not None
             if preemptable:
@@ -321,6 +321,16 @@ class AbstractProvisioner(ABC):
                 # Record the instance shape and associated type.
                 shape = self.getNodeShape(instance_type_name, preemptable)
                 self._shape_to_instance_type[shape] = instance_type_name
+
+    def hasAutoscaledNodeTypes(self) -> bool:
+        """
+        Check if node types have been configured on the provisioner (via
+        setAutoscaledNodeTypes).
+
+        :returns: True if node types are configured for autoscaling, and false
+                  otherwise.
+        """
+        return len(self.getAutoscaledInstanceShapes()) > 0
 
     def getAutoscaledInstanceShapes(self) -> Dict[Shape, str]:
         """
@@ -582,7 +592,7 @@ class AbstractProvisioner(ABC):
                     sudo dd if=/dev/zero of=$drive bs=4096 count=1024
                 done
                 # determine force flag
-                sudo mdadm --create -f --verbose /dev/md0 --level=0 --raid-devices=$ephemeral_count "${drives[@]}" 
+                sudo mdadm --create -f --verbose /dev/md0 --level=0 --raid-devices=$ephemeral_count "${drives[@]}"
                 sudo mkfs.ext4 -F /dev/md0
                 sudo mount /dev/md0 /mnt/ephemeral
             fi
