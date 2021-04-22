@@ -447,7 +447,7 @@ class AWSProvisioner(AbstractProvisioner):
     def terminateNodes(self, nodes : List[Node]):
         self._terminateIDs([x.name for x in nodes])
 
-    def _recover_node_type_bid(node_type: Set[str], spot_bid: Optional[float]) -> Optional[float]:
+    def _recover_node_type_bid(self, node_type: Set[str], spot_bid: Optional[float]) -> Optional[float]:
         """
         The old Toil-managed autoscaler will tell us to make some nodes of
         particular instance types, and to just work out a bid, but it doesn't
@@ -478,7 +478,7 @@ class AWSProvisioner(AbstractProvisioner):
             else:
                 raise RuntimeError("No spot bid given for a preemptable node request.")
 
-        return spotBid
+        return spot_bid
 
     def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None) -> int:
         assert self._leaderPrivateIP
