@@ -82,6 +82,9 @@ SHELL=bash
 tests=src/toil/test
 cov="--cov=toil"
 extras=
+# You can say make develop packages=xxx to install packages in the same Python
+# environemnt as Toil itself without creating dependency conflicts with Toil
+packages=
 sdist_name:=toil-$(shell python version_template.py distVersion).tar.gz
 
 green=\033[0;32m
@@ -90,7 +93,7 @@ red=\033[0;31m
 cyan=\033[0;36m
 
 develop: check_venv
-	pip install -e .$(extras)
+	pip install -e .$(extras) $(packages)
 
 clean_develop: check_venv
 	- pip uninstall -y toil
