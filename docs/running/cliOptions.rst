@@ -163,8 +163,6 @@ the logging module:
                             Bid $0.42/hour for either c5.4xlarge or c5a.4xlarge instances,
                             treated interchangeably, while they are available at that price,
                             and buy t2.large instances at full price
-                        Must also provide the --workers argument to specify how many 
-                        workers of each node type to create.
   --minNodes MINNODES   Minimum number of nodes of each type in the cluster,
                         if using auto-scaling. This should be provided as a
                         comma-separated list of the same length as the list of
