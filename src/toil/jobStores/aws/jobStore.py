@@ -733,7 +733,7 @@ class AWSJobStore(AbstractJobStore):
                             bucket = self.s3_resource.create_bucket(
                                 Bucket=bucket_name,
                                 CreateBucketConfiguration={'LocationConstraint': location})
-                            # Wait until the bucket exists before checking the region
+                            # Wait until the bucket exists before checking the region and adding tags
                             bucket.wait_until_exists()
 
                             # It is possible for create_bucket to return but
@@ -742,6 +742,13 @@ class AWSJobStore(AbstractJobStore):
                             # NoSuchBucket. We let that kick us back up to the
                             # main retry loop.
                             assert self.getBucketRegion(bucket_name) == self.region
+
+                            owner_tag = os.environ.get('SET_OWNER_TAG')
+                            if owner_tag:
+                                bucket_tags = self.s3_resource.BucketTagging(bucket_name)
+                                tags = bucket_tags.tag_set
+                                tags.append({'Key': 'Owner', 'Value': owner_tag})
+                                bucket_tagging.put(Tagging={'TagSet': tags})
                         elif block:
                             raise
                         else:
