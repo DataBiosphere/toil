@@ -1257,30 +1257,34 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         from toil.jobStores.aws.utils import retry_s3
         from toil.jobStores.aws.jobStore import establish_boto3_session
 
+        home_region = 'us-west-2'
         for region in 'us-east-1', 'us-west-2':
             # We run this test twice, once with the default s3 server us-east-1 as the test region
             # and once with another server (us-west-2).  The external server is always us-west-1.
             # This incidentally tests that the BucketLocationConflictException is thrown when using
             # both the default, and a non-default server.
             testJobStoreUUID = str(uuid.uuid4())
-            # Create the bucket at the external region
             jobstore_name = f'domain-test-{uuid.uuid4()}'
             bucket_name = f'{jobstore_name}--files'
             boto3_session = establish_boto3_session()
-            s3_client = boto3_session.client('s3', region_name=region)
-            s3_resource = boto3_session.resource('s3', region_name=region)
+            s3_client = boto3_session.client('s3', region_name=home_region)
+            s3_resource = boto3_session.resource('s3', region_name=home_region)
 
             for attempt in retry_s3(delays=(2, 5, 10, 30, 60), timeout=600):
                 with attempt:
-                    s3_client.create_bucket(Bucket=bucket_name,
-                                            CreateBucketConfiguration={'LocationConstraint': region})
+                    # Create the bucket at the home region
+                    bucket = s3_resource.create_bucket(Bucket=bucket_name,
+                                                       CreateBucketConfiguration={'LocationConstraint': home_region})
+                    bucket.wait_until_exists()
 
-                    owner_tag = os.environ.get('SET_OWNER_TAG')
-                    if owner_tag:
-                        bucket_tags = s3_resource.BucketTagging(bucket_name)
-                        tags = bucket_tags.tag_set
-                        tags.append({'Key': 'Owner', 'Value': owner_tag})
-                        bucket_tagging.put(Tagging={'TagSet': tags})
+            owner_tag = os.environ.get('SET_OWNER_TAG')
+            if owner_tag:
+                for attempt in retry_s3(delays=(2, 5, 10, 30, 60), timeout=600):
+                    with attempt:
+                            bucket_tags = s3_resource.BucketTagging(bucket_name)
+                            tags = bucket_tags.tag_set
+                            tags.append({'Key': 'Owner', 'Value': owner_tag})
+                            bucket_tagging.put(Tagging={'TagSet': tags})
 
             options = Job.Runner.getDefaultOptions(f'aws:{region}:{jobstore_name}')
             options.logLevel = 'DEBUG'
