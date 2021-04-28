@@ -105,7 +105,7 @@ def main():
         'src/toil/utils/toilClean.py',
         'src/toil/utils/toilLaunchCluster.py',
         'src/toil/lib/memoize.py',
-        'src/toil/lib/resources.py',
+        # 'src/toil/lib/resources.py',
         'src/toil/lib/throttle.py',
         'src/toil/lib/humanize.py',
         'src/toil/lib/compatibility.py',
