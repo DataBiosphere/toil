@@ -27,8 +27,9 @@ def resource(*args, **kwargs):
     return boto3.resource(*args, **kwargs)
 
 
-def zone_to_region(zone: str):
+def zone_to_region(zone: str) -> str:
     """Get a region (e.g. us-west-2) from a zone (e.g. us-west-1c)."""
+    # re.compile() caches the regex internally so we don't have to
     availability_zone = re.compile(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$')
     m = availability_zone.match(zone)
     if not m:
