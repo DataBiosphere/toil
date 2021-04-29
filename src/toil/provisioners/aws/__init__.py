@@ -21,7 +21,7 @@ from statistics import mean, stdev
 from urllib.error import URLError
 from urllib.request import urlopen
 
-from toil.lib.ec2 import zone_to_region
+from toil.lib.aws import zone_to_region
 
 logger = logging.getLogger(__name__)
 
