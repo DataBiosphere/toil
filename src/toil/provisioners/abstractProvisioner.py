@@ -838,6 +838,22 @@ class AbstractProvisioner(ABC):
 
         values = self.getKubernetesValues()
 
+        # Customize scheduler to pack jobs into as few nodes as possible
+        # See: https://kubernetes.io/docs/reference/scheduling/config/#profiles
+        config.addFile("/home/core/scheduler-config.yml", permissions="0644", content=textwrap.dedent('''\
+            apiVersion: kubescheduler.config.k8s.io/v1beta1
+            kind: KubeSchedulerConfiguration
+            profiles:
+              - name: default-scheduler
+                plugins:
+                  score:
+                    disabled:
+                    - name: NodeResourcesLeastAllocated
+                    enabled:
+                    - name: NodeResourcesMostAllocated
+                      weight: 1
+            '''.format(**values)))
+
         # Main kubeadm cluster configuration
         config.addFile("/home/core/kubernetes-leader.yml", permissions="0644", content=textwrap.dedent('''\
             apiVersion: kubeadm.k8s.io/v1beta2
@@ -852,6 +868,9 @@ class AbstractProvisioner(ABC):
             controllerManager:
               extraArgs:
                 flex-volume-plugin-dir: "/opt/libexec/kubernetes/kubelet-plugins/volume/exec/"
+            scheduler:
+              extraArgs:
+                config: "/home/core/scheduler-config.yml"
             networking:
               serviceSubnet: "10.96.0.0/12"
               podSubnet: "10.244.0.0/16"
