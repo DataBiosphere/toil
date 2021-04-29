@@ -481,8 +481,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             jobName = self.jobPrefix + str(jobID)
 
             # Make metadata to label the job/pod with info.
+            # Don't let the cluster autoscaler evict any Toil jobs.
             metadata = kubernetes.client.V1ObjectMeta(name=jobName,
-                                                      labels={"toil_run": self.runID})
+                                                      labels={"toil_run": self.runID},
+                                                      annotations={"cluster-autoscaler.kubernetes.io/safe-to-evict": "false"})
 
             # Wrap the spec in a template
             template = kubernetes.client.V1PodTemplateSpec(spec=pod_spec, metadata=metadata)
