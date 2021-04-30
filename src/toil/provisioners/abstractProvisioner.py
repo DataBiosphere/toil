@@ -854,7 +854,10 @@ class AbstractProvisioner(ABC):
                       weight: 1
             '''.format(**values)))
 
-        # Main kubeadm cluster configuration
+        # Main kubeadm cluster configuration.
+        # Make sure to mount the scheduler config where the scheduler can see
+        # it, which is undocumented but inferred from
+        # https://pkg.go.dev/k8s.io/kubernetes@v1.21.0/cmd/kubeadm/app/apis/kubeadm#ControlPlaneComponent
         config.addFile("/home/core/kubernetes-leader.yml", permissions="0644", content=textwrap.dedent('''\
             apiVersion: kubeadm.k8s.io/v1beta2
             kind: InitConfiguration
@@ -870,7 +873,13 @@ class AbstractProvisioner(ABC):
                 flex-volume-plugin-dir: "/opt/libexec/kubernetes/kubelet-plugins/volume/exec/"
             scheduler:
               extraArgs:
-                config: "/home/core/scheduler-config.yml"
+                config: "/etc/kubernetes/scheduler-config.yml"
+              extraVolumes:
+                - name: schedulerconfig
+                  hostPath: "/home/core/scheduler-config.yml"
+                  mountPath: "/etc/kubernetes/scheduler-config.yml"
+                  readOnly: true
+                  pathType: "File"
             networking:
               serviceSubnet: "10.96.0.0/12"
               podSubnet: "10.244.0.0/16"
