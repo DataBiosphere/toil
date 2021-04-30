@@ -854,8 +854,10 @@ class AbstractProvisioner(ABC):
         config.addFile("/home/core/scheduler-config.yml", permissions="0644", content=textwrap.dedent('''\
             apiVersion: kubescheduler.config.k8s.io/v1beta1
             kind: KubeSchedulerConfiguration
+            clientConnection:
+              kubeconfig: /etc/kubernetes/scheduler.conf
             profiles:
-              - name: default-scheduler
+              - schedulerName: default-scheduler
                 plugins:
                   score:
                     disabled:
