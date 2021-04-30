@@ -1282,7 +1282,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                 for attempt in retry_s3(delays=(2, 5, 10, 30, 60), timeout=600):
                     with attempt:
                         bucket_tagging = s3_resource.BucketTagging(bucket_name)
-                        bucket_tagging.put(Tagging={'TagSet': {'Key': 'Owner', 'Value': owner_tag}})
+                        bucket_tagging.put(Tagging={'TagSet': [{'Key': 'Owner', 'Value': owner_tag}]})
 
             options = Job.Runner.getDefaultOptions(f'aws:{region}:{jobstore_name}')
             options.logLevel = 'DEBUG'

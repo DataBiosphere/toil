@@ -759,7 +759,7 @@ class AWSJobStore(AbstractJobStore):
                             owner_tag = os.environ.get('TOIL_OWNER_TAG')
                             if owner_tag:
                                 bucket_tagging = self.s3_resource.BucketTagging(bucket_name)
-                                bucket_tagging.put(Tagging={'TagSet': {'Key': 'Owner', 'Value': owner_tag}})
+                                bucket_tagging.put(Tagging={'TagSet': [{'Key': 'Owner', 'Value': owner_tag}]})
                         elif block:
                             raise
                         else:
