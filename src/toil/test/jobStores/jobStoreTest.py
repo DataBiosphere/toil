@@ -1277,14 +1277,12 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                                                        CreateBucketConfiguration={'LocationConstraint': home_region})
                     bucket.wait_until_exists()
 
-            owner_tag = os.environ.get('SET_OWNER_TAG')
+            owner_tag = os.environ.get('TOIL_OWNER_TAG')
             if owner_tag:
                 for attempt in retry_s3(delays=(2, 5, 10, 30, 60), timeout=600):
                     with attempt:
-                            bucket_tags = s3_resource.BucketTagging(bucket_name)
-                            tags = bucket_tags.tag_set
-                            tags.append({'Key': 'Owner', 'Value': owner_tag})
-                            bucket_tagging.put(Tagging={'TagSet': tags})
+                        bucket_tagging = s3_resource.BucketTagging(bucket_name)
+                        bucket_tagging.put(Tagging={'TagSet': [{'Key': 'Owner', 'Value': owner_tag}]})
 
             options = Job.Runner.getDefaultOptions(f'aws:{region}:{jobstore_name}')
             options.logLevel = 'DEBUG'

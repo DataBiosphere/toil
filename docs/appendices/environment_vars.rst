@@ -31,6 +31,11 @@ There are several environment variables that affect the way Toil runs.
 |                                  | the Mesos sandbox. In all other cases, the         |
 |                                  | system's `standard temporary directory`_ is used.  |
 +----------------------------------+----------------------------------------------------+
+| TOIL_WORKDIR_OVERRIDE            | An absolute path to a directory where Toil will    |
+|                                  | write its temporary files. This overrides          |
+|                                  | ``TOIL_WORKDIR`` and the  ``--workDir`` command    |
+|                                  | line option.                                       |
++----------------------------------+----------------------------------------------------+
 | TOIL_KUBERNETES_HOST_PATH        | A path on Kubernetes hosts that will be mounted as |
 |                                  | /tmp in the workers, to allow for shared caching.  |
 +----------------------------------+----------------------------------------------------+
@@ -159,6 +164,11 @@ There are several environment variables that affect the way Toil runs.
 | TOIL_S3_USE_SSL                  | enable or disable the usage of SSL for connecting  |
 |                                  | to S3 (``True`` by default).                       |
 |                                  | Example: ``TOIL_S3_USE_SSL=False``                 |
++----------------------------------+----------------------------------------------------+
+| TOIL_OWNER_TAG                   | This will tag cloud resources with a tag reading:  |
+|                                  | "Owner: $TOIL_OWNER_TAG".  Currently only on AWS   |
+|                                  | buckets, this is an internal UCSC flag to stop a   |
+|                                  | bot we have that terminates untagged resources.    |
 +----------------------------------+----------------------------------------------------+
 | SINGULARITY_DOCKER_HUB_MIRROR    | An http or https URL for the Singularity wrapper   |
 |                                  | in the Toil Docker container to use as a mirror    |

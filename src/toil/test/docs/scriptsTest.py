@@ -41,9 +41,11 @@ class ToilDocumentationTest(ToilTest):
         process = subprocess.Popen([python, program, "file:my-jobstore", "--clean=always"],
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
-        assert process.returncode == 0, stderr
         if isinstance(stdout, bytes):
-            return stdout.decode('utf-8') + ' ' + stderr.decode('utf-8')
+            stdout = stdout.decode('utf-8')
+            stderr = stderr.decode('utf-8')
+        if not process.returncode == 0:
+            raise RuntimeError(stderr)
         return stdout + ' ' + stderr
 
     """Check the exit code and the output"""
