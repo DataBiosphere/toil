@@ -40,7 +40,8 @@ logger = logging.getLogger(__name__)
 try:
     from botocore.exceptions import ProxyConnectionError
 except ImportError:
-    ProxyConnectionError = None
+    class ProxyConnectionError(BaseException):
+        pass
 
 class InvalidImportExportUrlException(Exception):
     def __init__(self, url):

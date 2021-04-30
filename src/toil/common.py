@@ -34,7 +34,7 @@ from toil.lib.retry import retry
 from toil.provisioners import (add_provisioner_options,
                                check_valid_node_types,
                                cluster_factory)
-from toil.provisioners.aws import zone_to_region
+from toil.lib.aws import zone_to_region
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import (add_logging_options,
                                   root_logger,
@@ -1068,7 +1068,7 @@ class Toil:
         :return: Path to the Toil work directory, constant across all machines
         :rtype: str
         """
-        workDir = configWorkDir or os.getenv('TOIL_WORKDIR') or tempfile.gettempdir()
+        workDir = os.getenv('TOIL_WORKDIR_OVERRIDE') or configWorkDir or os.getenv('TOIL_WORKDIR') or tempfile.gettempdir()
         if not os.path.exists(workDir):
             raise RuntimeError(f'The directory specified by --workDir or TOIL_WORKDIR ({workDir}) does not exist.')
         return workDir

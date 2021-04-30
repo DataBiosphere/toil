@@ -250,15 +250,25 @@ class AWSJobStore(AbstractJobStore):
                         registry_domain.put_attributes(item_name=self.namePrefix,
                                                        attributes=attributes)
 
-    def _checkItem(self, item):
+    def _checkItem(self, item, enforce: bool = True):
+        """
+        Make sure that the given SimpleDB item actually has the attributes we think it should.
+        
+        Throw otherwise.
+        
+        If enforce is false, log but don't throw.
+        """
+        
         if "overlargeID" not in item:
-            raise RuntimeError("overlargeID attribute isn't present: you are restarting"
-                               " an old, incompatible jobstore, or the jobstore logic is"
-                               " incorrect.")
+            logger.error("overlargeID attribute isn't present: either SimpleDB entry is "
+                         "corrupt or jobstore is from an extremely old Toil: %s", item)
+            if enforce:
+                raise RuntimeError("encountered SimpleDB entry missing required attribute "
+                                   "'overlargeID'; is your job store ancient?")
 
     def _awsJobFromItem(self, item):
         self._checkItem(item)
-        if item["overlargeID"]:
+        if item.get("overlargeID", None):
             assert self.fileExists(item["overlargeID"])
             # This is an overlarge job, download the actual attributes
             # from the file store
@@ -365,8 +375,11 @@ class AWSJobStore(AbstractJobStore):
         for attempt in retry_sdb():
             with attempt:
                 item = self.jobsDomain.get_attributes(compat_bytes(jobStoreID), consistent_read=True)
-        self._checkItem(item)
-        if item["overlargeID"]:
+        # If the overlargeID has fallen off, maybe we partially deleted the
+        # attributes of the item? Or raced on it? Or hit SimpleDB being merely
+        # eventually consistent? We should still be able to get rid of it.
+        self._checkItem(item, enforce = False)
+        if item.get("overlargeID", None):
             logger.debug("Deleting job from filestore")
             self.deleteFile(item["overlargeID"])
         for attempt in retry_sdb():

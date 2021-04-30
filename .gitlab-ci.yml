@@ -35,20 +35,35 @@ after_script:
   - stopdocker || true
 
 stages:
-  - linting
+  - linting_and_dependencies
   - basic_tests
   - main_tests
   - integration
 
 
 lint:
-  stage: linting
+  stage: linting_and_dependencies
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - make mypy
     - make docs
 
+
+cwl_dependency_is_stand_alone:
+  stage: linting_and_dependencies
+  script:
+    - pwd
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[cwl]
+    - make test tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testCwlexample
+
+
+wdl_dependency_is_stand_alone:
+  stage: linting_and_dependencies
+  script:
+    - pwd
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[wdl]
+    - make test tests=src/toil/test/wdl/toilwdlTest.py::ToilWdlIntegrationTest::testMD5sum
 
 # Python3.6
 py36_main:
@@ -87,7 +102,6 @@ py37_cwl_v1.0:
     - mypy --ignore-missing-imports --no-strict-optional $(pwd)/src/toil/cwl/cwltoil.py  # make this a separate linting stage
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test
-    - make test tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testCwlexample
 
 py37_cwl_v1.1:
   stage: main_tests
