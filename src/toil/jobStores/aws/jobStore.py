@@ -756,12 +756,10 @@ class AWSJobStore(AbstractJobStore):
                             # main retry loop.
                             assert self.getBucketRegion(bucket_name) == self.region
 
-                            owner_tag = os.environ.get('SET_OWNER_TAG')
+                            owner_tag = os.environ.get('TOIL_OWNER_TAG')
                             if owner_tag:
-                                bucket_tags = self.s3_resource.BucketTagging(bucket_name)
-                                tags = bucket_tags.tag_set
-                                tags.append({'Key': 'Owner', 'Value': owner_tag})
-                                bucket_tagging.put(Tagging={'TagSet': tags})
+                                bucket_tagging = self.s3_resource.BucketTagging(bucket_name)
+                                bucket_tagging.put(Tagging={'TagSet': {'Key': 'Owner', 'Value': owner_tag}})
                         elif block:
                             raise
                         else:
