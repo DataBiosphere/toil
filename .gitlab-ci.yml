@@ -4,7 +4,7 @@ image: quay.io/vgteam/vg_ci_prebake:latest
 variables:
   PYTHONIOENCODING: "utf-8"
   DEBIAN_FRONTEND: "noninteractive"
-  SET_OWNER_TAG: "shared"
+  TOIL_OWNER_TAG: "shared"
 
 before_script:
   # Configure Docker to use a mirror for Docker Hub and restart the daemon
