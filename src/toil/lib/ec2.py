@@ -88,16 +88,6 @@ def establish_boto3_session(region_name: Optional[str] = None) -> Session:
         'assume-role').cache = JSONFileCache()
     return Session(botocore_session=botocore_session, region_name=region_name)
 
-# This regex matches AWS availability zones.
-availability_zone_re = re.compile(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$')
-
-def zone_to_region(zone: str):
-    """Get a region (e.g. us-west-2) from a zone (e.g. us-west-1c)."""
-    m = availability_zone_re.match(zone)
-    if not m:
-        raise ValueError(f"Can't extract region from availability zone '{zone}'")
-    return m.group(1)
-
 
 def wait_transition(resource, from_states, to_state,
                     state_getter=attrgetter('state')):
