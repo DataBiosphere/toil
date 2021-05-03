@@ -114,9 +114,8 @@ clean_sdist:
 	- rm src/toil/version.py
 
 # We always claim to be Travis, so that local test runs will not skip Travis tests.
-# Setting SET_OWNER_TAG will tag cloud resources so that UCSC's cloud murder bot won't kill them.
 test: check_venv check_build_reqs
-	TRAVIS=true TOIL_OWNER_TAG="shared" \
+	TRAVIS=true \
 	    python -m pytest --durations=0 --log-level DEBUG --log-cli-level INFO -r s $(cov) $(tests)
 
 

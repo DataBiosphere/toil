@@ -165,11 +165,6 @@ There are several environment variables that affect the way Toil runs.
 |                                  | to S3 (``True`` by default).                       |
 |                                  | Example: ``TOIL_S3_USE_SSL=False``                 |
 +----------------------------------+----------------------------------------------------+
-| TOIL_OWNER_TAG                   | This will tag cloud resources with a tag reading:  |
-|                                  | "Owner: $TOIL_OWNER_TAG".  Currently only on AWS   |
-|                                  | buckets, this is an internal UCSC flag to stop a   |
-|                                  | bot we have that terminates untagged resources.    |
-+----------------------------------+----------------------------------------------------+
 | SINGULARITY_DOCKER_HUB_MIRROR    | An http or https URL for the Singularity wrapper   |
 |                                  | in the Toil Docker container to use as a mirror    |
 |                                  | for Docker Hub.                                    |
