@@ -1588,12 +1588,10 @@ class AWSJobStore(AbstractJobStore):
 
         :param bucket_name: str
         """
-        status = self.s3_resource.BucketVersioning(bucket_name).status
-        return self.versionings.get(status) if status else False
-        # for attempt in retry_s3():
-        #     with attempt:
-        #         status = self.s3_resource.BucketVersioning(bucket_name).status
-        #         return self.versionings.get(status) if status else False
+        for attempt in retry_s3():
+            with attempt:
+                status = self.s3_resource.BucketVersioning(bucket_name).status
+                return self.versionings.get(status) if status else False
 
     @staticmethod
     def getBucketRegion(bucket_name: str):
