@@ -865,7 +865,28 @@ class AbstractProvisioner(ABC):
 
         values = self.getKubernetesValues()
 
-        # Main kubeadm cluster configuration
+        # Customize scheduler to pack jobs into as few nodes as possible
+        # See: https://kubernetes.io/docs/reference/scheduling/config/#profiles
+        config.addFile("/home/core/scheduler-config.yml", permissions="0644", content=textwrap.dedent('''\
+            apiVersion: kubescheduler.config.k8s.io/v1beta1
+            kind: KubeSchedulerConfiguration
+            clientConnection:
+              kubeconfig: /etc/kubernetes/scheduler.conf
+            profiles:
+              - schedulerName: default-scheduler
+                plugins:
+                  score:
+                    disabled:
+                    - name: NodeResourcesLeastAllocated
+                    enabled:
+                    - name: NodeResourcesMostAllocated
+                      weight: 1
+            '''.format(**values)))
+
+        # Main kubeadm cluster configuration.
+        # Make sure to mount the scheduler config where the scheduler can see
+        # it, which is undocumented but inferred from
+        # https://pkg.go.dev/k8s.io/kubernetes@v1.21.0/cmd/kubeadm/app/apis/kubeadm#ControlPlaneComponent
         config.addFile("/home/core/kubernetes-leader.yml", permissions="0644", content=textwrap.dedent('''\
             apiVersion: kubeadm.k8s.io/v1beta2
             kind: InitConfiguration
@@ -879,6 +900,15 @@ class AbstractProvisioner(ABC):
             controllerManager:
               extraArgs:
                 flex-volume-plugin-dir: "/opt/libexec/kubernetes/kubelet-plugins/volume/exec/"
+            scheduler:
+              extraArgs:
+                config: "/etc/kubernetes/scheduler-config.yml"
+              extraVolumes:
+                - name: schedulerconfig
+                  hostPath: "/home/core/scheduler-config.yml"
+                  mountPath: "/etc/kubernetes/scheduler-config.yml"
+                  readOnly: true
+                  pathType: "File"
             networking:
               serviceSubnet: "10.96.0.0/12"
               podSubnet: "10.244.0.0/16"
