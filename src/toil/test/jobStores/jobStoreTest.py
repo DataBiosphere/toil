@@ -1256,8 +1256,8 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         from toil.jobStores.aws.jobStore import BucketLocationConflictException
         from toil.jobStores.aws.utils import retry_s3
         from toil.jobStores.aws.jobStore import establish_boto3_session
-        externalAWSLocation = 'us-west-1'
 
+        externalAWSLocation = 'us-west-1'
         for testRegion in 'us-east-1', 'us-west-2':
             # We run this test twice, once with the default s3 server us-east-1 as the test region
             # and once with another server (us-west-2).  The external server is always us-west-1.
@@ -1267,14 +1267,22 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             # Create the bucket at the external region
             bucketName = 'domain-test-' + testJobStoreUUID + '--files'
             client = establish_boto3_session().client('s3', region_name=externalAWSLocation)
+            resource = establish_boto3_session().resource('s3', region_name=externalAWSLocation)
 
             for attempt in retry_s3(delays=(2, 5, 10, 30, 60), timeout=600):
                 with attempt:
+                    # Create the bucket at the home region
                     client.create_bucket(Bucket=bucketName,
                                          CreateBucketConfiguration={'LocationConstraint': externalAWSLocation})
 
-            options = Job.Runner.getDefaultOptions('aws:' + testRegion + ':domain-test-' +
-                                                   testJobStoreUUID)
+            owner_tag = os.environ.get('TOIL_OWNER_TAG')
+            if owner_tag:
+                for attempt in retry_s3(delays=(1, 1, 2, 4, 8, 16), timeout=33):
+                    with attempt:
+                        bucket_tagging = resource.BucketTagging(bucketName)
+                        bucket_tagging.put(Tagging={'TagSet': [{'Key': 'Owner', 'Value': owner_tag}]})
+
+            options = Job.Runner.getDefaultOptions('aws:' + testRegion + ':domain-test-' + testJobStoreUUID)
             options.logLevel = 'DEBUG'
             try:
                 with Toil(options) as toil:
