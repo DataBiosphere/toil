@@ -76,7 +76,6 @@ class JobFileStoreTest(ToilTest):
                                                testStrings, chainLength),
                                  options)
 
-    @retry_flaky_test()
     def testJobFileStore(self):
         """
         Tests case that about half the files are cached
