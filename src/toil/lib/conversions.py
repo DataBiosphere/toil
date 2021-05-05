@@ -40,7 +40,7 @@ def bytes_in_unit(unit: str = 'B') -> int:
 
 def convert_units(num: float,
                   src_unit: str,
-                  dst_unit: Optional[str] = 'B') -> float:
+                  dst_unit: str = 'B') -> float:
     """Returns a float representing the converted input in dst_units."""
     assert src_unit.lower() in VALID_PREFIXES, f"{src_unit} not a valid unit, valid units are {VALID_PREFIXES}."
     assert dst_unit.lower() in VALID_PREFIXES, f"{dst_unit} not a valid unit, valid units are {VALID_PREFIXES}."
