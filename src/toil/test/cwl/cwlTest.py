@@ -495,24 +495,18 @@ class CWLv12Test(ToilTest):
     def test_run_conformance_with_caching(self):
         self.test_run_conformance(caching=True)
 
-    @slow
-    @needs_kubernetes
-    @pytest.mark.xfail
-    def test_kubernetes_cwl_conformance(self, **kwargs):
+    def run_kubernetes_cwl_conformance(self, **kwargs):
+        """
+        Run the CWL conformance tests on Kubernetes, passing along keyword
+        arguments.
+        """
         return self.test_run_conformance(batchSystem="kubernetes",
                                          **kwargs)
-
-
-    @slow
-    @needs_kubernetes
-    @pytest.mark.xfail
-    def test_kubernetes_cwl_conformance_with_caching(self):
-        return self.test_kubernetes_cwl_conformance(caching=True)
-
     @slow
     @needs_kubernetes
     def test_kubernetes_cwl_20(self):
-        return self.test_kubernetes_cwl_conformance(selected_tests="20", caching=False)
+        for caching in [True, False]:
+            return self.run_kubernetes_cwl_conformance(selected_tests="20", caching=False)
 
 @needs_cwl
 class CWLSmallTests(ToilTest):
