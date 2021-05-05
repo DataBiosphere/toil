@@ -67,4 +67,3 @@ def call_command(cmd: List[str], *args: str, input: Optional[str] = None, timeou
         raise CalledProcessErrorStderr(proc.returncode, cmd, output=stdout, stderr=stderr)
     logger.debug("command succeeded: {}: {}".format(" ".join(cmd), stdout.rstrip()))
     return stdout
-
