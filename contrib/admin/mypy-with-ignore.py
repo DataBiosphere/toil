@@ -109,7 +109,7 @@ def main():
         'src/toil/lib/iterables.py',
         'src/toil/lib/bioio.py',
         'src/toil/lib/ec2.py',
-        'src/toil/lib/conversions.py',
+        # 'src/toil/lib/conversions.py',
         'src/toil/lib/ec2nodes.py',
         'src/toil/lib/misc.py',
         'src/toil/lib/expando.py',
