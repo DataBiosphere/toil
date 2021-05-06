@@ -67,13 +67,11 @@ class AnalyzeV1WDL(AnalyzeWDL):
         any number of `document_element`s.
         """
         wf = ctx.workflow()
-        print(wf)
         if wf:
             self.visit_workflow(wf)
 
         for element in ctx.document_element():
             self.visit_document_element(element)
-            print(element)
 
     def visit_document_element(self, ctx):
         """
