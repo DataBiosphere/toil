@@ -4,16 +4,19 @@ import random
 import shutil
 import subprocess
 import sys
+import typing
+
+from typing import Iterator, Union, List, Optional
 
 logger = logging.getLogger(__name__)
 
 
-def printq(msg, quiet: bool):
+def printq(msg: str, quiet: bool) -> None:
     if not quiet:
         print(msg)
 
 
-def truncExpBackoff():
+def truncExpBackoff() -> Iterator[float]:
     # as recommended here https://forums.aws.amazon.com/thread.jspa?messageID=406788#406788
     # and here https://cloud.google.com/storage/docs/xml-api/reference-status
     yield 0
@@ -29,7 +32,7 @@ def truncExpBackoff():
 class CalledProcessErrorStderr(subprocess.CalledProcessError):
     """Version of CalledProcessError that include stderr in the error message if it is set"""
 
-    def __str__(self):
+    def __str__(self) -> str:
         if (self.returncode < 0) or (self.stderr is None):
             return str(super())
         else:
@@ -37,7 +40,8 @@ class CalledProcessErrorStderr(subprocess.CalledProcessError):
             return "Command '%s' exit status %d: %s" % (self.cmd, self.returncode, err)
 
 
-def call_command(cmd, *, input=None, timeout=None, useCLocale=True, env=None):
+def call_command(cmd: List[str], *args: str, input: Optional[str] = None, timeout: Optional[float] = None,
+                useCLocale: bool = True, env: Optional[typing.Dict[str, str]] = None) -> Union[str, bytes]:
     """Simplified calling of external commands.  This always returns
     stdout and uses utf- encode8.  If process fails, CalledProcessErrorStderr
     is raised.  The captured stderr is always printed, regardless of
