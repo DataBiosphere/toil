@@ -45,7 +45,7 @@ during the computation of a workflow, first set up and configure an account with
     $ eval `ssh-agent -s`
     $ ssh-add
 
-If your key has a passphrase, you will be prompted to enter it here once.
+   If your key has a passphrase, you will be prompted to enter it here once.
 
 #. You'll also need to chmod your private key (good practice but also enforced by AWS)::
 
