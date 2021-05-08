@@ -103,7 +103,7 @@ class CachingFileStore(AbstractFileStore):
     finish when the job's actual state after running is committed back to the
     job store.
 
-    Internaly, manages caching using a database. Each node has its own
+    Internally, manages caching using a database. Each node has its own
     database, shared between all the workers on the node. The database contains
     several tables:
 
@@ -499,7 +499,6 @@ class CachingFileStore(AbstractFileStore):
 
         for row in self.cur.execute('SELECT * FROM refs'):
             logger.debug('Ref record: %s', str(row))
-
 
         for row in self.cur.execute('SELECT TOTAL(files.size) FROM refs INNER JOIN files ON refs.file_id = files.id WHERE refs.job_id = ? AND refs.state != ?',
             (self.jobID, 'mutable')):

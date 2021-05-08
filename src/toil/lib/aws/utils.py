@@ -78,3 +78,23 @@ def delete_s3_bucket(bucket: str, region: Optional[str], quiet: bool = True):
             s3_client.delete_object(Bucket=bucket, Key=version['Key'], VersionId=version['VersionId'])
     s3_resource.Bucket(bucket).delete()
     printq(f'\n * Deleted s3 bucket successfully: {bucket}\n\n', quiet)
+
+
+def check_schema(source_url):
+    import re
+    cre = re.compile(
+        "^"
+        "(?P<schema>(?:s3|gs|wasb))"
+        "://"
+        "(?P<bucket>[^/]+)"
+        "/"
+        "(?P<key>.+)"
+        "$")
+    mobj = cre.match(source_url)
+    if mobj and mobj.group('schema') == "s3":
+        pass
+    elif mobj and mobj.group('schema') == "gs":
+        pass
+    else:
+        schema = mobj.group('schema')
+        raise RuntimeError(f"source_url schema {schema} not supported")

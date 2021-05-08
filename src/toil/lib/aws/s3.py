@@ -17,6 +17,13 @@ import itertools
 import os
 from io import BytesIO
 from typing import Optional, Tuple, Union
+import os
+import boto3
+import tempfile
+from urllib.parse import SplitResult, parse_qsl, urlencode, urlsplit, urlunsplit
+import typing
+from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from contextlib import contextmanager
 from typing import Optional
@@ -31,17 +38,21 @@ from toil.lib.retry import retry, ErrorCondition
 
 Bucket = resource('s3').Bucket  # only declared for mypy typing
 logger = logging.getLogger(__name__)
-"""
-Clients and resources for s3 don't NEED the correct regions, but it's more efficient and saves on redirects:
-https://stackoverflow.com/questions/64850820/python-boto3-checking-for-valid-bucket-within-region
-"""
+
+
+class AWSKeyNotFoundError(Exception):
+    pass
+
+
+class AWSKeyAlreadyExistsError(Exception):
+    pass
 
 
 # TODO: Determine specific retries
-# @retry()
-def create_bucket(bucket: str, region: Optional[str] = None) -> Bucket:
-    logger.info(f"Creating AWS bucket: {bucket}")
-    s3_client = client('s3', region_name=region)
+@retry()
+def create_bucket(s3_resource, bucket: str) -> Bucket:
+    s3_client = s3_resource.meta.client
+    logger.info(f"Creating AWS bucket {bucket} in region {s3_client.meta.region_name}")
     bucket_obj = s3_client.create_bucket(Bucket=bucket,
                                          CreateBucketConfiguration={'LocationConstraint': s3_client.meta.region_name})
     waiter = s3_client.get_waiter('bucket_exists')
@@ -54,9 +65,8 @@ def create_bucket(bucket: str, region: Optional[str] = None) -> Bucket:
 
 # TODO: Determine specific retries
 @retry()
-def delete_bucket(bucket: str, region: Optional[str] = None) -> None:
+def delete_bucket(s3_resource, bucket: str) -> None:
     logger.debug(f"Deleting AWS bucket: {bucket}")
-    s3_resource = resource('s3', region_name=region)
     s3_client = s3_resource.meta.client
     bucket_obj = s3_resource.Bucket(bucket)
     try:
@@ -76,8 +86,7 @@ def delete_bucket(bucket: str, region: Optional[str] = None) -> None:
 
 # TODO: Determine specific retries
 @retry()
-def bucket_exists(bucket: str, region: Optional[str] = None) -> Union[bool, Bucket]:
-    s3_resource = resource('s3', region_name=region)
+def bucket_exists(s3_resource, bucket: str) -> Union[bool, Bucket]:
     s3_client = s3_resource.meta.client
     try:
         s3_client.head_bucket(Bucket=bucket)
@@ -92,8 +101,7 @@ def bucket_exists(bucket: str, region: Optional[str] = None) -> Union[bool, Buck
 
 # TODO: Determine specific retries
 @retry()
-def copy_s3_to_s3(src_bucket, src_key, dst_bucket, dst_key, region: Optional[str] = None):
-    s3_resource = resource('s3', region_name=region)
+def copy_s3_to_s3(s3_resource, src_bucket, src_key, dst_bucket, dst_key):
     source = {'Bucket': src_bucket, 'Key': src_key}
     dest = s3_resource.Bucket(dst_bucket)
     dest.copy(source, dst_key)
@@ -101,24 +109,17 @@ def copy_s3_to_s3(src_bucket, src_key, dst_bucket, dst_key, region: Optional[str
 
 # TODO: Determine specific retries
 @retry()
-def copy_local_to_s3(local_file_path, dst_bucket, dst_key, region: Optional[str] = None):
-    s3_client = client('s3', region_name=region)
+def copy_local_to_s3(s3_resource, local_file_path, dst_bucket, dst_key):
+    s3_client = s3_resource.meta.client
     s3_client.upload_file(local_file_path, dst_bucket, dst_key)
 
 
 # TODO: Determine specific retries
 @retry()
-def bucket_versioning_enabled(bucket: str, region: Optional[str] = None):
-    s3_resource = resource('s3', region_name=region)
+def bucket_versioning_enabled(s3_resource, bucket: str):
     versionings = dict(Enabled=True, Disabled=False, Suspended=None)
     status = s3_resource.BucketVersioning(bucket).status
     return versionings.get(status) if status else False
-
-
-# TODO: Determine specific retries
-@retry()
-def bucket_is_registered_with_toil(bucket: str) -> Union[bool, Bucket]:
-    return False
 
 
 class MultiPartPipe(WritablePipe):
@@ -214,19 +215,19 @@ def list_s3_items(bucket, prefix, region: Optional[str] = None):
 
 
 @retry(errors=[ErrorCondition(error=ClientError, error_codes=[404, 500, 502, 503, 504])])
-def uploadFile(readable,
-               s3_resource,
-               bucketName: str,
-               fileID: str,
-               headerArgs: Optional[dict] = None,
-               partSize: int = 50 << 20):
+def upload_to_s3(readable,
+                 s3_resource,
+                 bucket: str,
+                 key: str,
+                 headerArgs: Optional[dict] = None,
+                 partSize: int = 50 << 20):
     """
     Upload a readable object to s3, using multipart uploading if applicable.
 
     :param readable: a readable stream or a file path to upload to s3
     :param S3.Resource resource: boto3 resource
-    :param str bucketName: name of the bucket to upload to
-    :param str fileID: the name of the file to upload to
+    :param str bucket: name of the bucket to upload to
+    :param str key: the name of the file to upload to
     :param dict headerArgs: http headers to use when uploading - generally used for encryption purposes
     :param int partSize: max size of each part in the multipart upload, in bytes
     :return: version of the newly uploaded file
@@ -240,22 +241,22 @@ def uploadFile(readable,
         multipart_chunksize=partSize,
         use_threads=True
     )
-    logger.debug("Uploading %s", fileID)
+    logger.debug("Uploading %s", key)
     if isinstance(readable, str):
         s3_client.upload_file(Filename=readable,
-                              Bucket=bucketName,
-                              Key=fileID,
+                              Bucket=bucket,
+                              Key=key,
                               ExtraArgs=headerArgs,
                               Config=config)
     else:
         s3_client.upload_fileobj(Fileobj=readable,
-                                 Bucket=bucketName,
-                                 Key=fileID,
+                                 Bucket=bucket,
+                                 Key=key,
                                  ExtraArgs=headerArgs,
                                  Config=config)
 
         # Wait until the object exists before calling head_object
-        object_summary = s3_resource.ObjectSummary(bucketName, fileID)
+        object_summary = s3_resource.ObjectSummary(bucket, key)
         object_summary.wait_until_exists(**headerArgs)
 
 
@@ -280,3 +281,86 @@ def download_stream(s3_object, checksum_to_verify: Optional[str] = None, extra_a
         with DownloadPipe(encoding=encoding, errors=errors) as readable:
             # No true checksum available, so don't hash
             yield readable
+
+def multipart_parallel_upload(
+        s3_client: typing.Any,
+        bucket: str,
+        key: str,
+        src_file_handle: typing.BinaryIO,
+        *,
+        part_size: int,
+        content_type: str=None,
+        metadata: dict=None,
+        parallelization_factor=8) -> typing.Sequence[dict]:
+    """
+    Upload a file object to s3 in parallel.
+    """
+    kwargs: dict = dict()
+    if content_type is not None:
+        kwargs['ContentType'] = content_type
+    if metadata is not None:
+        kwargs['Metadata'] = metadata
+    mpu = s3_client.create_multipart_upload(Bucket=bucket, Key=key, **kwargs)
+
+    def _copy_part(data, part_number):
+        resp = s3_client.upload_part(
+            Body=data,
+            Bucket=bucket,
+            Key=key,
+            PartNumber=part_number,
+            UploadId=mpu['UploadId'],
+        )
+        return resp['ETag']
+
+    def _chunks():
+        while True:
+            data = src_file_handle.read(part_size)
+            if not data:
+                break
+            yield data
+
+    with ThreadPoolExecutor(max_workers=parallelization_factor) as e:
+        futures = {e.submit(_copy_part, data, part_number): part_number
+                   for part_number, data in enumerate(_chunks(), start=1)}
+        parts = [dict(ETag=f.result(), PartNumber=futures[f]) for f in as_completed(futures)]
+        parts.sort(key=lambda p: p['PartNumber'])
+    s3_client.complete_multipart_upload(
+        Bucket=bucket,
+        Key=key,
+        MultipartUpload=dict(Parts=parts),
+        UploadId=mpu['UploadId'],
+    )
+    return parts
+
+
+def upload_file_to_s3(bucket: str, key: str, data: bytes):
+    # write manifest to persistent store
+    part_size = 16 * 1024 * 1024
+    if len(data) > part_size:
+        with io.BytesIO(data) as fh:
+            multipart_parallel_upload(
+                blobstore.s3_client,
+                bucket,
+                key,
+                fh,
+                part_size=part_size,
+                parallelization_factor=20
+            )
+    else:
+        blobstore.upload_file_handle(bucket, key, io.BytesIO(data))
+
+
+def s3_key_exists(s3_resource, bucket: str, key: str, check: bool = False):
+    s3_client = s3_resource.meta.client
+    try:
+        return s3_client.head_object(Bucket=bucket, Key=key)
+    except s3_client.exceptions.NoSuchKey:
+        if check:
+            raise AWSKeyNotFoundError(f"Key '{key}' does not exist in bucket '{bucket}'.")
+        else:
+            return False
+
+
+def get_s3_object(s3_resource, bucket: str, key: str):
+    s3_client = s3_resource.meta.client
+    return s3_client.get_object(Bucket=bucket, Key=key)

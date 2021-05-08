@@ -106,7 +106,7 @@ def retry_s3(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=retryable_s3_er
     return old_retry(delays=delays, timeout=timeout, predicate=predicate)
 
 
-class AbstractJobStoreTest(object):
+class AbstractJobStoreTest:
     """
     Hide abstract base class from unittest's test case loader
 

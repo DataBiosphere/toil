@@ -18,6 +18,7 @@ import pickle
 import re
 import stat
 import uuid
+import datetime
 from io import BytesIO
 from contextlib import contextmanager
 from typing import Optional, Tuple, Union
@@ -30,19 +31,10 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              JobStoreExistsException,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
-from toil.lib.compatibility import compat_bytes
 from toil.lib.aws.credentials import resource
-from toil.lib.aws.dynamodb import (put_item,
-                                   delete_item,
-                                   get_item,
-                                   get_primary_key_items,
-                                   table_exists,
-                                   create_table,
-                                   delete_table)
 from toil.lib.aws.s3 import (create_bucket,
                              delete_bucket,
                              bucket_exists,
-                             bucket_is_registered_with_toil,
                              copy_s3_to_s3,
                              copy_local_to_s3,
                              boto_args,
@@ -50,8 +42,12 @@ from toil.lib.aws.s3 import (create_bucket,
                              MultiPartPipe,
                              generate_presigned_url,
                              list_s3_items,
-                             uploadFile,
-                             download_stream)
+                             upload_to_s3,
+                             download_stream,
+                             s3_key_exists,
+                             get_s3_object,
+                             AWSKeyNotFoundError,
+                             AWSKeyAlreadyExistsError)
 from toil.lib.conversions import modify_url
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.checksum import compute_checksum_for_file, ChecksumError
@@ -63,27 +59,12 @@ DEFAULT_AWS_PART_SIZE = 52428800
 logger = logging.getLogger(__name__)
 
 
-class AWSKeyNotFoundError(Exception):
-    pass
-
-
-class AWSKeyAlreadyExistsError(Exception):
-    pass
-
-
 class AWSJobStore(AbstractJobStore):
     """
-    The AWS jobstore is an AWS s3 bucket (to store and track files) and an accompanying dynamodb table (file metadata).
-
-    These two components centralize and track all files for the workflow, including inputs/outputs, logs, and the
-    jobs themselves (which are pickled and saved as files).
-
-    The dynamodb table tracks file metadata, like the size and md5sum, to verify file integrity when moving around.
-    Because the dynamodb table is kept in sync with the files in s3, it can be used as a proxy to check for
-    file existence/updates.
+    The AWS jobstore is an AWS s3 bucket to centralize, store, and track files for the workflow.
 
     The AWS jobstore stores 3 things:
-        - jobs: these are pickled files that contain the information necessary to run a job when unpickled
+        - jobs: these are pickled as files, and contain the information necessary to run a job when unpickled
         - files: the inputs and outputs of jobs, imported into the jobstore
           * input/output files may be shared or unshared
           * shared files need some kind of lock to avoid races
@@ -101,14 +82,19 @@ class AWSJobStore(AbstractJobStore):
     def __init__(self, locator: str, part_size: int = DEFAULT_AWS_PART_SIZE):
         super(AWSJobStore, self).__init__()
 
-        self.region, self.bucket_name, self.dynamodb_table_name = self.parse_jobstore_identifier(locator)
-        logger.debug(f"Instantiating {self.__class__} for region {self.region} with bucket: '{self.bucket_name}'")
+        self.region, self.bucket_name_base = self.parse_jobstore_identifier(locator)
+        logger.debug(f"Instantiating {self.__class__} with region: {self.region}")
         self.locator = locator
-        self.partSize = part_size
+        self.part_size = DEFAULT_AWS_PART_SIZE  # don't let users set the part size; it will throw off etag values
 
         # created anew during self.initialize() or loaded using self.resume()
-        self.table = None
         self.bucket = None
+        self.bucket_name = None
+
+        self.job_key_prefix = 'jobs/'
+        self.file_key_prefix = 'files/'
+        self.metadata_key_prefix = 'metadata/'
+        self.log_key_prefix = 'logs/'
 
         # needs "self.config", which is not set until self.initialize() or self.resume() are called
         self.sse_key = None
@@ -129,27 +115,40 @@ class AWSJobStore(AbstractJobStore):
             return None, {}
 
     def initialize(self, config):
-        """Called when starting a new jobstore with a non-existent bucket and dynamodb table."""
+        """
+        Called when starting a new jobstore with a non-existent bucket.
+
+        Create bucket, raise if it already exists.
+        Set options from config.  Set sse key from that.
+        """
         self.sse_key, self.encryption_args = self.set_encryption_from_config(config)
-        if bucket_exists(self.bucket_name) or table_exists(self.dynamodb_table_name):
+        self.bucket_name = self.bucket_name_base + '-e' if self.sse_key else '-u'
+        logger.debug(f"Instantiating {self.__class__} for region {self.region} with bucket: '{self.bucket_name}'")
+        if bucket_exists(self.bucket_name):
             raise JobStoreExistsException(self.locator)
         self.bucket = create_bucket(self.bucket_name, region=self.region)
-        self.table = create_table(self.dynamodb_table_name, region=self.region)
+        upload_to_s3(s3_resource=self.s3_resource,
+                     bucket=self.bucket_name,
+                     key='toil-bucket.initialized.datetime',
+                     readable=BytesIO(str(datetime.datetime.now()).encode('utf-8')))
         super(AWSJobStore, self).initialize(config)
 
     def resume(self):
-        """Called when reusing an old jobstore with an existing bucket and dynamodb table."""
+        """
+        Called when reusing an old jobstore with an existing bucket.
+        """
+        super(AWSJobStore, self).resume()  # before this point: self.config==None
+        self.sse_key, self.encryption_args = self.set_encryption_from_config(self.config)
+        self.bucket_name = self.bucket_name_base + '-e' if self.sse_key else '-u'
         if self.bucket is None:
             self.bucket = bucket_exists(self.bucket_name)
-            self.table = table_exists(self.dynamodb_table_name)
-        if not self.bucket or not self.table:
+        if not self.bucket:
             # TODO: allow option here to rebuild db from bucket
             raise NoSuchJobStoreException(self.locator)
-        super(AWSJobStore, self).resume()  # self.config does not exist before this
-        self.sse_key, self.encryption_args = self.set_encryption_from_config(self.config)
 
     def unpickle_job(self, job_id: str):
         """Use a job_id to unpickle and return a job from the jobstore's s3 bucket."""
+        assert job_id.startswith(self.job_key_prefix), f'Key "{job_id}" must be prefixed with: {self.job_key_prefix}'
         with self.readFileStream(job_id) as fh:
             job = pickle.loads(fh.read())
         if job is not None:
@@ -164,9 +163,8 @@ class AWSJobStore(AbstractJobStore):
 
     @contextmanager
     def batch(self):
-        yield
         for jobDescription in self._batchedUpdates:
-            self.create(jobDescription)
+            yield self.create(jobDescription)
         self._batchedUpdates = []
 
     def assign_job_id(self, jobDescription):
@@ -176,23 +174,24 @@ class AWSJobStore(AbstractJobStore):
 
     def create(self, jobDescription):
         self.pickle_job(jobDescription)
-        put_item(table=self.table, hash_key='jobs', sort_key=jobDescription.jobStoreID)
         return jobDescription
 
     def job_exists(self, job_id: str, check: bool = False):
         """Checks if the job_id is found in s3."""
-        if get_item(table=self.table, hash_key='jobs', sort_key=job_id):
+        try:
+            self.s3_client.head_object(Bucket=self.bucket_name, Key=f'{self.job_key_prefix}{job_id}')
             return True
-        if check:
-            raise NoSuchJobException(job_id)
+        except self.s3_client.exceptions.NoSuchKey:
+            if check:
+                raise NoSuchJobException(job_id)
         return False
 
     def jobs(self):
-        for job_id in get_primary_key_items(table=self.table, key='jobs', return_key='sort_key'):
+        for job_id in list_s3_items(bucket=self.bucket.name, prefix=self.job_key_prefix):
             yield self.unpickle_job(job_id)
 
     def load_job(self, job_id: str):
-        job = self.unpickle_job(job_id)
+        job = self.unpickle_job(f'{self.job_key_prefix}{job_id}')
         if job is None:
             raise NoSuchJobException(job_id)
         return job
@@ -200,19 +199,13 @@ class AWSJobStore(AbstractJobStore):
     def update_job(self, jobDescription):
         self.pickle_job(jobDescription)
 
-    def delete_job(self, jobStoreID: str):
-        logger.debug("Deleting job %s", jobStoreID)
-        associated_files = get_item(table=self.table, hash_key='jobs', sort_key=jobStoreID)
-        delete_item(table=self.table, hash_key='jobs', sort_key=jobStoreID)
-        logger.debug("Deleting %d file(s) associated with job %s", len(associated_files), jobStoreID)
-        for item in associated_files:
-            # TODO: Delete each item from dynamodb 'files' table?
-            self.s3_client.delete_object({'Bucket': self.bucket.name, 'Key': compat_bytes(item.name)})
+    def delete_job(self, job_id: str):
+        logger.debug("Deleting job %s", job_id)
+        self.s3_client.delete_object({'Bucket': self.bucket.name, 'Key': f'{self.job_key_prefix}{job_id}'})
 
     def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
+        """WWWHHHHYYYYYYY"""
         new_file_id = str(uuid.uuid4())
-        metadata = self.create_metadata(file=None, file_id=new_file_id, owner_id=jobStoreID if cleanup else None)
-        put_item(table=self.table, hash_key='files', sort_key=new_file_id, value=json.dumps(metadata))
         self.s3_client.upload_fileobj(Bucket=self.bucket_name,
                                       Key=new_file_id,
                                       Fileobj=BytesIO(b''),
@@ -222,64 +215,79 @@ class AWSJobStore(AbstractJobStore):
         response = self.s3_client.head_object(Bucket=self.bucket_name,
                                               Key=new_file_id,
                                               **self.encryption_args)
-        assert 0 == response.get('ContentLength', None)
+        assert 0 == response.get('ContentLength')
         return new_file_id
 
     def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False, symlink=False) -> FileID:
         """
-        Upload a file into the s3 bucket jobstore from the source uri and store the file's
-        metadata inside of dynamodb.
+        Upload a file into the s3 bucket jobstore from the source uri.
 
         This db entry's existence should always be in sync with the file's existence (when one exists,
         so must the other).
         """
-        # we are uploading from s3 to s3
+        # we are copying from s3 to s3
         if issubclass(otherCls, AWSJobStore):
-            # make sure the object exists and provide access to s3_blob.content_length
-            s3_blob = self._getObjectForUrl(url, existing=True)
+            src_bucket_name, src_key_name = parse_s3_uri(url)
+            response = s3_key_exists(bucket=src_bucket_name, key=src_key_name, check=True)
+            content_length = response['ContentLength']  # e.g. 65536
+            content_type = response['ContentType']  # e.g. "binary/octet-stream"
+            etag = response['ETag'].strip('\"')  # e.g. "\"586af4cbd7416e6aefd35ccef9cbd7c8\""
 
+            # etags may not match if the person who first uploaded the file had a different part size so...
+            # if the file is small, re-calculate the etag here
+            # if the file is large calculate as we go; rename if different than original
             file_id = str(uuid.uuid4()) if not sharedFileName else self._sharedFileID(sharedFileName)
-            owner_id = s3_blob.key if not sharedFileName else self.sharedFileOwnerID
 
-            # stow file's metadata in db
-            metadata = dict(file_id=file_id, owner_id=owner_id, sse_key_path=self.sse_key)
-            put_item(table=self.table, hash_key='files', sort_key=file_id, value=json.dumps(metadata))
+            # upload actual file content if it does not exist already
+            # etags are unique hashes, so this may exist if another process uploaded the exact same file
+            actual_file_content_path = f'{self.file_key_prefix}{etag}'
+            if not s3_key_exists(bucket=self.bucket_name, key=actual_file_content_path):
+                copy_s3_to_s3(src_bucket=src_bucket_name, src_key=src_key_name,
+                              dst_bucket=self.bucket_name, dst_key=actual_file_content_path)
+                # verify etag after copying here
 
-            # upload the uri to our s3 jobstore bucket
-            # , sse_key=self.sse_key
-            copy_s3_to_s3(src_bucket=s3_blob.bucket_name, src_key=s3_blob.key,
-                          dst_bucket=self.bucket_name, dst_key=file_id)
-            return FileID(fileStoreID=file_id, size=s3_blob.content_length) if sharedFileName is None else None
+            # upload metadata reference; there may be multiple references pointing to the same etag path
+            self.s3_client.upload_fileobj(Bucket=self.bucket_name,
+                                          Key=f'{self.file_key_prefix}{file_id}',
+                                          Fileobj=BytesIO(json.dumps(
+                                              {'etag': etag,
+                                               'size': content_length,
+                                               # cannot determine exec bit from foreign s3 so default to False
+                                               'executable': 0})),
+                                          ExtraArgs=self.encryption_args)
+            return FileID(fileStoreID=file_id, size=content_length) if sharedFileName is None else None
         else:
             return super(AWSJobStore, self)._importFile(otherCls, url, sharedFileName=sharedFileName)
 
     def _exportFile(self, otherCls, jobStoreFileID, url) -> None:
         if issubclass(otherCls, AWSJobStore):
-            s3_blob = self._getObjectForUrl(url)
-            # fail if db fetch does not exist
-            # needed?
-            get_item(table=self.table, hash_key='files', sort_key=jobStoreFileID)
-            # upload the uri to our s3 jobstore bucket
-            # , sse_key=self.sse_key
-            copy_s3_to_s3(src_bucket=self.bucket_name, src_key=jobStoreFileID,
-                          dst_bucket=s3_blob.bucket_name, dst_key=s3_blob.key)
+            dst_bucket_name, dst_key_name = parse_s3_uri(url)
+            key = f'{self.metadata_key_prefix}{jobStoreFileID}'
+            try:
+                metadata = json.loads(get_s3_object(bucket=self.bucket_name, key=key))
+            except self.s3_client.exceptions.NoSuchKey:
+                raise AWSKeyNotFoundError(f"File '{key}' not found in AWS jobstore bucket: '{self.bucket_name}'")
+            copy_s3_to_s3(src_bucket=self.bucket_name, src_key=f'{self.file_key_prefix}{metadata["etag"]}',
+                          dst_bucket=dst_bucket_name, dst_key=dst_key_name)
         else:
             super(AWSJobStore, self)._defaultExportFile(otherCls, jobStoreFileID, url)
 
     @classmethod
     def _readFromUrl(cls, url, writable):
+        # TODO
         srcObj = cls._getObjectForUrl(url, existing=True)
         srcObj.download_fileobj(writable)
         executable = False
         return srcObj.content_length, executable
 
     def _writeToUrl(self, readable, url, executable=False):
+        # TODO
         dstObj = self._getObjectForUrl(url)
-        uploadFile(readable=readable,
-                   s3_resource=self.s3_resource,
-                   bucketName=dstObj.bucket_name,
-                   fileID=dstObj.key,
-                   partSize=DEFAULT_AWS_PART_SIZE)
+        upload_to_s3(readable=readable,
+                     s3_resource=self.s3_resource,
+                     bucket=dstObj.bucket_name,
+                     key=dstObj.key,
+                     partSize=DEFAULT_AWS_PART_SIZE)
 
     def _getObjectForUrl(self, uri: str, existing: Optional[bool] = None):
         """
@@ -314,74 +322,68 @@ class AWSJobStore(AbstractJobStore):
     def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() == 's3'
 
-    def create_metadata(self, file_id: str, file: Optional[str] = None, owner_id: Optional[str] = None, encrypted: Optional[bool] = None):
-        """Crunch metadata for a local file, or an empty template if no file provided."""
-        checksum = compute_checksum_for_file(file) if file else None
-        file_size = os.stat(file).st_size if file else None
-        return dict(checksum=checksum,
-                    file_size=file_size,
-                    encryption=bool(self.sse_key) if encrypted is None else encrypted,
-                    owner_id=owner_id,
-                    file_id=file_id)
-
     def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
-        owner_id = jobStoreID if cleanup else None
-        file_id = str(uuid.uuid4())
-        copy_local_to_s3(local_file_path=localFilePath, dst_bucket=self.bucket_name, dst_key=file_id)
-        metadata = self.create_metadata(file=localFilePath, file_id=file_id, owner_id=owner_id)
-        put_item(table=self.table, hash_key='files', sort_key=file_id, value=json.dumps(metadata))
-        return file_id
+        etag = compute_checksum_for_file(localFilePath, algorithm='etag')
+        file_attributes = os.stat(localFilePath)
+        size = file_attributes.st_size
+        executable = file_attributes.st_mode & stat.S_IXUSR != 0
+        actual_file_content_path = f'{self.file_key_prefix}{etag}'
+        file_id = jobStoreID or str(uuid.uuid4())
+        metadata_path = f'{self.metadata_key_prefix}{file_id}'
+        if not s3_key_exists(bucket=self.bucket_name, key=actual_file_content_path):
+            copy_local_to_s3(local_file_path=localFilePath,
+                             dst_bucket=self.bucket_name,
+                             dst_key=actual_file_content_path)
+            # TODO: verify etag after copying here
+
+        # upload metadata reference; there may be multiple references pointing to the same etag path
+        self.s3_client.upload_fileobj(Bucket=self.bucket_name,
+                                      Key=metadata_path,
+                                      Fileobj=BytesIO(json.dumps({'etag': etag,
+                                                                  'size': size,
+                                                                  'executable': int(executable)})),
+                                      ExtraArgs=self.encryption_args)
+        return FileID(fileStoreID=file_id, size=size, executable=executable)
 
     @contextmanager
     def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None, encoding=None, errors=None):
-        owner_id = jobStoreID if cleanup else None
-        file_id = str(uuid.uuid4())
-        metadata = self.create_metadata(file=None, file_id=file_id, owner_id=owner_id)
-
+        # TODO
+        file_id = jobStoreID or str(uuid.uuid4())
         pipe = MultiPartPipe(encoding=encoding,
                              errors=errors,
-                             part_size=self.partSize,
+                             part_size=self.part_size,
                              s3_client=self.s3_client,
                              bucket_name=self.bucket_name,
                              file_id=file_id,
                              encryption_args=self.encryption_args)
         with pipe as writable:
             yield writable, file_id
-        put_item(table=self.table, hash_key='files', sort_key=file_id, value=json.dumps(metadata))
 
     # determine isProtected from presence of sse_path?  why is this an input here?
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=None, encoding=None, errors=None):
+        # TODO
         self._requireValidSharedFileName(sharedFileName)
         file_id = self._sharedFileID(sharedFileName)
-        metadata = self.create_metadata(file=None,
-                                        file_id=file_id,
-                                        owner_id=str(self.sharedFileOwnerID),
-                                        encrypted=isProtected)
         pipe = MultiPartPipe(encoding=encoding,
                              errors=errors,
-                             part_size=self.partSize,
+                             part_size=self.part_size,
                              s3_client=self.s3_client,
                              bucket_name=self.bucket_name,
                              file_id=file_id,
                              encryption_args=self.encryption_args)
         with pipe as writable:
             yield writable
-        put_item(table=self.table, hash_key='files', sort_key=file_id, value=json.dumps(metadata))
 
     def updateFile(self, jobStoreFileID, localFilePath):
-        # fetch database entry containing metadata for the file
-        metadata = get_item(table=self.table, hash_key='files', sort_key=jobStoreFileID)
-        # upload the local file to s3; verify checksums match
-        copy_local_to_s3(localFilePath, dst_bucket=self.bucket_name, dst_key=metadata['key_name'])
-        # update the database entry
+        # What is the use-case for using this over plain write file?
+        self.writeFile(jobStoreID=jobStoreFileID, localFilePath=localFilePath)
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID, encoding=None, errors=None):
-        metadata = get_item(table=self.table, hash_key='files', sort_key=jobStoreFileID)
         pipe = MultiPartPipe(encoding=encoding,
                              errors=errors,
-                             part_size=self.partSize,
+                             part_size=self.part_size,
                              s3_client=self.s3_client,
                              bucket_name=self.bucket_name,
                              file_id=jobStoreFileID,
@@ -390,11 +392,9 @@ class AWSJobStore(AbstractJobStore):
             yield writable
 
     def fileExists(self, jobStoreFileID):
-        try:
-            self._getObjectForUrl(f's3://{self.bucket_name}/{jobStoreFileID}', existing=True)
-            return True
-        except AWSKeyNotFoundError:
-            return False
+        s3_key_exists(s3_resource=self.s3_resource,
+                      bucket=self.bucket_name,
+                      key=f'{self.file_key_prefix}{jobStoreFileID}')
 
     def getFileSize(self, jobStoreFileID: str) -> int:
         """Do we need both getFileSize and getSize???"""
@@ -409,24 +409,23 @@ class AWSJobStore(AbstractJobStore):
 
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
         obj = self._getObjectForUrl(f's3://{self.bucket_name}/{jobStoreFileID}', existing=True)
-        metadata = get_item(table=self.table, hash_key='files', sort_key=jobStoreFileID)
 
         with AtomicFileCreate(localFilePath) as tmpPath:
             obj.download_file(Filename=tmpPath, ExtraArgs={**self.encryption_args})
 
-        previously_computed_checksum = metadata.get('checksum')
-        if not self.config.disableJobStoreChecksumVerification and previously_computed_checksum:
-            algorithm, expected_checksum = previously_computed_checksum.split('$')
-            checksum = compute_checksum_for_file(localFilePath, algorithm=algorithm)
-            if previously_computed_checksum != checksum:
-                raise ChecksumError(f'Checksum mismatch for file {localFilePath}.  '
-                                    f'Expected: {previously_computed_checksum} Actual: {checksum}')
-        if getattr(jobStoreFileID, 'executable', False):
-            os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
+        # TODO: checksum and make executable if necessary
+
+        # if not self.config.disableJobStoreChecksumVerification and previously_computed_checksum:
+        #     algorithm, expected_checksum = previously_computed_checksum.split('$')
+        #     checksum = compute_checksum_for_file(localFilePath, algorithm=algorithm)
+        #     if previously_computed_checksum != checksum:
+        #         raise ChecksumError(f'Checksum mismatch for file {localFilePath}.  '
+        #                             f'Expected: {previously_computed_checksum} Actual: {checksum}')
+        # if getattr(jobStoreFileID, 'executable', False):
+        #     os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
 
     @contextmanager
     def readFileStream(self, jobStoreFileID, encoding=None, errors=None):
-        metadata = get_item(table=self.table, hash_key='files', sort_key=jobStoreFileID)
         obj = self._getObjectForUrl(f'{self.bucket_name}/{jobStoreFileID}')
         logger.debug("Reading into stream.")
         with download_stream(s3_object=obj,
@@ -450,9 +449,6 @@ class AWSJobStore(AbstractJobStore):
             yield readable
 
     def deleteFile(self, file_id):
-        # delete metadata reference in database
-        delete_item(table=self.table, hash_key='files', sort_key=file_id)
-        # delete actual file in bucket
         self.s3_client.delete_object(Bucket=self.bucket.name, Key=file_id)
 
     def writeStatsAndLogging(self, log_msg: Union[bytes, str]):
@@ -498,7 +494,6 @@ class AWSJobStore(AbstractJobStore):
     @retry()
     def getPublicUrl(self, jobStoreFileID: str):
         """Turn s3:// into http:// and put a public-read ACL on it."""
-        metadata = get_item(table=self.table, hash_key='files', sort_key=jobStoreFileID)
         self.bucket.Object(jobStoreFileID).Acl().put(ACL='public-read')
         url = generate_presigned_url(bucket=self.bucket.name,
                                      key_name=jobStoreFileID,
@@ -523,12 +518,11 @@ class AWSJobStore(AbstractJobStore):
     @retry()
     def destroy(self):
         delete_bucket(self.bucket_name)
-        delete_table(self.dynamodb_table_name)
 
-    def parse_jobstore_identifier(self, jobstore_identifier: str) -> Tuple[str, str, str]:
+    def parse_jobstore_identifier(self, jobstore_identifier: str) -> Tuple[str, str]:
         region, jobstore_name = jobstore_identifier.split(':')
 
-        bucket_name = dynamodb_table_name = f'{jobstore_name}--toil'
+        bucket_name = f'{jobstore_name}--toil'
 
         regions = EC2Regions.keys()
         if region not in regions:
@@ -551,4 +545,4 @@ class AWSJobStore(AbstractJobStore):
                 raise ValueError(f'Bucket region conflict.  Bucket already exists in region '
                                  f'"{response["LocationConstraint"]}" but "{region}" was specified '
                                  f'in the jobstore_identifier: {jobstore_identifier}')
-        return region, bucket_name, dynamodb_table_name
+        return region, bucket_name
