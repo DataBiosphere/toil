@@ -1372,7 +1372,9 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         from toil.lib.aws.s3 import create_bucket
         from toil.lib.aws.credentials import resource
         s3_resource = resource('s3', region_name=self.awsRegion())
-        return create_bucket(s3_resource, f'import-export-test-{uuid.uuid4()}')
+        bucket_name = f'import-export-test-{uuid.uuid4()}'
+        create_bucket(s3_resource, f'import-export-test-{uuid.uuid4()}')
+        return s3_resource.Bucket(bucket_name)
 
     def _cleanUpExternalStore(self, bucket):
         bucket.objects.all().delete()
