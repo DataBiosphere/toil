@@ -1370,15 +1370,10 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def _createExternalStore(self):
         """A S3.Bucket instance is returned"""
-        from toil.jobStores.aws.jobStore import resource
-        resource = resource('s3', region_name=self.awsRegion())
-        bucket = resource.Bucket('import-export-test-%s' % uuid.uuid4())
-
-        for attempt in retry_s3():
-            with attempt:
-                bucket.create_job(CreateBucketConfiguration={'LocationConstraint': '' if self.awsRegion() == 'us-east-1' else self.awsRegion()})
-                bucket.wait_until_exists()
-                return bucket
+        from toil.lib.aws.s3 import create_bucket
+        from toil.lib.aws.credentials import resource
+        s3_resource = resource('s3', region_name=self.awsRegion())
+        return create_bucket(s3_resource, f'import-export-test-{uuid.uuid4()}')
 
     def _cleanUpExternalStore(self, bucket):
         bucket.objects.all().delete()

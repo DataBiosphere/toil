@@ -53,6 +53,10 @@ def create_bucket(s3_resource, bucket: str) -> Bucket:
                                          CreateBucketConfiguration={'LocationConstraint': s3_client.meta.region_name})
     waiter = s3_client.get_waiter('bucket_exists')
     waiter.wait(Bucket=bucket)
+    owner_tag = os.environ.get('TOIL_OWNER_TAG')
+    if owner_tag:
+        bucket_tagging = s3_resource.BucketTagging(bucket)
+        bucket_tagging.put(Tagging={'TagSet': [{'Key': 'Owner', 'Value': owner_tag}]})
     logger.debug(f"Successfully created new bucket '{bucket}'")
     return bucket_obj
 
