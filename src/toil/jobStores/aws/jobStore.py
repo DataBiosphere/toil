@@ -154,7 +154,7 @@ class AWSJobStore(AbstractJobStore):
         self.sse_key = None
         self.encryption_args = None
 
-        self._batchedUpdates = []
+        self._batchedUpdates = []  # unused; we don't batch requests to simpledb anymore
 
     def set_encryption_from_config(self, config):
         if config.sseKey:
@@ -206,15 +206,16 @@ class AWSJobStore(AbstractJobStore):
 
     def pickle_job(self, job) -> str:
         """Pickle a job object, save it in the jobstore's s3 bucket, and return its job_id reference."""
-        with self.writeFileStream() as (writable, job_id):
-            writable.write(pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL))
-        return job_id
+        self.s3_client.upload_fileobj(Bucket=self.bucket_name,
+                                      Key=f'{self.job_key_prefix}{job.jobStoreID}',
+                                      Fileobj=BytesIO(pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL)),
+                                      ExtraArgs=self.encryption_args)
+        return job.jobStoreID
 
     @contextmanager
     def batch(self):
-        for jobDescription in self._batchedUpdates:
-            yield self.create_job(jobDescription)
-        self._batchedUpdates = []
+        # TODO: This function doesn't make sense now that we don't batch requests to simpledb anymore
+        yield
 
     def assign_job_id(self, jobDescription):
         jobDescription.jobStoreID = str(uuid.uuid4())

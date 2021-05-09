@@ -604,12 +604,11 @@ class AbstractJobStoreTest:
         def testBatchCreate(self):
             """Test creation of many jobs."""
             jobstore = self.jobstore_initialized
-            jobRequirements = dict(memory=12, cores=34, disk=35, preemptable=True)
             jobs = []
             with jobstore.batch():
-                for i in range(100):
+                for i in range(10):
                     overlargeJob = JobDescription(command='overlarge',
-                                                  requirements=jobRequirements,
+                                                  requirements=dict(memory=12, cores=34, disk=35, preemptable=True),
                                                   jobName='test-overlarge', unitName='onJobStore')
                     jobstore.assign_job_id(overlargeJob)
                     jobstore.create_job(overlargeJob)
