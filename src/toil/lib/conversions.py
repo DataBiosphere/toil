@@ -1,5 +1,7 @@
 """Conversion utilities for mapping memory, disk, core declarations from strings to numbers and vice versa."""
 import math
+import urllib.parse
+
 from typing import Optional, SupportsInt, Tuple
 
 # See https://en.wikipedia.org/wiki/Binary_prefix
@@ -84,3 +86,17 @@ def bytes2human(n: SupportsInt) -> str:
     unit = units[power_level if power_level < len(units) else -1]
     value = convert_units(n, "b", unit)
     return f'{value:.1f} {unit}'
+
+
+def modify_url(url: str, remove: list) -> str:
+    """
+    Given a valid URL string, split out the params, remove any offending
+    params in 'remove', and return the cleaned URL.
+    """
+    scheme, netloc, path, query, fragment = urllib.parse.urlsplit(url)
+    params = urllib.parse.parse_qs(query)
+    for param_key in remove:
+        if param_key in params:
+            del params[param_key]
+    query = urllib.parse.urlencode(params, doseq=True)
+    return urllib.parse.urlunsplit((scheme, netloc, path, query, fragment))
