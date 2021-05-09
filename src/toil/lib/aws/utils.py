@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import re
 
 from typing import Optional
 from toil.lib.misc import printq
@@ -98,3 +99,16 @@ def check_schema(source_url):
     else:
         schema = mobj.group('schema')
         raise RuntimeError(f"source_url schema {schema} not supported")
+
+
+
+# This regex matches AWS availability zones.
+availability_zone_re = re.compile(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$')
+
+
+def zone_to_region(zone: str):
+    """Get a region (e.g. us-west-2) from a zone (e.g. us-west-1c)."""
+    m = availability_zone_re.match(zone)
+    if not m:
+        raise ValueError(f"Can't extract region from availability zone '{zone}'")
+    return m.group(1)
