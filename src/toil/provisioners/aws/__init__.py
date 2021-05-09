@@ -14,35 +14,16 @@
 import datetime
 import logging
 import os
-import socket
 from collections import namedtuple
 from operator import attrgetter
 from statistics import mean, stdev
-from urllib.error import URLError
-from urllib.request import urlopen
 
-from toil.lib.aws.utils import zone_to_region
+from toil.lib.aws.util import running_on_ec2, zone_to_region
 
 logger = logging.getLogger(__name__)
 
 ZoneTuple = namedtuple('ZoneTuple', ['name', 'price_deviation'])
 
-
-def running_on_ec2():
-    def file_begins_with(path, prefix):
-        with open(path) as f:
-            return f.read(len(prefix)) == prefix
-
-    hv_uuid_path = '/sys/hypervisor/uuid'
-    if os.path.exists(hv_uuid_path) and file_begins_with(hv_uuid_path, 'ec2'):
-        return True
-    # Some instances do not have the /sys/hypervisor/uuid file, so check the identity document instead.
-    # See https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-identity-documents.html
-    try:
-        urlopen('http://169.254.169.254/latest/dynamic/instance-identity/document', timeout=1)
-        return True
-    except (URLError, socket.timeout):
-        return False
 
 def get_current_aws_region():
     aws_zone = get_current_aws_zone()
