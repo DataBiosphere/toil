@@ -12,23 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """These are utility functions for working with AWS that do not rely on boto3."""
-import datetime
-import logging
 import re
 import os
 import socket
-from collections import namedtuple
-from operator import attrgetter
-from statistics import mean, stdev
 from urllib.error import URLError
 from urllib.request import urlopen
 
 
-def running_on_ec2():
-    def file_begins_with(path, prefix):
-        with open(path) as f:
-            return f.read(len(prefix)) == prefix
+def file_begins_with(path: str, prefix: str) -> bool:
+    with open(path) as f:
+        file_begins_with_prefix = f.read(len(prefix)) == prefix
+    return file_begins_with_prefix
 
+
+def running_on_ec2() -> bool:
     hv_uuid_path = '/sys/hypervisor/uuid'
     if os.path.exists(hv_uuid_path) and file_begins_with(hv_uuid_path, 'ec2'):
         return True
