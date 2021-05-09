@@ -65,6 +65,11 @@ from toil.lib.ec2nodes import EC2Regions
 from toil.lib.checksum import compute_checksum_for_file, ChecksumError
 from toil.lib.io import AtomicFileCreate
 
+# Sometimes we have to wait for multipart uploads to become real. How long
+# should we wait?
+CONSISTENCY_TICKS = 5
+CONSISTENCY_TIME = 1
+
 
 DEFAULT_AWS_PART_SIZE = 52428800
 logger = logging.getLogger(__name__)

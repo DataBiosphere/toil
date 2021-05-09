@@ -35,7 +35,8 @@ from toil.lib.ec2 import (a_short_time,
                           create_ondemand_instances,
                           create_spot_instances,
                           wait_instances_running,
-                          wait_transition)
+                          wait_transition,
+                          zone_to_region)
 from toil.lib.ec2nodes import InstanceType
 from toil.lib.aws.credentials import client, resource
 from toil.lib.generatedEC2Lists import E2Instances
@@ -51,7 +52,7 @@ from toil.provisioners import NoSuchClusterException
 from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
                                                    Shape,
                                                    ManagedNodesNotSupportedException)
-from toil.provisioners.aws import get_current_aws_zone, zone_to_region
+from toil.provisioners.aws import get_current_aws_zone
 from toil.provisioners.aws.boto2Context import Boto2Context
 from toil.provisioners.node import Node
 

@@ -60,6 +60,7 @@ import cwltool.stdfsaccess
 import schema_salad.ref_resolver
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
+from cwltool.mpi import MpiConfig
 from cwltool.mutation import MutationManager
 from cwltool.pathmapper import MapperEnt, PathMapper, downloadHttpFile
 from cwltool.process import (
@@ -2193,6 +2194,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     runtime_context.workdir = workdir  # type: ignore
     runtime_context.move_outputs = "leave"
     runtime_context.rm_tmpdir = False
+    if options.mpi_config_file is not None:
+        runtime_context.mpi_config = MpiConfig.load(options.mpi_config_file)
     loading_context = cwltool.context.LoadingContext(vars(options))
 
     if options.provenance:

@@ -35,7 +35,7 @@ from toil.common import Config, Toil, addOptions, safeUnpickleFromStream
 from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
 from toil.lib.expando import Expando
-from toil.lib.humanize import human2bytes
+from toil.lib.conversions import human2bytes
 from toil.lib.resources import (get_total_cpu_time,
                                 get_total_cpu_time_and_memory_usage)
 from toil.resource import ModuleDescriptor
@@ -957,9 +957,9 @@ class Job:
         :param displayName: Human-readable job type display name.
         :param descriptionClass: Override for the JobDescription class used to describe the job.
 
-        :type memory: int or string convertible by toil.lib.humanize.human2bytes to an int
-        :type cores: float, int, or string convertible by toil.lib.humanize.human2bytes to an int
-        :type disk: int or string convertible by toil.lib.humanize.human2bytes to an int
+        :type memory: int or string convertible by toil.lib.conversions.human2bytes to an int
+        :type cores: float, int, or string convertible by toil.lib.conversions.human2bytes to an int
+        :type disk: int or string convertible by toil.lib.conversions.human2bytes to an int
         :type preemptable: bool, int in {0, 1}, or string in {'false', 'true'} in any case
         :type unitName: str
         :type checkpoint: bool

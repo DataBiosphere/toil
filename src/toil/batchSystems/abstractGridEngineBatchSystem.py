@@ -295,11 +295,6 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
 
         self.currentJobs = set()
 
-        # NOTE: this may be batch system dependent, maybe move into the worker?
-        # Doing so would effectively make each subclass of AbstractGridEngineBatchSystem
-        # much smaller
-        self.maxCPU, self.maxMEM = self.obtainSystemConstants()
-
         self.newJobsQueue = Queue()
         self.updatedJobsQueue = Queue()
         self.killQueue = Queue()
@@ -417,14 +412,6 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         """
         time.sleep(sleeptime)
         return sleeptime
-
-    @classmethod
-    @abstractmethod
-    def obtainSystemConstants(cls):
-        """
-        Returns the max. memory and max. CPU for the system
-        """
-        raise NotImplementedError()
 
     def with_retries(self, operation, *args, **kwargs):
         """
