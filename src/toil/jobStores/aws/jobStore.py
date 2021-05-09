@@ -11,6 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""
+This file contains the AWS jobstore, which has its own docstring defining its use.
+
+This docstring is about the organization of the file.
+
+All direct AWS boto calls should live in toil.lib.aws, except for creating the
+session instance and the resource/client (which should only be made ONCE in the jobstore).
+Reasons for this:
+ - DRY.
+ - All retries are on their individual boto functions, instead of here.
+ - Simple clear functions ~> simple clear unit tests (ideally).
+
+Variables defining part size, parallelization, and other constants should live in toil.lib.aws.config.
+"""
 import os
 import json
 import logging
@@ -18,7 +32,6 @@ import pickle
 import re
 import stat
 import uuid
-import datetime
 from io import BytesIO
 from contextlib import contextmanager
 from typing import Optional, Tuple, Union
@@ -40,19 +53,17 @@ from toil.lib.aws.s3 import (create_bucket,
                              boto_args,
                              parse_s3_uri,
                              MultiPartPipe,
-                             generate_presigned_url,
                              list_s3_items,
                              upload_to_s3,
                              download_stream,
                              s3_key_exists,
                              get_s3_object,
+                             create_public_url,
                              AWSKeyNotFoundError,
                              AWSKeyAlreadyExistsError)
-from toil.lib.conversions import modify_url
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.checksum import compute_checksum_for_file, ChecksumError
 from toil.lib.io import AtomicFileCreate
-from toil.lib.retry import retry
 
 
 DEFAULT_AWS_PART_SIZE = 52428800
@@ -61,39 +72,74 @@ logger = logging.getLogger(__name__)
 
 class AWSJobStore(AbstractJobStore):
     """
-    The AWS jobstore is an AWS s3 bucket to centralize, store, and track files for the workflow.
+    The AWS jobstore can be thought of as an AWS s3 bucket, with functions to
+    centralize, store, and track files for the workflow.
 
-    The AWS jobstore stores 3 things:
-        - jobs: these are pickled as files, and contain the information necessary to run a job when unpickled
-        - files: the inputs and outputs of jobs, imported into the jobstore
-          * input/output files may be shared or unshared
-          * shared files need some kind of lock to avoid races
-        - logs: the written log files of jobs that have run
+    The AWS jobstore stores 4 things:
+        1. Jobs: These are pickled as files, and contain the information necessary to run a job when unpickled.
+            A job's file is deleted when finished, and its absence means it completed.
+        2. Files: The inputs and outputs of jobs.  Each file is actually two keys in s3:
+              1. The actual file content, written with the file pattern: "files/{etag}"
+              2. The file's reference and metadata, written with the file pattern: "metadata/{uuid}".
+                 Note: This is a small json containing only: etag checksum, & executibility.
+            The reference files act like unique keys in a database, referencing the original content.
+            This deduplicates data on s3 if 2+ inputs/outputs have the same content.
+        3. Logs: The written log files of jobs that have run, plus the log file for the main Toil process. (check this!)
+        4. Shared Files: These are a small set of special files.  Most are needed by all jobs:
+            * environment.pickle:  (environment variables)
+            * config.pickle        (user options)
+            * pid.log              (process ID of the workflow; when it finishes, the workflow either succeeded/failed)
+            * userScript           (hot deployment(?);  this looks like the job module;  poke this)
+            * rootJobReturnValue   (workflow succeeded or not)
+            * TODO: are there any others?  do either vg or cactus use this?  should these have locks and when are they
+               accessed?  are these only written once, but read many times?
+            * TODO: A file with the date and toil version the workflow/bucket/jobstore was initialized with
 
-    This class also, importantly, inherits self.config, the options/config set by the user.  When jobs are
-    loaded/unpickled, they must re-incorporate this.  This also is the source of truth for how things are encrypted.
+    NOTES:
+     - The AWS jobstore does not use a database (directly, at least) currently.  We can get away with this because:
+           1. AWS s3 has strong consistency.
+           2. s3's filter/query speed is pretty good.
+         However, there may be reasons in the future to provide users with a database:
+           * s3 throttling has limits (3,500/5,000 requests; something like dynamodb supports 100,000+ requests).
+           * Access and filtering would be sped up, though how much faster this would be needs testing.
+         ALSO NOTE: The caching filestore uses a local (per node) database with a very similar structure that maybe
+                    could be synced up with this.
 
-    :param int part_size: The size of each individual part used for multipart operations like upload and copy,
-                          must be >= 5 MiB but large enough to not exceed 10k parts for the whole file.
+     - Etags are s3's native checksum, so we use that for file integrity checking since it's free when fetching
+         object headers from s3.  Using an md5sum in addition to this would work well with the current filestore.
+         WARNING: Etag values differ for the same file when the part size changes, so part size should always
+         be Set In Stone, unless we hit s3's 10,000 part limit, and we need to account for that.
+
+     - This class inherits self.config only when initialized/restarted and is None upon class instantiation.  These
+         are the options/config set by the user.  When jobs are loaded/unpickled, they must re-incorporate this.
+         The config.sse_key is the source of truth for bucket encryption and a clear error should be raised if
+         restarting a bucket with a different encryption key set than it was initialized with.
+
+     - The Toil bucket should log the version of Toil it was initialized with and warn the user if restarting with
+         a different version.
     """
-    # A dummy job ID under which all shared files are stored
-    sharedFileOwnerID = '891f7db6-e4d9-4221-a58e-ab6cc4395f94'
-
     def __init__(self, locator: str, part_size: int = DEFAULT_AWS_PART_SIZE):
         super(AWSJobStore, self).__init__()
-
-        self.region, self.bucket_name_base = self.parse_jobstore_identifier(locator)
+        # TODO: parsing of user options seems like it should be done outside of this class;
+        #  pass in only the bucket name and region?
+        self.region, self.bucket_name = self.parse_jobstore_identifier(locator)
         logger.debug(f"Instantiating {self.__class__} with region: {self.region}")
         self.locator = locator
         self.part_size = DEFAULT_AWS_PART_SIZE  # don't let users set the part size; it will throw off etag values
 
         # created anew during self.initialize() or loaded using self.resume()
         self.bucket = None
-        self.bucket_name = None
 
+        # pickled job files named with uuid4
         self.job_key_prefix = 'jobs/'
+        # the content of input/output files named with etag hashes to deduplicate
         self.file_key_prefix = 'files/'
+        # these are special files, like 'environment.pickle'; place them in root
+        self.shared_key_prefix = 'files/'
+        # these represent input/output files, but are small json files pointing to the files with the real content in
+        # self.file_key_prefix; also contains the file's metadata, like if it should executable; named with uuid4
         self.metadata_key_prefix = 'metadata/'
+        # read and unread; named with uuid4
         self.log_key_prefix = 'logs/'
 
         # needs "self.config", which is not set until self.initialize() or self.resume() are called
@@ -109,7 +155,7 @@ class AWSJobStore(AbstractJobStore):
         if config.sseKey:
             with open(config.sseKey, 'r') as f:
                 sse_key = f.read()
-            assert len(sse_key) == 32
+            assert len(sse_key) == 32  # TODO: regex
             return sse_key, {'SSECustomerAlgorithm': 'AES256', 'SSECustomerKey': sse_key}
         else:
             return None, {}
@@ -122,28 +168,26 @@ class AWSJobStore(AbstractJobStore):
         Set options from config.  Set sse key from that.
         """
         self.sse_key, self.encryption_args = self.set_encryption_from_config(config)
-        self.bucket_name = self.bucket_name_base + '-e' if self.sse_key else '-u'
         logger.debug(f"Instantiating {self.__class__} for region {self.region} with bucket: '{self.bucket_name}'")
         if bucket_exists(self.bucket_name):
             raise JobStoreExistsException(self.locator)
         self.bucket = create_bucket(self.bucket_name, region=self.region)
-        upload_to_s3(s3_resource=self.s3_resource,
-                     bucket=self.bucket_name,
-                     key='toil-bucket.initialized.datetime',
-                     readable=BytesIO(str(datetime.datetime.now()).encode('utf-8')))
+        # upload a root/shared file with the toil version and date initialized
+        # warn the user if they restart the same bucket with any other version than the one it was initialized with
+
+        # upload_to_s3(s3_resource=self.s3_resource,
+        #              bucket=self.bucket_name,
+        #              key='toil-bucket.initialized.datetime',
+        #              readable=BytesIO(str(datetime.datetime.now()).encode('utf-8')))
         super(AWSJobStore, self).initialize(config)
 
     def resume(self):
-        """
-        Called when reusing an old jobstore with an existing bucket.
-        """
-        super(AWSJobStore, self).resume()  # before this point: self.config==None
+        """Called when reusing an old jobstore with an existing bucket.  Raise if the bucket doesn't exist."""
+        super(AWSJobStore, self).resume()  # this sets self.config to not be None
         self.sse_key, self.encryption_args = self.set_encryption_from_config(self.config)
-        self.bucket_name = self.bucket_name_base + '-e' if self.sse_key else '-u'
         if self.bucket is None:
             self.bucket = bucket_exists(self.bucket_name)
         if not self.bucket:
-            # TODO: allow option here to rebuild db from bucket
             raise NoSuchJobStoreException(self.locator)
 
     def unpickle_job(self, job_id: str):
@@ -164,7 +208,7 @@ class AWSJobStore(AbstractJobStore):
     @contextmanager
     def batch(self):
         for jobDescription in self._batchedUpdates:
-            yield self.create(jobDescription)
+            yield self.create_job(jobDescription)
         self._batchedUpdates = []
 
     def assign_job_id(self, jobDescription):
@@ -172,7 +216,7 @@ class AWSJobStore(AbstractJobStore):
         cmd = '<no command>' if jobDescription.command is None else jobDescription.command
         logger.debug(f"Assigning ID to job {jobDescription.jobStoreID} for '{cmd}'")
 
-    def create(self, jobDescription):
+    def create_job(self, jobDescription):
         self.pickle_job(jobDescription)
         return jobDescription
 
@@ -187,7 +231,7 @@ class AWSJobStore(AbstractJobStore):
         return False
 
     def jobs(self):
-        for job_id in list_s3_items(bucket=self.bucket.name, prefix=self.job_key_prefix):
+        for job_id in list_s3_items(bucket=self.bucket_name, prefix=self.job_key_prefix):
             yield self.unpickle_job(job_id)
 
     def load_job(self, job_id: str):
@@ -201,7 +245,7 @@ class AWSJobStore(AbstractJobStore):
 
     def delete_job(self, job_id: str):
         logger.debug("Deleting job %s", job_id)
-        self.s3_client.delete_object({'Bucket': self.bucket.name, 'Key': f'{self.job_key_prefix}{job_id}'})
+        self.s3_client.delete_object({'Bucket': self.bucket_name, 'Key': f'{self.job_key_prefix}{job_id}'})
 
     def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
         """WWWHHHHYYYYYYY"""
@@ -236,7 +280,7 @@ class AWSJobStore(AbstractJobStore):
             # etags may not match if the person who first uploaded the file had a different part size so...
             # if the file is small, re-calculate the etag here
             # if the file is large calculate as we go; rename if different than original
-            file_id = str(uuid.uuid4()) if not sharedFileName else self._sharedFileID(sharedFileName)
+            file_id = sharedFileName or str(uuid.uuid4())
 
             # upload actual file content if it does not exist already
             # etags are unique hashes, so this may exist if another process uploaded the exact same file
@@ -320,6 +364,7 @@ class AWSJobStore(AbstractJobStore):
 
     @classmethod
     def _supportsUrl(cls, url, export=False):
+        # TODO: export seems unused
         return url.scheme.lower() == 's3'
 
     def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
@@ -364,19 +409,18 @@ class AWSJobStore(AbstractJobStore):
     def writeSharedFileStream(self, sharedFileName, isProtected=None, encoding=None, errors=None):
         # TODO
         self._requireValidSharedFileName(sharedFileName)
-        file_id = self._sharedFileID(sharedFileName)
         pipe = MultiPartPipe(encoding=encoding,
                              errors=errors,
                              part_size=self.part_size,
                              s3_client=self.s3_client,
                              bucket_name=self.bucket_name,
-                             file_id=file_id,
+                             file_id=sharedFileName,
                              encryption_args=self.encryption_args)
         with pipe as writable:
             yield writable
 
     def updateFile(self, jobStoreFileID, localFilePath):
-        # What is the use-case for using this over plain write file?
+        # Why use this over plain write file?
         self.writeFile(jobStoreID=jobStoreFileID, localFilePath=localFilePath)
 
     @contextmanager
@@ -426,30 +470,19 @@ class AWSJobStore(AbstractJobStore):
 
     @contextmanager
     def readFileStream(self, jobStoreFileID, encoding=None, errors=None):
-        obj = self._getObjectForUrl(f'{self.bucket_name}/{jobStoreFileID}')
+        obj = self._getObjectForUrl(f'{self.bucket_name}/files/{jobStoreFileID}')
         logger.debug("Reading into stream.")
-        with download_stream(s3_object=obj,
-                             checksum_to_verify=metadata['checksum'],
-                             extra_args=self.encryption_args,
-                             encoding=encoding,
-                             errors=errors) as readable:
+        with download_stream(s3_object=obj, extra_args=self.encryption_args, encoding=encoding, errors=errors) as readable:
             yield readable
 
     @contextmanager
     def readSharedFileStream(self, sharedFileName, encoding=None, errors=None):
         self._requireValidSharedFileName(sharedFileName)
-        jobStoreFileID = self._sharedFileID(sharedFileName)
-        metadata = get_item(table=self.table, hash_key='files', sort_key=jobStoreFileID)
-        obj = self._getObjectForUrl(f'{self.bucket_name}/{jobStoreFileID}')
-        with download_stream(s3_object=obj,
-                             checksum_to_verify=metadata['checksum'],
-                             extra_args=self.encryption_args,
-                             encoding=encoding,
-                             errors=errors) as readable:
+        with self.readFileStream(sharedFileName, encoding=encoding, errors=errors) as readable:
             yield readable
 
     def deleteFile(self, file_id):
-        self.s3_client.delete_object(Bucket=self.bucket.name, Key=file_id)
+        self.s3_client.delete_object(Bucket=self.bucket_name, Key=f'{self.file_key_prefix}{file_id}')
 
     def writeStatsAndLogging(self, log_msg: Union[bytes, str]):
         if isinstance(log_msg, str):
@@ -474,8 +507,6 @@ class AWSJobStore(AbstractJobStore):
         Owner ID specifies either logs that have already been read, or not.
 
         This fetches all referenced logs in the database from s3 as readable objects and runs "callback()" on them.
-
-        We then return the database items in case we want to use the information to transition unread items to read items.
         """
         prefix = 'logs/' if readAll else 'logs/unread/'
         itemsProcessed = 0
@@ -489,33 +520,18 @@ class AWSJobStore(AbstractJobStore):
             itemsProcessed += 1
         return itemsProcessed
 
-    # TODO: Make this retry more specific?
-    #  example: https://github.com/DataBiosphere/toil/issues/3378
-    @retry()
     def getPublicUrl(self, jobStoreFileID: str):
         """Turn s3:// into http:// and put a public-read ACL on it."""
-        self.bucket.Object(jobStoreFileID).Acl().put(ACL='public-read')
-        url = generate_presigned_url(bucket=self.bucket.name,
-                                     key_name=jobStoreFileID,
-                                     expiration=self.publicUrlExpiration.total_seconds())
-        # boto doesn't properly remove the x-amz-security-token parameter when
-        # query_auth is False when using an IAM role (see issue #2043). Including the
-        # x-amz-security-token parameter without the access key results in a 403,
-        # even if the resource is public, so we need to remove it.
-        # TODO: verify that this is still the case
-        url = modify_url(url, remove=['x-amz-security-token', 'AWSAccessKeyId', 'Signature'])
-        return url
+        return create_public_url(self.s3_resource,
+                                 bucket=self.bucket_name,
+                                 key=f'{self.file_key_prefix}{jobStoreFileID}')
 
     def getSharedPublicUrl(self, sharedFileName):
         self._requireValidSharedFileName(sharedFileName)
-        return self.getPublicUrl(self._sharedFileID(sharedFileName))
+        return create_public_url(self.s3_resource,
+                                 bucket=self.bucket_name,
+                                 key=f'{self.shared_key_prefix}{sharedFileName}')
 
-    def _sharedFileID(self, sharedFileName):
-        return str(uuid.uuid5(uuid.UUID(self.sharedFileOwnerID), sharedFileName))
-
-    # TODO: Make this retry more specific?
-    #  example: https://github.com/DataBiosphere/toil/issues/3378
-    @retry()
     def destroy(self):
         delete_bucket(self.bucket_name)
 

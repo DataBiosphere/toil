@@ -802,8 +802,7 @@ class Toil:
         self._assertContextManagerUsed()
         self.writePIDFile()
         if self.config.restart:
-            raise ToilRestartException('A Toil workflow can only be started once. Use '
-                                       'Toil.restart() to resume it.')
+            raise ToilRestartException('A Toil workflow can only be started once. Use Toil.restart() to resume it.')
 
         self._batchSystem = self.createBatchSystem(self.config)
         self._setupAutoDeployment(rootJob.getUserScript())
@@ -978,14 +977,13 @@ class Toil:
                     from toil.batchSystems.singleMachine import \
                         SingleMachineBatchSystem
                     if not isinstance(self._batchSystem, SingleMachineBatchSystem):
-                        logger.warning('Batch system does not support auto-deployment. The user '
-                                    'script %s will have to be present at the same location on '
-                                    'every worker.', userScript)
+                        logger.warning('Batch system does not support auto-deployment.  '
+                                       'The user script %s will have to be present at the '
+                                       'same location on every worker.', userScript)
                     userScript = None
         else:
             # This branch is hit on restarts
-            if (self._batchSystem.supportsAutoDeployment() and
-                not self.config.disableAutoDeployment):
+            if self._batchSystem.supportsAutoDeployment() and not self.config.disableAutoDeployment:
                 # We could deploy a user script
                 from toil.jobStores.abstractJobStore import NoSuchFileException
                 try:

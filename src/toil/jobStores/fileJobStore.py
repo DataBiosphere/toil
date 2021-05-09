@@ -134,7 +134,7 @@ class FileJobStore(AbstractJobStore):
 
         jobDescription.jobStoreID = self._getJobIdFromDir(absJobDir)
 
-    def create(self, jobDescription):
+    def create_job(self, jobDescription):
         if hasattr(self, "_batchedUpdates") and self._batchedUpdates is not None:
             # Save it later
             self._batchedUpdates.append(jobDescription)

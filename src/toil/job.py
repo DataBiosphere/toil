@@ -2165,9 +2165,9 @@ class Job:
                 for serviceBatch in job.description.serviceHostIDsInBatches():
                     for serviceID in serviceBatch:
                         if serviceID in self._registry:
-                            jobStore.create(self._registry[serviceID].description)
+                            jobStore.create_job(self._registry[serviceID].description)
                 if job != self or saveSelf:
-                    jobStore.create(job.description)
+                    jobStore.create_job(job.description)
 
     def saveAsRootJob(self, jobStore):
         """

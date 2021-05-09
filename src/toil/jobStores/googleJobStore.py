@@ -179,7 +179,7 @@ class GoogleJobStore(AbstractJobStore):
                   jobStoreID, '<no command>' if jobDescription.command is None else jobDescription.command)
         jobDescription.jobStoreID = jobStoreID
 
-    def create(self, jobDescription):
+    def create_job(self, jobDescription):
         # TODO: we don't implement batching, but we probably should.
         self._writeBytes(jobDescription.jobStoreID, pickle.dumps(jobDescription, protocol=pickle.HIGHEST_PROTOCOL))
         return jobDescription

@@ -17,6 +17,7 @@ import itertools
 import os
 from io import BytesIO
 from typing import Optional, Tuple, Union
+from datetime import timedelta
 import os
 import boto3
 import tempfile
@@ -31,6 +32,7 @@ from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
 
 from toil.lib.aws.credentials import client, resource
+from toil.lib.conversions import modify_url
 from toil.lib.pipes import WritablePipe
 from toil.lib.compatibility import compat_bytes
 from toil.lib.pipes import ReadablePipe, HashingPipe
@@ -188,14 +190,6 @@ def parse_s3_uri(uri: str) -> Tuple[str, str]:
     return bucket_name, key_name
 
 
-def generate_presigned_url(bucket: str, key_name: str, expiration: int, region: Optional[str] = None) -> Tuple[str, str]:
-    s3_client = client('s3', region_name=region)
-    return s3_client.generate_presigned_url(
-        'get_object',
-        Params={'Bucket': bucket, 'Key': key_name},
-        ExpiresIn=expiration)
-
-
 def boto_args():
     host = os.environ.get('TOIL_S3_HOST', None)
     port = os.environ.get('TOIL_S3_PORT', None)
@@ -207,8 +201,8 @@ def boto_args():
     return {}
 
 
-def list_s3_items(bucket, prefix, region: Optional[str] = None):
-    s3_client = client('s3', region_name=region)
+def list_s3_items(s3_resource, bucket, prefix):
+    s3_client = s3_resource.meta.client
     paginator = s3_client.get_paginator('list_objects_v2')
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
         yield page['Contents']
@@ -260,7 +254,6 @@ def upload_to_s3(readable,
         object_summary.wait_until_exists(**headerArgs)
 
 
-
 @contextmanager
 def download_stream(s3_object, checksum_to_verify: Optional[str] = None, extra_args: Optional[dict] = None, encoding=None, errors=None):
     """Context manager that gives out a download stream to download data."""
@@ -282,72 +275,73 @@ def download_stream(s3_object, checksum_to_verify: Optional[str] = None, extra_a
             # No true checksum available, so don't hash
             yield readable
 
-def multipart_parallel_upload(
-        s3_client: typing.Any,
-        bucket: str,
-        key: str,
-        src_file_handle: typing.BinaryIO,
-        *,
-        part_size: int,
-        content_type: str=None,
-        metadata: dict=None,
-        parallelization_factor=8) -> typing.Sequence[dict]:
-    """
-    Upload a file object to s3 in parallel.
-    """
-    kwargs: dict = dict()
-    if content_type is not None:
-        kwargs['ContentType'] = content_type
-    if metadata is not None:
-        kwargs['Metadata'] = metadata
-    mpu = s3_client.create_multipart_upload(Bucket=bucket, Key=key, **kwargs)
-
-    def _copy_part(data, part_number):
-        resp = s3_client.upload_part(
-            Body=data,
-            Bucket=bucket,
-            Key=key,
-            PartNumber=part_number,
-            UploadId=mpu['UploadId'],
-        )
-        return resp['ETag']
-
-    def _chunks():
-        while True:
-            data = src_file_handle.read(part_size)
-            if not data:
-                break
-            yield data
-
-    with ThreadPoolExecutor(max_workers=parallelization_factor) as e:
-        futures = {e.submit(_copy_part, data, part_number): part_number
-                   for part_number, data in enumerate(_chunks(), start=1)}
-        parts = [dict(ETag=f.result(), PartNumber=futures[f]) for f in as_completed(futures)]
-        parts.sort(key=lambda p: p['PartNumber'])
-    s3_client.complete_multipart_upload(
-        Bucket=bucket,
-        Key=key,
-        MultipartUpload=dict(Parts=parts),
-        UploadId=mpu['UploadId'],
-    )
-    return parts
-
-
-def upload_file_to_s3(bucket: str, key: str, data: bytes):
-    # write manifest to persistent store
-    part_size = 16 * 1024 * 1024
-    if len(data) > part_size:
-        with io.BytesIO(data) as fh:
-            multipart_parallel_upload(
-                blobstore.s3_client,
-                bucket,
-                key,
-                fh,
-                part_size=part_size,
-                parallelization_factor=20
-            )
-    else:
-        blobstore.upload_file_handle(bucket, key, io.BytesIO(data))
+# TODO: test below
+# def multipart_parallel_upload(
+#         s3_resource: typing.Any,
+#         bucket: str,
+#         key: str,
+#         src_file_handle: typing.BinaryIO,
+#         *,
+#         part_size: int,
+#         content_type: str=None,
+#         metadata: dict=None,
+#         parallelization_factor=8) -> typing.Sequence[dict]:
+#     """
+#     Upload a file object to s3 in parallel.
+#     """
+#     s3_client = s3_resource.meta.client
+#     kwargs: dict = dict()
+#     if content_type is not None:
+#         kwargs['ContentType'] = content_type
+#     if metadata is not None:
+#         kwargs['Metadata'] = metadata
+#     upload_id = s3_client.create_multipart_upload(Bucket=bucket, Key=key, **kwargs)['UploadId']
+#
+#     def _copy_part(data, part_number):
+#         resp = s3_client.upload_part(
+#             Body=data,
+#             Bucket=bucket,
+#             Key=key,
+#             PartNumber=part_number,
+#             UploadId=upload_id,
+#         )
+#         return resp['ETag']
+#
+#     def _chunks():
+#         while True:
+#             data = src_file_handle.read(part_size)
+#             if not data:
+#                 break
+#             yield data
+#
+#     with ThreadPoolExecutor(max_workers=parallelization_factor) as e:
+#         futures = {e.submit(_copy_part, data, part_number): part_number
+#                    for part_number, data in enumerate(_chunks(), start=1)}
+#         parts = [dict(ETag=f.result(), PartNumber=futures[f]) for f in as_completed(futures)]
+#         parts.sort(key=lambda p: p['PartNumber'])
+#     s3_client.complete_multipart_upload(
+#         Bucket=bucket,
+#         Key=key,
+#         MultipartUpload=dict(Parts=parts),
+#         UploadId=upload_id,
+#     )
+#     return parts
+#
+#
+# def upload_file_to_s3(s3_resource, bucket: str, key: str, data: bytes):
+#     part_size = 16 * 1024 * 1024
+#     if len(data) > part_size:
+#         with BytesIO(data) as fh:
+#             multipart_parallel_upload(
+#                 s3_resource,
+#                 bucket,
+#                 key,
+#                 fh,
+#                 part_size=part_size,
+#                 parallelization_factor=20
+#             )
+#     else:
+#         blobstore.upload_file_handle(bucket, key, BytesIO(data))
 
 
 def s3_key_exists(s3_resource, bucket: str, key: str, check: bool = False):
@@ -364,3 +358,27 @@ def s3_key_exists(s3_resource, bucket: str, key: str, check: bool = False):
 def get_s3_object(s3_resource, bucket: str, key: str):
     s3_client = s3_resource.meta.client
     return s3_client.get_object(Bucket=bucket, Key=key)
+
+
+def generate_presigned_url(s3_resource, bucket: str, key_name: str, expiration: int) -> Tuple[str, str]:
+    s3_client = s3_resource.meta.client
+    return s3_client.generate_presigned_url(
+        'get_object',
+        Params={'Bucket': bucket, 'Key': key_name},
+        ExpiresIn=expiration)
+
+
+def create_public_url(s3_resource, bucket: str, key: str):
+    bucket = Bucket(bucket)
+    bucket.Object(key).Acl().put(ACL='public-read')  # TODO: do we need to generate a presigned url after doing this?
+    url = generate_presigned_url(s3_resource=s3_resource,
+                                 bucket=bucket,
+                                 key_name=key,
+                                 # One year should be sufficient to finish any pipeline ;-)
+                                 expiration=int(timedelta(days=365).total_seconds()))
+    # boto doesn't properly remove the x-amz-security-token parameter when
+    # query_auth is False when using an IAM role (see issue #2043). Including the
+    # x-amz-security-token parameter without the access key results in a 403,
+    # even if the resource is public, so we need to remove it.
+    # TODO: verify that this is still the case
+    return modify_url(url, remove=['x-amz-security-token', 'AWSAccessKeyId', 'Signature'])

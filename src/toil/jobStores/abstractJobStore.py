@@ -215,7 +215,7 @@ class AbstractJobStore(ABC):
         :param toil.job.JobDescription desc: JobDescription to save and make the root job.
         :rtype: toil.job.JobDescription
         """
-        self.create(desc)
+        self.create_job(desc)
         self.setRootJob(desc.jobStoreID)
         return desc
 
@@ -740,7 +740,7 @@ class AbstractJobStore(ABC):
         yield
 
     @abstractmethod
-    def create(self, jobDescription):
+    def create_job(self, jobDescription):
         """
         Writes the given JobDescription to the job store. The job must have an ID assigned already.
 
@@ -1074,8 +1074,6 @@ class AbstractJobStore(ABC):
     ##########################################
 
     sharedFileNameRegex = re.compile(r'^[a-zA-Z0-9._-]+$')
-
-    # FIXME: Rename to updateSharedFileStream
 
     @abstractmethod
     @contextmanager

@@ -48,7 +48,7 @@ class WorkerTests(ToilTest):
             self.jobStore.assign_job_id(jobDesc)
 
             # Save and return the JobDescription
-            return self.jobStore.create(jobDesc)
+            return self.jobStore.create_job(jobDesc)
 
         for successorType in ['addChild', 'addFollowOn']:
             # Try with the branch point at both child and follow-on stages

@@ -201,7 +201,7 @@ class AbstractJobStoreTest:
             self.assertTrue(isinstance(job.jobStoreID, TemporaryID))
             jobstore.assign_job_id(job)
             self.assertFalse(isinstance(job.jobStoreID, TemporaryID))
-            created = jobstore.create(job)
+            created = jobstore.create_job(job)
 
             self.assertEqual(created, job)
 
@@ -237,7 +237,7 @@ class AbstractJobStoreTest:
                                       requirements=self.parentJobReqs,
                                       jobName='test1', unitName='onJS1')
             self.jobstore_initialized.assign_job_id(jobDesc1)
-            self.jobstore_initialized.create(jobDesc1)
+            self.jobstore_initialized.create_job(jobDesc1)
 
             # Load it from the second jobstore
             jobDesc2 = self.jobstore_resumed_noconfig.load_job(jobDesc1.jobStoreID)
@@ -256,8 +256,8 @@ class AbstractJobStoreTest:
                                       jobName='test2', unitName='onChild1')
             self.jobstore_initialized.assign_job_id(job)
             self.jobstore_initialized.assign_job_id(childJob)
-            self.jobstore_initialized.create(job)
-            self.jobstore_initialized.create(childJob)
+            self.jobstore_initialized.create_job(job)
+            self.jobstore_initialized.create_job(childJob)
             job.addChild(childJob.jobStoreID)
             self.jobstore_initialized.update_job(job)
 
@@ -279,7 +279,7 @@ class AbstractJobStoreTest:
                                  jobName='test1', unitName='onJS1')
 
             self.jobstore_initialized.assign_job_id(job)
-            self.jobstore_initialized.create(job)
+            self.jobstore_initialized.create_job(job)
             job.filesToDelete = ['1', '2']
             self.jobstore_initialized.update_job(job)
             self.assertEqual(self.jobstore_initialized.load_job(job.jobStoreID).filesToDelete, ['1', '2'])
@@ -303,14 +303,14 @@ class AbstractJobStoreTest:
                                        jobName='test3', unitName='onChild2')
 
             jobstore1.assign_job_id(job1)
-            jobstore1.create(job1)
+            jobstore1.create_job(job1)
             job2 = jobstore2.load_job(job1.jobStoreID)
 
             # Create child jobs.
             jobstore2.assign_job_id(childJob1)
-            jobstore2.create(childJob1)
+            jobstore2.create_job(childJob1)
             jobstore2.assign_job_id(childJob2)
-            jobstore2.create(childJob2)
+            jobstore2.create_job(childJob2)
 
             # Add them to job2.
             job2.addChild(childJob1.jobStoreID)
@@ -342,7 +342,7 @@ class AbstractJobStoreTest:
                                  jobName='test1', unitName='onJob')
             # Create job
             jobstore.assign_job_id(job)
-            jobstore.create(job)
+            jobstore.create_job(job)
 
             # Create child Jobs
             child1 = JobDescription(command='child1',
@@ -355,9 +355,9 @@ class AbstractJobStoreTest:
 
             # Add children to parent.
             jobstore.assign_job_id(child1)
-            jobstore.create(child1)
+            jobstore.create_job(child1)
             jobstore.assign_job_id(child2)
-            jobstore.create(child2)
+            jobstore.create_job(child2)
             job.addChild(child1.jobStoreID)
             job.addChild(child2.jobStoreID)
             jobstore.update_job(job)
@@ -439,7 +439,7 @@ class AbstractJobStoreTest:
             jobstore = self.jobstore_initialized
             job = self.arbitraryJob()
             jobstore.assign_job_id(job)
-            jobstore.create(job)
+            jobstore.create_job(job)
 
             foo = 'foo'
             bar = 'bar'
@@ -469,7 +469,7 @@ class AbstractJobStoreTest:
 
             # First recreate job
             jobstore1.assign_job_id(jobOnJobStore1)
-            jobstore1.create(jobOnJobStore1)
+            jobstore1.create_job(jobOnJobStore1)
             fileOne = jobstore2.getEmptyFileStoreID(jobOnJobStore1.jobStoreID, cleanup=True)
             # Check file exists
             self.assertTrue(jobstore2.fileExists(fileOne))
@@ -541,7 +541,7 @@ class AbstractJobStoreTest:
                                             jobName='test1', unitName='onJobStore1')
 
             jobstore1.assign_job_id(jobOnJobStore1)
-            jobstore1.create(jobOnJobStore1)
+            jobstore1.create_job(jobOnJobStore1)
 
             # Test stats and logging
             stats = None
@@ -612,7 +612,7 @@ class AbstractJobStoreTest:
                                                   requirements=jobRequirements,
                                                   jobName='test-overlarge', unitName='onJobStore')
                     jobstore.assign_job_id(overlargeJob)
-                    jobstore.create(overlargeJob)
+                    jobstore.create_job(overlargeJob)
                     jobs.append(overlargeJob)
             for job in jobs:
                 self.assertTrue(jobstore.job_exists(job.jobStoreID))
@@ -626,7 +626,7 @@ class AbstractJobStoreTest:
             arbitraryLargeData = os.urandom(500000)
             job = self.arbitraryJob()
             self.jobstore_initialized.assign_job_id(job)
-            self.jobstore_initialized.create(job)
+            self.jobstore_initialized.create_job(job)
             # Make the job grow
             job.foo_attribute = arbitraryLargeData
             self.jobstore_initialized.update_job(job)
@@ -837,7 +837,7 @@ class AbstractJobStoreTest:
             for numFiles in (1, n - 1, n, n + 1, 2 * n):
                 job = self.arbitraryJob()
                 self.jobstore_initialized.assign_job_id(job)
-                self.jobstore_initialized.create(job)
+                self.jobstore_initialized.create_job(job)
                 fileIDs = [self.jobstore_initialized.getEmptyFileStoreID(job.jobStoreID, cleanup=True) for _ in
                            range(0, numFiles)]
                 self.jobstore_initialized.delete_job(job.jobStoreID)
@@ -857,7 +857,7 @@ class AbstractJobStoreTest:
             self.assertEqual(partSize % bufSize, 0)
             job = self.arbitraryJob()
             self.jobstore_initialized.assign_job_id(job)
-            self.jobstore_initialized.create(job)
+            self.jobstore_initialized.create_job(job)
 
             # Test file/stream ending on part boundary and within a part
             for partsPerFile in (1, 2.33):
@@ -933,7 +933,7 @@ class AbstractJobStoreTest:
             '''Test reading and writing of empty files.'''
             job = self.arbitraryJob()
             self.jobstore_initialized.assign_job_id(job)
-            self.jobstore_initialized.create(job)
+            self.jobstore_initialized.create_job(job)
             nullFile = self.jobstore_initialized.writeFile('/dev/null', job.jobStoreID, cleanup=True)
             with self.jobstore_initialized.readFileStream(nullFile) as f:
                 assert not f.read()
@@ -959,7 +959,7 @@ class AbstractJobStoreTest:
             # Load the file into a jobstore.
             job = self.arbitraryJob()
             self.jobstore_initialized.assign_job_id(job)
-            self.jobstore_initialized.create(job)
+            self.jobstore_initialized.create_job(job)
             jobStoreFileID = self.jobstore_initialized.writeFile(filePath, job.jobStoreID, cleanup=True)
 
             # Remove the local file.
@@ -997,12 +997,12 @@ class AbstractJobStoreTest:
             # Create parent job
             rootJob = self.arbitraryJob()
             self.jobstore_initialized.assign_job_id(rootJob)
-            self.jobstore_initialized.create(rootJob)
+            self.jobstore_initialized.create_job(rootJob)
             # Create a bunch of child jobs
             for i in range(100):
                 child = self.arbitraryJob()
                 self.jobstore_initialized.assign_job_id(child)
-                self.jobstore_initialized.create(child)
+                self.jobstore_initialized.create_job(child)
                 rootJob.addChild(child.jobStoreID)
             jobstore.update_job(rootJob)
             # Make the parent the root
@@ -1041,7 +1041,7 @@ class AbstractJobStoreTest:
             """Test whether readFileStream will deadlock on a partial read."""
             job = self.arbitraryJob()
             self.jobstore_initialized.assign_job_id(job)
-            self.jobstore_initialized.create(job)
+            self.jobstore_initialized.create_job(job)
             with self.jobstore_initialized.writeFileStream(job.jobStoreID, cleanup=True) as (f, fileID):
                 # Write enough data to make sure the writer thread
                 # will get blocked on the write. Technically anything
@@ -1197,7 +1197,7 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
             os.close(fh)
             job = self.arbitraryJob()
             self.jobstore_initialized.assign_job_id(job)
-            self.jobstore_initialized.create(job)
+            self.jobstore_initialized.create_job(job)
             fileID = self.jobstore_initialized.writeFile(path, job.jobStoreID, cleanup=True)
             self.assertTrue(fileID.endswith(os.path.basename(path)))
         finally:
@@ -1305,7 +1305,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         with open("/dev/urandom", 'rb') as random:
             overlargeJob.jobName = str(random.read(512 * 1024))
         jobstore.assign_job_id(overlargeJob)
-        jobstore.create(overlargeJob)
+        jobstore.create_job(overlargeJob)
         self.assertTrue(jobstore.job_exists(overlargeJob.jobStoreID))
         overlargeJobDownloaded = jobstore.load_job(overlargeJob.jobStoreID)
         # Because jobs lack equality comparison, we stringify for comparison.
@@ -1376,7 +1376,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
         for attempt in retry_s3():
             with attempt:
-                bucket.create(CreateBucketConfiguration={'LocationConstraint': '' if self.awsRegion() == 'us-east-1' else self.awsRegion()})
+                bucket.create_job(CreateBucketConfiguration={'LocationConstraint': '' if self.awsRegion() == 'us-east-1' else self.awsRegion()})
                 bucket.wait_until_exists()
                 return bucket
 

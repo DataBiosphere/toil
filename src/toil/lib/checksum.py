@@ -60,7 +60,7 @@ class Etag:
 
 hashers = {'sha1':    hashlib.sha1(),
            'sha256':  hashlib.sha256(),
-           'etag': Etag()}
+           'etag': Etag(chunk_size=S3_PART_SIZE)}
 
 
 def compute_checksum_for_file(local_file_path: str, algorithm: str = 'sha1') -> str:
