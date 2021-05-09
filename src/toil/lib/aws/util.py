@@ -18,6 +18,16 @@ import socket
 from urllib.error import URLError
 from urllib.request import urlopen
 
+CLOUD_KEY_REGEX = re.compile(
+    "^"
+    "(?P<schema>(?:s3|gs|wasb))"
+    "://"
+    "(?P<bucket>[^/]+)"
+    "/"
+    "(?P<key>.+)"
+    "$")
+AWS_ZONE_REGEX = re.compile(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$')
+
 
 def file_begins_with(path: str, prefix: str) -> bool:
     with open(path) as f:
@@ -38,33 +48,19 @@ def running_on_ec2() -> bool:
         return False
 
 
-def check_schema(source_url):
-    import re
-    cre = re.compile(
-        "^"
-        "(?P<schema>(?:s3|gs|wasb))"
-        "://"
-        "(?P<bucket>[^/]+)"
-        "/"
-        "(?P<key>.+)"
-        "$")
-    mobj = cre.match(source_url)
-    if mobj and mobj.group('schema') == "s3":
+def check_schema(source_url: str) -> None:
+    cloud_key_path = CLOUD_KEY_REGEX.match(source_url)
+    if cloud_key_path and cloud_key_path.group('schema') == "s3":
         pass
-    elif mobj and mobj.group('schema') == "gs":
+    elif cloud_key_path and cloud_key_path.group('schema') == "gs":
         pass
     else:
-        schema = mobj.group('schema')
-        raise RuntimeError(f"source_url schema {schema} not supported")
+        raise RuntimeError(f"Schema not supported: {source_url}")
 
 
-# This regex matches AWS availability zones.
-availability_zone_re = re.compile(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$')
-
-
-def zone_to_region(zone: str):
+def zone_to_region(zone: str) -> str:
     """Get a region (e.g. us-west-2) from a zone (e.g. us-west-1c)."""
-    m = availability_zone_re.match(zone)
-    if not m:
+    aws_zone = AWS_ZONE_REGEX.match(zone)
+    if not aws_zone:
         raise ValueError(f"Can't extract region from availability zone '{zone}'")
-    return m.group(1)
+    return aws_zone.group(1)

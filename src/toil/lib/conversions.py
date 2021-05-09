@@ -2,7 +2,7 @@
 import math
 import urllib.parse
 
-from typing import Optional, SupportsInt, Tuple
+from typing import Optional, SupportsInt, Tuple, List
 
 # See https://en.wikipedia.org/wiki/Binary_prefix
 BINARY_PREFIXES = ['ki', 'mi', 'gi', 'ti', 'pi', 'ei', 'kib', 'mib', 'gib', 'tib', 'pib', 'eib']
@@ -88,7 +88,7 @@ def bytes2human(n: SupportsInt) -> str:
     return f'{value:.1f} {unit}'
 
 
-def modify_url(url: str, remove: list) -> str:
+def modify_url(url: str, remove: List[str]) -> str:
     """
     Given a valid URL string, split out the params, remove any offending
     params in 'remove', and return the cleaned URL.

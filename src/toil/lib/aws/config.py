@@ -11,7 +11,7 @@ MULTIPART_THRESHOLD = AWS_MIN_CHUNK_SIZE + 1
 AWS_MAX_MULTIPART_COUNT = 10000
 
 
-def get_s3_multipart_chunk_size(filesize: int):
+def get_s3_multipart_chunk_size(filesize: int) -> int:
     """Returns the chunk size of the S3 multipart object, given a file's size in bytes."""
     if filesize <= AWS_MAX_MULTIPART_COUNT * AWS_MIN_CHUNK_SIZE:
         return AWS_MIN_CHUNK_SIZE
