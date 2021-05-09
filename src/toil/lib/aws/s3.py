@@ -19,12 +19,6 @@ from io import BytesIO
 from typing import Optional, Tuple, Union
 from datetime import timedelta
 import os
-import boto3
-import tempfile
-from urllib.parse import SplitResult, parse_qsl, urlencode, urlsplit, urlunsplit
-import typing
-from functools import lru_cache
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from contextlib import contextmanager
 from typing import Optional
@@ -59,8 +53,6 @@ def create_bucket(s3_resource, bucket: str) -> Bucket:
                                          CreateBucketConfiguration={'LocationConstraint': s3_client.meta.region_name})
     waiter = s3_client.get_waiter('bucket_exists')
     waiter.wait(Bucket=bucket)
-    # except s3_client.exceptions.BucketAlreadyOwnedByYou:
-    #     pass
     logger.debug(f"Successfully created new bucket '{bucket}'")
     return bucket_obj
 
@@ -255,25 +247,69 @@ def upload_to_s3(readable,
 
 
 @contextmanager
-def download_stream(s3_object, checksum_to_verify: Optional[str] = None, extra_args: Optional[dict] = None, encoding=None, errors=None):
+def download_stream(s3_resource, bucket: str, key: str, checksum_to_verify: Optional[str] = None, extra_args: Optional[dict] = None, encoding=None, errors=None):
     """Context manager that gives out a download stream to download data."""
+    bucket = s3_resource.Bucket(bucket)
+
     class DownloadPipe(ReadablePipe):
         def writeTo(self, writable):
-            s3_object.download_fileobj(writable, ExtraArgs=extra_args)
+            bucket.download_fileobj(Key=key, Fileobj=writable, ExtraArgs=extra_args)
 
-    if checksum_to_verify:
-        with DownloadPipe() as readable:
-            # Interpose a pipe to check the hash
-            with HashingPipe(readable,
-                             encoding=encoding,
-                             errors=errors,
-                             checksum_to_verify=checksum_to_verify) as verified:
-                yield verified
-    else:
-        # Readable end of pipe produces text mode output if encoding specified
-        with DownloadPipe(encoding=encoding, errors=errors) as readable:
-            # No true checksum available, so don't hash
-            yield readable
+    with DownloadPipe(encoding=encoding, errors=errors) as readable:
+        yield readable
+
+
+# @contextmanager
+# def downloadStream(self, verifyChecksum=True, encoding=None, errors=None):
+#     """
+#     Context manager that gives out a download stream to download data.
+#     """
+#     class DownloadPipe(ReadablePipe):
+#         def writeTo(self, writable):
+#             if info.content is not None:
+#                 writable.write(info.content)
+#             elif info.version:
+#                 headerArgs = info._s3EncryptionArgs()
+#                 obj = info.outer.filesBucket.Object(compat_bytes(info.fileID))
+#                 obj.download_fileobj(writable, ExtraArgs={'VersionId': info.version, **headerArgs})
+#             else:
+#                 assert False
+#
+#     class HashingPipe(ReadableTransformingPipe):
+#         """
+#         Class which checksums all the data read through it. If it
+#         reaches EOF and the checksum isn't correct, raises
+#         ChecksumError.
+#         Assumes info actually has a checksum.
+#         """
+#
+#         def transform(self, readable, writable):
+#             hasher = info._start_checksum(to_match=info.checksum)
+#             contents = readable.read(1024 * 1024)
+#             while contents != b'':
+#                 info._update_checksum(hasher, contents)
+#                 try:
+#                     writable.write(contents)
+#                 except BrokenPipeError:
+#                     # Read was stopped early by user code.
+#                     # Can't check the checksum.
+#                     return
+#                 contents = readable.read(1024 * 1024)
+#             # We reached EOF in the input.
+#             # Finish checksumming and verify.
+#             info._finish_checksum(hasher)
+#             # Now stop so EOF happens in the output.
+#
+#     if verifyChecksum and self.checksum:
+#         with DownloadPipe() as readable:
+#             # Interpose a pipe to check the hash
+#             with HashingPipe(readable, encoding=encoding, errors=errors) as verified:
+#                 yield verified
+#     else:
+#         # Readable end of pipe produces text mode output if encoding specified
+#         with DownloadPipe(encoding=encoding, errors=errors) as readable:
+#             # No true checksum available, so don't hash
+#             yield readable
 
 # TODO: test below
 # def multipart_parallel_upload(

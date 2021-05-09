@@ -128,6 +128,9 @@ class AWSJobStore(AbstractJobStore):
         # TODO: parsing of user options seems like it should be done outside of this class;
         #  pass in only the bucket name and region?
         self.region, self.bucket_name = self.parse_jobstore_identifier(locator)
+        self.s3_resource = resource('s3', region_name=self.region, **boto_args())
+        self.s3_client = self.s3_resource.meta.client
+        self.check_bucket_region_conflict()
         logger.debug(f"Instantiating {self.__class__} with region: {self.region}")
         self.locator = locator
         self.part_size = DEFAULT_AWS_PART_SIZE  # don't let users set the part size; it will throw off etag values
@@ -151,9 +154,6 @@ class AWSJobStore(AbstractJobStore):
         self.sse_key = None
         self.encryption_args = None
 
-        self.s3_resource = resource('s3', region_name=self.region, **boto_args())
-        self.s3_client = self.s3_resource.meta.client
-
         self._batchedUpdates = []
 
     def set_encryption_from_config(self, config):
@@ -174,9 +174,9 @@ class AWSJobStore(AbstractJobStore):
         """
         self.sse_key, self.encryption_args = self.set_encryption_from_config(config)
         logger.debug(f"Instantiating {self.__class__} for region {self.region} with bucket: '{self.bucket_name}'")
-        if bucket_exists(self.bucket_name):
+        if bucket_exists(self.s3_resource, self.bucket_name):
             raise JobStoreExistsException(self.locator)
-        self.bucket = create_bucket(self.bucket_name, region=self.region)
+        self.bucket = create_bucket(self.s3_resource, self.bucket_name)
         # upload a root/shared file with the toil version and date initialized
         # warn the user if they restart the same bucket with any other version than the one it was initialized with
 
@@ -191,7 +191,7 @@ class AWSJobStore(AbstractJobStore):
         super(AWSJobStore, self).resume()  # this sets self.config to not be None
         self.sse_key, self.encryption_args = self.set_encryption_from_config(self.config)
         if self.bucket is None:
-            self.bucket = bucket_exists(self.bucket_name)
+            self.bucket = bucket_exists(self.s3_resource, self.bucket_name)
         if not self.bucket:
             raise NoSuchJobStoreException(self.locator)
 
@@ -397,14 +397,14 @@ class AWSJobStore(AbstractJobStore):
 
     @contextmanager
     def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None, encoding=None, errors=None):
-        # TODO
+        # TODO; updateFileStream???
         file_id = jobStoreID or str(uuid.uuid4())
         pipe = MultiPartPipe(encoding=encoding,
                              errors=errors,
                              part_size=self.part_size,
                              s3_client=self.s3_client,
                              bucket_name=self.bucket_name,
-                             file_id=file_id,
+                             file_id=f'{self.file_key_prefix}{jobStoreID}',
                              encryption_args=self.encryption_args)
         with pipe as writable:
             yield writable, file_id
@@ -419,7 +419,7 @@ class AWSJobStore(AbstractJobStore):
                              part_size=self.part_size,
                              s3_client=self.s3_client,
                              bucket_name=self.bucket_name,
-                             file_id=sharedFileName,
+                             file_id=f'{self.shared_key_prefix}{sharedFileName}',
                              encryption_args=self.encryption_args)
         with pipe as writable:
             yield writable
@@ -435,7 +435,7 @@ class AWSJobStore(AbstractJobStore):
                              part_size=self.part_size,
                              s3_client=self.s3_client,
                              bucket_name=self.bucket_name,
-                             file_id=jobStoreFileID,
+                             file_id=f'{self.file_key_prefix}{jobStoreFileID}',
                              encryption_args=self.encryption_args)
         with pipe as writable:
             yield writable
@@ -475,15 +475,25 @@ class AWSJobStore(AbstractJobStore):
 
     @contextmanager
     def readFileStream(self, jobStoreFileID, encoding=None, errors=None):
-        obj = self._getObjectForUrl(f'{self.bucket_name}/files/{jobStoreFileID}')
         logger.debug("Reading into stream.")
-        with download_stream(s3_object=obj, extra_args=self.encryption_args, encoding=encoding, errors=errors) as readable:
+        with download_stream(self.s3_resource,
+                             bucket=self.bucket_name,
+                             key=f'{self.file_key_prefix}{jobStoreFileID}',
+                             extra_args=self.encryption_args,
+                             encoding=encoding,
+                             errors=errors) as readable:
             yield readable
 
     @contextmanager
     def readSharedFileStream(self, sharedFileName, encoding=None, errors=None):
         self._requireValidSharedFileName(sharedFileName)
-        with self.readFileStream(sharedFileName, encoding=encoding, errors=errors) as readable:
+        logger.debug("Reading into stream.")
+        with download_stream(self.s3_resource,
+                             bucket=self.bucket_name,
+                             key=f'{self.shared_key_prefix}{sharedFileName}',
+                             extra_args=self.encryption_args,
+                             encoding=encoding,
+                             errors=errors) as readable:
             yield readable
 
     def deleteFile(self, file_id):
@@ -516,7 +526,7 @@ class AWSJobStore(AbstractJobStore):
         prefix = 'logs/' if readAll else 'logs/unread/'
         itemsProcessed = 0
         for log in list_s3_items(bucket=self.bucket.name, prefix=prefix):
-            obj = self._getObjectForUrl(f'{self.bucket.name}/{log}')
+            obj = self._getObjectForUrl(f's3://{self.bucket.name}/{log}')
             with download_stream(s3_object=obj) as readable:
                 callback(readable)
             if not readAll:
@@ -538,11 +548,18 @@ class AWSJobStore(AbstractJobStore):
                                  key=f'{self.shared_key_prefix}{sharedFileName}')
 
     def destroy(self):
-        delete_bucket(self.bucket_name)
+        delete_bucket(self.s3_resource, self.bucket_name)
+
+    def check_bucket_region_conflict(self):
+        # TODO: Does this matter?
+        if bucket_exists(self.s3_resource, self.bucket_name):
+            response = self.s3_client.get_bucket_location(Bucket=self.bucket_name)
+            if response["LocationConstraint"] != self.region:
+                raise ValueError(f'Bucket region conflict.  Bucket already exists in region '
+                                 f'"{response["LocationConstraint"]}" but "{self.region}" was specified.')
 
     def parse_jobstore_identifier(self, jobstore_identifier: str) -> Tuple[str, str]:
         region, jobstore_name = jobstore_identifier.split(':')
-
         bucket_name = f'{jobstore_name}--toil'
 
         regions = EC2Regions.keys()
@@ -559,11 +576,4 @@ class AWSJobStore(AbstractJobStore):
 
         if '--' in jobstore_name:
             raise ValueError(f"AWS jobstore names may not contain '--': {jobstore_name}")
-
-        if bucket_exists(bucket_name):
-            response = self.s3_client.get_bucket_location(Bucket=bucket_name)
-            if response["LocationConstraint"] != region:
-                raise ValueError(f'Bucket region conflict.  Bucket already exists in region '
-                                 f'"{response["LocationConstraint"]}" but "{region}" was specified '
-                                 f'in the jobstore_identifier: {jobstore_identifier}')
         return region, bucket_name
