@@ -73,13 +73,17 @@ def delete_bucket(s3_resource, bucket: str) -> None:
         bucket_obj.objects.all().delete()
         bucket_obj.object_versions.delete()
         bucket_obj.delete()
-        logger.info(f"Successfully deleted bucket: '{bucket}'")
     except s3_client.exceptions.NoSuchBucket:
         logger.info(f"Bucket already deleted (NoSuchBucket): '{bucket}'")
+        print(f"Bucket already deleted (NoSuchBucket): '{bucket}'")
     except ClientError as e:
         if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') != 404:
             raise
         logger.info(f"Bucket already deleted (404): '{bucket}'")
+        print(f"Bucket already deleted (404): '{bucket}'")
+    else:
+        logger.info(f"Successfully deleted bucket: '{bucket}'")
+        print(f"Successfully deleted bucket: '{bucket}'")
 
 
 # TODO: Determine specific retries
@@ -390,17 +394,28 @@ def download_stream(s3_resource, bucket: str, key: str, checksum_to_verify: Opti
 def s3_key_exists(s3_resource, bucket: str, key: str, check: bool = False):
     s3_client = s3_resource.meta.client
     try:
-        return s3_client.head_object(Bucket=bucket, Key=key)
+        s3_client.head_object(Bucket=bucket, Key=key)
+        return True
     except s3_client.exceptions.NoSuchKey:
         if check:
             raise AWSKeyNotFoundError(f"Key '{key}' does not exist in bucket '{bucket}'.")
-        else:
-            return False
+    except ClientError as e:
+        if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+            if check:
+                raise AWSKeyNotFoundError(f"Key '{key}' does not exist in bucket '{bucket}'.")
+    return False
 
 
-def get_s3_object(s3_resource, bucket: str, key: str):
+def head_s3_object(s3_resource, bucket: str, key: str):
     s3_client = s3_resource.meta.client
-    return s3_client.get_object(Bucket=bucket, Key=key)
+    return s3_client.head_object(Bucket=bucket, Key=key)
+
+
+def get_s3_object(s3_resource, bucket: str, key: str, extra_args: dict = None):
+    if extra_args is None:
+        extra_args = dict()
+    s3_client = s3_resource.meta.client
+    return s3_client.get_object(Bucket=bucket, Key=key, **extra_args)
 
 
 def generate_presigned_url(s3_resource, bucket: str, key_name: str, expiration: int) -> Tuple[str, str]:

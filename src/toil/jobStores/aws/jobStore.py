@@ -32,6 +32,7 @@ import pickle
 import re
 import stat
 import uuid
+import tempfile
 from io import BytesIO
 from contextlib import contextmanager
 from typing import Optional, Tuple, Union
@@ -57,6 +58,7 @@ from toil.lib.aws.s3 import (create_bucket,
                              upload_to_s3,
                              download_stream,
                              s3_key_exists,
+                             head_s3_object,
                              get_s3_object,
                              create_public_url,
                              AWSKeyNotFoundError,
@@ -267,7 +269,7 @@ class AWSJobStore(AbstractJobStore):
                                            'executable': 0}).encode('utf-8')),
                                       ExtraArgs=self.encryption_args)
 
-        if not s3_key_exists(bucket=self.bucket_name, key=f'{self.file_key_prefix}{etag_for_empty_file}'):
+        if not s3_key_exists(self.s3_resource, bucket=self.bucket_name, key=f'{self.file_key_prefix}{etag_for_empty_file}'):
             self.s3_client.upload_fileobj(Bucket=self.bucket_name,
                                           Key=f'{self.file_key_prefix}{etag_for_empty_file}',
                                           Fileobj=BytesIO(b''),
@@ -290,7 +292,7 @@ class AWSJobStore(AbstractJobStore):
         # we are copying from s3 to s3
         if issubclass(otherCls, AWSJobStore):
             src_bucket_name, src_key_name = parse_s3_uri(url)
-            response = s3_key_exists(bucket=src_bucket_name, key=src_key_name, check=True)
+            response = head_s3_object(self.s3_resource, bucket=src_bucket_name, key=src_key_name, check=True)
             content_length = response['ContentLength']  # e.g. 65536
             content_type = response['ContentType']  # e.g. "binary/octet-stream"
             etag = response['ETag'].strip('\"')  # e.g. "\"586af4cbd7416e6aefd35ccef9cbd7c8\""
@@ -303,7 +305,7 @@ class AWSJobStore(AbstractJobStore):
             # upload actual file content if it does not exist already
             # etags are unique hashes, so this may exist if another process uploaded the exact same file
             actual_file_content_path = f'{self.file_key_prefix}{etag}'
-            if not s3_key_exists(bucket=self.bucket_name, key=actual_file_content_path):
+            if not s3_key_exists(self.s3_resource, bucket=self.bucket_name, key=actual_file_content_path):
                 copy_s3_to_s3(src_bucket=src_bucket_name, src_key=src_key_name,
                               dst_bucket=self.bucket_name, dst_key=actual_file_content_path)
                 # verify etag after copying here
@@ -326,7 +328,7 @@ class AWSJobStore(AbstractJobStore):
             dst_bucket_name, dst_key_name = parse_s3_uri(url)
             key = f'{self.metadata_key_prefix}{jobStoreFileID}'
             try:
-                metadata = json.loads(get_s3_object(bucket=self.bucket_name, key=key))
+                metadata = json.loads(get_s3_object(self.s3_resource, bucket=self.bucket_name, key=key)['Body'].read())
             except self.s3_client.exceptions.NoSuchKey:
                 raise AWSKeyNotFoundError(f"File '{key}' not found in AWS jobstore bucket: '{self.bucket_name}'")
             copy_s3_to_s3(src_bucket=self.bucket_name, src_key=f'{self.file_key_prefix}{metadata["etag"]}',
@@ -395,7 +397,7 @@ class AWSJobStore(AbstractJobStore):
         actual_file_content_path = f'{self.file_key_prefix}{etag}'
         file_id = jobStoreID or str(uuid.uuid4())
         metadata_path = f'{self.metadata_key_prefix}{file_id}'
-        if not s3_key_exists(bucket=self.bucket_name, key=actual_file_content_path):
+        if not s3_key_exists(self.s3_resource, bucket=self.bucket_name, key=actual_file_content_path):
             copy_local_to_s3(local_file_path=localFilePath,
                              dst_bucket=self.bucket_name,
                              dst_key=actual_file_content_path)
@@ -472,21 +474,29 @@ class AWSJobStore(AbstractJobStore):
             return 0
 
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
-        obj = self._getObjectForUrl(f's3://{self.bucket_name}/{jobStoreFileID}', existing=True)
+        metadata = json.loads(get_s3_object(self.s3_resource,
+                                            bucket=self.bucket_name,
+                                            key=f'{self.metadata_key_prefix}{jobStoreFileID}',
+                                            extra_args=self.encryption_args)['Body'].read())
+        actual_file_content_path = f'{self.file_key_prefix}{metadata["etag"]}'
+        executable = int(metadata["executable"])  # 0 or 1
 
-        with AtomicFileCreate(localFilePath) as tmpPath:
-            obj.download_file(Filename=tmpPath, ExtraArgs={**self.encryption_args})
+        with open(localFilePath, 'wb') as f:
+            self.s3_client.download_fileobj(self.bucket_name,
+                                            actual_file_content_path,
+                                            f,
+                                            ExtraArgs={**self.encryption_args})
 
-        # TODO: checksum and make executable if necessary
+        if executable:
+            os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
 
+        # TODO: checksum
         # if not self.config.disableJobStoreChecksumVerification and previously_computed_checksum:
         #     algorithm, expected_checksum = previously_computed_checksum.split('$')
         #     checksum = compute_checksum_for_file(localFilePath, algorithm=algorithm)
         #     if previously_computed_checksum != checksum:
         #         raise ChecksumError(f'Checksum mismatch for file {localFilePath}.  '
         #                             f'Expected: {previously_computed_checksum} Actual: {checksum}')
-        # if getattr(jobStoreFileID, 'executable', False):
-        #     os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
 
     @contextmanager
     def readFileStream(self, jobStoreFileID, encoding=None, errors=None):
