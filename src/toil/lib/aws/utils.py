@@ -62,22 +62,3 @@ def delete_sdb_domain(sdb_domain_name: str, region: Optional[str] = None, quiet:
     sdb_client = client('sdb', region_name=region)
     sdb_client.delete_domain(DomainName=sdb_domain_name)
     printq(f'SBD Domain: "{sdb_domain_name}" successfully deleted.', quiet)
-
-
-@retry(errors=[BotoServerError])
-def delete_s3_bucket(bucket: str, region: Optional[str], quiet: bool = True):
-    printq(f'Deleting s3 bucket in region "{region}": {bucket}', quiet)
-    s3_client = client('s3', region_name=region)
-    s3_resource = resource('s3', region_name=region)
-
-    paginator = s3_client.get_paginator('list_object_versions')
-    try:
-        for response in paginator.paginate(Bucket=bucket):
-            versions = response.get('Versions', []) + response.get('DeleteMarkers', [])
-            for version in versions:
-                printq(f"    Deleting {version['Key']} version {version['VersionId']}", quiet)
-                s3_client.delete_object(Bucket=bucket, Key=version['Key'], VersionId=version['VersionId'])
-        s3_resource.Bucket(bucket).delete()
-    except s3_client.exceptions.NoSuchBucket:
-        pass
-    printq(f'\n * Deleted s3 bucket successfully: {bucket}\n\n', quiet)

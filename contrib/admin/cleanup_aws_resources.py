@@ -21,7 +21,8 @@ pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')) 
 sys.path.insert(0, pkg_root)  # noqa
 
 from src.toil.lib.aws.credentials import client, resource
-from src.toil.lib.aws.utils import delete_iam_role, delete_iam_instance_profile, delete_s3_bucket, delete_sdb_domain
+from src.toil.lib.aws.utils import delete_iam_role, delete_iam_instance_profile, delete_sdb_domain
+from src.toil.lib.aws.s3 import delete_bucket
 from src.toil.lib.generatedEC2Lists import regionDict
 
 # put us-west-2 first as our default test region; that way anything with a universal region shows there
@@ -279,7 +280,8 @@ def main(argv):
                 if response.lower() in ('y', 'yes'):
                     print('\nOkay, now deleting...')
                     for bucket, region in buckets.items():
-                        delete_s3_bucket(bucket, region)
+                        s3_resource = resource('s3', region_name=region)
+                        delete_bucket(s3_resource, bucket)
                     print('S3 Bucket Deletions Successful.')
 
     if not options.skip_sdb:

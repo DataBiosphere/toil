@@ -61,10 +61,9 @@ def create_bucket(s3_resource, bucket: str) -> Bucket:
     return bucket_obj
 
 
-# TODO: Determine specific retries
-@retry()
+# # TODO: Determine specific retries
+# @retry()
 def delete_bucket(s3_resource, bucket: str) -> None:
-    logger.debug(f"Deleting AWS bucket: {bucket}")
     s3_client = s3_resource.meta.client
     bucket_obj = s3_resource.Bucket(bucket)
     try:
@@ -74,12 +73,13 @@ def delete_bucket(s3_resource, bucket: str) -> None:
         bucket_obj.objects.all().delete()
         bucket_obj.object_versions.delete()
         bucket_obj.delete()
+        logger.info(f"Successfully deleted bucket: '{bucket}'")
     except s3_client.exceptions.NoSuchBucket:
-        pass
+        logger.info(f"Bucket already deleted (NoSuchBucket): '{bucket}'")
     except ClientError as e:
         if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') != 404:
             raise
-    logger.debug(f"Successfully deleted bucket '{bucket}'")
+        logger.info(f"Bucket already deleted (404): '{bucket}'")
 
 
 # TODO: Determine specific retries
