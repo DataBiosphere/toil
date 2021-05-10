@@ -264,7 +264,7 @@ class AWSJobStore(AbstractJobStore):
                                       Fileobj=BytesIO(json.dumps(
                                           {'etag': etag_for_empty_file,
                                            'size': 0,
-                                           'executable': 0})),
+                                           'executable': 0}).encode('utf-8')),
                                       ExtraArgs=self.encryption_args)
 
         if not s3_key_exists(bucket=self.bucket_name, key=f'{self.file_key_prefix}{etag_for_empty_file}'):
@@ -315,7 +315,7 @@ class AWSJobStore(AbstractJobStore):
                                               {'etag': etag,
                                                'size': content_length,
                                                # cannot determine exec bit from foreign s3 so default to False
-                                               'executable': 0})),
+                                               'executable': 0}).encode('utf-8')),
                                           ExtraArgs=self.encryption_args)
             return FileID(fileStoreID=file_id, size=content_length) if sharedFileName is None else None
         else:
@@ -406,7 +406,7 @@ class AWSJobStore(AbstractJobStore):
                                       Key=metadata_path,
                                       Fileobj=BytesIO(json.dumps({'etag': etag,
                                                                   'size': size,
-                                                                  'executable': int(executable)})),
+                                                                  'executable': int(executable)}).encode('utf-8')),
                                       ExtraArgs=self.encryption_args)
         return FileID(fileStoreID=file_id, size=size, executable=executable)
 

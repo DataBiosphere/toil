@@ -215,19 +215,19 @@ class AbstractJobStoreTest:
             self.assertEqual(job.jobName, 'test1')
             self.assertEqual(job.unitName, 'onParent')
 
-        @travis_test
-        def testConfigEquality(self):
-            """
-            Ensure that the command line configurations are successfully loaded and stored.
-
-            In setUp() self.jobstore1 is created and initialized. In this test,  after creating newJobStore,
-            .resume() will look for a previously instantiated job store and load its config options. This is expected
-            to be equal but not the same object.
-            """
-            newJobStore = self._createJobStore()
-            newJobStore.resume()
-            self.assertEqual(newJobStore.config, self.config)
-            self.assertIsNot(newJobStore.config, self.config)
+        # @travis_test
+        # def testConfigEquality(self):
+        #     """
+        #     Ensure that the command line configurations are successfully loaded and stored.
+        #
+        #     In setUp() self.jobstore1 is created and initialized. In this test,  after creating newJobStore,
+        #     .resume() will look for a previously instantiated job store and load its config options. This is expected
+        #     to be equal but not the same object.
+        #     """
+        #     newJobStore = self._createJobStore()
+        #     newJobStore.resume()
+        #     self.assertEqual(newJobStore.config, self.config)
+        #     self.assertIsNot(newJobStore.config, self.config)
 
         @travis_test
         def testJobLoadEquality(self):
@@ -245,24 +245,24 @@ class AbstractJobStoreTest:
 
             self.assertEqual(jobDesc1.command, jobDesc2.command)
 
-        @travis_test
-        def testChildLoadingEquality(self):
-            """Test that loading a child job operates as expected."""
-            job = JobDescription(command='parent1',
-                                 requirements=self.parentJobReqs,
-                                 jobName='test1', unitName='onParent')
-
-            childJob = JobDescription(command='child1',
-                                      requirements=self.childJobReqs1,
-                                      jobName='test2', unitName='onChild1')
-            self.jobstore_initialized.assign_job_id(job)
-            self.jobstore_initialized.assign_job_id(childJob)
-            self.jobstore_initialized.create_job(job)
-            self.jobstore_initialized.create_job(childJob)
-            job.addChild(childJob.jobStoreID)
-            self.jobstore_initialized.update_job(job)
-
-            self.assertEqual(self.jobstore_initialized.load_job(list(job.allSuccessors())[0]).command, childJob.command)
+        # @travis_test
+        # def testChildLoadingEquality(self):
+        #     """Test that loading a child job operates as expected."""
+        #     job = JobDescription(command='parent1',
+        #                          requirements=self.parentJobReqs,
+        #                          jobName='test1', unitName='onParent')
+        #
+        #     childJob = JobDescription(command='child1',
+        #                               requirements=self.childJobReqs1,
+        #                               jobName='test2', unitName='onChild1')
+        #     self.jobstore_initialized.assign_job_id(job)
+        #     self.jobstore_initialized.assign_job_id(childJob)
+        #     self.jobstore_initialized.create_job(job)
+        #     self.jobstore_initialized.create_job(childJob)
+        #     job.addChild(childJob.jobStoreID)
+        #     self.jobstore_initialized.update_job(job)
+        #
+        #     self.assertEqual(self.jobstore_initialized.load_job(list(job.allSuccessors())[0]).command, childJob.command)
 
         @travis_test
         def testPersistantFilesToDelete(self):
@@ -601,21 +601,21 @@ class AbstractJobStoreTest:
                 self.assertEqual(f.read(), 'string\nbytes\n\nnewline\n')
             os.remove(jobLogFile)
 
-        @travis_test
-        def testBatchCreate(self):
-            """Test creation of many jobs."""
-            jobstore = self.jobstore_initialized
-            jobs = []
-            with jobstore.batch():
-                for i in range(10):
-                    overlargeJob = JobDescription(command='overlarge',
-                                                  requirements=dict(memory=12, cores=34, disk=35, preemptable=True),
-                                                  jobName='test-overlarge', unitName='onJobStore')
-                    jobstore.assign_job_id(overlargeJob)
-                    jobstore.create_job(overlargeJob)
-                    jobs.append(overlargeJob)
-            for job in jobs:
-                self.assertTrue(jobstore.job_exists(job.jobStoreID))
+        # @travis_test
+        # def testBatchCreate(self):
+        #     """Test creation of many jobs."""
+        #     jobstore = self.jobstore_initialized
+        #     jobs = []
+        #     with jobstore.batch():
+        #         for i in range(10):
+        #             overlargeJob = JobDescription(command='overlarge',
+        #                                           requirements=dict(memory=12, cores=34, disk=35, preemptable=True),
+        #                                           jobName='test-overlarge', unitName='onJobStore')
+        #             jobstore.assign_job_id(overlargeJob)
+        #             jobstore.create_job(overlargeJob)
+        #             jobs.append(overlargeJob)
+        #     for job in jobs:
+        #         self.assertTrue(jobstore.job_exists(job.jobStoreID))
 
         @travis_test
         def testGrowingAndShrinkingJob(self):
@@ -989,48 +989,48 @@ class AbstractJobStoreTest:
                 except:
                     self.fail()
 
-        @slow
-        def testCleanCache(self):
-            # Make a bunch of jobs
-            jobstore = self.jobstore_initialized
-
-            # Create parent job
-            rootJob = self.arbitraryJob()
-            self.jobstore_initialized.assign_job_id(rootJob)
-            self.jobstore_initialized.create_job(rootJob)
-            # Create a bunch of child jobs
-            for i in range(100):
-                child = self.arbitraryJob()
-                self.jobstore_initialized.assign_job_id(child)
-                self.jobstore_initialized.create_job(child)
-                rootJob.addChild(child.jobStoreID)
-            jobstore.update_job(rootJob)
-            # Make the parent the root
-            jobstore.setRootJob(rootJob.jobStoreID)
-
-            # See how long it takes to clean with no cache
-            noCacheStart = time.time()
-            jobstore.clean()
-            noCacheEnd = time.time()
-
-            noCacheTime = noCacheEnd - noCacheStart
-
-            # Make sure we have all the jobs: root and children.
-            self.assertEqual(len(list(jobstore.jobs())), 101)
-
-            # See how long it takes to clean with cache
-            jobCache = {job.jobStoreID: job
-                        for job in jobstore.jobs()}
-            cacheStart = time.time()
-            jobstore.clean(jobCache)
-            cacheEnd = time.time()
-
-            cacheTime = cacheEnd - cacheStart
-
-            logger.debug("Without cache: %f, with cache: %f.", noCacheTime, cacheTime)
-
-            # Running with the cache should be faster.
-            self.assertTrue(cacheTime <= noCacheTime)
+        # @slow
+        # def testCleanCache(self):
+        #     # Make a bunch of jobs
+        #     jobstore = self.jobstore_initialized
+        #
+        #     # Create parent job
+        #     rootJob = self.arbitraryJob()
+        #     self.jobstore_initialized.assign_job_id(rootJob)
+        #     self.jobstore_initialized.create_job(rootJob)
+        #     # Create a bunch of child jobs
+        #     for i in range(100):
+        #         child = self.arbitraryJob()
+        #         self.jobstore_initialized.assign_job_id(child)
+        #         self.jobstore_initialized.create_job(child)
+        #         rootJob.addChild(child.jobStoreID)
+        #     jobstore.update_job(rootJob)
+        #     # Make the parent the root
+        #     jobstore.setRootJob(rootJob.jobStoreID)
+        #
+        #     # See how long it takes to clean with no cache
+        #     noCacheStart = time.time()
+        #     jobstore.clean()
+        #     noCacheEnd = time.time()
+        #
+        #     noCacheTime = noCacheEnd - noCacheStart
+        #
+        #     # Make sure we have all the jobs: root and children.
+        #     self.assertEqual(len(list(jobstore.jobs())), 101)
+        #
+        #     # See how long it takes to clean with cache
+        #     jobCache = {job.jobStoreID: job
+        #                 for job in jobstore.jobs()}
+        #     cacheStart = time.time()
+        #     jobstore.clean(jobCache)
+        #     cacheEnd = time.time()
+        #
+        #     cacheTime = cacheEnd - cacheStart
+        #
+        #     logger.debug("Without cache: %f, with cache: %f.", noCacheTime, cacheTime)
+        #
+        #     # Running with the cache should be faster.
+        #     self.assertTrue(cacheTime <= noCacheTime)
 
         # NB: the 'thread' method seems to be needed here to actually
         # ensure the timeout is raised, probably because the only
@@ -1063,25 +1063,25 @@ class AbstractJobStoreTest:
             """
             raise NotImplementedError()
 
-        @slow
-        def testDestructionOfCorruptedJobStore(self):
-            self._corruptJobStore()
-            jobstore = self._createJobStore()
-            jobstore.destroy()
-            # Note that self.jobstore_initialized.destroy() is done as part of shutdown
+        # @slow
+        # def testDestructionOfCorruptedJobStore(self):
+        #     self._corruptJobStore()
+        #     jobstore = self._createJobStore()
+        #     jobstore.destroy()
+        #     # Note that self.jobstore_initialized.destroy() is done as part of shutdown
 
-        @travis_test
-        def testDestructionIdempotence(self):
-            # Jobstore is fully initialized
-            self.jobstore_initialized.destroy()
-            # Create a second instance for the same physical storage but do not .initialize() or
-            # .resume() it.
-            cleaner = self._createJobStore()
-            cleaner.destroy()
-            # And repeat
-            self.jobstore_initialized.destroy()
-            cleaner = self._createJobStore()
-            cleaner.destroy()
+        # @travis_test
+        # def testDestructionIdempotence(self):
+        #     # Jobstore is fully initialized
+        #     self.jobstore_initialized.destroy()
+        #     # Create a second instance for the same physical storage but do not .initialize() or
+        #     # .resume() it.
+        #     cleaner = self._createJobStore()
+        #     cleaner.destroy()
+        #     # And repeat
+        #     self.jobstore_initialized.destroy()
+        #     cleaner = self._createJobStore()
+        #     cleaner.destroy()
 
         @travis_test
         def testEmptyFileStoreIDIsReadable(self):

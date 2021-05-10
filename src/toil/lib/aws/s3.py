@@ -44,8 +44,8 @@ class AWSKeyAlreadyExistsError(Exception):
     pass
 
 
-# TODO: Determine specific retries
-@retry()
+# # TODO: Determine specific retries
+# @retry()
 def create_bucket(s3_resource, bucket: str) -> Bucket:
     s3_client = s3_resource.meta.client
     logger.info(f"Creating AWS bucket {bucket} in region {s3_client.meta.region_name}")
