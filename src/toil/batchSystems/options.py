@@ -128,6 +128,11 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
                              "the primary node. Setting this to true can speed up the pipeline for very large "
                              "workflows with many sub-workflows and/or scatters, provided that the worker "
                              "pool is large enough.")
+    parser.add_argument("--coalesceStatusCalls", dest="coalesceStatusCalls",
+                action='store_true', default=None,
+                help=("Coalese status calls to prevent the batch system from being overloaded. "
+                      "Currently only supported for LSF. "
+                      "default=false"))
 
     add_parasol_options(parser)
     add_single_machine_options(parser)
@@ -147,6 +152,7 @@ def set_batchsystem_config_defaults(config) -> None:
     config.statePollingWait = None
     config.maxLocalJobs = cpu_count()
     config.manualMemArgs = False
+    config.coalesceStatusCalls = False
 
     # parasol
     config.parasolCommand = 'parasol'

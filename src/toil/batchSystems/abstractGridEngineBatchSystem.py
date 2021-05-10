@@ -182,20 +182,38 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 return self._checkOnJobsCache
 
             activity = False
-            for jobID in list(self.runningJobs):
-                batchJobID = self.getBatchSystemID(jobID)
-                status = self.boss.with_retries(self.getJobExitCode, batchJobID)
-                if status is not None and isinstance(status, int):
-                    activity = True
-                    self.updatedJobsQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=status, exitReason=None, wallTime=None))
-                    self.forgetJob(jobID)
-                elif status is not None and isinstance(status, BatchJobExitReason):
-                    activity = True
-                    self.updatedJobsQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=1, exitReason=status, wallTime=None))
-                    self.forgetJob(jobID)
+            statusObj = None
+            runningJobList = list(self.runningJobs)
+            if self.boss.config.coalesceStatusCalls:
+                batchJobIDList = list(map(self.getBatchSystemID,runningJobList))
+                if batchJobIDList:
+                    statuses = with_retries(self.coalesceJobExitCodes, batchJobIDList)
+                    if statuses is not None:
+                        for runningJobID, status in zip(runningJobList, statuses):
+                            activity = self._handleJobStatus(runningJobID,status,activity)
+            else:
+                for jobID in runningJobList:
+                    batchJobID = self.getBatchSystemID(jobID)
+                    status = with_retries(self.getJobExitCode, batchJobID)
+                    activity = self._handleJobStatus(jobID,status,activity)
             self._checkOnJobsCache = activity
             self._checkOnJobsTimestamp = datetime.now()
             return activity
+
+        def _handleJobStatus(self,jobID,status,activity):
+            """
+            Helper method for checkOnJobs to handle job statuses
+            """
+            if status is not None:
+                self.updatedJobsQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=status, exitReason=None, wallTime=None))
+                self.forgetJob(jobID)
+                return True
+            elif status is not None and isinstance(status, BatchJobExitReason):
+                self.updatedJobsQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=1, exitReason=status, wallTime=None))
+                self.forgetJob(jobID)
+                return True
+            else:
+                return activity
 
         def _runStep(self):
             """return True if more jobs, False is all done"""
@@ -224,6 +242,16 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             except Exception as ex:
                 logger.error("GridEngine like batch system failure", exc_info=ex)
                 raise
+
+        @abstractmethod
+        def coalesceJobExitCodes(self, batchJobIDList):
+            """
+            Returns exit codes for a list of jobs.
+            Implementation-specific; called by
+            AbstractGridEngineWorker.checkOnJobs()
+            :param string batchjobIDList: List of batch system job ID
+            """
+            raise NotImplementedError()
 
         @abstractmethod
         def prepareSubmission(self, cpu, memory, jobID, command, jobName):
