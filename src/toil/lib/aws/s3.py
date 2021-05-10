@@ -31,6 +31,7 @@ from toil.lib.pipes import WritablePipe
 from toil.lib.compatibility import compat_bytes
 from toil.lib.pipes import ReadablePipe, HashingPipe
 from toil.lib.retry import retry, ErrorCondition
+from toil.jobStores.exceptions import NoSuchFileException
 
 Bucket = resource('s3').Bucket  # only declared for mypy typing
 logger = logging.getLogger(__name__)
@@ -262,9 +263,13 @@ def download_stream(s3_resource, bucket: str, key: str, checksum_to_verify: Opti
 
     class DownloadPipe(ReadablePipe):
         def writeTo(self, writable):
-            with open('/home/quokka/git/toil/src/toil/jobStores/aws/log.txt', 'a+') as f:
-                f.write(f'{bucket.name} {key}')
-            bucket.download_fileobj(Key=key, Fileobj=writable, ExtraArgs=extra_args)
+            try:
+                bucket.download_fileobj(Key=key, Fileobj=writable, ExtraArgs=extra_args)
+            except ClientError as e:
+                if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+                    raise NoSuchFileException(f'{key} does not exist.')
+                else:
+                    raise
 
     with DownloadPipe(encoding=encoding, errors=errors) as readable:
         yield readable

@@ -254,10 +254,10 @@ class AWSJobStore(AbstractJobStore):
 
     def delete_job(self, job_id: str):
         logger.debug("Deleting job %s", job_id)
-        self.s3_client.delete_object({'Bucket': self.bucket_name, 'Key': f'{self.job_key_prefix}{job_id}'})
+        self.s3_client.delete_object(Bucket=self.bucket_name, Key=f'{self.job_key_prefix}{job_id}')
 
     def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
-        new_file_id = str(uuid.uuid4())
+        new_file_id = jobStoreID or str(uuid.uuid4())
         etag_for_empty_file = 'd41d8cd98f00b204e9800998ecf8427e'
 
         # upload metadata reference; there may be multiple references pointing to the same etag path
@@ -323,14 +323,20 @@ class AWSJobStore(AbstractJobStore):
         else:
             return super(AWSJobStore, self)._importFile(otherCls, url, sharedFileName=sharedFileName)
 
-    def _exportFile(self, otherCls, jobStoreFileID, url) -> None:
+    def get_file_metadata_reference(self, jobStoreFileID: str):
+        key = f'{self.metadata_key_prefix}{jobStoreFileID}'
+        try:
+            return json.loads(get_s3_object(self.s3_resource,
+                                            bucket=self.bucket_name,
+                                            key=key,
+                                            extra_args=self.encryption_args)['Body'].read())
+        except self.s3_client.exceptions.NoSuchKey:
+            raise AWSKeyNotFoundError(f"File '{key}' not found in AWS jobstore bucket: '{self.bucket_name}'")
+
+    def _exportFile(self, otherCls, jobStoreFileID: str, url) -> None:
         if issubclass(otherCls, AWSJobStore):
             dst_bucket_name, dst_key_name = parse_s3_uri(url)
-            key = f'{self.metadata_key_prefix}{jobStoreFileID}'
-            try:
-                metadata = json.loads(get_s3_object(self.s3_resource, bucket=self.bucket_name, key=key)['Body'].read())
-            except self.s3_client.exceptions.NoSuchKey:
-                raise AWSKeyNotFoundError(f"File '{key}' not found in AWS jobstore bucket: '{self.bucket_name}'")
+            metadata = self.get_file_metadata_reference(jobStoreFileID)
             copy_s3_to_s3(src_bucket=self.bucket_name, src_key=f'{self.file_key_prefix}{metadata["etag"]}',
                           dst_bucket=dst_bucket_name, dst_key=dst_key_name)
         else:
@@ -474,10 +480,7 @@ class AWSJobStore(AbstractJobStore):
             return 0
 
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
-        metadata = json.loads(get_s3_object(self.s3_resource,
-                                            bucket=self.bucket_name,
-                                            key=f'{self.metadata_key_prefix}{jobStoreFileID}',
-                                            extra_args=self.encryption_args)['Body'].read())
+        metadata = self.get_file_metadata_reference(jobStoreFileID)
         actual_file_content_path = f'{self.file_key_prefix}{metadata["etag"]}'
         executable = int(metadata["executable"])  # 0 or 1
 
@@ -500,10 +503,11 @@ class AWSJobStore(AbstractJobStore):
 
     @contextmanager
     def readFileStream(self, jobStoreFileID, encoding=None, errors=None):
-        logger.debug("Reading into stream.")
+        metadata = self.get_file_metadata_reference(jobStoreFileID)
+        actual_file_content_path = f'{self.file_key_prefix}{metadata["etag"]}'
         with download_stream(self.s3_resource,
                              bucket=self.bucket_name,
-                             key=f'{self.file_key_prefix}{jobStoreFileID}',
+                             key=actual_file_content_path,
                              extra_args=self.encryption_args,
                              encoding=encoding,
                              errors=errors) as readable:
@@ -512,7 +516,6 @@ class AWSJobStore(AbstractJobStore):
     @contextmanager
     def readSharedFileStream(self, sharedFileName, encoding=None, errors=None):
         self._requireValidSharedFileName(sharedFileName)
-        logger.debug("Reading into stream.")
         with download_stream(self.s3_resource,
                              bucket=self.bucket_name,
                              key=f'{self.shared_key_prefix}{sharedFileName}',

@@ -34,6 +34,13 @@ from toil.job import (CheckpointJobDescription,
 from toil.lib.memoize import memoize
 from toil.lib.io import WriteWatchingStream
 from toil.lib.retry import ErrorCondition, retry
+from toil.jobStores.exceptions import (InvalidImportExportUrlException,
+                                       NoSuchJobException,
+                                       ConcurrentFileModificationException,
+                                       NoSuchFileException,
+                                       NoSuchJobStoreException,
+                                       JobStoreExistsException)
+
 
 logger = logging.getLogger(__name__)
 
@@ -44,68 +51,7 @@ except ImportError:
         pass
 
 
-class InvalidImportExportUrlException(Exception):
-    def __init__(self, url):
-        """
-        :param urlparse.ParseResult url:
-        """
-        super().__init__("The URL '%s' is invalid." % url.geturl())
 
-
-class NoSuchJobException(Exception):
-    """Indicates that the specified job does not exist."""
-    def __init__(self, jobStoreID):
-        """
-        :param str jobStoreID: the jobStoreID that was mistakenly assumed to exist
-        """
-        super().__init__("The job '%s' does not exist." % jobStoreID)
-
-
-class ConcurrentFileModificationException(Exception):
-    """Indicates that the file was attempted to be modified by multiple processes at once."""
-    def __init__(self, jobStoreFileID):
-        """
-        :param str jobStoreFileID: the ID of the file that was modified by multiple workers
-               or processes concurrently
-        """
-        super().__init__('Concurrent update to file %s detected.' % jobStoreFileID)
-
-
-class NoSuchFileException(Exception):
-    """Indicates that the specified file does not exist."""
-    def __init__(self, jobStoreFileID, customName=None, *extra):
-        """
-        :param str jobStoreFileID: the ID of the file that was mistakenly assumed to exist
-        :param str customName: optionally, an alternate name for the nonexistent file
-        :param list extra: optional extra information to add to the error message
-        """
-        # Having the extra argument may help resolve the __init__() takes at
-        # most three arguments error reported in
-        # https://github.com/DataBiosphere/toil/issues/2589#issuecomment-481912211
-        if customName is None:
-            message = "File '%s' does not exist." % jobStoreFileID
-        else:
-            message = "File '%s' (%s) does not exist." % (customName, jobStoreFileID)
-
-        if extra:
-            # Append extra data.
-            message += " Extra info: " + " ".join((str(x) for x in extra))
-
-        super().__init__(message)
-
-
-class NoSuchJobStoreException(Exception):
-    """Indicates that the specified job store does not exist."""
-    def __init__(self, locator):
-        super().__init__("The job store '%s' does not exist, so there is nothing to restart." % locator)
-
-
-class JobStoreExistsException(Exception):
-    """Indicates that the specified job store already exists."""
-    def __init__(self, locator):
-        super().__init__(
-            "The job store '%s' already exists. Use --restart to resume the workflow, or remove "
-            "the job store with 'toil clean' to start the workflow from scratch." % locator)
 
 
 class AbstractJobStore(ABC):
