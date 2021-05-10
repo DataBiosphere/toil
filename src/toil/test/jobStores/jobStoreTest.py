@@ -43,7 +43,7 @@ from toil.job import JobDescription, TemporaryID
 from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobException
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.lib.memoize import memoize
-from toil.statsAndLogging import StatsAndLogging
+from toil.statsAndLogging import StatsAndLogging, suppress_exotic_logging
 from toil.test import (ToilTest,
                        make_tests,
                        needs_aws_s3,
@@ -65,6 +65,7 @@ else:
 
 
 logger = logging.getLogger(__name__)
+suppress_exotic_logging(logger)
 
 
 def tearDownModule():

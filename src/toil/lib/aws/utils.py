@@ -71,10 +71,13 @@ def delete_s3_bucket(bucket: str, region: Optional[str], quiet: bool = True):
     s3_resource = resource('s3', region_name=region)
 
     paginator = s3_client.get_paginator('list_object_versions')
-    for response in paginator.paginate(Bucket=bucket):
-        versions = response.get('Versions', []) + response.get('DeleteMarkers', [])
-        for version in versions:
-            printq(f"    Deleting {version['Key']} version {version['VersionId']}", quiet)
-            s3_client.delete_object(Bucket=bucket, Key=version['Key'], VersionId=version['VersionId'])
-    s3_resource.Bucket(bucket).delete()
+    try:
+        for response in paginator.paginate(Bucket=bucket):
+            versions = response.get('Versions', []) + response.get('DeleteMarkers', [])
+            for version in versions:
+                printq(f"    Deleting {version['Key']} version {version['VersionId']}", quiet)
+                s3_client.delete_object(Bucket=bucket, Key=version['Key'], VersionId=version['VersionId'])
+        s3_resource.Bucket(bucket).delete()
+    except s3_client.exceptions.NoSuchBucket:
+        pass
     printq(f'\n * Deleted s3 bucket successfully: {bucket}\n\n', quiet)

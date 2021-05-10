@@ -201,7 +201,8 @@ def list_s3_items(s3_resource, bucket, prefix):
     s3_client = s3_resource.meta.client
     paginator = s3_client.get_paginator('list_objects_v2')
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        yield page['Contents']
+        for key in page.get('Contents', []):
+            yield key
 
 
 @retry(errors=[ErrorCondition(error=ClientError, error_codes=[404, 500, 502, 503, 504])])
@@ -257,6 +258,8 @@ def download_stream(s3_resource, bucket: str, key: str, checksum_to_verify: Opti
 
     class DownloadPipe(ReadablePipe):
         def writeTo(self, writable):
+            with open('/home/quokka/git/toil/src/toil/jobStores/aws/log.txt', 'a+') as f:
+                f.write(f'{bucket.name} {key}')
             bucket.download_fileobj(Key=key, Fileobj=writable, ExtraArgs=extra_args)
 
     with DownloadPipe(encoding=encoding, errors=errors) as readable:

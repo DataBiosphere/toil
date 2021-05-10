@@ -65,11 +65,6 @@ from toil.lib.ec2nodes import EC2Regions
 from toil.lib.checksum import compute_checksum_for_file, ChecksumError
 from toil.lib.io import AtomicFileCreate
 
-# Sometimes we have to wait for multipart uploads to become real. How long
-# should we wait?
-CONSISTENCY_TICKS = 5
-CONSISTENCY_TIME = 1
-
 
 DEFAULT_AWS_PART_SIZE = 52428800
 logger = logging.getLogger(__name__)
@@ -143,7 +138,7 @@ class AWSJobStore(AbstractJobStore):
         # the content of input/output files named with etag hashes to deduplicate
         self.file_key_prefix = 'files/'
         # these are special files, like 'environment.pickle'; place them in root
-        self.shared_key_prefix = 'files/'
+        self.shared_key_prefix = ''
         # these represent input/output files, but are small json files pointing to the files with the real content in
         # self.file_key_prefix; also contains the file's metadata, like if it should executable; named with uuid4
         self.metadata_key_prefix = 'metadata/'
@@ -197,10 +192,13 @@ class AWSJobStore(AbstractJobStore):
 
     def unpickle_job(self, job_id: str):
         """Use a job_id to unpickle and return a job from the jobstore's s3 bucket."""
-        assert job_id.startswith(self.job_key_prefix), f'Key "{job_id}" must be prefixed with: {self.job_key_prefix}'
-        with self.readFileStream(job_id) as fh:
+        assert not job_id.startswith(self.job_key_prefix)  # remove when PR works; debugging only
+        with download_stream(self.s3_resource,
+                             bucket=self.bucket_name,
+                             key=f'{self.job_key_prefix}{job_id}',
+                             extra_args=self.encryption_args) as fh:
             job = pickle.loads(fh.read())
-        if job is not None:
+        if job is not None:  # is this possible?  TODO: TEST
             job.assignConfig(self.config)
         return job
 
@@ -237,11 +235,14 @@ class AWSJobStore(AbstractJobStore):
         return False
 
     def jobs(self):
-        for job_id in list_s3_items(bucket=self.bucket_name, prefix=self.job_key_prefix):
+        for result in list_s3_items(self.s3_resource, bucket=self.bucket_name, prefix=self.job_key_prefix):
+            key = result['Key']
+            assert key.startswith(self.job_key_prefix)  # remove when PR is working
+            job_id = key[len(self.job_key_prefix):]  # strip self.job_key_prefix
             yield self.unpickle_job(job_id)
 
     def load_job(self, job_id: str):
-        job = self.unpickle_job(f'{self.job_key_prefix}{job_id}')
+        job = self.unpickle_job(job_id)
         if job is None:
             raise NoSuchJobException(job_id)
         return job
@@ -254,16 +255,27 @@ class AWSJobStore(AbstractJobStore):
         self.s3_client.delete_object({'Bucket': self.bucket_name, 'Key': f'{self.job_key_prefix}{job_id}'})
 
     def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
-        """WWWHHHHYYYYYYY"""
         new_file_id = str(uuid.uuid4())
+        etag_for_empty_file = 'd41d8cd98f00b204e9800998ecf8427e'
+
+        # upload metadata reference; there may be multiple references pointing to the same etag path
         self.s3_client.upload_fileobj(Bucket=self.bucket_name,
-                                      Key=new_file_id,
-                                      Fileobj=BytesIO(b''),
+                                      Key=f'{self.metadata_key_prefix}{new_file_id}',
+                                      Fileobj=BytesIO(json.dumps(
+                                          {'etag': etag_for_empty_file,
+                                           'size': 0,
+                                           'executable': 0})),
                                       ExtraArgs=self.encryption_args)
+
+        if not s3_key_exists(bucket=self.bucket_name, key=f'{self.file_key_prefix}{etag_for_empty_file}'):
+            self.s3_client.upload_fileobj(Bucket=self.bucket_name,
+                                          Key=f'{self.file_key_prefix}{etag_for_empty_file}',
+                                          Fileobj=BytesIO(b''),
+                                          ExtraArgs=self.encryption_args)
 
         # use head_object with the SSE headers to fetch content_length
         response = self.s3_client.head_object(Bucket=self.bucket_name,
-                                              Key=new_file_id,
+                                              Key=f'{self.file_key_prefix}{etag_for_empty_file}',
                                               **self.encryption_args)
         assert 0 == response.get('ContentLength')
         return new_file_id
@@ -375,6 +387,8 @@ class AWSJobStore(AbstractJobStore):
 
     def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
         etag = compute_checksum_for_file(localFilePath, algorithm='etag')
+        assert etag.startswith('etag$')
+        etag = etag[len('etag$'):]
         file_attributes = os.stat(localFilePath)
         size = file_attributes.st_size
         executable = file_attributes.st_mode & stat.S_IXUSR != 0
@@ -526,9 +540,11 @@ class AWSJobStore(AbstractJobStore):
         """
         prefix = 'logs/' if readAll else 'logs/unread/'
         itemsProcessed = 0
-        for log in list_s3_items(bucket=self.bucket.name, prefix=prefix):
-            obj = self._getObjectForUrl(f's3://{self.bucket.name}/{log}')
-            with download_stream(s3_object=obj) as readable:
+        for result in list_s3_items(self.s3_resource, bucket=self.bucket_name, prefix=prefix):
+            with download_stream(self.s3_resource,
+                                 bucket=self.bucket_name,
+                                 key=result['Key'],
+                                 extra_args=self.encryption_args) as readable:
                 callback(readable)
             if not readAll:
                 # move unread logs to read; tag instead?

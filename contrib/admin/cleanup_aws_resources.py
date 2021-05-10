@@ -68,13 +68,13 @@ def contains_toil_test_patterns(string):
 
 
 def matches(resource_name):
-    # if resource_name.endswith('--toil'):
-    if resource_name.endswith('--files') or resource_name.endswith('--jobs') or resource_name.endswith('_toil'):
-        if contains_toil_test_patterns(resource_name):
+    if resource_name.endswith('--toil'):
+    # if resource_name.endswith('--files') or resource_name.endswith('--jobs') or resource_name.endswith('_toil'):
+    #     if contains_toil_test_patterns(resource_name):
             return resource_name
 
-    if resource_name.startswith('import-export-test-'):
-        return resource_name
+    # if resource_name.startswith('import-export-test-'):
+    #     return resource_name
 
 
 def find_buckets_to_cleanup(include_all, match):

@@ -276,7 +276,7 @@ def suppress_exotic_logging(local_logger):
     environment when this is run, and so we create the logger and set the level preemptively.
     """
     never_suppress = ['toil', '__init__', '__main__', 'toil-rt', 'cwltool']
-    always_suppress = ['boto3', 'boto', 'botocore']  # ensure we suppress even before instantiated
+    always_suppress = ['boto3', 'boto', 'botocore', 's3transfer']  # ensure we suppress even before instantiated
 
     top_level_loggers = list()
     for pkg_logger in list(logging.Logger.manager.loggerDict.keys()) + always_suppress:
