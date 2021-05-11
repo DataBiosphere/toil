@@ -29,12 +29,12 @@ from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import (add_all_batchsystem_options,
                                        set_batchsystem_config_defaults,
                                        set_batchsystem_options)
-from toil.lib.humanize import bytes2human, human2bytes
+from toil.lib.conversions import human2bytes, bytes2human
 from toil.lib.retry import retry
 from toil.provisioners import (add_provisioner_options,
                                check_valid_node_types,
                                cluster_factory)
-from toil.provisioners.aws import zone_to_region
+from toil.lib.aws import zone_to_region
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import (add_logging_options,
                                   root_logger,
@@ -520,12 +520,12 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
     disk_mem_note = 'Standard suffixes like K, Ki, M, Mi, G or Gi are supported'
     resource_options.add_argument('--defaultMemory', dest='defaultMemory', default=None, metavar='INT',
                                   help=resource_help_msg.format('default', 'memory', disk_mem_note,
-                                                                bytes2human(config.defaultMemory, symbols="iec")))
+                                                                bytes2human(config.defaultMemory)))
     resource_options.add_argument('--defaultCores', dest='defaultCores', default=None, metavar='FLOAT',
                                   help=resource_help_msg.format('default', 'cpu', cpu_note, str(config.defaultCores)))
     resource_options.add_argument('--defaultDisk', dest='defaultDisk', default=None, metavar='INT',
                                   help=resource_help_msg.format('default', 'disk', disk_mem_note,
-                                                                bytes2human(config.defaultDisk, symbols="iec")))
+                                                                bytes2human(config.defaultDisk)))
     resource_options.add_argument('--defaultPreemptable', dest='defaultPreemptable', metavar='BOOL',
                                   type='bool', nargs='?', const=True, default=False,
                                   help='Make all jobs able to run on preemptable (spot) nodes by default.')
@@ -533,10 +533,10 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
                                   help=resource_help_msg.format('max', 'cpu', cpu_note, str(config.maxCores)))
     resource_options.add_argument('--maxMemory', dest='maxMemory', default=None, metavar='INT',
                                   help=resource_help_msg.format('max', 'memory', disk_mem_note,
-                                                                bytes2human(config.maxMemory, symbols="iec")))
+                                                                bytes2human(config.maxMemory)))
     resource_options.add_argument('--maxDisk', dest='maxDisk', default=None, metavar='INT',
                                   help=resource_help_msg.format('max', 'disk', disk_mem_note,
-                                                                bytes2human(config.maxDisk, symbols="iec")))
+                                                                bytes2human(config.maxDisk)))
 
     # Retrying/rescuing jobs
     job_options = parser.add_argument_group(
@@ -1068,7 +1068,7 @@ class Toil:
         :return: Path to the Toil work directory, constant across all machines
         :rtype: str
         """
-        workDir = configWorkDir or os.getenv('TOIL_WORKDIR') or tempfile.gettempdir()
+        workDir = os.getenv('TOIL_WORKDIR_OVERRIDE') or configWorkDir or os.getenv('TOIL_WORKDIR') or tempfile.gettempdir()
         if not os.path.exists(workDir):
             raise RuntimeError(f'The directory specified by --workDir or TOIL_WORKDIR ({workDir}) does not exist.')
         return workDir

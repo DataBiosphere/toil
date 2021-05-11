@@ -71,6 +71,11 @@ s3_boto3_resource = boto3_session.resource('s3')
 s3_boto3_client = boto3_session.client('s3')
 logger = logging.getLogger(__name__)
 
+# Sometimes we have to wait for multipart uploads to become real. How long
+# should we wait?
+CONSISTENCY_TICKS = 5
+CONSISTENCY_TIME = 1
+
 
 class ChecksumError(Exception):
     """Raised when a download from AWS does not contain the correct data."""
@@ -245,15 +250,25 @@ class AWSJobStore(AbstractJobStore):
                         registry_domain.put_attributes(item_name=self.namePrefix,
                                                        attributes=attributes)
 
-    def _checkItem(self, item):
+    def _checkItem(self, item, enforce: bool = True):
+        """
+        Make sure that the given SimpleDB item actually has the attributes we think it should.
+        
+        Throw otherwise.
+        
+        If enforce is false, log but don't throw.
+        """
+        
         if "overlargeID" not in item:
-            raise RuntimeError("overlargeID attribute isn't present: you are restarting"
-                               " an old, incompatible jobstore, or the jobstore logic is"
-                               " incorrect.")
+            logger.error("overlargeID attribute isn't present: either SimpleDB entry is "
+                         "corrupt or jobstore is from an extremely old Toil: %s", item)
+            if enforce:
+                raise RuntimeError("encountered SimpleDB entry missing required attribute "
+                                   "'overlargeID'; is your job store ancient?")
 
     def _awsJobFromItem(self, item):
         self._checkItem(item)
-        if item["overlargeID"]:
+        if item.get("overlargeID", None):
             assert self.fileExists(item["overlargeID"])
             # This is an overlarge job, download the actual attributes
             # from the file store
@@ -360,8 +375,11 @@ class AWSJobStore(AbstractJobStore):
         for attempt in retry_sdb():
             with attempt:
                 item = self.jobsDomain.get_attributes(compat_bytes(jobStoreID), consistent_read=True)
-        self._checkItem(item)
-        if item["overlargeID"]:
+        # If the overlargeID has fallen off, maybe we partially deleted the
+        # attributes of the item? Or raced on it? Or hit SimpleDB being merely
+        # eventually consistent? We should still be able to get rid of it.
+        self._checkItem(item, enforce = False)
+        if item.get("overlargeID", None):
             logger.debug("Deleting job from filestore")
             self.deleteFile(item["overlargeID"])
         for attempt in retry_sdb():
@@ -728,7 +746,7 @@ class AWSJobStore(AbstractJobStore):
                             bucket = self.s3_resource.create_bucket(
                                 Bucket=bucket_name,
                                 CreateBucketConfiguration={'LocationConstraint': location})
-                            # Wait until the bucket exists before checking the region
+                            # Wait until the bucket exists before checking the region and adding tags
                             bucket.wait_until_exists()
 
                             # It is possible for create_bucket to return but
@@ -737,6 +755,11 @@ class AWSJobStore(AbstractJobStore):
                             # NoSuchBucket. We let that kick us back up to the
                             # main retry loop.
                             assert self.getBucketRegion(bucket_name) == self.region
+
+                            owner_tag = os.environ.get('TOIL_OWNER_TAG')
+                            if owner_tag:
+                                bucket_tagging = self.s3_resource.BucketTagging(bucket_name)
+                                bucket_tagging.put(Tagging={'TagSet': [{'Key': 'Owner', 'Value': owner_tag}]})
                         elif block:
                             raise
                         else:
@@ -1195,12 +1218,25 @@ class AWSJobStore(AbstractJobStore):
                                                                         **headerArgs)
                                 uploadId = upload['UploadId']
                                 parts = []
+                                logger.debug('Multipart upload started as %s', uploadId)
+
+                        for i in range(CONSISTENCY_TICKS):
+                            # Sometimes we can create a multipart upload and not see it. Wait around for it.
+                            response = client.list_multipart_uploads(Bucket=bucket_name,
+                                                                     MaxUploads=1,
+                                                                     Prefix=compat_bytes(info.fileID))
+                            if len(response['Uploads']) != 0 and response['Uploads'][0]['UploadId'] == uploadId:
+                                logger.debug('Multipart upload visible as %s', uploadId)
+                                break
+                            else:
+                                logger.debug('Multipart upload %s is not visible; we see %s', uploadId, response['Uploads'])
+                                time.sleep(CONSISTENCY_TIME * 2 ** i)
 
                         try:
                             for part_num in itertools.count():
                                 for attempt in retry_s3():
                                     with attempt:
-                                        logger.debug('Uploading part %d of %d bytes', part_num + 1, len(buf))
+                                        logger.debug('Uploading part %d of %d bytes to %s', part_num + 1, len(buf), uploadId)
                                         # TODO: include the Content-MD5 header:
                                         #  https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.complete_multipart_upload
                                         part = client.upload_part(Bucket=bucket_name,

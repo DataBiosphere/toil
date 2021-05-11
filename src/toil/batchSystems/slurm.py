@@ -17,11 +17,11 @@ import os
 from pipes import quote
 from typing import List
 
-from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)
+
 
 class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
@@ -230,26 +230,3 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 # Add a 20% ceiling on the wait duration relative to the scheduler update duration
                 time_value_list.append(math.ceil(time_value*1.2))
         return max(time_value_list)
-
-    @classmethod
-    def obtainSystemConstants(cls):
-        # sinfo -Ne --format '%m,%c'
-        # sinfo arguments:
-        # -N for node-oriented
-        # -h for no header
-        # -e for exact values (e.g. don't return 32+)
-        # --format to get memory, cpu
-        max_cpu = 0
-        max_mem = MemoryString('0')
-        lines = call_command(['sinfo', '-Nhe', '--format', '%m %c']).split('\n')
-        for line in lines:
-            logger.debug("sinfo output %s", line)
-            values = line.split()
-            if len(values) < 2:
-                continue
-            mem, cpu = values
-            max_cpu = max(max_cpu, int(cpu))
-            max_mem = max(max_mem, MemoryString(mem + 'M'))
-        if max_cpu == 0 or max_mem.byteVal() == 0:
-            raise RuntimeError('sinfo did not return memory or cpu info')
-        return max_cpu, max_mem

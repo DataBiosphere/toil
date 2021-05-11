@@ -491,12 +491,12 @@ class hidden:
                 B = Job.wrapJobFn(self._sleepy, timeToSleep=1)
                 C = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True,
                                   fileMB=file2MB)
-                D = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=50, disk='0M')
-                E = Job.wrapJobFn(self._uselessFunc, disk=''.join([str(diskRequestMB), 'M']))
+                D = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=50, disk='0Mi')
+                E = Job.wrapJobFn(self._uselessFunc, disk=''.join([str(diskRequestMB), 'Mi']))
                 # Set it to > 2GB such that the cleanup jobs don't die in the non-fail cases
-                F = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=5000, disk='10M')
+                F = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=5000, disk='10Mi')
                 G = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, cached=expectedResult,
-                                  disk='100M')
+                                  disk='100Mi')
                 A.addChild(B)
                 B.addChild(C)
                 C.addChild(D)
@@ -822,12 +822,12 @@ class hidden:
             A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=cacheHit,
                               nonLocalDir=workdir,
                               fileMB=256)
-            B = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, disk='100M')
+            B = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, disk='100Mi')
             jobs = {}
             for i in range(0, 10):
                 jobs[i] = Job.wrapJobFn(self._multipleFileReader, diskMB=1024, fsID=A.rv(),
-                                        maxWriteFile=os.path.abspath(x.name), disk='1G',
-                                        memory='10M', cores=1)
+                                        maxWriteFile=os.path.abspath(x.name), disk='1Gi',
+                                        memory='10Mi', cores=1)
                 A.addChild(jobs[i])
                 jobs[i].addChild(B)
             Job.Runner.startToil(A, self.options)
@@ -918,7 +918,7 @@ class hidden:
                               jobDisk=2 * 1024 * 1024 * 1024,
                               initialCachedSize=0,
                               nonLocalDir=workdir,
-                              disk='2G')
+                              disk='2Gi')
             Job.Runner.startToil(F, self.options)
 
         @slow
@@ -936,7 +936,7 @@ class hidden:
                               jobDisk=2 * 1024 * 1024 * 1024,
                               initialCachedSize=0,
                               nonLocalDir=workdir,
-                              numIters=30, disk='2G')
+                              numIters=30, disk='2Gi')
             Job.Runner.startToil(F, self.options)
 
         @staticmethod
@@ -1103,7 +1103,7 @@ class hidden:
             F = Job.wrapJobFn(self._controlledFailTestFn, jobDisk=jobDiskBytes,
                               testDir=workdir,
                               disk=jobDiskBytes)
-            G = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, disk='100M')
+            G = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, disk='100Mi')
             F.addChild(G)
             Job.Runner.startToil(F, self.options)
 

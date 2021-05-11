@@ -62,7 +62,7 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
         args_passed_directly_to_toil = [f'--disableCaching={not caching}',
                                         '--clean=always',
                                         '--logDebug']
-        
+
         if 'SINGULARITY_DOCKER_HUB_MIRROR' in os.environ:
             args_passed_directly_to_toil.append('--setEnv=SINGULARITY_DOCKER_HUB_MIRROR')
 
@@ -495,19 +495,18 @@ class CWLv12Test(ToilTest):
     def test_run_conformance_with_caching(self):
         self.test_run_conformance(caching=True)
 
-    @slow
-    @needs_kubernetes
-    @pytest.mark.xfail
-    def test_kubernetes_cwl_conformance(self, **kwargs):
+    def run_kubernetes_cwl_conformance(self, **kwargs):
+        """
+        Run the CWL conformance tests on Kubernetes, passing along keyword
+        arguments.
+        """
         return self.test_run_conformance(batchSystem="kubernetes",
                                          **kwargs)
-
-
     @slow
     @needs_kubernetes
-    @pytest.mark.xfail
-    def test_kubernetes_cwl_conformance_with_caching(self):
-        return self.test_kubernetes_cwl_conformance(caching=True)
+    def test_kubernetes_cwl_20(self):
+        for caching in [True, False]:
+            self.run_kubernetes_cwl_conformance(selected_tests="20", caching=caching)
 
 @needs_cwl
 class CWLSmallTests(ToilTest):
