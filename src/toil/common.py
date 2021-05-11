@@ -207,7 +207,7 @@ class Config:
         set_option("batchSystem")
         set_batchsystem_options(self.batchSystem, set_option)
         set_option("disableAutoDeployment")
-        setOption("coalesceStatusCalls")
+        set_option("coalesceStatusCalls")
         set_option("scale", float, fC(0.0))
         set_option("parasolCommand")
         set_option("parasolMaxBatches", int, iC(1))
