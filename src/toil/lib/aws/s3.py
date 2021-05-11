@@ -31,7 +31,7 @@ from toil.lib.pipes import WritablePipe
 from toil.lib.compatibility import compat_bytes
 from toil.lib.pipes import ReadablePipe, HashingPipe
 from toil.lib.retry import retry, ErrorCondition
-from toil.jobStores.exceptions import NoSuchFileException
+# from toil.jobStores.exceptions import NoSuchFileException
 
 Bucket = resource('s3').Bucket  # only declared for mypy typing
 logger = logging.getLogger(__name__)
@@ -267,7 +267,7 @@ def download_stream(s3_resource, bucket: str, key: str, checksum_to_verify: Opti
                 bucket.download_fileobj(Key=key, Fileobj=writable, ExtraArgs=extra_args)
             except ClientError as e:
                 if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
-                    raise NoSuchFileException(f'{key} does not exist.')
+                    raise RuntimeError(f'{key} does not exist.')
                 else:
                     raise
 

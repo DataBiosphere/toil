@@ -2763,7 +2763,7 @@ class ServiceHostJob(Job):
             logger.debug("Removing the start jobStoreID to indicate that establishment of the service")
             assert self.description.startJobStoreID != None
             if fileStore.jobStore.fileExists(self.description.startJobStoreID):
-                fileStore.jobStore.deleteFile(self.description.startJobStoreID)
+                fileStore.jobStore.delete_file(self.description.startJobStoreID)
             assert not fileStore.jobStore.fileExists(self.description.startJobStoreID)
 
             #Now block until we are told to stop, which is indicated by the removal

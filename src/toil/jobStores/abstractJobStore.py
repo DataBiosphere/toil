@@ -522,7 +522,7 @@ class AbstractJobStore(ABC):
             for fileID in jobDescription.filesToDelete:
                 # Delete any files that should already be deleted
                 logger.warning(f"Deleting file '{fileID}'. It is marked for deletion but has not yet been removed.")
-                self.deleteFile(fileID)
+                self.delete_file(fileID)
             # Delete the job from us and the cache
             deleteJob(jobDescription.jobStoreID)
 
@@ -559,7 +559,7 @@ class AbstractJobStore(ABC):
                 for fileID in jobDescription.filesToDelete:
                     logger.critical("Removing file in job store: %s that was "
                                     "marked for deletion but not previously removed" % fileID)
-                    self.deleteFile(fileID)
+                    self.delete_file(fileID)
                 jobDescription.filesToDelete = []
                 changed[0] = True
 
@@ -638,7 +638,7 @@ class AbstractJobStore(ABC):
             # This cleans the old log file which may
             # have been left if the job is being retried after a failure.
             if jobDescription.logJobStoreFileID != None:
-                self.deleteFile(jobDescription.logJobStoreFileID)
+                self.delete_file(jobDescription.logJobStoreFileID)
                 jobDescription.logJobStoreFileID = None
                 changed[0] = True
 
@@ -940,7 +940,7 @@ class AbstractJobStore(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def deleteFile(self, jobStoreFileID):
+    def delete_file(self, jobStoreFileID):
         """
         Deletes the file with the given ID from this job store. This operation is idempotent, i.e.
         deleting a file twice or deleting a non-existent file will succeed silently.

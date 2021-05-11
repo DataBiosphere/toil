@@ -147,8 +147,8 @@ class ServiceManager( object ):
         for serviceJobStoreID in services:
             serviceJob = services[serviceJobStoreID]
             if error:
-                self.jobStore.deleteFile(serviceJob.errorJobStoreID)
-            self.jobStore.deleteFile(serviceJob.terminateJobStoreID)
+                self.jobStore.delete_file(serviceJob.errorJobStoreID)
+            self.jobStore.delete_file(serviceJob.terminateJobStoreID)
 
     def isActive(self, service):
         """

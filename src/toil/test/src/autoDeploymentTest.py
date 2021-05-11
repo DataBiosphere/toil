@@ -271,7 +271,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
                 # noinspection PyUnusedLocal
                 def deferring(job, startFile, endFile):
                     job.defer(deferred)
-                    job.fileStore.jobStore.deleteFile(startFile)
+                    job.fileStore.jobStore.delete_file(startFile)
                     timeout = time.time() + 10
                     while job.fileStore.jobStore.fileExists(endFile):
                         assert time.time() < timeout
@@ -284,7 +284,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
                         time.sleep(1)
 
                 def last(job, endFile):
-                    job.fileStore.jobStore.deleteFile(endFile)
+                    job.fileStore.jobStore.delete_file(endFile)
 
                 if __name__ == '__main__':
                     options = Job.Runner.getDefaultArgumentParser().parse_args()
@@ -396,7 +396,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
                     """
                     job.defer(deferred, deferredFile(job._config))
                     jobStore = job.fileStore.jobStore
-                    jobStore.deleteFile(startFile)
+                    jobStore.delete_file(startFile)
                     with jobStore.updateFileStream(endFile) as fH:
                         fH.write(str(os.getpid()))
                     timeout = time.time() + TIMEOUT
@@ -426,7 +426,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
                     with jobStore.readFileStream(endFile) as fH:
                         pid = int(fH.read())
                     os.kill(pid, 0)
-                    jobStore.deleteFile(endFile)
+                    jobStore.delete_file(endFile)
                     timeout = time.time() + TIMEOUT
                     while True:
                         try:

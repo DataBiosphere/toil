@@ -320,7 +320,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         if oldLogFile != None:
             jobDesc.logJobStoreFileID = None
             jobStore.update_job(jobDesc) #Update first, before deleting any files
-            jobStore.deleteFile(oldLogFile)
+            jobStore.delete_file(oldLogFile)
 
         ##########################################
         # If a checkpoint exists, restart from the checkpoint
@@ -343,7 +343,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             else:
                 logger.debug("The checkpoint jobs seems to have completed okay, removing any checkpoint files to delete.")
                 #Delete any remnant files
-                list(map(jobStore.deleteFile, list(filter(jobStore.fileExists, jobDesc.checkpointFilesToDelete))))
+                list(map(jobStore.delete_file, list(filter(jobStore.fileExists, jobDesc.checkpointFilesToDelete))))
 
         ##########################################
         #Setup the stats, if requested

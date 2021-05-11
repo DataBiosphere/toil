@@ -576,7 +576,7 @@ class CachingFileStore(AbstractFileStore):
             # Clean up
             os.unlink(cachedFile)
             os.rmdir(destDir)
-            self.jobStore.deleteFile(emptyID)
+            self.jobStore.delete_file(emptyID)
         else:
             # Caching is only ever free with the file job store
             free = 0
@@ -1757,7 +1757,7 @@ class CachingFileStore(AbstractFileStore):
                 # Delete any remnant jobs
                 list(map(self.jobStore.delete_job, self.jobsToDelete))
                 # Delete any remnant files
-                list(map(self.jobStore.deleteFile, self.filesToDelete))
+                list(map(self.jobStore.delete_file, self.filesToDelete))
                 # Remove the files to delete list, having successfully removed the files
                 if len(self.filesToDelete) > 0:
                     self.jobDesc.filesToDelete = []

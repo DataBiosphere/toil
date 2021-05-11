@@ -504,7 +504,7 @@ class FileJobStore(AbstractJobStore):
         # Make a complete copy.
         atomic_copy(jobStoreFilePath, localFilePath, executable=executable)
 
-    def deleteFile(self, jobStoreFileID):
+    def delete_file(self, jobStoreFileID):
         if not self.fileExists(jobStoreFileID):
             return
         os.remove(self._getFilePathFromId(jobStoreFileID))

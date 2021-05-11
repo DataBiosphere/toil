@@ -280,7 +280,7 @@ class GoogleJobStore(AbstractJobStore):
                             errors=errors) as readable:
             yield readable
 
-    def deleteFile(self, jobStoreFileID):
+    def delete_file(self, jobStoreFileID):
         self._delete(jobStoreFileID)
 
     @googleRetry

@@ -144,7 +144,7 @@ class NonCachingFileStore(AbstractFileStore):
             # Delete any remnant jobs
             list(map(self.jobStore.delete_job, self.jobsToDelete))
             # Delete any remnant files
-            list(map(self.jobStore.deleteFile, self.filesToDelete))
+            list(map(self.jobStore.delete_file, self.filesToDelete))
             # Remove the files to delete list, having successfully removed the files
             if len(self.filesToDelete) > 0:
                 self.jobDesc.filesToDelete = []

@@ -1121,7 +1121,7 @@ class Leader(object):
             # lets it continue, now that we have issued kill orders for them,
             # to start dependent services, which all need to actually fail
             # before we can finish up with the services' predecessor job.
-            self.jobStore.deleteFile(jobDesc.startJobStoreID)
+            self.jobStore.delete_file(jobDesc.startJobStoreID)
         else:
             # Is a non-service job
             assert jobDesc.jobStoreID not in self.toilState.servicesIssued
