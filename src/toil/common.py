@@ -32,6 +32,7 @@ from toil.batchSystems.options import (add_all_batchsystem_options,
 from toil.lib.conversions import human2bytes, bytes2human
 from toil.lib.retry import retry
 from toil.provisioners import (add_provisioner_options,
+                               parse_node_types,
                                check_valid_node_types,
                                cluster_factory)
 from toil.lib.aws.util import zone_to_region
@@ -77,7 +78,6 @@ class Config:
         # Autoscaling options
         self.provisioner = None
         self.nodeTypes = []
-        check_valid_node_types(self.provisioner, self.nodeTypes)
         self.minNodes = None
         self.maxNodes = [10]
         self.targetTime = defaultTargetTime
@@ -219,7 +219,7 @@ class Config:
 
         # Autoscaling options
         set_option("provisioner")
-        set_option("nodeTypes", parse_str_list)
+        set_option("nodeTypes", parse_node_types)
         set_option("minNodes", parse_int_list)
         set_option("maxNodes", parse_int_list)
         set_option("targetTime", int)
@@ -239,11 +239,11 @@ class Config:
             for override in overrides:
                 tokens = override.split(":")
                 assert len(tokens) == 2, \
-                    'Each component of --nodeStorageOverrides must have nodeType:nodeStorage'
-                assert any(tokens[0] in n for n in self.nodeTypes), \
-                    'nodeType of --nodeStorageOverrides must be among --nodeTypes'
+                    'Each component of --nodeStorageOverrides must be of the form <instance type>:<storage in GiB>'
+                assert any(tokens[0] in n[0] for n in self.nodeTypes), \
+                    'instance type in --nodeStorageOverrides must be used in --nodeTypes'
                 assert tokens[1].isdigit(), \
-                    'nodeStorage must be an integer in --nodeStorageOverrides'
+                    'storage must be an integer in --nodeStorageOverrides'
         set_option("nodeStorageOverrides", parse_str_list, check_function=check_nodestoreage_overrides)
 
         # Parameters to limit service jobs / detect deadlocks
@@ -424,17 +424,21 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
                                           f"machine and non-auto-scaling batch systems.  The currently supported "
                                           f"choices are {provisioner_choices}.  The default is {config.provisioner}.")
     autoscaling_options.add_argument('--nodeTypes', default=None,
-                                     help="List of worker node types separated by commas. The syntax for each node "
-                                          "type depends on the provisioner used.  For the AWS provisioner this is the "
-                                          "name of an EC2 instance type, optionally followed by a colon and the price "
-                                          "in dollars to bid for a spot instance of that type.  For example: "
-                                          "'c3.8xlarge:0.42'.  If no spot bid is specified, nodes of this type will "
-                                          "be non-preemptable (non-discounted and not subject to potential early "
-                                          "termination based on the availability of discounted instances).  It is "
-                                          "acceptable to specify an instance as both preemptable and non-preemptable, "
-                                          "including it twice in the list. In that case, preemptable nodes of that "
-                                          "type will be preferred when creating new nodes once the maximum number of "
-                                          "preemptable-nodes has been reached.")
+                                     help="Specifies a list of comma-separated node types, each of which is "
+                                          "composed of slash-separated instance types, and an optional spot "
+                                          "bid set off by a colon, making the node type preemptable. Instance "
+                                          "types may appear in multiple node types, and the same node type "
+                                          "may appear as both preemptable and non-preemptable.\n"
+                                          "Valid argument specifying two node types:\n"
+                                          "\tc5.4xlarge/c5a.4xlarge:0.42,t2.large\n"
+                                          "Node types:\n"
+                                          "\tc5.4xlarge/c5a.4xlarge:0.42 and t2.large\n"
+                                          "Instance types:\n"
+                                          "\tc5.4xlarge, c5a.4xlarge, and t2.large\n"
+                                          "Semantics:\n"
+                                          "\tBid $0.42/hour for either c5.4xlarge or c5a.4xlarge instances,\n"
+                                          "\ttreated interchangeably, while they are available at that price,\n"
+                                          "\tand buy t2.large instances at full price")
     autoscaling_options.add_argument('--minNodes', default=None,
                                      help="Mininum number of nodes of each type in the cluster, if using "
                                           "auto-scaling.  This should be provided as a comma-separated list of the "

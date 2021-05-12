@@ -34,6 +34,7 @@ from toil.job import CheckpointJobDescription, ServiceJobDescription
 from toil.jobStores.abstractJobStore import NoSuchJobException
 from toil.lib.conversions import bytes2human
 from toil.lib.throttle import LocalThrottle
+from toil.provisioners.abstractProvisioner import AbstractProvisioner
 from toil.provisioners.clusterScaler import ScalerThread
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
@@ -97,7 +98,7 @@ class FailedJobsException(Exception):
 class Leader(object):
     """ Class that encapsulates the logic of the leader.
     """
-    def __init__(self, config, batchSystem, provisioner, jobStore, rootJob, jobCache=None):
+    def __init__(self, config, batchSystem, provisioner: AbstractProvisioner, jobStore, rootJob, jobCache=None):
         """
         :param toil.common.Config config:
         :param toil.batchSystems.abstractBatchSystem.AbstractBatchSystem batchSystem:
@@ -153,7 +154,7 @@ class Leader(object):
 
         # Create cluster scaling thread if the provisioner is not None
         self.clusterScaler = None
-        if self.provisioner is not None and len(self.provisioner.nodeTypes) > 0:
+        if self.provisioner is not None and self.provisioner.hasAutoscaledNodeTypes():
             self.clusterScaler = ScalerThread(self.provisioner, self, self.config)
 
         # A service manager thread to start and terminate services
