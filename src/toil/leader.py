@@ -258,8 +258,6 @@ class Leader(object):
 
             if len(self.toilState.totalFailedJobs):
                 logger.info("Failed jobs at end of the run: %s", ' '.join(str(job) for job in self.toilState.totalFailedJobs))
-            # Cleanup
-            if len(self.toilState.totalFailedJobs) > 0:
                 raise FailedJobsException(self.config.jobStore, self.toilState.totalFailedJobs, self.jobStore)
 
             return self.jobStore.getRootJobReturnValue()
