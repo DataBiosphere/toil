@@ -6,9 +6,10 @@ import textwrap
 import pkg_resources
 
 from toil.version import version
+from typing import Any, Dict
 
 
-def main():
+def main() -> None:
     modules = loadModules()
 
     if len(sys.argv) < 2 or sys.argv[1] == '--help':
@@ -29,7 +30,7 @@ def main():
     del sys.argv[1]
     module.main()
 
-def loadModules():
+def loadModules() -> Dict[str, Any]:
     # noinspection PyUnresolvedReferences
     from toil.utils import (toilClean,
                             toilDebugFile,
@@ -44,7 +45,7 @@ def loadModules():
     return {"-".join([i.lower() for i in re.findall('[A-Z][^A-Z]*', name)]): module for name, module in locals().items()}
 
 
-def printHelp(modules):
+def printHelp(modules: Dict[str, Any]) -> None:
     name = os.path.basename(sys.argv[0])
     descriptions = '\n        '.join(f'{cmd} - {mod.__doc__.strip()}' for cmd, mod in modules.items() if mod)
     print(textwrap.dedent(f"""
@@ -58,7 +59,7 @@ def printHelp(modules):
         """[1:]))
 
 
-def printVersion():
+def printVersion() -> None:
     try:
         print(pkg_resources.get_distribution('toil').version)
     except:
