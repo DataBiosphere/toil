@@ -366,14 +366,14 @@ class GoogleJobStore(AbstractJobStore):
         blob = cls._getBlobFromURL(url)
         blob.upload_from_file(readable)
 
-    def writeStatsAndLogging(self, statsAndLoggingString: bytes) -> None:
+    def write_logs(self, statsAndLoggingString: bytes) -> None:
         statsID = self.statsBaseID + str(uuid.uuid4())
         log.debug("Writing stats file: %s", statsID)
         with self._uploadStream(statsID, encrypt=False, update=False) as f:
             f.write(statsAndLoggingString)
 
     @googleRetry
-    def readStatsAndLogging(self, callback, readAll=False):
+    def read_logs(self, callback, readAll=False):
         prefix = self.readStatsBaseID if readAll else self.statsBaseID
         filesRead = 0
         lastTry = False

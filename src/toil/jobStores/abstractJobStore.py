@@ -654,7 +654,7 @@ class AbstractJobStore(ABC):
             """Read the stream 4K at a time until EOF, discarding all input."""
             while len(stream.read(4096)) != 0:
                 pass
-        self.readStatsAndLogging(discardStream)
+        self.read_logs(discardStream)
 
         logger.debug("Job store is clean")
         # TODO: reloading of the rootJob may be redundant here
@@ -1065,7 +1065,7 @@ class AbstractJobStore(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def writeStatsAndLogging(self, statsAndLoggingString):
+    def write_logs(self, statsAndLoggingString):
         """
         Adds the given statistics/logging string to the store of statistics info.
 
@@ -1077,7 +1077,7 @@ class AbstractJobStore(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def readStatsAndLogging(self, callback, readAll=False):
+    def read_logs(self, callback, readAll=False):
         """
         Reads stats/logging strings accumulated by the writeStatsAndLogging() method. For each
         stats/logging string this method calls the given callback function with an open,

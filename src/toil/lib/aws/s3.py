@@ -14,6 +14,7 @@
 import logging
 import hashlib
 import itertools
+import urllib.parse
 import os
 from io import BytesIO
 from typing import Optional, Tuple, Union
@@ -36,6 +37,9 @@ from toil.lib.retry import retry, ErrorCondition
 Bucket = resource('s3').Bucket  # only declared for mypy typing
 logger = logging.getLogger(__name__)
 
+
+class NoSuchFileException(Exception):
+    pass
 
 class AWSKeyNotFoundError(Exception):
     pass
@@ -127,6 +131,7 @@ def bucket_versioning_enabled(s3_resource, bucket: str):
 
 class MultiPartPipe(WritablePipe):
     def __init__(self, part_size, s3_client, bucket_name, file_id, encryption_args, encoding, errors):
+        super(MultiPartPipe, self).__init__()
         self.encoding = encoding
         self.errors = errors
         self.part_size = part_size
@@ -134,7 +139,6 @@ class MultiPartPipe(WritablePipe):
         self.bucket_name = bucket_name
         self.file_id = file_id
         self.encryption_args = encryption_args
-        super(MultiPartPipe, self).__init__()
 
     def readFrom(self, readable):
         # Get the first block of data we want to put
@@ -157,7 +161,7 @@ class MultiPartPipe(WritablePipe):
                 # TODO: include the Content-MD5 header:
                 #  https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.complete_multipart_upload
                 part = self.s3_client.upload_part(Bucket=self.bucket_name,
-                                                  Key=compat_bytes(self.file_id),
+                                                  Key=self.file_id,
                                                   PartNumber=part_num + 1,
                                                   UploadId=upload_id,
                                                   Body=BytesIO(buf),
@@ -185,9 +189,14 @@ class MultiPartPipe(WritablePipe):
 
 
 def parse_s3_uri(uri: str) -> Tuple[str, str]:
-    if not uri.startswith('s3://'):
+    # does not support s3/gs: https://docs.python.org/3/library/urllib.parse.html
+    # use regex instead?
+    if isinstance(uri, str):
+        uri = urllib.parse.urlparse(uri)
+    if uri.scheme.lower() != 's3':
         raise ValueError(f'Invalid schema.  Expecting s3 prefix, not: {uri}')
-    bucket_name, key_name = uri[len('s3://'):].split('/', 1)
+    # bucket_name, key_name = uri[len('s3://'):].split('/', 1)
+    bucket_name, key_name = uri.netloc.strip('/'), uri.path.strip('/')
     return bucket_name, key_name
 
 
@@ -263,13 +272,7 @@ def download_stream(s3_resource, bucket: str, key: str, checksum_to_verify: Opti
 
     class DownloadPipe(ReadablePipe):
         def writeTo(self, writable):
-            try:
-                bucket.download_fileobj(Key=key, Fileobj=writable, ExtraArgs=extra_args)
-            except ClientError as e:
-                if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
-                    raise RuntimeError(f'{key} does not exist.')
-                else:
-                    raise
+            bucket.download_fileobj(Key=key, Fileobj=writable, ExtraArgs=extra_args)
 
     with DownloadPipe(encoding=encoding, errors=errors) as readable:
         yield readable
@@ -411,9 +414,13 @@ def s3_key_exists(s3_resource, bucket: str, key: str, check: bool = False):
     return False
 
 
-def head_s3_object(s3_resource, bucket: str, key: str):
+def head_s3_object(s3_resource, bucket: str, key: str, check=False):
     s3_client = s3_resource.meta.client
-    return s3_client.head_object(Bucket=bucket, Key=key)
+    try:
+        return s3_client.head_object(Bucket=bucket, Key=key)
+    except s3_client.exceptions.NoSuchKey:
+        if check:
+            raise NoSuchFileException(f"File '{key}' not found in AWS jobstore bucket: '{bucket}'")
 
 
 def get_s3_object(s3_resource, bucket: str, key: str, extra_args: dict = None):
@@ -421,6 +428,13 @@ def get_s3_object(s3_resource, bucket: str, key: str, extra_args: dict = None):
         extra_args = dict()
     s3_client = s3_resource.meta.client
     return s3_client.get_object(Bucket=bucket, Key=key, **extra_args)
+
+
+def put_s3_object(s3_resource, bucket: str, key: str, body: Optional[bytes], extra_args: dict = None):
+    if extra_args is None:
+        extra_args = dict()
+    s3_client = s3_resource.meta.client
+    return s3_client.put_object(Bucket=bucket, Key=key, Body=body, **extra_args)
 
 
 def generate_presigned_url(s3_resource, bucket: str, key_name: str, expiration: int) -> Tuple[str, str]:
@@ -432,8 +446,8 @@ def generate_presigned_url(s3_resource, bucket: str, key_name: str, expiration: 
 
 
 def create_public_url(s3_resource, bucket: str, key: str):
-    bucket = Bucket(bucket)
-    bucket.Object(key).Acl().put(ACL='public-read')  # TODO: do we need to generate a presigned url after doing this?
+    bucket_obj = Bucket(bucket)
+    bucket_obj.Object(key).Acl().put(ACL='public-read')  # TODO: do we need to generate a presigned url after doing this?
     url = generate_presigned_url(s3_resource=s3_resource,
                                  bucket=bucket,
                                  key_name=key,

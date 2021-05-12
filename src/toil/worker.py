@@ -582,7 +582,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         statsDict.logs.messages = logMessages
 
     if (debugging or config.stats or statsDict.workers.logsToMaster) and not jobAttemptFailed:  # We have stats/logging to report back
-        jobStore.writeStatsAndLogging(json.dumps(statsDict, ensure_ascii=True).encode())
+        jobStore.write_logs(json.dumps(statsDict, ensure_ascii=True).encode())
 
     #Remove the temp dir
     cleanUp = config.cleanWorkDir

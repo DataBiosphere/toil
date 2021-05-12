@@ -586,7 +586,7 @@ class FileJobStore(AbstractJobStore):
             else:
                 raise
 
-    def writeStatsAndLogging(self, statsAndLoggingString):
+    def write_logs(self, statsAndLoggingString):
         # Temporary files are placed in the stats directory tree
         tempStatsFileName = "stats" + str(uuid.uuid4().hex) + ".new"
         tempStatsFile = os.path.join(self._getArbitraryStatsDir(), tempStatsFileName)
@@ -595,7 +595,7 @@ class FileJobStore(AbstractJobStore):
             f.write(statsAndLoggingString)
         os.rename(tempStatsFile, tempStatsFile[:-4])  # This operation is atomic
 
-    def readStatsAndLogging(self, callback, readAll=False):
+    def read_logs(self, callback, readAll=False):
         numberOfFilesProcessed = 0
         for tempDir in self._statsDirectories():
             for tempFile in os.listdir(tempDir):

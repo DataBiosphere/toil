@@ -170,15 +170,15 @@ class StatsAndLogging:
         while True:
             # This is a indirect way of getting a message to the thread to exit
             if stop.is_set():
-                jobStore.readStatsAndLogging(callback)
+                jobStore.read_logs(callback)
                 break
-            if jobStore.readStatsAndLogging(callback) == 0:
+            if jobStore.read_logs(callback) == 0:
                 time.sleep(0.5)  # Avoid cycling too fast
 
         # Finish the stats file
         text = json.dumps(dict(total_time=str(time.time() - startTime),
                                total_clock=str(get_total_cpu_time() - startClock)), ensure_ascii=True)
-        jobStore.writeStatsAndLogging(bytes(text, 'utf-8'))
+        jobStore.write_logs(bytes(text, 'utf-8'))
 
     def check(self):
         """
