@@ -523,19 +523,25 @@ class AWSJobStore(AbstractJobStore):
             content_type = response['ContentType']  # e.g. "binary/octet-stream"
             etag = response['ETag'].strip('\"')  # e.g. "\"586af4cbd7416e6aefd35ccef9cbd7c8\""
 
-            file_id = sharedFileName or str(uuid.uuid4())
+            if sharedFileName:
+                prefix = self.shared_key_prefix
+                file_id = sharedFileName
+            else:
+                prefix = self.content_key_prefix
+                file_id = str(uuid.uuid4())
 
             # upload actual file content if it does not exist already
             # etags are unique hashes, so this may exist if another process uploaded the exact same file
             copy_s3_to_s3(s3_resource=self.s3_resource,
                           src_bucket=src_bucket_name, src_key=src_key_name,
-                          dst_bucket=self.bucket_name, dst_key=f'{self.content_key_prefix}{file_id}')
+                          dst_bucket=self.bucket_name, dst_key=f'{prefix}{file_id}')
             # verify etag after copying here
 
-            # cannot determine exec bit from foreign s3 so default to False
-            metadata = {'etag': etag, 'executable': 0}
-            self.write_to_bucket(identifier=file_id, prefix=self.metadata_key_prefix, data=metadata)
-            return FileID(file_id, content_length) if sharedFileName is None else None
+            if not sharedFileName:
+                # cannot determine exec bit from foreign s3 so default to False
+                metadata = {'etag': etag, 'executable': 0}
+                self.write_to_bucket(identifier=file_id, prefix=self.metadata_key_prefix, data=metadata)
+                return FileID(file_id, content_length)
         else:
             return super(AWSJobStore, self)._importFile(otherCls, url, sharedFileName=sharedFileName)
 
