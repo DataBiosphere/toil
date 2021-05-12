@@ -432,7 +432,7 @@ def create_launch_template(ec2_client: BaseClient,
 @retry(intervals=[5, 5, 10, 20, 20, 20, 20], errors=INCONSISTENCY_ERRORS)
 def create_auto_scaling_group(autoscaling_client: BaseClient,
                               asg_name: str,
-                              launch_template_id: str,
+                              launch_template_ids: Dict[str, str],
                               vpc_subnets: List[str],
                               min_size: int,
                               max_size: int,
@@ -447,7 +447,8 @@ def create_auto_scaling_group(autoscaling_client: BaseClient,
 
     :param autoscaling_client: Boto3 client for autoscaling.
     :param asg_name: Unique name for the autoscaling group.
-    :param launch_template_id: ID of the launch template to make instances from.
+    :param launch_template_ids: ID of the launch template to make instances
+           from, for each instance type.
     :param vpc_subnets: One or more subnet IDs to place instances in the group
            into. Determine the availability zone(s) instances will launch into.
     :param min_size: Minimum number of instances to have in the group at all
@@ -479,10 +480,22 @@ def create_auto_scaling_group(autoscaling_client: BaseClient,
 
     if len(vpc_subnets) == 0:
         raise RuntimeError("No VPC subnets specified to launch into; not clear where to put instances")
+        
+    def get_launch_template_spec(instance_type):
+        """
+        Get a LaunchTemplateSpecification for the given instance type.
+        """
+        return {'LaunchTemplateId': launch_template_ids[instance_type], 'Version': '$Default'}
 
     # We always write the ASG with a MixedInstancesPolicy even when we have only one type.
-    mip = {'LaunchTemplate': {'LaunchTemplateSpecification': {'LaunchTemplateId': launch_template_id, 'Version': '$Default'},
-                              'Overrides': [{'InstanceType': t} for t in instance_types]}}
+    # And we use a separate launch template for every instance type, and apply it as an override.
+    # Overrides is the only way to get multiple instance types into one ASG; see:
+    # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.create_auto_scaling_group
+    # We need to use a launch template per instance type so that different
+    # instance types with specified EBS storage size overrides will get their
+    # storage.
+    mip = {'LaunchTemplate': {'LaunchTemplateSpecification': get_launch_template_spec(next(iter(instance_types))),
+                              'Overrides': [{'InstanceType': t, 'LaunchTemplateSpecification': get_launch_template_spec(t)} for t in instance_types]}}
 
     if spot_bid is not None:
         # Ask for spot instances by saying everything above base capacity of 0 should be spot.

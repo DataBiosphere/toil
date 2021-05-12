@@ -42,13 +42,13 @@ stages:
 #  - integration
 
 
-lint:
-  stage: linting_and_dependencies
-  script:
-    - pwd
-    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - make mypy
-    - make docs
+# lint:
+#   stage: linting_and_dependencies
+#   script:
+#     - pwd
+#     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] packages=htcondor
+#     - make mypy
+#     - make docs
 
 
 cwl_dependency_is_stand_alone:
@@ -71,7 +71,7 @@ py36_main:
   stage: aws_jobstore_temp
   script:
     - pwd
-    - virtualenv -p python3.6 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] && pip install htcondor
+    - virtualenv -p python3.6 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages=htcondor
     - make test tests=src/toil/test/jobStores/jobStoreTest.py
     - make test tests=src/toil/test/jobStores/test_aws_jobstore.py
 

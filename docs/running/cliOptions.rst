@@ -148,19 +148,21 @@ the logging module:
                         currently supported choices are 'aws' or 'gce'. The
                         default is None.
   --nodeTypes NODETYPES
-                        List of node types separated by commas. The syntax for
-                        each node type depends on the provisioner used. For
-                        the cgcloud and AWS provisioners this is the name of
-                        an EC2 instance type, optionally followed by a colon
-                        and the price in dollars to bid for a spot instance of
-                        that type, for example 'c3.8xlarge:0.42'. If no spot
-                        bid is specified, nodes of this type will be non-preemptable.
-                        It is acceptable to specify an instance as
-                        both preemptable and non-preemptable, including it
-                        twice in the list. In that case, preemptable nodes of
-                        that type will be preferred when creating new nodes
-                        once the maximum number of preemptable-nodes
-                        have been reached.
+                        Specifies a list of comma-separated node types, each of which is 
+                        composed of slash-separated instance types, and an optional spot 
+                        bid set off by a colon, making the node type preemptable. Instance 
+                        types may appear in multiple node types, and the same node type 
+                        may appear as both preemptable and non-preemptable.
+                        Valid argument specifying two node types:
+                            c5.4xlarge/c5a.4xlarge:0.42,t2.large
+                        Node types:
+                            c5.4xlarge/c5a.4xlarge:0.42 and t2.large
+                        Instance types:
+                            c5.4xlarge, c5a.4xlarge, and t2.large
+                        Semantics:
+                            Bid $0.42/hour for either c5.4xlarge or c5a.4xlarge instances,
+                            treated interchangeably, while they are available at that price,
+                            and buy t2.large instances at full price
   --minNodes MINNODES   Minimum number of nodes of each type in the cluster,
                         if using auto-scaling. This should be provided as a
                         comma-separated list of the same length as the list of

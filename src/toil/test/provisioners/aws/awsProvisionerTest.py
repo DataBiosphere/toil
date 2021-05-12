@@ -213,7 +213,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.createClusterUtil()
 
     def getRootVolID(self):
-        instances = self.cluster._getNodesInCluster(nodeType=None, both=True)
+        instances = self.cluster._getNodesInCluster(both=True)
         instances.sort(key=lambda x: x.launch_time)
         leader = instances[0]  # assume leader was launched first
 
@@ -369,6 +369,13 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     @needs_aws_ec2
     def testSpotAutoScale(self):
         self.instanceTypes = ["m5a.large:%f" % self.spotBid]
+        self.numWorkers = ['2']
+        self._test(preemptableJobs=True)
+
+    @integrative
+    @needs_aws_ec2
+    def testSpotAutoScaleBalancingTypes(self):
+        self.instanceTypes = ["m5.large/m5a.large:%f" % self.spotBid]
         self.numWorkers = ['2']
         self._test(preemptableJobs=True)
 
