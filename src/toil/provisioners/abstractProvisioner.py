@@ -20,7 +20,7 @@ import textwrap
 import yaml
 from abc import ABC, abstractmethod
 from functools import total_ordering
-from typing import Dict, Optional, Set
+from typing import List, Dict, Tuple, Optional, Set
 
 from toil import applianceSelf, customDockerInitCmd, customInitCmd
 from toil.provisioners import ClusterTypeNotSupportedException
@@ -299,25 +299,51 @@ class AbstractProvisioner(ABC):
         # it.
         return dict(config['DEFAULT'])
 
-    def setAutoscaledNodeTypes(self, nodeTypes):
+    def setAutoscaledNodeTypes(self, nodeTypes: List[Tuple[Set[str], Optional[float]]]):
         """
-        Set node types, shapes and spot bids. Preemptable nodes will have the form "type:spotBid".
-        :param nodeTypes: A list of node types
+        Set node types, shapes and spot bids for Toil-managed autoscaling.
+        :param nodeTypes: A list of node types, as parsed with parse_node_types.
         """
+        # This maps from an equivalence class of instance names to a spot bid.
         self._spotBidsMap = {}
-        self.nodeShapes = []
-        self.nodeTypes = []
-        for nodeTypeStr in nodeTypes:
-            nodeBidTuple = nodeTypeStr.split(":")
-            if len(nodeBidTuple) == 2:
-                # This is a preemptable node type, with a spot bid
-                nodeType, bid = nodeBidTuple
-                self.nodeTypes.append(nodeType)
-                self.nodeShapes.append(self.getNodeShape(nodeType, preemptable=True))
-                self._spotBidsMap[nodeType] = bid
-            else:
-                self.nodeTypes.append(nodeTypeStr)
-                self.nodeShapes.append(self.getNodeShape(nodeTypeStr, preemptable=False))
+
+        # This maps from a node Shape object to the instance type that has that
+        # shape. TODO: what if multiple instance types in a cloud provider have
+        # the same shape (e.g. AMD and Intel instances)???
+        self._shape_to_instance_type = {}
+
+        for node_type in nodeTypes:
+            preemptable = node_type[1] is not None
+            if preemptable:
+                # Record the spot bid for the whole equivalence class
+                self._spotBidsMap[frozenset(node_type[0])] = node_type[1]
+            for instance_type_name in node_type[0]:
+                # Record the instance shape and associated type.
+                shape = self.getNodeShape(instance_type_name, preemptable)
+                self._shape_to_instance_type[shape] = instance_type_name
+
+    def hasAutoscaledNodeTypes(self) -> bool:
+        """
+        Check if node types have been configured on the provisioner (via
+        setAutoscaledNodeTypes).
+
+        :returns: True if node types are configured for autoscaling, and false
+                  otherwise.
+        """
+        return len(self.getAutoscaledInstanceShapes()) > 0
+
+    def getAutoscaledInstanceShapes(self) -> Dict[Shape, str]:
+        """
+        Get all the node shapes and their named instance types that the Toil
+        autoscaler should manage.
+        """
+
+        if hasattr(self, '_shape_to_instance_type'):
+            # We have had Toil-managed autoscaling set up
+            return dict(self._shape_to_instance_type)
+        else:
+            # Nobody has called setAutoscaledNodeTypes yet, so nothing is to be autoscaled.
+            return {}
 
     @staticmethod
     def retryPredicate(e):
@@ -347,7 +373,7 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def addNodes(self, nodeType, numNodes, preemptable, spotBid=None):
+    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None):
         """
         Used to add worker nodes to the cluster
 
@@ -359,7 +385,7 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
 
-    def addManagedNodes(self, nodeType, minNodes, maxNodes, preemptable, spotBid=None) -> None:
+    def addManagedNodes(self, nodeTypes: Set[str], minNodes, maxNodes, preemptable, spotBid=None) -> None:
         """
         Add a group of managed nodes of the given type, up to the given maximum.
         The nodes will automatically be launched and termianted depending on cluster load.
@@ -393,25 +419,26 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def getProvisionedWorkers(self, nodeType, preemptable):
+    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptable: Optional[bool] = None):
         """
-        Gets all nodes of the given preemptability from the provisioner.
-        Includes both static and autoscaled nodes.
+        Gets all nodes, optionally of the given instance type or
+        preemptability, from the provisioner. Includes both static and
+        autoscaled nodes.
 
-        :param preemptable: Boolean value indicating whether to return preemptable nodes or
-           non-preemptable nodes
+        :param preemptable: Boolean value to restrict to preemptable
+               nodes or non-preemptable nodes
         :return: list of Node objects
         """
         raise NotImplementedError
 
     @abstractmethod
-    def getNodeShape(self, nodeType=None, preemptable=False):
+    def getNodeShape(self, instance_type: str, preemptable=False):
         """
         The shape of a preemptable or non-preemptable node managed by this provisioner. The node
         shape defines key properties of a machine, such as its number of cores or the time
         between billing intervals.
 
-        :param str nodeType: Node type name to return the shape of.
+        :param str instance_type: Instance type name to return the shape of.
 
         :rtype: Shape
         """
@@ -566,7 +593,7 @@ class AbstractProvisioner(ABC):
                     sudo dd if=/dev/zero of=$drive bs=4096 count=1024
                 done
                 # determine force flag
-                sudo mdadm --create -f --verbose /dev/md0 --level=0 --raid-devices=$ephemeral_count "${drives[@]}" 
+                sudo mdadm --create -f --verbose /dev/md0 --level=0 --raid-devices=$ephemeral_count "${drives[@]}"
                 sudo mkfs.ext4 -F /dev/md0
                 sudo mount /dev/md0 /mnt/ephemeral
             fi
