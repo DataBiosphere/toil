@@ -44,6 +44,7 @@ from toil.version import dockerRegistry, dockerTag, version
 
 # aim to pack autoscaling jobs within a 30 minute block before provisioning a new node
 defaultTargetTime = 1800
+UUID_LENGTH = 32
 logger = logging.getLogger(__name__)
 
 
@@ -703,6 +704,10 @@ def getNodeID() -> str:
         logger.warning("Failed to generate stable node ID, returning empty string. If you see this message with a "
                        "work dir on a shared file system when using workers running on multiple nodes, you might "
                        "experience cryptic job failures")
+    if len(nodeID) < UUID_LENGTH:
+        num_repeats = UUID_LENGTH // len(nodeID) + 1
+        nodeID = nodeID * num_repeats
+        nodeID = nodeID[:UUID_LENGTH]
     return nodeID
 
 
