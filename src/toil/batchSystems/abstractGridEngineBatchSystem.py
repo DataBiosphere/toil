@@ -187,14 +187,14 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             if self.boss.config.coalesceStatusCalls:
                 batchJobIDList = list(map(self.getBatchSystemID,runningJobList))
                 if batchJobIDList:
-                    statuses = with_retries(self.coalesceJobExitCodes, batchJobIDList)
+                    statuses = self.boss.with_retries(self.coalesceJobExitCodes, batchJobIDList)
                     if statuses is not None:
                         for runningJobID, status in zip(runningJobList, statuses):
                             activity = self._handleJobStatus(runningJobID,status,activity)
             else:
                 for jobID in runningJobList:
                     batchJobID = self.getBatchSystemID(jobID)
-                    status = with_retries(self.getJobExitCode, batchJobID)
+                    status = self.boss.with_retries(self.getJobExitCode, batchJobID)
                     activity = self._handleJobStatus(jobID,status,activity)
             self._checkOnJobsCache = activity
             self._checkOnJobsTimestamp = datetime.now()
