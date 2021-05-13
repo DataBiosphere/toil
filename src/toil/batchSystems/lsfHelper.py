@@ -207,7 +207,7 @@ def parse_memory(mem: float, resource: bool) -> str:
     if megabytes_of_mem < 1:
         megabytes_of_mem = 1.0
     # round as a string here to avoid returning something like 1.231e+12
-    return f'{megabytes_of_mem:.0f}'
+    return f'{megabytes_of_mem:.0f}MB'
 
 
 def per_core_reservation():
