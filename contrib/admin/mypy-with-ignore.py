@@ -94,7 +94,6 @@ def main():
         'src/toil/utils/toilStatus.py',
         'src/toil/utils/toilStats.py',
         'src/toil/utils/toilSshCluster.py',
-        'src/toil/utils/toilKill.py',
         'src/toil/utils/__init__.py',
         'src/toil/utils/toilDestroyCluster.py',
         'src/toil/utils/toilDebugJob.py',
