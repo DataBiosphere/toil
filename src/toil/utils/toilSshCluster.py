@@ -29,7 +29,7 @@ def main():
                         help="Temporarily disable strict host key checking.")
     parser.add_argument("--sshOption", dest='sshOptions', default=[], action='append',
                         help="Pass an additional option to the SSH command.")
-    parser.add_argument("--grafanaPort", dest='grafanaPort', default=3000,
+    parser.add_argument("--grafana_port", dest='grafana_port', default=3000,
                         help="Assign a local port to be used for the Grafana dashboard.")
     parser.add_argument('args', nargs=argparse.REMAINDER)
     options = parser.parse_args()
@@ -50,7 +50,7 @@ def main():
     # Forward ports:
     # 3000 for Grafana dashboard
     # 9090 for Prometheus dashboard
-    sshOptions.extend(['-L', f'{options.grafanaPort}:localhost:3000',
+    sshOptions.extend(['-L', f'{options.grafana_port}:localhost:3000',
                        '-L', '9090:localhost:9090'])
 
     cluster.getLeader().sshAppliance(*command, strict=not options.insecure, tty=sys.stdin.isatty(),
