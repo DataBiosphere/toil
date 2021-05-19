@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import textwrap
+import types
 
 import pkg_resources
 
@@ -30,7 +31,7 @@ def main() -> None:
     del sys.argv[1]
     module.main()
 
-def loadModules() -> Dict[str, Any]:
+def loadModules() -> Dict[str, types.ModuleType]:
     # noinspection PyUnresolvedReferences
     from toil.utils import (toilClean,
                             toilDebugFile,
@@ -45,7 +46,7 @@ def loadModules() -> Dict[str, Any]:
     return {"-".join([i.lower() for i in re.findall('[A-Z][^A-Z]*', name)]): module for name, module in locals().items()}
 
 
-def printHelp(modules: Dict[str, Any]) -> None:
+def printHelp(modules: Dict[str, types.ModuleType]) -> None:
     name = os.path.basename(sys.argv[0])
     descriptions = '\n        '.join(f'{cmd} - {mod.__doc__.strip()}' for cmd, mod in modules.items() if mod)
     print(textwrap.dedent(f"""
