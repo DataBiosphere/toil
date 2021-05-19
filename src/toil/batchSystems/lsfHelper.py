@@ -203,11 +203,11 @@ def parse_memory_limit(mem: float) -> str:
 def parse_memory(mem: float, resource: bool) -> str:
     """Parse memory parameter."""
     lsf_unit = get_lsf_units(resource=resource)
-    megabytes_of_mem = convert_units(float(mem) * 1024, src_unit=lsf_unit, dst_unit='MB')
+    megabytes_of_mem = convert_units(float(mem), src_unit=lsf_unit, dst_unit='MB')
     if megabytes_of_mem < 1:
         megabytes_of_mem = 1.0
     # round as a string here to avoid returning something like 1.231e+12
-    return f'{megabytes_of_mem:.4f}'
+    return f'{megabytes_of_mem:.0f}MB'
 
 
 def per_core_reservation():
