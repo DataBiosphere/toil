@@ -97,7 +97,6 @@ def main():
         'src/toil/utils/toilMain.py',
         'src/toil/utils/__init__.py',
         'src/toil/utils/toilDestroyCluster.py',
-        'src/toil/utils/toilDebugJob.py',
         'src/toil/utils/toilRsyncCluster.py',
         'src/toil/utils/toilClean.py',
         'src/toil/utils/toilLaunchCluster.py',
