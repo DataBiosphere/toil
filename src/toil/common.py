@@ -658,7 +658,7 @@ def parseBool(val):
 
 def getNodeID() -> str:
     """
-    Return unique ID of the current node (host).
+    Return unique ID of the current node (host). The resulting string will be convertable to a uuid.UUID.
 
     Tries several methods until success. The returned ID should be identical across calls from different processes on
     the same node at least until the next OS reboot.
@@ -704,7 +704,10 @@ def getNodeID() -> str:
         logger.warning("Failed to generate stable node ID, returning empty string. If you see this message with a "
                        "work dir on a shared file system when using workers running on multiple nodes, you might "
                        "experience cryptic job failures")
-    if len(nodeID) < UUID_LENGTH:
+    if len(nodeID.replace('-', '')) < UUID_LENGTH:
+        # Some platforms (Mac) give us not enough actual hex characters.
+        # Repeat them so the result is convertable to a uuid.UUID
+        nodeID = nodeID.replace('-', '')
         num_repeats = UUID_LENGTH // len(nodeID) + 1
         nodeID = nodeID * num_repeats
         nodeID = nodeID[:UUID_LENGTH]
