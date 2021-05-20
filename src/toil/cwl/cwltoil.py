@@ -1604,9 +1604,11 @@ class CWLWorkflow(Job):
                             if s not in promises:
                                 stepinputs_fufilled = False
                     if stepinputs_fufilled:
+                        logger.debug('Ready to make job for workflow step %s', step.tool["id"])
                         jobobj = {}
 
                         for inp in step.tool["inputs"]:
+                            logger.debug('Takes input: %s', inp["id"])
                             key = shortname(inp["id"])
                             if "source" in inp:
                                 jobobj[key] = ResolveSource(
@@ -1643,6 +1645,7 @@ class CWLWorkflow(Job):
                             )
                             followOn = CWLGather(step, wfjob.rv())
                             wfjob.addFollowOn(followOn)
+                            logger.debug('Is scatter with job %s and follow-on %s', wfjob, followOn)
                         else:
                             wfjob, followOn = makeJob(
                                 tool=step.embedded_tool,
@@ -1650,6 +1653,7 @@ class CWLWorkflow(Job):
                                 runtime_context=self.runtime_context,
                                 conditional=conditional,
                             )
+                            logger.debug('Is non-scatter with job %s and follow-on %s', wfjob, followOn)
 
                         jobs[step.tool["id"]] = followOn
 
@@ -1663,18 +1667,22 @@ class CWLWorkflow(Job):
                                     and not wfjob.hasPredecessor(promises[s])
                                 ):
                                     promises[s].addFollowOn(wfjob)
+                                    logger.debug('Connect as follow-on based on need for %s from %s', s, promises[s])
                                     connected = True
                                 if not isinstance(
                                     promises[s], (CWLJobWrapper, CWLGather)
                                 ) and not promises[s].hasChild(wfjob):
+                                    logger.debug('Connect as child based on need for %s from %s', s, promises[s])
                                     promises[s].addChild(wfjob)
                                     connected = True
                         if not connected:
                             # Workflow step is default inputs only & isn't connected
                             # to other jobs, so add it as child of this workflow.
                             self.addChild(wfjob)
+                            logger.debug('Run as direct child')
 
                         for out in step.tool["outputs"]:
+                            logger.debug('Provides %s from %s', out["id"], followOn)
                             promises[out["id"]] = followOn
 
                 for inp in step.tool["inputs"]:

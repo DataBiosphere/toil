@@ -2577,7 +2577,7 @@ class EncapsulatedJob(Job):
     predecessors automatically. Care should be exercised to ensure the encapsulated job has the
     proper set of predecessors.
 
-    The return value of an encapsulatd job (as accessed by the :func:`toil.job.Job.rv` function)
+    The return value of an encapsulated job (as accessed by the :func:`toil.job.Job.rv` function)
     is the return value of the root job, e.g. A().encapsulate().rv() and A().rv() will resolve to
     the same value after A or A.encapsulate() has been run.
     """

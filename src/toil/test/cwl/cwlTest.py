@@ -504,9 +504,9 @@ class CWLv12Test(ToilTest):
                                          **kwargs)
     @slow
     @needs_kubernetes
-    def test_kubernetes_cwl_20(self):
+    def test_kubernetes_cwl_group(self):
         for caching in [True, False]:
-            self.run_kubernetes_cwl_conformance(selected_tests="20", caching=caching)
+            self.run_kubernetes_cwl_conformance(selected_tests="20,35,39,42", caching=caching)
 
 @needs_cwl
 class CWLSmallTests(ToilTest):
