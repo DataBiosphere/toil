@@ -472,6 +472,10 @@ class JobDescription(Requirer):
         # the logging has been captured to be reported on the leader.
         self.logJobStoreFileID = None
 
+        # Every time we update a job description in place in the job store, we
+        # increment this.
+        self._generation = 0
+
     def serviceHostIDsInBatches(self):
         """
         Get an iterator over all batches of service host job IDs that can be
@@ -634,6 +638,8 @@ class JobDescription(Requirer):
         # roll up a whole chain of jobs and delete them when they're all done.
         self.filesToDelete += other.filesToDelete
         self.jobsToDelete += other.jobsToDelete
+
+        self._generation = other._generation
 
     def addChild(self, childID):
         """
@@ -814,6 +820,8 @@ class JobDescription(Requirer):
         if self.jobStoreID is not None:
             printedName += ' ' + str(self.jobStoreID)
 
+        printedName += ' v' + str(self._generation)
+
         return printedName
 
     # Not usable as a key (not hashable) and doesn't have any value-equality.
@@ -822,6 +830,16 @@ class JobDescription(Requirer):
 
     def __repr__(self):
         return '%s( **%r )' % (self.__class__.__name__, self.__dict__)
+
+    def pre_update_hook(self) -> None:
+        """
+        Called by the job store before pickling and saving a created or updated
+        version of a job.
+        """
+
+        self._generation += 1
+        logger.debug("New generation: %s", self)
+
 
 
 class ServiceJobDescription(JobDescription):
@@ -2385,7 +2403,6 @@ class Job:
         """
         return self._description.displayName
 
-
 class JobException(Exception):
     """
     General job exception.
@@ -2944,9 +2961,9 @@ class UnfulfilledPromiseSentinel:
         promise wasn't resolved, so we throw an exception."""
         jobName = stateDict['fulfillingJobName']
         file_id = stateDict['file_id']
-        raise RuntimeError("This job was passed promise {file_id} that wasn't yet resolved when it "
+        raise RuntimeError(f"This job was passed promise {file_id} that wasn't yet resolved when it "
                            "ran. The job {jobName} that fulfills this promise hasn't yet "
                            "finished. This means that there aren't enough constraints to "
                            "ensure the current job always runs after {jobName}. Consider adding a "
                            "follow-on indirection between this job and its parent, or adding "
-                           "this job as a child/follow-on of {jobName}.".format(jobName=jobName))
+                           "this job as a child/follow-on of {jobName}.")
