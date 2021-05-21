@@ -2962,8 +2962,8 @@ class UnfulfilledPromiseSentinel:
         jobName = stateDict['fulfillingJobName']
         file_id = stateDict['file_id']
         raise RuntimeError(f"This job was passed promise {file_id} that wasn't yet resolved when it "
-                           "ran. The job {jobName} that fulfills this promise hasn't yet "
-                           "finished. This means that there aren't enough constraints to "
-                           "ensure the current job always runs after {jobName}. Consider adding a "
-                           "follow-on indirection between this job and its parent, or adding "
-                           "this job as a child/follow-on of {jobName}.")
+                           f"ran. The job {jobName} that fulfills this promise hasn't yet "
+                           f"finished. This means that there aren't enough constraints to "
+                           f"ensure the current job always runs after {jobName}. Consider adding a "
+                           f"follow-on indirection between this job and its parent, or adding "
+                           f"this job as a child/follow-on of {jobName}.")
