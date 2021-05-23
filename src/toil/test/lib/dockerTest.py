@@ -358,7 +358,9 @@ def _testDockerCleanFn(job,
                   containerName=containerName,
                   detach=detached,
                   remove=rm,
-                  privileged=True)
+                  privileged=True,
+                  stdout=True,  # test logs on CI; remove after.
+                  )
 
 
 def _testDockerPipeChainFn(job):
