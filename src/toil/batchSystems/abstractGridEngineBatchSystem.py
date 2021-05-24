@@ -17,7 +17,7 @@ from abc import ABCMeta, abstractmethod
 from datetime import datetime
 from queue import Empty, Queue
 from threading import Lock, Thread
-from typing import Any, List
+from typing import Any, List, Union
 
 from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
                                                    BatchSystemCleanupSupport,
@@ -182,25 +182,24 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 return self._checkOnJobsCache
 
             activity = False
-            statusObj = None
-            runningJobList = list(self.runningJobs)
+            running_job_list = list(self.runningJobs)
             if self.boss.config.coalesceStatusCalls:
-                batchJobIDList = list(map(self.getBatchSystemID,runningJobList))
-                if batchJobIDList:
-                    statuses = self.boss.with_retries(self.coalesceJobExitCodes, batchJobIDList)
+                batch_job_id_list = list(map(self.getBatchSystemID,running_job_list))
+                if batch_job_id_list:
+                    statuses = self.boss.with_retries(self.coalesceJobExitCodes, batch_job_id_list)
                     if statuses is not None:
-                        for runningJobID, status in zip(runningJobList, statuses):
-                            activity = self._handleJobStatus(runningJobID,status,activity)
+                        for running_job_id, status in zip(running_job_list, statuses):
+                            activity = self._handleJobStatus(running_job_id,status,activity)
             else:
-                for jobID in runningJobList:
-                    batchJobID = self.getBatchSystemID(jobID)
-                    status = self.boss.with_retries(self.getJobExitCode, batchJobID)
-                    activity = self._handleJobStatus(jobID,status,activity)
+                for job_id in running_job_list:
+                    batch_job_id = self.getBatchSystemID(job_id)
+                    status = self.boss.with_retries(self.getJobExitCode, batch_job_id)
+                    activity = self._handleJobStatus(job_id,status,activity)
             self._checkOnJobsCache = activity
             self._checkOnJobsTimestamp = datetime.now()
             return activity
 
-        def _handleJobStatus(self,jobID,status,activity):
+        def _handleJobStatus(self, jobID: int, status: Union[int, None], activity: bool) -> bool:
             """
             Helper method for checkOnJobs to handle job statuses
             """
@@ -244,7 +243,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 raise
 
         @abstractmethod
-        def coalesceJobExitCodes(self, batchJobIDList):
+        def coalesceJobExitCodes(self, batchJobIDList: list) -> list:
             """
             Returns exit codes for a list of jobs.
             Implementation-specific; called by

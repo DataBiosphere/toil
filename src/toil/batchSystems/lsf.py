@@ -25,7 +25,7 @@ import re
 import subprocess
 from datetime import datetime
 from random import randint
-from typing import List
+from typing import List, Union
 
 from dateutil.parser import parse
 from dateutil.tz import tzlocal
@@ -103,21 +103,21 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 result = "NOT_SUBMITTED_{}".format(temp_id)
             return result
 
-        def coalesceJobExitCodes(self,lsfJobIDs):
-            statusDict = {}
-            validLSFJobIds = []
-            statusResponse = []
-            for singleLSFID in lsfJobIDs:
-                if "NOT_SUBMITTED" in singleLSFID:
-                    logger.error("bjobs detected job [{}] failed to submit".format(singleLSFID))
-                    statusDict[singleLSFID] = 1
-                job, task = (singleLSFID, None)
-                if '.' in singleLSFID:
-                    job, task = singleLSFID.split('.', 1)
-                validLSFJobIds.append(job)
-            if validLSFJobIds:
+        def coalesceJobExitCodes(self,lsf_job_ids: list) -> list:
+            status_dict = {}
+            valid_lsf_job_ids = []
+            status_resonse = []
+            for single_lsf_id in lsf_job_ids:
+                if "NOT_SUBMITTED" in single_lsf_id:
+                    logger.error("bjobs detected job [{}] failed to submit".format(single_lsf_id))
+                    status_dict[single_lsf_id] = 1
+                job, task = (single_lsf_id, None)
+                if '.' in single_lsf_id:
+                    job, task = single_lsf_id.split('.', 1)
+                valid_lsf_job_ids.append(job)
+            if valid_lsf_job_ids:
                 args = ["bjobs", "-json", "-o",
-                        "jobid user exit_code stat exit_reason pend_reason"] + validLSFJobIds
+                        "jobid user exit_code stat exit_reason pend_reason"] + valid_lsf_job_ids
                 logger.debug("Getting coalesced job exit codes via bjobs")
                 process = subprocess.Popen(args, stdout=subprocess.PIPE,
                                            stderr=subprocess.STDOUT)
@@ -127,19 +127,19 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     for single_record in bjobs_records:
                         if "JOBID" in single_record:
                             single_job_id = single_record["JOBID"]
-                            statusDict[single_job_id] = self.parseBjobsRecord(single_record, single_job_id)
-            for singleLSFID in lsfJobIDs:
-                if "NOT_SUBMITTED" in singleLSFID:
-                    statusResponse.append(statusDict[singleLSFID])
+                            status_dict[single_job_id] = self.parseBjobsRecord(single_record, single_job_id)
+            for single_lsf_id in lsf_job_ids:
+                if "NOT_SUBMITTED" in single_lsf_id:
+                    status_resonse.append(status_dict[single_lsf_id])
                 else:
-                    job, task = (singleLSFID, None)
-                    if '.' in singleLSFID:
-                        job, task = singleLSFID.split('.', 1)
-                    if job in statusDict:
-                        statusResponse.append(statusDict[job])
+                    job, task = (single_lsf_id, None)
+                    if '.' in single_lsf_id:
+                        job, task = single_lsf_id.split('.', 1)
+                    if job in status_dict:
+                        status_resonse.append(status_dict[job])
                     else:
-                        statusResponse.append(None)
-            return statusResponse
+                        status_resonse.append(None)
+            return status_resonse
 
         def getJobExitCode(self, lsfJobID):
             # the task is set as part of the job ID if using getBatchSystemID()
@@ -166,7 +166,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
             return self.fallbackGetJobExitCode(job)
 
-        def parseBjobsRecord(self,bjobs_record, job):
+        def parseBjobsRecord(self,bjobs_record: dict, job: int) -> Union[int, None]:
             """
             Helper functions for getJobExitCode and  to parse the bjobs status record
             """
