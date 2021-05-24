@@ -99,7 +99,6 @@ def main():
         'src/toil/utils/toilDestroyCluster.py',
         'src/toil/utils/toilDebugJob.py',
         'src/toil/utils/toilRsyncCluster.py',
-        'src/toil/utils/toilClean.py',
         'src/toil/utils/toilLaunchCluster.py',
         'src/toil/lib/memoize.py',
         'src/toil/lib/throttle.py',
