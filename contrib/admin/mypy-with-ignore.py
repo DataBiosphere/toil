@@ -93,7 +93,6 @@ def main():
         'src/toil/utils/toilUpdateEC2Instances.py',
         'src/toil/utils/toilStatus.py',
         'src/toil/utils/toilStats.py',
-        'src/toil/utils/toilSshCluster.py',
         'src/toil/utils/toilMain.py',
         'src/toil/utils/__init__.py',
         'src/toil/utils/toilDestroyCluster.py',
