@@ -91,8 +91,8 @@ def apiDockerCall(job,
                       working_dir=working_dir,
                       parameters=parameters)
 
-    Note that when run with detatch=False, or with detatch=True and stdout=True
-    or stderr=True, this is a blocking call. When run with detatch=True and
+    Note that when run with detach=False, or with detach=True and stdout=True
+    or stderr=True, this is a blocking call. When run with detach=True and
     without output capture, the container is started and returned without
     waiting for it to finish.
 
@@ -157,9 +157,9 @@ def apiDockerCall(job,
                    https://docker-py.readthedocs.io/en/stable/containers.html
 
     :returns: Returns the standard output/standard error text, as requested, when
-              detatch=False. Returns the underlying
+              detach=False. Returns the underlying
               docker.models.containers.Container object from the Docker API when
-              detatch=True.
+              detach=True.
     """
 
     # make certain that files have the correct permissions
@@ -222,16 +222,14 @@ def apiDockerCall(job,
     client = docker.from_env(version='auto', timeout=timeout)
 
     if deferParam == STOP:
-        job.defer(dockerStop, containerName)
-
-    if deferParam == FORGO:
-        remove = False
+        job.defer(dockerStop, containerName, remove)
+    elif deferParam == FORGO:
+        # leave the container untouched and running
+        pass
     elif deferParam == RM:
-        remove = True
         job.defer(dockerKill, containerName)
-    elif remove and detach:
-        # If remove=True and detach=True, defer remove the container in case we still want to get the logs
-        # before it gets removed.
+    elif remove:
+        # call "docker rm" separately to ensure the container is cleaned up even if the run fails.
         job.defer(dockerKill, containerName)
 
     try:
@@ -253,7 +251,7 @@ def apiDockerCall(job,
                                         stderr=stderr,
                                         # to get the generator if demux=True
                                         stream=stream or demux,
-                                        remove=remove,
+                                        remove=False,  # remove is deferred
                                         log_config=log_config,
                                         user=user,
                                         environment=environment,
@@ -295,8 +293,7 @@ def apiDockerCall(job,
                                               stdout=stdout,
                                               stderr=stderr,
                                               stream=stream,
-                                              # don't remove before we're done with the container.
-                                              remove=False,
+                                              remove=False,  # remove is deferred
                                               log_config=log_config,
                                               user=user,
                                               environment=environment,
@@ -308,7 +305,7 @@ def apiDockerCall(job,
                     # stream=True makes this loop blocking; we will loop until
                     # the container stops and there is no more output.
                     for line in container.logs(stdout=stdout, stderr=stderr, stream=True):
-                        f.write(line)
+                        f.write(line.decode() if isinstance(line, bytes) else line)
 
             # If we didn't capture output, the caller will need to .wait() on
             # the container to know when it is done. Even if we did capture
