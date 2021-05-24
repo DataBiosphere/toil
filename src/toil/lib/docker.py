@@ -323,15 +323,17 @@ def apiDockerCall(job,
         raise create_api_error_from_http_exception(e)
 
 
-def dockerKill(container_name: str, gentleKill: bool = False, remove: bool = True, timeout: int = 365 * 24 * 60 * 60):
+def dockerKill(container_name: str,
+               gentleKill: bool = False,
+               remove: bool = True,
+               timeout: int = 365 * 24 * 60 * 60) -> None:
     """
     Immediately kills a container.  Equivalent to "docker kill":
     https://docs.docker.com/engine/reference/commandline/kill/
 
     :param container_name: Name of the container being killed.
     :param gentleKill: If True, trigger a graceful shutdown.
-    :param remove: If True, remove the container after it has shut down.
-                   (default: True).
+    :param remove: If True, remove the container after it exits. (default: True).
     :param int timeout: Use the given timeout in seconds for interactions with
                         the Docker daemon. Note that the underlying docker module is
                         not always able to abort ongoing reads and writes in order
@@ -360,14 +362,13 @@ def dockerKill(container_name: str, gentleKill: bool = False, remove: bool = Tru
         raise create_api_error_from_http_exception(e)
 
 
-def dockerStop(container_name: str, remove: bool = True):
+def dockerStop(container_name: str, remove: bool = True) -> None:
     """
     Gracefully kills a container.  Equivalent to "docker stop":
     https://docs.docker.com/engine/reference/commandline/stop/
 
     :param container_name: Name of the container being stopped.
-    :param remove: If True, remove the container after it has shut down.
-                   (default: True).
+    :param remove: If True, remove the container after it exits. (default: True).
     """
     dockerKill(container_name, gentleKill=True, remove=remove)
 
