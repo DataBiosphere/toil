@@ -96,7 +96,6 @@ def main():
         'src/toil/utils/toilSshCluster.py',
         'src/toil/utils/toilMain.py',
         'src/toil/utils/__init__.py',
-        'src/toil/utils/toilDestroyCluster.py',
         'src/toil/utils/toilDebugJob.py',
         'src/toil/utils/toilLaunchCluster.py',
         'src/toil/lib/memoize.py',
