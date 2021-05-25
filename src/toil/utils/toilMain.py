@@ -58,7 +58,7 @@ def loadModules() -> Dict[str, types.ModuleType]:
 
 def printHelp(modules: Dict[str, types.ModuleType]) -> None:
     name = os.path.basename(sys.argv[0])
-    descriptions = '\n        '.join(f'{cmd} - {get_or_die(mod, '__doc__').strip()}' for cmd, mod in modules.items() if mod)
+    descriptions = '\n        '.join(f'{cmd} - {get_or_die(mod, "__doc__").strip()}' for cmd, mod in modules.items() if mod)
     print(textwrap.dedent(f"""
         Usage: {name} COMMAND ...
                {name} --help
