@@ -9,7 +9,6 @@ import pkg_resources
 from toil.version import version
 from typing import Any, Dict
 
-
 def main() -> None:
     modules = loadModules()
 
@@ -29,7 +28,18 @@ def main() -> None:
         sys.exit(1)
 
     del sys.argv[1]
-    module.main()
+    get_or_die(module, 'main')()
+
+def get_or_die(module: types.ModuleType, name: str) -> Any:
+    """
+    Get an object from a module or complain that it is missing.
+    """
+    if hasattr(module, name):
+        return getattr(module, name)
+    else:
+        sys.stderr.write(f'Internal Toil error!\nToil utility module '
+                         f'{module.__name__} is missing required attribute {name}\n')
+        sys.exit(1)
 
 def loadModules() -> Dict[str, types.ModuleType]:
     # noinspection PyUnresolvedReferences
@@ -48,7 +58,7 @@ def loadModules() -> Dict[str, types.ModuleType]:
 
 def printHelp(modules: Dict[str, types.ModuleType]) -> None:
     name = os.path.basename(sys.argv[0])
-    descriptions = '\n        '.join(f'{cmd} - {mod.__doc__.strip()}' for cmd, mod in modules.items() if mod)
+    descriptions = '\n        '.join(f'{cmd} - {get_or_die(mod, '__doc__').strip()}' for cmd, mod in modules.items() if mod)
     print(textwrap.dedent(f"""
         Usage: {name} COMMAND ...
                {name} --help
