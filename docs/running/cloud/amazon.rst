@@ -374,9 +374,18 @@ Dashboard
 Toil provides a dashboard for viewing the RAM and CPU usage of each node, the number of
 issued jobs of each type, the number of failed jobs, and the size of the jobs queue. To launch this dashboard
 for a toil workflow, include the ``--metrics`` flag in the toil script command. The dashboard can then be viewed
-in your browser at localhost:3000 while connected to the leader node through ``toil ssh-cluster``.
+in your browser at localhost:3000 while connected to the leader node through ``toil ssh-cluster``:
+
+To change the default port number, you can use the ``--grafana_port`` argument: ::
+
+    (venv) $ toil ssh-cluster -z us-west-2a --grafana_port 8000 <cluster-name>
+
 On AWS, the dashboard keeps track of every node in the cluster to monitor CPU and RAM usage, but it
 can also be used while running a workflow on a single machine. The dashboard uses Grafana as the
-front end for displaying real-time plots, and Prometheus for tracking metrics exported by toil. In order to use the
-dashboard for a non-released toil version, you will have to build the containers locally with ``make docker``, since
-the prometheus, grafana, and mtail containers used in the dashboard are tied to a specific toil version.
+front end for displaying real-time plots, and Prometheus for tracking metrics exported by toil:
+
+.. image:: dashboard_screenshot.png
+
+In order to use the dashboard for a non-released toil version, you will have to build the containers locally with
+``make docker``, since the prometheus, grafana, and mtail containers used in the dashboard are tied to a specific toil
+version.
