@@ -403,7 +403,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         if jobCommand.startswith("_toil_worker "):
             # We can actually run in this thread
-            jobName, jobStoreLocator, jobStoreID = jobCommand.split()[1:] # Parse command
+            jobName, jobStoreLocator, jobStoreID = jobCommand.split()[1:4] # Parse command
             jobStore = Toil.resumeJobStore(jobStoreLocator)
             toil_worker.workerScript(jobStore, jobStore.config, jobName, jobStoreID,
                                      redirectOutputToLogFile=not self.debugWorker) # Call the worker

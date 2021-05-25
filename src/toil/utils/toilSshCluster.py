@@ -19,16 +19,19 @@ import sys
 from toil.common import parser_with_common_options
 from toil.provisioners import cluster_factory
 from toil.statsAndLogging import set_logging_from_options
+from typing import List
 
 logger = logging.getLogger(__name__)
 
 
-def main():
+def main() -> None:
     parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
     parser.add_argument("--insecure", action='store_true',
                         help="Temporarily disable strict host key checking.")
     parser.add_argument("--sshOption", dest='sshOptions', default=[], action='append',
                         help="Pass an additional option to the SSH command.")
+    parser.add_argument("--grafana_port", dest='grafana_port', default=3000,
+                        help="Assign a local port to be used for the Grafana dashboard.")
     parser.add_argument('args', nargs=argparse.REMAINDER)
     options = parser.parse_args()
     set_logging_from_options(options)
@@ -43,5 +46,13 @@ def main():
                               clusterName=options.clusterName,
                               zone=options.zone)
     command = options.args if options.args else ['bash']
+    sshOptions: List[str] = options.sshOptions
+
+    # Forward ports:
+    # 3000 for Grafana dashboard
+    # 9090 for Prometheus dashboard
+    sshOptions.extend(['-L', f'{options.grafana_port}:localhost:3000',
+                       '-L', '9090:localhost:9090'])
+
     cluster.getLeader().sshAppliance(*command, strict=not options.insecure, tty=sys.stdin.isatty(),
-                                     sshOptions=options.sshOptions)
+                                     sshOptions=sshOptions)
