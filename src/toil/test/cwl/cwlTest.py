@@ -506,7 +506,7 @@ class CWLv12Test(ToilTest):
     @needs_kubernetes
     def test_kubernetes_cwl_group(self):
         for caching in [True, False]:
-            self.run_kubernetes_cwl_conformance(selected_tests="20,35,39,42", caching=caching)
+            self.run_kubernetes_cwl_conformance(selected_tests="20,35,39,42,56", caching=caching)
 
 @needs_cwl
 class CWLSmallTests(ToilTest):

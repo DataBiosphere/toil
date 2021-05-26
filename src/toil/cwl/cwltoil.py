@@ -853,13 +853,7 @@ def import_files(
             skip_broken=True,
         ),
     )
-    
-    logger.debug('Files for %s after import:', tool_id)
-    
-    visit_class(
-        inner_tool, ("File",), lambda f: logger.debug(str(f))
-    )
-    
+
 def prepareDirectoryForUpload(
     directory_metadata: dict, skip_broken: bool = False
 ) -> None:
@@ -1281,9 +1275,6 @@ class CWLJob(Job):
 
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
-
-        logger.debug("CWL job inputs at run: %s", list(self.cwljob.keys()))
-        logger.debug("CWL job at run: %s", self.cwltool)
 
         output, status = cwltool.executors.SingleJobExecutor().execute(
             process=self.cwltool,
@@ -1785,21 +1776,24 @@ class CWLWorkflow(Job):
 
 def visitSteps(
     cmdline_tool: Process,
-    op: Any,
+    op: Callable[[Dict], Any],
 ) -> None:
-    """Iterate over a CWL Process object, running the op on each WorkflowStep."""
-    logger.debug("Process %s", cmdline_tool)
+    """
+    Iterate over a CWL Process object, running the op on each tool description
+    CWL object.
+    """
     if isinstance(cmdline_tool, cwltool.workflow.Workflow):
         for step in cmdline_tool.steps:
-            logger.debug("Process step %s with tool %s", step, step.tool)
+            # Handle the step's tool
             op(step.tool)
-            logger.debug("Recurse on embedded tool of step %s", step)
+            # Recures on the embedded tool; maybe it's a workflow.
             visitSteps(step.embedded_tool, op)
-    else:
+    elif isinstance(cmdline_tool, cwltool.command_line_tool.CommandLineTool):
         # This should itself have a tool to process because it is a step.
-        logger.debug("Process top level tool because this is a %s", type(cmdline_tool))
         op(cmdline_tool.tool)
-
+    else:
+        raise RuntimeError(f"Unsupported type encountered in workflow "
+                           f"traversal: {type(cmdline_tool)}")
 
 def rm_unprocessed_secondary_files(job_params: Any) -> None:
     if isinstance(job_params, list):
@@ -2444,14 +2438,33 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 discover_secondaryFiles=True,
             )
             
-            # Define something we can call to import a file and get its file ID.
-            file_import_function = functools.partial(toil.importFile, symlink=True)
+            # Define something we can call to import a file and get its file
+            # ID.
+            file_import_function = functools.partial(
+                toil.importFile,
+                symlink=True
+            )
 
-            # files with the 'file://' uri are imported into the jobstore and
-            # changed to 'toilfs:'
-            import_files(file_import_function, fs_access, fileindex, existing, initialized_job_order)
-
-            visitSteps(tool, functools.partial(import_files, file_import_function, fs_access, fileindex, existing))
+            # Traverse the "order" and also the whole workflow looking for CWL
+            # File and Directory objects.
+            # Files with the 'file://' uri are imported into the jobstore and
+            # changed to 'toilfs:'.
+            import_files(
+                file_import_function,
+                fs_access,
+                fileindex,
+                existing,
+                initialized_job_order
+            )
+            visitSteps(
+                tool, functools.partial(
+                    import_files, 
+                    file_import_function,
+                    fs_access,
+                    fileindex,
+                    existing
+                )
+            )
 
             for param_name, param_value in initialized_job_order.items():
                 # Loop through all the parameters for the workflow overall.
