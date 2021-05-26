@@ -33,6 +33,7 @@ import urllib
 import uuid
 from typing import (
     Any,
+    Callable,
     Dict,
     Iterator,
     List,
@@ -665,6 +666,9 @@ class ToilCommandLineTool(cwltool.command_line_tool.CommandLineTool):
         )
 
 
+    def __str__(self):
+        return 'ToilCommandLineTool(' + json.dumps(self.tool, indent=4) + ')'
+
 def toil_make_tool(
     toolpath_object: CommentedMap,
     loadingContext: cwltool.context.LoadingContext,
@@ -797,8 +801,66 @@ def write_file(writeFunc: Any, index: dict, existing: dict, file_uri: str) -> st
                 logger.error("Got exception '%s' while copying '%s'", e, file_uri)
                 raise
         return index[file_uri]
+        
+def path_to_loc(obj: Dict) -> None:
+    """
+    If a CWL object has a "path" and not a "location", make the
+    path into a location instead.
+    """
+    if "location" not in obj and "path" in obj:
+        obj["location"] = obj["path"]
+        del obj["path"]
 
+def import_files(import_function: Callable[[str], FileID], fs_access, fileindex: Dict, existing: Dict, inner_tool) -> None:
+    """
+    From the leader, prepare all files and directories inside the given CWL
+    tool object to be used on the workers.
+    Make sure their sizes are set and import all the files.
+    
+    Also does some miscelaneous normalization?
+    
+    :param import_function: The function used to import a file and get a Toil FileID for it.
+    :param fs_access: the CWL FS access object we use to access the filesystem to find files to import.
+    :param fileindex: Forward map to fill in from file URI to Toil storage location, used by write_file to deduplicate writes.
+    :param existing: Reverse map to fill in from Toil storage location to file URI. Not read from.
+    :param inner_tool: CWL tool we are importing files for
+    """
+    
+    try:
+        tool_id = inner_tool['id']
+    except:
+        tool_id = str(inner_tool)
+    
+    logger.debug('!!IMPORTING FILES!! for %s', tool_id)
+    
+    try:
+        logger.debug('Tool dump: %s', json.dumps(inner_tool, indent=4))
+    except:
+        pass
+    
+    visit_class(inner_tool, ("File", "Directory"), path_to_loc)
+    visit_class(
+        inner_tool, ("File",), functools.partial(add_sizes, fs_access)
+    )
+    normalizeFilesDirs(inner_tool)
 
+    adjustFileObjs(
+        inner_tool,
+        functools.partial(
+            uploadFile,
+            import_function,
+            fileindex,
+            existing,
+            skip_broken=True,
+        ),
+    )
+    
+    logger.debug('!!FILES!! for %s after import:', tool_id)
+    
+    visit_class(
+        inner_tool, ("File",), lambda f: logger.debug(str(f))
+    )
+    
 def prepareDirectoryForUpload(
     directory_metadata: dict, skip_broken: bool = False
 ) -> None:
@@ -1221,7 +1283,8 @@ class CWLJob(Job):
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
 
-        logger.debug("Running CWL job: %s", cwljob)
+        logger.debug("CWL job inputs at run: %s", list(self.cwljob.keys()))
+        logger.debug("CWL job at run: %s", self.cwltool)
 
         output, status = cwltool.executors.SingleJobExecutor().execute(
             process=self.cwltool,
@@ -1276,6 +1339,7 @@ def makeJob(
 
     :return: "wfjob, followOn" if the input tool is a workflow, and "job, job" otherwise
     """
+    logger.debug("Make job for tool: %s", tool)
     if tool.tool["class"] == "Workflow":
         wfjob = CWLWorkflow(
             cast(cwltool.workflow.Workflow, tool),
@@ -1574,7 +1638,12 @@ class CWLWorkflow(Job):
         self.conditional = conditional or Conditional()
 
     def run(self, file_store: AbstractFileStore):
-        """Convert a CWL Workflow graph into a Toil job graph."""
+        """
+        Convert a CWL Workflow graph into a Toil job graph.
+        
+        Always runs on the leader, because the batch system knows to schedule
+        it as a local job.
+        """
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
         if self.conditional.is_false(cwljob):
@@ -1589,6 +1658,16 @@ class CWLWorkflow(Job):
 
         # `jobs` dict from step id to job that implements that step.
         jobs = {}
+        
+        # Dict from imported file path to Toil storage location
+        fileindex = {}
+        # Reverse dict of above.
+        # TODO: Not really read from?
+        existing = {}
+        # FS access object we can use from here, on the leader, to get more workflow input files.
+        fs_access = cwltool.stdfsaccess.StdFsAccess(self.runtime_context.basedir)
+        # Function we will use to actually import an input file
+        file_import_function = functools.partial(file_store.jobStore.importFile, symlink=True)
 
         for inp in self.cwlwf.tool["inputs"]:
             promises[inp["id"]] = SelfJob(self, cwljob)
@@ -1612,6 +1691,14 @@ class CWLWorkflow(Job):
                     if stepinputs_fufilled:
                         logger.debug('Ready to make job for workflow step %s', step.tool["id"])
                         jobobj = {}
+                        
+                        # Make sure to import all the files this workflow step
+                        # wants to use now, since we are on the leader. When
+                        # the step is runnign it won't be able to get at them
+                        # otherwise, since it will run on the workers.
+                        import_files(file_import_function, fs_access, fileindex, existing, step.tool)
+                        import_files(file_import_function, fs_access, fileindex, existing, step.embedded_tool.tool)
+
 
                         for inp in step.tool["inputs"]:
                             logger.debug('Takes input: %s', inp["id"])
@@ -1720,10 +1807,17 @@ def visitSteps(
     op: Any,
 ) -> None:
     """Iterate over a CWL Process object, running the op on each WorkflowStep."""
+    logger.debug("Process %s", cmdline_tool)
     if isinstance(cmdline_tool, cwltool.workflow.Workflow):
         for step in cmdline_tool.steps:
+            logger.debug("Process step %s with tool %s", step, step.tool)
             op(step.tool)
+            logger.debug("Recurse on embedded tool of step %s", step)
             visitSteps(step.embedded_tool, op)
+    else:
+        # This should itself have a tool to process because it is a step.
+        logger.debug("Process top level tool because this is a %s", type(cmdline_tool))
+        op(cmdline_tool.tool)
 
 
 def rm_unprocessed_secondary_files(job_params: Any) -> None:
@@ -2294,6 +2388,10 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             runtime_context.secret_store = SecretStore()
 
             try:
+                # Get the "order" for the execution of the root job. CWLTool
+                # doesn't document this much, but this is an "order" in the
+                # sense of a "specification" for running a single job. It
+                # describes the inputs to the workflow.
                 initialized_job_order = cwltool.main.init_job_order(
                     job_order_object,
                     options,
@@ -2335,9 +2433,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                         for entry in fileobj:
                             set_secondary(entry)
 
-                if shortname(inp["id"]) in initialized_job_order and inp.get(
-                    "secondaryFiles"
-                ):
+                if shortname(inp["id"]) in initialized_job_order and inp.get("secondaryFiles"):
                     set_secondary(initialized_job_order[shortname(inp["id"])])
 
             runtime_context.use_container = not options.no_container
@@ -2366,38 +2462,19 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 initialized_job_order,
                 discover_secondaryFiles=True,
             )
-
-            def path_to_loc(obj):
-                if "location" not in obj and "path" in obj:
-                    obj["location"] = obj["path"]
-                    del obj["path"]
-
-            def import_files(inner_tool):
-                visit_class(inner_tool, ("File", "Directory"), path_to_loc)
-                visit_class(
-                    inner_tool, ("File",), functools.partial(add_sizes, fs_access)
-                )
-                normalizeFilesDirs(inner_tool)
-
-                adjustFileObjs(
-                    inner_tool,
-                    functools.partial(
-                        uploadFile,
-                        functools.partial(toil.importFile, symlink=True),
-                        fileindex,
-                        existing,
-                        skip_broken=True,
-                    ),
-                )
+            
+            # Define something we can call to import a file and get its file ID.
+            file_import_function = functools.partial(toil.importFile, symlink=True)
 
             # files with the 'file://' uri are imported into the jobstore and
             # changed to 'toilfs:'
-            import_files(initialized_job_order)
+            import_files(file_import_function, fs_access, fileindex, existing, initialized_job_order)
 
-            visitSteps(tool, import_files)
+            visitSteps(tool, functools.partial(import_files, file_import_function, fs_access, fileindex, existing))
 
-            for job_name, job_params in initialized_job_order.items():
-                rm_unprocessed_secondary_files(job_params)
+            for param_name, param_value in initialized_job_order.items():
+                # Loop through all the parameters for the workflow overall.
+                rm_unprocessed_secondary_files(param_value)
 
             try:
                 wf1, _ = makeJob(
