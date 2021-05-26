@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 
+os.environ['MYPYPATH'] = 'contrib/typeshed'
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
@@ -114,7 +115,7 @@ def main():
         'src/toil/lib/objects.py',
         'src/toil/lib/io.py',
         'src/toil/lib/docker.py',
-        'src/toil/lib/encryption/_nacl.py',
+        # 'src/toil/lib/encryption/_nacl.py',
         'src/toil/lib/encryption/_dummy.py',
         'src/toil/lib/encryption/conftest.py',
         'src/toil/lib/encryption/__init__.py',
