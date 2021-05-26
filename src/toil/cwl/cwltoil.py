@@ -801,7 +801,7 @@ def write_file(writeFunc: Any, index: dict, existing: dict, file_uri: str) -> st
                 logger.error("Got exception '%s' while copying '%s'", e, file_uri)
                 raise
         return index[file_uri]
-        
+
 def path_to_loc(obj: Dict) -> None:
     """
     If a CWL object has a "path" and not a "location", make the
@@ -822,21 +822,21 @@ def import_files(
     From the leader, prepare all files and directories inside the given CWL
     tool object to be used on the workers.
     Make sure their sizes are set and import all the files.
-    
+
     Also does some miscelaneous normalization.
-    
+
     :param import_function: The function used to import a file and get a Toil FileID for it.
     :param fs_access: the CWL FS access object we use to access the filesystem to find files to import.
     :param fileindex: Forward map to fill in from file URI to Toil storage location, used by write_file to deduplicate writes.
     :param existing: Reverse map to fill in from Toil storage location to file URI. Not read from.
     :param inner_tool: CWL tool we are importing files for
     """
-    
+
     try:
         tool_id = inner_tool['id']
     except:
         tool_id = str(inner_tool)
-    
+
     visit_class(inner_tool, ("File", "Directory"), path_to_loc)
     visit_class(
         inner_tool, ("File",), functools.partial(add_sizes, fs_access)
@@ -1630,7 +1630,7 @@ class CWLWorkflow(Job):
     def run(self, file_store: AbstractFileStore):
         """
         Convert a CWL Workflow graph into a Toil job graph.
-        
+
         Always runs on the leader, because the batch system knows to schedule
         it as a local job.
         """
@@ -1648,7 +1648,7 @@ class CWLWorkflow(Job):
 
         # `jobs` dict from step id to job that implements that step.
         jobs = {}
-        
+
         for inp in self.cwlwf.tool["inputs"]:
             promises[inp["id"]] = SelfJob(self, cwljob)
 
@@ -1671,7 +1671,7 @@ class CWLWorkflow(Job):
                     if stepinputs_fufilled:
                         logger.debug('Ready to make job for workflow step %s', step.tool["id"])
                         jobobj = {}
-                        
+
                         for inp in step.tool["inputs"]:
                             logger.debug('Takes input: %s', inp["id"])
                             key = shortname(inp["id"])
@@ -2437,7 +2437,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 initialized_job_order,
                 discover_secondaryFiles=True,
             )
-            
+
             # Define something we can call to import a file and get its file
             # ID.
             file_import_function = functools.partial(
@@ -2458,7 +2458,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             )
             visitSteps(
                 tool, functools.partial(
-                    import_files, 
+                    import_files,
                     file_import_function,
                     fs_access,
                     fileindex,
