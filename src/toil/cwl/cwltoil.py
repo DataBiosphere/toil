@@ -756,14 +756,16 @@ def toil_get_file(
     file_store: AbstractFileStore, index: dict, existing: dict, file_store_id: str
 ) -> str:
     """
-    Set up the given input file from the Toil jobstore at a file URI where it can be accessed locally.
+    Set up the given input file from the Toil jobstore at a file URI where it
+    can be accessed locally.
 
     Run as part of the ToilCommandLineTool setup, inside jobs on the workers.
     """
     if not file_store_id.startswith("toilfs:"):
-        raise RuntimeError(f'Probably cannot obtain file {file_store_id} from host {socket.gethostname()}; all imports must happen on the leader!')
-        return file_store.jobStore.getPublicUrl(
-            file_store.jobStore.importFile(file_store_id, symlink=True)
+        raise RuntimeError(
+            f'Cannot obtain file {file_store_id} from host '
+            f'{socket.gethostname()}; all imports must happen on the '
+            f'leader!'
         )
     src_path = file_store.readGlobalFile(FileID.unpack(file_store_id[7:]), symlink=True)
     index[src_path] = file_store_id
