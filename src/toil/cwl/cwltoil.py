@@ -24,6 +24,7 @@ import functools
 import json
 import logging
 import os
+import socket
 import stat
 import sys
 import tempfile
@@ -750,8 +751,13 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 def toil_get_file(
     file_store: AbstractFileStore, index: dict, existing: dict, file_store_id: str
 ) -> str:
-    """Get path to input file from Toil jobstore."""
+    """
+    Set up the given input file from the Toil jobstore at a file URI where it can be accessed locally.
+
+    Run as part of the ToilCommandLineTool setup, inside jobs on the workers.
+    """
     if not file_store_id.startswith("toilfs:"):
+        raise RuntimeError(f'Probably cannot obtain file {file_store_id} from host {socket.gethostname()}; all imports must happen on the leader!')
         return file_store.jobStore.getPublicUrl(
             file_store.jobStore.importFile(file_store_id, symlink=True)
         )
