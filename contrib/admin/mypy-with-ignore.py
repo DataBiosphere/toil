@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 
+os.environ['MYPYPATH'] = 'contrib/typeshed'
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
@@ -90,16 +91,10 @@ def main():
         'src/toil/jobStores/aws/jobStore.py',
         'src/toil/jobStores/aws/__init__.py',
         'src/toil/utils/toilDebugFile.py',
-        'src/toil/utils/toilUpdateEC2Instances.py',
         'src/toil/utils/toilStatus.py',
         'src/toil/utils/toilStats.py',
-        'src/toil/utils/toilSshCluster.py',
         'src/toil/utils/toilMain.py',
         'src/toil/utils/__init__.py',
-        'src/toil/utils/toilDestroyCluster.py',
-        'src/toil/utils/toilDebugJob.py',
-        'src/toil/utils/toilRsyncCluster.py',
-        'src/toil/utils/toilClean.py',
         'src/toil/utils/toilLaunchCluster.py',
         'src/toil/lib/memoize.py',
         'src/toil/lib/throttle.py',
@@ -120,7 +115,7 @@ def main():
         'src/toil/lib/objects.py',
         'src/toil/lib/io.py',
         'src/toil/lib/docker.py',
-        'src/toil/lib/encryption/_nacl.py',
+        # 'src/toil/lib/encryption/_nacl.py',
         'src/toil/lib/encryption/_dummy.py',
         'src/toil/lib/encryption/conftest.py',
         'src/toil/lib/encryption/__init__.py',
