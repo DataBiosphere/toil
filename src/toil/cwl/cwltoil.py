@@ -667,7 +667,7 @@ class ToilCommandLineTool(cwltool.command_line_tool.CommandLineTool):
 
 
     def __str__(self):
-        return 'ToilCommandLineTool(' + json.dumps(self.tool, indent=4) + ')'
+        return f'ToilCommandLineTool({repr(self.tool.get("id", "???"))})'
 
 def toil_make_tool(
     toolpath_object: CommentedMap,
@@ -811,13 +811,19 @@ def path_to_loc(obj: Dict) -> None:
         obj["location"] = obj["path"]
         del obj["path"]
 
-def import_files(import_function: Callable[[str], FileID], fs_access, fileindex: Dict, existing: Dict, inner_tool) -> None:
+def import_files(
+    import_function: Callable[[str], FileID],
+    fs_access: cwltool.stdfsaccess.StdFsAccess,
+    fileindex: Dict,
+    existing: Dict,
+    inner_tool: Dict
+) -> None:
     """
     From the leader, prepare all files and directories inside the given CWL
     tool object to be used on the workers.
     Make sure their sizes are set and import all the files.
     
-    Also does some miscelaneous normalization?
+    Also does some miscelaneous normalization.
     
     :param import_function: The function used to import a file and get a Toil FileID for it.
     :param fs_access: the CWL FS access object we use to access the filesystem to find files to import.
@@ -830,13 +836,6 @@ def import_files(import_function: Callable[[str], FileID], fs_access, fileindex:
         tool_id = inner_tool['id']
     except:
         tool_id = str(inner_tool)
-    
-    logger.debug('!!IMPORTING FILES!! for %s', tool_id)
-    
-    try:
-        logger.debug('Tool dump: %s', json.dumps(inner_tool, indent=4))
-    except:
-        pass
     
     visit_class(inner_tool, ("File", "Directory"), path_to_loc)
     visit_class(
@@ -855,7 +854,7 @@ def import_files(import_function: Callable[[str], FileID], fs_access, fileindex:
         ),
     )
     
-    logger.debug('!!FILES!! for %s after import:', tool_id)
+    logger.debug('Files for %s after import:', tool_id)
     
     visit_class(
         inner_tool, ("File",), lambda f: logger.debug(str(f))
@@ -1659,16 +1658,6 @@ class CWLWorkflow(Job):
         # `jobs` dict from step id to job that implements that step.
         jobs = {}
         
-        # Dict from imported file path to Toil storage location
-        fileindex = {}
-        # Reverse dict of above.
-        # TODO: Not really read from?
-        existing = {}
-        # FS access object we can use from here, on the leader, to get more workflow input files.
-        fs_access = cwltool.stdfsaccess.StdFsAccess(self.runtime_context.basedir)
-        # Function we will use to actually import an input file
-        file_import_function = functools.partial(file_store.jobStore.importFile, symlink=True)
-
         for inp in self.cwlwf.tool["inputs"]:
             promises[inp["id"]] = SelfJob(self, cwljob)
 
@@ -1692,14 +1681,6 @@ class CWLWorkflow(Job):
                         logger.debug('Ready to make job for workflow step %s', step.tool["id"])
                         jobobj = {}
                         
-                        # Make sure to import all the files this workflow step
-                        # wants to use now, since we are on the leader. When
-                        # the step is runnign it won't be able to get at them
-                        # otherwise, since it will run on the workers.
-                        import_files(file_import_function, fs_access, fileindex, existing, step.tool)
-                        import_files(file_import_function, fs_access, fileindex, existing, step.embedded_tool.tool)
-
-
                         for inp in step.tool["inputs"]:
                             logger.debug('Takes input: %s', inp["id"])
                             key = shortname(inp["id"])
