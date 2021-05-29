@@ -18,17 +18,19 @@ import sys
 from functools import reduce
 
 from toil.common import Config, Toil, parser_with_common_options
-from toil.job import JobException, ServiceJobDescription
+from toil.job import Job, JobException, ServiceJobDescription
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobStoreException)
 from toil.statsAndLogging import StatsAndLogging, set_logging_from_options
+
+from typing import List, Dict, Set, Any, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class ToilStatus:
     """Tool for reporting on job status."""
-    def __init__(self, jobStoreName, specifiedJobs=None):
+    def __init__(self, jobStoreName: str, specifiedJobs: Optional[List[Job]] = None):
         self.jobStoreName = jobStoreName
         self.jobStore = Toil.resumeJobStore(jobStoreName)
 
@@ -39,7 +41,7 @@ class ToilStatus:
         else:
             self.jobsToReport = self.fetchUserJobs(specifiedJobs)
 
-    def print_dot_chart(self):
+    def print_dot_chart(self) -> None:
         """Print a dot output graph representing the workflow."""
         print("digraph toil_graph {")
         print("# This graph was created from job-store: %s" % self.jobStoreName)
@@ -63,7 +65,7 @@ class ToilStatus:
                             jobsToNodeNames[childJob.jobStoreID], level))
         print("}")
 
-    def printJobLog(self):
+    def printJobLog(self) -> None:
         """Takes a list of jobs, finds their log files, and prints them to the terminal."""
         for job in self.jobsToReport:
             if job.logJobStoreFileID is not None:
@@ -74,7 +76,7 @@ class ToilStatus:
             else:
                 print(f"LOG_FILE_OF_JOB: {job} LOG: Job has no log file")
 
-    def printJobChildren(self):
+    def printJobChildren(self) -> None:
         """Takes a list of jobs, and prints their successors."""
         for job in self.jobsToReport:
             children = "CHILDREN_OF_JOB:%s " % job
@@ -83,7 +85,7 @@ class ToilStatus:
                     children += "\t(CHILD_JOB:%s,PRECEDENCE:%i)" % (childJob, level)
             print(children)
 
-    def printAggregateJobStats(self, properties, childNumber):
+    def printAggregateJobStats(self, properties: List[str], childNumber: int) -> None:
         """Prints a job's ID, log file, remaining tries, and other properties."""
         for job in self.jobsToReport:
             lf = lambda x: "%s:%s" % (x, str(x in properties))
@@ -94,7 +96,7 @@ class ToilStatus:
                              lf("READY_TO_RUN"), lf("IS_ZOMBIE"),
                              lf("HAS_SERVICES"), lf("IS_SERVICE"))))
 
-    def report_on_jobs(self):
+    def report_on_jobs(self) -> Dict[str, Any]:
         """
         Gathers information about jobs such as its child jobs and status.
 
@@ -143,7 +145,7 @@ class ToilStatus:
         return jobStats
 
     @staticmethod
-    def getPIDStatus(jobStoreName):
+    def getPIDStatus(jobStoreName: str) -> str:
         """
         Determine the status of a process with a particular pid.
 
@@ -173,7 +175,7 @@ class ToilStatus:
         return 'QUEUED'
 
     @staticmethod
-    def getStatus(jobStoreName):
+    def getStatus(jobStoreName: str) -> str:
         """
         Determine the status of a workflow.
 
@@ -206,7 +208,7 @@ class ToilStatus:
                 pass
         return 'RUNNING'
 
-    def fetchRootJob(self):
+    def fetchRootJob(self) -> Job:
         """
         Fetches the root job from the jobStore that provides context for all other jobs.
 
@@ -223,7 +225,7 @@ class ToilStatus:
             print('Root job is absent. The workflow has may have completed successfully.', file=sys.stderr)
             raise
 
-    def fetchUserJobs(self, jobs):
+    def fetchUserJobs(self, jobs: List[Job]) -> List[Job]:
         """
         Takes a user input array of jobs, verifies that they are in the jobStore
         and returns the array of jobsToReport.
@@ -240,7 +242,8 @@ class ToilStatus:
                 raise
         return jobsToReport
 
-    def traverseJobGraph(self, rootJob, jobsToReport=None, foundJobStoreIDs=None):
+    def traverseJobGraph(self, rootJob: Job, jobsToReport: Optional[List[Job]] =None, 
+                    foundJobStoreIDs: Optional[Set[int]] = None) -> List[Job]:
         """
         Find all current jobs in the jobStore and return them as an Array.
 
@@ -278,7 +281,7 @@ class ToilStatus:
         return jobsToReport
 
 
-def main():
+def main() -> None:
     """Reports the state of a Toil workflow."""
     parser = parser_with_common_options()
     parser.add_argument("--failIfNotComplete", action="store_true",
@@ -362,3 +365,4 @@ def main():
     if len(status.jobsToReport) > 0 and options.failIfNotComplete:
         # Upon workflow completion, all jobs will have been removed from job store
         exit(1)
+
