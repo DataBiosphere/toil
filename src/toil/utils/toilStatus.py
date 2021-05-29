@@ -242,7 +242,7 @@ class ToilStatus:
                 raise
         return jobsToReport
 
-    def traverseJobGraph(self, rootJob: Job, jobsToReport: Optional[List[Job]] =None, 
+    def traverseJobGraph(self, rootJob: Job, jobsToReport: Optional[List[Job]] = None, 
                     foundJobStoreIDs: Optional[Set[int]] = None) -> List[Job]:
         """
         Find all current jobs in the jobStore and return them as an Array.
