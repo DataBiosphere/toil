@@ -59,8 +59,8 @@ def apiDockerCall(job,
                   entrypoint=None,
                   detach=False,
                   log_config=None,
-                  auto_remove=False,
-                  remove=True,
+                  auto_remove=None,
+                  remove=False,
                   user=None,
                   environment=None,
                   stdout=None,
@@ -135,7 +135,7 @@ def apiDockerCall(job,
                         stderr and/or stdout are True. Defaults to "output.log".
     :param dict log_config: Specify the logs to return from the container.  See:
                       https://docker-py.readthedocs.io/en/stable/containers.html
-    :param bool remove: Remove the container on exit or not. (default: True).
+    :param bool remove: Remove the container on exit or not.
     :param str user: The container will be run with the privileges of
                      the user specified.  Can be an actual name, such
                      as 'root' or 'lifeisaboutfishtacos', or it can be
@@ -221,16 +221,22 @@ def apiDockerCall(job,
 
     client = docker.from_env(version='auto', timeout=timeout)
 
+    if deferParam is None:
+        deferParam = RM
+
     if deferParam == STOP:
-        job.defer(dockerStop, containerName, remove)
-    elif deferParam == FORGO:
-        # leave the container untouched and running
+        job.defer(dockerStop, containerName)
+
+    if deferParam == FORGO:
+        # Leave the container untouched and running
         pass
     elif deferParam == RM:
         job.defer(dockerKill, containerName)
     elif remove:
-        # call "docker rm" separately to ensure the container is cleaned up even if the run fails.
         job.defer(dockerKill, containerName)
+
+    if auto_remove is None:
+        auto_remove = remove
 
     try:
         if detach is False:
@@ -251,7 +257,7 @@ def apiDockerCall(job,
                                         stderr=stderr,
                                         # to get the generator if demux=True
                                         stream=stream or demux,
-                                        remove=False,  # remove is deferred
+                                        remove=remove,
                                         log_config=log_config,
                                         user=user,
                                         environment=environment,
@@ -293,7 +299,7 @@ def apiDockerCall(job,
                                               stdout=stdout,
                                               stderr=stderr,
                                               stream=stream,
-                                              remove=False,  # remove is deferred
+                                              remove=remove,
                                               log_config=log_config,
                                               user=user,
                                               environment=environment,
@@ -301,11 +307,11 @@ def apiDockerCall(job,
             if stdout or stderr:
                 if streamfile is None:
                     streamfile = 'output.log'
-                with open(streamfile, 'w') as f:
+                with open(streamfile, 'wb') as f:
                     # stream=True makes this loop blocking; we will loop until
                     # the container stops and there is no more output.
                     for line in container.logs(stdout=stdout, stderr=stderr, stream=True):
-                        f.write(line.decode() if isinstance(line, bytes) else line)
+                        f.write(line.encode() if isinstance(line, str) else line)
 
             # If we didn't capture output, the caller will need to .wait() on
             # the container to know when it is done. Even if we did capture
@@ -325,15 +331,16 @@ def apiDockerCall(job,
 
 def dockerKill(container_name: str,
                gentleKill: bool = False,
-               remove: bool = True,
+               keep: bool = False,
                timeout: int = 365 * 24 * 60 * 60) -> None:
     """
-    Immediately kills a container.  Equivalent to "docker kill":
+    Immediately kills and removes a container.  Equivalent to "docker kill && docker rm":
     https://docs.docker.com/engine/reference/commandline/kill/
+    https://docs.docker.com/engine/reference/commandline/rm/
 
     :param container_name: Name of the container being killed.
     :param gentleKill: If True, trigger a graceful shutdown.
-    :param remove: If True, remove the container after it exits. (default: True).
+    :param keep: If True, keep the container after it exits. (default: False).
     :param int timeout: Use the given timeout in seconds for interactions with
                         the Docker daemon. Note that the underlying docker module is
                         not always able to abort ongoing reads and writes in order
@@ -349,10 +356,8 @@ def dockerKill(container_name: str,
             else:
                 client.containers.get(container_name).stop()
             this_container = client.containers.get(container_name)
-        if remove:
-            # equivalent to "docker rm":
-            # https://docs.docker.com/engine/reference/commandline/rm/
-            client.containers.get(container_name).remove()
+        if not keep:
+            this_container.remove()
     except NotFound:
         logger.debug("Attempted to stop container, but container != exist: ",
                      container_name)
@@ -362,15 +367,16 @@ def dockerKill(container_name: str,
         raise create_api_error_from_http_exception(e)
 
 
-def dockerStop(container_name: str, remove: bool = True) -> None:
+def dockerStop(container_name: str, keep: bool = False) -> None:
     """
-    Gracefully kills a container.  Equivalent to "docker stop":
+    Gracefully kills and removes a container.  Equivalent to "docker stop && docker rm":
     https://docs.docker.com/engine/reference/commandline/stop/
+    https://docs.docker.com/engine/reference/commandline/rm/
 
     :param container_name: Name of the container being stopped.
-    :param remove: If True, remove the container after it exits. (default: True).
+    :param keep: If True, keep the container after it exits. (default: False).
     """
-    dockerKill(container_name, gentleKill=True, remove=remove)
+    dockerKill(container_name, gentleKill=True, keep=keep)
 
 
 def containerIsRunning(container_name: str, timeout: int = 365 * 24 * 60 * 60):
