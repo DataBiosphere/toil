@@ -1785,6 +1785,7 @@ def visitSteps(
     CWL object.
     """
     if isinstance(cmdline_tool, cwltool.workflow.Workflow):
+        # For workflows we need to dispatch on steps
         for step in cmdline_tool.steps:
             # Handle the step's tool
             op(step.tool)
@@ -1792,6 +1793,9 @@ def visitSteps(
             visitSteps(step.embedded_tool, op)
     elif isinstance(cmdline_tool, cwltool.command_line_tool.CommandLineTool):
         # This should itself have a tool to process because it is a step.
+        op(cmdline_tool.tool)
+    elif isinstance(cmdline_tool, cwltool.process.Process):
+        # All other CWL Process objects also might have tools
         op(cmdline_tool.tool)
     else:
         raise RuntimeError(f"Unsupported type encountered in workflow "
