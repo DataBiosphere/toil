@@ -18,6 +18,7 @@
 # For an overview of how this all works, see discussion in
 # docs/architecture.rst
 import argparse
+import base64
 import copy
 import datetime
 import functools
@@ -35,6 +36,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    IO,
     Iterable,
     Iterator,
     List,
@@ -534,16 +536,6 @@ def resolve_dict_w_promises(
         else:
             result[k] = first_pass_results[k]
 
-    # '_:' prefixed file paths are a signal to cwltool to create folders in place
-    # rather than copying them, so we make them here
-    for entry in result:
-        if isinstance(result[entry], dict):
-            location = result[entry].get("location")
-            if location:
-                if location.startswith("_:file://"):
-                    local_dir_path = location[len("_:file://") :]
-                    os.makedirs(local_dir_path, exist_ok=True)
-                    result[entry]["location"] = local_dir_path
     return result
 
 
@@ -617,35 +609,28 @@ class ToilPathMapper(PathMapper):
                 # This hasn't been staged yet or we would have fixed up its
                 # location.
                 staged = False
-
-            # Handle the shadow listing we have so we can bring along files
-            # that aren't listed out to the workflow.
-            # Just handle it like a normal listing and we will get called back
-            # by cwltool's code for each thing in it.
-            self.visitlisting(
-                cast(List, obj.get("_toil_shadow_listing", [])),
-                tgt,
-                basedir,
-                copy=copy,
-                staged=staged,
-            )
-
+                
+            if location.startswith("file://"):
+                resolved = schema_salad.ref_resolver.uri_file_path(location)
+            else:
+                resolved = location
+            
             if location in self._pathmap:
                 # Don't map the same directory twice
                 logger.debug("ToilPathMapper stopping recursion because we have already mapped directory: %s", location)
                 return
 
-            # But if it isn't mapped yet, map it
-            if location.startswith("file://"):
-                resolved = schema_salad.ref_resolver.uri_file_path(location)
-            else:
-                resolved = location
             logger.debug("ToilPathMapper adding mapping to: %s", resolved)
             self._pathmap[location] = MapperEnt(
                 resolved, tgt, "WritableDirectory" if copy else "Directory", staged
             )
-            # Just ignore the workflow-visible listing; the shadow listing is
-            # recursive and covers everything we might need.
+            self.visitlisting(
+                cast(List, obj.get("listing", [])),
+                tgt,
+                basedir,
+                copy=copy,
+                staged=staged,
+            )
 
         elif obj["class"] == "File":
             path = cast(str, obj["location"])
@@ -743,46 +728,26 @@ def toil_make_tool(
 
 
 class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
-    """Custom filesystem access class which handles toil filestore references."""
+    """
+    Custom filesystem access class which handles toil filestore references.
+    Normal file paths will be resolved relative to basedir, but 'toilfs:' URIs
+    will be fulfilled from the Toil file store, and directory URIs starting
+    with '_:' will be faked.
+    """
 
     def __init__(self, basedir: str, file_store: AbstractFileStore = None):
         """Create a FsAccess object for the given Toil Filestore and basedir."""
         self.file_store = file_store
+        
+        # Map encoded directory structures to where we downloaded them, so we
+        # don't constantly redownload them.
+        # Assumes nobody will touch our filed via realpath, or that if they do
+        # they know what will happen.
+        self.dir_to_download = {}
+        
         super(ToilFsAccess, self).__init__(basedir)
-
-    def exists(self, path: str) -> bool:
-        """Test for file existance."""
-        # toil's _abs() throws errors when files are not found and cwltool's _abs() does not
-        try:
-            return os.path.exists(self._abs(path))
-        except NoSuchFileException:
-            return False
-
-    def realpath(self, path: str) -> str:
-        if path.startswith("toilfs:"):
-            # import the file and make it available locally if it exists
-            path = self._abs(path)
-        elif path.startswith("_:"):
-            return path
-        return os.path.realpath(path)
-
-    def listdir(self, fn: str) -> List[str]:
-        directory = self._abs(fn)
-        if fn.startswith("_:file://"):
-            directory = fn[len("_:file://") :]
-            if os.path.isdir(directory):
-                return [
-                    cwltool.stdfsaccess.abspath(urllib.parse.quote(entry), fn)
-                    for entry in os.listdir(directory)
-                ]
-            else:
-                return []
-        else:
-            return [
-                cwltool.stdfsaccess.abspath(urllib.parse.quote(entry), fn)
-                for entry in os.listdir(self._abs(directory))
-            ]
-
+        logger.debug("Created ToilFsAccess over %s", basedir)
+    
     def _abs(self, path: str) -> str:
         """
         Return a local absolute path for a file (no schema).
@@ -794,19 +759,135 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         # not error on missing files.
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43  # noqa B950
         if path.startswith("toilfs:"):
+            # Is a Toil file
             logger.debug("Need to download file to get a local absolute path.")
             destination = self.file_store.readGlobalFile(FileID.unpack(path[7:]), symlink=True)
             logger.debug("Downloaded %s to %s", path, destination)
             if not os.path.exists(destination):
                 raise RuntimeError(
-                    f"{destination} does not exist after filestore import."
+                    f"{destination} does not exist after filestore read."
                 )
-        elif path.startswith("_:file://"):
-            destination = path
+        elif path.startswith("_:"):
+            # Is a directory or relative to it
+            
+            # We will download the whole directory and then look inside it
+            
+            # Since this was encoded by prepareDirectoryForUpload we know the
+            # next piece is encoded JSON describing the directory structure,
+            # and it can't contain any slashes.
+            parts = path[2:].split('/', 1)
+            
+            # Before the first slash is the encoded data describing the directory contents
+            dir_data = parts[0]
+            
+            if dir_data not in self.dir_to_download:
+                # Download to a temp directory.
+                temp_dir = self.file_store.getLocalTempDir()
+                
+                logger.debug("ToilFsAccess downloading %s to %s", dir_data, temp_dir)
+                
+                # Decode what to download
+                contents = json.loads(base64.urlsafe_b64decode(dir_data.encode('utf-8')).decode('utf-8'))
+                
+                def download_structure(dir_dict: Dict, into_dir: str) -> None:
+                    """
+                    Download the whole nested dictionary of files and directories.
+                    """
+                    
+                    for name, value in dir_dict.items():
+                        if isinstance(value, dict):
+                            # This is a subdirectory, so make it and download
+                            # its contents
+                            logger.debug("ToilFsAccess downloading subdirectory %s", name)
+                            subdir = os.path.join(into_dir, name)
+                            os.mkdir(subdir)
+                            download_structure(value, subdir)
+                        else:
+                            # This must be a file path uploaded to Toil.
+                            assert isinstance(value, str)
+                            assert value.startswith("toilfs:")
+                            logger.debug("ToilFsAccess downloading contained file %s", name)
+                            dest_path = os.path.join(into_dir, name)
+                            # So download the file into place
+                            self.file_store.readGlobalFile(FileID.unpack(value[7:]), dest_path, symlink=True)
+                # Save it all into this new temp directory
+                download_structure(contents, temp_dir)
+                
+                # Make sure we use the same temp directory if we go traversing
+                # around this thing.
+                self.dir_to_download[dir_data] = temp_dir
+            else:
+                logger.debug("ToilFsAccess already has %s", dir_data)
+                
+            if len(parts) == 1:
+                # We didn't have any subdirectory, so just give back the path to the root
+                destination = self.dir_to_download[dir_data]
+            else:
+                # Navigate to the right subdirectory
+                destination = self.dir_to_download[dir_data] + '/' + parts[1]
         else:
-            destination = super(ToilFsAccess, self)._abs(path)
+            # This is just a local file
+            destination = path
+        
+        # Now destination is a local file, so make sure we really do have an
+        # absolute path
+        destination = super(ToilFsAccess, self)._abs(destination)
         return destination
+    
+    def glob(self, pattern: str) -> List[str]:
+        # We know this falls back on _abs
+        return super(ToilFsAccess, self).glob(pattern)
+    
+    def open(self, fn: str, mode: str) -> IO[Any]:
+        # We know this falls back on _abs
+        return super(ToilFsAccess, self).open(fn, mode)
+    
+    def exists(self, path: str) -> bool:
+        """Test for file existance."""
+        # toil's _abs() throws errors when files are not found and cwltool's _abs() does not
+        try:
+            return os.path.exists(self._abs(path))
+        except NoSuchFileException:
+            return False
 
+    def size(self, fn: str) -> int:
+        # We know this falls back on _abs
+        return super(ToilFsAccess, self).size(fn)
+        
+    def isfile(self, fn: str) -> bool:
+        # We know this falls back on _abs
+        return super(ToilFsAccess, self).isfile(fn)
+    
+    def isdir(self, fn: str) -> bool:
+        # We know this falls back on _abs
+        return super(ToilFsAccess, self).isdir(fn)
+    
+    def listdir(self, fn: str) -> List[str]:
+        logger.debug("ToilFsAccess listing %s", fn)
+        
+        # Download the file or directory to a local path
+        directory = self._abs(fn)
+        
+        # Now list it (it is probably a directory)
+        return [
+            cwltool.stdfsaccess.abspath(urllib.parse.quote(entry), fn)
+            for entry in os.listdir(directory)
+        ]
+            
+    def join(self, path, *paths):  # type: (str, *str) -> str
+        # This falls back on os.path.join
+        return super(ToilFsAccess, self).join(path, *paths)
+
+    def realpath(self, path: str) -> str:
+        if path.startswith("toilfs:"):
+            # import the file and make it available locally if it exists
+            path = self._abs(path)
+        elif path.startswith("_:"):
+            # Import the whole directory
+            path = self._abs(path)
+        return os.path.realpath(path)
+
+    
 
 def toil_get_file(
     file_store: AbstractFileStore, index: dict, existing: dict, file_store_id: str
@@ -817,16 +898,32 @@ def toil_get_file(
 
     Run as part of the ToilCommandLineTool setup, inside jobs on the workers.
     """
-    if not file_store_id.startswith("toilfs:"):
+    
+    if file_store_id.startswith("_:"):
+        # This is a file in a directory.
+        # See ToilFsAccess and prepareDirectoryForUpload.
+        # We will go look for the actual file in the encoded directory
+        # structure which will tell us where the toilfs: name for the file is.
+        
+        parts = file_store_id[2:].split('/')
+        contents = json.loads(base64.urlsafe_b64decode(parts[0].encode('utf-8')).decode('utf-8'))
+        
+        for component in parts[1:]:
+            # Index into the contents
+            contents = contents[component]
+        # The last one will be the basename of a file
+        file_store_id = contents
+    if file_store_id.startswith("toilfs:"):
+        src_path = file_store.readGlobalFile(FileID.unpack(file_store_id[7:]), symlink=True)
+        index[src_path] = file_store_id
+        existing[file_store_id] = src_path
+        return schema_salad.ref_resolver.file_uri(src_path)
+    else:
         raise RuntimeError(
             f'Cannot obtain file {file_store_id} from host '
             f'{socket.gethostname()}; all imports must happen on the '
             f'leader!'
         )
-    src_path = file_store.readGlobalFile(FileID.unpack(file_store_id[7:]), symlink=True)
-    index[src_path] = file_store_id
-    existing[file_store_id] = src_path
-    return schema_salad.ref_resolver.file_uri(src_path)
 
 
 def write_file(writeFunc: Any, index: dict, existing: dict, file_uri: str) -> str:
@@ -895,132 +992,6 @@ def populate_directory_listings(
         ),
     )
 
-def show_listing(obj: Dict):
-    """
-    Restore the shadow listing of a CWL Directory to the listing field.
-    """
-    if "_toil_shadow_listing" in obj:
-        obj["listing"] = obj["_toil_shadow_listing"]
-        del obj["_toil_shadow_listing"]
-
-def hide_listing(obj: Dict):
-    """
-    Hide the "listing" field value for a CWL Directory ion a shadow listing
-    that can be restored with show_listing.
-    """
-    if "listing" in obj:
-        obj["_toil_shadow_listing"] = obj["listing"]
-        del obj["listing"]
-
-def populate_shadow_directory_listings(
-    fs_access: cwltool.stdfsaccess.StdFsAccess,
-    cwl_object: Dict
-) -> None:
-    """
-    From wherever the given directories are on the local disk, create recursive
-    "shadow" directory listings for all Directory CWL objects in the given CWL
-    object. THese aren't in the normal "listing" field where workflows might
-    demand no or shallow listings, but they do come along with the objects and
-    let us bring along all the Files recursively.
-
-    This makes sure that File CWL objects exist, so that Toil can save them to
-    the file store and they will come along when the whole Directory is sent to
-    another node.
-
-    :param fs_access: Filesystem access object to use to look at the directories.
-    :param cwl_object: CWL Tool or workflow order that contains some Directory objects to process.
-    """
-
-    adjustDirObjs(
-        cwl_object,
-        show_listing
-    )
-
-    # Get the normal listing recursively for anything that doesn't have one
-    # (i.e. anything we made here)
-    populate_directory_listings(fs_access, cwl_object, recursive=True)
-
-    adjustDirObjs(
-        cwl_object,
-        hide_listing
-    )
-
-def show_shadow_directory_listings_to_depth(
-    load_listing: str,
-    cwl_object: Dict
-) -> None:
-    """
-    Expose the Toil shadow listing to the given depth on Directory objects.
-
-    :param load_listing: One of 'no_listing', 'shallow_listing', or 'deep_listing'
-    :param cwl_object: CWL Tool or workflow order that contains some Directory objects to process.
-    """
-
-    def add_empty_listing(obj: Dict):
-        """
-        Add an empty listing to a CWL Directory object.
-        """
-        obj["listing"] = []
-
-    def show_listing_to_depth(obj: Dict):
-        """
-        Restore the shadow listing to the listing field of this Directory
-        object, but only to load_listing depth.
-        """
-
-        logger.debug("Restoring listing to depth %s in %s", load_listing, cwl_object)
-
-        if load_listing == 'no_listing':
-            # Don't show anything. Listing should be and stay empty.
-            assert 'listing' not in obj
-        elif load_listing == 'shallow_listing':
-            # Show one level of listing but leave the rest under that as a
-            # shadow listing.
-            # We need to fake a listing so cwltool doesn't try to restore the
-            # listing from the filesystem due to being empty.
-            adjustDirObjs(
-                obj,
-                add_empty_listing
-            )
-            show_listing(obj)
-        elif load_listing == 'deep_listing':
-            # Move the whole shadow listing recursively.
-            adjustDirObjs(
-                obj,
-                show_listing
-            )
-        else:
-            raise RuntimeError("Unrecognized listing depth: " + load_listing)
-
-    # Usually CWL does its non-recursive listings by not already having a
-    # recursive CWL object tree of directories. We do, so we have to do
-    # some custom CWL object tree traversal here.
-    visit_top_cwl_class(cwl_object, ('Directory',), show_listing_to_depth)
-
-
-def hide_directory_locations(
-    cwl_object: Dict
-) -> None:
-    """
-    Hide the file:// paths of all directories in the given CWL object, so that
-    they will not be used on other machines to attempt to produce listings.
-
-    :param cwl_object: CWL Tool or workflow order that contains some Directory objects to process.
-    """
-
-    def hide_location(obj: Dict):
-        """
-        Hide the local path of the "location" field.
-        """
-        if "location" in obj and obj["location"].startswith("file://"):
-            # We use this _ prefix to denote that when we make this directory
-            # elsewhere we start with an empty directory and then populate it.
-            obj["location"] = "_:" + obj["location"]
-    adjustDirObjs(
-        cwl_object,
-        hide_location
-    )
-
 def import_files(
     import_function: Callable[[str], FileID],
     fs_access: cwltool.stdfsaccess.StdFsAccess,
@@ -1048,6 +1019,9 @@ def import_files(
         tool_id = str(cwl_object)
 
     logger.debug('Importing files for %s', tool_id)
+    
+    # Make sure we know all the files and directories
+    populate_directory_listings(fs_access, cwl_object)
 
     visit_class(cwl_object, ("File", "Directory"), path_to_loc)
     visit_class(
@@ -1065,9 +1039,13 @@ def import_files(
             skip_broken=True,
         ),
     )
+    
+    adjustDirObjs(cwl_object, functools.partial(prepareDirectoryForUpload, fs_access))
 
 def prepareDirectoryForUpload(
-    directory_metadata: dict, skip_broken: bool = False
+    fs_access: cwltool.stdfsaccess.StdFsAccess,
+    directory_metadata: dict,
+    skip_broken: bool = False
 ) -> None:
     """
     Prepare a Directory object to be uploaded.
@@ -1077,13 +1055,11 @@ def prepareDirectoryForUpload(
     Makes sure the directory actually exists, and rewrites its location to be
     something we can use on another machine.
 
-    Since Files and sub-Directories are already tracked by the directory's
-    listing, we just need some sentinel path to represent the existence of a
-    directory coming from Toil and not the local filesystem.
+    We can't rely on the directory's listing, since some tools require it to be
+    cleared or single-level but still expect to see its contents.
     """
-    if directory_metadata["location"].startswith("toilfs:") or directory_metadata[
-        "location"
-    ].startswith("_:"):
+    if (directory_metadata["location"].startswith("toilfs:") or
+        directory_metadata["location"].startswith("_:")):
         # Already in Toil; nothing to do
         return
     if not directory_metadata["location"] and directory_metadata["path"]:
@@ -1099,15 +1075,46 @@ def prepareDirectoryForUpload(
             raise cwltool.errors.WorkflowException(
                 "Directory is missing: %s" % directory_metadata["location"]
             )
-
+            
+    # Now we have a directory we need to upload.
+    # We know its listing is filled in; we need to hide the listing somewhere
+    # ToilFsAccess can find it and then clear it
+    
+    logger.debug('Packing directory for upload: %s', directory_metadata)
+    
+    def to_nested(directory: Dict) -> Dict:
+        """
+        Pack up a directory listing into a simpler structure of nested dicts by
+        path name components.
+        """
+        contents = {}
+        for child in directory.get('listing'):
+            if child.get('class') == 'Directory':
+                # Recurse on subdirectories
+                contents[child.get('basename')] = to_nested(child)
+            else:
+                # Must be a file
+                contents[child.get('basename')] = child.get('location')
+        return contents
+ 
+    contents = to_nested(directory_metadata)
+    
     # The metadata for a directory is all we need to keep around for it. It
     # doesn't have a real location. But each directory needs a unique location
     # or cwltool won't ship the metadata along. cwltool takes "_:" as a signal
     # to make directories instead of copying from somewhere. So we give every
     # directory a unique _: location and cwltool's machinery Just Works.
-    directory_metadata["location"] = "_:" + directory_metadata["location"]
+    
+    # Say that the directory location is just its dumped contents.
+    # TODO: store these listings as files in the filestore instead?
+    directory_metadata["location"] = '_:' + base64.urlsafe_b64encode(json.dumps(contents).encode('utf-8')).decode('utf-8')
+    
+    # Clear out the listing; it will be re-made from the saved contents if a
+    # tool wants it.
+    # This makes sure we don't run again on subdirectories.
+    del directory_metadata['listing']
 
-    logger.debug("Sending directory at %s", directory_metadata["location"])
+    logger.debug('Packed directory for upload: %s', directory_metadata)
 
 
 def uploadFile(
@@ -1425,6 +1432,8 @@ class CWLJob(Job):
         # do CWL things.
         cwllogger.removeHandler(defaultStreamHandler)
         cwllogger.setLevel(logger.getEffectiveLevel())
+        
+        logger.debug('Loaded order: %s', self.cwljob)
 
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
@@ -1447,24 +1456,6 @@ class CWLJob(Job):
                     found = True
             if not found:
                 cwljob.pop(inp_id)
-
-        # When we hand off the CWL job order to cwltool, it will try and create
-        # listings for any directories that don't have them (which is all of
-        # them, since we hid the recursive listings in the shadow listing). It
-        # can't do that because the directories probably aren't on this node.
-        # And it needs to have listings of the appropriate recursive listing
-        # depth for this tool.
-
-        # So we replicate what cwltool does and we fill in the listings of the
-        # right depth, but we do it from the shadow listing instead of the
-        # filesystem.
-        #
-        # TODO: should we be using cwltool's listing getter and a fancier
-        # fsaccess instead?
-
-        load_listing = determine_load_listing(self.cwltool)
-        if load_listing != 'no_listing':
-            show_shadow_directory_listings_to_depth(load_listing, cwljob)
 
         # Exports temporary directory for batch systems that reset TMPDIR
         os.environ["TMPDIR"] = os.path.realpath(file_store.getLocalTempDir())
@@ -1500,6 +1491,14 @@ class CWLJob(Job):
         started_at = datetime.datetime.now()  # noqa F841
 
         logger.debug('About to run order: %s', cwljob)
+        logger.debug('About to run process: %s', self.cwltool)
+       
+        original = cwltool.command_line_tool.check_adjust
+        def wrapper(builder, file_o):
+            logger.debug("Checking and adjusting with %s", builder)
+            logger.debug("Checking and adjusting on %s", file_o)
+            original(builder, file_o)
+        cwltool.command_line_tool.check_adjust = wrapper
 
         output, status = cwltool.executors.SingleJobExecutor().execute(
             process=self.cwltool,
@@ -1510,13 +1509,12 @@ class CWLJob(Job):
         ended_at = datetime.datetime.now()  # noqa F841
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
-
-        # Make sure we know all the File objects we want to come along
-        populate_shadow_directory_listings(cwltool.stdfsaccess.StdFsAccess(outdir), output)
-
-        # Change the Directory objects so that cwltool will let Toil populate
-        # them instead of trying to grab them from the local filesystem
-        adjustDirObjs(output, prepareDirectoryForUpload)
+            
+        # Get ahold of the filesystem
+        fs_access = runtime_context.make_fs_access(runtime_context.basedir)
+            
+        # Make sure all directory listings are filled in
+        populate_directory_listings(fs_access, output)
 
         # write the outputs into the jobstore
         adjustFileObjs(
@@ -1527,6 +1525,16 @@ class CWLJob(Job):
                 index,
                 existing,
             ),
+        )
+        
+        # Change the Directory objects to things ToilFsAccess knows how to list
+        # even if a tool doesn't request a full listing and doesn't run on the
+        # node its directories were on
+        adjustDirObjs(
+            output, functools.partial(
+                prepareDirectoryForUpload,
+                fs_access
+            )
         )
 
         # metadata[process_uuid] = {
@@ -2673,27 +2681,6 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 symlink=True
             )
 
-            # Traverse the "order" and also the whole workflow looking for CWL
-            # File and Directory objects.
-            # Directories have recursive listings filled in, but we hide them
-            # in a different attribute so that "listing" will behave according
-            # to the CWL spec.
-            # We also hide directories' filesystem locations so cwltool doesn't
-            # try and look at them to construct listings.
-            # Files with the 'file://' uri are imported into the jobstore and
-            # changed to 'toilfs:'.
-            populate_shadow_directory_listings(
-                fs_access,
-                initialized_job_order
-            )
-            visitSteps(
-                tool, functools.partial(
-                    populate_shadow_directory_listings,
-                    fs_access
-                )
-            )
-            hide_directory_locations(initialized_job_order)
-            visitSteps(tool, hide_directory_locations)
             import_files(
                 file_import_function,
                 fs_access,
