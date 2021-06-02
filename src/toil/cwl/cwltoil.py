@@ -609,12 +609,12 @@ class ToilPathMapper(PathMapper):
                 # This hasn't been staged yet or we would have fixed up its
                 # location.
                 staged = False
-                
+
             if location.startswith("file://"):
                 resolved = schema_salad.ref_resolver.uri_file_path(location)
             else:
                 resolved = location
-            
+
             if location in self._pathmap:
                 # Don't map the same directory twice
                 logger.debug("ToilPathMapper stopping recursion because we have already mapped directory: %s", location)
@@ -738,16 +738,16 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
     def __init__(self, basedir: str, file_store: AbstractFileStore = None):
         """Create a FsAccess object for the given Toil Filestore and basedir."""
         self.file_store = file_store
-        
+
         # Map encoded directory structures to where we downloaded them, so we
         # don't constantly redownload them.
         # Assumes nobody will touch our filed via realpath, or that if they do
         # they know what will happen.
         self.dir_to_download = {}
-        
+
         super(ToilFsAccess, self).__init__(basedir)
         logger.debug("Created ToilFsAccess over %s", basedir)
-    
+
     def _abs(self, path: str) -> str:
         """
         Return a local absolute path for a file (no schema).
@@ -769,31 +769,31 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
                 )
         elif path.startswith("_:"):
             # Is a directory or relative to it
-            
+
             # We will download the whole directory and then look inside it
-            
+
             # Since this was encoded by prepareDirectoryForUpload we know the
             # next piece is encoded JSON describing the directory structure,
             # and it can't contain any slashes.
             parts = path[2:].split('/', 1)
-            
+
             # Before the first slash is the encoded data describing the directory contents
             dir_data = parts[0]
-            
+
             if dir_data not in self.dir_to_download:
                 # Download to a temp directory.
                 temp_dir = self.file_store.getLocalTempDir()
-                
+
                 logger.debug("ToilFsAccess downloading %s to %s", dir_data, temp_dir)
-                
+
                 # Decode what to download
                 contents = json.loads(base64.urlsafe_b64decode(dir_data.encode('utf-8')).decode('utf-8'))
-                
+
                 def download_structure(dir_dict: Dict, into_dir: str) -> None:
                     """
                     Download the whole nested dictionary of files and directories.
                     """
-                    
+
                     for name, value in dir_dict.items():
                         if isinstance(value, dict):
                             # This is a subdirectory, so make it and download
@@ -812,13 +812,13 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
                             self.file_store.readGlobalFile(FileID.unpack(value[7:]), dest_path, symlink=True)
                 # Save it all into this new temp directory
                 download_structure(contents, temp_dir)
-                
+
                 # Make sure we use the same temp directory if we go traversing
                 # around this thing.
                 self.dir_to_download[dir_data] = temp_dir
             else:
                 logger.debug("ToilFsAccess already has %s", dir_data)
-                
+
             if len(parts) == 1:
                 # We didn't have any subdirectory, so just give back the path to the root
                 destination = self.dir_to_download[dir_data]
@@ -828,20 +828,20 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         else:
             # This is just a local file
             destination = path
-        
+
         # Now destination is a local file, so make sure we really do have an
         # absolute path
         destination = super(ToilFsAccess, self)._abs(destination)
         return destination
-    
+
     def glob(self, pattern: str) -> List[str]:
         # We know this falls back on _abs
         return super(ToilFsAccess, self).glob(pattern)
-    
+
     def open(self, fn: str, mode: str) -> IO[Any]:
         # We know this falls back on _abs
         return super(ToilFsAccess, self).open(fn, mode)
-    
+
     def exists(self, path: str) -> bool:
         """Test for file existance."""
         # toil's _abs() throws errors when files are not found and cwltool's _abs() does not
@@ -853,27 +853,27 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
     def size(self, fn: str) -> int:
         # We know this falls back on _abs
         return super(ToilFsAccess, self).size(fn)
-        
+
     def isfile(self, fn: str) -> bool:
         # We know this falls back on _abs
         return super(ToilFsAccess, self).isfile(fn)
-    
+
     def isdir(self, fn: str) -> bool:
         # We know this falls back on _abs
         return super(ToilFsAccess, self).isdir(fn)
-    
+
     def listdir(self, fn: str) -> List[str]:
         logger.debug("ToilFsAccess listing %s", fn)
-        
+
         # Download the file or directory to a local path
         directory = self._abs(fn)
-        
+
         # Now list it (it is probably a directory)
         return [
             cwltool.stdfsaccess.abspath(urllib.parse.quote(entry), fn)
             for entry in os.listdir(directory)
         ]
-            
+
     def join(self, path, *paths):  # type: (str, *str) -> str
         # This falls back on os.path.join
         return super(ToilFsAccess, self).join(path, *paths)
@@ -887,7 +887,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             path = self._abs(path)
         return os.path.realpath(path)
 
-    
+
 
 def toil_get_file(
     file_store: AbstractFileStore, index: dict, existing: dict, file_store_id: str
@@ -898,16 +898,16 @@ def toil_get_file(
 
     Run as part of the ToilCommandLineTool setup, inside jobs on the workers.
     """
-    
+
     if file_store_id.startswith("_:"):
         # This is a file in a directory.
         # See ToilFsAccess and prepareDirectoryForUpload.
         # We will go look for the actual file in the encoded directory
         # structure which will tell us where the toilfs: name for the file is.
-        
+
         parts = file_store_id[2:].split('/')
         contents = json.loads(base64.urlsafe_b64decode(parts[0].encode('utf-8')).decode('utf-8'))
-        
+
         for component in parts[1:]:
             # Index into the contents
             contents = contents[component]
@@ -1019,7 +1019,7 @@ def import_files(
         tool_id = str(cwl_object)
 
     logger.debug('Importing files for %s', tool_id)
-    
+
     # Make sure we know all the files and directories
     populate_directory_listings(fs_access, cwl_object)
 
@@ -1039,7 +1039,7 @@ def import_files(
             skip_broken=True,
         ),
     )
-    
+
     adjustDirObjs(cwl_object, functools.partial(prepareDirectoryForUpload, fs_access))
 
 def prepareDirectoryForUpload(
@@ -1075,13 +1075,13 @@ def prepareDirectoryForUpload(
             raise cwltool.errors.WorkflowException(
                 "Directory is missing: %s" % directory_metadata["location"]
             )
-            
+
     # Now we have a directory we need to upload.
     # We know its listing is filled in; we need to hide the listing somewhere
     # ToilFsAccess can find it and then clear it
-    
+
     logger.debug('Packing directory for upload: %s', directory_metadata)
-    
+
     def to_nested(directory: Dict) -> Dict:
         """
         Pack up a directory listing into a simpler structure of nested dicts by
@@ -1096,19 +1096,19 @@ def prepareDirectoryForUpload(
                 # Must be a file
                 contents[child.get('basename')] = child.get('location')
         return contents
- 
+
     contents = to_nested(directory_metadata)
-    
+
     # The metadata for a directory is all we need to keep around for it. It
     # doesn't have a real location. But each directory needs a unique location
     # or cwltool won't ship the metadata along. cwltool takes "_:" as a signal
     # to make directories instead of copying from somewhere. So we give every
     # directory a unique _: location and cwltool's machinery Just Works.
-    
+
     # Say that the directory location is just its dumped contents.
     # TODO: store these listings as files in the filestore instead?
     directory_metadata["location"] = '_:' + base64.urlsafe_b64encode(json.dumps(contents).encode('utf-8')).decode('utf-8')
-    
+
     # Clear out the listing; it will be re-made from the saved contents if a
     # tool wants it.
     # This makes sure we don't run again on subdirectories.
@@ -1432,7 +1432,7 @@ class CWLJob(Job):
         # do CWL things.
         cwllogger.removeHandler(defaultStreamHandler)
         cwllogger.setLevel(logger.getEffectiveLevel())
-        
+
         logger.debug('Loaded order: %s', self.cwljob)
 
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
@@ -1492,7 +1492,7 @@ class CWLJob(Job):
 
         logger.debug('About to run order: %s', cwljob)
         logger.debug('About to run process: %s', self.cwltool)
-       
+
         original = cwltool.command_line_tool.check_adjust
         def wrapper(builder, file_o):
             logger.debug("Checking and adjusting with %s", builder)
@@ -1509,10 +1509,10 @@ class CWLJob(Job):
         ended_at = datetime.datetime.now()  # noqa F841
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
-            
+
         # Get ahold of the filesystem
         fs_access = runtime_context.make_fs_access(runtime_context.basedir)
-            
+
         # Make sure all directory listings are filled in
         populate_directory_listings(fs_access, output)
 
@@ -1526,7 +1526,7 @@ class CWLJob(Job):
                 existing,
             ),
         )
-        
+
         # Change the Directory objects to things ToilFsAccess knows how to list
         # even if a tool doesn't request a full listing and doesn't run on the
         # node its directories were on
