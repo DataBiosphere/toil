@@ -813,12 +813,36 @@ def path_to_loc(obj: Dict) -> None:
         obj["location"] = obj["path"]
         del obj["path"]
 
+def populate_directory_listings(
+    fs_access: cwltool.stdfsaccess.StdFsAccess,
+    cwl_object: Dict
+) -> None:
+    """
+    From wherever the given directories are on the local disk, create full
+    directory listings for all Directory CWL objects in the given CWL object.
+    This makes sure that File CWL objects exist, so that Toil can save them to
+    the file store and they will come along when the whole Directory is sent to
+    another node.
+
+    :param fs_access: Filesystem access object to use to look at the directories.
+    :param cwl_object: CWL Tool or workflow order that contains some Directory objects to process.
+    """
+
+    # Apply cwltool's recursive listing-populating function to all the
+    # Directory CWL objects.
+    adjustDirObjs(
+        cwl_object,
+        functools.partial(
+            get_listing, fs_access, recursive=True
+        ),
+    )
+
 def import_files(
     import_function: Callable[[str], FileID],
     fs_access: cwltool.stdfsaccess.StdFsAccess,
     fileindex: Dict,
     existing: Dict,
-    inner_tool: Dict
+    cwl_object: Dict
 ) -> None:
     """
     From the leader, prepare all files and directories inside the given CWL
@@ -831,22 +855,24 @@ def import_files(
     :param fs_access: the CWL FS access object we use to access the filesystem to find files to import.
     :param fileindex: Forward map to fill in from file URI to Toil storage location, used by write_file to deduplicate writes.
     :param existing: Reverse map to fill in from Toil storage location to file URI. Not read from.
-    :param inner_tool: CWL tool we are importing files for
+    :param cwl_object: CWL tool (or workflow order) we are importing files for
     """
 
     try:
-        tool_id = inner_tool['id']
+        tool_id = cwl_object['id']
     except:
-        tool_id = str(inner_tool)
+        tool_id = str(cwl_object)
 
-    visit_class(inner_tool, ("File", "Directory"), path_to_loc)
+    logger.debug('Importing files for %s', tool_id)
+
+    visit_class(cwl_object, ("File", "Directory"), path_to_loc)
     visit_class(
-        inner_tool, ("File",), functools.partial(add_sizes, fs_access)
+        cwl_object, ("File",), functools.partial(add_sizes, fs_access)
     )
-    normalizeFilesDirs(inner_tool)
+    normalizeFilesDirs(cwl_object)
 
     adjustFileObjs(
-        inner_tool,
+        cwl_object,
         functools.partial(
             uploadFile,
             import_function,
@@ -1288,13 +1314,11 @@ class CWLJob(Job):
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
 
-        adjustDirObjs(
-            output,
-            functools.partial(
-                get_listing, cwltool.stdfsaccess.StdFsAccess(outdir), recursive=True
-            ),
-        )
+        # Make sure we know all the File objects we want to come along
+        populate_directory_listings(cwltool.stdfsaccess.StdFsAccess(outdir), output)
 
+        # Change the Directory objects so that cwltool will let Toil populate
+        # them instead of trying to grab them from the local filesystem
         adjustDirObjs(output, prepareDirectoryForUpload)
 
         # write the outputs into the jobstore
@@ -2434,6 +2458,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             # make sure this doesn't add listing items; if shallow_listing is
             # selected, it will discover dirs one deep and then again later on
             # (producing 2+ deep listings instead of only 1)
+            # TODO: when is later on?
             builder.loadListing = "no_listing"
 
             builder.bind_input(
@@ -2453,6 +2478,16 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             # File and Directory objects.
             # Files with the 'file://' uri are imported into the jobstore and
             # changed to 'toilfs:'.
+            populate_directory_listings(
+                fs_access,
+                initialized_job_order
+            )
+            visitSteps(
+                tool, functools.partial(
+                    populate_directory_listings,
+                    fs_access
+                )
+            )
             import_files(
                 file_import_function,
                 fs_access,
@@ -2487,12 +2522,18 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             wf1.cwljob = initialized_job_order
             outobj = toil.start(wf1)
 
+        # Now the workflow has completed. We need to make sure the outputs (and
+        # inputs) end up where the user wants them to be.
+
         outobj = resolve_dict_w_promises(outobj)
 
         # Stage files. Specify destination bucket if specified in CLI
         # options. If destination bucket not passed in,
         # options.destBucket's value will be None.
         toilStageFiles(toil, outobj, outdir, destBucket=options.destBucket)
+
+        logger.debug('Job: %s', wf1)
+        logger.debug('Order: %s', initialized_job_order)
 
         if runtime_context.research_obj is not None:
             runtime_context.research_obj.create_job(outobj, True)
