@@ -35,6 +35,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Iterable,
     Iterator,
     List,
     Mapping,
@@ -111,6 +112,30 @@ CWL_INTERNAL_JOBS = (
     "ResolveIndirect",
 )
 
+
+# Customized CWL utilities
+def visit_top_cwl_class(
+    rec: MutableMapping,
+    classes: Iterable[str],
+    op: Callable[[MutableMapping], Any]
+) -> None:
+    """
+    Apply the given operation to all top-level CWL objects with the given named CWL class.
+    Like cwltool's visit_class but doesn't look inside any object visited.
+    """
+    if isinstance(rec, MutableMapping):
+        if rec.get("class", None) in classes:
+            # This is one of the classes requested
+            # So process it
+            op(rec)
+        else:
+            # Look inside it instead
+            for key in rec:
+                visit_top_cwl_class(rec[key], classes, op)
+    elif isinstance(rec, MutableSequence):
+        # This item is actually a list of things, so look at all of them.
+        for key in rec:
+            visit_top_cwl_class(key, classes, op)
 
 def cwltoil_was_removed():
     """Complain about deprecated entrypoint."""
@@ -586,6 +611,8 @@ class ToilPathMapper(PathMapper):
             # Grab its location
             location = cast(str, obj["location"])
 
+            logger.debug("ToilPathMapper visiting directory %s", location)
+
             if location.startswith("file://"):
                 # This hasn't been staged yet or we would have fixed up its
                 # location.
@@ -604,8 +631,7 @@ class ToilPathMapper(PathMapper):
             )
 
             if location in self._pathmap:
-                # Don't map the same directory twice (for listing and shadow
-                # listing, or for duplicates in the tree)
+                # Don't map the same directory twice
                 logger.debug("ToilPathMapper stopping recursion because we have already mapped directory: %s", location)
                 return
 
@@ -614,21 +640,17 @@ class ToilPathMapper(PathMapper):
                 resolved = schema_salad.ref_resolver.uri_file_path(location)
             else:
                 resolved = location
+            logger.debug("ToilPathMapper adding mapping to: %s", resolved)
             self._pathmap[location] = MapperEnt(
                 resolved, tgt, "WritableDirectory" if copy else "Directory", staged
             )
-
-            # And visit the workflow-visible listing
-            self.visitlisting(
-                cast(List, obj.get("listing", [])),
-                tgt,
-                basedir,
-                copy=copy,
-                staged=staged,
-            )
+            # Just ignore the workflow-visible listing; the shadow listing is
+            # recursive and covers everything we might need.
 
         elif obj["class"] == "File":
             path = cast(str, obj["location"])
+
+            logger.debug("ToilPathMapper visiting file %s", path)
 
             if path in self._pathmap:
                 # Don't map the same file twice
@@ -849,7 +871,8 @@ def path_to_loc(obj: Dict) -> None:
 
 def populate_directory_listings(
     fs_access: cwltool.stdfsaccess.StdFsAccess,
-    cwl_object: Dict
+    cwl_object: Dict,
+    recursive: bool = True
 ) -> None:
     """
     From wherever the given directories are on the local disk, create full
@@ -860,6 +883,7 @@ def populate_directory_listings(
 
     :param fs_access: Filesystem access object to use to look at the directories.
     :param cwl_object: CWL Tool or workflow order that contains some Directory objects to process.
+    :param recursive: Should the listing be recursive or not?
     """
 
     # Apply cwltool's recursive listing-populating function to all the
@@ -867,20 +891,37 @@ def populate_directory_listings(
     adjustDirObjs(
         cwl_object,
         functools.partial(
-            get_listing, fs_access, recursive=True
+            get_listing, fs_access, recursive=recursive
         ),
     )
+
+def show_listing(obj: Dict):
+    """
+    Restore the shadow listing of a CWL Directory to the listing field.
+    """
+    if "_toil_shadow_listing" in obj:
+        obj["listing"] = obj["_toil_shadow_listing"]
+        del obj["_toil_shadow_listing"]
+
+def hide_listing(obj: Dict):
+    """
+    Hide the "listing" field value for a CWL Directory ion a shadow listing
+    that can be restored with show_listing.
+    """
+    if "listing" in obj:
+        obj["_toil_shadow_listing"] = obj["listing"]
+        del obj["listing"]
 
 def populate_shadow_directory_listings(
     fs_access: cwltool.stdfsaccess.StdFsAccess,
     cwl_object: Dict
 ) -> None:
     """
-    From wherever the given directories are on the local disk, create recursive "shadow"
-    directory listings for all Directory CWL objects in the given CWL object.
-    THese aren't in the normal "listing" field where workflows might demand no
-    or shallow listings, but they do come along with the objects and let us
-    bring along all the Files recursively.
+    From wherever the given directories are on the local disk, create recursive
+    "shadow" directory listings for all Directory CWL objects in the given CWL
+    object. THese aren't in the normal "listing" field where workflows might
+    demand no or shallow listings, but they do come along with the objects and
+    let us bring along all the Files recursively.
 
     This makes sure that File CWL objects exist, so that Toil can save them to
     the file store and they will come along when the whole Directory is sent to
@@ -890,22 +931,95 @@ def populate_shadow_directory_listings(
     :param cwl_object: CWL Tool or workflow order that contains some Directory objects to process.
     """
 
-    # Get the normal listing
-    populate_directory_listings(fs_access, cwl_object)
+    adjustDirObjs(
+        cwl_object,
+        show_listing
+    )
 
-    # But then hise the "listing" fields
-    def hide_listing(obj: Dict):
-        """
-        Hide the "listing" field value somewhere else.
-        """
-        if "listing" in obj:
-            obj["_toil_shadow_listing"] = obj["listing"]
-            del obj["listing"]
+    # Get the normal listing recursively for anything that doesn't have one
+    # (i.e. anything we made here)
+    populate_directory_listings(fs_access, cwl_object, recursive=True)
+
     adjustDirObjs(
         cwl_object,
         hide_listing
     )
 
+def show_shadow_directory_listings_to_depth(
+    load_listing: str,
+    cwl_object: Dict
+) -> None:
+    """
+    Expose the Toil shadow listing to the given depth on Directory objects.
+
+    :param load_listing: One of 'no_listing', 'shallow_listing', or 'deep_listing'
+    :param cwl_object: CWL Tool or workflow order that contains some Directory objects to process.
+    """
+
+    def add_empty_listing(obj: Dict):
+        """
+        Add an empty listing to a CWL Directory object.
+        """
+        obj["listing"] = []
+
+    def show_listing_to_depth(obj: Dict):
+        """
+        Restore the shadow listing to the listing field of this Directory
+        object, but only to load_listing depth.
+        """
+
+        logger.debug("Restoring listing to depth %s in %s", load_listing, cwl_object)
+
+        if load_listing == 'no_listing':
+            # Don't show anything. Listing should be and stay empty.
+            assert 'listing' not in obj
+        elif load_listing == 'shallow_listing':
+            # Show one level of listing but leave the rest under that as a
+            # shadow listing.
+            # We need to fake a listing so cwltool doesn't try to restore the
+            # listing from the filesystem due to being empty.
+            adjustDirObjs(
+                obj,
+                add_empty_listing
+            )
+            show_listing(obj)
+        elif load_listing == 'deep_listing':
+            # Move the whole shadow listing recursively.
+            adjustDirObjs(
+                obj,
+                show_listing
+            )
+        else:
+            raise RuntimeError("Unrecognized listing depth: " + load_listing)
+
+    # Usually CWL does its non-recursive listings by not already having a
+    # recursive CWL object tree of directories. We do, so we have to do
+    # some custom CWL object tree traversal here.
+    visit_top_cwl_class(cwl_object, ('Directory',), show_listing_to_depth)
+
+
+def hide_directory_locations(
+    cwl_object: Dict
+) -> None:
+    """
+    Hide the file:// paths of all directories in the given CWL object, so that
+    they will not be used on other machines to attempt to produce listings.
+
+    :param cwl_object: CWL Tool or workflow order that contains some Directory objects to process.
+    """
+
+    def hide_location(obj: Dict):
+        """
+        Hide the local path of the "location" field.
+        """
+        if "location" in obj and obj["location"].startswith("file://"):
+            # We use this _ prefix to denote that when we make this directory
+            # elsewhere we start with an empty directory and then populate it.
+            obj["location"] = "_:" + obj["location"]
+    adjustDirObjs(
+        cwl_object,
+        hide_location
+    )
 
 def import_files(
     import_function: Callable[[str], FileID],
@@ -1190,6 +1304,9 @@ class CWLJob(Job):
         conditional: Union[Conditional, None] = None,
     ):
         """Store the context for later execution."""
+
+        assert isinstance(tool, ToilCommandLineTool)
+
         self.cwltool = remove_pickle_problems(tool)
         self.conditional = conditional or Conditional()
 
@@ -1331,10 +1448,23 @@ class CWLJob(Job):
             if not found:
                 cwljob.pop(inp_id)
 
-        adjustDirObjs(
-            cwljob,
-            functools.partial(remove_empty_listings),
-        )
+        # When we hand off the CWL job order to cwltool, it will try and create
+        # listings for any directories that don't have them (which is all of
+        # them, since we hid the recursive listings in the shadow listing). It
+        # can't do that because the directories probably aren't on this node.
+        # And it needs to have listings of the appropriate recursive listing
+        # depth for this tool.
+
+        # So we replicate what cwltool does and we fill in the listings of the
+        # right depth, but we do it from the shadow listing instead of the
+        # filesystem.
+        #
+        # TODO: should we be using cwltool's listing getter and a fancier
+        # fsaccess instead?
+
+        load_listing = determine_load_listing(self.cwltool)
+        if load_listing != 'no_listing':
+            show_shadow_directory_listings_to_depth(load_listing, cwljob)
 
         # Exports temporary directory for batch systems that reset TMPDIR
         os.environ["TMPDIR"] = os.path.realpath(file_store.getLocalTempDir())
@@ -1366,13 +1496,10 @@ class CWLJob(Job):
             toil_get_file, file_store, index, existing
         )
 
-        # TODO: Pass in a real builder here so that cwltool's builder is built with Toil's fs_access?
-        #  see: https://github.com/common-workflow-language/cwltool/blob/78fe9d41ee5a44f8725dfbd7028e4a5ee42949cf/cwltool/builder.py#L474
-        # self.builder.outdir = outdir
-        # runtime_context.builder = self.builder
-
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
+
+        logger.debug('About to run order: %s', cwljob)
 
         output, status = cwltool.executors.SingleJobExecutor().execute(
             process=self.cwltool,
@@ -1385,8 +1512,7 @@ class CWLJob(Job):
             raise cwltool.errors.WorkflowException(status)
 
         # Make sure we know all the File objects we want to come along
-        # TODO: Why doesn't this cause trouble with loadListing values like no_listing
-        populate_directory_listings(cwltool.stdfsaccess.StdFsAccess(outdir), output)
+        populate_shadow_directory_listings(cwltool.stdfsaccess.StdFsAccess(outdir), output)
 
         # Change the Directory objects so that cwltool will let Toil populate
         # them instead of trying to grab them from the local filesystem
@@ -2538,6 +2664,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 discover_secondaryFiles=True,
             )
 
+            logger.debug('Original job order: %s', initialized_job_order)
+
             # Define something we can call to import a file and get its file
             # ID.
             file_import_function = functools.partial(
@@ -2550,6 +2678,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             # Directories have recursive listings filled in, but we hide them
             # in a different attribute so that "listing" will behave according
             # to the CWL spec.
+            # We also hide directories' filesystem locations so cwltool doesn't
+            # try and look at them to construct listings.
             # Files with the 'file://' uri are imported into the jobstore and
             # changed to 'toilfs:'.
             populate_shadow_directory_listings(
@@ -2562,6 +2692,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     fs_access
                 )
             )
+            hide_directory_locations(initialized_job_order)
+            visitSteps(tool, hide_directory_locations)
             import_files(
                 file_import_function,
                 fs_access,
@@ -2594,6 +2726,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 logging.error(err)
                 return 33
             wf1.cwljob = initialized_job_order
+            logger.debug('Job: %s', wf1)
+            logger.debug('Order: %s', initialized_job_order)
             outobj = toil.start(wf1)
 
         # Now the workflow has completed. We need to make sure the outputs (and
