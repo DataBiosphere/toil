@@ -1270,7 +1270,7 @@ class CWLJobWrapper(Job):
 
     def __init__(
         self,
-        tool: ToilCommandLineTool,
+        tool: ProcessType,
         cwljob: dict,
         runtime_context: cwltool.context.RuntimeContext,
         conditional: Union[Conditional, None] = None,
@@ -1305,14 +1305,12 @@ class CWLJob(Job):
 
     def __init__(
         self,
-        tool: ToilCommandLineTool,
+        tool: ProcessType,
         cwljob: dict,
         runtime_context: cwltool.context.RuntimeContext,
         conditional: Union[Conditional, None] = None,
     ):
         """Store the context for later execution."""
-
-        assert isinstance(tool, ToilCommandLineTool)
 
         self.cwltool = remove_pickle_problems(tool)
         self.conditional = conditional or Conditional()
@@ -2074,7 +2072,7 @@ def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
     return final_secondary_files
 
 
-def determine_load_listing(tool: ToilCommandLineTool):
+def determine_load_listing(tool: ProcessType):
     """
     Determine the directory.listing feature in CWL.
 
