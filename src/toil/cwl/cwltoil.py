@@ -746,7 +746,6 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         self.dir_to_download = {}
 
         super(ToilFsAccess, self).__init__(basedir)
-        logger.debug("Created ToilFsAccess over %s", basedir)
 
     def _abs(self, path: str) -> str:
         """
@@ -760,7 +759,6 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43  # noqa B950
         if path.startswith("toilfs:"):
             # Is a Toil file
-            logger.debug("Need to download file to get a local absolute path.")
             destination = self.file_store.readGlobalFile(FileID.unpack(path[7:]), symlink=True)
             logger.debug("Downloaded %s to %s", path, destination)
             if not os.path.exists(destination):
@@ -1113,9 +1111,6 @@ def prepareDirectoryForUpload(
     # tool wants it.
     # This makes sure we don't run again on subdirectories.
     del directory_metadata['listing']
-
-    logger.debug('Packed directory for upload: %s', directory_metadata)
-
 
 def uploadFile(
     uploadfunc: Any,
@@ -1488,13 +1483,8 @@ class CWLJob(Job):
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
 
-        logger.debug('About to run order: %s', cwljob)
-        logger.debug('About to run process: %s', self.cwltool)
-
         original = cwltool.command_line_tool.check_adjust
         def wrapper(builder, file_o):
-            logger.debug("Checking and adjusting with %s", builder)
-            logger.debug("Checking and adjusting on %s", file_o)
             original(builder, file_o)
         cwltool.command_line_tool.check_adjust = wrapper
 
@@ -2670,8 +2660,6 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 discover_secondaryFiles=True,
             )
 
-            logger.debug('Original job order: %s', initialized_job_order)
-
             # Define something we can call to import a file and get its file
             # ID.
             file_import_function = functools.partial(
@@ -2711,8 +2699,6 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 logging.error(err)
                 return 33
             wf1.cwljob = initialized_job_order
-            logger.debug('Job: %s', wf1)
-            logger.debug('Order: %s', initialized_job_order)
             outobj = toil.start(wf1)
 
         # Now the workflow has completed. We need to make sure the outputs (and
@@ -2724,9 +2710,6 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # options. If destination bucket not passed in,
         # options.destBucket's value will be None.
         toilStageFiles(toil, outobj, outdir, destBucket=options.destBucket)
-
-        logger.debug('Job: %s', wf1)
-        logger.debug('Order: %s', initialized_job_order)
 
         if runtime_context.research_obj is not None:
             runtime_context.research_obj.create_job(outobj, True)
