@@ -1265,7 +1265,7 @@ class CWLJobWrapper(Job):
 
     def __init__(
         self,
-        tool: ProcessType,
+        tool: Process,
         cwljob: dict,
         runtime_context: cwltool.context.RuntimeContext,
         conditional: Union[Conditional, None] = None,
@@ -1300,7 +1300,7 @@ class CWLJob(Job):
 
     def __init__(
         self,
-        tool: ProcessType,
+        tool: Process,
         cwljob: dict,
         runtime_context: cwltool.context.RuntimeContext,
         conditional: Union[Conditional, None] = None,
@@ -2062,7 +2062,7 @@ def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
     return final_secondary_files
 
 
-def determine_load_listing(tool: ProcessType):
+def determine_load_listing(tool: Process):
     """
     Determine the directory.listing feature in CWL.
 
