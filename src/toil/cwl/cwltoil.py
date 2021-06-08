@@ -591,7 +591,8 @@ class ToilPathMapper(PathMapper):
         This is called on each File or Directory CWL object. The Files and
         Directories all have "location" fields. For the Files, these are from
         uploadFile(), and for the Directories, these are from
-        prepareDirectoryForUpload().
+        prepareDirectoryForUpload(), with their children being assigned
+        locations based on listing the Directories using ToilFsAccess.
         
         :param obj: The CWL File or Directory to process
         
@@ -606,7 +607,8 @@ class ToilPathMapper(PathMapper):
         :param copy: If set, use writable types for Files.
         
         :param staged: Starts as True at the top of the recursion. Set to False
-        when entering certain directories. Controls the staged flag on
+        when entering a directory, so we don't stage files and subdirectories
+        separately from the directory as a whole. Controls the staged flag on
         generated mappings, and therefore whether files and directories are
         actually placed at their mapped-to target locations.
         
@@ -621,7 +623,8 @@ class ToilPathMapper(PathMapper):
         
         resolved: An absolute local path anywhere on the filesystem where the
         file/directory can be found, or the contents of a file to populate it
-        with if type is CreateWritableFile or CreateFile
+        with if type is CreateWritableFile or CreateFile. Or, a URI understood
+        by the StdFsAccess in use (for example, toilfs:).
         
         target: An absolute path under stagedir that the file or directory will
         then be placed at by cwltool. Except if a File or Directory has a
@@ -654,7 +657,13 @@ class ToilPathMapper(PathMapper):
         """
 
         logger.debug("ToilPathMapper visiting: %s", obj)
+        
+        # If the file has a dirname set, we can try and put it there instead of
+        # wherever else we would stage it.
+        # TODO: why would we do that?
         stagedir = cast(Optional[str], obj.get("dirname")) or stagedir
+        
+        # Decide where to put the file or directory, as an absolute path.
         tgt = convert_pathsep_to_unix(
             os.path.join(
                 stagedir,
@@ -672,15 +681,16 @@ class ToilPathMapper(PathMapper):
             logger.debug("ToilPathMapper visiting directory %s", location)
 
             if location.startswith("file://"):
-                # This hasn't been staged yet or we would have fixed up its
-                # location.
-                staged = False
-
-            if location.startswith("file://"):
+                # This is still from the local machine, so go find where it is
                 resolved = schema_salad.ref_resolver.uri_file_path(location)
+            elif location.startswith("toildir:"):
+                # We need to download this directory (or subdirectory)
+                if not self.get_file:
+                    raise RuntimeError("Unable to download directory because we have no access to the file store: " + str(contents))
+                resolved = schema_salad.ref_resolver.uri_file_path(self.get_file(location))
             else:
-                resolved = location
-
+                raise RuntimeError("Unsupported location: " + location)
+                
             if location in self._pathmap:
                 # Don't map the same directory twice
                 logger.debug("ToilPathMapper stopping recursion because we have already mapped directory: %s", location)
@@ -691,12 +701,9 @@ class ToilPathMapper(PathMapper):
                 resolved, tgt, "WritableDirectory" if copy else "Directory", staged
             )
             
-            # Make sure the directory actually exists, because any CWL job with
-            # access to the directory is going to expect to see it. TODO: are
-            # the jobs directly accessing the path mappings and bypassing
-            # ToilFsAccess somehow? This seems like not really our
-            # responsibility here...
-            os.makedirs(tgt, exist_ok=True)
+            # Don't stage anything below here separately, since we staged the
+            # whole directory and we can't stage files over themselves.
+            staged = False
             
             # Keep recursing
             self.visitlisting(
@@ -719,6 +726,7 @@ class ToilPathMapper(PathMapper):
 
             ab = cwltool.stdfsaccess.abspath(path, basedir)
             if "contents" in obj and path.startswith("_:"):
+                # We are supposed to create this file
                 self._pathmap[path] = MapperEnt(
                     cast(str, obj["contents"]),
                     tgt,
@@ -732,6 +740,9 @@ class ToilPathMapper(PathMapper):
                     validate.ValidationException,
                     logger.isEnabledFor(logging.DEBUG),
                 ):
+                    # If we have access to the Toil file store, we will have a
+                    # get_file set, and it will convert this path to a file:
+                    # URI for a local file it downloaded.
                     deref = self.get_file(path) if self.get_file else ab
                     if deref.startswith("file:"):
                         deref = schema_salad.ref_resolver.uri_file_path(deref)
@@ -748,11 +759,15 @@ class ToilPathMapper(PathMapper):
                                 else os.path.join(os.path.dirname(deref), rl)
                             )
                             st = os.lstat(deref)
-
+                    
+                    # If we didn't download something that is a toilfs:
+                    # reference, we just pass that along.
+                    
                     self._pathmap[path] = MapperEnt(
                         deref, tgt, "WritableFile" if copy else "File", staged
                     )
 
+            # Handle all secondary files that need to be next to this one.
             self.visitlisting(
                 cast(List[CWLObjectType], obj.get("secondaryFiles", [])),
                 stagedir,
@@ -805,9 +820,8 @@ def toil_make_tool(
 class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
     """
     Custom filesystem access class which handles toil filestore references.
-    Normal file paths will be resolved relative to basedir, but 'toilfs:' URIs
-    will be fulfilled from the Toil file store, and directory URIs starting
-    with '_:' will be faked.
+    Normal file paths will be resolved relative to basedir, but 'toilfs:' and
+    'toildir:' URIs will be fulfilled from the Toil file store.
     """
 
     def __init__(self, basedir: str, file_store: AbstractFileStore = None):
@@ -832,11 +846,6 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         # TODO: Both we and the ToilPathMapper relate Toil paths to local
         # paths. But we don't share the same mapping, so accesses through
         # different mechanisms will produce different local copies.
-        #
-        # Resolving this si going to require looking at the documentation for
-        # what a PathMapper and an FsAccess are actually intended to
-        # do/guarantee, and how cwltool means to use them, but I haven't been
-        # able to find any.
         
         # Used to fetch a path to determine if a file exists in the inherited
         # cwltool.stdfsaccess.StdFsAccess, (among other things) so this should
@@ -850,15 +859,15 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
                 raise RuntimeError(
                     f"{destination} does not exist after filestore read."
                 )
-        elif path.startswith("_:"):
+        elif path.startswith("toildir:"):
             # Is a directory or relative to it
-
+            
             # We will download the whole directory and then look inside it
 
             # Since this was encoded by prepareDirectoryForUpload we know the
             # next piece is encoded JSON describing the directory structure,
             # and it can't contain any slashes.
-            parts = path[2:].split('/', 1)
+            parts = path[len("toildir:"):].split('/', 1)
 
             # Before the first slash is the encoded data describing the directory contents
             dir_data = parts[0]
@@ -872,29 +881,8 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
                 # Decode what to download
                 contents = json.loads(base64.urlsafe_b64decode(dir_data.encode('utf-8')).decode('utf-8'))
 
-                def download_structure(dir_dict: Dict, into_dir: str) -> None:
-                    """
-                    Download the whole nested dictionary of files and directories.
-                    """
-
-                    for name, value in dir_dict.items():
-                        if isinstance(value, dict):
-                            # This is a subdirectory, so make it and download
-                            # its contents
-                            logger.debug("ToilFsAccess downloading subdirectory %s", name)
-                            subdir = os.path.join(into_dir, name)
-                            os.mkdir(subdir)
-                            download_structure(value, subdir)
-                        else:
-                            # This must be a file path uploaded to Toil.
-                            assert isinstance(value, str)
-                            assert value.startswith("toilfs:")
-                            logger.debug("ToilFsAccess downloading contained file %s", name)
-                            dest_path = os.path.join(into_dir, name)
-                            # So download the file into place
-                            self.file_store.readGlobalFile(FileID.unpack(value[7:]), dest_path, symlink=True)
                 # Save it all into this new temp directory
-                download_structure(contents, temp_dir)
+                download_structure(self.file_store, {}, {}, contents, temp_dir)
 
                 # Make sure we use the same temp directory if we go traversing
                 # around this thing.
@@ -965,7 +953,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         if path.startswith("toilfs:"):
             # import the file and make it available locally if it exists
             path = self._abs(path)
-        elif path.startswith("_:"):
+        elif path.startswith("toildir:"):
             # Import the whole directory
             path = self._abs(path)
         return os.path.realpath(path)
@@ -973,31 +961,50 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
 
 def toil_get_file(
-    file_store: AbstractFileStore, index: dict, existing: dict, file_store_id: str
+    file_store: AbstractFileStore,
+    index: Dict[str, str],
+    existing: Dict[str, str],
+    file_store_id: str
 ) -> str:
     """
-    Set up the given input file from the Toil jobstore at a file URI where it
-    can be accessed locally.
+    Set up the given file or directory from the Toil jobstore at a file URI
+    where it can be accessed locally.
 
     Run as part of the ToilCommandLineTool setup, inside jobs on the workers.
+    
+    :param index: Maps from downloaded file path back to input Toil URI.
+    
+    :param existing: Maps from file_store_id URI to downloaded file path.
     """
 
-    if file_store_id.startswith("_:"):
-        # This is a file in a directory.
+    if file_store_id.startswith("toildir:"):
+        # This is a file in a directory, or maybe a directory itself.
         # See ToilFsAccess and prepareDirectoryForUpload.
         # We will go look for the actual file in the encoded directory
         # structure which will tell us where the toilfs: name for the file is.
 
-        parts = file_store_id[2:].split('/')
+        parts = file_store_id[len("toildir:"):].split('/')
         contents = json.loads(base64.urlsafe_b64decode(parts[0].encode('utf-8')).decode('utf-8'))
 
         for component in parts[1:]:
-            # Index into the contents
-            contents = contents[component]
-        # The last one will be the basename of a file
-        file_store_id = contents
-    if file_store_id.startswith("toilfs:"):
-        src_path = file_store.readGlobalFile(FileID.unpack(file_store_id[7:]), symlink=True)
+            if component != '.':
+                # Index into the contents
+                contents = contents[component]
+                
+        if isinstance(contents, str):
+            # This is a reference to a file, so go get it.
+            return toil_get_file(file_store, index, existing, contents)
+        else:
+            # We actually need to fetch the whole directory to a path somewhere.
+            dest_path = file_store.getLocalTempDir()
+            # Populate the directory
+            download_structure(file_store, index, existing, contents, dest_path)
+            # Return where we put it, but as a file:// URI
+            return schema_salad.ref_resolver.file_uri(dest_path)
+    elif file_store_id.startswith("toilfs:"):
+        # This is a plain file with no context.
+        src_path = file_store.readGlobalFile(FileID.unpack(file_store_id[len("toilfs:"):]), symlink=True)
+        # TODO: shouldn't we be using these as a cache?
         index[src_path] = file_store_id
         existing[file_store_id] = src_path
         return schema_salad.ref_resolver.file_uri(src_path)
@@ -1008,6 +1015,57 @@ def toil_get_file(
             f'leader!'
         )
 
+def download_structure(
+    file_store: AbstractFileStore,
+    index: Dict[str, str],
+    existing: Dict[str, str],
+    dir_dict: Dict, 
+    into_dir: str
+) -> None:
+        """
+        Download a whole nested dictionary of files and directories from the
+        Toil file store to a local path.
+        
+        :param file_store: The Toil file store to download from.
+        
+        :param index: Maps from downloaded file path back to input Toil URI.
+        
+        :param existing: Maps from file_store_id URI to downloaded file path.
+        
+        :param dir_dict: a dict from string to string (for files) or dict (for
+        subdirectories) describing a directory structure.
+        
+        :param into_dir: The directory to download the top-level dict's files
+        into.
+        """
+
+        logger.debug("Downloading directory with %s items", len(dir_dict))
+
+        for name, value in dir_dict.items():
+            if name == '.':
+                # Skip this key that isn't a real child file.
+                continue
+            if isinstance(value, dict):
+                # This is a subdirectory, so make it and download
+                # its contents
+                logger.debug("Downloading subdirectory %s", name)
+                subdir = os.path.join(into_dir, name)
+                os.mkdir(subdir)
+                download_structure(file_store, index, existing, value, subdir)
+            else:
+                # This must be a file path uploaded to Toil.
+                assert isinstance(value, str)
+                assert value.startswith("toilfs:")
+                logger.debug("Downloading contained file %s", name)
+                dest_path = os.path.join(into_dir, name)
+                # So download the file into place
+                file_store.readGlobalFile(FileID.unpack(value[7:]), dest_path, symlink=True)
+                # Update the index dicts
+                # TODO: why?
+                index[dest_path] = value
+                existing[value] = dest_path
+                
+                
 
 def write_file(writeFunc: Any, index: dict, existing: dict, file_uri: str) -> str:
     """
@@ -1019,7 +1077,7 @@ def write_file(writeFunc: Any, index: dict, existing: dict, file_uri: str) -> st
     Returns a toil uri path to the object.
     """
     # Toil fileStore reference
-    if file_uri.startswith("toilfs:"):
+    if file_uri.startswith("toilfs:") or file_uri.startswith("toildir:"):
         return file_uri
     # File literal outputs with no path, we don't write these and will fail
     # with unsupportedRequirement when retrieving later with getFile
@@ -1112,6 +1170,7 @@ def import_files(
     )
     normalizeFilesDirs(cwl_object)
 
+    # Upload all the files to the file store
     adjustFileObjs(
         cwl_object,
         functools.partial(
@@ -1122,8 +1181,13 @@ def import_files(
             skip_broken=True,
         ),
     )
-
+    
+    # Pack all the directory contents into directory locations.
     adjustDirObjs(cwl_object, functools.partial(prepareDirectoryForUpload, fs_access))
+    
+    # Make sure directory listings are empty.
+    adjustDirObjs(cwl_object, clear_listing)
+    
 
 def prepareDirectoryForUpload(
     fs_access: cwltool.stdfsaccess.StdFsAccess,
@@ -1144,6 +1208,7 @@ def prepareDirectoryForUpload(
     expect to see its contents in the filesystem.
     """
     if (directory_metadata["location"].startswith("toilfs:") or
+        directory_metadata["location"].startswith("toildir:") or
         directory_metadata["location"].startswith("_:")):
         # Already in Toil; nothing to do
         return
@@ -1172,7 +1237,7 @@ def prepareDirectoryForUpload(
         Pack up a directory listing into a simpler structure of nested dicts by
         path name components.
         """
-        contents = {}
+        contents = {'.': directory.get('basename')}
         for child in directory.get('listing'):
             if child.get('class') == 'Directory':
                 # Recurse on subdirectories
@@ -1183,18 +1248,29 @@ def prepareDirectoryForUpload(
         return contents
 
     contents = to_nested(directory_metadata)
-
+    
     # The metadata for a directory is all we need to keep around for it. It
     # doesn't have a real location. But each directory needs a unique location
-    # or cwltool won't ship the metadata along. cwltool takes "_:" as a signal
-    # to make directories instead of copying from somewhere. So we give every
-    # directory a unique _: location and cwltool's machinery Just Works.
+    # or cwltool won't ship the metadata along. 
 
     # Say that the directory location is just its dumped contents.
     # TODO: store these listings as files in the filestore instead?
-    directory_metadata["location"] = '_:' + base64.urlsafe_b64encode(json.dumps(contents).encode('utf-8')).decode('utf-8')
+    directory_metadata["location"] = 'toildir:' + base64.urlsafe_b64encode(json.dumps(contents).encode('utf-8')).decode('utf-8')
 
     # TODO: avoid running again on every subdirectory?
+    
+def clear_listing(
+    directory_metadata: dict,
+) -> None:
+    """
+    Clear out the listing field of a CWL Directory object.
+    
+    Used so that jobs can regenerate listings for themselves of the appropriate
+    depth.
+    """
+    
+    if 'listing' in directory_metadata:
+        del directory_metadata['listing']
 
 def uploadFile(
     uploadfunc: Any,
@@ -1208,9 +1284,9 @@ def uploadFile(
 
     Write the file object to the file store if necessary.
     """
-    if file_metadata["location"].startswith("toilfs:") or file_metadata[
-        "location"
-    ].startswith("_:"):
+    if (file_metadata["location"].startswith("toilfs:") or
+        file_metadata["location"].startswith("toildir:") or
+        file_metadata["location"].startswith("_:")):
         return
     if file_metadata["location"] in fileindex:
         file_metadata["location"] = fileindex[file_metadata["location"]]
@@ -1608,6 +1684,10 @@ class CWLJob(Job):
                 fs_access
             )
         )
+        
+        # Clear out the listings so that they aren't visible to subsequent
+        # tools that expect not to have them.
+        adjustDirObjs(output, clear_listing)
         
         # metadata[process_uuid] = {
         #     'started_at': started_at,
