@@ -624,6 +624,8 @@ class ToilPathMapper(PathMapper):
             self._pathmap[location] = MapperEnt(
                 resolved, tgt, "WritableDirectory" if copy else "Directory", staged
             )
+
+            # Keep recursing
             self.visitlisting(
                 cast(List, obj.get("listing", [])),
                 tgt,
@@ -1048,13 +1050,15 @@ def prepareDirectoryForUpload(
     """
     Prepare a Directory object to be uploaded.
 
-    Assumes listings are already filled in.
+    Assumes listings are already filled in, and leaves them intact.
 
     Makes sure the directory actually exists, and rewrites its location to be
     something we can use on another machine.
 
-    We can't rely on the directory's listing, since some tools require it to be
-    cleared or single-level but still expect to see its contents.
+    We can't rely on the directory's listing as visible to the next tool as a
+    complete recursive description of the files we will need to present to the
+    tool, since some tools require it to be cleared or single-level but still
+    expect to see its contents in the filesystem.
     """
     if (directory_metadata["location"].startswith("toilfs:") or
         directory_metadata["location"].startswith("_:")):
@@ -1107,10 +1111,7 @@ def prepareDirectoryForUpload(
     # TODO: store these listings as files in the filestore instead?
     directory_metadata["location"] = '_:' + base64.urlsafe_b64encode(json.dumps(contents).encode('utf-8')).decode('utf-8')
 
-    # Clear out the listing; it will be re-made from the saved contents if a
-    # tool wants it.
-    # This makes sure we don't run again on subdirectories.
-    del directory_metadata['listing']
+    # TODO: avoid running again on every subdirectory?
 
 def uploadFile(
     uploadfunc: Any,
