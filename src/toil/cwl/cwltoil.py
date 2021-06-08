@@ -620,11 +620,18 @@ class ToilPathMapper(PathMapper):
                 logger.debug("ToilPathMapper stopping recursion because we have already mapped directory: %s", location)
                 return
 
-            logger.debug("ToilPathMapper adding mapping to: %s", resolved)
+            logger.debug("ToilPathMapper adding mapping %s -> %s", resolved, tgt)
             self._pathmap[location] = MapperEnt(
                 resolved, tgt, "WritableDirectory" if copy else "Directory", staged
             )
-
+            
+            # Make sure the directory actually exists, because any CWL job with
+            # access to the directory is going to expect to see it. TODO: are
+            # the jobs directly accessing the path mappings and bypassing
+            # ToilFsAccess somehow? This seems like not really our
+            # responsibility here...
+            os.makedirs(tgt, exist_ok=True)
+            
             # Keep recursing
             self.visitlisting(
                 cast(List, obj.get("listing", [])),
@@ -755,6 +762,16 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
         Overwrites cwltool.stdfsaccess.StdFsAccess._abs() to account for toil specific schema.
         """
+        
+        # TODO: Both we and the ToilPathMapper relate Toil paths to local
+        # paths. But we don't share the same mapping, so accesses through
+        # different mechanisms will produce different local copies.
+        #
+        # Resolving this si going to require looking at the documentation for
+        # what a PathMapper and an FsAccess are actually intended to
+        # do/guarantee, and how cwltool means to use them, but I haven't been
+        # able to find any.
+        
         # Used to fetch a path to determine if a file exists in the inherited
         # cwltool.stdfsaccess.StdFsAccess, (among other things) so this should
         # not error on missing files.
@@ -1525,7 +1542,7 @@ class CWLJob(Job):
                 fs_access
             )
         )
-
+        
         # metadata[process_uuid] = {
         #     'started_at': started_at,
         #     'ended_at': ended_at,
