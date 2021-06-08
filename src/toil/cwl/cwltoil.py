@@ -556,9 +556,9 @@ class ToilPathMapper(PathMapper):
     """
     Keeps track of files in a Toil way.
 
-    Maps the symbolic identifier of a file (the Toil FileID), its local path on
-    the host (the value returned by readGlobalFile) and the the location of the
-    file inside the software container.
+    Maps between the symbolic identifier of a file (the Toil FileID), its local
+    path on the host (the value returned by readGlobalFile) and the the
+    location of the file inside the software container.
     """
 
     def __init__(
@@ -585,7 +585,73 @@ class ToilPathMapper(PathMapper):
         copy: bool = False,
         staged: bool = False,
     ) -> None:
-        """Iterate over a CWL object, resolving File and Directory path references."""
+        """
+        Iterate over a CWL object, resolving File and Directory path references.
+        
+        This is called on each File or Directory CWL object. The Files and
+        Directories all have "location" fields. For the Files, these are from
+        uploadFile(), and for the Directories, these are from
+        prepareDirectoryForUpload().
+        
+        :param obj: The CWL File or Directory to process
+        
+        :param stagedir: The base path for target paths to be generated under,
+        except when a File or Directory has an overriding parent directory in
+        dirname
+        
+        :param basedir: The directory from which relative paths should be
+        resolved; used as the base directory for the StdFsAccess that generated
+        the listing being processed.
+        
+        :param copy: If set, use writable types for Files.
+        
+        :param staged: Starts as True at the top of the recursion. Set to False
+        when entering certain directories. Controls the staged flag on
+        generated mappings, and therefore whether files and directories are
+        actually placed at their mapped-to target locations.
+        
+        TODO: when would we not want to stage?
+        
+        Produces one MapperEnt for every unique location for a File or
+        Directory. These MapperEnt objects are instructions to cwltool's
+        stage_files function:
+        https://github.com/common-workflow-language/cwltool/blob/a3e3a5720f7b0131fa4f9c0b3f73b62a347278a6/cwltool/process.py#L254
+        
+        The MapperEnt has fields:
+        
+        resolved: An absolute local path anywhere on the filesystem where the
+        file/directory can be found, or the contents of a file to populate it
+        with if type is CreateWritableFile or CreateFile
+        
+        target: An absolute path under stagedir that the file or directory will
+        then be placed at by cwltool. Except if a File or Directory has a
+        dirname field, giving its parent path, that is used instead.  
+        
+        type: One of:
+        
+            File: cwltool will copy or link the file from resolved to target,
+            if possible.
+            
+            CreateFile: cwltool will create the file at target, treating
+            resolved as the contents.
+            
+            WritableFile: cwltool will copy the file from resolved to target,
+            making it writable.
+            
+            CreateWritableFile: cwltool will create the file at target,
+            treating resolved as the contents, and make it writable.
+            
+            Directory: cwltool will copy or link the directory from resolved to
+            target, if possible. Otherwise, cwltool will make the directory at
+            target if resolved starts with "_:". Otherwise it will do nothing.
+            
+            WritableDirectory: cwltool will copy the directory from resolved to
+            target, if possible. Otherwise, cwltool will make the directory at
+            target if resolved starts with "_:". Otherwise it will do nothing.
+        
+        staged: if set to False, cwltool will not make or copy anything for this entry
+        
+        """
 
         logger.debug("ToilPathMapper visiting: %s", obj)
         stagedir = cast(Optional[str], obj.get("dirname")) or stagedir
