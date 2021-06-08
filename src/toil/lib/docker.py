@@ -112,7 +112,7 @@ def apiDockerCall(job,
            FORGO (0) leaves the container untouched and running.
            STOP (1) Sends SIGTERM, then SIGKILL if necessary to the container.
            RM (2) Immediately send SIGKILL to the container. This is the default
-           behavior if defer is set to None.
+           behavior if deferParam is set to None.
     :param str name: The name/ID of the container.
     :param str entrypoint: Prepends commands sent to the container.  See:
                       https://docker-py.readthedocs.io/en/stable/containers.html
@@ -231,9 +231,9 @@ def apiDockerCall(job,
         # Leave the container untouched and running
         pass
     elif deferParam == RM:
-        job.defer(dockerKill, containerName)
+        job.defer(dockerKill, containerName, remove=True)
     elif remove:
-        job.defer(dockerKill, containerName)
+        job.defer(dockerKill, containerName, remove=True)
 
     if auto_remove is None:
         auto_remove = remove
@@ -331,16 +331,15 @@ def apiDockerCall(job,
 
 def dockerKill(container_name: str,
                gentleKill: bool = False,
-               keep: bool = False,
+               remove: bool = False,
                timeout: int = 365 * 24 * 60 * 60) -> None:
     """
-    Immediately kills and removes a container.  Equivalent to "docker kill && docker rm":
+    Immediately kills a container.  Equivalent to "docker kill":
     https://docs.docker.com/engine/reference/commandline/kill/
-    https://docs.docker.com/engine/reference/commandline/rm/
 
     :param container_name: Name of the container being killed.
     :param gentleKill: If True, trigger a graceful shutdown.
-    :param keep: If True, keep the container after it exits. (default: False).
+    :param remove: If True, remove the container after it exits.
     :param int timeout: Use the given timeout in seconds for interactions with
                         the Docker daemon. Note that the underlying docker module is
                         not always able to abort ongoing reads and writes in order
@@ -356,27 +355,24 @@ def dockerKill(container_name: str,
             else:
                 client.containers.get(container_name).stop()
             this_container = client.containers.get(container_name)
-        if not keep:
+        if remove:
             this_container.remove()
     except NotFound:
-        logger.debug("Attempted to stop container, but container != exist: ",
-                     container_name)
+        logger.debug(f"Attempted to stop container ({container_name}), but container != exist.")
     except requests.exceptions.HTTPError as e:
-        logger.debug("Attempted to stop container, but server gave an error: ",
-                     container_name)
+        logger.debug(f"Attempted to stop container ({container_name}), but server gave an error:")
         raise create_api_error_from_http_exception(e)
 
 
-def dockerStop(container_name: str, keep: bool = False) -> None:
+def dockerStop(container_name: str, remove: bool = False) -> None:
     """
-    Gracefully kills and removes a container.  Equivalent to "docker stop && docker rm":
+    Gracefully kills a container.  Equivalent to "docker stop":
     https://docs.docker.com/engine/reference/commandline/stop/
-    https://docs.docker.com/engine/reference/commandline/rm/
 
     :param container_name: Name of the container being stopped.
-    :param keep: If True, keep the container after it exits. (default: False).
+    :param remove: If True, remove the container after it exits.
     """
-    dockerKill(container_name, gentleKill=True, keep=keep)
+    dockerKill(container_name, gentleKill=True, remove=remove)
 
 
 def containerIsRunning(container_name: str, timeout: int = 365 * 24 * 60 * 60):
