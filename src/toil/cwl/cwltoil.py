@@ -139,7 +139,7 @@ def visit_top_cwl_class(
         # This item is actually a list of things, so look at all of them.
         for key in rec:
             visit_top_cwl_class(key, classes, op)
-            
+
 # TODO: we need some type constraints here that I don't know how to spell.
 def visit_cwl_class_and_reduce(
     rec: MutableMapping,
@@ -154,9 +154,9 @@ def visit_cwl_class_and_reduce(
     for all child keys (flattening across lists and collapsing nodes of
     non-matching classes) to the up operation.
     """
-    
+
     results = []
-    
+
     if isinstance(rec, MutableMapping):
         down_result = None
         child_results = []
@@ -1205,27 +1205,27 @@ def import_files(
     From the leader or worker, prepare all files and directories inside the
     given CWL tool, order, or output object to be used on the workers. Make
     sure their sizes are set and import all the files.
-    
+
     Recurses inside directories using the fs_access to find files to upload and
     subdirectory structure to encode, even if their listings are not set or not
     recursive.
-    
+
     Preserves any listing fields.
 
     Also does some miscelaneous normalization.
 
     :param import_function: The function used to upload a file:// URI and get a
     Toil FileID for it.
-    
+
     :param fs_access: the CWL FS access object we use to access the filesystem
     to find files to import.
-    
+
     :param fileindex: Forward map to fill in from file URI to Toil storage
     location, used by write_file to deduplicate writes.
-    
+
     :param existing: Reverse map to fill in from Toil storage location to file
     URI. Not read from.
-    
+
     :param cwl_object: CWL tool (or workflow order) we are importing files for
     """
 
@@ -1235,7 +1235,7 @@ def import_files(
         tool_id = str(cwl_object)
 
     logger.debug('Importing files for %s', tool_id)
-    
+
     # We need to upload all files to the Toil filestore, and encode structure
     # recursively into all Directories' locations. But we cannot safely alter
     # the listing fields of Directory objects, because the handling required by
@@ -1249,31 +1249,31 @@ def import_files(
         cwl_object, ("File",), functools.partial(add_sizes, fs_access)
     )
     normalizeFilesDirs(cwl_object)
-    
+
     def visit_file_or_directory_down(rec: MutableMapping) -> Optional[List]:
         """
         Visit each CWL File or Directory on the way down.
-        
+
         For Files, do nothing.
-        
+
         For Directories, return the listing key's value if present, or None if absent.
-        
+
         Ensures that the directory's listing is filled in for at least the
         current level, so all direct child File and Directory objects will
         exist.
-        
+
         Ensures that any child File or Directory objects from the original
         listing remain as child objects, so that they will be hit by the
         recursion.
         """
-        
+
         if rec.get("class", None) == "File":
             # Nothing to do!
             return None
         elif rec.get("class", None) == "Directory":
             # Pull out the old listing, if any
             old_listing = rec.get("listing", None)
-                
+
             if not rec["location"].startswith("_:"):
                 # This is a thing we can list and not just a literal, so we
                 # want to ensure that we have at least one level of listing.
@@ -1285,9 +1285,9 @@ def import_files(
                     get_listing(fs_access, rec, recursive=False)
                 # Otherwise, we preserve the existing listing (including all
                 # its original File objects that we need to process)
-            
+
             return old_listing
-    
+
     def visit_file_or_directory_up(
         rec: MutableMapping,
         down_result: Optional[List],
@@ -1296,45 +1296,45 @@ def import_files(
         """
         For a CWL File or Directory, make sure it is uploaded and it has a
         location that describes its contents as visible to fs_access.
-        
+
         Replaces each Directory's listing with the down result for the
         directory, or removes it if the down result was None.
-        
+
         Passes up the tree (and consumes as its second argument a list of)
         information about the directory structure. For a file, we get the
         information for all secondary files, and for a directory, we get a list
         of the information for all contained files and directories.
-        
+
         The format is a dict from filename to either string Toil file URI, or
         contained similar dict for a subdirectory. We can reduce by joining
-        everything into a single dict, when no filenames conflict. 
+        everything into a single dict, when no filenames conflict.
         """
-        
+
         if rec.get("class", None) == "File":
             # This is a CWL File
-            
+
             result = {}
-            
+
             # Upload the file itself, which will adjust its location.
             upload_file(import_function, fileindex, existing, rec)
-            
+
             # Make a record for this file under its name
             result[rec['basename']] = rec['location']
-            
+
             for secondary_file_result in child_results:
                 # Glom in the secondary files, if any
                 result.update(secondary_file_result)
-                
+
             return result
-            
+
         elif rec.get("class", None) == "Directory":
             # This is a CWL Directory
-            
+
             # Restore the original listing, or its absence
             rec["listing"] = down_result
             if rec["listing"] is None:
                 del rec["listing"]
-            
+
             # We know we have child results from a fully recursive listing.
             # Build them into a contents dict.
             contents = {}
@@ -1342,17 +1342,17 @@ def import_files(
                 # Keep each child file or directory or child file's secondary
                 # file under its name
                 contents.update(child_result)
-            
+
             # Upload the directory itself, which will adjust its location.
             upload_directory(rec, contents)
-            
+
             # Show those contents as being under our name in our parent.
             return {rec['basename']: contents}
-            
+
         else:
             raise RuntimeError("Got unexpected class of object: " + str(rec))
-        
-        
+
+
     # Process each file and directory in a recursive traversal
     visit_cwl_class_and_reduce(
         cwl_object,
@@ -1368,7 +1368,7 @@ def upload_directory(
 ) -> None:
     """
     Upload a Directory object.
-    
+
     Ignores the listing (whuch may not be recursive and isn't safe or efficient
     to touch), and instead uses directory_contents, which is a recursive dict
     structure from filename to file URI or subdirectory contents dict.
@@ -1521,12 +1521,12 @@ def toilStageFiles(
 
     # This is all the CWL File and Directory objects we need to export.
     jobfiles = list(_collectDirEntries(cwljob))
-    
+
     # TODO: I think we need to recursively populate listings here!
-    
+
     # Now we need to save all the output files and directories.
-    # We could use a ToilPathMapper, but that contains stuff to work with Toil directories as encoded in Locations, while we can assume that we have all the Files and 
-    
+    # We could use a ToilPathMapper, but that contains stuff to work with Toil directories as encoded in Locations, while we can assume that we have all the Files and
+
     pm = ToilPathMapper(
         jobfiles,
         "",
@@ -1550,14 +1550,14 @@ def toilStageFiles(
                     if (
                         p.type in ["CreateFile", "CreateWritableFile"]
                     ):  # TODO: CreateFile for buckets is not under testing
-                        
+
                         with tempfile.NamedTemporaryFile() as f:
                             # Make a file with the right contents
                             f.write(file_id_or_contents.encode('utf-8'))
                             f.close()
                             # Import it and pack up the file ID so we can turn around and export it.
                             file_id_or_contents = 'toilfs:' + toil.importFile(f.name).pack()
-                        
+
                     if file_id_or_contents.startswith('toilfs:'):
                         # This is something we can export
                         destUrl = "/".join(s.strip("/") for s in [destBucket, baseName])
@@ -1768,7 +1768,7 @@ class CWLJob(Job):
 
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
-            
+
         fill_in_defaults(
             self.step_inputs, cwljob, self.runtime_context.make_fs_access("")
         )
@@ -1785,7 +1785,7 @@ class CWLJob(Job):
                     found = True
             if not found:
                 cwljob.pop(inp_id)
-        
+
         # Make sure there aren't any empty listings in directories; they might
         # interfere with the generation of listings of the correct depth by
         # cwltool
@@ -1831,7 +1831,7 @@ class CWLJob(Job):
         def wrapper(builder, file_o):
             original(builder, file_o)
         cwltool.command_line_tool.check_adjust = wrapper
-        
+
         logger.debug('Running order: %s', self.cwljob)
 
         output, status = cwltool.executors.SingleJobExecutor().execute(
@@ -1846,10 +1846,10 @@ class CWLJob(Job):
 
         # Get ahold of the filesystem
         fs_access = runtime_context.make_fs_access(runtime_context.basedir)
-        
-        # And a file importer that can go from a file:// URI to a Toil FileID 
-        file_import_function = functools.partial(writeGlobalFileWrapper, file_store) 
-        
+
+        # And a file importer that can go from a file:// URI to a Toil FileID
+        file_import_function = functools.partial(writeGlobalFileWrapper, file_store)
+
         # Upload all the Files and set their and the Directories' locations.
         import_files(
             file_import_function,
