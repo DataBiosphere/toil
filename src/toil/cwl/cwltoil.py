@@ -1258,8 +1258,13 @@ def import_files(
         
         For Directories, return the listing key's value if present, or None if absent.
         
-        Fills in the directory's listing for the current level, so all direct
-        child File and Directory objects will exist.
+        Ensures that the directory's listing is filled in for at least the
+        current level, so all direct child File and Directory objects will
+        exist.
+        
+        Ensures that any child File or Directory objects from the original
+        listing remain as child objects, so that they will be hit by the
+        recursion.
         """
         
         if rec.get("class", None) == "File":
@@ -1271,12 +1276,15 @@ def import_files(
                 
             if not rec["location"].startswith("_:"):
                 # This is a thing we can list and not just a literal, so we
-                # want to substitute a real listing for whatever's stored.
-                if "listing" in rec:
-                    # Drop the existing listing
+                # want to ensure that we have at least one level of listing.
+                if "listing" in rec and rec["listing"] == []:
+                    # Drop the existing listing because it is empty
                     del rec["listing"]
-                # Fill in one level of listing, so we can then traverse it.
-                get_listing(fs_access, rec, recursive=False)
+                if "listing" not in rec:
+                    # Fill in one level of listing, so we can then traverse it.
+                    get_listing(fs_access, rec, recursive=False)
+                # Otherwise, we preserve the existing listing (including all
+                # its original File objects that we need to process)
             
             return old_listing
     
@@ -1823,6 +1831,8 @@ class CWLJob(Job):
         def wrapper(builder, file_o):
             original(builder, file_o)
         cwltool.command_line_tool.check_adjust = wrapper
+        
+        logger.debug('Running order: %s', self.cwljob)
 
         output, status = cwltool.executors.SingleJobExecutor().execute(
             process=self.cwltool,
@@ -1848,6 +1858,8 @@ class CWLJob(Job):
             existing,
             output
         )
+
+        logger.debug('Emitting output: %s', output)
 
         # metadata[process_uuid] = {
         #     'started_at': started_at,
