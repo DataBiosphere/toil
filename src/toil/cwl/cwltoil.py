@@ -1230,10 +1230,6 @@ def import_files(
     # Pack all the directory contents into directory locations.
     adjustDirObjs(cwl_object, functools.partial(prepareDirectoryForUpload, fs_access))
 
-    # Make sure directory listings are empty.
-    adjustDirObjs(cwl_object, clear_listing)
-
-
 def prepareDirectoryForUpload(
     fs_access: cwltool.stdfsaccess.StdFsAccess,
     directory_metadata: dict,
@@ -1668,6 +1664,10 @@ class CWLJob(Job):
 
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
+            
+        # Clear out the listings so that we can regenerate them at the
+        # appropriate recursiveness level for this job.
+        adjustDirObjs(cwljob, clear_listing)
 
         fill_in_defaults(
             self.step_inputs, cwljob, self.runtime_context.make_fs_access("")
@@ -1760,10 +1760,6 @@ class CWLJob(Job):
                 fs_access
             )
         )
-
-        # Clear out the listings so that they aren't visible to subsequent
-        # tools that expect not to have them.
-        adjustDirObjs(output, clear_listing)
 
         # metadata[process_uuid] = {
         #     'started_at': started_at,
