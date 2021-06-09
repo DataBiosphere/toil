@@ -22,9 +22,11 @@ import random
 import shutil
 import signal
 import socket
+import stat
 import sys
 import time
 import traceback
+from typing import Callable, Any
 from contextlib import contextmanager
 
 from toil import logProcessContext
@@ -587,7 +589,17 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     #Remove the temp dir
     cleanUp = config.cleanWorkDir
     if cleanUp == 'always' or (cleanUp == 'onSuccess' and not jobAttemptFailed) or (cleanUp == 'onError' and jobAttemptFailed):
-        shutil.rmtree(localWorkerTempDir)
+        def make_parent_writable(func: Callable[[str], Any], path: str, _) -> None:
+            """
+            When encountering an error removing a file or directory, make sure
+            the parent directory is writable.
+            
+            cwltool likes to lock down directory permissions, and doesn't clean
+            up after itself.
+            """
+            # Just chmod it for rwx for user. This can't work anyway if it isn't ours.
+            os.chmod(os.path.dirname(path),  stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+        shutil.rmtree(localWorkerTempDir, onerror=make_parent_writable)
 
     #This must happen after the log file is done with, else there is no place to put the log
     if (not jobAttemptFailed) and jobDesc.command == None and next(jobDesc.successorsAndServiceHosts(), None) is None:
