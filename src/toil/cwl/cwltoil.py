@@ -572,7 +572,7 @@ class ToilPathMapper(PathMapper):
     ):
         """
         Initialize this ToilPathMapper.
-        
+
         :param stage_listing: Stage files and directories inside directories
         even if we also stage the parent.
         """
@@ -618,8 +618,6 @@ class ToilPathMapper(PathMapper):
         whether files and directories are actually placed at their mapped-to
         target locations. If stage_listing is True, we will leave this True
         throughout and stage everything.
-
-        TODO: when would we not want to stage?
 
         Produces one MapperEnt for every unique location for a File or
         Directory. These MapperEnt objects are instructions to cwltool's
@@ -696,9 +694,13 @@ class ToilPathMapper(PathMapper):
                 resolved = schema_salad.ref_resolver.uri_file_path(location)
             elif location.startswith("toildir:"):
                 # We need to download this directory (or subdirectory)
-                if not self.get_file:
-                    raise RuntimeError("Unable to download directory because we have no access to the file store")
-                resolved = schema_salad.ref_resolver.uri_file_path(self.get_file(location))
+                if self.get_file:
+                    # We can actually go get it and its contents
+                    resolved = schema_salad.ref_resolver.uri_file_path(self.get_file(location))
+                else:
+                    # We are probably staging final outputs on the leader. We
+                    # can't go get the directory. Just pass it through.
+                    resolved = location
             elif location.startswith("_:"):
                 # cwltool made this up for an empty/synthetic directory it
                 # wants to make.
@@ -707,15 +709,18 @@ class ToilPathMapper(PathMapper):
                 # stage files inside it, we can end up with Docker creating
                 # root-owned files in whatever we mounted for the Docker work
                 # directory, somehow. So make a directory ourselves instead.
-                if not self.get_file:
-                    raise RuntimeError("Unable to get a temporary directory because we have no access to the file store")
-                resolved = schema_salad.ref_resolver.uri_file_path(self.get_file("_:"))
+                if self.get_file:
+                    resolved = schema_salad.ref_resolver.uri_file_path(self.get_file("_:"))
 
-                if 'listing' in obj and obj['listing'] != []:
-                    # If there's stuff inside here to stage, we need to copy
-                    # this directory here, because we can't Docker mount things
-                    # over top of immutable directories.
-                    copy_here = True
+                    if 'listing' in obj and obj['listing'] != []:
+                        # If there's stuff inside here to stage, we need to copy
+                        # this directory here, because we can't Docker mount things
+                        # over top of immutable directories.
+                        copy_here = True
+                else:
+                    # We can't really make the directory. Maybe we are
+                    # exporting from the leader and it doesn't matter.
+                    resolved = location
             else:
                 raise RuntimeError("Unsupported location: " + location)
 
@@ -1388,12 +1393,14 @@ class ResolveIndirect(Job):
 
 
 def toilStageFiles(
-    file_store: AbstractFileStore,
+    toil: Toil,
     cwljob: Union[Dict[Text, Any], List[Dict[Text, Any]]],
     outdir: str,
     destBucket: Union[str, None] = None,
 ) -> None:
-    """Copy input files out of the global file store and update location and path."""
+    """
+    Copy input files out of the global file store and update location and path.
+    """
 
     def _collectDirEntries(
         obj: Union[Dict[Text, Any], List[Dict[Text, Any]]]
@@ -1412,16 +1419,20 @@ def toilStageFiles(
                 for dir_entry in _collectDirEntries(sub_obj):
                     yield dir_entry
 
+    # This is all the CWL File and Directory objects we need to export.
     jobfiles = list(_collectDirEntries(cwljob))
+    
+    # TODO: I think we need to recursively populate listings here!
+    
+    # Now we need to save all the output files and directories.
+    # We could use a ToilPathMapper, but that contains stuff to work with Toil directories as encoded in Locations, while we can assume that we have all the Files and 
+    
     pm = ToilPathMapper(
         jobfiles,
         "",
         outdir,
         separateDirs=False,
         stage_listing=True,
-        get_file=functools.partial(
-            toil_get_file, file_store, {}, {}
-        )
     )
     for _, p in pm.items():
         if p.staged:
@@ -1429,31 +1440,43 @@ def toilStageFiles(
             # Note that we have to handle writable versions of everything
             # because sometimes we might make them in the PathMapper even if
             # not instructed to copy.
-            if destBucket and p.type in ["File", "CreateFile", "WritableFile", "CreateWritableFile"]:
-                # Directories don't need to be created if we're exporting to a bucket
-                baseName = p.target[len(outdir) :]
-                local_file_path = p.resolved[len("file://") :]
+            if destBucket:
+                # We are saving to a bucket, directories are fake.
+                if p.type in ["File", "CreateFile", "WritableFile", "CreateWritableFile"]:
+                    # Directories don't need to be created if we're exporting to a bucket
+                    baseName = p.target[len(outdir):]
+                    file_id_or_contents = p.resolved
 
-                if (
-                    p.type in ["CreateFile", "CreateWritableFile"]
-                ):  # TODO: CreateFile for buckets is not under testing
-                    local_file_path = os.path.join(
-                        file_store.getLocalTempDir(), baseName
-                    )
-                    with open(local_file_path, "wb") as n:
-                        n.write(p.resolved.encode("utf-8"))
-
-                destUrl = "/".join(s.strip("/") for s in [destBucket, baseName])
-                file_store.exportFile(FileID.unpack(local_file_path), destUrl)
+                    if (
+                        p.type in ["CreateFile", "CreateWritableFile"]
+                    ):  # TODO: CreateFile for buckets is not under testing
+                        
+                        with tempfile.NamedTemporaryFile() as f:
+                            # Make a file with the right contents
+                            f.write(file_id_or_contents.encode('utf-8'))
+                            f.close()
+                            # Import it and pack up the file ID so we can turn around and export it.
+                            file_id_or_contents = 'toilfs:' + toil.importFile(f.name).pack()
+                        
+                    if file_id_or_contents.startswith('toilfs:'):
+                        # This is something we can export
+                        destUrl = "/".join(s.strip("/") for s in [destBucket, baseName])
+                        toil.exportFile(FileID.unpack(file_id_or_contents[len('toilfs:'):]), destUrl)
+                    # TODO: can a toildir: "file" get here?
             else:
+                # We are saving to the filesystem so we only really need exportFile for actual files.
                 if not os.path.exists(p.target) and p.type in ["Directory", "WritableDirectory"]:
                     os.makedirs(p.target)
                 if not os.path.exists(p.target) and p.type in ["File", "WritableFile"]:
-                    os.makedirs(os.path.dirname(p.target), exist_ok=True)
-                    file_store.exportFile(
-                        FileID.unpack(p.resolved[7:]), "file://" + p.target
-                    )
+                    if p.resolved.startswith('toilfs:'):
+                        # We can actually export this
+                        os.makedirs(os.path.dirname(p.target), exist_ok=True)
+                        toil.exportFile(
+                            FileID.unpack(p.resolved[len('toilfs:'):]), "file://" + p.target
+                        )
+                    # TODO: can a toildir: "file" get here?
                 if not os.path.exists(p.target) and p.type in ["CreateFile", "CreateWritableFile"]:
+                    # We just need to make a file with particular contents
                     os.makedirs(os.path.dirname(p.target), exist_ok=True)
                     with open(p.target, "wb") as n:
                         n.write(p.resolved.encode("utf-8"))
