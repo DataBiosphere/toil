@@ -1661,31 +1661,7 @@ class CWLJob(Job):
         logger.debug('Loaded order: %s', self.cwljob)
 
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
-
-        if self.conditional.is_false(cwljob):
-            return self.conditional.skipped_outputs()
-            
-        # Clear out the listings so that we can regenerate them at the
-        # appropriate recursiveness level for this job.
-        adjustDirObjs(cwljob, clear_listing)
-
-        fill_in_defaults(
-            self.step_inputs, cwljob, self.runtime_context.make_fs_access("")
-        )
-
-        required_env_vars = self.populate_env_vars(cwljob)
-
-        immobile_cwljob_dict = copy.deepcopy(cwljob)
-        for inp_id in immobile_cwljob_dict.keys():
-            found = False
-            for field in cast(
-                List[Dict[str, str]], self.cwltool.inputs_record_schema["fields"]
-            ):
-                if field["name"] == inp_id:
-                    found = True
-            if not found:
-                cwljob.pop(inp_id)
-
+       
         # Exports temporary directory for batch systems that reset TMPDIR
         os.environ["TMPDIR"] = os.path.realpath(file_store.getLocalTempDir())
         outdir = os.path.join(file_store.getLocalTempDir(), "out")
@@ -1698,7 +1674,7 @@ class CWLJob(Job):
         # it to be deleted. The local temp dir, under Toil's workDir, will be
         # cleaned up by Toil.
         tmp_outdir_prefix = os.path.join(file_store.getLocalTempDir(), "tmp-out")
-
+       
         index = {}  # type: ignore
         existing = {}  # type: ignore
         # Prepare the run instructions for cwltool
@@ -1710,20 +1686,51 @@ class CWLJob(Job):
         runtime_context.make_fs_access = functools.partial(
             ToilFsAccess, file_store=file_store
         )
-        runtime_context.preserve_environment = required_env_vars
-
         runtime_context.toil_get_file = functools.partial(  # type: ignore
             toil_get_file, file_store, index, existing
         )
+        
+        # Get ahold of the filesystem
+        fs_access = runtime_context.make_fs_access(runtime_context.basedir)
+        
+        # Make sure inputs have listings available to the correct depth
+        load_listing_depth = determine_load_listing(self.cwltool)
+        logger.debug('Preparing directory listing of depth: %s', load_listing_depth)
+        adjustDirObjs(cwljob, clear_listing)
+        if load_listing_depth != 'no_listing':
+            # We want a listing, so make a shallow or deep one as requested.
+            populate_directory_listings(
+                fs_access,
+                cwljob,
+                recursive=(load_listing_depth == 'deep_listing')
+            )
+
+        if self.conditional.is_false(cwljob):
+            return self.conditional.skipped_outputs()
+            
+        fill_in_defaults(
+            self.step_inputs, cwljob, self.runtime_context.make_fs_access("")
+        )
+
+        # Show environment variables to the job
+        required_env_vars = self.populate_env_vars(cwljob)
+        runtime_context.preserve_environment = required_env_vars
+
+        immobile_cwljob_dict = copy.deepcopy(cwljob)
+        for inp_id in immobile_cwljob_dict.keys():
+            found = False
+            for field in cast(
+                List[Dict[str, str]], self.cwltool.inputs_record_schema["fields"]
+            ):
+                if field["name"] == inp_id:
+                    found = True
+            if not found:
+                cwljob.pop(inp_id)
 
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
 
-        original = cwltool.command_line_tool.check_adjust
-        def wrapper(builder, file_o):
-            original(builder, file_o)
-        cwltool.command_line_tool.check_adjust = wrapper
-
+        logger.debug('Execute order: %s', cwljob)
         output, status = cwltool.executors.SingleJobExecutor().execute(
             process=self.cwltool,
             job_order_object=cwljob,
@@ -1734,10 +1741,7 @@ class CWLJob(Job):
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
 
-        # Get ahold of the filesystem
-        fs_access = runtime_context.make_fs_access(runtime_context.basedir)
-
-        # Make sure all directory listings are filled in
+        # Make sure all directory listings are filled in for upload
         populate_directory_listings(fs_access, output)
 
         # write the outputs into the jobstore
