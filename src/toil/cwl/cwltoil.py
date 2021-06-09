@@ -1661,60 +1661,19 @@ class CWLJob(Job):
         logger.debug('Loaded order: %s', self.cwljob)
 
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
-       
-        # Exports temporary directory for batch systems that reset TMPDIR
-        os.environ["TMPDIR"] = os.path.realpath(file_store.getLocalTempDir())
-        outdir = os.path.join(file_store.getLocalTempDir(), "out")
-        os.mkdir(outdir)
-        # Just keep the temporary output prefix under the job's local temp dir,
-        # next to the outdir.
-        #
-        # If we maintain our own system of nested temp directories, we won't
-        # know when all the jobs using a higher-level directory are ready for
-        # it to be deleted. The local temp dir, under Toil's workDir, will be
-        # cleaned up by Toil.
-        tmp_outdir_prefix = os.path.join(file_store.getLocalTempDir(), "tmp-out")
-       
-        index = {}  # type: ignore
-        existing = {}  # type: ignore
-        # Prepare the run instructions for cwltool
-        runtime_context = self.runtime_context.copy()
-        runtime_context.basedir = os.getcwd()
-        runtime_context.outdir = outdir
-        runtime_context.tmp_outdir_prefix = tmp_outdir_prefix
-        runtime_context.tmpdir_prefix = file_store.getLocalTempDir()
-        runtime_context.make_fs_access = functools.partial(
-            ToilFsAccess, file_store=file_store
-        )
-        runtime_context.toil_get_file = functools.partial(  # type: ignore
-            toil_get_file, file_store, index, existing
-        )
-        
-        # Get ahold of the filesystem
-        fs_access = runtime_context.make_fs_access(runtime_context.basedir)
-        
-        # Make sure inputs have listings available to the correct depth
-        load_listing_depth = determine_load_listing(self.cwltool)
-        logger.debug('Preparing directory listing of depth: %s', load_listing_depth)
-        adjustDirObjs(cwljob, clear_listing)
-        if load_listing_depth != 'no_listing':
-            # We want a listing, so make a shallow or deep one as requested.
-            populate_directory_listings(
-                fs_access,
-                cwljob,
-                recursive=(load_listing_depth == 'deep_listing')
-            )
 
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
             
+        # Clear out the listings so that we can regenerate them at the
+        # appropriate recursiveness level for this job.
+        adjustDirObjs(cwljob, clear_listing)
+
         fill_in_defaults(
             self.step_inputs, cwljob, self.runtime_context.make_fs_access("")
         )
 
-        # Show environment variables to the job
         required_env_vars = self.populate_env_vars(cwljob)
-        runtime_context.preserve_environment = required_env_vars
 
         immobile_cwljob_dict = copy.deepcopy(cwljob)
         for inp_id in immobile_cwljob_dict.keys():
@@ -1727,10 +1686,44 @@ class CWLJob(Job):
             if not found:
                 cwljob.pop(inp_id)
 
+        # Exports temporary directory for batch systems that reset TMPDIR
+        os.environ["TMPDIR"] = os.path.realpath(file_store.getLocalTempDir())
+        outdir = os.path.join(file_store.getLocalTempDir(), "out")
+        os.mkdir(outdir)
+        # Just keep the temporary output prefix under the job's local temp dir,
+        # next to the outdir.
+        #
+        # If we maintain our own system of nested temp directories, we won't
+        # know when all the jobs using a higher-level directory are ready for
+        # it to be deleted. The local temp dir, under Toil's workDir, will be
+        # cleaned up by Toil.
+        tmp_outdir_prefix = os.path.join(file_store.getLocalTempDir(), "tmp-out")
+
+        index = {}  # type: ignore
+        existing = {}  # type: ignore
+        # Prepare the run instructions for cwltool
+        runtime_context = self.runtime_context.copy()
+        runtime_context.basedir = os.getcwd()
+        runtime_context.outdir = outdir
+        runtime_context.tmp_outdir_prefix = tmp_outdir_prefix
+        runtime_context.tmpdir_prefix = file_store.getLocalTempDir()
+        runtime_context.make_fs_access = functools.partial(
+            ToilFsAccess, file_store=file_store
+        )
+        runtime_context.preserve_environment = required_env_vars
+
+        runtime_context.toil_get_file = functools.partial(  # type: ignore
+            toil_get_file, file_store, index, existing
+        )
+
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
 
-        logger.debug('Execute order: %s', cwljob)
+        original = cwltool.command_line_tool.check_adjust
+        def wrapper(builder, file_o):
+            original(builder, file_o)
+        cwltool.command_line_tool.check_adjust = wrapper
+
         output, status = cwltool.executors.SingleJobExecutor().execute(
             process=self.cwltool,
             job_order_object=cwljob,
@@ -1741,7 +1734,10 @@ class CWLJob(Job):
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
 
-        # Make sure all directory listings are filled in for upload
+        # Get ahold of the filesystem
+        fs_access = runtime_context.make_fs_access(runtime_context.basedir)
+
+        # Make sure all directory listings are filled in
         populate_directory_listings(fs_access, output)
 
         # write the outputs into the jobstore
