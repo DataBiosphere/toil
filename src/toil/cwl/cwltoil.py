@@ -116,6 +116,7 @@ CWL_INTERNAL_JOBS = (
 
 
 # Customized CWL utilities
+
 def visit_top_cwl_class(
     rec: MutableMapping,
     classes: Iterable[str],
@@ -138,6 +139,47 @@ def visit_top_cwl_class(
         # This item is actually a list of things, so look at all of them.
         for key in rec:
             visit_top_cwl_class(key, classes, op)
+            
+# TODO: we need some type constraints here that I don't know how to spell.
+def visit_cwl_class_and_reduce(
+    rec: MutableMapping,
+    classes: Iterable[str],
+    op_down: Callable[[MutableMapping], Any],
+    op_up: Callable[[MutableMapping, Any, MutableSequence], Any]
+) -> List:
+    """
+    Apply the given operations to all CWL objects with the given named CWL class.
+    Applies the down operation top-down, and the up operation bottom-up, and
+    passes the down operation's result and a list of the up operation results
+    for all child keys (flattening across lists and collapsing nodes of
+    non-matching classes) to the up operation.
+    """
+    
+    results = []
+    
+    if isinstance(rec, MutableMapping):
+        down_result = None
+        child_results = []
+        if rec.get("class", None) in classes:
+            # Apply the down operation
+            down_result = op_down(rec)
+        for key in rec:
+            # Look inside and collect child results
+            for result in visit_cwl_class_and_reduce(rec[key], classes, op_down, op_up):
+                child_results.append(result)
+        if rec.get("class", None) in classes:
+            # Apply the up operation
+            results.append(op_up(rec, down_result, child_results))
+        else:
+            # We aren't processing here so pass up all the child results
+            results += child_results
+    elif isinstance(rec, MutableSequence):
+        # This item is actually a list of things, so look at all of them.
+        for key in rec:
+            for result in visit_cwl_class_and_reduce(key, classes, op_down, op_up):
+                # And flatten together all their results.
+                results.append(result)
+    return results
 
 def cwltoil_was_removed():
     """Complain about deprecated entrypoint."""
@@ -595,8 +637,8 @@ class ToilPathMapper(PathMapper):
 
         This is called on each File or Directory CWL object. The Files and
         Directories all have "location" fields. For the Files, these are from
-        uploadFile(), and for the Directories, these are from
-        prepareDirectoryForUpload(), with their children being assigned
+        upload_file(), and for the Directories, these are from
+        upload_directory(), with their children being assigned
         locations based on listing the Directories using ToilFsAccess.
 
         :param obj: The CWL File or Directory to process
@@ -903,7 +945,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
             # We will download the whole directory and then look inside it
 
-            # Since this was encoded by prepareDirectoryForUpload we know the
+            # Since this was encoded by upload_directory we know the
             # next piece is encoded JSON describing the directory structure,
             # and it can't contain any slashes.
             parts = path[len("toildir:"):].split('/', 1)
@@ -1020,7 +1062,7 @@ def toil_get_file(
 
     if file_store_id.startswith("toildir:"):
         # This is a file in a directory, or maybe a directory itself.
-        # See ToilFsAccess and prepareDirectoryForUpload.
+        # See ToilFsAccess and upload_directory.
         # We will go look for the actual file in the encoded directory
         # structure which will tell us where the toilfs: name for the file is.
 
@@ -1152,32 +1194,6 @@ def path_to_loc(obj: Dict) -> None:
         obj["location"] = obj["path"]
         del obj["path"]
 
-def populate_directory_listings(
-    fs_access: cwltool.stdfsaccess.StdFsAccess,
-    cwl_object: Dict,
-    recursive: bool = True
-) -> None:
-    """
-    From wherever the given directories are on the local disk, create full
-    directory listings for all Directory CWL objects in the given CWL object.
-    This makes sure that File CWL objects exist, so that Toil can save them to
-    the file store and they will come along when the whole Directory is sent to
-    another node.
-
-    :param fs_access: Filesystem access object to use to look at the directories.
-    :param cwl_object: CWL Tool or workflow order that contains some Directory objects to process.
-    :param recursive: Should the listing be recursive or not?
-    """
-
-    # Apply cwltool's recursive listing-populating function to all the
-    # Directory CWL objects.
-    adjustDirObjs(
-        cwl_object,
-        functools.partial(
-            get_listing, fs_access, recursive=recursive
-        ),
-    )
-
 def import_files(
     import_function: Callable[[str], FileID],
     fs_access: cwltool.stdfsaccess.StdFsAccess,
@@ -1186,16 +1202,30 @@ def import_files(
     cwl_object: Dict
 ) -> None:
     """
-    From the leader, prepare all files and directories inside the given CWL
-    tool object to be used on the workers.
-    Make sure their sizes are set and import all the files.
+    From the leader or worker, prepare all files and directories inside the
+    given CWL tool, order, or output object to be used on the workers. Make
+    sure their sizes are set and import all the files.
+    
+    Recurses inside directories using the fs_access to find files to upload and
+    subdirectory structure to encode, even if their listings are not set or not
+    recursive.
+    
+    Preserves any listing fields.
 
     Also does some miscelaneous normalization.
 
-    :param import_function: The function used to import a file and get a Toil FileID for it.
-    :param fs_access: the CWL FS access object we use to access the filesystem to find files to import.
-    :param fileindex: Forward map to fill in from file URI to Toil storage location, used by write_file to deduplicate writes.
-    :param existing: Reverse map to fill in from Toil storage location to file URI. Not read from.
+    :param import_function: The function used to upload a file:// URI and get a
+    Toil FileID for it.
+    
+    :param fs_access: the CWL FS access object we use to access the filesystem
+    to find files to import.
+    
+    :param fileindex: Forward map to fill in from file URI to Toil storage
+    location, used by write_file to deduplicate writes.
+    
+    :param existing: Reverse map to fill in from Toil storage location to file
+    URI. Not read from.
+    
     :param cwl_object: CWL tool (or workflow order) we are importing files for
     """
 
@@ -1205,40 +1235,135 @@ def import_files(
         tool_id = str(cwl_object)
 
     logger.debug('Importing files for %s', tool_id)
+    
+    # We need to upload all files to the Toil filestore, and encode structure
+    # recursively into all Directories' locations. But we cannot safely alter
+    # the listing fields of Directory objects, because the handling required by
+    # the 1.2 conformance tests does not actually match the spec, and we need
+    # to pass the conformance tests, and only cwltool really knows when to
+    # make/destroy the listings in order to do that.
 
-    # Make sure we know all the files and directories
-    populate_directory_listings(fs_access, cwl_object)
-
+    # First do some preliminary preparation of metadata
     visit_class(cwl_object, ("File", "Directory"), path_to_loc)
     visit_class(
         cwl_object, ("File",), functools.partial(add_sizes, fs_access)
     )
     normalizeFilesDirs(cwl_object)
-
-    # Upload all the files to the file store
-    adjustFileObjs(
+    
+    def visit_file_or_directory_down(rec: MutableMapping) -> Optional[List]:
+        """
+        Visit each CWL File or Directory on the way down.
+        
+        For Files, do nothing.
+        
+        For Directories, return the listing key's value if present, or None if absent.
+        
+        Fills in the directory's listing for the current level, so all direct
+        child File and Directory objects will exist.
+        """
+        
+        if rec.get("class", None) == "File":
+            # Nothing to do!
+            return None
+        elif rec.get("class", None) == "Directory":
+            # Pull out the old listing, if any
+            old_listing = rec.get("listing", None)
+                
+            if not rec["location"].startswith("_:"):
+                # This is a thing we can list and not just a literal, so we
+                # want to substitute a real listing for whatever's stored.
+                if "listing" in rec:
+                    # Drop the existing listing
+                    del rec["listing"]
+                # Fill in one level of listing, so we can then traverse it.
+                get_listing(fs_access, rec, recursive=False)
+            
+            return old_listing
+    
+    def visit_file_or_directory_up(
+        rec: MutableMapping,
+        down_result: Optional[List],
+        child_results: List[Dict[str, Union[str, Dict]]]
+    ) -> Dict[str, Union[str, Dict]]:
+        """
+        For a CWL File or Directory, make sure it is uploaded and it has a
+        location that describes its contents as visible to fs_access.
+        
+        Replaces each Directory's listing with the down result for the
+        directory, or removes it if the down result was None.
+        
+        Passes up the tree (and consumes as its second argument a list of)
+        information about the directory structure. For a file, we get the
+        information for all secondary files, and for a directory, we get a list
+        of the information for all contained files and directories.
+        
+        The format is a dict from filename to either string Toil file URI, or
+        contained similar dict for a subdirectory. We can reduce by joining
+        everything into a single dict, when no filenames conflict. 
+        """
+        
+        if rec.get("class", None) == "File":
+            # This is a CWL File
+            
+            result = {}
+            
+            # Upload the file itself, which will adjust its location.
+            upload_file(import_function, fileindex, existing, rec)
+            
+            # Make a record for this file under its name
+            result[rec['basename']] = rec['location']
+            
+            for secondary_file_result in child_results:
+                # Glom in the secondary files, if any
+                result.update(secondary_file_result)
+                
+            return result
+            
+        elif rec.get("class", None) == "Directory":
+            # This is a CWL Directory
+            
+            # Restore the original listing, or its absence
+            rec["listing"] = down_result
+            if rec["listing"] is None:
+                del rec["listing"]
+            
+            # We know we have child results from a fully recursive listing.
+            # Build them into a contents dict.
+            contents = {}
+            for child_result in child_results:
+                # Keep each child file or directory or child file's secondary
+                # file under its name
+                contents.update(child_result)
+            
+            # Upload the directory itself, which will adjust its location.
+            upload_directory(rec, contents)
+            
+            # Show those contents as being under our name in our parent.
+            return {rec['basename']: contents}
+            
+        else:
+            raise RuntimeError("Got unexpected class of object: " + str(rec))
+        
+        
+    # Process each file and directory in a recursive traversal
+    visit_cwl_class_and_reduce(
         cwl_object,
-        functools.partial(
-            uploadFile,
-            import_function,
-            fileindex,
-            existing,
-            skip_broken=True,
-        ),
+        ("File", "Directory"),
+        visit_file_or_directory_down,
+        visit_file_or_directory_up
     )
 
-    # Pack all the directory contents into directory locations.
-    adjustDirObjs(cwl_object, functools.partial(prepareDirectoryForUpload, fs_access))
-
-def prepareDirectoryForUpload(
-    fs_access: cwltool.stdfsaccess.StdFsAccess,
-    directory_metadata: dict,
+def upload_directory(
+    directory_metadata: MutableMapping,
+    directory_contents: Dict[str, Union[str, Dict]],
     skip_broken: bool = False
 ) -> None:
     """
-    Prepare a Directory object to be uploaded.
-
-    Assumes listings are already filled in, and leaves them intact.
+    Upload a Directory object.
+    
+    Ignores the listing (whuch may not be recursive and isn't safe or efficient
+    to touch), and instead uses directory_contents, which is a recursive dict
+    structure from filename to file URI or subdirectory contents dict.
 
     Makes sure the directory actually exists, and rewrites its location to be
     something we can use on another machine.
@@ -1267,53 +1392,14 @@ def prepareDirectoryForUpload(
                 "Directory is missing: %s" % directory_metadata["location"]
             )
 
-    # Now we have a directory we need to upload.
-    # We know its listing is filled in; we need to hide the listing somewhere
-    # ToilFsAccess can find it and then clear it
-
-    logger.debug('Packing directory for upload: %s', directory_metadata)
-
-    def to_nested(directory: Dict) -> Dict:
-        """
-        Pack up a directory listing into a simpler structure of nested dicts by
-        path name components.
-        """
-        contents = {'.': directory.get('basename')}
-        for child in directory.get('listing'):
-            if child.get('class') == 'Directory':
-                # Recurse on subdirectories
-                contents[child.get('basename')] = to_nested(child)
-            else:
-                # Must be a file
-                contents[child.get('basename')] = child.get('location')
-        return contents
-
-    contents = to_nested(directory_metadata)
-
-    # The metadata for a directory is all we need to keep around for it. It
-    # doesn't have a real location. But each directory needs a unique location
-    # or cwltool won't ship the metadata along.
+    logger.debug('Uploading directory at %s with contents %s', directory_metadata["location"], directory_contents)
 
     # Say that the directory location is just its dumped contents.
     # TODO: store these listings as files in the filestore instead?
-    directory_metadata["location"] = 'toildir:' + base64.urlsafe_b64encode(json.dumps(contents).encode('utf-8')).decode('utf-8')
+    directory_metadata["location"] = 'toildir:' + base64.urlsafe_b64encode(json.dumps(directory_contents).encode('utf-8')).decode('utf-8')
 
-    # TODO: avoid running again on every subdirectory?
 
-def clear_listing(
-    directory_metadata: dict,
-) -> None:
-    """
-    Clear out the listing field of a CWL Directory object.
-
-    Used so that jobs can regenerate listings for themselves of the appropriate
-    depth.
-    """
-
-    if 'listing' in directory_metadata:
-        del directory_metadata['listing']
-
-def uploadFile(
+def upload_file(
     uploadfunc: Any,
     fileindex: dict,
     existing: dict,
@@ -1369,6 +1455,16 @@ def remove_empty_listings(rec: CWLObjectType) -> None:
         del rec["listing"]
         return
 
+def remove_empty_listings(rec: CWLObjectType) -> None:
+    if rec.get("class") != "Directory":
+        finddirs = []  # type: List[CWLObjectType]
+        visit_class(rec, ("Directory",), finddirs.append)
+        for f in finddirs:
+            remove_empty_listings(f)
+        return
+    if "listing" in rec and rec["listing"] == []:
+        del rec["listing"]
+        return
 
 class ResolveIndirect(Job):
     """
@@ -1665,10 +1761,6 @@ class CWLJob(Job):
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
             
-        # Clear out the listings so that we can regenerate them at the
-        # appropriate recursiveness level for this job.
-        adjustDirObjs(cwljob, clear_listing)
-
         fill_in_defaults(
             self.step_inputs, cwljob, self.runtime_context.make_fs_access("")
         )
@@ -1685,6 +1777,14 @@ class CWLJob(Job):
                     found = True
             if not found:
                 cwljob.pop(inp_id)
+        
+        # Make sure there aren't any empty listings in directories; they might
+        # interfere with the generation of listings of the correct depth by
+        # cwltool
+        adjustDirObjs(
+            cwljob,
+            functools.partial(remove_empty_listings),
+        )
 
         # Exports temporary directory for batch systems that reset TMPDIR
         os.environ["TMPDIR"] = os.path.realpath(file_store.getLocalTempDir())
@@ -1736,29 +1836,17 @@ class CWLJob(Job):
 
         # Get ahold of the filesystem
         fs_access = runtime_context.make_fs_access(runtime_context.basedir)
-
-        # Make sure all directory listings are filled in
-        populate_directory_listings(fs_access, output)
-
-        # write the outputs into the jobstore
-        adjustFileObjs(
-            output,
-            functools.partial(
-                uploadFile,
-                functools.partial(writeGlobalFileWrapper, file_store),
-                index,
-                existing,
-            ),
-        )
-
-        # Change the Directory objects to things ToilFsAccess knows how to list
-        # even if a tool doesn't request a full listing and doesn't run on the
-        # node its directories were on
-        adjustDirObjs(
-            output, functools.partial(
-                prepareDirectoryForUpload,
-                fs_access
-            )
+        
+        # And a file importer that can go from a file:// URI to a Toil FileID 
+        file_import_function = functools.partial(writeGlobalFileWrapper, file_store) 
+        
+        # Upload all the Files and set their and the Directories' locations.
+        import_files(
+            file_import_function,
+            fs_access,
+            index,
+            existing,
+            output
         )
 
         # metadata[process_uuid] = {
