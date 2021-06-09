@@ -570,7 +570,12 @@ class ToilPathMapper(PathMapper):
         get_file: Union[Any, None] = None,
         stage_listing: bool = False,
     ):
-        """Initialize this ToilPathMapper."""
+        """
+        Initialize this ToilPathMapper.
+        
+        :param stage_listing: Stage files and directories inside directories
+        even if we also stage the parent.
+        """
         self.get_file = get_file
         self.stage_listing = stage_listing
         super(ToilPathMapper, self).__init__(
@@ -611,7 +616,8 @@ class ToilPathMapper(PathMapper):
         stage files and subdirectories separately from the directory as a
         whole. Controls the staged flag on generated mappings, and therefore
         whether files and directories are actually placed at their mapped-to
-        target locations.
+        target locations. If stage_listing is True, we will leave this True
+        throughout and stage everything.
 
         TODO: when would we not want to stage?
 
@@ -724,7 +730,7 @@ class ToilPathMapper(PathMapper):
             )
 
 
-            if not location.startswith('_:'):
+            if not location.startswith('_:') and not self.stage_listing:
                 # Don't stage anything below here separately, since we are able
                 # to copy the whole directory from somewhere and and we can't
                 # stage files over themselves.
@@ -1407,16 +1413,29 @@ def toilStageFiles(
                     yield dir_entry
 
     jobfiles = list(_collectDirEntries(cwljob))
-    pm = ToilPathMapper(jobfiles, "", outdir, separateDirs=False, stage_listing=True)
+    pm = ToilPathMapper(
+        jobfiles,
+        "",
+        outdir,
+        separateDirs=False,
+        stage_listing=True,
+        get_file=functools.partial(
+            toil_get_file, file_store, {}, {}
+        )
+    )
     for _, p in pm.items():
         if p.staged:
-            if destBucket and p.type in ["File", "CreateFile"]:
+            # We're supposed to copy/expose something.
+            # Note that we have to handle writable versions of everything
+            # because sometimes we might make them in the PathMapper even if
+            # not instructed to copy.
+            if destBucket and p.type in ["File", "CreateFile", "WritableFile", "CreateWritableFile"]:
                 # Directories don't need to be created if we're exporting to a bucket
                 baseName = p.target[len(outdir) :]
                 local_file_path = p.resolved[len("file://") :]
 
                 if (
-                    p.type == "CreateFile"
+                    p.type in ["CreateFile", "CreateWritableFile"]
                 ):  # TODO: CreateFile for buckets is not under testing
                     local_file_path = os.path.join(
                         file_store.getLocalTempDir(), baseName
@@ -1427,14 +1446,14 @@ def toilStageFiles(
                 destUrl = "/".join(s.strip("/") for s in [destBucket, baseName])
                 file_store.exportFile(FileID.unpack(local_file_path), destUrl)
             else:
-                if not os.path.exists(p.target) and p.type == "Directory":
+                if not os.path.exists(p.target) and p.type in ["Directory", "WritableDirectory"]:
                     os.makedirs(p.target)
-                if not os.path.exists(p.target) and p.type == "File":
+                if not os.path.exists(p.target) and p.type in ["File", "WritableFile"]:
                     os.makedirs(os.path.dirname(p.target), exist_ok=True)
                     file_store.exportFile(
                         FileID.unpack(p.resolved[7:]), "file://" + p.target
                     )
-                if not os.path.exists(p.target) and p.type == "CreateFile":
+                if not os.path.exists(p.target) and p.type in ["CreateFile", "CreateWritableFile"]:
                     os.makedirs(os.path.dirname(p.target), exist_ok=True)
                     with open(p.target, "wb") as n:
                         n.write(p.resolved.encode("utf-8"))
