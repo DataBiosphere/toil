@@ -505,7 +505,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         if isinstance(e, CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION):
             # We need to inform the leader that this is a CWL workflow problem
             # and it needs to inform its caller.
-            fail_exit_code = CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
+            failure_exit_code = CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
         AbstractFileStore._terminateEvent.set()
 
     ##########################################
@@ -618,7 +618,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         jobStore.delete(jobDesc.jobStoreID)
 
     if jobAttemptFailed:
-        return fail_exit_code
+        return failure_exit_code
     else:
         return 0
 
