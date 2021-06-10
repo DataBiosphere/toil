@@ -41,10 +41,14 @@ from toil.lib.resources import (get_total_cpu_time,
 from toil.statsAndLogging import configure_root_logger, set_log_level
 
 try:
-    from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
+    from toil.cwl.cwltoil import (CWL_INTERNAL_JOBS,
+                                  CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
+                                  CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION)
 except ImportError:
     # CWL extra not installed
     CWL_INTERNAL_JOBS = ()
+    CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE = None
+    CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION = type(None)
 
 logger = logging.getLogger(__name__)
 
@@ -277,6 +281,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     ##########################################
 
     jobAttemptFailed = False
+    failure_exit_code = 1
     statsDict = MagicExpando()
     statsDict.jobs = []
     statsDict.workers.logsToMaster = []
@@ -494,9 +499,13 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     ##########################################
     #Trapping where worker goes wrong
     ##########################################
-    except: #Case that something goes wrong in worker
+    except Exception as e: #Case that something goes wrong in worker
         traceback.print_exc()
         logger.error("Exiting the worker because of a failed job on host %s", socket.gethostname())
+        if isinstance(e, CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION):
+            # We need to inform the leader that this is a CWL workflow problem
+            # and it needs to inform its caller.
+            fail_exit_code = CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
         AbstractFileStore._terminateEvent.set()
 
     ##########################################
@@ -593,7 +602,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             """
             When encountering an error removing a file or directory, make sure
             the parent directory is writable.
-            
+
             cwltool likes to lock down directory permissions, and doesn't clean
             up after itself.
             """
@@ -609,7 +618,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         jobStore.delete(jobDesc.jobStoreID)
 
     if jobAttemptFailed:
-        return 1
+        return fail_exit_code
     else:
         return 0
 

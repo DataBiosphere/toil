@@ -74,6 +74,7 @@ from cwltool.process import (
     compute_checksums,
     fill_in_defaults,
     shortname,
+    UnsupportedRequirement
 )
 from cwltool.secrets import SecretStore
 from cwltool.software_requirements import (
@@ -113,6 +114,13 @@ CWL_INTERNAL_JOBS = (
     "CWLGather",
     "ResolveIndirect",
 )
+
+# What exit code do we need to bail with if we or any of the local jobs that
+# parse workflow files see an unsupported feature?
+CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE = 33
+
+# And what error will make the worker exit with that code
+CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION = UnsupportedRequirement
 
 
 # Customized CWL utilities
@@ -1885,6 +1893,7 @@ def makeJob(
     :return: "wfjob, followOn" if the input tool is a workflow, and "job, job" otherwise
     """
     logger.debug("Make job for tool: %s", tool)
+    scan_for_unsupported_requirements(tool)
     if tool.tool["class"] == "Workflow":
         wfjob = CWLWorkflow(
             cast(cwltool.workflow.Workflow, tool),
@@ -2397,6 +2406,27 @@ def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
             final_secondary_files.append(sf)
     return final_secondary_files
 
+def scan_for_unsupported_requirements(tool: Process) -> None:
+    """
+    Scan the given CWL tool for any unsupported optional features.
+
+    If it has them, raise an informative UnsupportedRequirement.
+
+    """
+
+    UNSUPPORTED_REQUIREMENTS = ["InplaceUpdateRequirement"]
+
+    # TODO: Can we change this to a set of supported requirements instead? Otherwise when new ones show up we assume we have them even when we don't.
+
+    for req_name in UNSUPPORTED_REQUIREMENTS:
+        # Grab each reqirement that might be a problem
+        req, is_mandatory = tool.get_requirement(req_name)
+        if req and is_mandatory:
+            # The tool actualy uses this one, and it isn't just a hint.
+            # Complain.
+            raise UnsupportedRequirement(
+                f"Toil cannot support {req_name}"
+            )
 
 def determine_load_listing(tool: Process):
     """
@@ -2849,7 +2879,18 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     with Toil(options) as toil:
         if options.restart:
-            outobj = toil.restart()
+            try:
+                outobj = toil.restart()
+            except Exception as err:
+                # TODO: We can't import FailedJobsException due to a circular
+                # import but that's what we'd expect here.
+                if getattr(err, 'exit_code') == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
+                    # We figured out that we can't support this workflow.
+                    logging.error(err)
+                    logging.error('Your workflow uses a CWL requirement that Toil does not support!')
+                    return CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
+                else:
+                    raise
         else:
             loading_context.hints = [
                 {
@@ -2914,9 +2955,10 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
             try:
                 tool = cwltool.load_tool.make_tool(uri, loading_context)
-            except cwltool.process.UnsupportedRequirement as err:
+                scan_for_unsupported_requirements(tool)
+            except UnsupportedRequirement as err:
                 logging.error(err)
-                return 33
+                return CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
             runtime_context.secret_store = SecretStore()
 
             try:
@@ -3031,11 +3073,22 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     runtime_context=runtime_context,
                     conditional=None,
                 )
-            except cwltool.process.UnsupportedRequirement as err:
+            except UnsupportedRequirement as err:
                 logging.error(err)
-                return 33
+                return CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
             wf1.cwljob = initialized_job_order
-            outobj = toil.start(wf1)
+            try:
+                outobj = toil.start(wf1)
+            except Exception as err:
+                # TODO: We can't import FailedJobsException due to a circular
+                # import but that's what we'd expect here.
+                if getattr(err, 'exit_code') == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
+                    # We figured out that we can't support this workflow.
+                    logging.error(err)
+                    logging.error('Your workflow uses a CWL requirement that Toil does not support!')
+                    return CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
+                else:
+                    raise
 
         # Now the workflow has completed. We need to make sure the outputs (and
         # inputs) end up where the user wants them to be.
