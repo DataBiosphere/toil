@@ -181,6 +181,7 @@ class AWSJobStore(AbstractJobStore):
                              prefix=self.shared_key_prefix,
                              data={'timestamp': str(datetime.datetime.now()), 'version': version})
         super(AWSJobStore, self).initialize(config)
+        # self.writeConfig()
 
     def resume(self):
         """Called when reusing an old jobstore with an existing bucket.  Raise if the bucket doesn't exist."""
@@ -417,7 +418,7 @@ class AWSJobStore(AbstractJobStore):
                              s3_client=self.s3_client,
                              bucket_name=self.bucket_name,
                              file_id=f'{self.shared_key_prefix}{file_id}',
-                             encryption_args=self.encryption_args)
+                             encryption_args={})
         with pipe as writable:
             yield writable
 
@@ -486,11 +487,15 @@ class AWSJobStore(AbstractJobStore):
     @contextmanager
     def readSharedFileStream(self, sharedFileName, encoding=None, errors=None):
         self._requireValidSharedFileName(sharedFileName)
+        # import time
+        # time.sleep(10)
+        assert s3_key_exists(s3_resource=self.s3_resource,
+                             bucket=self.bucket_name,
+                             key=f'{self.shared_key_prefix}{sharedFileName}'), f's3://{self.bucket_name}/{self.shared_key_prefix}{sharedFileName}'
         try:
             with download_stream(self.s3_resource,
                                  bucket=self.bucket_name,
                                  key=f'{self.shared_key_prefix}{sharedFileName}',
-                                 extra_args=self.encryption_args,
                                  encoding=encoding,
                                  errors=errors) as readable:
                 yield readable

@@ -149,7 +149,7 @@ class AbstractJobStoreTest:
 
         def setUp(self):
             super(AbstractJobStoreTest.Test, self).setUp()
-            self.namePrefix = 'jobstore-test-' + str(uuid.uuid4())
+            self.namePrefix = f'jobstore-test-{uuid.uuid4()}'
             self.config = self._createConfig()
 
             # Jobstores to be used in testing.
@@ -1102,7 +1102,7 @@ class AbstractJobStoreTest:
             return 5 * 1024 * 1024
 
 
-class AbstractEncryptedJobStoreTest(object):
+class AbstractEncryptedJobStoreTest:
     # noinspection PyAbstractClass
     class Test(AbstractJobStoreTest.Test, metaclass=ABCMeta):
         """
@@ -1120,11 +1120,9 @@ class AbstractEncryptedJobStoreTest(object):
 
         def _createConfig(self):
             config = super(AbstractEncryptedJobStoreTest.Test, self)._createConfig()
-            sseKeyFile = os.path.join(self.sseKeyDir, 'keyFile')
-            with open(sseKeyFile, 'w') as f:
+            config.sseKey = os.path.join(self.sseKeyDir, 'keyFile')
+            with open(config.sseKey, 'w') as f:
                 f.write('01234567890123456789012345678901')
-            config.sseKey = sseKeyFile
-            # config.attrib['sse_key'] = sseKeyFile
             return config
 
         def testEncrypted(self):

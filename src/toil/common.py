@@ -1426,4 +1426,6 @@ def getFileSystemSize(dirPath: str) -> Tuple[int, int]:
 
 def safeUnpickleFromStream(stream):
     string = stream.read()
+    with open('/home/quokka/git/toil/note.log', 'a+') as f:
+        f.write(f'config.pickle content: {string}\n')
     return pickle.loads(string)

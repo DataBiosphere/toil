@@ -99,6 +99,8 @@ class AbstractJobStore(ABC):
         Persists the value of the :attr:`AbstractJobStore.config` attribute to the
         job store, so that it can be retrieved later by other instances of this class.
         """
+        with open('/home/quokka/git/toil/note.log', 'a+') as f:
+            f.write(f'Writing config.pickle: {self.__config}\n')
         with self.writeSharedFileStream('config.pickle', isProtected=False) as fileHandle:
             pickle.dump(self.__config, fileHandle, pickle.HIGHEST_PROTOCOL)
 
@@ -109,6 +111,8 @@ class AbstractJobStore(ABC):
 
         :raises NoSuchJobStoreException: if the physical storage for this job store doesn't exist
         """
+        with open('/home/quokka/git/toil/note.log', 'a+') as f:
+            f.write('Reading config.pickle\n')
         with self.readSharedFileStream('config.pickle') as fileHandle:
             config = safeUnpickleFromStream(fileHandle)
             assert config.workflowID is not None
