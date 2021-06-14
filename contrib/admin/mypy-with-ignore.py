@@ -92,7 +92,6 @@ def main():
         'src/toil/jobStores/aws/__init__.py',
         'src/toil/utils/toilDebugFile.py',
         'src/toil/utils/toilStatus.py',
-        'src/toil/utils/toilStats.py',
         'src/toil/utils/toilMain.py',
         'src/toil/utils/__init__.py',
         'src/toil/utils/toilLaunchCluster.py',
