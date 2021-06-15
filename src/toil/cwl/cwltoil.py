@@ -1207,7 +1207,8 @@ def import_files(
     fs_access: cwltool.stdfsaccess.StdFsAccess,
     fileindex: Dict,
     existing: Dict,
-    cwl_object: Dict
+    cwl_object: Dict,
+    skip_broken: bool = False
 ) -> None:
     """
     From the leader or worker, prepare all files and directories inside the
@@ -1219,6 +1220,8 @@ def import_files(
     recursive.
 
     Preserves any listing fields.
+
+    If a file cannot be found (like if it is an optional secondary file that doesn't exist),
 
     Also does some miscelaneous normalization.
 
@@ -1235,6 +1238,9 @@ def import_files(
     URI. Not read from.
 
     :param cwl_object: CWL tool (or workflow order) we are importing files for
+
+    :param skip_broken: If True, when files can't be imported because they e.g.
+    don't exist, leave their locations alone rather than failing with an error.
     """
 
     try:
@@ -1324,7 +1330,13 @@ def import_files(
             result = {}
 
             # Upload the file itself, which will adjust its location.
-            upload_file(import_function, fileindex, existing, rec)
+            upload_file(
+                import_function,
+                fileindex,
+                existing,
+                rec,
+                skip_broken=skip_broken
+            )
 
             # Make a record for this file under its name
             result[rec['basename']] = rec['location']
@@ -1352,7 +1364,7 @@ def import_files(
                 contents.update(child_result)
 
             # Upload the directory itself, which will adjust its location.
-            upload_directory(rec, contents)
+            upload_directory(rec, contents, skip_broken=skip_broken)
 
             # Show those contents as being under our name in our parent.
             return {rec['basename']: contents}
@@ -2380,13 +2392,13 @@ def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
     but add the resolved fields to the list of unresolved fields so we remove
     them here after the fact.
 
-    We also remove any secondary files here not containing 'toilfs:', which
-    means that it was not successfully imported into the toil jobstore.  The
-    'required' logic seems to be handled deeper in cwltool.builder.Builder(),
-    and correctly determines which files should be imported.  Therefore we
-    remove the files here and if this file is SUPPOSED to exist, it will still
-    give the appropriate file does not exist error, but just a bit further down
-    the track.
+    We also remove any secondary files here not using the 'toilfs:',
+    'toildir:', or '_:' protocols, which can occur if the file was not
+    successfully imported into the toil jobstore.  The 'required' logic seems
+    to be handled deeper in cwltool.builder.Builder(), and correctly determines
+    which files should be imported.  Therefore we remove the files here and if
+    this file is SUPPOSED to exist, it will still give the appropriate file
+    does not exist error, but just a bit further down the track.
     """
     intermediate_secondary_files = []
     final_secondary_files = []
@@ -2401,8 +2413,11 @@ def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
     # i.e. 'file://' only gets converted to 'toilfs:' upon a successful import
     for sf in intermediate_secondary_files:
         sf_loc = sf.get("location", "")
-        # directories aren't imported, so don't worry about them
-        if sf_loc.startswith("toilfs:") or sf.get("class", "") == "Directory":
+        # Pass imported files, and all Directories
+        if (sf_loc.startswith("toilfs:") or
+            sf_loc.startswith("toildir:") or
+            sf_loc.startswith("_:") or
+            sf.get("class", "") == "Directory"):
             final_secondary_files.append(sf)
     return final_secondary_files
 
@@ -3045,13 +3060,17 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 symlink=True
             )
 
+            # Import all the input files, some of which may be missing optional
+            # files.
             import_files(
                 file_import_function,
                 fs_access,
                 fileindex,
                 existing,
-                initialized_job_order
+                initialized_job_order,
+                skip_broken=True
             )
+            # Import all the files associated with tools (binaries, etc.).
             visitSteps(
                 tool, functools.partial(
                     import_files,
