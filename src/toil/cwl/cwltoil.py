@@ -3071,18 +3071,23 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 skip_broken=True
             )
             # Import all the files associated with tools (binaries, etc.).
+            # Not sure why you would have an optional secondary file here, but
+            # the spec probably needs us to support them.
             visitSteps(
                 tool, functools.partial(
                     import_files,
                     file_import_function,
                     fs_access,
                     fileindex,
-                    existing
+                    existing,
+                    skip_broken=True
                 )
             )
 
             for param_name, param_value in initialized_job_order.items():
                 # Loop through all the parameters for the workflow overall.
+                # Drop any files we couyldn't import; they will cause an error
+                # later if they were required.
                 rm_unprocessed_secondary_files(param_value)
 
             try:
