@@ -18,8 +18,8 @@ import time
 import uuid
 from threading import Thread
 
-import docker
 from docker.errors import ContainerError
+from toil.common import Toil
 from toil.job import Job
 from toil.leader import FailedJobsException
 from toil.lib.docker import (FORGO,
@@ -70,8 +70,8 @@ class DockerTest(ToilTest):
         # not running.
         #              None     FORGO     STOP    RM
         #    rm        X         R         X      X
-        # detached     R         R         E      X
-        #  Neither     R         R         E      X
+        # detached     X         R         E      X
+        #  Neither     X         R         E      X
 
         data_dir = os.path.join(self.tempDir, 'data')
         working_dir = os.path.join(self.tempDir, 'working')
@@ -85,6 +85,7 @@ class DockerTest(ToilTest):
         options.logLevel = self.dockerTestLogLevel
         options.workDir = working_dir
         options.clean = 'always'
+        options.retryCount = 0  # we're expecting the job to fail so don't retry!
         options.disableCaching = disableCaching
 
         # No base64 logic since it might create a name starting with a `-`.
@@ -96,7 +97,8 @@ class DockerTest(ToilTest):
                           deferParam,
                           container_name)
         try:
-            Job.Runner.startToil(A, options)
+            with Toil(options) as toil:
+                toil.start(A)
         except FailedJobsException:
             # The file created by spooky_container would remain in the directory
             # and since it was created inside the container, it would have had
@@ -106,7 +108,7 @@ class DockerTest(ToilTest):
             assert file_stats.st_gid != 0
             assert file_stats.st_uid != 0
 
-            if (rm and (deferParam != FORGO)) or deferParam == RM:
+            if (rm and (deferParam != FORGO)) or deferParam == RM or deferParam is None:
                 # These containers should not exist
                 assert containerIsRunning(container_name) is None, \
                     'Container was not removed.'
@@ -120,12 +122,13 @@ class DockerTest(ToilTest):
                 # These containers will be running
                 assert containerIsRunning(container_name) == True, \
                     'Container was not running.'
-        client = docker.from_env(version='auto')
-        dockerKill(container_name, client)
-        try:
-            os.remove(test_file)
-        except:
-            pass
+        finally:
+            # Clean up
+            try:
+                dockerKill(container_name, remove=True)
+                os.remove(test_file)
+            except:
+                pass
 
     def testDockerClean_CRx_FORGO(self):
         self.testDockerClean(disableCaching=True, detached=False, rm=True,
