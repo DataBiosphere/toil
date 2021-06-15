@@ -16,8 +16,9 @@ import json
 import logging
 from functools import partial
 from argparse import ArgumentParser, Namespace
-from typing import Optional, Dict
+from typing import Optional, Dict, List, Callable, TextIO, Any
 
+from toil.job import Job
 from toil.common import Config, Toil, parser_with_common_options
 from toil.jobstores.abstractJobStore import AbstractJobStore
 from toil.lib.expando import Expando
@@ -149,7 +150,7 @@ def reportNumber(n: float, field: Optional[int] = None) -> str:
     return "%*g" % (field, n) if field else "%g" % n
 
 
-def sprintTag(key: str, tag, options: Namespace, columnWidths: Optional[ColumnWidths] = None) -> str:
+def sprintTag(key: str, tag: Expando, options: Namespace, columnWidths: Optional[ColumnWidths] = None) -> str:
     """ Generate a pretty-print ready string from a JTTag().
     """
     if columnWidths is None:
@@ -266,7 +267,7 @@ def get(tree: Expando, name: str) -> float:
         return float("nan")
 
 
-def sortJobs(jobTypes, options: Namespace):
+def sortJobs(jobTypes: List[Any], options: Namespace) -> List[Any]:
     """Return a jobTypes all sorted."""
     longforms = {"med": "median",
                  "ave": "average",
@@ -293,7 +294,7 @@ def sortJobs(jobTypes, options: Namespace):
                       reverse=options.sortReverse)
 
 
-def reportPrettyData(root: Expando, worker, job, job_types, options: Namespace) -> str:
+def reportPrettyData(root: Expando, worker: List[Job], job: List[Job], job_types: List[Any], options: Namespace) -> str:
     """Print the important bits out."""
     out_str = "Batch System: %s\n" % root.batch_system
     out_str += ("Default Cores: %s  Default Memory: %s\n"
@@ -318,7 +319,7 @@ def reportPrettyData(root: Expando, worker, job, job_types, options: Namespace) 
     return out_str
 
 
-def computeColumnWidths(job_types, worker, job, options):
+def computeColumnWidths(job_types: List[Any], worker: List[Job], job: List[Job], options: Expando) -> ColumnWidths:
     """ Return a ColumnWidths() object with the correct max widths.
     """
     cw = ColumnWidths()
@@ -329,7 +330,7 @@ def computeColumnWidths(job_types, worker, job, options):
     return cw
 
 
-def updateColumnWidths(tag, cw, options):
+def updateColumnWidths(tag: Expando, cw: ColumnWidths, options: Expando) -> None:
     """ Update the column width attributes for this tag's fields.
     """
     longforms = {"med": "median",
@@ -352,10 +353,10 @@ def updateColumnWidths(tag, cw, options):
                     cw.setWidth(category, field, len(s) + 1)
 
 
-def buildElement(element: Expando, items, itemName: str) -> Expando:
+def buildElement(element: Expando, items: List[Job], itemName: str) -> Expando:
     """ Create an element for output.
     """
-    def assertNonnegative(i,name):
+    def assertNonnegative(i: float, name: str) -> float:
         if i < 0:
             raise RuntimeError("Negative value %s reported for %s" %(i,name) )
         else:
@@ -414,7 +415,7 @@ def buildElement(element: Expando, items, itemName: str) -> Expando:
     return element[itemName]
 
 
-def createSummary(element: Expando, containingItems, containingItemName: str, getFn):
+def createSummary(element: Expando, containingItems: List[Job], containingItemName: str, getFn: Callable[[Job], List[Optional[Job]]]) -> None:
     itemCounts = [len(getFn(containingItem)) for
                   containingItem in containingItems]
     itemCounts.sort()
@@ -429,7 +430,7 @@ def createSummary(element: Expando, containingItems, containingItemName: str, ge
 def getStats(jobStore: AbstractJobStore) -> Expando:
     """ Collect and return the stats and config data.
     """
-    def aggregateStats(fileHandle,aggregateObject):
+    def aggregateStats(fileHandle: TextIO, aggregateObject: Expando) -> None:
         try:
             stats = json.load(fileHandle, object_hook=Expando)
             for key in list(stats.keys()):
@@ -472,7 +473,7 @@ def processData(config: Config, stats: Expando) -> Expando:
     jobs = [_f for _f in getattr(stats, 'jobs', []) if _f]
     jobs = [item for sublist in jobs for item in sublist]
 
-    def fn4(job):
+    def fn4(job: Job) -> List[Optional[Job]]:
         try:
             return list(jobs)
         except TypeError:
