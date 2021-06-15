@@ -91,8 +91,8 @@ def apiDockerCall(job,
                       working_dir=working_dir,
                       parameters=parameters)
 
-    Note that when run with detatch=False, or with detatch=True and stdout=True
-    or stderr=True, this is a blocking call. When run with detatch=True and
+    Note that when run with detach=False, or with detach=True and stdout=True
+    or stderr=True, this is a blocking call. When run with detach=True and
     without output capture, the container is started and returned without
     waiting for it to finish.
 
@@ -112,7 +112,7 @@ def apiDockerCall(job,
            FORGO (0) leaves the container untouched and running.
            STOP (1) Sends SIGTERM, then SIGKILL if necessary to the container.
            RM (2) Immediately send SIGKILL to the container. This is the default
-           behavior if defer is set to None.
+           behavior if deferParam is set to None.
     :param str name: The name/ID of the container.
     :param str entrypoint: Prepends commands sent to the container.  See:
                       https://docker-py.readthedocs.io/en/stable/containers.html
@@ -157,9 +157,9 @@ def apiDockerCall(job,
                    https://docker-py.readthedocs.io/en/stable/containers.html
 
     :returns: Returns the standard output/standard error text, as requested, when
-              detatch=False. Returns the underlying
+              detach=False. Returns the underlying
               docker.models.containers.Container object from the Docker API when
-              detatch=True.
+              detach=True.
     """
 
     # make certain that files have the correct permissions
@@ -221,16 +221,19 @@ def apiDockerCall(job,
 
     client = docker.from_env(version='auto', timeout=timeout)
 
+    if deferParam is None:
+        deferParam = RM
+
     if deferParam == STOP:
         job.defer(dockerStop, containerName)
 
     if deferParam == FORGO:
-        remove = False
+        # Leave the container untouched and running
+        pass
     elif deferParam == RM:
-        remove = True
-        job.defer(dockerKill, containerName)
-    elif remove is True:
-        job.defer(dockerKill, containerName)
+        job.defer(dockerKill, containerName, remove=True)
+    elif remove:
+        job.defer(dockerKill, containerName, remove=True)
 
     if auto_remove is None:
         auto_remove = remove
@@ -304,11 +307,11 @@ def apiDockerCall(job,
             if stdout or stderr:
                 if streamfile is None:
                     streamfile = 'output.log'
-                for line in container.logs(stdout=stdout, stderr=stderr, stream=True):
+                with open(streamfile, 'wb') as f:
                     # stream=True makes this loop blocking; we will loop until
                     # the container stops and there is no more output.
-                    with open(streamfile, 'w') as f:
-                        f.write(line)
+                    for line in container.logs(stdout=stdout, stderr=stderr, stream=True):
+                        f.write(line.encode() if isinstance(line, str) else line)
 
             # If we didn't capture output, the caller will need to .wait() on
             # the container to know when it is done. Even if we did capture
@@ -326,12 +329,17 @@ def apiDockerCall(job,
         raise create_api_error_from_http_exception(e)
 
 
-def dockerKill(container_name, gentleKill=False, timeout=365 * 24 * 60 * 60):
+def dockerKill(container_name: str,
+               gentleKill: bool = False,
+               remove: bool = False,
+               timeout: int = 365 * 24 * 60 * 60) -> None:
     """
     Immediately kills a container.  Equivalent to "docker kill":
     https://docs.docker.com/engine/reference/commandline/kill/
+
     :param container_name: Name of the container being killed.
-    :param client: The docker API client object to call.
+    :param gentleKill: If True, trigger a graceful shutdown.
+    :param remove: If True, remove the container after it exits.
     :param int timeout: Use the given timeout in seconds for interactions with
                         the Docker daemon. Note that the underlying docker module is
                         not always able to abort ongoing reads and writes in order
@@ -347,36 +355,38 @@ def dockerKill(container_name, gentleKill=False, timeout=365 * 24 * 60 * 60):
             else:
                 client.containers.get(container_name).stop()
             this_container = client.containers.get(container_name)
+        if remove:
+            this_container.remove()
     except NotFound:
-        logger.debug("Attempted to stop container, but container != exist: ",
-                     container_name)
+        logger.debug(f"Attempted to stop container ({container_name}), but container != exist.")
     except requests.exceptions.HTTPError as e:
-        logger.debug("Attempted to stop container, but server gave an error: ",
-                     container_name)
+        logger.debug(f"Attempted to stop container ({container_name}), but server gave an error:")
         raise create_api_error_from_http_exception(e)
 
 
-def dockerStop(container_name):
+def dockerStop(container_name: str, remove: bool = False) -> None:
     """
     Gracefully kills a container.  Equivalent to "docker stop":
     https://docs.docker.com/engine/reference/commandline/stop/
+
     :param container_name: Name of the container being stopped.
-    :param client: The docker API client object to call.
+    :param remove: If True, remove the container after it exits.
     """
-    dockerKill(container_name, gentleKill=True)
+    dockerKill(container_name, gentleKill=True, remove=remove)
 
 
-def containerIsRunning(container_name, timeout=365 * 24 * 60 * 60):
+def containerIsRunning(container_name: str, timeout: int = 365 * 24 * 60 * 60):
     """
     Checks whether the container is running or not.
+
     :param container_name: Name of the container being checked.
-    :returns: True if status is 'running', False if status is anything else,
-    and None if the container does not exist.
     :param int timeout: Use the given timeout in seconds for interactions with
                         the Docker daemon. Note that the underlying docker module is
                         not always able to abort ongoing reads and writes in order
                         to respect the timeout. Defaults to 1 year (i.e. wait
                         essentially indefinitely).
+    :returns: True if status is 'running', False if status is anything else,
+    and None if the container does not exist.
     """
     client = docker.from_env(version='auto', timeout=timeout)
     try:
