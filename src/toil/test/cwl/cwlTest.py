@@ -23,6 +23,7 @@ import unittest
 import uuid
 import zipfile
 from io import StringIO
+from typing import List, Optional
 from urllib.request import urlretrieve
 
 import psutil
@@ -48,7 +49,27 @@ log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 3600
 
 
-def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selected_tests=None):
+def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSystem: str = None, selected_tests: str = None,
+    selected_tags: str = None, extra_args: List[str] = [], must_support_all_features: bool = False) -> Optional[str]:
+    """
+    Run the CWL conformance tests.
+    
+    :param workDir: Directory to run tests in.
+    
+    :param yml: CWL test list YML to run tests from.
+    
+    :param caching: If True, use Toil file store caching.
+    
+    :param batchSystem: If set, use this batch system instead of the default single_machine.
+    
+    :param selected_tests: If set, use this description of test numbers to run (comma-separated numbers or ranges)
+    
+    :param selected_tags: As an alternative to selected_tests, run tests with the given tags.
+    
+    :param extra_args: Provide these extra arguments to toil-cwl-runner for each test.
+    
+    :param must_support_all_features: If set, fail if some CWL optional features are unsupported.
+    """
     try:
         cmd = ['cwltest',
                '--verbose',
@@ -58,10 +79,12 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
                f'--basedir={workDir}']
         if selected_tests:
             cmd.append(f'-n={selected_tests}')
+        if selected_tags:
+            cmd.append(f'--tags={selected_tags}')
 
         args_passed_directly_to_toil = [f'--disableCaching={not caching}',
                                         '--clean=always',
-                                        '--logDebug']
+                                        '--logDebug'] + extra_args
 
         if 'SINGULARITY_DOCKER_HUB_MIRROR' in os.environ:
             args_passed_directly_to_toil.append('--setEnv=SINGULARITY_DOCKER_HUB_MIRROR')
@@ -82,7 +105,7 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
 
         log.info("Running: '%s'", "' '".join(cmd))
         try:
-            subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
+            output = subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
         finally:
             if job_store_override:
                 # Clean up the job store we used for all the tests, if it is still there.
@@ -100,7 +123,7 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
                 if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
                     only_unsupported = True
                     break
-        if not only_unsupported:
+        if (not only_unsupported) or must_support_all_features:
             print(error_log)
             raise e
 
@@ -494,6 +517,16 @@ class CWLv12Test(ToilTest):
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance_with_caching(self):
         self.test_run_conformance(caching=True)
+        
+    def test_in_place_update(self) -> None:
+        """
+        Make sure that with --bypass-file-store we properly support in place update on a single node.
+        """
+        run_conformance_tests(workDir=self.cwlSpec,
+                              yml=self.test_yaml,
+                              selected_tags='inplace_update',
+                              extra_args=['--bypass-file-store'],
+                              must_support_all_features=True)
 
     def run_kubernetes_cwl_conformance(self, **kwargs):
         """

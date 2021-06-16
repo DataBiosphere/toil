@@ -122,6 +122,13 @@ CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE = 33
 # And what error will make the worker exit with that code
 CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION = UnsupportedRequirement
 
+# Find the default temporary directory
+DEFAULT_TMPDIR = tempfile.gettempdir()
+# And compose a CWL-style default prefix inside it.
+# We used to not put this inside anything and we would drop loads of temp
+# directories in the current directory and leave them there.
+DEFAULT_TMPDIR_PREFIX = os.path.join(DEFAULT_TMPDIR, "tmp")
+
 
 # Customized CWL utilities
 
@@ -486,7 +493,7 @@ class StepValueFrom:
         Called when loadContents is specified.
 
         :param step_inputs: Workflow step inputs.
-        :param file_store: A toil file store, needed to resolve toil fs:// paths.
+        :param file_store: A toil file store, needed to resolve toilfs:// paths.
         """
         for v in step_inputs.values():
             val = cast(CWLObjectType, v)
@@ -496,6 +503,10 @@ class StepValueFrom:
                     val.get("contents") is None
                     and source_input.get("loadContents") is True
                 ):
+                    # This is safe to use even if we're bypassing the file
+                    # store for the workflow. In that case, no toilfs:// or
+                    # other special URIs will exist in the workflow to be read
+                    # from, and ToilFsAccess still supports file:// URIs.
                     fs_access = functools.partial(ToilFsAccess, file_store=file_store)
                     with fs_access("").open(cast(str, val["location"]), "rb") as f:
                         val["contents"] = cwltool.builder.content_limit_respected_read(
@@ -876,14 +887,25 @@ class ToilCommandLineTool(cwltool.command_line_tool.CommandLineTool):
         runtimeContext: cwltool.context.RuntimeContext,
         separateDirs: bool,
     ) -> cwltool.pathmapper.PathMapper:
-        """Create the appropriate ToilPathMapper for the situation."""
-        return ToilPathMapper(
-            reffiles,
-            runtimeContext.basedir,
-            stagedir,
-            separateDirs,
-            runtimeContext.toil_get_file,  # type: ignore
-        )
+        """Create the appropriate PathMapper for the situation."""
+
+        if runtimeContext.bypass_file_store:
+            # We only need to understand cwltool's supported URIs
+            return PathMapper(
+                reffiles,
+                runtimeContext.basedir,
+                stagedir,
+                separateDirs=separateDirs
+            )
+        else:
+            # We need to be able to read from Toil-provided URIs
+            return ToilPathMapper(
+                reffiles,
+                runtimeContext.basedir,
+                stagedir,
+                separateDirs,
+                getattr(runtimeContext, 'toil_get_file', None)  # type: ignore
+            )
 
 
     def __str__(self):
@@ -1208,7 +1230,8 @@ def import_files(
     fileindex: Dict,
     existing: Dict,
     cwl_object: Dict,
-    skip_broken: bool = False
+    skip_broken: bool = False,
+    bypass_file_store: bool = False
 ) -> None:
     """
     From the leader or worker, prepare all files and directories inside the
@@ -1241,6 +1264,9 @@ def import_files(
 
     :param skip_broken: If True, when files can't be imported because they e.g.
     don't exist, leave their locations alone rather than failing with an error.
+
+    :param bypass_file_store: If True, leave file:// URIs in place instead of
+    importing files and directories.
     """
 
     try:
@@ -1263,6 +1289,11 @@ def import_files(
         cwl_object, ("File",), functools.partial(add_sizes, fs_access)
     )
     normalizeFilesDirs(cwl_object)
+
+    if bypass_file_store:
+        # Don't go on to actually import files or encode contents for
+        # directories.
+        return
 
     def visit_file_or_directory_down(rec: MutableMapping) -> Optional[List]:
         """
@@ -1483,17 +1514,6 @@ def remove_empty_listings(rec: CWLObjectType) -> None:
         del rec["listing"]
         return
 
-def remove_empty_listings(rec: CWLObjectType) -> None:
-    if rec.get("class") != "Directory":
-        finddirs = []  # type: List[CWLObjectType]
-        visit_class(rec, ("Directory",), finddirs.append)
-        for f in finddirs:
-            remove_empty_listings(f)
-        return
-    if "listing" in rec and rec["listing"] == []:
-        del rec["listing"]
-        return
-
 class ResolveIndirect(Job):
     """
     Helper Job.
@@ -1689,7 +1709,7 @@ class CWLJob(Job):
                 force_docker_pull=False,
                 loadListing=determine_load_listing(tool),
                 outdir='',
-                tmpdir='/tmp',  # TODO: use actual defaults here
+                tmpdir=DEFAULT_TMPDIR,
                 stagedir='/var/lib/cwl',  # TODO: use actual defaults here
                 cwlVersion=cast(str, self.cwltool.metadata["cwlVersion"]),
             )
@@ -1814,35 +1834,42 @@ class CWLJob(Job):
             functools.partial(remove_empty_listings),
         )
 
-        # Exports temporary directory for batch systems that reset TMPDIR
-        os.environ["TMPDIR"] = os.path.realpath(file_store.getLocalTempDir())
-        outdir = os.path.join(file_store.getLocalTempDir(), "out")
-        os.mkdir(outdir)
-        # Just keep the temporary output prefix under the job's local temp dir,
-        # next to the outdir.
-        #
-        # If we maintain our own system of nested temp directories, we won't
-        # know when all the jobs using a higher-level directory are ready for
-        # it to be deleted. The local temp dir, under Toil's workDir, will be
-        # cleaned up by Toil.
-        tmp_outdir_prefix = os.path.join(file_store.getLocalTempDir(), "tmp-out")
-
         index = {}  # type: ignore
         existing = {}  # type: ignore
+
         # Prepare the run instructions for cwltool
         runtime_context = self.runtime_context.copy()
+
         runtime_context.basedir = os.getcwd()
-        runtime_context.outdir = outdir
-        runtime_context.tmp_outdir_prefix = tmp_outdir_prefix
-        runtime_context.tmpdir_prefix = file_store.getLocalTempDir()
-        runtime_context.make_fs_access = functools.partial(
-            ToilFsAccess, file_store=file_store
-        )
         runtime_context.preserve_environment = required_env_vars
 
-        runtime_context.toil_get_file = functools.partial(  # type: ignore
-            toil_get_file, file_store, index, existing
-        )
+        if not runtime_context.bypass_file_store:
+            # Exports temporary directory for batch systems that reset TMPDIR
+            os.environ["TMPDIR"] = os.path.realpath(file_store.getLocalTempDir())
+            # Make sure temporary files and output files are generated in
+            # FileStore-provided places that go away when the job ends.
+            runtime_context.outdir = os.path.join(file_store.getLocalTempDir(), "out")
+            os.mkdir(runtime_context.outdir)
+            # Just keep the temporary output prefix under the job's local temp dir.
+            #
+            # If we maintain our own system of nested temp directories, we won't
+            # know when all the jobs using a higher-level directory are ready for
+            # it to be deleted. The local temp dir, under Toil's workDir, will be
+            # cleaned up by Toil.
+            runtime_context.tmp_outdir_prefix = os.path.join(file_store.getLocalTempDir(), "tmp-out")
+
+            runtime_context.tmpdir_prefix = file_store.getLocalTempDir()
+
+            # Intercept file and directory access and use a virtual filesystem
+            # through the Toil FileStore.
+
+            runtime_context.make_fs_access = functools.partial(
+                ToilFsAccess, file_store=file_store
+            )
+
+            runtime_context.toil_get_file = functools.partial(  # type: ignore
+                toil_get_file, file_store, index, existing
+            )
 
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
@@ -1852,7 +1879,7 @@ class CWLJob(Job):
             original(builder, file_o)
         cwltool.command_line_tool.check_adjust = wrapper
 
-        logger.debug('Running order: %s', self.cwljob)
+        logger.debug('Running tool %s with order: %s', self.cwltool, self.cwljob)
 
         output, status = cwltool.executors.SingleJobExecutor().execute(
             process=self.cwltool,
@@ -1870,13 +1897,15 @@ class CWLJob(Job):
         # And a file importer that can go from a file:// URI to a Toil FileID
         file_import_function = functools.partial(writeGlobalFileWrapper, file_store)
 
-        # Upload all the Files and set their and the Directories' locations.
+        # Upload all the Files and set their and the Directories' locations, if
+        # needed.
         import_files(
             file_import_function,
             fs_access,
             index,
             existing,
-            output
+            output,
+            bypass_file_store = runtime_context.bypass_file_store
         )
 
         logger.debug('Emitting output: %s', output)
@@ -1905,7 +1934,7 @@ def makeJob(
     :return: "wfjob, followOn" if the input tool is a workflow, and "job, job" otherwise
     """
     logger.debug("Make job for tool: %s", tool)
-    scan_for_unsupported_requirements(tool)
+    scan_for_unsupported_requirements(tool, bypass_file_store=runtime_context.bypass_file_store)
     if tool.tool["class"] == "Workflow":
         wfjob = CWLWorkflow(
             cast(cwltool.workflow.Workflow, tool),
@@ -2421,26 +2450,39 @@ def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
             final_secondary_files.append(sf)
     return final_secondary_files
 
-def scan_for_unsupported_requirements(tool: Process) -> None:
+def scan_for_unsupported_requirements(tool: Process, bypass_file_store: bool = False) -> None:
     """
     Scan the given CWL tool for any unsupported optional features.
 
     If it has them, raise an informative UnsupportedRequirement.
 
+    :param tool: The CWL tool to check for unsupported requirements.
+
+    :param bypass_file_store: True if the Toil file store is not being used to
+    transport files between nodes, and raw origin node file:// URIs are exposed
+    to tools instead.
+
     """
 
-    UNSUPPORTED_REQUIREMENTS = ["InplaceUpdateRequirement"]
+    # First we make a list of everything we can't support
+    unsupported = []
 
-    # TODO: Can we change this to a set of supported requirements instead? Otherwise when new ones show up we assume we have them even when we don't.
+    if not bypass_file_store:
+        # The Toil file store can't support in-place update
+        unsupported.append("InplaceUpdateRequirement")
 
-    for req_name in UNSUPPORTED_REQUIREMENTS:
+    # TODO: Can we change this to a set of supported requirements instead?
+    # Otherwise when new ones show up we assume we have them even when we
+    # don't.
+
+    for req_name in unsupported:
         # Grab each reqirement that might be a problem
         req, is_mandatory = tool.get_requirement(req_name)
         if req and is_mandatory:
             # The tool actualy uses this one, and it isn't just a hint.
             # Complain.
             raise UnsupportedRequirement(
-                f"Toil cannot support {req_name}"
+                f"Toil cannot support {req_name} in the current configuration"
             )
 
 def determine_load_listing(tool: Process):
@@ -2681,13 +2723,13 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         "--tmpdir-prefix",
         type=Text,
         help="Path prefix for temporary directories",
-        default="tmp",
+        default=DEFAULT_TMPDIR_PREFIX,
     )
     parser.add_argument(
         "--tmp-outdir-prefix",
         type=Text,
         help="Path prefix for intermediate output directories",
-        default="tmp",
+        default=DEFAULT_TMPDIR_PREFIX,
     )
     parser.add_argument(
         "--force-docker-pull",
@@ -2737,6 +2779,14 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
              "launcher, its flag etc). See the cwltool README "
              "section 'Running MPI-based tools' for details of the format: "
              "https://github.com/common-workflow-language/cwltool#running-mpi-based-tools-that-need-to-be-launched",
+    )
+    parser.add_argument(
+        "--bypass-file-store",
+        action="store_true",
+        default=False,
+        help="Do not use Toil's file store and assume all "
+             "paths are accessible in place from all nodes.",
+        dest="bypass_file_store"
     )
 
     provgroup = parser.add_argument_group(
@@ -2820,7 +2870,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     # if tmpdir_prefix is not the default value, set workDir if unset, and move
     # workdir and the job store under it
-    if options.tmpdir_prefix != "tmp":
+    if options.tmpdir_prefix != DEFAULT_TMPDIR_PREFIX:
         workdir = cwltool.utils.create_tmp_dir(options.tmpdir_prefix)
         os.rmdir(workdir)
 
@@ -2839,7 +2889,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     # Re-parse arguments with the new selected jobstore.
     options = parser.parse_args([chosen_job_store] + args)
-    if options.tmpdir_prefix != "tmp" and options.workDir is None:
+    if options.tmpdir_prefix != DEFAULT_TMPDIR_PREFIX and options.workDir is None:
         # We need to override workDir because by default Toil will pick
         # somewhere under the system temp directory if unset, ignoring
         # --tmpdir-prefix.
@@ -2877,10 +2927,18 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         find_default_container, options
     )
     runtime_context.workdir = workdir  # type: ignore
-    runtime_context.move_outputs = "leave"
-    runtime_context.rm_tmpdir = False
+    if not options.bypass_file_store:
+        runtime_context.move_outputs = "leave"
+        runtime_context.rm_tmpdir = False
     if options.mpi_config_file is not None:
         runtime_context.mpi_config = MpiConfig.load(options.mpi_config_file)
+    runtime_context.bypass_file_store = options.bypass_file_store
+    if options.bypass_file_store and options.destBucket:
+        # We use the file store to write to buckets, so we can't do this (yet?)
+        logger.error("Cannot export outputs to a bucket when bypassing the file store")
+        return 1
+
+
     loading_context = cwltool.context.LoadingContext(vars(options))
 
     if options.provenance:
@@ -2970,7 +3028,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
             try:
                 tool = cwltool.load_tool.make_tool(uri, loading_context)
-                scan_for_unsupported_requirements(tool)
+                scan_for_unsupported_requirements(tool, bypass_file_store=options.bypass_file_store)
             except UnsupportedRequirement as err:
                 logging.error(err)
                 return CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
@@ -3007,7 +3065,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     if isinstance(fileobj, Mapping) and fileobj.get("class") == "File":
                         if "secondaryFiles" not in fileobj:
                             # inits all secondary files with 'file://' schema
-                            # later changed to 'toilfs:' when imported into the jobstore
+                            # later changed to 'toilfs:' if imported into the jobstore
                             fileobj["secondaryFiles"] = [
                                 {
                                     "location": cwltool.builder.substitute(
@@ -3068,7 +3126,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 fileindex,
                 existing,
                 initialized_job_order,
-                skip_broken=True
+                skip_broken=True,
+                bypass_file_store=options.bypass_file_store
             )
             # Import all the files associated with tools (binaries, etc.).
             # Not sure why you would have an optional secondary file here, but
@@ -3080,15 +3139,18 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     fs_access,
                     fileindex,
                     existing,
-                    skip_broken=True
+                    skip_broken=True,
+                    bypass_file_store=options.bypass_file_store
                 )
             )
 
-            for param_name, param_value in initialized_job_order.items():
-                # Loop through all the parameters for the workflow overall.
-                # Drop any files we couyldn't import; they will cause an error
-                # later if they were required.
-                rm_unprocessed_secondary_files(param_value)
+            if not options.bypass_file_store:
+                # We expect to have processed all files that exist
+                for param_name, param_value in initialized_job_order.items():
+                    # Loop through all the parameters for the workflow overall.
+                    # Drop any files we couldn't import; they will cause an error
+                    # later if they were required.
+                    rm_unprocessed_secondary_files(param_value)
 
             try:
                 wf1, _ = makeJob(
@@ -3119,10 +3181,15 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
         outobj = resolve_dict_w_promises(outobj)
 
-        # Stage files. Specify destination bucket if specified in CLI
-        # options. If destination bucket not passed in,
-        # options.destBucket's value will be None.
-        toilStageFiles(toil, outobj, outdir, destBucket=options.destBucket)
+        if not options.bypass_file_store:
+            # Since we're using the file store we may need to "stage" output
+            # files from there to the local machine. We also are able to stage
+            # to an output bucket.
+
+            # Stage files. Specify destination bucket if specified in CLI
+            # options. If destination bucket not passed in,
+            # options.destBucket's value will be None.
+            toilStageFiles(toil, outobj, outdir, destBucket=options.destBucket)
 
         if runtime_context.research_obj is not None:
             runtime_context.research_obj.create_job(outobj, True)
