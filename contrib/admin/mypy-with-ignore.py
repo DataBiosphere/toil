@@ -100,7 +100,6 @@ def main():
         'src/toil/lib/iterables.py',
         'src/toil/lib/bioio.py',
         'src/toil/lib/ec2.py',
-        'src/toil/lib/ec2nodes.py',
         'src/toil/lib/expando.py',
         'src/toil/lib/exceptions.py',
         'src/toil/lib/__init__.py',
