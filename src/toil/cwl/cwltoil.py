@@ -3181,15 +3181,10 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
         outobj = resolve_dict_w_promises(outobj)
 
-        if not options.bypass_file_store:
-            # Since we're using the file store we may need to "stage" output
-            # files from there to the local machine. We also are able to stage
-            # to an output bucket.
-
-            # Stage files. Specify destination bucket if specified in CLI
-            # options. If destination bucket not passed in,
-            # options.destBucket's value will be None.
-            toilStageFiles(toil, outobj, outdir, destBucket=options.destBucket)
+        # Stage files. Specify destination bucket if specified in CLI
+        # options. If destination bucket not passed in,
+        # options.destBucket's value will be None.
+        toilStageFiles(toil, outobj, outdir, destBucket=options.destBucket)
 
         if runtime_context.research_obj is not None:
             runtime_context.research_obj.create_job(outobj, True)
