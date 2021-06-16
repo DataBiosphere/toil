@@ -518,16 +518,17 @@ class CWLv12Test(ToilTest):
     def test_run_conformance_with_caching(self):
         self.test_run_conformance(caching=True)
         
-    def test_in_place_update(self) -> None:
+    @slow
+    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
+    def test_run_conformance_with_in_place_update(self):
         """
-        Make sure that with --bypass-file-store we properly support in place update on a single node.
+        Make sure that with --bypass-file-store we properly support in place
+        update on a single node, and that this doesn't break any other
+        features.
         """
-        run_conformance_tests(workDir=self.cwlSpec,
-                              yml=self.test_yaml,
-                              selected_tags='inplace_update',
-                              extra_args=['--bypass-file-store'],
-                              must_support_all_features=True)
-
+        self.test_run_conformance(extra_args=['--bypass-file-store'],
+                                  must_support_all_features=True)
+        
     def run_kubernetes_cwl_conformance(self, **kwargs):
         """
         Run the CWL conformance tests on Kubernetes, passing along keyword
