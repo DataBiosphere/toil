@@ -25,6 +25,7 @@ import functools
 import json
 import logging
 import os
+import shutil
 import socket
 import stat
 import sys
@@ -371,6 +372,16 @@ class ResolveSource:
             # CommentedSeq list by the yaml parser.
             s = str(source_names[0])
             self.promise_tuples = (shortname(s), promises[s].rv())  # type: ignore
+
+    def __repr__(self) -> str:
+        """
+        Allow for debug printing.
+        """
+
+        try:
+            return 'ResolveSource(' + repr(self.resolve()) + ')'
+        except:
+            return f'ResolveSource({self.name}, {self.input}, {self.source_key}, {self.promise_tuples})'
 
     def resolve(self) -> Any:
         """
@@ -1575,6 +1586,7 @@ def toilStageFiles(
         stage_listing=True,
     )
     for _, p in pm.items():
+        logger.debug("Staging output: %s", p)
         if p.staged:
             # We're supposed to copy/expose something.
             # Note that we have to handle writable versions of everything
@@ -1614,6 +1626,10 @@ def toilStageFiles(
                         toil.exportFile(
                             FileID.unpack(p.resolved[len('toilfs:'):]), "file://" + p.target
                         )
+                    elif p.resolved.startswith('/'):
+                        # Probably staging and bypassing file store. Just copy.
+                        os.makedirs(os.path.dirname(p.target), exist_ok=True)
+                        shutil.copyfile(p.resolved, p.target)
                     # TODO: can a toildir: "file" get here?
                 if not os.path.exists(p.target) and p.type in ["CreateFile", "CreateWritableFile"]:
                     # We just need to make a file with particular contents
@@ -1878,6 +1894,8 @@ class CWLJob(Job):
         def wrapper(builder, file_o):
             original(builder, file_o)
         cwltool.command_line_tool.check_adjust = wrapper
+
+        logger.debug('Output disposition: %s', runtime_context.move_outputs)
 
         logger.debug('Running tool %s with order: %s', self.cwltool, self.cwljob)
 
@@ -2927,9 +2945,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         find_default_container, options
     )
     runtime_context.workdir = workdir  # type: ignore
-    if not options.bypass_file_store:
-        runtime_context.move_outputs = "leave"
-        runtime_context.rm_tmpdir = False
+    runtime_context.move_outputs = "leave"
+    runtime_context.rm_tmpdir = False
     if options.mpi_config_file is not None:
         runtime_context.mpi_config = MpiConfig.load(options.mpi_config_file)
     runtime_context.bypass_file_store = options.bypass_file_store
@@ -3090,7 +3107,10 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             runtime_context.no_match_user = options.no_match_user
             runtime_context.no_read_only = options.no_read_only
             runtime_context.basedir = options.basedir
-            runtime_context.move_outputs = "move"
+            if not options.bypass_file_store:
+                # If we're using the file store we need to start moving output
+                # files now.
+                runtime_context.move_outputs = "move"
 
             # We instantiate an early builder object here to populate indirect
             # secondaryFile references using cwltool's library because we need
