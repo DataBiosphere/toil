@@ -45,6 +45,7 @@ from typing import (
     MutableMapping,
     MutableSequence,
     Optional,
+    Pattern,
     Text,
     TextIO,
     Tuple,
@@ -87,7 +88,6 @@ from cwltool.utils import (
     adjustDirObjs,
     adjustFileObjs,
     aslist,
-    convert_pathsep_to_unix,
     get_listing,
     normalizeFilesDirs,
     visit_class,
@@ -741,12 +741,10 @@ class ToilPathMapper(PathMapper):
         stagedir = cast(Optional[str], obj.get("dirname")) or stagedir
 
         # Decide where to put the file or directory, as an absolute path.
-        tgt = convert_pathsep_to_unix(
-            os.path.join(
+        tgt = os.path.join(
                 stagedir,
                 cast(str, obj["basename"]),
             )
-        )
 
         if obj["class"] == "Directory":
             # Whether or not we've already mapped this path, we need to map all
@@ -1891,8 +1889,8 @@ class CWLJob(Job):
         started_at = datetime.datetime.now()  # noqa F841
 
         original = cwltool.command_line_tool.check_adjust
-        def wrapper(builder, file_o):
-            original(builder, file_o)
+        def wrapper(accept_re: Pattern[str], builder: cwltool.builder.Builder, file_o: CWLObjectType):
+            original(accept_re, builder, file_o)
         cwltool.command_line_tool.check_adjust = wrapper
 
         logger.debug('Output disposition: %s', runtime_context.move_outputs)
