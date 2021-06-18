@@ -1888,11 +1888,6 @@ class CWLJob(Job):
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
 
-        original = cwltool.command_line_tool.check_adjust
-        def wrapper(accept_re: Pattern[str], builder: cwltool.builder.Builder, file_o: CWLObjectType):
-            original(accept_re, builder, file_o)
-        cwltool.command_line_tool.check_adjust = wrapper
-
         logger.debug('Output disposition: %s', runtime_context.move_outputs)
 
         logger.debug('Running tool %s with order: %s', self.cwltool, self.cwljob)
@@ -2436,14 +2431,14 @@ def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
     The CWL libraries we call do successfully resolve the interpolated strings,
     but add the resolved fields to the list of unresolved fields so we remove
     them here after the fact.
-
-    We also remove any secondary files here not using the 'toilfs:',
-    'toildir:', or '_:' protocols, which can occur if the file was not
-    successfully imported into the toil jobstore.  The 'required' logic seems
-    to be handled deeper in cwltool.builder.Builder(), and correctly determines
-    which files should be imported.  Therefore we remove the files here and if
-    this file is SUPPOSED to exist, it will still give the appropriate file
-    does not exist error, but just a bit further down the track.
+    
+    We keep secondary files using the 'toildir:', or '_:' protocols, or using
+    the 'file:' protocol and indicating files or directories that actually
+    exist. The 'required' logic seems to be handled deeper in
+    cwltool.builder.Builder(), and correctly determines which files should be
+    imported. Therefore we remove the files here and if this file is SUPPOSED
+    to exist, it will still give the appropriate file does not exist error, but
+    just a bit further down the track.
     """
     intermediate_secondary_files = []
     final_secondary_files = []
@@ -2454,16 +2449,23 @@ def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
         if ("$(" not in sf_bn) and ("${" not in sf_bn):
             if ("$(" not in sf_loc) and ("${" not in sf_loc):
                 intermediate_secondary_files.append(sf)
-    # remove secondary files that are not present in the filestore
-    # i.e. 'file://' only gets converted to 'toilfs:' upon a successful import
+    # remove secondary files that are not present in the filestore or pointing
+    # to existant things on disk
     for sf in intermediate_secondary_files:
         sf_loc = sf.get("location", "")
-        # Pass imported files, and all Directories
         if (sf_loc.startswith("toilfs:") or
             sf_loc.startswith("toildir:") or
             sf_loc.startswith("_:") or
             sf.get("class", "") == "Directory"):
+            # Pass imported files, and all Directories
             final_secondary_files.append(sf)
+        elif (sf_loc.startswith("file:") and
+              os.path.exists(schema_salad.ref_resolver.uri_file_path(sf_loc))):
+            # Pass things that exist on disk (which we presumably declined to
+            # import because we aren't using the file store)
+            final_secondary_files.append(sf)
+        else:
+            logger.debug("Dropping secondary file %s", sf_loc)
     return final_secondary_files
 
 def scan_for_unsupported_requirements(tool: Process, bypass_file_store: bool = False) -> None:
@@ -3162,13 +3164,14 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 )
             )
 
-            if not options.bypass_file_store:
-                # We expect to have processed all files that exist
-                for param_name, param_value in initialized_job_order.items():
-                    # Loop through all the parameters for the workflow overall.
-                    # Drop any files we couldn't import; they will cause an error
-                    # later if they were required.
-                    rm_unprocessed_secondary_files(param_value)
+            # We always expect to have processed all files that exist
+            for param_name, param_value in initialized_job_order.items():
+                # Loop through all the parameters for the workflow overall.
+                # Drop any files that aren't either imported (for when we use
+                # the file store) or available on disk (for when we don't).
+                # This will properly make them cause an error later if they
+                # were required.
+                rm_unprocessed_secondary_files(param_value)
 
             try:
                 wf1, _ = makeJob(
