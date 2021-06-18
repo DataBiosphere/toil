@@ -17,8 +17,10 @@ import os.path
 import subprocess
 import tempfile
 import textwrap
-import yaml
+import json
 from abc import ABC, abstractmethod
+from base64 import b64encode
+
 from functools import total_ordering
 from typing import List, Dict, Tuple, Optional, Set
 
@@ -28,6 +30,7 @@ from toil.provisioners.node import Node
 
 a_short_time = 5
 logger = logging.getLogger(__name__)
+
 
 class ManagedNodesNotSupportedException(RuntimeError):
     """
@@ -39,6 +42,7 @@ class ManagedNodesNotSupportedException(RuntimeError):
     are available from a provisioner.
     """
     pass
+
 
 @total_ordering
 class Shape(object):
@@ -52,6 +56,7 @@ class Shape(object):
     The memory and disk attributes store the number of bytes required by a job (or provided by a
     node) in RAM or on disk (SSD or HDD), respectively.
     """
+
     def __init__(self, wallTime, memory, cores, disk, preemptable):
         self.wallTime = wallTime
         self.memory = memory
@@ -235,8 +240,8 @@ class AbstractProvisioner(ABC):
         # To work locally or remotely we need to do all our setup work as one
         # big bash -c
         command = ['bash', '-c', ('set -e; if [ ! -e /root/.sshSuccess ] ; '
-                    'then ssh-keygen -f /root/.ssh/id_rsa -t rsa -N ""; '
-                    'touch /root/.sshSuccess; fi; chmod 700 /root/.ssh;')]
+                                  'then ssh-keygen -f /root/.ssh/id_rsa -t rsa -N ""; '
+                                  'touch /root/.sshSuccess; fi; chmod 700 /root/.ssh;')]
 
         if leader is None:
             # Run locally
@@ -258,7 +263,7 @@ class AbstractProvisioner(ABC):
                     leaderPublicKey = f.read()
 
         # Drop the key type and keep just the key data
-        leaderPublicKey=leaderPublicKey.split(' ')[1]
+        leaderPublicKey = leaderPublicKey.split(' ')[1]
 
         # confirm it really is an RSA public key
         assert leaderPublicKey.startswith('AAAAB3NzaC1yc2E'), leaderPublicKey
@@ -384,7 +389,6 @@ class AbstractProvisioner(ABC):
         """
         raise NotImplementedError
 
-
     def addManagedNodes(self, nodeTypes: Set[str], minNodes, maxNodes, preemptable, spotBid=None) -> None:
         """
         Add a group of managed nodes of the given type, up to the given maximum.
@@ -453,11 +457,10 @@ class AbstractProvisioner(ABC):
         """
         raise NotImplementedError
 
-
     class InstanceConfiguration:
         """
         Allows defining the initial setup for an instance and then turning it
-        into a CloudConfig configuration for instance user data.
+        into an Ignition configuration for instance user data.
         """
 
         def __init__(self):
@@ -469,18 +472,19 @@ class AbstractProvisioner(ABC):
             # Holds strings like "ssh-rsa actualKeyData" for keys to authorize (independently of cloud provider's system)
             self.sshPublicKeys = []
 
-        def addFile(self, path: str, owner: str = 'root', permissions: str = '0755', content: str = ''):
+        def addFile(self, path: str, filesystem: str = 'root', mode: int = int("0755", 8), contents: str = ''):
             """
-            Make a file on the instance with the given owner, permissions, and content.
+            Make a file on the instance with the given filesystem, mode (in decimal), and contents.
             """
 
-            self.files.append({'path': path, 'owner': owner, 'permissions': permissions, 'content': content})
+            contents = 'data:text/plain;charset=utf-8;base64,' + b64encode(contents.encode('utf-8')).decode('utf-8')
 
-        def addUnit(self, name: str, command: str = 'start', enable: bool = True, content: str = ''):
+            self.files.append({'path': path, 'filesystem': filesystem, 'mode': mode, 'contents': {'source': contents}})
+
+        def addUnit(self, name: str, enabled: bool = True, contents: str = ''):
             """
             Make a systemd unit on the instance with the given name (including
-            .service), and content, and apply the given command to it (default:
-            'start'). Units will be enabled by default.
+            .service), and content. Units will be enabled by default.
 
             Unit logs can be investigated with:
                 systemctl status whatever.service
@@ -488,7 +492,7 @@ class AbstractProvisioner(ABC):
                 journalctl -xe
             """
 
-            self.units.append({'name': name, 'command': command, 'enable': enable, 'content': content})
+            self.units.append({'name': name, 'enabled': enabled, 'contents': contents})
 
         def addSSHRSAKey(self, keyData: str):
             """
@@ -497,30 +501,37 @@ class AbstractProvisioner(ABC):
 
             self.sshPublicKeys.append("ssh-rsa " + keyData)
 
-
-        def toCloudConfig(self) -> str:
+        def toIgnitionConfig(self) -> str:
             """
-            Return a CloudConfig configuration describing the desired config.
+            Return an Ignition configuration describing the desired config.
             """
 
             # Define the base config
             config = {
-                'write_files': self.files,
-                'coreos': {
-                    'update': {
-                        'reboot-strategy': 'off'
-                    },
+                'ignition': {
+                    'version': '2.2.0'
+                },
+                'storage': {
+                    'files': self.files
+                },
+                'systemd': {
                     'units': self.units
                 }
             }
 
             if len(self.sshPublicKeys) > 0:
                 # Add SSH keys if needed
-                config['ssh_authorized_keys'] = self.sshPublicKeys
+                config['passwd'] = {
+                    'users': [
+                        {
+                            'name': 'core',
+                            'sshAuthorizedKeys': self.sshPublicKeys
+                        }
+                    ]
+                }
 
-            # Mark as CloudConfig and serialize as YAML
-            return '#cloud-config\n\n' + yaml.dump(config)
-
+            # Serialize as JSON
+            return json.dumps(config, separators=(',', ':'))
 
     def getBaseInstanceConfiguration(self) -> InstanceConfiguration:
         """
@@ -529,7 +540,13 @@ class AbstractProvisioner(ABC):
 
         config = self.InstanceConfiguration()
 
-        # First we have volume mounting. That always happens.
+        # We set Flatcar's update reboot strategy to off
+        config.addFile("/etc/coreos/update.conf", mode=int("0644", 8), contents=textwrap.dedent("""\
+        GROUP=stable
+        REBOOT_STRATEGY=off
+        """))
+
+        # Then we have volume mounting. That always happens.
         self.addVolumesService(config)
         # We also always add the service to talk to Prometheus
         self.addNodeExporterService(config)
@@ -540,7 +557,7 @@ class AbstractProvisioner(ABC):
         """
         Add a service to prepare and mount local scratch volumes.
         """
-        config.addFile("/home/core/volumes.sh", content=textwrap.dedent("""\
+        config.addFile("/home/core/volumes.sh", contents=textwrap.dedent("""\
             #!/bin/bash
             set -x
             ephemeral_count=0
@@ -603,7 +620,7 @@ class AbstractProvisioner(ABC):
                 sudo mount --bind /mnt/ephemeral/var/lib/$directory /var/lib/$directory
             done
             """))
-        config.addUnit("volume-mounting.service", content=textwrap.dedent("""\
+        config.addUnit("volume-mounting.service", contents=textwrap.dedent("""\
             [Unit]
             Description=mounts ephemeral volumes & bind mounts toil directories
             Before=docker.service
@@ -612,6 +629,9 @@ class AbstractProvisioner(ABC):
             Type=oneshot
             Restart=no
             ExecStart=/usr/bin/bash /home/core/volumes.sh
+
+            [Install]
+            WantedBy=multi-user.target
             """))
 
     def addNodeExporterService(self, config: InstanceConfiguration):
@@ -619,7 +639,7 @@ class AbstractProvisioner(ABC):
         Add the node exporter service for Prometheus to an instance configuration.
         """
 
-        config.addUnit("node-exporter.service", content=textwrap.dedent('''\
+        config.addUnit("node-exporter.service", contents=textwrap.dedent('''\
             [Unit]
             Description=node-exporter container
             After=docker.service
@@ -639,6 +659,9 @@ class AbstractProvisioner(ABC):
                 --path.procfs /host/proc \\
                 --path.sysfs /host/sys \\
                 --collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
+
+            [Install]
+            WantedBy=multi-user.target
             '''))
 
     def addToilService(self, config: InstanceConfiguration, role: str, keyPath: str = None, preemptable: bool = False):
@@ -671,7 +694,7 @@ class AbstractProvisioner(ABC):
             elif role == 'worker':
                 entryPoint = 'mesos-agent'
                 entryPointArgs = MESOS_LOG_DIR + WORKER_DOCKER_ARGS.format(ip=self._leaderPrivateIP,
-                                                            preemptable=preemptable)
+                                                                           preemptable=preemptable)
             else:
                 raise RuntimeError("Unknown role %s" % role)
         elif self.clusterType == 'kubernetes':
@@ -682,7 +705,7 @@ class AbstractProvisioner(ABC):
                 entryPointArgs = 'infinity'
             else:
                 raise RuntimeError('Toil service not needed for %s nodes in a %s cluster',
-                    role, self.clusterType)
+                                   role, self.clusterType)
         else:
             raise RuntimeError('Toil service not needed in a %s cluster', self.clusterType)
 
@@ -694,7 +717,7 @@ class AbstractProvisioner(ABC):
             entryPointArgs = " ".join(["'" + customDockerInitCommand + "'", entryPoint, entryPointArgs])
             entryPoint = "customDockerInit.sh"
 
-        config.addUnit(f"toil-{role}.service", content=textwrap.dedent(f'''\
+        config.addUnit(f"toil-{role}.service", contents=textwrap.dedent(f'''\
             [Unit]
             Description=toil-{role} container
             After=docker.service
@@ -720,6 +743,9 @@ class AbstractProvisioner(ABC):
                 --name=toil_{role} \\
                 {applianceSelf()} \\
                 {entryPointArgs}
+
+            [Install]
+            WantedBy=multi-user.target
             '''))
 
     def getKubernetesValues(self):
@@ -758,7 +784,7 @@ class AbstractProvisioner(ABC):
         values = self.getKubernetesValues()
 
         # We're going to ship the Kubelet service from Kubernetes' release pipeline via cloud-config
-        config.addUnit("kubelet.service", content=textwrap.dedent('''\
+        config.addUnit("kubelet.service", contents=textwrap.dedent('''\
             # This came from https://raw.githubusercontent.com/kubernetes/release/v0.4.0/cmd/kubepkg/templates/latest/deb/kubelet/lib/systemd/system/kubelet.service
             # It has been modified to replace /usr/bin with {DOWNLOAD_DIR}
             # License: https://raw.githubusercontent.com/kubernetes/release/v0.4.0/LICENSE
@@ -780,7 +806,8 @@ class AbstractProvisioner(ABC):
             ''').format(**values))
 
         # It needs this config file
-        config.addFile("/etc/systemd/system/kubelet.service.d/10-kubeadm.conf", permissions="0644", content=textwrap.dedent('''\
+        config.addFile("/etc/systemd/system/kubelet.service.d/10-kubeadm.conf", mode=int("0644", 8),
+                       contents=textwrap.dedent('''\
             # This came from https://raw.githubusercontent.com/kubernetes/release/v0.4.0/cmd/kubepkg/templates/latest/deb/kubeadm/10-kubeadm.conf
             # It has been modified to replace /usr/bin with {DOWNLOAD_DIR}
             # License: https://raw.githubusercontent.com/kubernetes/release/v0.4.0/LICENSE
@@ -799,7 +826,7 @@ class AbstractProvisioner(ABC):
             ''').format(**values))
 
         # Before we let the kubelet try to start, we have to actually download it (and kubeadm)
-        config.addFile("/home/core/install-kubernetes.sh", content=textwrap.dedent('''\
+        config.addFile("/home/core/install-kubernetes.sh", contents=textwrap.dedent('''\
             #!/usr/bin/env bash
             set -e
 
@@ -815,7 +842,7 @@ class AbstractProvisioner(ABC):
             curl -L --remote-name-all https://storage.googleapis.com/kubernetes-release/release/{KUBERNETES_VERSION}/bin/linux/amd64/{{kubeadm,kubelet,kubectl}}
             chmod +x {{kubeadm,kubelet,kubectl}}
             ''').format(**values))
-        config.addUnit("install-kubernetes.service", content=textwrap.dedent('''\
+        config.addUnit("install-kubernetes.service", contents=textwrap.dedent('''\
             [Unit]
             Description=base Kubernetes installation
             Wants=network-online.target
@@ -826,11 +853,13 @@ class AbstractProvisioner(ABC):
             Type=oneshot
             Restart=no
             ExecStart=/usr/bin/bash /home/core/install-kubernetes.sh
+
+            [Install]
+            WantedBy=multi-user.target
             '''))
 
         # Now we should have the kubeadm command, and the bootlooping kubelet
         # waiting for kubeadm to configure it.
-
 
     def getKubernetesAutoscalerSetupCommands(self, values: Dict[str, str]) -> str:
         """
@@ -867,7 +896,7 @@ class AbstractProvisioner(ABC):
 
         # Customize scheduler to pack jobs into as few nodes as possible
         # See: https://kubernetes.io/docs/reference/scheduling/config/#profiles
-        config.addFile("/home/core/scheduler-config.yml", permissions="0644", content=textwrap.dedent('''\
+        config.addFile("/home/core/scheduler-config.yml", mode=int("0644", 8), contents=textwrap.dedent('''\
             apiVersion: kubescheduler.config.k8s.io/v1beta1
             kind: KubeSchedulerConfiguration
             clientConnection:
@@ -887,7 +916,7 @@ class AbstractProvisioner(ABC):
         # Make sure to mount the scheduler config where the scheduler can see
         # it, which is undocumented but inferred from
         # https://pkg.go.dev/k8s.io/kubernetes@v1.21.0/cmd/kubeadm/app/apis/kubeadm#ControlPlaneComponent
-        config.addFile("/home/core/kubernetes-leader.yml", permissions="0644", content=textwrap.dedent('''\
+        config.addFile("/home/core/kubernetes-leader.yml", mode=int("0644", 8), contents=textwrap.dedent('''\
             apiVersion: kubeadm.k8s.io/v1beta2
             kind: InitConfiguration
             nodeRegistration:
@@ -923,7 +952,7 @@ class AbstractProvisioner(ABC):
 
         # Make a script to apply that and the other cluster components
         # Note that we're escaping {{thing}} as {{{{thing}}}} because we need to match mustaches in a yaml we hack up.
-        config.addFile("/home/core/create-kubernetes-cluster.sh", content=textwrap.dedent('''\
+        config.addFile("/home/core/create-kubernetes-cluster.sh", contents=textwrap.dedent('''\
             #!/usr/bin/env bash
             set -e
 
@@ -932,6 +961,9 @@ class AbstractProvisioner(ABC):
             # We need the kubelet being restarted constantly by systemd while kubeadm is setting up.
             # Systemd doesn't really let us say that in the unit file.
             systemctl start kubelet
+
+            # We also need to set the hostname for 'kubeadm init' to work properly.
+            /bin/sh -c "/usr/bin/hostnamectl set-hostname $(curl -s http://169.254.169.254/latest/meta-data/hostname)"
 
             kubeadm init --config /home/core/kubernetes-leader.yml
 
@@ -943,11 +975,12 @@ class AbstractProvisioner(ABC):
             kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/{FLANNEL_VERSION}/Documentation/kube-flannel.yml
 
             # Deploy rubber stamp CSR signing bot
-            kubectl apply -f https://raw.githubusercontent.com/kontena/kubelet-rubber-stamp/release/{RUBBER_STAMP_VERSION}/deploy/service_account.yaml
-            kubectl apply -f https://raw.githubusercontent.com/kontena/kubelet-rubber-stamp/release/{RUBBER_STAMP_VERSION}/deploy/role.yaml
-            kubectl apply -f https://raw.githubusercontent.com/kontena/kubelet-rubber-stamp/release/{RUBBER_STAMP_VERSION}/deploy/role_binding.yaml
-            kubectl apply -f https://raw.githubusercontent.com/kontena/kubelet-rubber-stamp/release/{RUBBER_STAMP_VERSION}/deploy/operator.yaml
+            base=https://raw.githubusercontent.com/kontena/kubelet-rubber-stamp/release/{RUBBER_STAMP_VERSION}/deploy
 
+            kubectl apply -f ${{base}}/service_account.yaml
+            kubectl apply -f ${{base}}/role.yaml
+            kubectl apply -f ${{base}}/role_binding.yaml
+            kubectl apply -f ${{base}}/operator.yaml
             ''').format(**values) + self.getKubernetesAutoscalerSetupCommands(values) + textwrap.dedent('''\
             # Set up metrics server, which needs serverTLSBootstrap and rubber stamp, and insists on running on a worker
             curl -sSL https://github.com/kubernetes-sigs/metrics-server/releases/download/{METRICS_API_VERSION}/components.yaml | \\
@@ -960,7 +993,7 @@ class AbstractProvisioner(ABC):
             echo "JOIN_CERT_HASH=sha256:$(openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //')" >>/etc/kubernetes/worker.ini
             echo "JOIN_ENDPOINT=$(hostname):6443" >>/etc/kubernetes/worker.ini
             ''').format(**values))
-        config.addUnit("create-kubernetes-cluster.service", content=textwrap.dedent('''\
+        config.addUnit("create-kubernetes-cluster.service", contents=textwrap.dedent('''\
             [Unit]
             Description=Kubernetes cluster bootstrap
             After=install-kubernetes.service
@@ -972,10 +1005,13 @@ class AbstractProvisioner(ABC):
             Type=oneshot
             Restart=no
             ExecStart=/usr/bin/bash /home/core/create-kubernetes-cluster.sh
+
+            [Install]
+            WantedBy=multi-user.target
             '''))
 
         # We also need a node cleaner service
-        config.addFile("/home/core/cleanup-nodes.sh", content=textwrap.dedent('''\
+        config.addFile("/home/core/cleanup-nodes.sh", contents=textwrap.dedent('''\
             #!/usr/bin/env bash
             # cleanup-nodes.sh: constantly clean up NotReady nodes that are tainted as having been deleted
             set -e
@@ -995,7 +1031,7 @@ class AbstractProvisioner(ABC):
                 sleep 300
             done
             ''').format(**values))
-        config.addUnit("cleanup-nodes.service", content=textwrap.dedent('''\
+        config.addUnit("cleanup-nodes.service", contents=textwrap.dedent('''\
             [Unit]
             Description=Remove scaled-in nodes
             After=install-kubernetes.service
@@ -1031,7 +1067,7 @@ class AbstractProvisioner(ABC):
         values['WORKER_LABEL_SPEC'] = 'node-labels: "eks.amazonaws.com/capacityType=SPOT"' if preemptable else ''
 
         # Kubeadm worker configuration
-        config.addFile("/home/core/kubernetes-worker.yml", permissions="0644", content=textwrap.dedent('''\
+        config.addFile("/home/core/kubernetes-worker.yml", mode=int("0644", 8), contents=textwrap.dedent('''\
             apiVersion: kubeadm.k8s.io/v1beta2
             kind: JoinConfiguration
             nodeRegistration:
@@ -1052,7 +1088,7 @@ class AbstractProvisioner(ABC):
             '''.format(**values)))
 
         # Make a script to join the cluster using that configuration
-        config.addFile("/home/core/join-kubernetes-cluster.sh", content=textwrap.dedent('''\
+        config.addFile("/home/core/join-kubernetes-cluster.sh", contents=textwrap.dedent('''\
             #!/usr/bin/env bash
             set -e
 
@@ -1065,7 +1101,7 @@ class AbstractProvisioner(ABC):
             kubeadm join {JOIN_ENDPOINT} --config /home/core/kubernetes-worker.yml
             ''').format(**values))
 
-        config.addUnit("join-kubernetes-cluster.service", content=textwrap.dedent('''\
+        config.addUnit("join-kubernetes-cluster.service", contents=textwrap.dedent('''\
             [Unit]
             Description=Kubernetes cluster membership
             After=install-kubernetes.service
@@ -1076,9 +1112,12 @@ class AbstractProvisioner(ABC):
             Type=oneshot
             Restart=no
             ExecStart=/usr/bin/bash /home/core/join-kubernetes-cluster.sh
+
+            [Install]
+            WantedBy=multi-user.target
             '''))
 
-    def _getCloudConfigUserData(self, role, keyPath=None, preemptable=False):
+    def _getIgnitionConfigUserData(self, role, keyPath=None, preemptable=False):
         """
         Return the text (not bytes) user data to pass to a provisioned node.
 
@@ -1120,7 +1159,5 @@ class AbstractProvisioner(ABC):
                 # anyone in the cloud account.
                 self.addKubernetesWorker(config, self._leaderWorkerAuthentication, preemptable=preemptable)
 
-        # Make it into a string for CloudConfig
-        return config.toCloudConfig()
-
-
+        # Make it into a string for Ignition
+        return config.toIgnitionConfig()

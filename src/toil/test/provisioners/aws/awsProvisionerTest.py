@@ -36,6 +36,7 @@ from toil.version import exactPython
 
 log = logging.getLogger(__name__)
 
+
 class AWSProvisionerBenchTest(ToilTest):
     """
     Tests for the AWS provisioner that don't actually provision anything.
@@ -49,6 +50,7 @@ class AWSProvisionerBenchTest(ToilTest):
             ami = provisioner._discoverAMI()
             # Make sure we got an AMI and it looks plausible
             assert(ami.startswith('ami-'))
+
 
 @needs_aws_ec2
 @needs_fetchable_appliance
@@ -148,7 +150,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         running = True
         while running:
             # While the process is running, see if it stopped
-            running = (p.poll() == None)
+            running = (p.poll() is None)
 
             # Also collect its output
             out_data = p.stdout.read()
@@ -184,7 +186,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         if out_buffer:
             log.info('STDOUT: %s', out_buffer.decode('utf-8', errors='ignore'))
         if err_buffer:
-            log.info('STDOUT: %s', err_buffer.decode('utf-8', errors='ignore'))
+            log.info('STDERR: %s', err_buffer.decode('utf-8', errors='ignore'))
 
         if p.returncode != 0:
             # It failed
@@ -422,6 +424,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
 
+
 @integrative
 @pytest.mark.timeout(1200)
 class AWSManagedAutoscaleTest(AWSAutoscaleTest):
@@ -450,7 +453,6 @@ class AWSManagedAutoscaleTest(AWSAutoscaleTest):
         self.sshUtil(runCommand)
 
 
-
 @integrative
 @pytest.mark.timeout(1200)
 class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
@@ -471,7 +473,7 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
         os.unlink(sseKeyFile)
 
     def _runScript(self, toilOptions):
-        #Set memory requirements so that sort jobs can be run
+        # Set memory requirements so that sort jobs can be run
         # on small instances, but merge jobs must be run on large
         # instances
         toilOptions.extend(['--provisioner=aws', '--batchSystem=mesos',
