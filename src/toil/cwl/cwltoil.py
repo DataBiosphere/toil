@@ -886,6 +886,32 @@ class ToilPathMapper(PathMapper):
             )
 
 
+class ToilSingleJobExecutor(cwltool.executors.SingleJobExecutor):
+    """
+    Version of cwltool's SingleJobExecutor that does not assume it is at the
+    top level of the workflow.
+
+    We need this because otherwise every job thinks it is top level and tries
+    to discover secondary files, which may exist when they haven't actually
+    been passed at the top level and thus aren't supposed to be visible.
+    """
+
+    def run_jobs(
+        self,
+        process: Process,
+        job_order_object: CWLObjectType,
+        logger: logging.Logger,
+        runtime_context: cwltool.context.RuntimeContext
+    ) -> None:
+        """
+        Override run_jobs from SingleJobExecutor but say we are not in a top
+        level runtime context.
+        """
+        runtime_context.toplevel = False
+        return super().run_jobs(process, job_order_object, logger, runtime_context)
+
+
+
 class ToilCommandLineTool(cwltool.command_line_tool.CommandLineTool):
     """Subclass the cwltool command line tool to provide the custom Toil.PathMapper."""
 
@@ -1258,7 +1284,7 @@ def import_files(
     the location it was supposed to have been at.
 
     Also does some miscelaneous normalization.
-    
+
     Sets a "_toil_imported" flag on all Files and Directories that are
     processed, to mark them as legitimately visible to CWL workflows and
     distinguish them from e.g. never-provided-by-the-input secondaryFiles
@@ -1309,13 +1335,13 @@ def import_files(
     if bypass_file_store:
         # Don't go on to actually import files or encode contents for
         # directories. Just mark them as imported.
-        
+
         def mark_imported_if_exists(rec: MutableMapping) -> None:
             """
             Set _toil_imported in the given record if its location is an extant
             file: URI.
             """
-            if (rec.get('location', '').startswith('file:') and 
+            if (rec.get('location', '').startswith('file:') and
                 os.path.exists(schema_salad.ref_resolver.uri_file_path(rec['location']))):
                 logger.debug("Marking %s as imported", rec['location'])
                 rec['_toil_imported'] = True
@@ -1323,7 +1349,7 @@ def import_files(
         visit_class(cwl_object, ("File", "Directory"), mark_imported_if_exists)
 
         return
-    
+
     # Otherwise we actually want to put the things in the file store.
 
     def visit_file_or_directory_down(rec: MutableMapping) -> Optional[List]:
@@ -1407,7 +1433,7 @@ def import_files(
             for secondary_file_result in child_results:
                 # Glom in the secondary files, if any
                 result.update(secondary_file_result)
-                
+
             # Mark it as imported
             rec['_toil_imported'] = True
 
@@ -1431,7 +1457,7 @@ def import_files(
 
             # Upload the directory itself, which will adjust its location.
             upload_directory(rec, contents, skip_broken=skip_broken)
-            
+
             # Mark it as imported
             rec['_toil_imported'] = True
 
@@ -1921,7 +1947,7 @@ class CWLJob(Job):
 
         logger.debug('Running tool %s with order: %s', self.cwltool, self.cwljob)
 
-        output, status = cwltool.executors.SingleJobExecutor().execute(
+        output, status = ToilSingleJobExecutor().execute(
             process=self.cwltool,
             job_order_object=cwljob,
             runtime_context=runtime_context,
@@ -2460,7 +2486,7 @@ def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
     The CWL libraries we call do successfully resolve the interpolated strings,
     but add the resolved fields to the list of unresolved fields so we remove
     them here after the fact.
-    
+
     We keep secondary files using the 'toildir:', or '_:' protocols, or using
     the 'file:' protocol and indicating files or directories that actually
     exist. The 'required' logic seems to be handled deeper in
