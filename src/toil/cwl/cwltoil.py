@@ -1285,11 +1285,6 @@ def import_files(
 
     Also does some miscelaneous normalization.
 
-    Sets a "_toil_imported" flag on all Files and Directories that are
-    processed, to mark them as legitimately visible to CWL workflows and
-    distinguish them from e.g. never-provided-by-the-input secondaryFiles
-    expected by a tool that just happen to exist.
-
     :param import_function: The function used to upload a file:// URI and get a
     Toil FileID for it.
 
@@ -1334,20 +1329,7 @@ def import_files(
 
     if bypass_file_store:
         # Don't go on to actually import files or encode contents for
-        # directories. Just mark them as imported.
-
-        def mark_imported_if_exists(rec: MutableMapping) -> None:
-            """
-            Set _toil_imported in the given record if its location is an extant
-            file: URI.
-            """
-            if (rec.get('location', '').startswith('file:') and
-                os.path.exists(schema_salad.ref_resolver.uri_file_path(rec['location']))):
-                logger.debug("Marking %s as imported", rec['location'])
-                rec['_toil_imported'] = True
-
-        visit_class(cwl_object, ("File", "Directory"), mark_imported_if_exists)
-
+        # directories.
         return
 
     # Otherwise we actually want to put the things in the file store.
@@ -1434,9 +1416,6 @@ def import_files(
                 # Glom in the secondary files, if any
                 result.update(secondary_file_result)
 
-            # Mark it as imported
-            rec['_toil_imported'] = True
-
             return result
 
         elif rec.get("class", None) == "Directory":
@@ -1457,9 +1436,6 @@ def import_files(
 
             # Upload the directory itself, which will adjust its location.
             upload_directory(rec, contents, skip_broken=skip_broken)
-
-            # Mark it as imported
-            rec['_toil_imported'] = True
 
             # Show those contents as being under our name in our parent.
             return {rec['basename']: contents}
@@ -2508,9 +2484,6 @@ def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
     # to existant things on disk
     for sf in intermediate_secondary_files:
         sf_loc = sf.get("location", "")
-        if '_toil_imported' not in sf:
-            logger.debug("Dropping unimported secondary file %s", sf_loc)
-            continue
         if (sf_loc.startswith("toilfs:") or
             sf_loc.startswith("toildir:") or
             sf_loc.startswith("_:") or
@@ -2522,8 +2495,6 @@ def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
             # Pass things that exist on disk (which we presumably declined to
             # import because we aren't using the file store)
             final_secondary_files.append(sf)
-        else:
-            logger.debug("Dropping secondary file %s", sf_loc)
     return final_secondary_files
 
 def scan_for_unsupported_requirements(tool: Process, bypass_file_store: bool = False) -> None:
