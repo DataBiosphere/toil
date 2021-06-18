@@ -15,6 +15,7 @@ import fcntl
 import itertools
 import logging
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -23,9 +24,11 @@ from abc import ABCMeta, abstractmethod
 from fractions import Fraction
 from inspect import getsource
 from textwrap import dedent
+from typing import Callable
 from unittest import skipIf
 
-from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
+from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
+                                                   BatchSystemSupport,
                                                    InsufficientSystemResources)
 # Don't import any batch systems here that depend on extras
 # in order to import properly. Import them later, in tests
@@ -79,10 +82,7 @@ class hidden(object):
         """
 
         @abstractmethod
-        def createBatchSystem(self):
-            """
-            :rtype: AbstractBatchSystem
-            """
+        def createBatchSystem(self) -> AbstractBatchSystem:
             raise NotImplementedError
 
         def supportsWallTime(self):
@@ -209,10 +209,11 @@ class hidden(object):
             self.batchSystem.killBatchJobs([10])
 
         def testSetEnv(self):
-            # Parasol disobeys shell rules and stupidly splits the command at
-            # the space character into arguments before exec'ing it, whether
-            # the space is quoted, escaped or not.
+            # Parasol disobeys shell rules and splits the command at the space
+            # character into arguments before exec'ing it, whether the space is
+            # quoted, escaped or not.
 
+            # Start with a relatively safe script
             script_shell = 'if [ "x${FOO}" == "xbar" ] ; then exit 23 ; else exit 42 ; fi'
 
             # Escape the semicolons
@@ -417,18 +418,144 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
         # Make sure job is NOT running
         self.assertEqual(set(runningJobIDs), set({}))
 
+def write_temp_file(s: str, temp_dir: str) -> str:
+    """
+    Dump a string into a temp file and return its path.
+    """
+    fd, path = tempfile.mkstemp(dir=temp_dir)
+    try:
+        encoded = s.encode('utf-8')
+        assert os.write(fd, encoded) == len(encoded)
+    except:
+        os.unlink(path)
+        raise
+    else:
+        return path
+    finally:
+        os.close(fd)
+
 @travis_test
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     """
     Tests against the single-machine batch system
     """
 
-    def supportsWallTime(self):
+    def supportsWallTime(self) -> None:
         return True
 
-    def createBatchSystem(self):
+    def createBatchSystem(self) -> AbstractBatchSystem:
         return SingleMachineBatchSystem(config=self.config,
                                         maxCores=numCores, maxMemory=1e9, maxDisk=2001)
+
+    def testProcessEscape(self, hide: bool = False) -> None:
+        """
+        Test to make sure that child processes and their descendants go away
+        when the Toil workflow stops.
+
+        If hide is true, will try and hide the child processes to make them
+        hard to stop.
+        """
+
+        def script() -> None:
+            #!/usr/bin/env python3
+            import fcntl
+            import os
+            import sys
+            import signal
+            import time
+            from typing import Any
+
+            def handle_signal(sig: Any, frame: Any) -> None:
+                sys.stderr.write(f'{os.getpid()} ignoring signal {sig}\n')
+
+            if hasattr(signal, 'valid_signals'):
+                # We can just ask about the signals
+                all_signals = signal.valid_signals()
+            else:
+                # Fish them out by name
+                all_signals = [getattr(signal, n) for n in dir(signal) if n.startswith('SIG') and not n.startswith('SIG_')]
+
+            for sig in all_signals:
+                # Set up to ignore all signals we can and generally be obstinate
+                if sig != signal.SIGKILL and sig != signal.SIGSTOP:
+                    signal.signal(sig, handle_signal)
+
+            if len(sys.argv) > 2:
+                # Instructed to hide
+                if os.fork():
+                    # Try and hide the first process immediately so getting its
+                    # pgid won't work.
+                    sys.exit(0)
+
+            for depth in range(3):
+                # Bush out into a tree of processes
+                os.fork()
+
+            if len(sys.argv) > 1:
+                fd = os.open(sys.argv[1], os.O_RDONLY)
+                fcntl.lockf(fd, fcntl.LOCK_SH)
+
+            sys.stderr.write(f'{os.getpid()} waiting...\n')
+
+            while True:
+                # Wait around forever
+                time.sleep(60)
+
+        # Get a directory where we can safely dump files.
+        temp_dir = self._createTempDir()
+
+        script_path = write_temp_file(self._getScriptSource(script), temp_dir)
+
+        # We will have all the job processes try and lock this file shared while they are alive.
+        lockable_path = write_temp_file('', temp_dir)
+
+        try:
+            command = f'{sys.executable} {script_path} {lockable_path}'
+            if hide:
+                # Tell the children to stop the first child and hide out in the
+                # process group it made.
+                command += ' hide'
+
+            # Start the job
+            self.batchSystem.issueBatchJob(self._mockJobDescription(command=command, jobName='fork',
+                                                                    jobStoreID='1', requirements=defaultRequirements))
+            # Wait
+            time.sleep(10)
+
+            lockfile = open(lockable_path, 'w')
+
+            if not hide:
+                # In hiding mode the job will finish, and the batch system will
+                # clean up after it promptly. In non-hiding mode the job will
+                # stick around until shutdown, so make sure we can see it.
+
+                # Try to lock the file and make sure it fails
+
+                try:
+                    fcntl.lockf(lockfile, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    assert False, "Should not be able to lock file while job is running"
+                except OSError:
+                    pass
+
+            # Shut down the batch system
+            self.batchSystem.shutdown()
+
+            # After the batch system shuts down, we should be able to get the
+            # lock immediately, because all the children should be gone.
+            fcntl.lockf(lockfile, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # Then we can release it
+            fcntl.lockf(lockfile, fcntl.LOCK_UN)
+        finally:
+            os.unlink(script_path)
+            os.unlink(lockable_path)
+
+    def testHidingProcessEscape(self):
+        """
+        Test to make sure that child processes and their descendants go away
+        when the Toil workflow stops, even if the job process stops and leaves children.
+        """
+
+        self.testProcessEscape(hide=True)
 
 
 @slow
@@ -439,36 +566,25 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
     """
 
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         super(MaxCoresSingleMachineBatchSystemTest, cls).setUpClass()
         logging.basicConfig(level=logging.DEBUG)
 
-    def setUp(self):
+    def setUp(self) -> None:
         super(MaxCoresSingleMachineBatchSystemTest, self).setUp()
 
-        def writeTempFile(s):
-            fd, path = tempfile.mkstemp()
-            try:
-                encoded = s.encode('utf-8')
-                assert os.write(fd, encoded) == len(encoded)
-            except:
-                os.unlink(path)
-                raise
-            else:
-                return path
-            finally:
-                os.close(fd)
+        temp_dir = self._createTempDir()
 
         # Write initial value of counter file containing a tuple of two integers (i, n) where i
         # is the number of currently executing tasks and n the maximum observed value of i
-        self.counterPath = writeTempFile('0,0')
+        self.counterPath = write_temp_file('0,0', temp_dir)
 
-        def script():
+        def script() -> None:
             import fcntl
             import os
             import sys
             import time
-            def count(delta):
+            def count(delta: int) -> None:
                 """
                 Adjust the first integer value in a file by the given amount. If the result
                 exceeds the second integer value, set the second one to the first.
@@ -500,13 +616,13 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
             else:
                 count(int(sys.argv[2]))
 
-        self.scriptPath = writeTempFile(dedent('\n'.join(getsource(script).split('\n')[1:])))
+        self.scriptPath = write_temp_file(self._getScriptSource(script), temp_dir)
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         os.unlink(self.scriptPath)
         os.unlink(self.counterPath)
 
-    def scriptCommand(self):
+    def scriptCommand(self) -> str:
         return ' '.join([sys.executable, self.scriptPath, self.counterPath])
 
     @retry_flaky_test()
@@ -625,7 +741,7 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         config.jobStore = self._createTempDir('jobStore')
         return config
 
-    def createBatchSystem(self):
+    def createBatchSystem(self) -> AbstractBatchSystem:
         memory = int(3e9)
         self._startParasol(numCores=numCores, memory=memory)
 
@@ -690,7 +806,7 @@ class GridEngineBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     Tests against the GridEngine batch system
     """
 
-    def createBatchSystem(self):
+    def createBatchSystem(self) -> AbstractBatchSystem:
         from toil.batchSystems.gridengine import GridEngineBatchSystem
         return GridEngineBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9,
                                      maxDisk=1e9)
@@ -710,7 +826,7 @@ class SlurmBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     Tests against the Slurm batch system
     """
 
-    def createBatchSystem(self):
+    def createBatchSystem(self) -> AbstractBatchSystem:
         from toil.batchSystems.slurm import SlurmBatchSystem
         return SlurmBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9,
                                 maxDisk=1e9)
@@ -729,7 +845,7 @@ class LSFBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     """
     Tests against the LSF batch system
     """
-    def createBatchSystem(self):
+    def createBatchSystem(self) -> AbstractBatchSystem:
         from toil.batchSystems.lsf import LSFBatchSystem
         return LSFBatchSystem(config=self.config, maxCores=numCores,
                               maxMemory=1000e9, maxDisk=1e9)
@@ -748,7 +864,7 @@ class TorqueBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
         config.jobStore = self._createTempDir('jobStore')
         return config
 
-    def createBatchSystem(self):
+    def createBatchSystem(self) -> AbstractBatchSystem:
         from toil.batchSystems.torque import TorqueBatchSystem
         return TorqueBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9,
                                      maxDisk=1e9)
@@ -767,7 +883,7 @@ class HTCondorBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     Tests against the HTCondor batch system
     """
 
-    def createBatchSystem(self):
+    def createBatchSystem(self) -> AbstractBatchSystem:
         from toil.batchSystems.htcondor import HTCondorBatchSystem
         return HTCondorBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9,
                                        maxDisk=1e9)

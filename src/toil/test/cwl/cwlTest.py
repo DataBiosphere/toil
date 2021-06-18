@@ -62,7 +62,7 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
         args_passed_directly_to_toil = [f'--disableCaching={not caching}',
                                         '--clean=always',
                                         '--logDebug']
-        
+
         if 'SINGULARITY_DOCKER_HUB_MIRROR' in os.environ:
             args_passed_directly_to_toil.append('--setEnv=SINGULARITY_DOCKER_HUB_MIRROR')
 
@@ -167,15 +167,31 @@ class CWLv10Test(ToilTest):
                   input_location,
                   self._expected_download_output(self.outDir))
 
+    def test_mpi(self):
+        from toil.cwl import cwltoil
+        stdout = StringIO()
+        main_args = ['--outdir', self.outDir,
+                     '--enable-dev',
+                     '--enable-ext',
+                     '--mpi-config-file', os.path.join(self.rootDir, 'src/toil/test/cwl/mock_mpi/fake_mpi.yml'),
+                     os.path.join(self.rootDir, 'src/toil/test/cwl/mpi_simple.cwl')]
+        cwltoil.main(main_args, stdout=stdout)
+        out = json.loads(stdout.getvalue())
+        with open(out.get('pids', {}).get('location')[len('file://'):], 'r') as f:
+            two_pids = [int(i) for i in f.read().split()]
+        self.assertEqual(len(two_pids), 2)
+        self.assertTrue(isinstance(two_pids[0], int))
+        self.assertTrue(isinstance(two_pids[1], int))
+
     @needs_aws_s3
     def test_s3_as_secondary_file(self):
         from toil.cwl import cwltoil
-        st = StringIO()
+        stdout = StringIO()
         main_args = ['--outdir', self.outDir,
                      os.path.join(self.rootDir, 'src/toil/test/cwl/s3_secondary_file.cwl'),
                      os.path.join(self.rootDir, 'src/toil/test/cwl/s3_secondary_file.json')]
-        cwltoil.main(main_args, stdout=st)
-        out = json.loads(st.getvalue())
+        cwltoil.main(main_args, stdout=stdout)
+        out = json.loads(stdout.getvalue())
         self.assertEqual(out['output']['checksum'], 'sha1$d14dd02e354918b4776b941d154c18ebc15b9b38')
         self.assertEqual(out['output']['size'], 24)
         with open(out['output']['location'][len('file://'):], 'r') as f:
@@ -479,19 +495,18 @@ class CWLv12Test(ToilTest):
     def test_run_conformance_with_caching(self):
         self.test_run_conformance(caching=True)
 
-    @slow
-    @needs_kubernetes
-    @pytest.mark.xfail
-    def test_kubernetes_cwl_conformance(self, **kwargs):
+    def run_kubernetes_cwl_conformance(self, **kwargs):
+        """
+        Run the CWL conformance tests on Kubernetes, passing along keyword
+        arguments.
+        """
         return self.test_run_conformance(batchSystem="kubernetes",
                                          **kwargs)
-
-
     @slow
     @needs_kubernetes
-    @pytest.mark.xfail
-    def test_kubernetes_cwl_conformance_with_caching(self):
-        return self.test_kubernetes_cwl_conformance(caching=True)
+    def test_kubernetes_cwl_20(self):
+        for caching in [True, False]:
+            self.run_kubernetes_cwl_conformance(selected_tests="20", caching=caching)
 
 @needs_cwl
 class CWLSmallTests(ToilTest):

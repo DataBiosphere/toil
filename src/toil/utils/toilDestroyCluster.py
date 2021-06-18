@@ -20,7 +20,7 @@ from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
 
-def main():
+def main() -> None:
     parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
     options = parser.parse_args()
     set_logging_from_options(options)

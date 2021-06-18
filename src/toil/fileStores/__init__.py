@@ -14,35 +14,6 @@
 import os
 import stat
 
-from uuid import uuid4
-
-
-def make_unique_public_dir(prefix: str) -> str:
-    """
-    Try to make a random directory name with length 4 that doesn't exist, with the given prefix.
-
-    Otherwise, try length 5, length 6, etc, up to a max of 32 (len of uuid4 with dashes replaced).
-
-    This function's purpose is mostly to avoid having long file names when generating directories.
-
-    If somehow this fails, which should be incredibly unlikely, default to a normal uuid4, which was
-    our old default.
-    """
-    for i in range(4, 32 + 1):  # make random uuids and truncate to lengths starting at 4 and working up to max 32
-        for _ in range(10):  # make 10 attempts for each length
-            truncated_uuid: str = str(uuid4()).replace('-', '')[:i]
-            generated_dir_path: str = os.path.join(prefix, truncated_uuid)
-            try:
-                os.mkdir(generated_dir_path)
-                os.chmod(generated_dir_path, 0o777)
-                return generated_dir_path
-            except FileExistsError:
-                pass
-    this_should_never_happen: str = os.path.join(prefix, str(uuid4()))
-    os.mkdir(this_should_never_happen)
-    os.chmod(this_should_never_happen, 0o777)
-    return this_should_never_happen
-
 
 class FileID(str):
     """

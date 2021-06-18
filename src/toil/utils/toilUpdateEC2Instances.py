@@ -29,7 +29,7 @@ def internet_connection() -> bool:
         return False
 
 
-def main():
+def main() -> None:
     if not internet_connection():
         raise RuntimeError('No internet.  Updating the EC2 Instance list requires internet.')
     updateStaticEC2Instances()

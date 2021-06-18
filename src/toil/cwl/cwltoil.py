@@ -60,6 +60,7 @@ import cwltool.stdfsaccess
 import schema_salad.ref_resolver
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
+from cwltool.mpi import MpiConfig
 from cwltool.mutation import MutationManager
 from cwltool.pathmapper import MapperEnt, PathMapper, downloadHttpFile
 from cwltool.process import (
@@ -155,9 +156,9 @@ def filter_skip_null(name: str, value: Any) -> Any:
     value = _filter_skip_null(value, err_flag)
     if err_flag[0]:
         logger.warning(
-            "In %s, SkipNull result found and cast to None. \n"
+            f"In {name}, SkipNull result found and cast to None. \n"
             "You had a conditional step that did not run, "
-            "but you did not use pickValue to handle the skipped input." % name
+            "but you did not use pickValue to handle the skipped input."
         )
     return value
 
@@ -1055,9 +1056,9 @@ class CWLJob(Job):
                 js_console=False,
                 force_docker_pull=False,
                 loadListing=determine_load_listing(tool),
-                outdir="",
-                tmpdir="/tmp",  # TODO: use actual defaults here
-                stagedir="/var/lib/cwl",  # TODO: use actual defaults here
+                outdir='',
+                tmpdir='/tmp',  # TODO: use actual defaults here
+                stagedir='/var/lib/cwl',  # TODO: use actual defaults here
                 cwlVersion=cast(str, self.cwltool.metadata["cwlVersion"]),
             )
 
@@ -1926,6 +1927,12 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         action="store_true",
         help="Enable loading and running development versions of CWL",
     )
+    parser.add_argument(
+        "--enable-ext",
+        action="store_true",
+        help="Enable loading and running 'cwltool:' extensions to the CWL standards.",
+        default=False,
+    )
     parser.add_argument("--quiet", dest="logLevel", action="store_const", const="ERROR")
     parser.add_argument("--basedir", type=str)  # TODO: Might be hard-coded?
     parser.add_argument("--outdir", type=str, default=os.getcwd())
@@ -2037,6 +2044,15 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         help="Specify a default docker container that will be "
         "used if the workflow fails to specify one.",
     )
+    parser.add_argument(
+        "--mpi-config-file",
+        type=str,
+        default=None,
+        help="Platform specific configuration for MPI (parallel "
+             "launcher, its flag etc). See the cwltool README "
+             "section 'Running MPI-based tools' for details of the format: "
+             "https://github.com/common-workflow-language/cwltool#running-mpi-based-tools-that-need-to-be-launched",
+    )
 
     provgroup = parser.add_argument_group(
         "Options for recording provenance " "information of the execution"
@@ -2097,7 +2113,6 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         default=os.environ.get("CWL_FULL_NAME", ""),
         type=Text,
     )
-
     # Problem: we want to keep our job store somewhere auto-generated based on
     # our options, unless overridden by... an option. So we will need to parse
     # options twice, because we need to feed the parser a job store.
@@ -2113,6 +2128,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     # we use the workdir as the default jobStore for the first parsing pass:
     options = parser.parse_args([workdir] + args)
+    cwltool.main.setup_schema(args=options, custom_schema_callback=None)
 
     # Determine if our default will actually be in use
     using_default_job_store = options.jobStore == workdir
@@ -2150,8 +2166,6 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # Containers under Kubernetes can only run in Singularity
         options.singularity = True
 
-    use_container = not options.no_container
-
     if options.logLevel:
         # Make sure cwltool uses Toil's log level.
         # Applies only on the leader.
@@ -2180,6 +2194,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     runtime_context.workdir = workdir  # type: ignore
     runtime_context.move_outputs = "leave"
     runtime_context.rm_tmpdir = False
+    if options.mpi_config_file is not None:
+        runtime_context.mpi_config = MpiConfig.load(options.mpi_config_file)
     loading_context = cwltool.context.LoadingContext(vars(options))
 
     if options.provenance:
@@ -2310,7 +2326,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 ):
                     set_secondary(initialized_job_order[shortname(inp["id"])])
 
-            runtime_context.use_container = use_container
+            runtime_context.use_container = not options.no_container
             runtime_context.tmp_outdir_prefix = os.path.realpath(tmp_outdir_prefix)
             runtime_context.job_script_provider = job_script_provider
             runtime_context.force_docker_pull = options.force_docker_pull

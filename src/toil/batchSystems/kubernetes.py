@@ -45,7 +45,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
                                                    UpdatedBatchJobInfo)
 from toil.common import Toil
 from toil.job import JobDescription
-from toil.lib.humanize import human2bytes
+from toil.lib.conversions import human2bytes
 from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
 from toil.statsAndLogging import configure_root_logger, set_log_level
@@ -481,8 +481,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             jobName = self.jobPrefix + str(jobID)
 
             # Make metadata to label the job/pod with info.
+            # Don't let the cluster autoscaler evict any Toil jobs.
             metadata = kubernetes.client.V1ObjectMeta(name=jobName,
-                                                      labels={"toil_run": self.runID})
+                                                      labels={"toil_run": self.runID},
+                                                      annotations={"cluster-autoscaler.kubernetes.io/safe-to-evict": "false"})
 
             # Wrap the spec in a template
             template = kubernetes.client.V1PodTemplateSpec(spec=pod_spec, metadata=metadata)

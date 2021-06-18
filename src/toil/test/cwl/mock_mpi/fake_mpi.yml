@@ -1,0 +1,8 @@
+runner: fake_mpi_run.py
+nproc_flag: --num
+extra_flags:
+- --no-fail
+env_set:
+  TEST_MPI_FOO: bar
+env_pass:
+- USER

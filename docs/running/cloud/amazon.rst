@@ -39,8 +39,13 @@ during the computation of a workflow, first set up and configure an account with
 #. Now move this to where your OS can see it as an authorized key::
 
     $ cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+
+#. Next, you'll need to add your key to the `ssh-agent`::
+
     $ eval `ssh-agent -s`
     $ ssh-add
+
+   If your key has a passphrase, you will be prompted to enter it here once.
 
 #. You'll also need to chmod your private key (good practice but also enforced by AWS)::
 
@@ -83,17 +88,17 @@ during the computation of a workflow, first set up and configure an account with
 
    This will create the files `~/.aws/config` and `~/.aws/credentials`.
 
-#. If not done already, install toil (example uses version 3.12.0, but we recommend the latest release): ::
+#. If not done already, install toil (example uses version 5.3.0, but we recommend the latest release): ::
 
     $ virtualenv venv
     $ source venv/bin/activate
-    $ pip install toil[all]==3.12.0
+    $ pip install toil[all]==5.3.0
 
 #. Now that toil is installed and you are running a virtualenv, an example of launching a toil leader node would be the following
-   (again, note that we set TOIL_APPLIANCE_SELF to toil version 3.12.0 in this example, but please set the version to
+   (again, note that we set TOIL_APPLIANCE_SELF to toil version 5.3.0 in this example, but please set the version to
    the installed version that you are using if you're using a different version): ::
 
-    $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.12.0 \
+    $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:5.3.0 \
           toil launch-cluster clustername \
           --leaderNodeType t2.medium \
           --zone us-west-1a \
@@ -369,9 +374,18 @@ Dashboard
 Toil provides a dashboard for viewing the RAM and CPU usage of each node, the number of
 issued jobs of each type, the number of failed jobs, and the size of the jobs queue. To launch this dashboard
 for a toil workflow, include the ``--metrics`` flag in the toil script command. The dashboard can then be viewed
-in your browser at localhost:3000 while connected to the leader node through ``toil ssh-cluster``.
+in your browser at localhost:3000 while connected to the leader node through ``toil ssh-cluster``:
+
+To change the default port number, you can use the ``--grafana_port`` argument: ::
+
+    (venv) $ toil ssh-cluster -z us-west-2a --grafana_port 8000 <cluster-name>
+
 On AWS, the dashboard keeps track of every node in the cluster to monitor CPU and RAM usage, but it
 can also be used while running a workflow on a single machine. The dashboard uses Grafana as the
-front end for displaying real-time plots, and Prometheus for tracking metrics exported by toil. In order to use the
-dashboard for a non-released toil version, you will have to build the containers locally with ``make docker``, since
-the prometheus, grafana, and mtail containers used in the dashboard are tied to a specific toil version.
+front end for displaying real-time plots, and Prometheus for tracking metrics exported by toil:
+
+.. image:: dashboard_screenshot.png
+
+In order to use the dashboard for a non-released toil version, you will have to build the containers locally with
+``make docker``, since the prometheus, grafana, and mtail containers used in the dashboard are tied to a specific toil
+version.

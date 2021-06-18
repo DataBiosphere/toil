@@ -22,7 +22,7 @@ from toil.statsAndLogging import set_logging_from_options
 logger = logging.getLogger(__name__)
 
 
-def main():
+def main() -> None:
     parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
     parser.add_argument("--insecure", dest='insecure', action='store_true', required=False,
                         help="Temporarily disable strict host key checking.")

@@ -17,11 +17,10 @@ import os.path
 import subprocess
 import tempfile
 import textwrap
-import json
+import yaml
 from abc import ABC, abstractmethod
-from datauri import DataURI
 from functools import total_ordering
-from typing import Dict, Optional, Set
+from typing import List, Dict, Tuple, Optional, Set
 
 from toil import applianceSelf, customDockerInitCmd, customInitCmd
 from toil.provisioners import ClusterTypeNotSupportedException
@@ -300,25 +299,51 @@ class AbstractProvisioner(ABC):
         # it.
         return dict(config['DEFAULT'])
 
-    def setAutoscaledNodeTypes(self, nodeTypes):
+    def setAutoscaledNodeTypes(self, nodeTypes: List[Tuple[Set[str], Optional[float]]]):
         """
-        Set node types, shapes and spot bids. Preemptable nodes will have the form "type:spotBid".
-        :param nodeTypes: A list of node types
+        Set node types, shapes and spot bids for Toil-managed autoscaling.
+        :param nodeTypes: A list of node types, as parsed with parse_node_types.
         """
+        # This maps from an equivalence class of instance names to a spot bid.
         self._spotBidsMap = {}
-        self.nodeShapes = []
-        self.nodeTypes = []
-        for nodeTypeStr in nodeTypes:
-            nodeBidTuple = nodeTypeStr.split(":")
-            if len(nodeBidTuple) == 2:
-                # This is a preemptable node type, with a spot bid
-                nodeType, bid = nodeBidTuple
-                self.nodeTypes.append(nodeType)
-                self.nodeShapes.append(self.getNodeShape(nodeType, preemptable=True))
-                self._spotBidsMap[nodeType] = bid
-            else:
-                self.nodeTypes.append(nodeTypeStr)
-                self.nodeShapes.append(self.getNodeShape(nodeTypeStr, preemptable=False))
+
+        # This maps from a node Shape object to the instance type that has that
+        # shape. TODO: what if multiple instance types in a cloud provider have
+        # the same shape (e.g. AMD and Intel instances)???
+        self._shape_to_instance_type = {}
+
+        for node_type in nodeTypes:
+            preemptable = node_type[1] is not None
+            if preemptable:
+                # Record the spot bid for the whole equivalence class
+                self._spotBidsMap[frozenset(node_type[0])] = node_type[1]
+            for instance_type_name in node_type[0]:
+                # Record the instance shape and associated type.
+                shape = self.getNodeShape(instance_type_name, preemptable)
+                self._shape_to_instance_type[shape] = instance_type_name
+
+    def hasAutoscaledNodeTypes(self) -> bool:
+        """
+        Check if node types have been configured on the provisioner (via
+        setAutoscaledNodeTypes).
+
+        :returns: True if node types are configured for autoscaling, and false
+                  otherwise.
+        """
+        return len(self.getAutoscaledInstanceShapes()) > 0
+
+    def getAutoscaledInstanceShapes(self) -> Dict[Shape, str]:
+        """
+        Get all the node shapes and their named instance types that the Toil
+        autoscaler should manage.
+        """
+
+        if hasattr(self, '_shape_to_instance_type'):
+            # We have had Toil-managed autoscaling set up
+            return dict(self._shape_to_instance_type)
+        else:
+            # Nobody has called setAutoscaledNodeTypes yet, so nothing is to be autoscaled.
+            return {}
 
     @staticmethod
     def retryPredicate(e):
@@ -348,7 +373,7 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def addNodes(self, nodeType, numNodes, preemptable, spotBid=None):
+    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None):
         """
         Used to add worker nodes to the cluster
 
@@ -360,7 +385,7 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
 
-    def addManagedNodes(self, nodeType, minNodes, maxNodes, preemptable, spotBid=None) -> None:
+    def addManagedNodes(self, nodeTypes: Set[str], minNodes, maxNodes, preemptable, spotBid=None) -> None:
         """
         Add a group of managed nodes of the given type, up to the given maximum.
         The nodes will automatically be launched and termianted depending on cluster load.
@@ -394,25 +419,26 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def getProvisionedWorkers(self, nodeType, preemptable):
+    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptable: Optional[bool] = None):
         """
-        Gets all nodes of the given preemptability from the provisioner.
-        Includes both static and autoscaled nodes.
+        Gets all nodes, optionally of the given instance type or
+        preemptability, from the provisioner. Includes both static and
+        autoscaled nodes.
 
-        :param preemptable: Boolean value indicating whether to return preemptable nodes or
-           non-preemptable nodes
+        :param preemptable: Boolean value to restrict to preemptable
+               nodes or non-preemptable nodes
         :return: list of Node objects
         """
         raise NotImplementedError
 
     @abstractmethod
-    def getNodeShape(self, nodeType=None, preemptable=False):
+    def getNodeShape(self, instance_type: str, preemptable=False):
         """
         The shape of a preemptable or non-preemptable node managed by this provisioner. The node
         shape defines key properties of a machine, such as its number of cores or the time
         between billing intervals.
 
-        :param str nodeType: Node type name to return the shape of.
+        :param str instance_type: Instance type name to return the shape of.
 
         :rtype: Shape
         """
@@ -431,7 +457,7 @@ class AbstractProvisioner(ABC):
     class InstanceConfiguration:
         """
         Allows defining the initial setup for an instance and then turning it
-        into an Ignition configuration for instance user data.
+        into a CloudConfig configuration for instance user data.
         """
 
         def __init__(self):
@@ -443,16 +469,14 @@ class AbstractProvisioner(ABC):
             # Holds strings like "ssh-rsa actualKeyData" for keys to authorize (independently of cloud provider's system)
             self.sshPublicKeys = []
 
-        def addFile(self, path: str, filesystem: str = 'root', mode: int = 755, contents: str = ''):
+        def addFile(self, path: str, owner: str = 'root', permissions: str = '0755', content: str = ''):
             """
-            Make a file on the instance with the given owner, mode, and contents.
+            Make a file on the instance with the given owner, permissions, and content.
             """
 
-            contents = DataURI.make('text/plain', charset='us-ascii', base64=False, data=contents)
+            self.files.append({'path': path, 'owner': owner, 'permissions': permissions, 'content': content})
 
-            self.files.append({'path': path, 'filesystem': filesystem, 'mode': mode, 'contents': {'source': contents}})
-
-        def addUnit(self, name: str, enabled: bool = True, contents: str = ''):
+        def addUnit(self, name: str, command: str = 'start', enable: bool = True, content: str = ''):
             """
             Make a systemd unit on the instance with the given name (including
             .service), and content, and apply the given command to it (default:
@@ -464,7 +488,7 @@ class AbstractProvisioner(ABC):
                 journalctl -xe
             """
 
-            self.units.append({'name': name, 'enabled': enabled, 'contents': contents})
+            self.units.append({'name': name, 'command': command, 'enable': enable, 'content': content})
 
         def addSSHRSAKey(self, keyData: str):
             """
@@ -474,32 +498,28 @@ class AbstractProvisioner(ABC):
             self.sshPublicKeys.append("ssh-rsa " + keyData)
 
 
-        def toIgnitionConfig(self) -> str:
+        def toCloudConfig(self) -> str:
             """
-            Return an Ignition configuration describing the desired config.
+            Return a CloudConfig configuration describing the desired config.
             """
 
             # Define the base config
             config = {
-                'ignition': {
-                    'version': '2.2.0'
-                },
-                'storage': {
-                    'files': self.files
-                },
-                'systemd': {
+                'write_files': self.files,
+                'coreos': {
+                    'update': {
+                        'reboot-strategy': 'off'
+                    },
                     'units': self.units
                 }
             }
 
-            '''
             if len(self.sshPublicKeys) > 0:
                 # Add SSH keys if needed
-                config['passwd']['users']['sshAuthorizedKeys'] = self.sshPublicKeys
-            '''
+                config['ssh_authorized_keys'] = self.sshPublicKeys
 
-            # Serialize as JSON
-            return json.dumps(config)
+            # Mark as CloudConfig and serialize as YAML
+            return '#cloud-config\n\n' + yaml.dump(config)
 
 
     def getBaseInstanceConfiguration(self) -> InstanceConfiguration:
@@ -520,54 +540,70 @@ class AbstractProvisioner(ABC):
         """
         Add a service to prepare and mount local scratch volumes.
         """
-        config.addFile("/home/core/volumes.sh", contents=textwrap.dedent("""\
+        config.addFile("/home/core/volumes.sh", content=textwrap.dedent("""\
             #!/bin/bash
             set -x
             ephemeral_count=0
-            drives=""
-            directories="toil mesos docker cwl"
+            drives=()
+            directories=(toil mesos docker kubelet cwl)
             for drive in /dev/xvd{a..z} /dev/nvme{0..26}n1; do
-                echo checking for $drive
+                echo "checking for ${drive}"
                 if [ -b $drive ]; then
-                    echo found it
-                    if mount | grep $drive; then
+                    echo "found it"
+                    while [ "$(readlink -f "${drive}")" != "${drive}" ] ; do
+                        drive="$(readlink -f "${drive}")"
+                        echo "was a symlink to ${drive}"
+                    done
+                    seen=0
+                    for other_drive in "${drives[@]}" ; do
+                        if [ "${other_drive}" == "${drive}" ] ; then
+                            seen=1
+                            break
+                        fi
+                    done
+                    if (( "${seen}" == "1" )) ; then
+                        echo "already discovered via another name"
+                        continue
+                    fi
+                    if mount | grep "^${drive}"; then
                         echo "already mounted, likely a root device"
                     else
                         ephemeral_count=$((ephemeral_count + 1 ))
-                        drives="$drives $drive"
-                        echo increased ephemeral count by one
+                        drives+=("${drive}")
+                        echo "increased ephemeral count by one"
                     fi
                 fi
             done
             if (("$ephemeral_count" == "0" )); then
-                echo no ephemeral drive
-                for directory in $directories; do
+                echo "no ephemeral drive"
+                for directory in "${directories[@]}"; do
                     sudo mkdir -p /var/lib/$directory
                 done
                 exit 0
             fi
             sudo mkdir /mnt/ephemeral
             if (("$ephemeral_count" == "1" )); then
-                echo one ephemeral drive to mount
-                sudo mkfs.ext4 -F $drives
-                sudo mount $drives /mnt/ephemeral
+                echo "one ephemeral drive to mount"
+                sudo mkfs.ext4 -F "${drives[@]}"
+                sudo mount "${drives[@]}" /mnt/ephemeral
             fi
             if (("$ephemeral_count" > "1" )); then
-                echo multiple drives
-                for drive in $drives; do
-                    dd if=/dev/zero of=$drive bs=4096 count=1024
+                echo "multiple drives"
+                for drive in "${drives[@]}"; do
+                    sudo dd if=/dev/zero of=$drive bs=4096 count=1024
                 done
-                sudo mdadm --create -f --verbose /dev/md0 --level=0 --raid-devices=$ephemeral_count $drives # determine force flag
+                # determine force flag
+                sudo mdadm --create -f --verbose /dev/md0 --level=0 --raid-devices=$ephemeral_count "${drives[@]}"
                 sudo mkfs.ext4 -F /dev/md0
                 sudo mount /dev/md0 /mnt/ephemeral
             fi
-            for directory in $directories; do
+            for directory in "${directories[@]}"; do
                 sudo mkdir -p /mnt/ephemeral/var/lib/$directory
                 sudo mkdir -p /var/lib/$directory
                 sudo mount --bind /mnt/ephemeral/var/lib/$directory /var/lib/$directory
             done
             """))
-        config.addUnit("volume-mounting.service", contents=textwrap.dedent("""\
+        config.addUnit("volume-mounting.service", content=textwrap.dedent("""\
             [Unit]
             Description=mounts ephemeral volumes & bind mounts toil directories
             Before=docker.service
@@ -583,7 +619,7 @@ class AbstractProvisioner(ABC):
         Add the node exporter service for Prometheus to an instance configuration.
         """
 
-        config.addUnit("node-exporter.service", contents=textwrap.dedent('''\
+        config.addUnit("node-exporter.service", content=textwrap.dedent('''\
             [Unit]
             Description=node-exporter container
             After=docker.service
@@ -658,7 +694,7 @@ class AbstractProvisioner(ABC):
             entryPointArgs = " ".join(["'" + customDockerInitCommand + "'", entryPoint, entryPointArgs])
             entryPoint = "customDockerInit.sh"
 
-        config.addUnit(f"toil-{role}.service", contents=textwrap.dedent(f'''\
+        config.addUnit(f"toil-{role}.service", content=textwrap.dedent(f'''\
             [Unit]
             Description=toil-{role} container
             After=docker.service
@@ -722,7 +758,7 @@ class AbstractProvisioner(ABC):
         values = self.getKubernetesValues()
 
         # We're going to ship the Kubelet service from Kubernetes' release pipeline via cloud-config
-        config.addUnit("kubelet.service", contents=textwrap.dedent('''\
+        config.addUnit("kubelet.service", content=textwrap.dedent('''\
             # This came from https://raw.githubusercontent.com/kubernetes/release/v0.4.0/cmd/kubepkg/templates/latest/deb/kubelet/lib/systemd/system/kubelet.service
             # It has been modified to replace /usr/bin with {DOWNLOAD_DIR}
             # License: https://raw.githubusercontent.com/kubernetes/release/v0.4.0/LICENSE
@@ -744,7 +780,7 @@ class AbstractProvisioner(ABC):
             ''').format(**values))
 
         # It needs this config file
-        config.addFile("/etc/systemd/system/kubelet.service.d/10-kubeadm.conf", mode=644, contents=textwrap.dedent('''\
+        config.addFile("/etc/systemd/system/kubelet.service.d/10-kubeadm.conf", permissions="0644", content=textwrap.dedent('''\
             # This came from https://raw.githubusercontent.com/kubernetes/release/v0.4.0/cmd/kubepkg/templates/latest/deb/kubeadm/10-kubeadm.conf
             # It has been modified to replace /usr/bin with {DOWNLOAD_DIR}
             # License: https://raw.githubusercontent.com/kubernetes/release/v0.4.0/LICENSE
@@ -763,7 +799,7 @@ class AbstractProvisioner(ABC):
             ''').format(**values))
 
         # Before we let the kubelet try to start, we have to actually download it (and kubeadm)
-        config.addFile("/home/core/install-kubernetes.sh", contents=textwrap.dedent('''\
+        config.addFile("/home/core/install-kubernetes.sh", content=textwrap.dedent('''\
             #!/usr/bin/env bash
             set -e
 
@@ -779,7 +815,7 @@ class AbstractProvisioner(ABC):
             curl -L --remote-name-all https://storage.googleapis.com/kubernetes-release/release/{KUBERNETES_VERSION}/bin/linux/amd64/{{kubeadm,kubelet,kubectl}}
             chmod +x {{kubeadm,kubelet,kubectl}}
             ''').format(**values))
-        config.addUnit("install-kubernetes.service", contents=textwrap.dedent('''\
+        config.addUnit("install-kubernetes.service", content=textwrap.dedent('''\
             [Unit]
             Description=base Kubernetes installation
             Wants=network-online.target
@@ -829,8 +865,29 @@ class AbstractProvisioner(ABC):
 
         values = self.getKubernetesValues()
 
-        # Main kubeadm cluster configuration
-        config.addFile("/home/core/kubernetes-leader.yml", mode=644, contents=textwrap.dedent('''\
+        # Customize scheduler to pack jobs into as few nodes as possible
+        # See: https://kubernetes.io/docs/reference/scheduling/config/#profiles
+        config.addFile("/home/core/scheduler-config.yml", permissions="0644", content=textwrap.dedent('''\
+            apiVersion: kubescheduler.config.k8s.io/v1beta1
+            kind: KubeSchedulerConfiguration
+            clientConnection:
+              kubeconfig: /etc/kubernetes/scheduler.conf
+            profiles:
+              - schedulerName: default-scheduler
+                plugins:
+                  score:
+                    disabled:
+                    - name: NodeResourcesLeastAllocated
+                    enabled:
+                    - name: NodeResourcesMostAllocated
+                      weight: 1
+            '''.format(**values)))
+
+        # Main kubeadm cluster configuration.
+        # Make sure to mount the scheduler config where the scheduler can see
+        # it, which is undocumented but inferred from
+        # https://pkg.go.dev/k8s.io/kubernetes@v1.21.0/cmd/kubeadm/app/apis/kubeadm#ControlPlaneComponent
+        config.addFile("/home/core/kubernetes-leader.yml", permissions="0644", content=textwrap.dedent('''\
             apiVersion: kubeadm.k8s.io/v1beta2
             kind: InitConfiguration
             nodeRegistration:
@@ -843,6 +900,15 @@ class AbstractProvisioner(ABC):
             controllerManager:
               extraArgs:
                 flex-volume-plugin-dir: "/opt/libexec/kubernetes/kubelet-plugins/volume/exec/"
+            scheduler:
+              extraArgs:
+                config: "/etc/kubernetes/scheduler-config.yml"
+              extraVolumes:
+                - name: schedulerconfig
+                  hostPath: "/home/core/scheduler-config.yml"
+                  mountPath: "/etc/kubernetes/scheduler-config.yml"
+                  readOnly: true
+                  pathType: "File"
             networking:
               serviceSubnet: "10.96.0.0/12"
               podSubnet: "10.244.0.0/16"
@@ -857,7 +923,7 @@ class AbstractProvisioner(ABC):
 
         # Make a script to apply that and the other cluster components
         # Note that we're escaping {{thing}} as {{{{thing}}}} because we need to match mustaches in a yaml we hack up.
-        config.addFile("/home/core/create-kubernetes-cluster.sh", contents=textwrap.dedent('''\
+        config.addFile("/home/core/create-kubernetes-cluster.sh", content=textwrap.dedent('''\
             #!/usr/bin/env bash
             set -e
 
@@ -894,7 +960,7 @@ class AbstractProvisioner(ABC):
             echo "JOIN_CERT_HASH=sha256:$(openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //')" >>/etc/kubernetes/worker.ini
             echo "JOIN_ENDPOINT=$(hostname):6443" >>/etc/kubernetes/worker.ini
             ''').format(**values))
-        config.addUnit("create-kubernetes-cluster.service", contents=textwrap.dedent('''\
+        config.addUnit("create-kubernetes-cluster.service", content=textwrap.dedent('''\
             [Unit]
             Description=Kubernetes cluster bootstrap
             After=install-kubernetes.service
@@ -909,7 +975,7 @@ class AbstractProvisioner(ABC):
             '''))
 
         # We also need a node cleaner service
-        config.addFile("/home/core/cleanup-nodes.sh", contents=textwrap.dedent('''\
+        config.addFile("/home/core/cleanup-nodes.sh", content=textwrap.dedent('''\
             #!/usr/bin/env bash
             # cleanup-nodes.sh: constantly clean up NotReady nodes that are tainted as having been deleted
             set -e
@@ -929,7 +995,7 @@ class AbstractProvisioner(ABC):
                 sleep 300
             done
             ''').format(**values))
-        config.addUnit("cleanup-nodes.service", contents=textwrap.dedent('''\
+        config.addUnit("cleanup-nodes.service", content=textwrap.dedent('''\
             [Unit]
             Description=Remove scaled-in nodes
             After=install-kubernetes.service
@@ -965,7 +1031,7 @@ class AbstractProvisioner(ABC):
         values['WORKER_LABEL_SPEC'] = 'node-labels: "eks.amazonaws.com/capacityType=SPOT"' if preemptable else ''
 
         # Kubeadm worker configuration
-        config.addFile("/home/core/kubernetes-worker.yml", mode=644, contents=textwrap.dedent('''\
+        config.addFile("/home/core/kubernetes-worker.yml", permissions="0644", content=textwrap.dedent('''\
             apiVersion: kubeadm.k8s.io/v1beta2
             kind: JoinConfiguration
             nodeRegistration:
@@ -986,7 +1052,7 @@ class AbstractProvisioner(ABC):
             '''.format(**values)))
 
         # Make a script to join the cluster using that configuration
-        config.addFile("/home/core/join-kubernetes-cluster.sh", contents=textwrap.dedent('''\
+        config.addFile("/home/core/join-kubernetes-cluster.sh", content=textwrap.dedent('''\
             #!/usr/bin/env bash
             set -e
 
@@ -999,7 +1065,7 @@ class AbstractProvisioner(ABC):
             kubeadm join {JOIN_ENDPOINT} --config /home/core/kubernetes-worker.yml
             ''').format(**values))
 
-        config.addUnit("join-kubernetes-cluster.service", contents=textwrap.dedent('''\
+        config.addUnit("join-kubernetes-cluster.service", content=textwrap.dedent('''\
             [Unit]
             Description=Kubernetes cluster membership
             After=install-kubernetes.service
@@ -1012,7 +1078,7 @@ class AbstractProvisioner(ABC):
             ExecStart=/usr/bin/bash /home/core/join-kubernetes-cluster.sh
             '''))
 
-    def _getIgnitionConfigUserData(self, role, keyPath=None, preemptable=False):
+    def _getCloudConfigUserData(self, role, keyPath=None, preemptable=False):
         """
         Return the text (not bytes) user data to pass to a provisioned node.
 
@@ -1054,7 +1120,7 @@ class AbstractProvisioner(ABC):
                 # anyone in the cloud account.
                 self.addKubernetesWorker(config, self._leaderWorkerAuthentication, preemptable=preemptable)
 
-        # Make it into a string for Ignition
-        return config.toIgnitionConfig()
+        # Make it into a string for CloudConfig
+        return config.toCloudConfig()
 
 

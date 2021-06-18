@@ -24,7 +24,7 @@ def run_setup():
     functionality. The `version` module is imported dynamically by import_version() below.
     """
     boto = 'boto>=2.48.0, <3'
-    boto3 = 'boto3>=1.7.50, <2'
+    boto3 = 'boto3>=1.17, <2'
     futures = 'futures>=3.1.1, <4'
     pycryptodome = 'pycryptodome==3.5.1'
     pymesos = 'pymesos==0.3.15'
@@ -103,8 +103,8 @@ def run_setup():
         name='toil',
         version=version.distVersion,
         description='Pipeline management software for clusters.',
-        author='Benedict Paten',
-        author_email='benedict@soe.usc.edu',
+        author='Benedict Paten and the Toil community',
+        author_email='toil-community@googlegroups.com',
         url="https://github.com/DataBiosphere/toil",
         classifiers=[
           'Development Status :: 5 - Production/Stable',

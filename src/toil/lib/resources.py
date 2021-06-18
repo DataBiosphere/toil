@@ -15,10 +15,10 @@ import fnmatch
 import os
 import resource
 
-from typing import List
+from typing import List, Tuple
 
 
-def get_total_cpu_time_and_memory_usage():
+def get_total_cpu_time_and_memory_usage() -> Tuple[float, int]:
     """
     Gives the total cpu time of itself and all its children, and the maximum RSS memory usage of
     itself and its single largest child.
@@ -30,7 +30,7 @@ def get_total_cpu_time_and_memory_usage():
     return total_cpu_time, total_memory_usage
 
 
-def get_total_cpu_time():
+def get_total_cpu_time() -> float:
     """Gives the total cpu time, including the children."""
     me = resource.getrusage(resource.RUSAGE_SELF)
     childs = resource.getrusage(resource.RUSAGE_CHILDREN)

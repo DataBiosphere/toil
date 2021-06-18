@@ -24,6 +24,7 @@ from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBa
 
 logger = logging.getLogger(__name__)
 
+
 class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
     # When using HTCondor, the Schedd handles scheduling
 
@@ -315,13 +316,3 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.disk, jobNode.jobName, jobNode.command))
             logger.debug("Issued the job command: %s with job id: %s ", jobNode.command, str(jobID))
         return jobID
-
-    @classmethod
-    def obtainSystemConstants(cls):
-
-        # Since it's not always clear what the max cpus and max memory available
-        # in an HTCondor slot might be, use some reasonable constants for now.
-        # TODO: Use a htcondor.Collector().query() to determine reasonable values.
-        max_cpu = 4
-        max_mem = 4e9
-        return max_cpu, max_mem

@@ -120,14 +120,21 @@ class Node:
     def _waitForSSHKeys(self, keyName='core'):
         # the propagation of public ssh keys vs. opening the SSH port is racey, so this method blocks until
         # the keys are propagated and the instance can be SSH into
-        startTime = time.time()
+        start_time = time.time()
+        last_error = None
         while True:
-            if time.time() - startTime > self.maxWaitTime:
-                raise RuntimeError("Key propagation failed on machine with ip %s" % self.effectiveIP)
+            if time.time() - start_time > self.maxWaitTime:
+                raise RuntimeError(f"Key propagation failed on machine with ip {self.effectiveIP}." +
+                                   ("\n\nMake sure that your public key is attached to your account and you are using "
+                                    "the correct private key. If you are using a key with a passphrase, be sure to "
+                                    "set up ssh-agent. For details, refer to "
+                                    "https://toil.readthedocs.io/en/latest/running/cloud/cloud.html."
+                                    if last_error and 'Permission denied' in last_error else ""))
             try:
                 logger.info('Attempting to establish SSH connection...')
                 self.sshInstance('ps', sshOptions=['-oBatchMode=yes'], user=keyName)
-            except RuntimeError:
+            except RuntimeError as err:
+                last_error = str(err)
                 logger.info('Connection rejected, waiting for public SSH key to be propagated. Trying again in 10s.')
                 time.sleep(10)
             else:
@@ -237,12 +244,8 @@ class Node:
                 'sshOptions', [])
         sshOptions = kwargs.pop('sshOptions', None)
         # Forward ports:
-        # 3000 for Grafana dashboard
-        # 9090 for Prometheus dashboard
         # 5050 for Mesos dashboard (although to talk to agents you will need a proxy)
-        commandTokens.extend(['-L', '3000:localhost:3000', \
-                              '-L', '9090:localhost:9090', \
-                              '-L', '5050:localhost:5050'])
+        commandTokens.extend(['-L', '5050:localhost:5050'])
         if sshOptions:
             # add specified options to ssh command
             assert isinstance(sshOptions, list)

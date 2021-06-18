@@ -22,7 +22,8 @@ from boto.exception import BotoServerError
 from boto.s3.connection import S3Connection
 from boto.utils import get_instance_metadata
 
-from toil.lib.ec2 import UserError, zone_to_region
+from toil.lib.ec2 import UserError
+from toil.lib.aws import zone_to_region
 from toil.lib.memoize import memoize
 
 logger = logging.getLogger(__name__)

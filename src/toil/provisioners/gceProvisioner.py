@@ -181,10 +181,10 @@ class GCEProvisioner(AbstractProvisioner):
 
         logger.debug('Launched leader')
 
-    def getNodeShape(self, nodeType, preemptable=False):
+    def getNodeShape(self, instance_type: str, preemptable=False):
         # TODO: read this value only once
         sizes = self._gceDriver.list_sizes(location=self._zone)
-        sizes = [x for x in sizes if x.name == nodeType]
+        sizes = [x for x in sizes if x.name == instance_type]
         assert len(sizes) == 1
         instanceType = sizes[0]
 
@@ -192,7 +192,7 @@ class GCEProvisioner(AbstractProvisioner):
         if disk == 0:
             # This is an EBS-backed instance. We will use the root
             # volume, so add the amount of EBS storage requested forhe root volume
-            disk = self._nodeStorageOverrides.get(nodeType, self._nodeStorage) * 2 ** 30
+            disk = self._nodeStorageOverrides.get(instance_type, self._nodeStorage) * 2 ** 30
 
         # Ram is in M.
         #Underestimate memory by 100M to prevent autoscaler from disagreeing with
@@ -231,8 +231,12 @@ class GCEProvisioner(AbstractProvisioner):
         instancesToKill = [i for i in instances if i.name in nodeNames]
         self._terminateInstances(instancesToKill)
 
-    def addNodes(self, nodeType, numNodes, preemptable, spotBid=None):
+    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None):
         assert self._leaderPrivateIP
+        
+        # We don't support any balancing here so just pick one of the
+        # equivalent node types
+        node_type = next(iter(nodeTypes))
 
         # If keys are rsynced, then the mesos-slave needs to be started after the keys have been
         # transferred. The waitForKey.sh script loops on the new VM until it finds the keyPath file, then it starts the
@@ -259,7 +263,7 @@ class GCEProvisioner(AbstractProvisioner):
         disk = {}
         disk['initializeParams'] = {
             'sourceImage': self.SOURCE_IMAGE,
-            'diskSizeGb' : self._nodeStorageOverrides.get(nodeType, self._nodeStorage) }
+            'diskSizeGb' : self._nodeStorageOverrides.get(node_type, self._nodeStorage) }
         disk.update({'boot': True,
              'autoDelete': True })
 
@@ -268,13 +272,12 @@ class GCEProvisioner(AbstractProvisioner):
         #  - ex_create_multiple_nodes is limited to 1000 nodes
         #    - use a different function
         #    - or write a loop over the rest of this function, with 1K nodes max on each iteration
-        #instancesLaunched = driver.ex_create_multiple_nodes(
         retries = 0
         workersCreated = 0
         # Try a few times to create the requested number of workers
         while numNodes-workersCreated > 0 and retries < 3:
             instancesLaunched = self.ex_create_multiple_nodes(
-                                    '', nodeType, imageType, numNodes-workersCreated,
+                                    '', node_type, imageType, numNodes-workersCreated,
                                     location=self._zone,
                                     ex_service_accounts=sa_scopes,
                                     ex_metadata=metadata,
@@ -310,16 +313,17 @@ class GCEProvisioner(AbstractProvisioner):
             logger.error("Failed to launch %d worker(s)", numNodes-workersCreated)
         return workersCreated
 
-    def getProvisionedWorkers(self, nodeType, preemptable):
+    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptable: Optional[bool] = None):
         assert self._leaderPrivateIP
-        entireCluster = self._getNodesInCluster(nodeType=nodeType)
+        entireCluster = self._getNodesInCluster(instance_type=instance_type)
         logger.debug('All nodes in cluster: %s', entireCluster)
         workerInstances = []
         for instance in entireCluster:
-            scheduling = instance.extra.get('scheduling')
-            # If this field is not found in the extra meta-data, assume the node is not preemptable.
-            if scheduling and scheduling.get('preemptible', False) != preemptable:
-                continue
+            if preemptable is not None:
+                scheduling = instance.extra.get('scheduling')
+                # If this field is not found in the extra meta-data, assume the node is not preemptable.
+                if scheduling and scheduling.get('preemptible', False) != preemptable:
+                    continue
             isWorker = True
             for ip in instance.private_ips:
                 if ip == self._leaderPrivateIP:
@@ -331,7 +335,7 @@ class GCEProvisioner(AbstractProvisioner):
         logger.debug('All workers found in cluster: %s', workerInstances)
         return [Node(publicIP=i.public_ips[0], privateIP=i.private_ips[0],
                      name=i.name, launchTime=i.created_at, nodeType=i.size,
-                     preemptable=preemptable, tags=None)
+                     preemptable=i.extra.get('scheduling', {}).get('preemptible', False), tags=None)
                 for i in workerInstances]
 
     def getLeader(self):
@@ -357,11 +361,11 @@ class GCEProvisioner(AbstractProvisioner):
         if botoExists:
             node.injectFile(self._botoPath, self.NODE_BOTO_PATH, 'toil_worker')
 
-    def _getNodesInCluster(self, nodeType=None):
+    def _getNodesInCluster(self, instance_type: Optional[str] = None):
         instanceGroup = self._gceDriver.ex_get_instancegroup(self.clusterName, zone=self._zone)
         instances = instanceGroup.list_instances()
-        if nodeType:
-            instances = [instance for instance in instances if instance.size == nodeType]
+        if instance_type:
+            instances = [instance for instance in instances if instance.size == instance_type]
         return instances
 
     def _getDriver(self):
