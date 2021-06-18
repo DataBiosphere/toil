@@ -1253,9 +1253,16 @@ def import_files(
 
     Preserves any listing fields.
 
-    If a file cannot be found (like if it is an optional secondary file that doesn't exist),
+    If a file cannot be found (like if it is an optional secondary file that
+    doesn't exist), fails, unless skip_broken is set, in which case it leaves
+    the location it was supposed to have been at.
 
     Also does some miscelaneous normalization.
+    
+    Sets a "_toil_imported" flag on all Files and Directories that are
+    processed, to mark them as legitimately visible to CWL workflows and
+    distinguish them from e.g. never-provided-by-the-input secondaryFiles
+    expected by a tool that just happen to exist.
 
     :param import_function: The function used to upload a file:// URI and get a
     Toil FileID for it.
@@ -1301,8 +1308,23 @@ def import_files(
 
     if bypass_file_store:
         # Don't go on to actually import files or encode contents for
-        # directories.
+        # directories. Just mark them as imported.
+        
+        def mark_imported_if_exists(rec: MutableMapping) -> None:
+            """
+            Set _toil_imported in the given record if its location is an extant
+            file: URI.
+            """
+            if (rec.get('location', '').startswith('file:') and 
+                os.path.exists(schema_salad.ref_resolver.uri_file_path(rec['location']))):
+                logger.debug("Marking %s as imported", rec['location'])
+                rec['_toil_imported'] = True
+
+        visit_class(cwl_object, ("File", "Directory"), mark_imported_if_exists)
+
         return
+    
+    # Otherwise we actually want to put the things in the file store.
 
     def visit_file_or_directory_down(rec: MutableMapping) -> Optional[List]:
         """
@@ -1310,7 +1332,8 @@ def import_files(
 
         For Files, do nothing.
 
-        For Directories, return the listing key's value if present, or None if absent.
+        For Directories, return the listing key's value if present, or None if
+        absent.
 
         Ensures that the directory's listing is filled in for at least the
         current level, so all direct child File and Directory objects will
@@ -1384,6 +1407,9 @@ def import_files(
             for secondary_file_result in child_results:
                 # Glom in the secondary files, if any
                 result.update(secondary_file_result)
+                
+            # Mark it as imported
+            rec['_toil_imported'] = True
 
             return result
 
@@ -1405,6 +1431,9 @@ def import_files(
 
             # Upload the directory itself, which will adjust its location.
             upload_directory(rec, contents, skip_broken=skip_broken)
+            
+            # Mark it as imported
+            rec['_toil_imported'] = True
 
             # Show those contents as being under our name in our parent.
             return {rec['basename']: contents}
@@ -2453,6 +2482,9 @@ def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
     # to existant things on disk
     for sf in intermediate_secondary_files:
         sf_loc = sf.get("location", "")
+        if '_toil_imported' not in sf:
+            logger.debug("Dropping unimported secondary file %s", sf_loc)
+            continue
         if (sf_loc.startswith("toilfs:") or
             sf_loc.startswith("toildir:") or
             sf_loc.startswith("_:") or
