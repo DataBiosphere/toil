@@ -47,7 +47,6 @@ def run_setup():
     addict = 'addict>=2.2.1, <2.3'
     enlighten = 'enlighten>=1.5.2, <2'
     wdlparse = 'wdlparse==0.1.0'
-    datauri = 'python-datauri==1.0.0'
 
     core_reqs = [
         dill,
@@ -58,8 +57,7 @@ def run_setup():
         addict,
         pytz,
         pyyaml,
-        enlighten,
-        datauri]
+        enlighten]
     aws_reqs = [
         boto,
         boto3,
