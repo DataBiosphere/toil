@@ -16,13 +16,16 @@ import logging
 import os.path
 
 from toil.common import Config, Toil, parser_with_common_options
+from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.statsAndLogging import set_logging_from_options
 from toil.lib.resources import glob
+from toil.lib.expando import Expando
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
-def fetchJobStoreFiles(jobStore, options):
+def fetchJobStoreFiles(jobStore: AbstractJobStore, options: Expando) -> None:
     """
     Takes a list of file names as glob patterns, searches for these within a
     given directory, and attempts to take all of the files found and copy them
@@ -45,7 +48,7 @@ def fetchJobStoreFiles(jobStore, options):
                               symlink=options.useSymlinks)
 
 
-def printContentsOfJobStore(jobStorePath, nameOfJob=None):
+def printContentsOfJobStore(jobStorePath: str, nameOfJob: Optional[str] = None) -> None:
     """
     Fetch a list of all files contained in the jobStore directory input if
     nameOfJob is not declared, otherwise it only prints out the names of files
@@ -77,7 +80,7 @@ def printContentsOfJobStore(jobStorePath, nameOfJob=None):
                 f.write("\n")
 
 
-def main():
+def main() -> None:
     parser = parser_with_common_options(jobstore_option=True)
     parser.add_argument("--localFilePath",
                         nargs=1,
