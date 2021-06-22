@@ -249,7 +249,7 @@ google_jobstore:
     - export TOIL_GOOGLE_PROJECTID=toil-dev
     - make test tests=src/toil/test/jobStores/jobStoreTest.py::GoogleJobStoreTest
 
-# Python3.8
+# Python3.7
 py37_main:
   stage: basic_tests
   script:
