@@ -20,7 +20,7 @@ from typing import Optional, Dict, List, Callable, TextIO, Any
 
 from toil.job import Job
 from toil.common import Config, Toil, parser_with_common_options
-from toil.jobstores.abstractJobStore import AbstractJobStore
+from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.expando import Expando
 from toil.statsAndLogging import set_logging_from_options
 
