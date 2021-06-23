@@ -36,7 +36,7 @@ from toil.job import (CheckpointJobDescription,
 from toil.lib.memoize import memoize
 from toil.lib.io import WriteWatchingStream
 from toil.lib.retry import ErrorCondition, retry
-from typing import (IO, List, TextIO, Tuple, Dict, Iterator, Callable,
+from typing import (cast, IO, List, TextIO, Tuple, Dict, Iterator, Callable,
                     ValuesView, Set, Union, Optional, Any)
 
 logger = logging.getLogger(__name__)
@@ -241,6 +241,7 @@ class AbstractJobStore(ABC):
         with self.readSharedFileStream('rootJobReturnValue') as fH:
             return safeUnpickleFromStream(fH)
 
+    # due to https://github.com/python/mypy/issues/1362
     @property # type: ignore
     @memoize
     def _jobStoreClasses(self) -> List['AbstractJobStore']:
@@ -280,7 +281,7 @@ class AbstractJobStore(ABC):
         """
         for jobStoreCls in self._jobStoreClasses:
             if jobStoreCls._supportsUrl(url, export):
-                return jobStoreCls # type: ignore
+                return cast('AbstractJobStore', jobStoreCls)
         raise RuntimeError("No job store implementation supports %sporting for URL '%s'" %
                            ('ex' if export else 'im', url.geturl()))
 
