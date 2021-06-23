@@ -82,7 +82,6 @@ def main():
         'src/toil/fileStores/nonCachingFileStore.py',
         'src/toil/fileStores/__init__.py',
         'src/toil/jobStores/utils.py',
-        'src/toil/jobStores/abstractJobStore.py',
         'src/toil/jobStores/conftest.py',
         'src/toil/jobStores/fileJobStore.py',
         'src/toil/jobStores/__init__.py',
