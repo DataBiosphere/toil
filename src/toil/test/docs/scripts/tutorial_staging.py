@@ -10,8 +10,8 @@ class HelloWorld(Job):
         self.inputFileID = id
 
     def run(self, fileStore):
-        with self.fileStore.readGlobalFileStream(self.inputFileID) as fi:
-            with self.fileStore.writeGlobalFileStream() as (fo, outputFileID):
+        with fileStore.readGlobalFileStream(self.inputFileID, encoding='utf-8') as fi:
+            with fileStore.writeGlobalFileStream(encoding='utf-8') as (fo, outputFileID):
                 fo.write(fi.read() + 'World!')
         return outputFileID
 
