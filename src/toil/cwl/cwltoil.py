@@ -89,11 +89,13 @@ from ruamel.yaml.comments import CommentedMap
 from schema_salad import validate
 from schema_salad.schema import Names
 from schema_salad.sourceline import SourceLine
+from threading import Thread
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Config, Toil, addOptions
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.fileStores.nonCachingFileStore import NonCachingFileStore
 from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.version import baseVersion
@@ -614,7 +616,7 @@ class ToilPathMapper(PathMapper):
                     validate.ValidationException,
                     logger.isEnabledFor(logging.DEBUG),
                 ):
-                    deref = self.get_file(path) if self.get_file else ab
+                    deref = self.get_file(path, obj['streamable']) if self.get_file else ab
                     if deref.startswith("file:"):
                         deref = schema_salad.ref_resolver.uri_file_path(deref)
                     if urllib.parse.urlsplit(deref).scheme in ["http", "https"]:
@@ -753,17 +755,40 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             return super().size(path)
 
 
+def write_to_pipe(file_store, pipeName, id):
+    with file_store.readGlobalFileStream(id) as fi:
+        with open(pipeName, 'wb') as fifo:
+            chunkSz = 1024 * 1024
+            while True:
+                data = fi.read(chunkSz)
+                if not data:
+                    break
+                fifo.write(data)
+
+
 def toil_get_file(
-    file_store: AbstractFileStore, index: dict, existing: dict, file_store_id: str
+    file_store: AbstractFileStore, index: dict, existing: dict, file_store_id: str, streamable: bool
 ) -> str:
     """Get path to input file from Toil jobstore."""
     if not file_store_id.startswith("toilfs:"):
         return file_store.jobStore.getPublicUrl(
             file_store.jobStore.importFile(file_store_id, symlink=True)
         )
-    src_path = file_store.readGlobalFile(FileID.unpack(file_store_id[7:]), symlink=True)
+
+    fileID = FileID.unpack(file_store_id[7:])
+
+    if isinstance(file_store, NonCachingFileStore) and streamable:
+        logger.debug("Streaming file %s", fileID)
+        src_path = file_store.getLocalTempFileName()
+        os.mkfifo(src_path)
+        thIn = Thread(target=write_to_pipe, args=(file_store, src_path, fileID))
+        thIn.start()
+    else:
+        src_path = file_store.readGlobalFile(fileID, symlink=True)
+
     index[src_path] = file_store_id
     existing[file_store_id] = src_path
+
     return schema_salad.ref_resolver.file_uri(src_path)
 
 
@@ -2331,6 +2356,9 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     "secondaryFiles"
                 ):
                     set_secondary(initialized_job_order[shortname(inp["id"])])
+
+                if shortname(inp["id"]) in initialized_job_order and inp["type"] == "File":
+                    initialized_job_order[shortname(inp["id"])]["streamable"] = inp.get(["streamable"], False)
 
             runtime_context.use_container = not options.no_container
             runtime_context.tmp_outdir_prefix = os.path.realpath(tmp_outdir_prefix)
