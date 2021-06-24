@@ -990,14 +990,14 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         directory.
         """
 
-        assert path.startswith("toildir:"), "Cannot decode non-directory path: " + dir_path
+        assert dir_path.startswith("toildir:"), f"Cannot decode non-directory path: {dir_path}"
 
         # We will decode the directory and then look inside it
 
         # Since this was encoded by upload_directory we know the
         # next piece is encoded JSON describing the directory structure,
         # and it can't contain any slashes.
-        parts = path[len("toildir:"):].split('/', 1)
+        parts = dir_path[len("toildir:"):].split('/', 1)
 
         # Before the first slash is the encoded data describing the directory contents
         dir_data = parts[0]
@@ -1061,7 +1061,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             else:
                 logger.debug("ToilFsAccess already has %s", cache_key)
 
-            if subpath is not None:
+            if subpath is None:
                 # We didn't have any subdirectory, so just give back the path to the root
                 destination = self.dir_to_download[cache_key]
             else:
