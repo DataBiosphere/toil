@@ -1,7 +1,7 @@
 ## Changelog Entry
 To be copied to the [draft changelog](https://github.com/DataBiosphere/toil/wiki/Draft-Changelog) by merger:
 
- * PR submitter writes their recommendataion for a changelog entry here
+ * PR submitter writes their recommendation for a changelog entry here
 
 ## Reviewer Checklist
 
