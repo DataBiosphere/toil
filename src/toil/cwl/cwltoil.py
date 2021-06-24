@@ -982,6 +982,36 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
         super(ToilFsAccess, self).__init__(basedir)
 
+    def _decode_dir(self, dir_path: str) -> Tuple[Dict, Optional[str], str]:
+        """
+        Given a toildir: path to a directory or a file in it, return the
+        decoded directory dict, the remaining part of the path (which may be
+        None), and the deduplication key string that uniquely identifies the
+        directory.
+        """
+
+        assert path.startswith("toildir:"), "Cannot decode non-directory path: " + dir_path
+
+        # We will decode the directory and then look inside it
+
+        # Since this was encoded by upload_directory we know the
+        # next piece is encoded JSON describing the directory structure,
+        # and it can't contain any slashes.
+        parts = path[len("toildir:"):].split('/', 1)
+
+        # Before the first slash is the encoded data describing the directory contents
+        dir_data = parts[0]
+
+        # Decode what to download
+        contents = json.loads(base64.urlsafe_b64decode(dir_data.encode('utf-8')).decode('utf-8'))
+
+        if len(parts) == 1 or parts[1] == '/':
+            # We didn't have any subdirectory
+            return contents, None, dir_data
+        else:
+            # We have a path below this
+            return contents, parts[1], dir_data
+
     def _abs(self, path: str) -> str:
         """
         Return a local absolute path for a file (no schema).
@@ -1010,40 +1040,33 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
             # We will download the whole directory and then look inside it
 
-            # Since this was encoded by upload_directory we know the
-            # next piece is encoded JSON describing the directory structure,
-            # and it can't contain any slashes.
-            parts = path[len("toildir:"):].split('/', 1)
+            # Decode its contents, the path inside it to the file (if any), and
+            # the key to use for caching the directory.
+            contents, subpath, cache_key = self._decode_directory(path)
 
-            # Before the first slash is the encoded data describing the directory contents
-            dir_data = parts[0]
-
-            if dir_data not in self.dir_to_download:
+            if cache_key not in self.dir_to_download:
                 # Download to a temp directory.
                 temp_dir = self.file_store.getLocalTempDir()
                 temp_dir += '/toildownload'
                 os.makedirs(temp_dir)
 
-                logger.debug("ToilFsAccess downloading %s to %s", dir_data, temp_dir)
-
-                # Decode what to download
-                contents = json.loads(base64.urlsafe_b64decode(dir_data.encode('utf-8')).decode('utf-8'))
+                logger.debug("ToilFsAccess downloading %s to %s", cache_key, temp_dir)
 
                 # Save it all into this new temp directory
                 download_structure(self.file_store, {}, {}, contents, temp_dir)
 
                 # Make sure we use the same temp directory if we go traversing
                 # around this thing.
-                self.dir_to_download[dir_data] = temp_dir
+                self.dir_to_download[cache_key] = temp_dir
             else:
-                logger.debug("ToilFsAccess already has %s", dir_data)
+                logger.debug("ToilFsAccess already has %s", cache_key)
 
-            if len(parts) == 1:
+            if subpath is not None:
                 # We didn't have any subdirectory, so just give back the path to the root
-                destination = self.dir_to_download[dir_data]
+                destination = self.dir_to_download[cache_key]
             else:
                 # Navigate to the right subdirectory
-                destination = self.dir_to_download[dir_data] + '/' + parts[1]
+                destination = self.dir_to_download[cache_key] + '/' + subpath
         else:
             # This is just a local file
             destination = path
@@ -1069,9 +1092,32 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         except NoSuchFileException:
             return False
 
-    def size(self, fn: str) -> int:
-        # We know this falls back on _abs
-        return super(ToilFsAccess, self).size(fn)
+    def size(self, path: str) -> int:
+        # This should avoid _abs for things actually in the file store, to
+        # prevent multiple downloads as in
+        # https://github.com/DataBiosphere/toil/issues/3665
+        if path.startswith("toilfs:"):
+            return self.file_store.getGlobalFileSize(FileID.unpack(path[7:]))
+        elif path.startswith("toildir:"):
+            # Decode its contents, the path inside it to the file (if any), and
+            # the key to use for caching the directory.
+            here, subpath, cache_key = self._decode_directory(path)
+
+            # We can't get the size of just a directory.
+            assert subpath is not None, f"Attempted to check size of directory {path}"
+
+            for part in subpath.split("/"):
+                # Follow the path inside the directory contents.
+                here = here[part]
+
+            # We ought to end up with a toilfs: URI.
+            assert isinstance(here, str), f"Did not find a file at {path}"
+            assert here.startswith("toilfs:"), f"Did not find a filestore file at {path}"
+
+            return self.size(here)
+        else:
+            # We know this falls back on _abs
+            return super().size(path)
 
     def isfile(self, fn: str) -> bool:
         # We know this falls back on _abs
@@ -1105,8 +1151,6 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             # Import the whole directory
             path = self._abs(path)
         return os.path.realpath(path)
-
-
 
 def toil_get_file(
     file_store: AbstractFileStore,
