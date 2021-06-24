@@ -982,7 +982,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
         super(ToilFsAccess, self).__init__(basedir)
 
-    def _decode_dir(self, dir_path: str) -> Tuple[Dict, Optional[str], str]:
+    def _decode_directory(self, dir_path: str) -> Tuple[Dict, Optional[str], str]:
         """
         Given a toildir: path to a directory or a file in it, return the
         decoded directory dict, the remaining part of the path (which may be
