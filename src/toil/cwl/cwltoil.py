@@ -629,7 +629,7 @@ class ToilPathMapper(PathMapper):
     Keeps track of files in a Toil way.
 
     Maps between the symbolic identifier of a file (the Toil FileID), its local
-    path on the host (the value returned by readGlobalFile) and the the
+    path on the host (the value returned by readGlobalFile) and the
     location of the file inside the software container.
     """
 
@@ -681,7 +681,7 @@ class ToilPathMapper(PathMapper):
         resolved; used as the base directory for the StdFsAccess that generated
         the listing being processed.
 
-        :param copy: If set, use writable types for Files.
+        :param copy: If set, use writable types for Files and Directories.
 
         :param staged: Starts as True at the top of the recursion. Set to False
         when entering a directory that we can actually download, so we don't
@@ -976,7 +976,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
         # Map encoded directory structures to where we downloaded them, so we
         # don't constantly redownload them.
-        # Assumes nobody will touch our filed via realpath, or that if they do
+        # Assumes nobody will touch our files via realpath, or that if they do
         # they know what will happen.
         self.dir_to_download = {}
 
@@ -1164,9 +1164,13 @@ def toil_get_file(
 
     Run as part of the ToilCommandLineTool setup, inside jobs on the workers.
 
+    :param file_store: The Toil file store to download from.
+
     :param index: Maps from downloaded file path back to input Toil URI.
 
     :param existing: Maps from file_store_id URI to downloaded file path.
+
+    :param file_store_id: The URI for the file to download.
     """
 
     if file_store_id.startswith("toildir:"):
@@ -1504,7 +1508,7 @@ def upload_directory(
     """
     Upload a Directory object.
 
-    Ignores the listing (whuch may not be recursive and isn't safe or efficient
+    Ignores the listing (which may not be recursive and isn't safe or efficient
     to touch), and instead uses directory_contents, which is a recursive dict
     structure from filename to file URI or subdirectory contents dict.
 
