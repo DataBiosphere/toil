@@ -91,7 +91,6 @@ def main():
         'src/toil/jobStores/aws/__init__.py',
         'src/toil/utils/toilStats.py',
         'src/toil/utils/__init__.py',
-        'src/toil/utils/toilLaunchCluster.py',
         'src/toil/lib/memoize.py',
         'src/toil/lib/throttle.py',
         'src/toil/lib/humanize.py',
