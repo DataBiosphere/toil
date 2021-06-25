@@ -156,12 +156,12 @@ def visit_top_cwl_class(
         for key in rec:
             visit_top_cwl_class(key, classes, op)
 
-# TODO: we need some type constraints here that I don't know how to spell.
+DownReturnType = TypeVar('DownReturnType')
 def visit_cwl_class_and_reduce(
     rec: MutableMapping,
     classes: Iterable[str],
-    op_down: Callable[[MutableMapping], Any],
-    op_up: Callable[[MutableMapping, Any, MutableSequence], Any]
+    op_down: Callable[[MutableMapping], DownReturnType],
+    op_up: Callable[[MutableMapping, DownReturnType, MutableSequence], Any]
 ) -> List:
     """
     Apply the given operations to all CWL objects with the given named CWL class.
