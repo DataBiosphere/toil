@@ -1643,8 +1643,7 @@ def toilStageFiles(
     # TODO: I think we need to recursively populate listings here!
 
     # Now we need to save all the output files and directories.
-    # We could use a ToilPathMapper, but that contains stuff to work with Toil directories as encoded in Locations, while we can assume that we have all the Files and
-
+    # We shall use a ToilPathMapper.
     pm = ToilPathMapper(
         jobfiles,
         "",
