@@ -474,7 +474,7 @@ class JobDescription(Requirer):
 
         # Every time we update a job description in place in the job store, we
         # increment this.
-        self._generation = 0
+        self._job_version = 0
 
     def serviceHostIDsInBatches(self):
         """
@@ -639,7 +639,7 @@ class JobDescription(Requirer):
         self.filesToDelete += other.filesToDelete
         self.jobsToDelete += other.jobsToDelete
 
-        self._generation = other._generation
+        self._job_version = other._job_version
 
     def addChild(self, childID):
         """
@@ -820,7 +820,7 @@ class JobDescription(Requirer):
         if self.jobStoreID is not None:
             printedName += ' ' + str(self.jobStoreID)
 
-        printedName += ' v' + str(self._generation)
+        printedName += ' v' + str(self._job_version)
 
         return printedName
 
@@ -837,8 +837,8 @@ class JobDescription(Requirer):
         version of a job.
         """
 
-        self._generation += 1
-        logger.debug("New generation: %s", self)
+        self._job_version += 1
+        logger.debug("New job version: %s", self)
 
 
 
