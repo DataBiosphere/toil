@@ -1640,8 +1640,6 @@ def toilStageFiles(
     # This is all the CWL File and Directory objects we need to export.
     jobfiles = list(_collectDirEntries(cwljob))
 
-    # TODO: I think we need to recursively populate listings here!
-
     # Now we need to save all the output files and directories.
     # We shall use a ToilPathMapper.
     pm = ToilPathMapper(
