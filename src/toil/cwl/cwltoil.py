@@ -504,7 +504,7 @@ class StepValueFrom:
         Called when loadContents is specified.
 
         :param step_inputs: Workflow step inputs.
-        :param file_store: A toil file store, needed to resolve toilfs:// paths.
+        :param file_store: A toil file store, needed to resolve toilfile:// paths.
         """
         for v in step_inputs.values():
             val = cast(CWLObjectType, v)
@@ -515,7 +515,7 @@ class StepValueFrom:
                     and source_input.get("loadContents") is True
                 ):
                     # This is safe to use even if we're bypassing the file
-                    # store for the workflow. In that case, no toilfs:// or
+                    # store for the workflow. In that case, no toilfile:// or
                     # other special URIs will exist in the workflow to be read
                     # from, and ToilFsAccess still supports file:// URIs.
                     fs_access = functools.partial(ToilFsAccess, file_store=file_store)
@@ -701,7 +701,7 @@ class ToilPathMapper(PathMapper):
         resolved: An absolute local path anywhere on the filesystem where the
         file/directory can be found, or the contents of a file to populate it
         with if type is CreateWritableFile or CreateFile. Or, a URI understood
-        by the StdFsAccess in use (for example, toilfs:).
+        by the StdFsAccess in use (for example, toilfile:).
 
         target: An absolute path under stagedir that the file or directory will
         then be placed at by cwltool. Except if a File or Directory has a
@@ -868,7 +868,7 @@ class ToilPathMapper(PathMapper):
                             )
                             st = os.lstat(deref)
 
-                    # If we didn't download something that is a toilfs:
+                    # If we didn't download something that is a toilfile:
                     # reference, we just pass that along.
 
                     logger.debug("ToilPathMapper adding file mapping %s -> %s", deref, tgt)
@@ -966,7 +966,7 @@ def toil_make_tool(
 class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
     """
     Custom filesystem access class which handles toil filestore references.
-    Normal file paths will be resolved relative to basedir, but 'toilfs:' and
+    Normal file paths will be resolved relative to basedir, but 'toilfile:' and
     'toildir:' URIs will be fulfilled from the Toil file store.
     """
 
@@ -1027,9 +1027,9 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         # cwltool.stdfsaccess.StdFsAccess, (among other things) so this should
         # not error on missing files.
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43  # noqa B950
-        if path.startswith("toilfs:"):
+        if path.startswith("toilfile:"):
             # Is a Toil file
-            destination = self.file_store.readGlobalFile(FileID.unpack(path[7:]), symlink=True)
+            destination = self.file_store.readGlobalFile(FileID.unpack(path[len("toilfile:"):]), symlink=True)
             logger.debug("Downloaded %s to %s", path, destination)
             if not os.path.exists(destination):
                 raise RuntimeError(
@@ -1096,8 +1096,8 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         # This should avoid _abs for things actually in the file store, to
         # prevent multiple downloads as in
         # https://github.com/DataBiosphere/toil/issues/3665
-        if path.startswith("toilfs:"):
-            return self.file_store.getGlobalFileSize(FileID.unpack(path[7:]))
+        if path.startswith("toilfile:"):
+            return self.file_store.getGlobalFileSize(FileID.unpack(path[len("toilfile:"):]))
         elif path.startswith("toildir:"):
             # Decode its contents, the path inside it to the file (if any), and
             # the key to use for caching the directory.
@@ -1110,9 +1110,9 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
                 # Follow the path inside the directory contents.
                 here = here[part]
 
-            # We ought to end up with a toilfs: URI.
+            # We ought to end up with a toilfile: URI.
             assert isinstance(here, str), f"Did not find a file at {path}"
-            assert here.startswith("toilfs:"), f"Did not find a filestore file at {path}"
+            assert here.startswith("toilfile:"), f"Did not find a filestore file at {path}"
 
             return self.size(here)
         else:
@@ -1144,7 +1144,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         return super(ToilFsAccess, self).join(path, *paths)
 
     def realpath(self, path: str) -> str:
-        if path.startswith("toilfs:"):
+        if path.startswith("toilfile:"):
             # import the file and make it available locally if it exists
             path = self._abs(path)
         elif path.startswith("toildir:"):
@@ -1173,7 +1173,7 @@ def toil_get_file(
         # This is a file in a directory, or maybe a directory itself.
         # See ToilFsAccess and upload_directory.
         # We will go look for the actual file in the encoded directory
-        # structure which will tell us where the toilfs: name for the file is.
+        # structure which will tell us where the toilfile: name for the file is.
 
         parts = file_store_id[len("toildir:"):].split('/')
         contents = json.loads(base64.urlsafe_b64decode(parts[0].encode('utf-8')).decode('utf-8'))
@@ -1193,9 +1193,9 @@ def toil_get_file(
             download_structure(file_store, index, existing, contents, dest_path)
             # Return where we put it, but as a file:// URI
             return schema_salad.ref_resolver.file_uri(dest_path)
-    elif file_store_id.startswith("toilfs:"):
+    elif file_store_id.startswith("toilfile:"):
         # This is a plain file with no context.
-        src_path = file_store.readGlobalFile(FileID.unpack(file_store_id[len("toilfs:"):]), symlink=True)
+        src_path = file_store.readGlobalFile(FileID.unpack(file_store_id[len("toilfile:"):]), symlink=True)
         # TODO: shouldn't we be using these as a cache?
         index[src_path] = file_store_id
         existing[file_store_id] = src_path
@@ -1251,11 +1251,11 @@ def download_structure(
             else:
                 # This must be a file path uploaded to Toil.
                 assert isinstance(value, str)
-                assert value.startswith("toilfs:")
+                assert value.startswith("toilfile:")
                 logger.debug("Downloading contained file %s", name)
                 dest_path = os.path.join(into_dir, name)
                 # So download the file into place
-                file_store.readGlobalFile(FileID.unpack(value[7:]), dest_path, symlink=True)
+                file_store.readGlobalFile(FileID.unpack(value[len("toilfile:"):]), dest_path, symlink=True)
                 # Update the index dicts
                 # TODO: why?
                 index[dest_path] = value
@@ -1273,7 +1273,7 @@ def write_file(writeFunc: Any, index: dict, existing: dict, file_uri: str) -> st
     Returns a toil uri path to the object.
     """
     # Toil fileStore reference
-    if file_uri.startswith("toilfs:") or file_uri.startswith("toildir:"):
+    if file_uri.startswith("toilfile:") or file_uri.startswith("toildir:"):
         return file_uri
     # File literal outputs with no path, we don't write these and will fail
     # with unsupportedRequirement when retrieving later with getFile
@@ -1287,7 +1287,7 @@ def write_file(writeFunc: Any, index: dict, existing: dict, file_uri: str) -> st
             else:
                 rp = file_uri
             try:
-                index[file_uri] = "toilfs:" + writeFunc(rp).pack()
+                index[file_uri] = "toilfile:" + writeFunc(rp).pack()
                 existing[index[file_uri]] = file_uri
             except Exception as e:
                 logger.error("Got exception '%s' while copying '%s'", e, file_uri)
@@ -1516,7 +1516,7 @@ def upload_directory(
     tool, since some tools require it to be cleared or single-level but still
     expect to see its contents in the filesystem.
     """
-    if (directory_metadata["location"].startswith("toilfs:") or
+    if (directory_metadata["location"].startswith("toilfile:") or
         directory_metadata["location"].startswith("toildir:") or
         directory_metadata["location"].startswith("_:")):
         # Already in Toil; nothing to do
@@ -1526,7 +1526,7 @@ def upload_directory(
             directory_metadata["path"]
         )
     if directory_metadata["location"].startswith("file://") and not os.path.isdir(
-        directory_metadata["location"][7:]
+        directory_metadata["location"][len("file://"):]
     ):
         if skip_broken:
             return
@@ -1554,7 +1554,7 @@ def upload_file(
 
     Write the file object to the file store if necessary.
     """
-    if (file_metadata["location"].startswith("toilfs:") or
+    if (file_metadata["location"].startswith("toilfile:") or
         file_metadata["location"].startswith("toildir:") or
         file_metadata["location"].startswith("_:")):
         return
@@ -1566,7 +1566,7 @@ def upload_file(
             file_metadata["path"]
         )
     if file_metadata["location"].startswith("file://") and not os.path.isfile(
-        file_metadata["location"][7:]
+        file_metadata["location"][len("file://"):]
     ):
         if skip_broken:
             return
@@ -1681,23 +1681,23 @@ def toilStageFiles(
                             f.write(file_id_or_contents.encode('utf-8'))
                             f.close()
                             # Import it and pack up the file ID so we can turn around and export it.
-                            file_id_or_contents = 'toilfs:' + toil.importFile(f.name).pack()
+                            file_id_or_contents = 'toilfile:' + toil.importFile(f.name).pack()
 
-                    if file_id_or_contents.startswith('toilfs:'):
+                    if file_id_or_contents.startswith('toilfile:'):
                         # This is something we can export
                         destUrl = "/".join(s.strip("/") for s in [destBucket, baseName])
-                        toil.exportFile(FileID.unpack(file_id_or_contents[len('toilfs:'):]), destUrl)
+                        toil.exportFile(FileID.unpack(file_id_or_contents[len('toilfile:'):]), destUrl)
                     # TODO: can a toildir: "file" get here?
             else:
                 # We are saving to the filesystem so we only really need exportFile for actual files.
                 if not os.path.exists(p.target) and p.type in ["Directory", "WritableDirectory"]:
                     os.makedirs(p.target)
                 if not os.path.exists(p.target) and p.type in ["File", "WritableFile"]:
-                    if p.resolved.startswith('toilfs:'):
+                    if p.resolved.startswith('toilfile:'):
                         # We can actually export this
                         os.makedirs(os.path.dirname(p.target), exist_ok=True)
                         toil.exportFile(
-                            FileID.unpack(p.resolved[len('toilfs:'):]), "file://" + p.target
+                            FileID.unpack(p.resolved[len('toilfile:'):]), "file://" + p.target
                         )
                     elif p.resolved.startswith('/'):
                         # Probably staging and bypassing file store. Just copy.
@@ -2528,7 +2528,7 @@ def filtered_secondary_files(unfiltered_secondary_files: dict) -> list:
     # to existant things on disk
     for sf in intermediate_secondary_files:
         sf_loc = sf.get("location", "")
-        if (sf_loc.startswith("toilfs:") or
+        if (sf_loc.startswith("toilfile:") or
             sf_loc.startswith("toildir:") or
             sf_loc.startswith("_:") or
             sf.get("class", "") == "Directory"):
@@ -3151,7 +3151,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     if isinstance(fileobj, Mapping) and fileobj.get("class") == "File":
                         if "secondaryFiles" not in fileobj:
                             # inits all secondary files with 'file://' schema
-                            # later changed to 'toilfs:' if imported into the jobstore
+                            # later changed to 'toilfile:' if imported into the jobstore
                             fileobj["secondaryFiles"] = [
                                 {
                                     "location": cwltool.builder.substitute(
