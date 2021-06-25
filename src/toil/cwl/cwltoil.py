@@ -2555,25 +2555,21 @@ def scan_for_unsupported_requirements(tool: Process, bypass_file_store: bool = F
 
     """
 
-    # First we make a list of everything we can't support
-    unsupported = []
-
+    # We only actually have one unsupported requirement right now, and even
+    # that we have a way to support, which we shall explain.
     if not bypass_file_store:
-        # The Toil file store can't support in-place update
-        unsupported.append("InplaceUpdateRequirement")
-
-    # TODO: Can we change this to a set of supported requirements instead?
-    # Otherwise when new ones show up we assume we have them even when we
-    # don't.
-
-    for req_name in unsupported:
-        # Grab each reqirement that might be a problem
-        req, is_mandatory = tool.get_requirement(req_name)
+        # If we are using the Toil FileStore we can't do InplaceUpdateRequirement
+        req, is_mandatory = tool.get_requirement("InplaceUpdateRequirement")
         if req and is_mandatory:
             # The tool actualy uses this one, and it isn't just a hint.
-            # Complain.
+            # Complain and explain.
             raise UnsupportedRequirement(
-                f"Toil cannot support {req_name} in the current configuration"
+                "Toil cannot support InplaceUpdateRequirement when using the Toil file store. "
+                "If you are running on a single machine, or a cluster with a shared filesystem, "
+                "use the --bypass-file-store option to keep intermediate files on the filesystem. "
+                "You can use the --tmp-outdir-prefix, --tmpdir-prefix, --outdir, and --jobStore "
+                "options to control where on the filesystem files are placed, if only some parts of "
+                "the filesystem are shared."
             )
 
 def determine_load_listing(tool: Process):
