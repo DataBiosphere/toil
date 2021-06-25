@@ -41,11 +41,11 @@ class ToilState:
         used to speed up the building of the state when loading initially from
         the JobStore, and is not preserved.
 
-        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore
+        :param jobStore: The job store to use.
 
-        :param toil.job.JobDescription rootJob
+        :param rootJob: The description for the root job of the workflow being run.
 
-        :param Dict[str, JobDescription] jobCache
+        :param jobCache: A dict to cache downloaded job descriptions in, keyed by ID.
         """
 
         # Maps from successor (child or follow-on) jobStoreID to predecessor jobStoreID
@@ -90,8 +90,6 @@ class ToilState:
         """
         Returns an iterator over all JobDescription objects referenced by the
         ToilState, with some possibly being visited multiple times.
-
-        :rtype: Iterator[JobDescription]
         """
 
         for item in self.serviceJobStoreIDToPredecessorJob.values():
@@ -123,11 +121,11 @@ class ToilState:
         object. Jobs will be loaded from the cache (which can be downloaded from
         the jobStore in a batch) instead of piecemeal when recursed into.
 
-        :param toil.job.JobDescription jobDesc
+        :param jobDesc: The description for the root job of the workflow being run.
 
-        :param toil.jobStores.AbstractJobStore jobStore
+        :param jobStore: The job store to use.
 
-        :param Dict[str, JobDescription] jobCache
+        :param jobCache: A dict to cache downloaded job descriptions in, keyed by ID.
         """
 
         def getJob(jobId: str) -> JobDescription:
