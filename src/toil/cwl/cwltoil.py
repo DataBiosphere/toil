@@ -1352,9 +1352,11 @@ def import_files(
     # We need to upload all files to the Toil filestore, and encode structure
     # recursively into all Directories' locations. But we cannot safely alter
     # the listing fields of Directory objects, because the handling required by
-    # the 1.2 conformance tests does not actually match the spec, and we need
-    # to pass the conformance tests, and only cwltool really knows when to
-    # make/destroy the listings in order to do that.
+    # the 1.2 conformance tests does not actually match the spec. See
+    # <https://github.com/common-workflow-language/cwl-v1.2/issues/75#issuecomment-858477413>.
+    #
+    # We need to pass the conformance tests, and only cwltool really knows when
+    # to make/destroy the listings in order to do that.
 
     # First do some preliminary preparation of metadata
     visit_class(cwl_object, ("File", "Directory"), cwltool.main.path_to_loc)
