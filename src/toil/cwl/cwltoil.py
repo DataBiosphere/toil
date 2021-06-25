@@ -963,26 +963,7 @@ def toil_make_tool(
     return cwltool.workflow.default_make_tool(toolpath_object, loadingContext)
 
 
-class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
-    """
-    Custom filesystem access class which handles toil filestore references.
-    Normal file paths will be resolved relative to basedir, but 'toilfile:' and
-    'toildir:' URIs will be fulfilled from the Toil file store.
-    """
-
-    def __init__(self, basedir: str, file_store: AbstractFileStore = None):
-        """Create a FsAccess object for the given Toil Filestore and basedir."""
-        self.file_store = file_store
-
-        # Map encoded directory structures to where we downloaded them, so we
-        # don't constantly redownload them.
-        # Assumes nobody will touch our files via realpath, or that if they do
-        # they know what will happen.
-        self.dir_to_download = {}
-
-        super(ToilFsAccess, self).__init__(basedir)
-
-    def _decode_directory(self, dir_path: str) -> Tuple[Dict, Optional[str], str]:
+def decode_directory(dir_path: str) -> Tuple[Dict, Optional[str], str]:
         """
         Given a toildir: path to a directory or a file in it, return the
         decoded directory dict, the remaining part of the path (which may be
@@ -1011,6 +992,25 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         else:
             # We have a path below this
             return contents, parts[1], dir_data
+
+class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
+    """
+    Custom filesystem access class which handles toil filestore references.
+    Normal file paths will be resolved relative to basedir, but 'toilfile:' and
+    'toildir:' URIs will be fulfilled from the Toil file store.
+    """
+
+    def __init__(self, basedir: str, file_store: AbstractFileStore = None):
+        """Create a FsAccess object for the given Toil Filestore and basedir."""
+        self.file_store = file_store
+
+        # Map encoded directory structures to where we downloaded them, so we
+        # don't constantly redownload them.
+        # Assumes nobody will touch our files via realpath, or that if they do
+        # they know what will happen.
+        self.dir_to_download = {}
+
+        super(ToilFsAccess, self).__init__(basedir)
 
     def _abs(self, path: str) -> str:
         """
@@ -1042,7 +1042,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
             # Decode its contents, the path inside it to the file (if any), and
             # the key to use for caching the directory.
-            contents, subpath, cache_key = self._decode_directory(path)
+            contents, subpath, cache_key = decode_directory(path)
 
             if cache_key not in self.dir_to_download:
                 # Download to a temp directory.
@@ -1101,7 +1101,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         elif path.startswith("toildir:"):
             # Decode its contents, the path inside it to the file (if any), and
             # the key to use for caching the directory.
-            here, subpath, cache_key = self._decode_directory(path)
+            here, subpath, cache_key = decode_directory(path)
 
             # We can't get the size of just a directory.
             assert subpath is not None, f"Attempted to check size of directory {path}"
@@ -1673,6 +1673,15 @@ def toilStageFiles(
                             f.close()
                             # Import it and pack up the file ID so we can turn around and export it.
                             file_id_or_contents = 'toilfile:' + toil.importFile(f.name).pack()
+
+                    if file_id_or_contents.startswith('toildir:'):
+                        # Get the directory contents and the path into them, if any
+                        here, subpath, _ = decode_directory(file_id_or_contents)
+                        if subpath is not None:
+                            for part in subpath.split('/'):
+                                here = here[part]
+                        # At the end we should get a direct toilfile: URI
+                        file_id_or_contents = here
 
                     if file_id_or_contents.startswith('toilfile:'):
                         # This is something we can export
