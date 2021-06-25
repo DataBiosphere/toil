@@ -1345,10 +1345,7 @@ def import_files(
     importing files and directories.
     """
 
-    try:
-        tool_id = cwl_object['id']
-    except:
-        tool_id = str(cwl_object)
+    tool_id = cwl_object.get('id', str(cwl_object))
 
     logger.debug('Importing files for %s', tool_id)
 
