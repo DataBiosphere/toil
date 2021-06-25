@@ -1298,15 +1298,6 @@ def write_file(writeFunc: Any, index: dict, existing: dict, file_uri: str) -> st
                 raise
         return index[file_uri]
 
-def path_to_loc(obj: Dict) -> None:
-    """
-    If a CWL object has a "path" and not a "location", make the
-    path into a location instead.
-    """
-    if "location" not in obj and "path" in obj:
-        obj["location"] = obj["path"]
-        del obj["path"]
-
 def import_files(
     import_function: Callable[[str], FileID],
     fs_access: cwltool.stdfsaccess.StdFsAccess,
@@ -1369,7 +1360,7 @@ def import_files(
     # make/destroy the listings in order to do that.
 
     # First do some preliminary preparation of metadata
-    visit_class(cwl_object, ("File", "Directory"), path_to_loc)
+    visit_class(cwl_object, ("File", "Directory"), cwltool.main.path_to_loc)
     visit_class(
         cwl_object, ("File",), functools.partial(add_sizes, fs_access)
     )
