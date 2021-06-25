@@ -82,6 +82,9 @@ def prettyMemory(k: float, field: Optional[int] = None, isBytes: bool = False) -
     if k < (1024 * 1024 * 1024 * 1024 * 1024):
         return padStr("%.1fP" % (k / 1024.0 / 1024.0 / 1024.0 / 1024.0), field)
 
+    # due to https://stackoverflow.com/questions/47149154
+    assert False
+
 
 def prettyTime(t: float, field: Optional[int] = None) -> str:
     """ Given input t as seconds, return a nicely formatted string.
@@ -282,16 +285,20 @@ def sortJobs(jobTypes: List[Any], options: Namespace) -> List[Any]:
         ):
         return sorted(
             jobTypes,
-            key=lambda tag: getattr(tag, "%s_%s"
+            # due to https://github.com/python/mypy/issues/9656
+            key=lambda tag: getattr(tag, "%s_%s" # type: ignore
                                     % (sortField, options.sortCategory)),
             reverse=options.sortReverse)
     elif options.sortCategory == "alpha":
         return sorted(
-            jobTypes, key=lambda tag: tag.name,
+            jobTypes, key=lambda tag: tag.name, # type: ignore
             reverse=options.sortReverse)
     elif options.sortCategory == "count":
-        return sorted(jobTypes, key=lambda tag: tag.total_number,
+        return sorted(jobTypes, key=lambda tag: tag.total_number, # type: ignore
                       reverse=options.sortReverse)
+
+    # due to https://stackoverflow.com/questions/47149154
+    assert False
 
 
 def reportPrettyData(root: Expando, worker: List[Job], job: List[Job], job_types: List[Any], options: Namespace) -> str:
