@@ -282,7 +282,6 @@ class ServiceManager( object ):
 
 def blockUntilServiceGroupIsStarted(jobDesc: ServiceJobDescription,
                                     jobDescriptionsWithServicesThatHaveStarted: 'Queue[ServiceJobDescription]',
-                                    jobDescriptionsWithServicesThatHaveFailedToStart: 'Queue[ServiceJobDescription]',
                                     serviceJobsToStart: 'Queue[ServiceJobDescription]',
                                     terminate: Event,
                                     jobStore: AbstractJobStore) -> None:
