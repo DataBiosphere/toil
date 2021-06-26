@@ -99,6 +99,7 @@ from schema_salad.sourceline import SourceLine
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Config, Toil, addOptions
+from toil.cwl.utils import visit_top_cwl_class, visit_cwl_class_and_reduce
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job
@@ -131,71 +132,7 @@ DEFAULT_TMPDIR = tempfile.gettempdir()
 DEFAULT_TMPDIR_PREFIX = os.path.join(DEFAULT_TMPDIR, "tmp")
 
 
-# Customized CWL utilities
 
-def visit_top_cwl_class(
-    rec: MutableMapping,
-    classes: Iterable[str],
-    op: Callable[[MutableMapping], Any]
-) -> None:
-    """
-    Apply the given operation to all top-level CWL objects with the given named CWL class.
-    Like cwltool's visit_class but doesn't look inside any object visited.
-    """
-    if isinstance(rec, MutableMapping):
-        if rec.get("class", None) in classes:
-            # This is one of the classes requested
-            # So process it
-            op(rec)
-        else:
-            # Look inside it instead
-            for key in rec:
-                visit_top_cwl_class(rec[key], classes, op)
-    elif isinstance(rec, MutableSequence):
-        # This item is actually a list of things, so look at all of them.
-        for key in rec:
-            visit_top_cwl_class(key, classes, op)
-
-DownReturnType = TypeVar('DownReturnType')
-def visit_cwl_class_and_reduce(
-    rec: MutableMapping,
-    classes: Iterable[str],
-    op_down: Callable[[MutableMapping], DownReturnType],
-    op_up: Callable[[MutableMapping, DownReturnType, MutableSequence], Any]
-) -> List:
-    """
-    Apply the given operations to all CWL objects with the given named CWL class.
-    Applies the down operation top-down, and the up operation bottom-up, and
-    passes the down operation's result and a list of the up operation results
-    for all child keys (flattening across lists and collapsing nodes of
-    non-matching classes) to the up operation.
-    """
-
-    results = []
-
-    if isinstance(rec, MutableMapping):
-        down_result = None
-        child_results = []
-        if rec.get("class", None) in classes:
-            # Apply the down operation
-            down_result = op_down(rec)
-        for key in rec:
-            # Look inside and collect child results
-            for result in visit_cwl_class_and_reduce(rec[key], classes, op_down, op_up):
-                child_results.append(result)
-        if rec.get("class", None) in classes:
-            # Apply the up operation
-            results.append(op_up(rec, down_result, child_results))
-        else:
-            # We aren't processing here so pass up all the child results
-            results += child_results
-    elif isinstance(rec, MutableSequence):
-        # This item is actually a list of things, so look at all of them.
-        for key in rec:
-            for result in visit_cwl_class_and_reduce(key, classes, op_down, op_up):
-                # And flatten together all their results.
-                results.append(result)
-    return results
 
 def cwltoil_was_removed():
     """Complain about deprecated entrypoint."""

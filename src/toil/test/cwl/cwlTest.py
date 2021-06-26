@@ -32,6 +32,8 @@ import pytest
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
+from toil.cwl.utils import visit_top_cwl_class, visit_cwl_class_and_reduce
+
 from toil.test import (ToilTest,
                        needs_aws_s3,
                        needs_cwl,
@@ -53,21 +55,21 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
     selected_tags: str = None, extra_args: List[str] = [], must_support_all_features: bool = False) -> Optional[str]:
     """
     Run the CWL conformance tests.
-    
+
     :param workDir: Directory to run tests in.
-    
+
     :param yml: CWL test list YML to run tests from.
-    
+
     :param caching: If True, use Toil file store caching.
-    
+
     :param batchSystem: If set, use this batch system instead of the default single_machine.
-    
+
     :param selected_tests: If set, use this description of test numbers to run (comma-separated numbers or ranges)
-    
+
     :param selected_tags: As an alternative to selected_tests, run tests with the given tags.
-    
+
     :param extra_args: Provide these extra arguments to toil-cwl-runner for each test.
-    
+
     :param must_support_all_features: If set, fail if some CWL optional features are unsupported.
     """
     try:
@@ -517,7 +519,7 @@ class CWLv12Test(ToilTest):
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance_with_caching(self):
         self.test_run_conformance(caching=True)
-        
+
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance_with_in_place_update(self):
@@ -528,7 +530,7 @@ class CWLv12Test(ToilTest):
         """
         self.test_run_conformance(extra_args=['--bypass-file-store'],
                                   must_support_all_features=True)
-        
+
     def run_kubernetes_cwl_conformance(self, **kwargs):
         """
         Run the CWL conformance tests on Kubernetes, passing along keyword
@@ -581,3 +583,104 @@ class CWLSmallTests(ToilTest):
         assert stdout == b'{}'
         assert b'Finished toil run successfully' in stderr
         assert p.returncode == 0
+
+    def test_visit_top_cwl_class(self):
+        structure = {
+            'class': 'Directory',
+            'listing': [
+                {
+                    'class': 'Directory',
+                    'listing': [
+                        {'class': 'File'},
+                        {
+                            'class': 'File',
+                            'secondaryFiles': [
+                                {'class': 'Directory'},
+                                {'class': 'File'},
+                                {'cruft'}
+                            ]
+                        }
+                    ]
+                },
+                {'some garbage': 'yep'},
+                [],
+                None
+            ]
+        }
+
+        counter = 0
+        def increment(thing: Dict) -> None:
+            """
+            Make sure we are at something CWL object like, and count it.
+            """
+            self.assertIn('class', thing)
+            counter += 1
+
+        # We should stop at the root when looking for a Directory
+        visit_top_cwl_class(structure, ('Directory',), increment)
+        self.assertEqual(counter, 1)
+
+        # We should see the top-level files when looking for a file
+        counter = 0
+        visit_top_cwl_class(structure, ('File',), increment)
+        self.assertEqual(counter, 2)
+
+        # When looking for a file or a directory we should stop at the first match to either.
+        counter = 0
+        visit_top_cwl_class(structure, ('File', 'Directory'), increment)
+        self.assertEqual(counter, 1)
+
+    def test_visit_cwl_class_and_reduce(self):
+        structure = {
+            'class': 'Directory',
+            'listing': [
+                {
+                    'class': 'Directory',
+                    'listing': [
+                        {'class': 'File'},
+                        {
+                            'class': 'File',
+                            'secondaryFiles': [
+                                {'class': 'Directory'},
+                                {'class': 'File'},
+                                {'cruft'}
+                            ]
+                        }
+                    ]
+                },
+                {'some garbage': 'yep'},
+                [],
+                None
+            ]
+        }
+
+        down_count = 0
+        def op_down(thing: MutableMapping) -> int:
+            """
+            Grab the ID of the thing we are at, and count what we visit going
+            down.
+            """
+            down_count += 1
+            return id(thing)
+
+        up_count = 0
+        up_child_count = 0
+        def op_up(thing: MutableMapping, down_value: int, child_results: List[str]) -> str:
+            """
+            Check the down return value and the up return values, and count
+            what we visit going up and what child relationships we have.
+            """
+            self.assertEqual(down_value, id(thing))
+            for res in child_results:
+                self.assertEqual(res, "Sentinel value!")
+                up_child_count += 1
+            up_count += 1
+            return "Sentinel value!"
+
+
+        visit_cwl_class_and_reduce(structure, ('Directory',), op_down, op_up)
+        self.assertEqual(down_count, 3)
+        self.assertEqual(up_count, 3)
+        # Only 2 child relationships
+        self.assertEqual(up_child_count, 2)
+
