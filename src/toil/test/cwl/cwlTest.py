@@ -23,7 +23,7 @@ import unittest
 import uuid
 import zipfile
 from io import StringIO
-from typing import List, Optional
+from typing import Dict, List, MutableMapping, Optional
 from urllib.request import urlretrieve
 
 import psutil
@@ -580,7 +580,7 @@ class CWLSmallTests(ToilTest):
         log.debug(f'Now running: {" ".join(cmd)}')
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
-        assert stdout == b'{}'
+        assert stdout == b'{}', f"Got wrong output: {stdout}\nWith error: {stderr}"
         assert b'Finished toil run successfully' in stderr
         assert p.returncode == 0
 
@@ -608,27 +608,27 @@ class CWLSmallTests(ToilTest):
             ]
         }
 
-        counter = 0
+        self.counter = 0
         def increment(thing: Dict) -> None:
             """
             Make sure we are at something CWL object like, and count it.
             """
             self.assertIn('class', thing)
-            counter += 1
+            self.counter += 1
 
         # We should stop at the root when looking for a Directory
         visit_top_cwl_class(structure, ('Directory',), increment)
-        self.assertEqual(counter, 1)
+        self.assertEqual(self.counter, 1)
 
         # We should see the top-level files when looking for a file
-        counter = 0
+        self.counter = 0
         visit_top_cwl_class(structure, ('File',), increment)
-        self.assertEqual(counter, 2)
+        self.assertEqual(self.counter, 2)
 
         # When looking for a file or a directory we should stop at the first match to either.
-        counter = 0
+        self.counter = 0
         visit_top_cwl_class(structure, ('File', 'Directory'), increment)
-        self.assertEqual(counter, 1)
+        self.assertEqual(self.counter, 1)
 
     def test_visit_cwl_class_and_reduce(self):
         structure = {
@@ -654,17 +654,17 @@ class CWLSmallTests(ToilTest):
             ]
         }
 
-        down_count = 0
+        self.down_count = 0
         def op_down(thing: MutableMapping) -> int:
             """
             Grab the ID of the thing we are at, and count what we visit going
             down.
             """
-            down_count += 1
+            self.down_count += 1
             return id(thing)
 
-        up_count = 0
-        up_child_count = 0
+        self.up_count = 0
+        self.up_child_count = 0
         def op_up(thing: MutableMapping, down_value: int, child_results: List[str]) -> str:
             """
             Check the down return value and the up return values, and count
@@ -673,14 +673,14 @@ class CWLSmallTests(ToilTest):
             self.assertEqual(down_value, id(thing))
             for res in child_results:
                 self.assertEqual(res, "Sentinel value!")
-                up_child_count += 1
-            up_count += 1
+                self.up_child_count += 1
+            self.up_count += 1
             return "Sentinel value!"
 
 
         visit_cwl_class_and_reduce(structure, ('Directory',), op_down, op_up)
-        self.assertEqual(down_count, 3)
-        self.assertEqual(up_count, 3)
+        self.assertEqual(self.down_count, 3)
+        self.assertEqual(self.up_count, 3)
         # Only 2 child relationships
-        self.assertEqual(up_child_count, 2)
+        self.assertEqual(self.up_child_count, 2)
 
