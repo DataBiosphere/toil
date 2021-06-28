@@ -225,7 +225,6 @@ class ServiceManager( object ):
                         # ensure entire service "groups" are issued as a whole.
                         blockUntilServiceGroupIsStarted(jobDesc,
                                                         jobDescriptionsWithServicesThatHaveStarted,
-                                                        jobDescriptionsWithServicesThatHaveFailedToStart,
                                                         serviceJobsToStart, terminate, jobStore)
                         continue
                     # Found a new job that needs to schedule its services.
