@@ -103,7 +103,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 result = "NOT_SUBMITTED_{}".format(temp_id)
             return result
 
-        def coalesceJobExitCodes(self,lsf_job_ids: list) -> list:
+        def coalesce_job_exit_codes(self,lsf_job_ids: list) -> list:
             status_dict = {}
             valid_lsf_job_ids = []
             status_resonse = []
@@ -127,7 +127,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     for single_record in bjobs_records:
                         if "JOBID" in single_record:
                             single_job_id = single_record["JOBID"]
-                            status_dict[single_job_id] = self.parseBjobsRecord(single_record, single_job_id)
+                            status_dict[single_job_id] = self.parse_bjobs_record(single_record, single_job_id)
             for single_lsf_id in lsf_job_ids:
                 if "NOT_SUBMITTED" in single_lsf_id:
                     status_resonse.append(status_dict[single_lsf_id])
@@ -162,11 +162,11 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 bjobs_records = self.parseBjobs(stdout)
                 if bjobs_records:
                     process_output = bjobs_records[0]
-                    return self.parseBjobsRecord(process_output,job)
+                    return self.parse_bjobs_record(process_output,job)
 
             return self.fallbackGetJobExitCode(job)
 
-        def parseBjobsRecord(self,bjobs_record: dict, job: int) -> Union[int, None]:
+        def parse_bjobs_record(self,bjobs_record: dict, job: int) -> Union[int, None]:
             """
             Helper functions for getJobExitCode and  to parse the bjobs status record
             """
