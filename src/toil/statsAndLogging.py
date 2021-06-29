@@ -16,16 +16,18 @@ import json
 import logging
 import os
 import time
-import toil.common
-import toil.jobStores.abstractJobStore as abstractJobStore
 
 from argparse import ArgumentParser
 from threading import Event, Thread
 from logging.handlers import RotatingFileHandler
-from typing import List, Any, Optional, Union, TextIO, BinaryIO, Callable
+from typing import List, Any, Optional, Union, TextIO, BinaryIO, Callable, TYPE_CHECKING
 
 from toil.lib.expando import Expando
 from toil.lib.resources import get_total_cpu_time
+
+if TYPE_CHECKING:
+    from toil.common import Config
+    from toil.jobStores.abstractJobStore import AbstractJobStore
 
 logger = logging.getLogger(__name__)
 root_logger = logging.getLogger()
@@ -37,7 +39,7 @@ __loggingFiles = []
 
 class StatsAndLogging:
     """A thread to aggregate statistics and logging."""
-    def __init__(self, jobStore: abstractJobStore.AbstractJobStore, config: toil.common.Config) -> None:
+    def __init__(self, jobStore: 'AbstractJobStore', config: 'Config') -> None:
         self._stop = Event()
         self._worker = Thread(target=self.statsAndLoggingAggregator,
                               args=(jobStore, self._stop, config),
@@ -83,7 +85,7 @@ class StatsAndLogging:
         method(cls.formatLogStream(jobLogs, jobStoreID))
 
     @classmethod
-    def writeLogFiles(cls, jobNames: List[str], jobLogList: List[str], config: toil.common.Config, failed: bool = False) -> None:
+    def writeLogFiles(cls, jobNames: List[str], jobLogList: List[str], config: 'Config', failed: bool = False) -> None:
         def createName(logPath: str, jobName: str, logExtension: str, failed: bool = False) -> str:
             logName = jobName.replace('-', '--')
             logName = logName.replace('/', '-')
@@ -133,7 +135,7 @@ class StatsAndLogging:
                 os.symlink(os.path.relpath(fullName, path), name)
 
     @classmethod
-    def statsAndLoggingAggregator(cls, jobStore: abstractJobStore.AbstractJobStore, stop: Event, config: toil.common.Config) -> None:
+    def statsAndLoggingAggregator(cls, jobStore: 'AbstractJobStore', stop: Event, config: 'Config') -> None:
         """
         The following function is used for collating stats/reporting log messages from the workers.
         Works inside of a thread, collates as long as the stop flag is not True.
@@ -255,7 +257,7 @@ def log_to_file(log_file: str, log_rotation: bool) -> None:
         root_logger.addHandler(handler)
 
 
-def set_logging_from_options(options: toil.common.Config) -> None:
+def set_logging_from_options(options: 'Config') -> None:
     configure_root_logger()
     options.logLevel = options.logLevel or logging.getLevelName(root_logger.getEffectiveLevel())
     set_log_level(options.logLevel)
