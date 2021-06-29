@@ -28,7 +28,7 @@ import the expand_ function and invoke it directly with either no or exactly one
 #  - don't import even standard modules at global scope without renaming them
 #    to have leading/trailing underscores
 
-baseVersion = '5.4.0a1'
+baseVersion = '5.5.0a1'
 cgcloudVersion = '1.6.0a1.dev393'
 
 
