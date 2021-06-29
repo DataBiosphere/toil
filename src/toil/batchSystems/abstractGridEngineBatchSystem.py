@@ -184,31 +184,45 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             activity = False
             running_job_list = list(self.runningJobs)
             if self.boss.config.coalesceStatusCalls:
-                batch_job_id_list = list(map(self.getBatchSystemID,running_job_list))
+                batch_job_id_list = list(map(self.getBatchSystemID, running_job_list))
                 if batch_job_id_list:
-                    statuses = self.boss.with_retries(self.coalesce_job_exit_codes, batch_job_id_list)
+                    statuses = self.boss.with_retries(
+                        self.coalesce_job_exit_codes, batch_job_id_list
+                    )
                     if statuses is not None:
                         for running_job_id, status in zip(running_job_list, statuses):
-                            activity = self._handle_job_status(running_job_id,status,activity)
+                            activity = self._handle_job_status(
+                                running_job_id, status, activity
+                            )
             else:
                 for job_id in running_job_list:
                     batch_job_id = self.getBatchSystemID(job_id)
                     status = self.boss.with_retries(self.getJobExitCode, batch_job_id)
-                    activity = self._handle_job_status(job_id,status,activity)
+                    activity = self._handle_job_status(job_id, status, activity)
             self._checkOnJobsCache = activity
             self._checkOnJobsTimestamp = datetime.now()
             return activity
 
-        def _handle_job_status(self, jobID: int, status: Union[int, None], activity: bool) -> bool:
+        def _handle_job_status(
+            self, jobID: int, status: Union[int, None], activity: bool
+        ) -> bool:
             """
             Helper method for checkOnJobs to handle job statuses
             """
             if status is not None:
-                self.updatedJobsQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=status, exitReason=None, wallTime=None))
+                self.updatedJobsQueue.put(
+                    UpdatedBatchJobInfo(
+                        jobID=jobID, exitStatus=status, exitReason=None, wallTime=None
+                    )
+                )
                 self.forgetJob(jobID)
                 return True
             elif status is not None and isinstance(status, BatchJobExitReason):
-                self.updatedJobsQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=1, exitReason=status, wallTime=None))
+                self.updatedJobsQueue.put(
+                    UpdatedBatchJobInfo(
+                        jobID=jobID, exitStatus=1, exitReason=status, wallTime=None
+                    )
+                )
                 self.forgetJob(jobID)
                 return True
             else:

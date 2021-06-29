@@ -31,13 +31,16 @@ from dateutil.parser import parse
 from dateutil.tz import tzlocal
 
 from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
-from toil.batchSystems.abstractGridEngineBatchSystem import \
-    AbstractGridEngineBatchSystem
-from toil.batchSystems.lsfHelper import (check_lsf_json_output_supported,
-                                         parse_memory_limit,
-                                         parse_memory_resource,
-                                         per_core_reservation,
-                                         parse_mem_and_cmd_from_output)
+from toil.batchSystems.abstractGridEngineBatchSystem import (
+    AbstractGridEngineBatchSystem,
+)
+from toil.batchSystems.lsfHelper import (
+    check_lsf_json_output_supported,
+    parse_mem_and_cmd_from_output,
+    parse_memory_limit,
+    parse_memory_resource,
+    per_core_reservation,
+)
 from toil.lib.misc import call_command
 
 logger = logging.getLogger(__name__)
@@ -103,38 +106,47 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 result = "NOT_SUBMITTED_{}".format(temp_id)
             return result
 
-        def coalesce_job_exit_codes(self,lsf_job_ids: list) -> list:
+        def coalesce_job_exit_codes(self, lsf_job_ids: list) -> list:
             status_dict = {}
             valid_lsf_job_ids = []
             status_resonse = []
             for single_lsf_id in lsf_job_ids:
                 if "NOT_SUBMITTED" in single_lsf_id:
-                    logger.error("bjobs detected job [{}] failed to submit".format(single_lsf_id))
+                    logger.error(
+                        "bjobs detected job [{}] failed to submit".format(single_lsf_id)
+                    )
                     status_dict[single_lsf_id] = 1
                 job, task = (single_lsf_id, None)
-                if '.' in single_lsf_id:
-                    job, task = single_lsf_id.split('.', 1)
+                if "." in single_lsf_id:
+                    job, task = single_lsf_id.split(".", 1)
                 valid_lsf_job_ids.append(job)
             if valid_lsf_job_ids:
-                args = ["bjobs", "-json", "-o",
-                        "jobid user exit_code stat exit_reason pend_reason"] + valid_lsf_job_ids
+                args = [
+                    "bjobs",
+                    "-json",
+                    "-o",
+                    "jobid user exit_code stat exit_reason pend_reason",
+                ] + valid_lsf_job_ids
                 logger.debug("Getting coalesced job exit codes via bjobs")
-                process = subprocess.Popen(args, stdout=subprocess.PIPE,
-                                           stderr=subprocess.STDOUT)
-                output = process.stdout.read().decode('utf-8')
+                process = subprocess.Popen(
+                    args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+                )
+                output = process.stdout.read().decode("utf-8")
                 bjobs_records = self.parseBjobs(output)
                 if bjobs_records:
                     for single_record in bjobs_records:
                         if "JOBID" in single_record:
                             single_job_id = single_record["JOBID"]
-                            status_dict[single_job_id] = self.parse_bjobs_record(single_record, single_job_id)
+                            status_dict[single_job_id] = self.parse_bjobs_record(
+                                single_record, single_job_id
+                            )
             for single_lsf_id in lsf_job_ids:
                 if "NOT_SUBMITTED" in single_lsf_id:
                     status_resonse.append(status_dict[single_lsf_id])
                 else:
                     job, task = (single_lsf_id, None)
-                    if '.' in single_lsf_id:
-                        job, task = single_lsf_id.split('.', 1)
+                    if "." in single_lsf_id:
+                        job, task = single_lsf_id.split(".", 1)
                     if job in status_dict:
                         status_resonse.append(status_dict[job])
                     else:
@@ -162,55 +174,61 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 bjobs_records = self.parseBjobs(stdout)
                 if bjobs_records:
                     process_output = bjobs_records[0]
-                    return self.parse_bjobs_record(process_output,job)
+                    return self.parse_bjobs_record(process_output, job)
 
             return self.fallbackGetJobExitCode(job)
 
-        def parse_bjobs_record(self,bjobs_record: dict, job: int) -> Union[int, None]:
+        def parse_bjobs_record(self, bjobs_record: dict, job: int) -> Union[int, None]:
             """
             Helper functions for getJobExitCode and  to parse the bjobs status record
             """
-            if 'STAT' in bjobs_record:
-                process_status = bjobs_record['STAT']
-                if process_status == 'DONE':
-                    logger.debug(
-                        "bjobs detected job completed for job: {}".format(job))
+            if "STAT" in bjobs_record:
+                process_status = bjobs_record["STAT"]
+                if process_status == "DONE":
+                    logger.debug("bjobs detected job completed for job: {}".format(job))
                     return 0
-                if process_status == 'PEND':
+                if process_status == "PEND":
                     pending_info = ""
-                    if 'PEND_REASON' in bjobs_record:
-                        if bjobs_record['PEND_REASON']:
-                            pending_info = "\n" + \
-                                bjobs_record['PEND_REASON']
+                    if "PEND_REASON" in bjobs_record:
+                        if bjobs_record["PEND_REASON"]:
+                            pending_info = "\n" + bjobs_record["PEND_REASON"]
                     logger.debug(
-                        "bjobs detected job pending with: {}\nfor job: {}".format(pending_info, job))
+                        "bjobs detected job pending with: {}\nfor job: {}".format(
+                            pending_info, job
+                        )
+                    )
                     return None
-                if process_status == 'EXIT':
+                if process_status == "EXIT":
                     exit_code = 1
                     exit_reason = ""
-                    if 'EXIT_CODE' in bjobs_record:
-                        exit_code_str = bjobs_record['EXIT_CODE']
+                    if "EXIT_CODE" in bjobs_record:
+                        exit_code_str = bjobs_record["EXIT_CODE"]
                         if exit_code_str:
                             exit_code = int(exit_code_str)
-                    if 'EXIT_REASON' in bjobs_record:
-                        exit_reason = bjobs_record['EXIT_REASON']
+                    if "EXIT_REASON" in bjobs_record:
+                        exit_reason = bjobs_record["EXIT_REASON"]
                     exit_info = ""
                     if exit_code:
                         exit_info = "\nexit code: {}".format(exit_code)
                     if exit_reason:
                         exit_info += "\nexit reason: {}".format(exit_reason)
                     logger.error(
-                        "bjobs detected job failed with: {}\nfor job: {}".format(exit_info, job))
+                        "bjobs detected job failed with: {}\nfor job: {}".format(
+                            exit_info, job
+                        )
+                    )
                     if "TERM_MEMLIMIT" in exit_reason:
                         return BatchJobExitReason.MEMLIMIT
                     return exit_code
-                if process_status == 'RUN':
+                if process_status == "RUN":
                     logger.debug(
-                        "bjobs detected job started but not completed for job: {}".format(job))
+                        "bjobs detected job started but not completed for job: {}".format(
+                            job
+                        )
+                    )
                     return None
-                if process_status in {'PSUSP', 'USUSP', 'SSUSP'}:
-                    logger.debug(
-                        "bjobs detected job suspended for job: {}".format(job))
+                if process_status in {"PSUSP", "USUSP", "SSUSP"}:
+                    logger.debug("bjobs detected job suspended for job: {}".format(job))
                     return None
 
                 return self.getJobExitCodeBACCT(job)
