@@ -106,33 +106,33 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 result = "NOT_SUBMITTED_{}".format(temp_id)
             return result
 
-        def coalesce_job_exit_codes(self, lsf_job_ids: list) -> list:
+        def coalesce_job_exit_codes(self, batch_job_id_list: list) -> list:
             status_dict = {}
-            valid_lsf_job_ids = []
+            valid_batch_job_id_list = []
             status_resonse = []
-            for single_lsf_id in lsf_job_ids:
+            for single_lsf_id in batch_job_id_list:
                 if "NOT_SUBMITTED" in single_lsf_id:
                     logger.error(
-                        "bjobs detected job [{}] failed to submit".format(single_lsf_id)
+                        "bjobs detected job [%s] failed to submit", single_lsf_id
                     )
                     status_dict[single_lsf_id] = 1
-                job, task = (single_lsf_id, None)
+                job = single_lsf_id
                 if "." in single_lsf_id:
-                    job, task = single_lsf_id.split(".", 1)
-                valid_lsf_job_ids.append(job)
-            if valid_lsf_job_ids:
+                    job = single_lsf_id.split(".", 1)[0]
+                valid_batch_job_id_list.append(job)
+            if valid_batch_job_id_list:
                 args = [
                     "bjobs",
                     "-json",
                     "-o",
                     "jobid user exit_code stat exit_reason pend_reason",
-                ] + valid_lsf_job_ids
+                ] + valid_batch_job_id_list
                 logger.debug("Getting coalesced job exit codes via bjobs")
-                process = subprocess.Popen(
-                    args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+                bjobs_records = self.parseBjobs(
+                    subprocess.run(
+                        args, check=False, stderr=subprocess.STDOUT, encoding="utf-8"
+                    ).stdout
                 )
-                output = process.stdout.read().decode("utf-8")
-                bjobs_records = self.parseBjobs(output)
                 if bjobs_records:
                     for single_record in bjobs_records:
                         if "JOBID" in single_record:
@@ -140,13 +140,13 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                             status_dict[single_job_id] = self.parse_bjobs_record(
                                 single_record, single_job_id
                             )
-            for single_lsf_id in lsf_job_ids:
+            for single_lsf_id in batch_job_id_list:
                 if "NOT_SUBMITTED" in single_lsf_id:
                     status_resonse.append(status_dict[single_lsf_id])
                 else:
-                    job, task = (single_lsf_id, None)
+                    job = single_lsf_id
                     if "." in single_lsf_id:
-                        job, task = single_lsf_id.split(".", 1)
+                        job = single_lsf_id.split(".", 1)[0]
                     if job in status_dict:
                         status_resonse.append(status_dict[job])
                     else:
@@ -185,7 +185,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             if "STAT" in bjobs_record:
                 process_status = bjobs_record["STAT"]
                 if process_status == "DONE":
-                    logger.debug("bjobs detected job completed for job: {}".format(job))
+                    logger.debug("bjobs detected job completed for job: %s", job)
                     return 0
                 if process_status == "PEND":
                     pending_info = ""
@@ -193,9 +193,8 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                         if bjobs_record["PEND_REASON"]:
                             pending_info = "\n" + bjobs_record["PEND_REASON"]
                     logger.debug(
-                        "bjobs detected job pending with: {}\nfor job: {}".format(
-                            pending_info, job
-                        )
+                        "bjobs detected job pending with: %s\nfor job: %s",
+                        (pending_info, job),
                     )
                     return None
                 if process_status == "EXIT":
@@ -213,22 +212,19 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     if exit_reason:
                         exit_info += "\nexit reason: {}".format(exit_reason)
                     logger.error(
-                        "bjobs detected job failed with: {}\nfor job: {}".format(
-                            exit_info, job
-                        )
+                        "bjobs detected job failed with: %s\nfor job: %s",
+                        (exit_info, job),
                     )
                     if "TERM_MEMLIMIT" in exit_reason:
                         return BatchJobExitReason.MEMLIMIT
                     return exit_code
                 if process_status == "RUN":
                     logger.debug(
-                        "bjobs detected job started but not completed for job: {}".format(
-                            job
-                        )
+                        "bjobs detected job started but not completed for job: %s", job
                     )
                     return None
                 if process_status in {"PSUSP", "USUSP", "SSUSP"}:
-                    logger.debug("bjobs detected job suspended for job: {}".format(job))
+                    logger.debug("bjobs detected job suspended for job: %s", job)
                     return None
 
                 return self.getJobExitCodeBACCT(job)

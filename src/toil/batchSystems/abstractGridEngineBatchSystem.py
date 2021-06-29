@@ -204,7 +204,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             return activity
 
         def _handle_job_status(
-            self, jobID: int, status: Union[int, None], activity: bool
+            self, job_id: int, status: Union[int, None], activity: bool
         ) -> bool:
             """
             Helper method for checkOnJobs to handle job statuses
@@ -212,21 +212,20 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             if status is not None:
                 self.updatedJobsQueue.put(
                     UpdatedBatchJobInfo(
-                        jobID=jobID, exitStatus=status, exitReason=None, wallTime=None
+                        jobID=job_id, exitStatus=status, exitReason=None, wallTime=None
                     )
                 )
-                self.forgetJob(jobID)
+                self.forgetJob(job_id)
                 return True
-            elif status is not None and isinstance(status, BatchJobExitReason):
+            if status is not None and isinstance(status, BatchJobExitReason):
                 self.updatedJobsQueue.put(
                     UpdatedBatchJobInfo(
-                        jobID=jobID, exitStatus=1, exitReason=status, wallTime=None
+                        jobID=job_id, exitStatus=1, exitReason=status, wallTime=None
                     )
                 )
-                self.forgetJob(jobID)
+                self.forgetJob(job_id)
                 return True
-            else:
-                return activity
+            return activity
 
         def _runStep(self):
             """return True if more jobs, False is all done"""
@@ -257,7 +256,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 raise
 
         @abstractmethod
-        def coalesce_job_exit_codes(self, batchJobIDList: list) -> list:
+        def coalesce_job_exit_codes(self, batch_job_id_list: list) -> list:
             """
             Returns exit codes for a list of jobs.
             Implementation-specific; called by
