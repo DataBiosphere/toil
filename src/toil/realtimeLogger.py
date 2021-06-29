@@ -26,10 +26,11 @@ from typing import Any, Optional, Type, TYPE_CHECKING
 from toil.batchSystems.options import getPublicIP
 from toil.statsAndLogging import set_log_level
 
-logger = logging.getLogger(__name__)
-
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
+
+logger = logging.getLogger(__name__)
+
 
 class LoggingDatagramHandler(SocketServer.BaseRequestHandler):
     """
