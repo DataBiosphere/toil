@@ -30,7 +30,6 @@ def main():
         'src/toil/leader.py',
         'src/toil/statsAndLogging.py',
         'src/toil/common.py',
-        'src/toil/realtimeLogger.py',
         'src/toil/worker.py',
         'src/toil/serviceManager.py',
         'src/toil/toilState.py',
