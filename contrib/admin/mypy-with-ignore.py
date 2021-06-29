@@ -28,7 +28,6 @@ def main():
         'docs/vendor/sphinxcontrib/__init__.py',
         'src/toil/job.py',
         'src/toil/leader.py',
-        'src/toil/statsAndLogging.py',
         'src/toil/common.py',
         'src/toil/realtimeLogger.py',
         'src/toil/worker.py',
