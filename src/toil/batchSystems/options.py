@@ -11,14 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 import socket
-
 from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import closing
 from typing import Callable, Union
 
-from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
-                                        BATCH_SYSTEMS,
-                                        DEFAULT_BATCH_SYSTEM)
+from toil.batchSystems.registry import (
+    BATCH_SYSTEM_FACTORY_REGISTRY,
+    BATCH_SYSTEMS,
+    DEFAULT_BATCH_SYSTEM,
+)
 from toil.lib.threading import cpu_count
 
 
@@ -102,32 +103,70 @@ def set_batchsystem_options(batch_system: str, set_option: Callable) -> None:
 
 def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
     # TODO: Only add options for the system the user is specifying?
-    parser.add_argument("--batchSystem", dest="batchSystem", default=DEFAULT_BATCH_SYSTEM, choices=BATCH_SYSTEMS,
-                        help=f"The type of batch system to run the job(s) with, currently can be one "
-                             f"of {', '.join(BATCH_SYSTEMS)}. default={DEFAULT_BATCH_SYSTEM}")
-    parser.add_argument("--disableHotDeployment", dest="disableAutoDeployment", action='store_true', default=None,
-                        help="Hot-deployment was renamed to auto-deployment.  Option now redirects to "
-                             "--disableAutoDeployment.  Left in for backwards compatibility.")
-    parser.add_argument("--disableAutoDeployment", dest="disableAutoDeployment", action='store_true', default=None,
-                        help="Should auto-deployment of the user script be deactivated? If True, the user "
-                             "script/package should be present at the same location on all workers.  Default = False.")
-    parser.add_argument("--maxLocalJobs", default=cpu_count(),
-                        help=f"For batch systems that support a local queue for housekeeping jobs "
-                             f"(Mesos, GridEngine, htcondor, lsf, slurm, torque).  Specifies the maximum "
-                             f"number of these housekeeping jobs to run on the local system.  The default "
-                             f"(equal to the number of cores) is a maximum of {cpu_count()} concurrent "
-                             f"local housekeeping jobs.")
-    parser.add_argument("--manualMemArgs", default=False, action='store_true', dest="manualMemArgs",
-                        help="Do not add the default arguments: 'hv=MEMORY' & 'h_vmem=MEMORY' to the qsub "
-                             "call, and instead rely on TOIL_GRIDGENGINE_ARGS to supply alternative arguments.  "
-                             "Requires that TOIL_GRIDGENGINE_ARGS be set.")
-    parser.add_argument("--runCwlInternalJobsOnWorkers", dest="runCwlInternalJobsOnWorkers", action='store_true',
-                        default=None,
-                        help="Whether to run CWL internal jobs (e.g. CWLScatter) on the worker nodes "
-                             "instead of the primary node. If false (default), then all such jobs are run on "
-                             "the primary node. Setting this to true can speed up the pipeline for very large "
-                             "workflows with many sub-workflows and/or scatters, provided that the worker "
-                             "pool is large enough.")
+    parser.add_argument(
+        "--batchSystem",
+        dest="batchSystem",
+        default=DEFAULT_BATCH_SYSTEM,
+        choices=BATCH_SYSTEMS,
+        help=f"The type of batch system to run the job(s) with, currently can be one "
+        f"of {', '.join(BATCH_SYSTEMS)}. default={DEFAULT_BATCH_SYSTEM}",
+    )
+    parser.add_argument(
+        "--disableHotDeployment",
+        dest="disableAutoDeployment",
+        action="store_true",
+        default=None,
+        help="Hot-deployment was renamed to auto-deployment.  Option now redirects to "
+        "--disableAutoDeployment.  Left in for backwards compatibility.",
+    )
+    parser.add_argument(
+        "--disableAutoDeployment",
+        dest="disableAutoDeployment",
+        action="store_true",
+        default=None,
+        help="Should auto-deployment of the user script be deactivated? If True, the user "
+        "script/package should be present at the same location on all workers.  Default = False.",
+    )
+    parser.add_argument(
+        "--maxLocalJobs",
+        default=cpu_count(),
+        help=f"For batch systems that support a local queue for housekeeping jobs "
+        f"(Mesos, GridEngine, htcondor, lsf, slurm, torque).  Specifies the maximum "
+        f"number of these housekeeping jobs to run on the local system.  The default "
+        f"(equal to the number of cores) is a maximum of {cpu_count()} concurrent "
+        f"local housekeeping jobs.",
+    )
+    parser.add_argument(
+        "--manualMemArgs",
+        default=False,
+        action="store_true",
+        dest="manualMemArgs",
+        help="Do not add the default arguments: 'hv=MEMORY' & 'h_vmem=MEMORY' to the qsub "
+        "call, and instead rely on TOIL_GRIDGENGINE_ARGS to supply alternative arguments.  "
+        "Requires that TOIL_GRIDGENGINE_ARGS be set.",
+    )
+    parser.add_argument(
+        "--runCwlInternalJobsOnWorkers",
+        dest="runCwlInternalJobsOnWorkers",
+        action="store_true",
+        default=None,
+        help="Whether to run CWL internal jobs (e.g. CWLScatter) on the worker nodes "
+        "instead of the primary node. If false (default), then all such jobs are run on "
+        "the primary node. Setting this to true can speed up the pipeline for very large "
+        "workflows with many sub-workflows and/or scatters, provided that the worker "
+        "pool is large enough.",
+    )
+    parser.add_argument(
+        "--coalesceStatusCalls",
+        dest="coalesceStatusCalls",
+        action="store_true",
+        default=None,
+        help=(
+            "Coalese status calls to prevent the batch system from being overloaded. "
+            "Currently only supported for LSF. "
+            "default=false"
+        ),
+    )
 
     add_parasol_options(parser)
     add_single_machine_options(parser)
@@ -147,6 +186,7 @@ def set_batchsystem_config_defaults(config) -> None:
     config.statePollingWait = None
     config.maxLocalJobs = cpu_count()
     config.manualMemArgs = False
+    config.coalesceStatusCalls = False
 
     # parasol
     config.parasolCommand = 'parasol'

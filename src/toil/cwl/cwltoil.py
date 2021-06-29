@@ -746,6 +746,12 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             destination = super(ToilFsAccess, self)._abs(path)
         return destination
 
+    def size(self, path: str) -> int:
+        if path.startswith("toilfs:"):
+            return self.file_store.getGlobalFileSize(FileID.unpack(path[7:]))
+        else:
+            return super().size(path)
+
 
 def toil_get_file(
     file_store: AbstractFileStore, index: dict, existing: dict, file_store_id: str

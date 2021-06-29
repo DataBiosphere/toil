@@ -65,6 +65,19 @@ wdl_dependency_is_stand_alone:
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[wdl]
     - make test tests=src/toil/test/wdl/toilwdlTest.py::ToilWdlIntegrationTest::testMD5sum
 
+# Tests that used to be on Travis
+# The Makefile sets "TRAVIS=true", which is now a misnomer, but we don't need
+# to also do it here.
+quick_test_offline:
+  stage: basic_tests
+  script:
+    - virtualenv -p python3.6 venv
+    - . venv/bin/activate
+    - pip install -U pip wheel
+    - make prepare
+    - make develop extras=[aws,google,wdl]
+    - TOIL_TEST_QUICK=True make test_offline
+
 # Python3.6
 py36_main:
   stage: basic_tests
