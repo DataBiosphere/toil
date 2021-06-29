@@ -19,7 +19,7 @@ import os
 import os.path
 import socketserver as SocketServer
 import threading
-import toil.batchSystems.abstractBatchSystem
+import typing
 
 from types import TracebackType
 from typing import Any, Optional, Type
@@ -29,6 +29,8 @@ from toil.statsAndLogging import set_log_level
 
 logger = logging.getLogger(__name__)
 
+if typing.TYPE_CHECKING:
+    from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
 
 class LoggingDatagramHandler(SocketServer.BaseRequestHandler):
     """
@@ -130,7 +132,7 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
     logger = None
 
     @classmethod
-    def _startLeader(cls, batchSystem: toil.batchSystems.abstractBatchSystem.AbstractBatchSystem, level: str = defaultLevel) -> None:
+    def _startLeader(cls, batchSystem: AbstractBatchSystem, level: str = defaultLevel) -> None:
         with cls.lock:
             if cls.initialized == 0:
                 cls.initialized += 1
@@ -218,7 +220,7 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
                             cls.logger.addHandler(JSONDatagramHandler(host, int(port)))
         return cls.logger
 
-    def __init__(self, batchSystem: toil.batchSystems.abstractBatchSystem.AbstractBatchSystem, level: str = defaultLevel):
+    def __init__(self, batchSystem: AbstractBatchSystem, level: str = defaultLevel):
         """
         A context manager that starts up the UDP server.
 
