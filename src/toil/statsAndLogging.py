@@ -17,13 +17,13 @@ import logging
 import os
 import time
 import toil.common
+import toil.jobStores.abstractJobStore as abstractJobStore
 
 from argparse import ArgumentParser
 from threading import Event, Thread
 from logging.handlers import RotatingFileHandler
 from typing import List, Any, Optional, Union, TextIO, BinaryIO, Callable
 
-from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.expando import Expando
 from toil.lib.resources import get_total_cpu_time
 
@@ -37,7 +37,7 @@ __loggingFiles = []
 
 class StatsAndLogging:
     """A thread to aggregate statistics and logging."""
-    def __init__(self, jobStore: AbstractJobStore, config: toil.common.Config) -> None:
+    def __init__(self, jobStore: abstractJobStore.AbstractJobStore, config: toil.common.Config) -> None:
         self._stop = Event()
         self._worker = Thread(target=self.statsAndLoggingAggregator,
                               args=(jobStore, self._stop, config),
@@ -133,7 +133,7 @@ class StatsAndLogging:
                 os.symlink(os.path.relpath(fullName, path), name)
 
     @classmethod
-    def statsAndLoggingAggregator(cls, jobStore: AbstractJobStore, stop: Event, config: toil.common.Config) -> None:
+    def statsAndLoggingAggregator(cls, jobStore: abstractJobStore.AbstractJobStore, stop: Event, config: toil.common.Config) -> None:
         """
         The following function is used for collating stats/reporting log messages from the workers.
         Works inside of a thread, collates as long as the stop flag is not True.
