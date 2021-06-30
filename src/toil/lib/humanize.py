@@ -19,11 +19,9 @@ License: MIT
 logger = logging.getLogger(__name__)
 
 
-def bytes2human(n: SupportsInt, fmt: Optional[str] = None, symbols: Optional[str] = None) -> str:
+def bytes2human(n: SupportsInt) -> str:
     """
-    Convert n bytes into a human readable string based on format.
-    symbols can be either "customary", "customary_ext", "iec" or "iec_ext",
-    see: http://goo.gl/kTQMs
+    Convert n bytes into a human readable string.
     """
     logger.warning('Deprecated toil method.  Please use "toil.lib.conversions.bytes2human()" instead."')
     return b2h(n)
