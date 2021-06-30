@@ -141,6 +141,9 @@ the logging module:
                         The host and port of the Mesos master separated by a
                         colon. (default: 169.233.147.202:5050)
 
+  --coalesceStatusCalls Coalese status calls to prevent the batch system from
+                        being overloaded. Currently only supported for LSF.
+
 **Autoscaling Options**
 
   --provisioner CLOUDPROVIDER
