@@ -87,7 +87,6 @@ def main():
         'src/toil/jobStores/aws/jobStore.py',
         'src/toil/jobStores/aws/__init__.py',
         'src/toil/utils/__init__.py',
-        'src/toil/lib/memoize.py',
         'src/toil/lib/throttle.py',
         'src/toil/lib/humanize.py',
         'src/toil/lib/iterables.py',
