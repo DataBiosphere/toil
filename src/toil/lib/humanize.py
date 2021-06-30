@@ -4,7 +4,7 @@
 
 # http://code.activestate.com/recipes/578019-bytes-to-human-human-to-bytes-converter/
 import logging
-from typing import Optional, SupportsInt
+from typing import SupportsInt
 from toil.lib.conversions import bytes2human as b2h, human2bytes as h2b
 
 """
