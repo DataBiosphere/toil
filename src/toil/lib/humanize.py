@@ -29,7 +29,7 @@ def bytes2human(n: SupportsInt, fmt: Optional[str] = None, symbols: Optional[str
     return b2h(n)
 
 
-def human2bytes(s):
+def human2bytes(s: str) -> int:
     """
     Attempts to guess the string format based on default symbols
     set and return the corresponding bytes as an integer.

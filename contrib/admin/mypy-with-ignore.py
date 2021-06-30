@@ -89,7 +89,6 @@ def main():
         'src/toil/utils/__init__.py',
         'src/toil/lib/memoize.py',
         'src/toil/lib/throttle.py',
-        'src/toil/lib/humanize.py',
         'src/toil/lib/iterables.py',
         'src/toil/lib/bioio.py',
         'src/toil/lib/ec2.py',
