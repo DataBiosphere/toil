@@ -16,12 +16,18 @@ import json
 import logging
 import os
 import time
+
 from argparse import ArgumentParser
 from threading import Event, Thread
-from typing import Optional, Union, TextIO, BinaryIO
+from logging.handlers import RotatingFileHandler
+from typing import List, Any, Optional, Union, TextIO, BinaryIO, Callable, TYPE_CHECKING
 
 from toil.lib.expando import Expando
 from toil.lib.resources import get_total_cpu_time
+
+if TYPE_CHECKING:
+    from toil.common import Config
+    from toil.jobStores.abstractJobStore import AbstractJobStore
 
 logger = logging.getLogger(__name__)
 root_logger = logging.getLogger()
@@ -33,18 +39,18 @@ __loggingFiles = []
 
 class StatsAndLogging:
     """A thread to aggregate statistics and logging."""
-    def __init__(self, jobStore, config):
+    def __init__(self, jobStore: 'AbstractJobStore', config: 'Config') -> None:
         self._stop = Event()
         self._worker = Thread(target=self.statsAndLoggingAggregator,
                               args=(jobStore, self._stop, config),
                               daemon=True)
 
-    def start(self):
+    def start(self) -> None:
         """Start the stats and logging thread."""
         self._worker.start()
 
     @classmethod
-    def formatLogStream(cls, stream: Union[TextIO, BinaryIO], job_name: Optional[str] = None):
+    def formatLogStream(cls, stream: Union[TextIO, BinaryIO], job_name: Optional[str] = None) -> str:
         """
         Given a stream of text or bytes, and the job name, job itself, or some
         other optional stringifyable identity info for the job, return a big
@@ -54,6 +60,8 @@ class StatsAndLogging:
         We don't want to prefix every line of the job's log with our own
         logging info, or we get prefixes wider than any reasonable terminal
         and longer than the messages.
+
+        :param stream: The stream of text or bytes to print for the user.
         """
         lines = [f'Log from job "{job_name}" follows:', '=========>']
 
@@ -68,7 +76,8 @@ class StatsAndLogging:
 
 
     @classmethod
-    def logWithFormatting(cls, jobStoreID, jobLogs, method=logger.debug, message=None):
+    def logWithFormatting(cls, jobStoreID: str, jobLogs: Union[TextIO, BinaryIO], method: Callable[[str], None] = logger.debug,
+                            message: Optional[str] = None) -> None:
         if message is not None:
             method(message)
 
@@ -76,8 +85,8 @@ class StatsAndLogging:
         method(cls.formatLogStream(jobLogs, jobStoreID))
 
     @classmethod
-    def writeLogFiles(cls, jobNames, jobLogList, config, failed=False):
-        def createName(logPath, jobName, logExtension, failed=False):
+    def writeLogFiles(cls, jobNames: List[str], jobLogList: List[str], config: 'Config', failed: bool = False) -> None:
+        def createName(logPath: str, jobName: str, logExtension: str, failed: bool = False) -> str:
             logName = jobName.replace('-', '--')
             logName = logName.replace('/', '-')
             logName = logName.replace(' ', '_')
@@ -98,7 +107,7 @@ class StatsAndLogging:
 
         mainFileName = jobNames[0]
         extension = '.log'
-
+        writeFn: Callable[..., Any]
         if config.writeLogs:
             path = config.writeLogs
             writeFn = open
@@ -126,7 +135,7 @@ class StatsAndLogging:
                 os.symlink(os.path.relpath(fullName, path), name)
 
     @classmethod
-    def statsAndLoggingAggregator(cls, jobStore, stop, config):
+    def statsAndLoggingAggregator(cls, jobStore: 'AbstractJobStore', stop: Event, config: 'Config') -> None:
         """
         The following function is used for collating stats/reporting log messages from the workers.
         Works inside of a thread, collates as long as the stop flag is not True.
@@ -135,7 +144,7 @@ class StatsAndLogging:
         startTime = time.time()
         startClock = get_total_cpu_time()
 
-        def callback(fileHandle):
+        def callback(fileHandle: Union[BinaryIO, TextIO]) -> None:
             statsStr = fileHandle.read()
             if not isinstance(statsStr, str):
                 statsStr = statsStr.decode()
@@ -173,9 +182,9 @@ class StatsAndLogging:
         # Finish the stats file
         text = json.dumps(dict(total_time=str(time.time() - startTime),
                                total_clock=str(get_total_cpu_time() - startClock)), ensure_ascii=True)
-        jobStore.writeStatsAndLogging(bytes(text, 'utf-8'))
+        jobStore.writeStatsAndLogging(text)
 
-    def check(self):
+    def check(self) -> None:
         """
         Check on the stats and logging aggregator.
         :raise RuntimeError: If the underlying thread has quit.
@@ -183,7 +192,7 @@ class StatsAndLogging:
         if not self._worker.is_alive():
             raise RuntimeError("Stats and logging thread has quit")
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """Finish up the stats/logging aggregation thread."""
         logger.debug('Waiting for stats and logging collator thread to finish ...')
         startTime = time.time()
@@ -193,7 +202,7 @@ class StatsAndLogging:
         # in addition to cleaning on exceptions, onError should clean if there are any failed jobs
 
 
-def set_log_level(level, set_logger=None):
+def set_log_level(level: str, set_logger: Optional[logging.Logger] = None) -> None:
     """Sets the root logger level to a given string level (like "INFO")."""
     level = "CRITICAL" if level.upper() == "OFF" else level.upper()
     set_logger = set_logger if set_logger else root_logger
@@ -204,7 +213,7 @@ def set_log_level(level, set_logger=None):
     suppress_exotic_logging(__name__)
 
 
-def add_logging_options(parser: ArgumentParser):
+def add_logging_options(parser: ArgumentParser) -> None:
     """Add logging options to set the global log level."""
     group = parser.add_argument_group("Logging Options")
     default_loglevel = logging.getLevelName(DEFAULT_LOGLEVEL)
@@ -224,7 +233,7 @@ def add_logging_options(parser: ArgumentParser):
                        help="Turn on rotating logging, which prevents log files from getting too big.")
 
 
-def configure_root_logger():
+def configure_root_logger() -> None:
     """
     Set up the root logger with handlers and formatting.
 
@@ -236,18 +245,19 @@ def configure_root_logger():
     root_logger.setLevel(DEFAULT_LOGLEVEL)
 
 
-def log_to_file(log_file, log_rotation):
+def log_to_file(log_file: str, log_rotation: bool) -> None:
     if log_file and log_file not in __loggingFiles:
         logger.debug(f"Logging to file '{log_file}'.")
         __loggingFiles.append(log_file)
+        handler: Union[RotatingFileHandler, logging.FileHandler]
         if log_rotation:
-            handler = logging.handlers.RotatingFileHandler(log_file, maxBytes=1000000, backupCount=1)
+            handler = RotatingFileHandler(log_file, maxBytes=1000000, backupCount=1)
         else:
             handler = logging.FileHandler(log_file)
         root_logger.addHandler(handler)
 
 
-def set_logging_from_options(options):
+def set_logging_from_options(options: 'Config') -> None:
     configure_root_logger()
     options.logLevel = options.logLevel or logging.getLevelName(root_logger.getEffectiveLevel())
     set_log_level(options.logLevel)
@@ -258,7 +268,7 @@ def set_logging_from_options(options):
     log_to_file(options.logFile, options.logRotating)
 
 
-def suppress_exotic_logging(local_logger):
+def suppress_exotic_logging(local_logger: str) -> None:
     """
     Attempts to suppress the loggers of all non-Toil packages by setting them to CRITICAL.
 
@@ -273,8 +283,10 @@ def suppress_exotic_logging(local_logger):
     never_suppress = ['toil', '__init__', '__main__', 'toil-rt', 'cwltool']
     always_suppress = ['boto3', 'boto', 'botocore']  # ensure we suppress even before instantiated
 
-    top_level_loggers = list()
-    for pkg_logger in list(logging.Logger.manager.loggerDict.keys()) + always_suppress:
+    top_level_loggers: List[str] = []
+
+    # Due to https://stackoverflow.com/questions/61683713
+    for pkg_logger in list(logging.Logger.manager.loggerDict.keys()) + always_suppress: # type: ignore
         if pkg_logger != local_logger:
             # many sub-loggers may exist, like "boto.a", "boto.b", "boto.c"; we only want the top_level: "boto"
             top_level_logger = pkg_logger.split('.')[0] if '.' in pkg_logger else pkg_logger
