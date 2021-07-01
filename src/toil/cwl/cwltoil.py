@@ -2358,7 +2358,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     set_secondary(initialized_job_order[shortname(inp["id"])])
 
                 if shortname(inp["id"]) in initialized_job_order and inp["type"] == "File":
-                    initialized_job_order[shortname(inp["id"])]["streamable"] = inp.get(["streamable"], False)
+                    initialized_job_order[shortname(inp["id"])]["streamable"] = inp.get("streamable", False)
 
             runtime_context.use_container = not options.no_container
             runtime_context.tmp_outdir_prefix = os.path.realpath(tmp_outdir_prefix)
