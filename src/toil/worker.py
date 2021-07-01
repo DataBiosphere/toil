@@ -55,10 +55,9 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
     Returns the next chainable job's JobDescription after the given predecessor
     JobDescription, if one exists, or None if the chain must terminate.
 
-    :param toil.job.JobDescription predecessor: The job to chain from
-    :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: The JobStore to fetch JobDescriptions from.
-    :param toil.common.Config config: The configuration for the current run.
-    :rtype: toil.job.JobDescription or None
+    :param predecessor: The job to chain from
+    :param jobStore: The JobStore to fetch JobDescriptions from.
+    :param config: The configuration for the current run.
     """
     #If no more jobs to run or services not finished, quit
     if len(predecessor.stack) == 0 or len(predecessor.services) > 0 or (isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint != None):
@@ -128,9 +127,10 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
     """
     Worker process script, runs a job.
 
-    :param str jobName: The "job name" (a user friendly name) of the job to be run
-    :param str jobStoreLocator: Specifies the job store to use
-    :param str jobStoreID: The job store ID of the job to be run
+    :param jobStore: The JobStore to fetch JobDescriptions from.
+    :param config: The configuration for the current run.
+    :param jobName: The "job name" (a user friendly name) of the job to be run
+    :param jobStoreID: The job store ID of the job to be run
 
     :return int: 1 if a job failed, or 0 if all jobs succeeded
     """
