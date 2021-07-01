@@ -80,7 +80,6 @@ from cwltool.utils import (
     adjustDirObjs,
     adjustFileObjs,
     aslist,
-    convert_pathsep_to_unix,
     get_listing,
     normalizeFilesDirs,
     visit_class,
@@ -570,11 +569,9 @@ class ToilPathMapper(PathMapper):
     ) -> None:
         """Iterate over a CWL object, resolving File and Directory path references."""
         stagedir = cast(Optional[str], obj.get("dirname")) or stagedir
-        tgt = convert_pathsep_to_unix(
-            os.path.join(
+        tgt = os.path.join(
                 stagedir,
                 cast(str, obj["basename"]),
-            )
         )
         if obj["location"] in self._pathmap:
             return
