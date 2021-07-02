@@ -564,7 +564,7 @@ class CWLToilOptimizeTests(ToilTest):
             shutil.rmtree(self.outDir)
         unittest.TestCase.tearDown(self)
 
-    def _tester(self, cwlfile, jobfile, expect, main_args=[], out_name="output"):
+    def _tester(self, cwlfile, jobfile, expect, main_args=[]):
         from toil.cwl import cwltoil
         st = StringIO()
         main_args = main_args[:]
@@ -598,12 +598,10 @@ class CWLToilOptimizeTests(ToilTest):
         self._tester('src/toil/test/cwl/md_list_reduced_2nests.cwl',
                      'src/toil/test/cwl/md_list_reduced.json',
                      [['genion'], ['grompp'], ['pdb2gmx', 'editconf'], ['solvate']],
-                     main_args=[],
-                     out_name="outfile")
+                     main_args=[])
 
     def test_biobb_fail(self):
         self._tester('src/toil/test/cwl/md_list_reduced.cwl',
                      'src/toil/test/cwl/md_list_reduced.json',
                      [['genion'], ['grompp'], ['pdb2gmx', 'editconf'], ['solvate']],
-                     main_args=[],
-                     out_name="outfile")
+                     main_args=[])
