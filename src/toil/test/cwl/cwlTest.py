@@ -546,3 +546,64 @@ class CWLSmallTests(ToilTest):
         assert stdout == b'{}'
         assert b'Finished toil run successfully' in stderr
         assert p.returncode == 0
+
+
+@needs_cwl
+class CWLToilOptimizeTests(ToilTest):
+    def setUp(self):
+        """Runs anew before each test to create farm fresh temp dirs."""
+        self.outDir = f'/tmp/toil-cwl-test-{str(uuid.uuid4())}'
+        os.makedirs(self.outDir)
+        self.rootDir = self._projectRootPath()
+        self.jobDir = os.path.join(self.outDir, 'jobStore')
+        self.statDir = os.path.join(self.jobDir, 'stats')
+
+    def tearDown(self):
+        """Clean up outputs."""
+        if os.path.exists(self.outDir):
+            shutil.rmtree(self.outDir)
+        unittest.TestCase.tearDown(self)
+
+    def _tester(self, cwlfile, jobfile, expect, main_args=[], out_name="output"):
+        from toil.cwl import cwltoil
+        st = StringIO()
+        main_args = main_args[:]
+        main_args.extend(['--logDebug','--stats','--outdir', self.outDir, '--jobStore', self.jobDir,
+                          os.path.join(self.rootDir, cwlfile), os.path.join(self.rootDir, jobfile)])
+        cwltoil.main(main_args, stdout=st)
+        out = self._extract_job_lists()
+        self.assertEqual(out, expect)
+
+    def _match_extract_string(self, stringin):
+        import re
+        search_pattern = re.compile('^.* (\w*) kind-CWLJob/instance-.*$')
+        if search_pattern.match(stringin):
+            return(search_pattern.sub(r'\1',stringin))
+        else:
+            return(None)
+
+    def _extract_job_lists(self):
+        worker_list = []
+        for filename in os.listdir(self.statDir):
+            with open(os.path.join(self.statDir,filename)) as f:
+                test_json = json.load(f)
+                if 'workers' in test_json.keys() and len(test_json['jobs']) > 0:
+                    job_list = [self._match_extract_string(x) for x in test_json['logs']['names']]
+                    if not all(x == None for x in job_list):
+                        worker_list.append(job_list)
+        worker_list.sort()
+        return(worker_list)
+
+    def test_biobb_success(self):
+        self._tester('src/toil/test/cwl/md_list_reduced_2nests.cwl',
+                     'src/toil/test/cwl/md_list_reduced.json',
+                     [['genion'], ['grompp'], ['pdb2gmx', 'editconf'], ['solvate']],
+                     main_args=[],
+                     out_name="outfile")
+
+    def test_biobb_fail(self):
+        self._tester('src/toil/test/cwl/md_list_reduced.cwl',
+                     'src/toil/test/cwl/md_list_reduced.json',
+                     [['genion'], ['grompp'], ['pdb2gmx', 'editconf'], ['solvate']],
+                     main_args=[],
+                     out_name="outfile")

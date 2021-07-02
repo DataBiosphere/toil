@@ -1,0 +1,11 @@
+{
+  "step1_pdb_file": {
+    "class": "File",
+    "location": "lysozyme.pdb",
+    "format": "http://edamontology.org/format_1476"
+  },
+  "step1_pdb2gmx_config": "{\"gmxlib\":\"\",\"force_field\":\"amber99sb-ildn\"}",
+  "step2_editconf_config": "{\"box_type\": \"octahedron\", \"distance_to_molecule\": 0.8}",
+  "step4_grompp_genion_config": "{\"mdp\":{\"type\":\"minimization\",\"nsteps\":\"5000\"}}",
+  "step5_genion_config": "{\"neutral\": \"True\",\"concentration\":0.05}"
+}
