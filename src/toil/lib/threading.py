@@ -24,10 +24,11 @@ import threading
 import traceback
 from contextlib import contextmanager
 
-import psutil
+import psutil # type: ignore
 
 from toil.lib.exceptions import raise_
 from toil.lib.io import robust_rmtree
+from typing import Dict, Union, Iterator, Optional, Any
 
 logger = logging.getLogger(__name__)
 
@@ -63,17 +64,17 @@ class ExceptionalThread(threading.Thread):
     """
     exc_info = None
 
-    def run(self):
+    def run(self) -> None:
         try:
             self.tryRun()
         except:
             self.exc_info = sys.exc_info()
             raise
 
-    def tryRun(self):
+    def tryRun(self) -> None:
         super(ExceptionalThread, self).run()
 
-    def join(self, *args, **kwargs):
+    def join(self, *args: Optional[float], **kwargs: Optional[float]) -> None:
         super(ExceptionalThread, self).join(*args, **kwargs)
         if not self.is_alive() and self.exc_info is not None:
             exc_type, exc_value, traceback = self.exc_info
@@ -81,7 +82,7 @@ class ExceptionalThread(threading.Thread):
             raise_(exc_type, exc_value, traceback)
 
 
-def cpu_count():
+def cpu_count() -> Any:
     """
     Get the rounded-up integer number of whole CPUs available.
 
@@ -134,7 +135,7 @@ def cpu_count():
     except:
         # We can't actually read these cgroup fields. Maybe we are a mac or something.
         logger.debug('Could not inspect cgroup: %s', traceback.format_exc())
-        cgroup_size = float('inf')
+        cgroup_size = float('inf') # type: ignore
 
     # Return the smaller of the actual thread count and the cgroup's limit, minimum 1.
     result = max(1, min(cgroup_size, total_machine_size))
@@ -162,9 +163,9 @@ def cpu_count():
 current_process_name_lock = threading.Lock()
 # And a global dict from work directory to name in that work directory.
 # We also have a file descriptor per work directory but it is just leaked.
-current_process_name_for = {}
+current_process_name_for: Dict[str, str] = {}
 
-def collect_process_name_garbage():
+def collect_process_name_garbage() -> None:
     """
     Delete all the process names that point to files that don't exist anymore
     (because the work directory was temporary and got cleaned up). This is
@@ -186,7 +187,7 @@ def collect_process_name_garbage():
     for workDir in missing:
         del current_process_name_for[workDir]
 
-def destroy_all_process_names():
+def destroy_all_process_names() -> None:
     """
     Delete all our process name files because our process is going away.
 
@@ -203,7 +204,7 @@ def destroy_all_process_names():
 # Run the cleanup at exit
 atexit.register(destroy_all_process_names)
 
-def get_process_name(workDir):
+def get_process_name(workDir: str) -> str:
     """
     Return the name of the current process. Like a PID but visible between
     containers on what to Toil appears to be a node.
@@ -246,7 +247,7 @@ def get_process_name(workDir):
         # it to stay locked while we are alive.
 
 
-def process_name_exists(workDir, name):
+def process_name_exists(workDir: str, name: str) -> bool:
     """
     Return true if the process named by the given name (from process_name) exists, and false otherwise.
 
@@ -304,7 +305,7 @@ def process_name_exists(workDir, name):
 # Similar to the process naming system above, we define a global mutex system
 # for critical sections, based just around file locks.
 @contextmanager
-def global_mutex(workDir, mutex):
+def global_mutex(workDir: str, mutex: str) -> Iterator[None]:
     """
     Context manager that locks a mutex. The mutex is identified by the given
     name, and scoped to the given directory. Works across all containers that
@@ -338,7 +339,7 @@ def global_mutex(workDir, mutex):
         try:
             path_stats = os.stat(lock_filename)
         except FileNotFoundError:
-            path_stats = None
+            path_stats = None # type: ignore
 
         if path_stats is None or fd_stats.st_dev != path_stats.st_dev or fd_stats.st_ino != path_stats.st_ino:
             # The file we have a lock on is not the file linked to the name (if
@@ -386,7 +387,7 @@ class LastProcessStandingArena:
     Consider using a try/finally; this class is not a context manager.
     """
 
-    def __init__(self, workDir, name):
+    def __init__(self, workDir: str, name: str) -> None:
         """
         Connect to the arena specified by the given workDir and name.
 
@@ -418,7 +419,7 @@ class LastProcessStandingArena:
         # And we fill this in with the file name
         self.lockfileName = None
 
-    def enter(self):
+    def enter(self) -> None:
         """
         This process is entering the arena. If cleanup is in progress, blocks
         until it is finished.
@@ -442,15 +443,15 @@ class LastProcessStandingArena:
                 pass
 
             # Make ourselves a file in it and lock it to prove we are alive.
-            self.lockfileFD, self.lockfileName = tempfile.mkstemp(dir=self.lockfileDir)
+            self.lockfileFD, self.lockfileName = tempfile.mkstemp(dir=self.lockfileDir) # type: ignore
             # Nobody can see it yet, so lock it right away
-            fcntl.lockf(self.lockfileFD, fcntl.LOCK_EX)
+            fcntl.lockf(self.lockfileFD, fcntl.LOCK_EX) # type: ignore
 
             # Now we're properly in, so release the global mutex
 
         logger.debug('Now in arena %s', self.lockfileDir)
 
-    def leave(self):
+    def leave(self) -> Iterator[bool]:
         """
         This process is leaving the arena. If this process happens to be the
         last process standing, yields something, with other processes blocked
