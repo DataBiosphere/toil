@@ -20,8 +20,14 @@ import os.path
 import socketserver as SocketServer
 import threading
 
+from types import TracebackType
+from typing import Any, Optional, Type, TYPE_CHECKING
+
 from toil.batchSystems.options import getPublicIP
 from toil.statsAndLogging import set_log_level
+
+if TYPE_CHECKING:
+    from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +39,7 @@ class LoggingDatagramHandler(SocketServer.BaseRequestHandler):
     Uses bare JSON message encoding.
     """
 
-    def handle(self):
+    def handle(self) -> None:
         """
         Handle a single message. SocketServer takes care of splitting out the messages.
 
@@ -73,7 +79,7 @@ class JSONDatagramHandler(logging.handlers.DatagramHandler):
 
     They have to fit in a single UDP datagram, so don't try to log more than 64kb at once.
     """
-    def makePickle(self, record):
+    def makePickle(self, record: logging.LogRecord) -> bytes:
         """
         Actually, encode the record as bare JSON instead.
         """
@@ -85,7 +91,7 @@ class RealtimeLoggerMetaclass(type):
     Metaclass for RealtimeLogger that lets you do things like RealtimeLogger.warning(),
     RealtimeLogger.info(), etc.
     """
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         """
         If a real attribute can't be found, try one of the logging methods on the actual logger
         object.
@@ -126,7 +132,7 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
     logger = None
 
     @classmethod
-    def _startLeader(cls, batchSystem, level=defaultLevel):
+    def _startLeader(cls, batchSystem: 'AbstractBatchSystem', level: str = defaultLevel) -> None:
         with cls.lock:
             if cls.initialized == 0:
                 cls.initialized += 1
@@ -146,7 +152,7 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
                     ip = getPublicIP()
                     port = cls.loggingServer.server_address[1]
 
-                    def _setEnv(name, value):
+                    def _setEnv(name: str, value: str) -> None:
                         name = cls.envPrefix + name
                         os.environ[name] = value
                         batchSystem.setEnv(name)
@@ -160,7 +166,7 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
                     logger.warning('Ignoring nested request to start real-time logging')
 
     @classmethod
-    def _stopLeader(cls):
+    def _stopLeader(cls) -> None:
         """
         Stop the server on the leader.
         """
@@ -181,7 +187,7 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
                         os.environ.pop(k)
 
     @classmethod
-    def getLogger(cls):
+    def getLogger(cls) -> logging.Logger:
         """
         Get the logger that logs real-time to the leader.
 
@@ -214,7 +220,7 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
                             cls.logger.addHandler(JSONDatagramHandler(host, int(port)))
         return cls.logger
 
-    def __init__(self, batchSystem, level=defaultLevel):
+    def __init__(self, batchSystem: 'AbstractBatchSystem', level: str = defaultLevel):
         """
         A context manager that starts up the UDP server.
 
@@ -229,9 +235,9 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
         self.__level = level
         self.__batchSystem = batchSystem
 
-    def __enter__(self):
+    def __enter__(self) -> None:
         RealtimeLogger._startLeader(self.__batchSystem, level=self.__level)
 
     # noinspection PyUnusedLocal
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]) -> None:
         RealtimeLogger._stopLeader()
