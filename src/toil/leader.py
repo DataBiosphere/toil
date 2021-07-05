@@ -995,7 +995,7 @@ class Leader(object):
                 # guaranteed to exist on the leader and workers.
                 workDir = Toil.getToilWorkDir(self.config.workDir)
                 # This must match the format in AbstractBatchSystem.formatStdOutErrPath()
-                batchSystemFilePrefix = 'toil_workflow_{}_job_{}_batch_'.format(self.config.workflowID, batchSystemID)
+                batchSystemFilePrefix =  f'toil_{self.config.workflowID}.{batchSystemID}'
                 batchSystemFileGlob = os.path.join(workDir, batchSystemFilePrefix + '*.log')
                 batchSystemFiles = glob.glob(batchSystemFileGlob)
                 for batchSystemFile in batchSystemFiles:
