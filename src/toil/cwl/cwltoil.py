@@ -757,8 +757,9 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             return super().size(path)
 
 
-def write_to_pipe(file_store: AbstractFileStore, pipe_name: str, id: FileID) -> None:
-    with file_store.readGlobalFileStream(id) as fi:
+def write_to_pipe(file_store: AbstractFileStore, pipe_name: str, file_store_id: FileID) -> None:
+    with file_store.jobStore.readFileStream(file_store_id) as fi:
+        file_store.logAccess(file_store_id)
         with open(pipe_name, 'wb') as fifo:
             chunkSz = 1024 * 1024
             while True:
@@ -780,8 +781,7 @@ def toil_get_file(
 
     file_id = FileID.unpack(file_store_id[7:])
 
-    if streaming_allowed and streamable and isinstance(file_store, NonCachingFileStore) and \
-            not isinstance(file_store.jobStore, FileJobStore):
+    if streaming_allowed and streamable and not isinstance(file_store.jobStore, FileJobStore):
         logger.debug("Streaming file %s", file_id)
         src_path = file_store.getLocalTempFileName()
         os.mkfifo(src_path)
