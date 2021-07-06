@@ -97,6 +97,7 @@ from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.fileStores.nonCachingFileStore import NonCachingFileStore
 from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException
+from toil.jobStores.fileJobStore import FileJobStore
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
@@ -548,6 +549,7 @@ class ToilPathMapper(PathMapper):
         referenced_files: list,
         basedir: str,
         stagedir: str,
+        streaming_allowed: bool = True,
         separateDirs: bool = True,
         get_file: Union[Any, None] = None,
         stage_listing: bool = False,
@@ -555,6 +557,8 @@ class ToilPathMapper(PathMapper):
         """Initialize this ToilPathMapper."""
         self.get_file = get_file
         self.stage_listing = stage_listing
+        self.streaming_allowed = streaming_allowed
+
         super(ToilPathMapper, self).__init__(
             referenced_files, basedir, stagedir, separateDirs=separateDirs
         )
@@ -613,7 +617,7 @@ class ToilPathMapper(PathMapper):
                     validate.ValidationException,
                     logger.isEnabledFor(logging.DEBUG),
                 ):
-                    deref = self.get_file(path, obj['streamable']) if self.get_file else ab
+                    deref = self.get_file(path, obj['streamable'], self.streaming_allowed) if self.get_file else ab
                     if deref.startswith("file:"):
                         deref = schema_salad.ref_resolver.uri_file_path(deref)
                     if urllib.parse.urlsplit(deref).scheme in ["http", "https"]:
@@ -658,6 +662,7 @@ class ToilCommandLineTool(cwltool.command_line_tool.CommandLineTool):
             reffiles,
             runtimeContext.basedir,
             stagedir,
+            runtimeContext.streaming_allowed,
             separateDirs,
             runtimeContext.toil_get_file,  # type: ignore
         )
@@ -752,9 +757,9 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             return super().size(path)
 
 
-def write_to_pipe(file_store, pipeName, id):
+def write_to_pipe(file_store: AbstractFileStore, pipe_name: str, id: FileID) -> None:
     with file_store.readGlobalFileStream(id) as fi:
-        with open(pipeName, 'wb') as fifo:
+        with open(pipe_name, 'wb') as fifo:
             chunkSz = 1024 * 1024
             while True:
                 data = fi.read(chunkSz)
@@ -764,7 +769,8 @@ def write_to_pipe(file_store, pipeName, id):
 
 
 def toil_get_file(
-    file_store: AbstractFileStore, index: dict, existing: dict, file_store_id: str, streamable: bool
+    file_store: AbstractFileStore, index: dict, existing: dict, file_store_id: str, streamable: bool,
+        streaming_allowed: bool
 ) -> str:
     """Get path to input file from Toil jobstore."""
     if not file_store_id.startswith("toilfs:"):
@@ -772,16 +778,17 @@ def toil_get_file(
             file_store.jobStore.importFile(file_store_id, symlink=True)
         )
 
-    fileID = FileID.unpack(file_store_id[7:])
+    file_id = FileID.unpack(file_store_id[7:])
 
-    if isinstance(file_store, NonCachingFileStore) and streamable:
-        logger.debug("Streaming file %s", fileID)
+    if streaming_allowed and streamable and isinstance(file_store, NonCachingFileStore) and \
+            not isinstance(file_store.jobStore, FileJobStore):
+        logger.debug("Streaming file %s", file_id)
         src_path = file_store.getLocalTempFileName()
         os.mkfifo(src_path)
-        thIn = Thread(target=write_to_pipe, args=(file_store, src_path, fileID))
-        thIn.start()
+        th_in = Thread(target=write_to_pipe, args=(file_store, src_path, file_id))
+        th_in.start()
     else:
-        src_path = file_store.readGlobalFile(fileID, symlink=True)
+        src_path = file_store.readGlobalFile(file_id, symlink=True)
 
     index[src_path] = file_store_id
     existing[file_store_id] = src_path
@@ -2081,6 +2088,13 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
              "section 'Running MPI-based tools' for details of the format: "
              "https://github.com/common-workflow-language/cwltool#running-mpi-based-tools-that-need-to-be-launched",
     )
+    parser.add_argument(
+        "--disable-streaming",
+        action="store_true",
+        default=False,
+        help="Disable file streaming for files that have 'streamable' flag True",
+        dest="disable_streaming",
+    )
 
     provgroup = parser.add_argument_group(
         "Options for recording provenance " "information of the execution"
@@ -2222,6 +2236,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     runtime_context.workdir = workdir  # type: ignore
     runtime_context.move_outputs = "leave"
     runtime_context.rm_tmpdir = False
+    runtime_context.streaming_allowed = not options.disable_streaming
     if options.mpi_config_file is not None:
         runtime_context.mpi_config = MpiConfig.load(options.mpi_config_file)
     loading_context = cwltool.context.LoadingContext(vars(options))
