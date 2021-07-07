@@ -4,7 +4,7 @@
 
 # http://code.activestate.com/recipes/578019-bytes-to-human-human-to-bytes-converter/
 import logging
-from typing import Optional, SupportsInt
+from typing import SupportsInt
 from toil.lib.conversions import bytes2human as b2h, human2bytes as h2b
 
 """
@@ -19,17 +19,15 @@ License: MIT
 logger = logging.getLogger(__name__)
 
 
-def bytes2human(n: SupportsInt, fmt: Optional[str] = None, symbols: Optional[str] = None) -> str:
+def bytes2human(n: SupportsInt) -> str:
     """
-    Convert n bytes into a human readable string based on format.
-    symbols can be either "customary", "customary_ext", "iec" or "iec_ext",
-    see: http://goo.gl/kTQMs
+    Convert n bytes into a human readable string.
     """
     logger.warning('Deprecated toil method.  Please use "toil.lib.conversions.bytes2human()" instead."')
     return b2h(n)
 
 
-def human2bytes(s):
+def human2bytes(s: str) -> int:
     """
     Attempts to guess the string format based on default symbols
     set and return the corresponding bytes as an integer.
