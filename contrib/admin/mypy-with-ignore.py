@@ -34,7 +34,6 @@ def main():
         'src/toil/deferred.py',
         'src/toil/version.py',
         'src/toil/wdl/utils.py',
-        'src/toil/wdl/wdl_types.py',
         'src/toil/wdl/wdl_synthesis.py',
         'src/toil/wdl/wdl_analysis.py',
         'src/toil/wdl/wdl_functions.py',
