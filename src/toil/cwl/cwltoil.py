@@ -20,6 +20,7 @@
 import argparse
 import copy
 import datetime
+import errno
 import functools
 import json
 import logging
@@ -94,10 +95,10 @@ from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Config, Toil, addOptions
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.fileStores.nonCachingFileStore import NonCachingFileStore
 from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.jobStores.fileJobStore import FileJobStore
+from toil.lib.threading import ExceptionalThread
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
@@ -549,10 +550,10 @@ class ToilPathMapper(PathMapper):
         referenced_files: list,
         basedir: str,
         stagedir: str,
-        streaming_allowed: bool = True,
         separateDirs: bool = True,
         get_file: Union[Any, None] = None,
         stage_listing: bool = False,
+        streaming_allowed: bool = True,
     ):
         """Initialize this ToilPathMapper."""
         self.get_file = get_file
@@ -617,7 +618,10 @@ class ToilPathMapper(PathMapper):
                     validate.ValidationException,
                     logger.isEnabledFor(logging.DEBUG),
                 ):
-                    deref = self.get_file(path, obj['streamable'], self.streaming_allowed) if self.get_file else ab
+                    if self.get_file:
+                        deref = self.get_file(path, obj.get('streamable', False), self.streaming_allowed)
+                    else:
+                        deref = ab
                     if deref.startswith("file:"):
                         deref = schema_salad.ref_resolver.uri_file_path(deref)
                     if urllib.parse.urlsplit(deref).scheme in ["http", "https"]:
@@ -662,9 +666,9 @@ class ToilCommandLineTool(cwltool.command_line_tool.CommandLineTool):
             reffiles,
             runtimeContext.basedir,
             stagedir,
-            runtimeContext.streaming_allowed,
             separateDirs,
             runtimeContext.toil_get_file,  # type: ignore
+            streaming_allowed=runtimeContext.streaming_allowed,
         )
 
 
@@ -758,20 +762,26 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
 
 def write_to_pipe(file_store: AbstractFileStore, pipe_name: str, file_store_id: FileID) -> None:
-    with file_store.jobStore.readFileStream(file_store_id) as fi:
-        file_store.logAccess(file_store_id)
-        with open(pipe_name, 'wb') as fifo:
-            chunkSz = 1024 * 1024
-            while True:
-                data = fi.read(chunkSz)
-                if not data:
-                    break
-                fifo.write(data)
+    try:
+        with open(pipe_name, 'wb') as pipe:
+            with file_store.jobStore.readFileStream(file_store_id) as fi:
+                file_store.logAccess(file_store_id)
+                chunk_sz = 1024
+                while True:
+                    data = fi.read(chunk_sz)
+                    if not data:
+                        break
+                    pipe.write(data)
+    except IOError as e:
+        # The other side of the pipe may have been closed by the
+        # reading thread, which is OK.
+        if e.errno != errno.EPIPE:
+            raise
 
 
 def toil_get_file(
     file_store: AbstractFileStore, index: dict, existing: dict, file_store_id: str, streamable: bool,
-        streaming_allowed: bool
+        streaming_allowed: bool, pipe_threads: list = None
 ) -> str:
     """Get path to input file from Toil jobstore."""
     if not file_store_id.startswith("toilfs:"):
@@ -785,8 +795,9 @@ def toil_get_file(
         logger.debug("Streaming file %s", file_id)
         src_path = file_store.getLocalTempFileName()
         os.mkfifo(src_path)
-        th_in = Thread(target=write_to_pipe, args=(file_store, src_path, file_id))
-        th_in.start()
+        th = ExceptionalThread(target=write_to_pipe, args=(file_store, src_path, file_id))
+        th.start()
+        pipe_threads.append((th, os.open(src_path, os.O_RDONLY)))
     else:
         src_path = file_store.readGlobalFile(file_id, symlink=True)
 
@@ -1238,8 +1249,9 @@ class CWLJob(Job):
         )
         runtime_context.preserve_environment = required_env_vars
 
+        pipe_threads = []
         runtime_context.toil_get_file = functools.partial(  # type: ignore
-            toil_get_file, file_store, index, existing
+            toil_get_file, file_store, index, existing, pipe_threads=pipe_threads
         )
 
         # TODO: Pass in a real builder here so that cwltool's builder is built with Toil's fs_access?
@@ -1261,6 +1273,10 @@ class CWLJob(Job):
         ended_at = datetime.datetime.now()  # noqa F841
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
+
+        for t, fd in pipe_threads:
+            os.close(fd)
+            t.join()
 
         adjustDirObjs(
             output,
