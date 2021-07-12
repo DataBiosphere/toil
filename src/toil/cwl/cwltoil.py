@@ -619,7 +619,9 @@ class ToilPathMapper(PathMapper):
                     logger.isEnabledFor(logging.DEBUG),
                 ):
                     if self.get_file:
-                        deref = self.get_file(path, obj.get('streamable', False), self.streaming_allowed)
+                        deref = self.get_file(
+                            path, obj.get("streamable", False), self.streaming_allowed
+                        )
                     else:
                         deref = ab
                     if deref.startswith("file:"):
@@ -761,9 +763,11 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             return super().size(path)
 
 
-def write_to_pipe(file_store: AbstractFileStore, pipe_name: str, file_store_id: FileID) -> None:
+def write_to_pipe(
+    file_store: AbstractFileStore, pipe_name: str, file_store_id: FileID
+) -> None:
     try:
-        with open(pipe_name, 'wb') as pipe:
+        with open(pipe_name, "wb") as pipe:
             with file_store.jobStore.readFileStream(file_store_id) as fi:
                 file_store.logAccess(file_store_id)
                 chunk_sz = 1024
@@ -780,8 +784,13 @@ def write_to_pipe(file_store: AbstractFileStore, pipe_name: str, file_store_id: 
 
 
 def toil_get_file(
-    file_store: AbstractFileStore, index: dict, existing: dict, file_store_id: str, streamable: bool,
-        streaming_allowed: bool, pipe_threads: list = None
+    file_store: AbstractFileStore,
+    index: dict,
+    existing: dict,
+    file_store_id: str,
+    streamable: bool,
+    streaming_allowed: bool,
+    pipe_threads: list = None,
 ) -> str:
     """Get path to input file from Toil jobstore."""
     if not file_store_id.startswith("toilfs:"):
@@ -791,11 +800,17 @@ def toil_get_file(
 
     file_id = FileID.unpack(file_store_id[7:])
 
-    if streaming_allowed and streamable and not isinstance(file_store.jobStore, FileJobStore):
+    if (
+        streaming_allowed
+        and streamable
+        and not isinstance(file_store.jobStore, FileJobStore)
+    ):
         logger.debug("Streaming file %s", file_id)
         src_path = file_store.getLocalTempFileName()
         os.mkfifo(src_path)
-        th = ExceptionalThread(target=write_to_pipe, args=(file_store, src_path, file_id))
+        th = ExceptionalThread(
+            target=write_to_pipe, args=(file_store, src_path, file_id)
+        )
         th.start()
         pipe_threads.append((th, os.open(src_path, os.O_RDONLY)))
     else:
@@ -2385,8 +2400,13 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 ):
                     set_secondary(initialized_job_order[shortname(inp["id"])])
 
-                if shortname(inp["id"]) in initialized_job_order and inp["type"] == "File":
-                    initialized_job_order[shortname(inp["id"])]["streamable"] = inp.get("streamable", False)
+                if (
+                    shortname(inp["id"]) in initialized_job_order
+                    and inp["type"] == "File"
+                ):
+                    initialized_job_order[shortname(inp["id"])]["streamable"] = inp.get(
+                        "streamable", False
+                    )
 
             runtime_context.use_container = not options.no_container
             runtime_context.tmp_outdir_prefix = os.path.realpath(tmp_outdir_prefix)

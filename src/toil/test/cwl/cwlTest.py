@@ -511,35 +511,44 @@ class CWLv12Test(ToilTest):
     def _expected_streaming_output(self, outDir):
         # Having unicode string literals isn't necessary for the assertion but
         # makes for a less noisy diff in case the assertion fails.
-        loc = 'file://' + os.path.join(outDir, 'output.txt')
+        loc = "file://" + os.path.join(outDir, "output.txt")
         return {
-            'output': {
-                'location': loc,
-                'basename': 'output.txt',
-                'size': 24,
-                'class': 'File',
-                'checksum': 'sha1$d14dd02e354918b4776b941d154c18ebc15b9b38'}}
-
+            "output": {
+                "location": loc,
+                "basename": "output.txt",
+                "size": 24,
+                "class": "File",
+                "checksum": "sha1$d14dd02e354918b4776b941d154c18ebc15b9b38",
+            }
+        }
 
     @needs_aws_s3
     def test_streamable(self):
         """
         Test that a file with 'streamable'=True is a named pipe
         """
-        cwlfile = 'src/toil/test/cwl/stream.cwl'
-        jobfile = 'src/toil/test/cwl/stream.json'
-        out_name = 'output'
+        cwlfile = "src/toil/test/cwl/stream.cwl"
+        jobfile = "src/toil/test/cwl/stream.json"
+        out_name = "output"
         from toil.cwl import cwltoil
+
         st = StringIO()
-        args = ['--outdir', self.outDir, '--jobstore', 'aws:us-west-1:cwltoil-streaming-test', os.path.join(self.rootDir, cwlfile), os.path.join(self.rootDir, jobfile)]
+        args = [
+            "--outdir",
+            self.outDir,
+            "--jobstore",
+            "aws:us-west-1:cwltoil-streaming-test",
+            os.path.join(self.rootDir, cwlfile),
+            os.path.join(self.rootDir, jobfile),
+        ]
         cwltoil.main(args, stdout=st)
         out = json.loads(st.getvalue())
         out[out_name].pop("http://commonwl.org/cwltool#generation", None)
         out[out_name].pop("nameext", None)
         out[out_name].pop("nameroot", None)
         self.assertEqual(out, self._expected_streaming_output(self.outDir))
-        with open(out[out_name]['location'][len('file://'):], 'r') as f:
-            self.assertEqual(f.read().strip(), 'When is s4 coming out?')
+        with open(out[out_name]["location"][len("file://") :], "r") as f:
+            self.assertEqual(f.read().strip(), "When is s4 coming out?")
 
 
 @needs_cwl
