@@ -102,7 +102,7 @@ class AbstractFileStore(ABC):
         self._accessLog: List[Any] = []
 
     @staticmethod
-    def createFileStore(jobStore: AbstractJobStore, jobDesc: JobDescription, localTempDir: str, waitForPreviousCommit: Callable[[], Any], caching: bool) -> Union[NonCachingFileStore, CachingFileStore]:
+    def createFileStore(jobStore: AbstractJobStore, jobDesc: JobDescription, localTempDir: str, waitForPreviousCommit: Callable[[], Any], caching: bool) -> Union['NonCachingFileStore', 'CachingFileStore']:
         # Defer these imports until runtime, since these classes depend on us
         from toil.fileStores.cachingFileStore import CachingFileStore
         from toil.fileStores.nonCachingFileStore import NonCachingFileStore
