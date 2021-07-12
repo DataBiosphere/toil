@@ -19,7 +19,7 @@ from contextlib import contextmanager
 from threading import Event, Semaphore
 from typing import Any, Dict, List, Set, Callable, ContextManager, Generator, IO, Iterator, Optional, Tuple, Union, TYPE_CHECKING
 
-import dill # type: ignore
+import dill
 
 from toil.common import cacheDirName
 from toil.fileStores import FileID
@@ -170,7 +170,7 @@ class AbstractFileStore(ABC):
                  for the duration of the job only, and is guaranteed to be deleted once the job
                  terminates, removing all files it contains recursively.
         """
-        return os.path.abspath(tempfile.mkdtemp(prefix="t", dir=self.localTempDir))
+        return os.path.abspath(tempfile.mkdtemp(dir=self.localTempDir))
 
     def getLocalTempFile(self) -> str:
         """
