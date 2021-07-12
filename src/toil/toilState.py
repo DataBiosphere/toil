@@ -14,6 +14,8 @@
 import logging
 
 from toil.job import CheckpointJobDescription, JobDescription
+from toil.jobStores.abstractJobStore import AbstractJobStore
+from typing import List, Dict, Set, Tuple, Iterator, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,7 @@ class ToilState:
     Everything else in the leader should reference JobDescriptions by ID
     instead of moving them around between lists.
     """
-    def __init__(self, jobStore, rootJob, jobCache=None):
+    def __init__(self, jobStore: AbstractJobStore, rootJob: JobDescription, jobCache: Optional[Dict[str, JobDescription]] = None):
         """
         Loads the state from the jobStore, using the rootJob
         as the root of the job DAG.
@@ -39,49 +41,52 @@ class ToilState:
         used to speed up the building of the state when loading initially from
         the JobStore, and is not preserved.
 
-        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore
-        :param toil.job.JobDescription rootJob
+        :param jobStore: The job store to use.
+
+        :param rootJob: The description for the root job of the workflow being run.
+
+        :param jobCache: A dict to cache downloaded job descriptions in, keyed by ID.
         """
 
         # Maps from successor (child or follow-on) jobStoreID to predecessor jobStoreID
-        self.successorJobStoreIDToPredecessorJobs = {}
+        self.successorJobStoreIDToPredecessorJobs: Dict[str, List[JobDescription]] = {}
 
         # Hash of jobStoreIDs to counts of numbers of successors issued.
         # There are no entries for jobs without successors in this map.
-        self.successorCounts = {}
+        self.successorCounts: Dict[str, int] = {}
 
         # This is a hash of service jobs, referenced by jobStoreID, to their predecessor job
-        self.serviceJobStoreIDToPredecessorJob = {}
+        self.serviceJobStoreIDToPredecessorJob: Dict[str, JobDescription] = {}
 
         # Hash of jobStoreIDs mapping to dict from service ID to service host JobDescription for issued services
-        self.servicesIssued = {}
+        self.servicesIssued: Dict[str, JobDescription] = {}
 
         # Jobs that are ready to be processed.
         # Stored as a dict from job store ID to a pair of (job, result status),
         # where a status other than 0 indicates that an error occurred when
         # running the job.
-        self.updatedJobs = {}
+        self.updatedJobs: Dict[str, Tuple[JobDescription, int]] = {}
 
         # The set of totally failed jobs - this needs to be filtered at the
         # end to remove jobs that were removed by checkpoints
-        self.totalFailedJobs = set()
+        self.totalFailedJobs: Set[JobDescription] = set()
 
         # Jobs (as jobStoreIDs) with successors that have totally failed
-        self.hasFailedSuccessors = set()
+        self.hasFailedSuccessors: Set[str] = set()
 
         # The set of successors of failed jobs as a set of jobStoreIds
-        self.failedSuccessors = set()
+        self.failedSuccessors: Set[str] = set()
 
         # Set of jobs that have multiple predecessors that have one or more predecessors
         # finished, but not all of them. This acts as a cache for these jobs.
         # Stored as hash from jobStoreIDs to JobDescriptions
-        self.jobsToBeScheduledWithMultiplePredecessors = {}
+        self.jobsToBeScheduledWithMultiplePredecessors: Dict[str, JobDescription] = {}
 
-        ##Algorithm to build this information
+        # Algorithm to build this information
         self._buildToilState(rootJob, jobStore, jobCache)
 
 
-    def allJobDescriptions(self):
+    def allJobDescriptions(self) -> Iterator[JobDescription]:
         """
         Returns an iterator over all JobDescription objects referenced by the
         ToilState, with some possibly being visited multiple times.
@@ -107,7 +112,7 @@ class ToilState:
             assert isinstance(item, JobDescription)
             yield item
 
-    def _buildToilState(self, jobDesc, jobStore, jobCache=None):
+    def _buildToilState(self, jobDesc: JobDescription, jobStore: AbstractJobStore, jobCache: Optional[Dict[str, JobDescription]] = None) -> None:
         """
         Traverses tree of jobs from the root JobDescription (rootJob) building the
         ToilState class.
@@ -116,13 +121,14 @@ class ToilState:
         object. Jobs will be loaded from the cache (which can be downloaded from
         the jobStore in a batch) instead of piecemeal when recursed into.
 
-        :param jobDesc: Object representing a job.
-        :param jobStore: Object inheriting toil.jobStores.abstractJobStore.AbstractJobStore.
-        :param jobCache:
-        :return:
+        :param jobDesc: The description for the root job of the workflow being run.
+
+        :param jobStore: The job store to use.
+
+        :param jobCache: A dict to cache downloaded job descriptions in, keyed by ID.
         """
 
-        def getJob(jobId):
+        def getJob(jobId: str) -> JobDescription:
             if jobCache is not None:
                 if jobId in jobCache:
                     return jobCache[jobId]
@@ -146,7 +152,7 @@ class ToilState:
             # Record the number of successors
             self.successorCounts[jobDesc.jobStoreID] = len(jobDesc.nextSuccessors())
 
-            def processSuccessorWithMultiplePredecessors(successor):
+            def processSuccessorWithMultiplePredecessors(successor: JobDescription) -> None:
                 # If jobDesc is not reported as complete by the successor
                 if jobDesc.jobStoreID not in successor.predecessorsFinished:
 

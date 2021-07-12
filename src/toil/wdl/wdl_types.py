@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import Any
+from typing import Any, Dict, Optional
 
 from toil.job import Promise
 
@@ -27,7 +27,7 @@ class WDLType:
         raise NotImplementedError
 
     @property
-    def default_value(self):
+    def default_value(self) -> Optional[str]:
         """
         Default value if optional.
         """
@@ -55,13 +55,13 @@ class WDLType:
     def _create(self, value: Any) -> Any:
         raise NotImplementedError
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         return self.name.__eq__(other)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name.__str__()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.name.__repr__()
 
 
@@ -80,7 +80,7 @@ class WDLStringType(WDLType):
         return 'String'
 
     @property
-    def default_value(self):
+    def default_value(self) -> str:
         return ''
 
     def _create(self, value: Any) -> Any:
@@ -128,7 +128,7 @@ class WDLFileType(WDLType):
         return 'File'
 
     @property
-    def default_value(self):
+    def default_value(self) -> str:
         return ''
 
     def _create(self, value: Any) -> Any:
@@ -210,7 +210,7 @@ class WDLFile:
     """
     Represents a WDL File.
     """
-    def __init__(self, file_path, file_name=None, imported=False):
+    def __init__(self, file_path: str, file_name: Optional[str] = None, imported: bool = False):
         """
         :param file_path: Path to file.
         :param file_name: Optional. Preserved file name.
@@ -232,13 +232,13 @@ class WDLPair:
         self.left = left
         self.right = right
 
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, Any]:
         return {'left': self.left, 'right': self.right}
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> Any:
         if not isinstance(other, WDLPair):
             return False
         return self.left == other.left and self.right == other.right
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return str(self.to_dict())
