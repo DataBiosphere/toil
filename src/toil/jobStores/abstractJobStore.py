@@ -1078,7 +1078,8 @@ class AbstractJobStore(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def updateFileStream(self, jobStoreFileID: str, encoding: Optional[str] = None, errors: Optional[str] = None) -> None:
+    @contextmanager
+    def updateFileStream(self, jobStoreFileID: str, encoding: Optional[str] = None, errors: Optional[str] = None) -> Iterator[IO[Any]]:
         """
         Replaces the existing version of a file in the job store. Similar to writeFile, but
         returns a context manager yielding a file handle which can be written to. The
