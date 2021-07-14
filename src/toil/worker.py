@@ -28,7 +28,7 @@ import time
 import traceback
 
 from contextlib import contextmanager
-from typing import Any, Callabla, Iterator, List, Optional
+from typing import Any, Callable, Iterator, List, Optional
 
 from toil import logProcessContext
 from toil.common import Toil, Config, safeUnpickleFromStream
