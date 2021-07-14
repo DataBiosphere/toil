@@ -22,7 +22,7 @@ from queue import Empty
 
 from toil.batchSystems.abstractGridEngineBatchSystem import (AbstractGridEngineBatchSystem,
                                                              UpdatedBatchJobInfo)
-from toil.lib.conversions import hms_to_seconds
+from toil.lib.conversions import hms_duration_to_seconds
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)

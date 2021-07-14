@@ -101,7 +101,10 @@ def hms_duration_to_seconds(hms: str) -> float:
     
     for val in vals_to_convert:
         if(float(val) < 0): 
-            raise ValueError("Invalid Time")
+            raise ValueError("Invalid Time, negative value")
+
+    if(len(vals_to_convert) != 3):
+        raise ValueError("Invalid amount of fields, function takes input in 'hh:mm:ss'")
 
     seconds += float(vals_to_convert[0]) * 60 * 60 
     seconds += float(vals_to_convert[1]) * 60 
