@@ -20,12 +20,11 @@ import re
 import subprocess
 import textwrap
 import uuid
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Any, Optional, Tuple, Union
 
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.wdl.wdl_types import WDLFile, WDLPair
+from toil.wdl.wdl_types import WDLType, WDLFile, WDLPair
 from toil.lib.conversions import bytes_in_unit
-from toil.lib.resources import glob  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +32,7 @@ logger = logging.getLogger(__name__)
 class WDLRuntimeError(Exception):
     """ WDL-related run-time error."""
 
-    def __init__(self, message):
+    def __init__(self, message: str):
         super(WDLRuntimeError, self).__init__(message)
 
 
@@ -42,13 +41,13 @@ class WDLJSONEncoder(json.JSONEncoder):
     Extended JSONEncoder to support WDL-specific JSON encoding.
     """
 
-    def default(self, obj):
+    def default(self, obj: Union[WDLType, WDLFile, WDLPair]) -> Any:
         if isinstance(obj, WDLPair):
             return obj.to_dict()
         return json.JSONEncoder.default(self, obj)
 
 
-def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
+def generate_docker_bashscript_file(temp_dir: str, docker_dir: str, globs: List[str], cmd: str, job_name: str) -> None:
     '''
     Creates a bashscript to inject into a docker container for the job.
 
@@ -196,7 +195,7 @@ def process_single_infile(wdl_file: WDLFile, fileStore: AbstractFileStore) -> WD
     return WDLFile(file_path=filepath, file_name=preserveThisFilename, imported=True)
 
 
-def process_infile(f: Any, fileStore: AbstractFileStore):
+def process_infile(f: Any, fileStore: AbstractFileStore) -> Any:
     """
     Takes any input and imports the WDLFile into the fileStore.
 
@@ -226,7 +225,7 @@ def process_infile(f: Any, fileStore: AbstractFileStore):
     elif isinstance(f, (int, str, bool, float)):
         return f
     else:
-        raise WDLRuntimeError('Error processing file: '.format(str(f)))
+        raise WDLRuntimeError('Error processing file: {0}'.format(str(f)))
 
 
 def sub(input_str: str, pattern: str, replace: str) -> str:
@@ -249,13 +248,13 @@ def sub(input_str: str, pattern: str, replace: str) -> str:
     return re.sub(pattern=str(pattern), repl=str(replace), string=str(input_str))
 
 
-def defined(i):
+def defined(i: Any) -> bool:
     if i:
         return True
     return False
 
 
-def process_single_outfile(wdl_file: WDLFile, fileStore, workDir, outDir) -> WDLFile:
+def process_single_outfile(wdl_file: WDLFile, fileStore: AbstractFileStore, workDir: str, outDir: str) -> WDLFile:
     f = wdl_file.file_path
     if os.path.exists(f):
         output_f_path = f
@@ -287,7 +286,7 @@ def process_single_outfile(wdl_file: WDLFile, fileStore, workDir, outDir) -> WDL
     return WDLFile(file_path=output_file, file_name=preserveThisFilename, imported=True)
 
 
-def process_outfile(f, fileStore, workDir, outDir):
+def process_outfile(f: Any, fileStore: AbstractFileStore, workDir: str, outDir: str) -> Any:
     if isinstance(f, WDLFile):
         return process_single_outfile(f, fileStore, workDir, outDir)
     elif isinstance(f, list):
@@ -303,7 +302,7 @@ def process_outfile(f, fileStore, workDir, outDir):
     elif isinstance(f, (int, str, bool, float)):
         return f
     else:
-        raise WDLRuntimeError('Error processing file: '.format(str(f)))
+        raise WDLRuntimeError('Error processing file: {}'.format(str(f)))
 
 
 def abspath_single_file(f: WDLFile, cwd: str) -> WDLFile:
@@ -313,7 +312,7 @@ def abspath_single_file(f: WDLFile, cwd: str) -> WDLFile:
     return f
 
 
-def abspath_file(f: Any, cwd: str):
+def abspath_file(f: Any, cwd: str) -> Any:
     if not f:
         # in the case of "optional" files (same treatment in 'process_and_read_file()')
         # TODO: handle this at compile time, not here
@@ -342,16 +341,16 @@ def abspath_file(f: Any, cwd: str):
         raise WDLRuntimeError('Error processing file: ({}) of type: ({}).'.format(str(f), str(type(f))))
 
 
-def read_single_file(f: WDLFile, tempDir, fileStore, docker=False) -> str:
+def read_single_file(f: WDLFile, tempDir: str, fileStore: AbstractFileStore, docker: bool = False) -> str:
     import os
     try:
         fpath = fileStore.readGlobalFile(f.file_path, userPath=os.path.join(tempDir, f.file_name))
     except:
         fpath = os.path.join(tempDir, f.file_name)
-    return fpath
+    return str(fpath)
 
 
-def read_file(f: Any, tempDir: str, fileStore: AbstractFileStore, docker: bool = False):
+def read_file(f: Any, tempDir: str, fileStore: AbstractFileStore, docker: bool = False) -> Any:
     if isinstance(f, WDLFile):
         return read_single_file(f, tempDir, fileStore, docker=docker)
     elif isinstance(f, list):
@@ -370,7 +369,7 @@ def read_file(f: Any, tempDir: str, fileStore: AbstractFileStore, docker: bool =
         raise WDLRuntimeError('Error processing file: {}'.format(str(f)))
 
 
-def process_and_read_file(f, tempDir, fileStore, docker=False):
+def process_and_read_file(f: Any, tempDir: str, fileStore: AbstractFileStore, docker: bool = False) -> Any:
     if not f:
         # in the case of "optional" files (same treatment in 'abspath_file()')
         # TODO: handle this at compile time, not here and change to the empty string
@@ -379,14 +378,15 @@ def process_and_read_file(f, tempDir, fileStore, docker=False):
     return read_file(processed_file, tempDir, fileStore, docker=docker)
 
 
-def generate_stdout_file(output, tempDir, fileStore, stderr=False):
+def generate_stdout_file(output: Union[str, bytes], tempDir: str, fileStore: AbstractFileStore, stderr: bool = False) -> str:
     """
     Create a stdout (or stderr) file from a string or bytes object.
 
-    :param str|bytes output: A str or bytes object that holds the stdout/stderr text.
-    :param str tempDir: The directory to write the stdout file.
+    :param output: A str or bytes object that holds the stdout/stderr text.
+    :param tempDir: The directory to write the stdout file.
     :param fileStore: A fileStore object.
-    :param bool stderr: If True, a stderr instead of a stdout file is generated.
+    :param stderr: If True, a stderr instead of a stdout file is generated.
+
     :return: The file path to the generated file.
     """
     if output is None:
@@ -407,10 +407,10 @@ def generate_stdout_file(output, tempDir, fileStore, stderr=False):
         stream.write(output)
 
     assert file_id is not None
-    return fileStore.readGlobalFile(fileStoreID=file_id, userPath=local_path)
+    return str(fileStore.readGlobalFile(fileStoreID=file_id, userPath=local_path))
 
 
-def parse_memory(memory):
+def parse_memory(memory: str) -> int:
     """
     Parses a string representing memory and returns
     an integer # of bytes.
@@ -443,7 +443,7 @@ def parse_memory(memory):
         return 2147483648  # toil's default
 
 
-def parse_cores(cores):
+def parse_cores(cores: Union[int, str]) -> Union[int, float]:
     cores = str(cores)
     if 'None' in cores:
         return 1  # toil's default
@@ -453,15 +453,15 @@ def parse_cores(cores):
         return 1
 
 
-def parse_disk(disk):
+def parse_disk(disk: Union[int, str]) -> int:
     disk = str(disk)
     if 'None' in disk:
         return 2147483648  # toil's default
     try:
         total_disk = 0
         disks = disk.split(',')
-        for d in disks:
-            d = d.strip().split(' ')
+        for disk in disks:
+            d = disk.strip().split(' ')
             if len(d) > 1:
                 for part in d:
                     if is_number(part):
@@ -473,7 +473,7 @@ def parse_disk(disk):
         return 2147483648  # toil's default
 
 
-def is_number(s):
+def is_number(s: str) -> bool:
     try:
         float(s)
         return True
@@ -482,7 +482,7 @@ def is_number(s):
 
 
 def size(f: Optional[Union[str, WDLFile, List[Union[str, WDLFile]]]] = None,
-         unit: Optional[str] = 'B',
+         unit: str = 'B',
          fileStore: Optional[AbstractFileStore] = None) -> float:
     """
     Given a `File` and a `String` (optional), returns the size of the file in Bytes
@@ -511,26 +511,27 @@ def size(f: Optional[Union[str, WDLFile, List[Union[str, WDLFile]]]] = None,
     assert isinstance(f, (WDLFile, list)), f'size() excepts a "File" or "File?" argument!  Not: {type(f)}'
 
     # validate the input. fileStore is only required if the input is not processed.
-    f = process_infile(f, fileStore)
+    if fileStore:
+        f = process_infile(f, fileStore)
 
     divisor = bytes_in_unit(unit)
 
     if isinstance(f, list):
-        total_size = sum(file.file_path.size for file in f)
+        total_size = sum(file.file_path.size for file in f) # type: ignore
         return total_size / divisor
 
     fileID = f.file_path
-    return fileID.size / divisor
+    return float(fileID.size / divisor)
 
 
-def select_first(values):
+def select_first(values: Any) -> Any:
     for var in values:
         if var:
             return var
     raise ValueError('No defined variables found for select_first array: {}'.format(str(values)))
 
 
-def combine_dicts(dict1, dict2):
+def combine_dicts(dict1: Dict[Any, Any], dict2: Dict[Any, Any]) -> Dict[Any, Any]:
     combineddict= {}
     for k, v in dict1.items():
         counter1 = 0
@@ -558,7 +559,7 @@ def combine_dicts(dict1, dict2):
     return combineddict
 
 
-def basename(path, suffix=None):
+def basename(path: str, suffix: Optional[str] = None) -> str:
     """https://software.broadinstitute.org/wdl/documentation/article?id=10554"""
     path = path.strip()
     if suffix:
@@ -568,7 +569,7 @@ def basename(path, suffix=None):
     return os.path.basename(path)
 
 
-def heredoc_wdl(template, dictionary={}, indent=''):
+def heredoc_wdl(template: str, dictionary: Dict[str, Any] = {}, indent: str = '') -> str:
     template = textwrap.dedent(template).format(**dictionary)
     return template.replace('\n', '\n' + indent) + '\n'
 
@@ -910,7 +911,7 @@ def cross(left: List[Any], right: List[Any]) -> List[WDLPair]:
     return list(WDLPair(left=left_val, right=right_val) for left_val in left for right_val in right)
 
 
-def as_pairs(in_map: dict) -> List[WDLPair]:
+def as_pairs(in_map: Dict[Any, Any]) -> List[WDLPair]:
     """
     Given a Map, the `as_pairs` function returns an Array containing each element
     in the form of a Pair. The key will be the left element of the Pair and the
@@ -925,7 +926,7 @@ def as_pairs(in_map: dict) -> List[WDLPair]:
     return list(WDLPair(left=k, right=v) for k, v in in_map.items())
 
 
-def as_map(in_array: List[WDLPair]) -> dict:
+def as_map(in_array: List[WDLPair]) -> Dict[Any, Any]:
     """
     Given an Array consisting of Pairs, the `as_map` function returns a Map in
     which the left elements of the Pairs are the keys and the right elements the
@@ -936,7 +937,7 @@ def as_map(in_array: List[WDLPair]) -> dict:
     if not isinstance(in_array, list):
         raise WDLRuntimeError(f'as_map() requires "{in_array}" to be a list!  Not: {type(in_array)}')
 
-    map = {}
+    map: Dict[Any, Any] = {}
 
     for pair in in_array:
         if map.get(pair.left):
@@ -947,7 +948,7 @@ def as_map(in_array: List[WDLPair]) -> dict:
     return map
 
 
-def keys(in_map: dict) -> list:
+def keys(in_map: Dict[Any, Any]) -> List[Any]:
     """
     Given a Map, the `keys` function returns an Array consisting of the keys in
     the Map. The order of the keys in the resulting Array is the same as the
@@ -959,7 +960,7 @@ def keys(in_map: dict) -> list:
     return list(in_map.keys())
 
 
-def collect_by_key(in_array: List[WDLPair]) -> dict:
+def collect_by_key(in_array: List[WDLPair]) -> Dict[Any, Any]:
     """
     Given an Array consisting of Pairs, the `collect_by_key` function returns a Map
     in which the left elements of the Pairs are the keys and the right elements the
@@ -970,7 +971,7 @@ def collect_by_key(in_array: List[WDLPair]) -> dict:
     if not isinstance(in_array, list):
         raise WDLRuntimeError(f'as_map() requires "{in_array}" to be a list!  Not: {type(in_array)}')
 
-    map = {}
+    map: Dict[Any, Any] = {}
 
     for pair in in_array:
         map.setdefault(pair.left, []).append(pair.right)
@@ -978,7 +979,7 @@ def collect_by_key(in_array: List[WDLPair]) -> dict:
     return map
 
 
-def flatten(in_array: List[list]) -> list:
+def flatten(in_array: List[List[Any]]) -> List[Any]:
     """
     Given an array of arrays, the `flatten` function concatenates all the member
     arrays in the order to appearance to give the result. It does not deduplicate

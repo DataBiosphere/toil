@@ -36,7 +36,6 @@ def main():
         'src/toil/wdl/utils.py',
         'src/toil/wdl/wdl_synthesis.py',
         'src/toil/wdl/wdl_analysis.py',
-        'src/toil/wdl/wdl_functions.py',
         'src/toil/wdl/toilwdl.py',
         'src/toil/wdl/versions/draft2.py',
         'src/toil/wdl/versions/v1.py',
