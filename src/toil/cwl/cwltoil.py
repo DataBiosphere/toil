@@ -792,7 +792,7 @@ class ToilPathMapper(PathMapper):
                         deref = schema_salad.ref_resolver.uri_file_path(deref)
                     if urllib.parse.urlsplit(deref).scheme in ["http", "https"]:
                         deref = downloadHttpFile(path)
-                    elif urllib.parse.urlsplit(deref).scheme != "toilfs":
+                    elif urllib.parse.urlsplit(deref).scheme != "toilfile":
                         # Dereference symbolic links
                         st = os.lstat(deref)
                         while stat.S_ISLNK(st.st_mode):
