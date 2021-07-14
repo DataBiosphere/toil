@@ -17,8 +17,8 @@ import tempfile
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from threading import Event, Semaphore
-from typing import Any, Dict, List, Set, Callable, ContextManager, Generator, IO, Iterator, Optional, Tuple, Union, TYPE_CHECKING
-
+from typing import Any, BinaryIO, Dict, List, Set, Callable, ContextManager, Generator, IO, Iterator, Optional, TextIO, Tuple, Type, TypeVar, Union, TYPE_CHECKING
+from __future__ import annotations
 import dill
 
 from toil.common import cacheDirName
@@ -99,10 +99,10 @@ class AbstractFileStore(ABC):
         self.jobsToDelete: Set[str] = set()
         # Holds records of file ID, or file ID and local path, for reporting
         # the accessed files of failed jobs.
-        self._accessLog: List[Any] = []
+        self._accessLog: List[Tuple[str, ...]] = []
 
     @staticmethod
-    def createFileStore(jobStore: AbstractJobStore, jobDesc: JobDescription, localTempDir: str, waitForPreviousCommit: Callable[[], Any], caching: bool) -> Union['NonCachingFileStore', 'CachingFileStore']:
+    def createFileStore(jobStore: AbstractJobStore, jobDesc: JobDescription, localTempDir: str, waitForPreviousCommit: Callable[[], bool], caching: bool) -> Union['NonCachingFileStore', 'CachingFileStore']:
         # Defer these imports until runtime, since these classes depend on us
         from toil.fileStores.cachingFileStore import CachingFileStore
         from toil.fileStores.nonCachingFileStore import NonCachingFileStore
@@ -224,7 +224,7 @@ class AbstractFileStore(ABC):
 
     @contextmanager
     def writeGlobalFileStream(self, cleanup: bool = False, basename: Optional[str] = None, encoding: Optional[str] = None,
-                                errors: Optional[str] = None) -> Iterator[Tuple[IO[Any], FileID]]:
+                                errors: Optional[str] = None) -> Iterator[Tuple[Union[BinaryIO, TextIO], FileID]]:
         """
         Similar to writeGlobalFile, but allows the writing of a stream to the job store.
         The yielded file handle does not need to and should not be closed explicitly.
@@ -432,7 +432,7 @@ class AbstractFileStore(ABC):
         """
         Utility class to read and write dill-ed state dictionaries from/to a file into a namespace.
         """
-        def __init__(self, stateDict: Dict[Any, Any]):
+        def __init__(self, stateDict: Dict[str, Any]):
             assert isinstance(stateDict, dict)
             self.__dict__.update(stateDict)
 
@@ -449,7 +449,7 @@ class AbstractFileStore(ABC):
             raise NotImplementedError()
 
         @classmethod
-        def _load(cls, fileName: str) -> Any:
+        def _load(cls, fileName: str) -> Any: 
             """
             Load the state of the cache from the state file
 
