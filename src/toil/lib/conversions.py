@@ -1,4 +1,6 @@
+"""Conversions.py is now for general conversion functions as well as of July 13 2021"""
 """Conversion utilities for mapping memory, disk, core declarations from strings to numbers and vice versa."""
+
 import math
 from typing import Optional, SupportsInt, Tuple
 
@@ -84,3 +86,25 @@ def bytes2human(n: SupportsInt) -> str:
     unit = units[power_level if power_level < len(units) else -1]
     value = convert_units(n, "b", unit)
     return f'{value:.1f} {unit}'
+
+#General Conversions
+
+def hms_to_seconds(hms: str) -> float:
+    #60 seconds to minute, 60 minutes to hour
+
+    vals_to_convert = hms.split(':')
+    seconds = 0.0
+    
+    seconds += float(vals_to_convert[0] * 60 * 60) #hour conversion
+    seconds += float(vals_to_convert[1] * 60) # minute conversion
+    seconds += float(vals_to_convert[2]) # minute conversion
+
+    return seconds
+    """
+    Parse the given time string, in hours:minutes:seconds, and get the
+total seconds
+    of time it represents.
+
+    :param hms: Time string hin housr:minutes:seconds format.
+    :returns: Total tiome in seconds.
+    """
