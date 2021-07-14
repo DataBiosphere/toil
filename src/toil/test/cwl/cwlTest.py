@@ -686,16 +686,16 @@ class CWLSmallTests(ToilTest):
         self.assertEqual(self.up_count, 3)
         # Only 2 child relationships
         self.assertEqual(self.up_child_count, 2)
-        
+
     def test_download_structure(self) -> None:
         """
         Make sure that download_structure makes the right calls to what it thinks is the file store.
         """
-        
+
         # Define what we would download
         fid1 = FileID('afile', 10, False)
         fid2 = FileID('adifferentfile', 1000, True)
-        
+
         # And what directory structure it would be in
         structure = {
             'dir1': {
@@ -708,29 +708,29 @@ class CWLSmallTests(ToilTest):
             },
             'anotherfile': 'toilfile:' + fid2.pack()
         }
-        
+
         # Say where to put it on the filesystem
         to_dir = self._createTempDir()
-        
+
         # Make a fake file store
         file_store = Mock(AbstractFileStore)
-        
+
         # These will be populated.
         # TODO: This cache seems unused. Remove it?
         # This maps filesystem path to CWL URI
         index = {}
         # This maps CWL URI to filesystem path
         existing = {}
-        
+
         # Do the download
         download_structure(file_store, index, existing, structure, to_dir)
-        
+
         # Check the results
         # 3 files should be made
         self.assertEqual(len(index), 3)
         # From 2 unique URIs
         self.assertEqual(len(existing), 2)
-        
+
         # Make sure that the index contents (path to URI) are correct
         self.assertIn(os.path.join(to_dir, 'dir1/dir2/f1'), index)
         self.assertIn(os.path.join(to_dir, 'dir1/dir2/f1again'), index)
@@ -738,24 +738,24 @@ class CWLSmallTests(ToilTest):
         self.assertEqual(index[os.path.join(to_dir, 'dir1/dir2/f1')], structure['dir1']['dir2']['f1'])
         self.assertEqual(index[os.path.join(to_dir, 'dir1/dir2/f1again')], structure['dir1']['dir2']['f1again'])
         self.assertEqual(index[os.path.join(to_dir, 'anotherfile')], structure['anotherfile'])
-        
+
         # And the existing contents (URI to path)
         self.assertIn('toilfile:' + fid1.pack(), existing)
         self.assertIn('toilfile:' + fid2.pack(), existing)
         self.assertIn(existing['toilfile:' + fid1.pack()], [os.path.join(to_dir, 'dir1/dir2/f1'), os.path.join(to_dir, 'dir1/dir2/f1again')])
         self.assertEqual(existing['toilfile:' + fid2.pack()], os.path.join(to_dir, 'anotherfile'))
-        
+
         # The directory structure should be created for real
         self.assertTrue(os.path.isdir(os.path.join(to_dir, 'dir1')))
         self.assertTrue(os.path.isdir(os.path.join(to_dir, 'dir1/dir2')))
         self.assertTrue(os.path.isdir(os.path.join(to_dir, 'dir1/dir2/dir2sub')))
         self.assertTrue(os.path.isdir(os.path.join(to_dir, 'dir1/dir3')))
-        
+
         # The file store should have been asked to do the download
-        file_store.readGlobalFile.assert_has_calls([call(fid1, os.path.join(to_dir, 'dir1/dir2/f1'), symlink=True), 
+        file_store.readGlobalFile.assert_has_calls([call(fid1, os.path.join(to_dir, 'dir1/dir2/f1'), symlink=True),
                                                     call(fid1, os.path.join(to_dir, 'dir1/dir2/f1again'), symlink=True),
                                                     call(fid2, os.path.join(to_dir, 'anotherfile'), symlink=True)], any_order=True)
-        
-        
-        
+
+
+
 

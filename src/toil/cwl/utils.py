@@ -75,7 +75,7 @@ def visit_cwl_class_and_reduce(
     passes the down operation's result and a list of the up operation results
     for all child keys (flattening across lists and collapsing nodes of
     non-matching classes) to the up operation.
-    
+
     :returns: The flattened list of up operation results from all calls.
     """
 
