@@ -89,7 +89,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                         if walltime == '0':
                             walltime = time.mktime(time.strptime(walltime, "%S"))
                         else:
-                            walltime = hms_to_seconds(walltime)
+                            walltime = hms_duration_to_seconds(walltime)
                         times[currentjobs[jobid]] = walltime
 
             logger.debug("Job times from qstat are: " + str(times))

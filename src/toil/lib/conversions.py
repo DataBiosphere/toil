@@ -1,5 +1,7 @@
-"""Conversions.py is now for general conversion functions as well as of July 13 2021"""
-"""Conversion utilities for mapping memory, disk, core declarations from strings to numbers and vice versa."""
+"""
+Conversion utilities for mapping memory, disk, core declarations from strings to numbers and vice versa.
+Conversions.py is now for general conversion functions as of July 13 2021
+"""
 
 import math
 from typing import Optional, SupportsInt, Tuple
@@ -89,7 +91,7 @@ def bytes2human(n: SupportsInt) -> str:
 
 #General Conversions
 
-def hms_to_seconds(hms: str) -> float: 
+def hms_duration_to_seconds(hms: str) -> float: 
     """
     Parses a given time string in hours:minutes:seconds, 
     returns an equivalent total seconds value
