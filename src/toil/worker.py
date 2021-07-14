@@ -600,7 +600,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
     #Remove the temp dir
     cleanUp = config.cleanWorkDir
     if cleanUp == 'always' or (cleanUp == 'onSuccess' and not jobAttemptFailed) or (cleanUp == 'onError' and jobAttemptFailed):
-        def make_parent_writable(func: Callable[[str], Any], path: str, _) -> None:
+        def make_parent_writable(func: Callable[[str], Any], path: str, _: Any) -> None:
             """
             When encountering an error removing a file or directory, make sure
             the parent directory is writable.

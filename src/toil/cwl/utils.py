@@ -28,6 +28,7 @@ from typing import (
     MutableSequence,
     Tuple,
     TypeVar,
+    Union,
 )
 
 from toil.fileStores import FileID
@@ -38,9 +39,9 @@ logger = logging.getLogger(__name__)
 # Customized CWL utilities
 
 def visit_top_cwl_class(
-    rec: MutableMapping,
+    rec: Any,
     classes: Iterable[str],
-    op: Callable[[MutableMapping], Any]
+    op: Callable[[Any], Any]
 ) -> None:
     """
     Apply the given operation to all top-level CWL objects with the given named CWL class.
@@ -61,24 +62,26 @@ def visit_top_cwl_class(
             visit_top_cwl_class(key, classes, op)
 
 DownReturnType = TypeVar('DownReturnType')
+UpReturnType = TypeVar('UpReturnType')
 def visit_cwl_class_and_reduce(
-    rec: MutableMapping,
+    rec: Any,
     classes: Iterable[str],
-    op_down: Callable[[MutableMapping], DownReturnType],
-    op_up: Callable[[MutableMapping, DownReturnType, MutableSequence], Any]
-) -> List:
+    op_down: Callable[[Any], DownReturnType],
+    op_up: Callable[[Any, DownReturnType, List[UpReturnType]], UpReturnType]
+) -> List[UpReturnType]:
     """
     Apply the given operations to all CWL objects with the given named CWL class.
     Applies the down operation top-down, and the up operation bottom-up, and
     passes the down operation's result and a list of the up operation results
     for all child keys (flattening across lists and collapsing nodes of
     non-matching classes) to the up operation.
+    
+    :returns: The flattened list of up operation results from all calls.
     """
 
     results = []
 
     if isinstance(rec, MutableMapping):
-        down_result = None
         child_results = []
         if rec.get("class", None) in classes:
             # Apply the down operation
@@ -100,12 +103,17 @@ def visit_cwl_class_and_reduce(
                 # And flatten together all their results.
                 results.append(result)
     return results
-    
+
+# Define a recursive type to represent a directory structure.
+# The only problem is that MyPy can't yet type check recursive types like this.
+# See: https://github.com/python/mypy/issues/731
+# So we have to tell MyPy to ignore it.
+DirectoryStructure = Dict[str, Union[str, 'DirectoryStructure']] # type: ignore
 def download_structure(
     file_store: AbstractFileStore,
     index: Dict[str, str],
     existing: Dict[str, str],
-    dir_dict: Dict,
+    dir_dict: DirectoryStructure,
     into_dir: str
 ) -> None:
     """
