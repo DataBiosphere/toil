@@ -17,8 +17,7 @@ import tempfile
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from threading import Event, Semaphore
-from typing import Any, BinaryIO, Dict, List, Set, Callable, ContextManager, Generator, IO, Iterator, Optional, TextIO, Tuple, Type, TypeVar, Union, TYPE_CHECKING
-from __future__ import annotations
+from typing import Any, BinaryIO, Dict, List, Set, Callable, ContextManager, Generator, Iterator, Optional, TextIO, Tuple, Union, TYPE_CHECKING
 import dill
 
 from toil.common import cacheDirName
