@@ -91,13 +91,16 @@ def bytes2human(n: SupportsInt) -> str:
 
 def hms_to_seconds(hms: str) -> float:
     #60 seconds to minute, 60 minutes to hour
-
     vals_to_convert = hms.split(':')
     seconds = 0.0
     
-    seconds += float(vals_to_convert[0] * 60 * 60) #hour conversion
-    seconds += float(vals_to_convert[1] * 60) # minute conversion
-    seconds += float(vals_to_convert[2]) # minute conversion
+    for val in vals_to_convert: #error check for nonegative time
+        if(float(val) < 0): 
+            raise ValueError("Invalid Time")
+
+    seconds += float(vals_to_convert[0]) * 60 * 60 #hour conversion
+    seconds += float(vals_to_convert[1]) * 60 # minute conversion
+    seconds += float(vals_to_convert[2]) # second conversion
 
     return seconds
     """
