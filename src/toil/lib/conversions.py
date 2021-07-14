@@ -89,25 +89,20 @@ def bytes2human(n: SupportsInt) -> str:
 
 #General Conversions
 
-def hms_to_seconds(hms: str) -> float:
-    #60 seconds to minute, 60 minutes to hour
+def hms_to_seconds(hms: str) -> float: 
+    """
+    Parses a given time string in hours:minutes:seconds, 
+    returns an equivalent total seconds value
+    """
     vals_to_convert = hms.split(':')
     seconds = 0.0
     
-    for val in vals_to_convert: #error check for nonegative time
+    for val in vals_to_convert:
         if(float(val) < 0): 
             raise ValueError("Invalid Time")
 
-    seconds += float(vals_to_convert[0]) * 60 * 60 #hour conversion
-    seconds += float(vals_to_convert[1]) * 60 # minute conversion
-    seconds += float(vals_to_convert[2]) # second conversion
+    seconds += float(vals_to_convert[0]) * 60 * 60 
+    seconds += float(vals_to_convert[1]) * 60 
+    seconds += float(vals_to_convert[2]) 
 
     return seconds
-    """
-    Parse the given time string, in hours:minutes:seconds, and get the
-total seconds
-    of time it represents.
-
-    :param hms: Time string hin housr:minutes:seconds format.
-    :returns: Total tiome in seconds.
-    """
