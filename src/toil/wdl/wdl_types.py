@@ -2,6 +2,7 @@ from abc import ABC
 from typing import Any, Dict, Optional
 
 from toil.job import Promise
+from toil.fileStores import FileID
 
 
 class WDLRuntimeError(RuntimeError):
@@ -210,7 +211,7 @@ class WDLFile:
     """
     Represents a WDL File.
     """
-    def __init__(self, file_path: str, file_name: Optional[str] = None, imported: bool = False):
+    def __init__(self, file_path: FileID, file_name: Optional[str] = None, imported: bool = False):
         """
         :param file_path: Path to file.
         :param file_name: Optional. Preserved file name.
