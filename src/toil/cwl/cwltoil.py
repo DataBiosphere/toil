@@ -99,7 +99,7 @@ from schema_salad.sourceline import SourceLine
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Config, Toil, addOptions
-from toil.cwl.utils import visit_top_cwl_class, visit_cwl_class_and_reduce
+from toil.cwl.utils import download_structure, visit_top_cwl_class, visit_cwl_class_and_reduce
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job
