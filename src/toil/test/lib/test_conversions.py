@@ -203,15 +203,9 @@ class ConversionTest(ToilTest):
             '1:1:1' : 3661.0,
             '20:14:33' : 72873.0,
             '72:80:112' : 264112.0,
-            '72' : -1,
-            '62:10' : -1,
-            '1:1:1:1' : -1,
-            '5:-1:4' : -1
         }
         results = {}
         for key in expected_results.keys():
-            try:
-                results[key] = hms_duration_to_seconds(f'{key}')
-            except ValueError:
-                results[key] = -1
+            results[key] = hms_duration_to_seconds(f'{key}')
+            
         self.assertEqual(results, expected_results)

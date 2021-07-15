@@ -1,6 +1,6 @@
 """
 Conversion utilities for mapping memory, disk, core declarations from strings to numbers and vice versa.
-Conversions.py is now for general conversion functions as of July 13 2021
+Also contains general conversion functions
 """
 
 import math
