@@ -239,13 +239,13 @@ def sub(input_str: str, pattern: str, replace: str) -> str:
     """
 
     if isinstance(input_str, WDLFile):
-        input_str = input_str.file_name
+        input_str_name = input_str.file_name
     if isinstance(pattern, WDLFile):
-        pattern = pattern.file_name
+        pattern_name = pattern.file_name
     if isinstance(replace, WDLFile):
-        replace = replace.file_name
+        replace_name = replace.file_name
 
-    return re.sub(pattern=str(pattern), repl=str(replace), string=str(input_str))
+    return re.sub(pattern=str(pattern_name), repl=str(replace_name), string=str(input_str_name))
 
 
 def defined(i: Any) -> bool:
@@ -274,8 +274,8 @@ def process_single_outfile(wdl_file: WDLFile, fileStore: AbstractFileStore, work
         for std_file in ('stdout', 'stderr'):
             std_file = os.path.join(workDir, 'execution', std_file)
             if os.path.exists(std_file):
-                with open(std_file, 'rb') as f:
-                    logger.info(f.read())
+                with open(std_file, 'rb') as fh:
+                    logger.info(fh.read())
 
         raise RuntimeError('OUTPUT FILE: {} was not found in {}!\n'
                            '{}\n\n'
@@ -344,9 +344,9 @@ def abspath_file(f: Any, cwd: str) -> Any:
 def read_single_file(f: WDLFile, tempDir: str, fileStore: AbstractFileStore, docker: bool = False) -> str:
     import os
     try:
-        fpath = fileStore.readGlobalFile(f.file_path, userPath=os.path.join(tempDir, f.file_name))
+        fpath = fileStore.readGlobalFile(f.file_path, userPath=os.path.join(tempDir, str(f.file_name)))
     except:
-        fpath = os.path.join(tempDir, f.file_name)
+        fpath = os.path.join(tempDir, str(f.file_name))
     return str(fpath)
 
 
@@ -517,10 +517,11 @@ def size(f: Optional[Union[str, WDLFile, List[Union[str, WDLFile]]]] = None,
     divisor = bytes_in_unit(unit)
 
     if isinstance(f, list):
-        total_size = sum(file.file_path.size for file in f) # type: ignore
+        total_size = sum(file.file_path.size for file in f if isinstance(file, WDLFile))
         return total_size / divisor
 
-    fileID = f.file_path
+    if isinstance(f, WDLFile):
+        fileID = f.file_path
     return float(fileID.size / divisor)
 
 
@@ -679,9 +680,9 @@ def read_int(path: Union[str, WDLFile]) -> int:
     WDL syntax: Int read_int(String|File)
     """
     if isinstance(path, WDLFile):
-        path = path.file_path
+        file_path = path.file_path
 
-    with open(path, 'r') as f:
+    with open(file_path, 'r') as f:
         return int(f.read().strip())
 
 
@@ -693,9 +694,9 @@ def read_string(path: Union[str, WDLFile]) -> str:
     WDL syntax: String read_string(String|File)
     """
     if isinstance(path, WDLFile):
-        path = path.file_path
+        file_path = path.file_path
 
-    with open(path, 'r') as f:
+    with open(file_path, 'r') as f:
         return str(f.read().strip())
 
 
@@ -707,9 +708,9 @@ def read_float(path: Union[str, WDLFile]) -> float:
     WDL syntax: Float read_float(String|File)
     """
     if isinstance(path, WDLFile):
-        path = path.file_path
+        file_path = path.file_path
 
-    with open(path, 'r') as f:
+    with open(file_path, 'r') as f:
         return float(f.read().strip())
 
 
@@ -722,9 +723,9 @@ def read_boolean(path: Union[str, WDLFile]) -> bool:
     WDL syntax: Boolean read_boolean(String|File)
     """
     if isinstance(path, WDLFile):
-        path = path.file_path
+        file_path = path.file_path
 
-    with open(path, 'r') as f:
+    with open(file_path, 'r') as f:
         return f.read().strip().lower() == 'true'
 
 
