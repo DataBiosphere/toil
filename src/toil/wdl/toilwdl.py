@@ -23,7 +23,7 @@ from toil.wdl.wdl_synthesis import SynthesizeWDL
 logger = logging.getLogger(__name__)
 
 
-def main():
+def main() -> None:
     """
     A program to run WDL input files using native Toil scripts.
 
