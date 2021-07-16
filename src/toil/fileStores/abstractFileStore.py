@@ -330,7 +330,7 @@ class AbstractFileStore(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def readGlobalFileStream(self, fileStoreID: str, encoding: Optional[str] = None, errors: Optional[str] = None) -> ContextManager[str]:
+    def readGlobalFileStream(self, fileStoreID: str, encoding: Optional[str] = None, errors: Optional[str] = None) -> ContextManager[Union[BinaryIO, TextIO]]:
         """
         Similar to readGlobalFile, but allows a stream to be read from the job store. The yielded
         file handle does not need to and should not be closed explicitly.
@@ -407,7 +407,7 @@ class AbstractFileStore(ABC):
     def importFile(self, srcUrl: str, sharedFileName: Optional[str] = None) -> Optional[FileID]:
         return self.jobStore.importFile(srcUrl, sharedFileName=sharedFileName)
 
-    def exportFile(self, jobStoreFileID: str, dstUrl: str) -> None:
+    def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
         raise NotImplementedError()
 
     # A utility method for accessing filenames
