@@ -26,7 +26,7 @@ class FileID(str):
     """
 
     def __new__(cls, fileStoreID: str, *args: Any) -> 'FileID':
-        return super(FileID, cls).__new__(cls, fileStoreID) # type: ignore
+        return super(FileID, cls).__new__(cls, fileStoreID)
 
     def __init__(self, fileStoreID: str, size: int, executable: bool = False):
         # Don't pass an argument to parent class's __init__.
