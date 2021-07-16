@@ -340,11 +340,16 @@ def needs_kubernetes(test_item):
     test_item = _mark_test('kubernetes', test_item)
     try:
         import kubernetes
-        kubernetes.config.load_kube_config()
+        try:
+            kubernetes.config.load_kube_config()
+        except kubernetes.config.ConfigException:
+            try:
+                kubernetes.config.load_incluster_config()
+            except kubernetes.config.ConfigException:
+                return unittest.skip("Configure Kubernetes (~/.kube/config, $KUBECONFIG, "
+                                     "or current pod) to include this test.")(test_item)
     except ImportError:
         return unittest.skip("Install Toil with the 'kubernetes' extra to include this test.")(test_item)
-    except TypeError:
-        return unittest.skip("Configure Kubernetes (~/.kube/config) to include this test.")(test_item)
     return test_item
 
 
