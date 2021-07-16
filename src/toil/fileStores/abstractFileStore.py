@@ -17,7 +17,8 @@ import tempfile
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from threading import Event, Semaphore
-from typing import Any, BinaryIO, Dict, List, Set, Callable, ContextManager, Generator, Iterator, Optional, TextIO, Tuple, Union, TYPE_CHECKING
+from typing import (List, Dict, Set, Any, BinaryIO, Callable, ContextManager, Generator, Iterator,
+                    Optional, TextIO, Tuple, Union, TYPE_CHECKING, cast)
 import dill
 
 from toil.common import cacheDirName
@@ -372,7 +373,7 @@ class AbstractFileStore(ABC):
             # Someone is mixing FileStore and JobStore file APIs, or serializing FileIDs as strings.
             size = self.jobStore.getFileSize(fileStoreID)
 
-        return int(size)
+        return cast(int, size)
 
     @abstractmethod
     def deleteLocalFile(self, fileStoreID: Union[FileID, str]) -> None:
