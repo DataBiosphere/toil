@@ -17,7 +17,7 @@ import logging
 import os
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import Any, AnyStr, BinaryIO, Callable, Dict, Iterator, Optional, Generator, TextIO, Union
+from typing import DefaultDict, List, Dict, BinaryIO, Callable, Iterator, Optional, Generator, TextIO, Union, cast
 
 import dill
 
@@ -38,8 +38,7 @@ class NonCachingFileStore(AbstractFileStore):
         super().__init__(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
         # This will be defined in the `open` method.
         self.jobStateFile: Optional[str] = None
-        self.localFileMap: Dict[str, str] = {}
-        self.localFileMap = defaultdict(list)  # type: ignore
+        self.localFileMap: DefaultDict[str, List[str]] = defaultdict(list)
 
     @contextmanager
     def open(self, job: Job) -> Generator[None, None, None]:
@@ -77,7 +76,7 @@ class NonCachingFileStore(AbstractFileStore):
         if absLocalFileName.startswith(self.localTempDir):
             # Only files in the appropriate directory should become local files
             # we can delete with deleteLocalFile
-            self.localFileMap[fileStoreID] = absLocalFileName
+            self.localFileMap[fileStoreID].append(absLocalFileName)
         return FileID.forPath(fileStoreID, absLocalFileName)
 
     def readGlobalFile(self, fileStoreID: str, userPath: Optional[str] = None, cache: bool=True, mutable: bool=False,
@@ -90,7 +89,7 @@ class NonCachingFileStore(AbstractFileStore):
             localFilePath = self.getLocalTempFileName()
 
         self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
-        self.localFileMap[fileStoreID] = localFilePath
+        self.localFileMap[fileStoreID].append(localFilePath)
         self.logAccess(fileStoreID, localFilePath)
         return localFilePath
 
@@ -237,7 +236,7 @@ class NonCachingFileStore(AbstractFileStore):
     def _readJobState(jobStateFileName: str) -> Dict[str, str]:
         with open(jobStateFileName, 'rb') as fH:
             state = dill.load(fH)
-        return dict(state)
+        return cast(Dict[str, str], state)
 
     def _createJobStateFile(self) -> str:
         """
