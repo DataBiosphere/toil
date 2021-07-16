@@ -20,7 +20,7 @@ import re
 import subprocess
 import textwrap
 import uuid
-from typing import Dict, List, Any, Optional, Tuple, Union
+from typing import Dict, List, Any, Optional, Tuple, Union, cast
 
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.wdl.wdl_types import WDLType, WDLFile, WDLPair
@@ -344,10 +344,10 @@ def abspath_file(f: Any, cwd: str) -> Any:
 def read_single_file(f: WDLFile, tempDir: str, fileStore: AbstractFileStore, docker: bool = False) -> str:
     import os
     try:
-        fpath = fileStore.readGlobalFile(f.file_path, userPath=os.path.join(tempDir, str(f.file_name)))
+        fpath = fileStore.readGlobalFile(f.file_path, userPath=os.path.join(tempDir, cast(str, f.file_name)))
     except:
-        fpath = os.path.join(tempDir, str(f.file_name))
-    return str(fpath)
+        fpath = os.path.join(tempDir, cast(str, f.file_name))
+    return cast(str, fpath)
 
 
 def read_file(f: Any, tempDir: str, fileStore: AbstractFileStore, docker: bool = False) -> Any:
@@ -407,7 +407,7 @@ def generate_stdout_file(output: Union[str, bytes], tempDir: str, fileStore: Abs
         stream.write(output)
 
     assert file_id is not None
-    return str(fileStore.readGlobalFile(fileStoreID=file_id, userPath=local_path))
+    return cast(str, fileStore.readGlobalFile(fileStoreID=file_id, userPath=local_path))
 
 
 def parse_memory(memory: str) -> int:
@@ -522,7 +522,7 @@ def size(f: Optional[Union[str, WDLFile, List[Union[str, WDLFile]]]] = None,
 
     if isinstance(f, WDLFile):
         fileID = f.file_path
-    return float(fileID.size / divisor)
+    return cast(float, fileID.size / divisor)
 
 
 def select_first(values: Any) -> Any:
