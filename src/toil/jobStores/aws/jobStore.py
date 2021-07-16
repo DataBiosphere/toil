@@ -306,6 +306,8 @@ class AWSJobStore(AbstractJobStore):
                    range(0, len(self._batchedUpdates), self.jobsPerBatchInsert)]
 
         for batch in batches:
+            for jobDescription in batch:
+                jobDescription.pre_update_hook()
             items = {compat_bytes(jobDescription.jobStoreID): self._awsJobToItem(jobDescription) for jobDescription in batch}
             for attempt in retry_sdb():
                 with attempt:
@@ -359,6 +361,7 @@ class AWSJobStore(AbstractJobStore):
 
     def update(self, jobDescription):
         logger.debug("Updating job %s", jobDescription.jobStoreID)
+        jobDescription.pre_update_hook()
         item = self._awsJobToItem(jobDescription)
         for attempt in retry_sdb():
             with attempt:
