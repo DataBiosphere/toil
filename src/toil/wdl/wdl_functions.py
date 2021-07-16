@@ -25,6 +25,7 @@ from typing import Dict, List, Any, Optional, Tuple, Union, cast
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.wdl.wdl_types import WDLType, WDLFile, WDLPair
 from toil.lib.conversions import bytes_in_unit
+from toil.lib.resources import glob # Used in the wdl tests
 
 logger = logging.getLogger(__name__)
 
