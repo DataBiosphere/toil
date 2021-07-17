@@ -463,7 +463,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Try the job as local
         localID = self.handleLocalJob(jobDesc)
-        if localID:
+        if localID is not None:
             # It is a local job
             return localID
         else:
