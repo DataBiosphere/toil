@@ -240,13 +240,13 @@ def sub(input_str: str, pattern: str, replace: str) -> str:
     """
 
     if isinstance(input_str, WDLFile):
-        input_str_name = input_str.file_name
+        input_str = cast(str, input_str.file_name)
     if isinstance(pattern, WDLFile):
-        pattern_name = pattern.file_name
+        pattern = cast(str, pattern.file_name)
     if isinstance(replace, WDLFile):
-        replace_name = replace.file_name
+        replace = cast(str, replace.file_name)
 
-    return re.sub(pattern=str(pattern_name), repl=str(replace_name), string=str(input_str_name))
+    return re.sub(pattern=str(pattern), repl=str(replace), string=str(input_str))
 
 
 def defined(i: Any) -> bool:
