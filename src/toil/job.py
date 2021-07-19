@@ -2239,44 +2239,33 @@ class Job:
         userModule = cls._loadUserModule(userModule)
         pickleFile = commandTokens[1]
 
-        # Get a directory to download the job in
-        directory = tempfile.mkdtemp()
-        # Initialize a blank filename so the finally below can't fail due to a
-        # missing variable
-        filename = ''
+        
 
-        try:
-            # Get a filename to download the job to.
-            # Don't use mkstemp because we would need to delete and replace the
-            # file.
-            # Don't use a NamedTemporaryFile context manager because its
-            # context manager exit will crash if we deleted it.
-            filename = os.path.join(directory, 'job')
-
-            # Download the job
-            if pickleFile == "firstJob":
-                jobStore.readSharedFile(pickleFile, filename)
-            else:
-                jobStore.readFile(pickleFile, filename)
-
-            # Open and unpickle
-            with open(filename, 'rb') as fileHandle:
-                job = cls._unpickle(userModule, fileHandle, requireInstanceOf=Job)
+        if pickleFile == "firstJob":
+            #jobStore.readSharedFile(pickleFile)
+            with jobStore.readSharedFileStream(pickleFile) as fileHandle:
+                #job = cls._unpickle(userModule, fileHandle, requireInstanceOf=Job)
+                job = safeUnpickleFromStream(fileHandle)
                 # Fill in the current description
                 job._description = jobDescription
 
                 # Set up the registry again, so children and follow-ons can be added on the worker
                 job._registry = {job.jobStoreID: job}
 
-                return job
+            return job
+        else:
+            #jobStore.readFile(pickleFile)
+            with jobStore.readFileStream(pickleFile) as fileHandle:
+                #job = cls._unpickle(userModule, fileHandle, requireInstanceOf=Job)
+                job = safeUnpickleFromStream(fileHandle)
+                # Fill in the current description
+                job._description = jobDescription
 
-                # TODO: We ought to just unpickle straight from a streaming read
-        finally:
-            # Clean up the file
-            if os.path.exists(filename):
-                os.unlink(filename)
-            # Clean up the directory we put it in
-            shutil.rmtree(directory)
+                # Set up the registry again, so children and follow-ons can be added on the worker
+                job._registry = {job.jobStoreID: job}
+
+            return job
+
 
     def _run(self, jobGraph=None, fileStore=None, **kwargs):
         """
