@@ -14,6 +14,8 @@
 import os
 import stat
 
+from typing import Any
+
 
 class FileID(str):
     """
@@ -23,29 +25,29 @@ class FileID(str):
     Calls into the file store can use bare strings; size will be queried from the job store if unavailable in the ID.
     """
 
-    def __new__(cls, fileStoreID, *args):
+    def __new__(cls, fileStoreID: str, *args: Any) -> 'FileID':
         return super(FileID, cls).__new__(cls, fileStoreID)
 
-    def __init__(self, fileStoreID, size, executable=False):
+    def __init__(self, fileStoreID: str, size: int, executable: bool = False):
         # Don't pass an argument to parent class's __init__.
         # In Python 3 we can have super(FileID, self) hand us object's __init__ which chokes on any arguments.
         super(FileID, self).__init__()
         self.size = size
         self.executable = executable
 
-    def pack(self):
+    def pack(self) -> str:
         """
         Pack the FileID into a string so it can be passed through external code.
         """
         return '{}:{}:{}'.format(self.size, int(self.executable), self)
 
     @classmethod
-    def forPath(cls, fileStoreID, filePath):
+    def forPath(cls, fileStoreID: str, filePath: str) -> 'FileID':
         executable = os.stat(filePath).st_mode & stat.S_IXUSR != 0
         return cls(fileStoreID, os.stat(filePath).st_size, executable)
 
     @classmethod
-    def unpack(cls, packedFileStoreID):
+    def unpack(cls, packedFileStoreID: str) -> 'FileID':
         """
         Unpack the result of pack() into a FileID object.
         """
