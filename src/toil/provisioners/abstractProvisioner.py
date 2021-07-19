@@ -22,7 +22,7 @@ from abc import ABC, abstractmethod
 from base64 import b64encode
 
 from functools import total_ordering
-from typing import List, Dict, Tuple, Optional, Set
+from typing import List, Dict, Tuple, Optional, Set, Union
 
 from toil import applianceSelf, customDockerInitCmd, customInitCmd
 from toil.provisioners import ClusterTypeNotSupportedException
@@ -188,6 +188,26 @@ class AbstractProvisioner(ABC):
         Implementations must call _setLeaderWorkerAuthentication().
         """
         raise NotImplementedError
+
+    def _writeGlobalFile(self, name: str, contents: Union[str, bytes]) -> str:
+        """
+        Write a file to a physical storage system that is accessible to the
+        leader and all nodes during the life of the cluster.
+
+        Not to be confused with the `writeGlobalFile()` method in the jobStore,
+        this is an internal system to store files for the cluster. Additional
+        resources should be cleaned up in `self.destroyCluster()`.
+
+        :return: A public URL that can be used to retrieve the file.
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} does not support _writeGlobalFile().")
+
+    def _readGlobalFile(self, name: str):
+        """
+        Read the file written by `self._writeGlobalFile()`.
+        """
+        # probably not going to be used for now.
+        raise NotImplementedError(f"{self.__class__.__name__} does not support _readGlobalFile().")
 
     def _setLeaderWorkerAuthentication(self, leader: Node = None):
         """
@@ -1117,7 +1137,7 @@ class AbstractProvisioner(ABC):
             WantedBy=multi-user.target
             '''))
 
-    def _getIgnitionConfigUserData(self, role, keyPath=None, preemptable=False):
+    def _getIgnitionUserData(self, role, keyPath=None, preemptable=False):
         """
         Return the text (not bytes) user data to pass to a provisioned node.
 

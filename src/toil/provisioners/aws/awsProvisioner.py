@@ -148,12 +148,12 @@ class AWSProvisioner(AbstractProvisioner):
         self.ec2_client = self.session.client('ec2')
         self.autoscaling_client = self.session.client('autoscaling')
         self.iam_client = self.session.client('iam')
+        self.s3_resource = self.session.resource('s3')
+        self.s3_client = self.session.client('s3')
 
         # Call base class constructor, which will call createClusterSettings()
         # or readClusterSettings()
         super(AWSProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
-
-
 
     def supportedClusterTypes(self):
         return {'mesos', 'kubernetes'}
@@ -193,6 +193,14 @@ class AWSProvisioner(AbstractProvisioner):
         # Let the base provisioner work out how to deploy duly authorized
         # workers for this leader.
         self._setLeaderWorkerAuthentication()
+
+    def _writeGlobalFile(self, name: str, contents) -> str:
+        bucket_name = self.clusterName + '--internal'
+        location = zone_to_region(self._zone)
+
+        # create bucket if need, then write file to S3.
+
+        return f"s3://{bucket_name}/{name}"
 
     def launchCluster(self,
                       leaderNodeType: str,
@@ -237,7 +245,7 @@ class AWSProvisioner(AbstractProvisioner):
         createdSGs = self._createSecurityGroups()
         bdms = self._getBoto3BlockDeviceMappings(leader_type, rootVolSize=leaderStorage)
 
-        userData = self._getIgnitionConfigUserData('leader')
+        userData = self._getIgnitionUserData('leader')
 
         # Make up the tags
         self._tags = {'Name': self.clusterName,
@@ -335,9 +343,9 @@ class AWSProvisioner(AbstractProvisioner):
             # the root volume
             disk = self._nodeStorageOverrides.get(instance_type, self._nodeStorage) * 2 ** 30
 
-        #Underestimate memory by 100M to prevent autoscaler from disagreeing with
-        #mesos about whether a job can run on a particular node type
-        memory = (type_info.memory - 0.1) * 2** 30
+        # Underestimate memory by 100M to prevent autoscaler from disagreeing with
+        # mesos about whether a job can run on a particular node type
+        memory = (type_info.memory - 0.1) * 2 ** 30
         return Shape(wallTime=60 * 60,
                      memory=memory,
                      cores=type_info.cores,
@@ -376,7 +384,7 @@ class AWSProvisioner(AbstractProvisioner):
                     self.autoscaling_client.delete_auto_scaling_group(AutoScalingGroupName=asgName, ForceDelete=True)
                     removed = True
         if removed:
-            logger.debug('... Succesfully deleted autoscaling groups')
+            logger.debug('... Successfully deleted autoscaling groups')
 
         # Do the workers after the ASGs because some may belong to ASGs
         logger.info('Terminating any remaining workers ...')
@@ -392,7 +400,7 @@ class AWSProvisioner(AbstractProvisioner):
             self._terminateInstances(instancesToTerminate)
             removed = True
         if removed:
-            logger.debug('... Succesfully terminated workers')
+            logger.debug('... Successfully terminated workers')
 
         logger.info('Deleting launch templates ...')
         removed = False
@@ -411,8 +419,7 @@ class AWSProvisioner(AbstractProvisioner):
             # We missed something
             removed = False
         if removed:
-            logger.debug('... Succesfully deleted launch templates')
-
+            logger.debug('... Successfully deleted launch templates')
 
         if len(instances) == len(instancesToTerminate):
             # All nodes are gone now.
@@ -436,7 +443,7 @@ class AWSProvisioner(AbstractProvisioner):
                                 else:
                                     raise
             if removed:
-                logger.debug('... Succesfully deleted security group')
+                logger.debug('... Successfully deleted security group')
         else:
             assert len(instances) > len(instancesToTerminate)
             # the security group can't be deleted until all nodes are terminated
@@ -444,8 +451,23 @@ class AWSProvisioner(AbstractProvisioner):
                            'have failed health checks. As a result, the security group & IAM '
                            'roles will not be deleted.')
 
+        # delete S3 buckets that might have been created by `self._writeGlobalFile()`
+        # TODO: cleanup
+
     def terminateNodes(self, nodes : List[Node]):
         self._terminateIDs([x.name for x in nodes])
+
+    def _getIgnitionUserData(self, role, keyPath=None, preemptable=False):
+        config = super()._getIgnitionUserData(role, keyPath, preemptable)
+
+        # AWS has a hard 16KB limit on user data, so we have to write the config file to a S3 bucket and let Ignition
+        # fetch it during startup.
+        # See: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-add-user-data.html
+        if len(config) > 16000:
+            logger.warning(f"Ignition config size exceeds the AWS limit ({len(config)} > 16384).  Writing to S3...")
+            pass
+
+        return config
 
     def _recover_node_type_bid(self, node_type: Set[str], spot_bid: Optional[float]) -> Optional[float]:
         """
@@ -497,7 +519,7 @@ class AWSProvisioner(AbstractProvisioner):
                                                rootVolSize=root_vol_size)
 
         keyPath = self._sseKey if self._sseKey else None
-        userData = self._getIgnitionConfigUserData('worker', keyPath, preemptable)
+        userData = self._getIgnitionUserData('worker', keyPath, preemptable)
         if isinstance(userData, str):
             # Spot-market provisioning requires bytes for user data.
             userData = userData.encode('utf-8')
@@ -999,7 +1021,7 @@ class AWSProvisioner(AbstractProvisioner):
         bdms = self._getBoto3BlockDeviceMappings(type_info, rootVolSize=rootVolSize)
 
         keyPath = self._sseKey if self._sseKey else None
-        userData = self._getIgnitionConfigUserData('worker', keyPath, preemptable)
+        userData = self._getIgnitionUserData('worker', keyPath, preemptable)
 
         lt_name = self._name_worker_launch_template(instance_type, preemptable=preemptable)
 
