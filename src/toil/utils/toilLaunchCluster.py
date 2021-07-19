@@ -19,11 +19,12 @@ from toil import applianceSelf
 from toil.common import parser_with_common_options
 from toil.provisioners import parse_node_types, check_valid_node_types, cluster_factory
 from toil.statsAndLogging import set_logging_from_options
+from typing import List, Dict, Union, Tuple
 
 logger = logging.getLogger(__name__)
 
 
-def create_tags_dict(tags: list) -> dict:
+def create_tags_dict(tags: List[str]) -> Dict[str, str]:
     tags_dict = dict()
     for tag in tags:
         key, value = tag.split('=')
@@ -31,7 +32,7 @@ def create_tags_dict(tags: list) -> dict:
     return tags_dict
 
 
-def main():
+def main() -> None:
     parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
     parser.add_argument("-T", "--clusterType", dest="clusterType",
                         choices=['mesos', 'kubernetes'], default='mesos',
@@ -119,7 +120,7 @@ def main():
 
     # This holds either ints to launch static nodes, or tuples of ints
     # specifying ranges to launch managed auto-scaling nodes, for each type.
-    nodeCounts = []
+    nodeCounts: List[Union[int, Tuple[int, int]]] = []
 
     if ((worker_node_types != [] or worker_node_ranges != []) and not
         (worker_node_types != [] and worker_node_ranges != [])):
@@ -208,6 +209,3 @@ def main():
                                         preemptable=True, spotBid=wanted[1])
 
     logger.info('Cluster created successfully.')
-
-
-

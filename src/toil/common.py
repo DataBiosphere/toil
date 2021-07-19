@@ -15,31 +15,30 @@ import logging
 import os
 import pickle
 import re
-import requests
 import subprocess
 import sys
 import tempfile
 import time
 import uuid
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, _ArgumentGroup
+from typing import Any, Callable, List, Optional, Tuple, Union
 
-from argparse import _ArgumentGroup, ArgumentParser, ArgumentDefaultsHelpFormatter
-from typing import Optional, Callable, Any, List, Tuple, Union
+import requests
 
 from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import (add_all_batchsystem_options,
                                        set_batchsystem_config_defaults,
                                        set_batchsystem_options)
-from toil.lib.conversions import human2bytes, bytes2human
-from toil.lib.retry import retry
-from toil.provisioners import (add_provisioner_options,
-                               parse_node_types,
-                               check_valid_node_types,
-                               cluster_factory)
 from toil.lib.aws import zone_to_region
+from toil.lib.conversions import bytes2human, human2bytes
+from toil.lib.retry import retry
+from toil.provisioners import add_provisioner_options, cluster_factory, parse_node_types
 from toil.realtimeLogger import RealtimeLogger
-from toil.statsAndLogging import (add_logging_options,
-                                  root_logger,
-                                  set_logging_from_options)
+from toil.statsAndLogging import (
+    add_logging_options,
+    root_logger,
+    set_logging_from_options,
+)
 from toil.version import dockerRegistry, dockerTag, version
 
 # aim to pack autoscaling jobs within a 30 minute block before provisioning a new node
@@ -208,6 +207,7 @@ class Config:
         set_option("batchSystem")
         set_batchsystem_options(self.batchSystem, set_option)
         set_option("disableAutoDeployment")
+        set_option("coalesceStatusCalls")
         set_option("scale", float, fC(0.0))
         set_option("parasolCommand")
         set_option("parasolMaxBatches", int, iC(1))
