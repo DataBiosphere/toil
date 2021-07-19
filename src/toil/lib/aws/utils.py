@@ -101,6 +101,14 @@ def create_s3_bucket(
     bucket_name: str,
     region: Union["BucketLocationConstraintType", Literal["us-east-1"]],
 ) -> "Bucket":
+    """
+    Create an AWS S3 bucket, using the given Boto3 S3 session, with the
+    given name, in the given region.
+
+    Supports the us-east-1 region, where bucket creation is special.
+
+    *ALL* S3 bucket creation should use this function.
+    """
     logger.debug("Creating bucket '%s' in region %s.", bucket_name, region)
     if region == "us-east-1":  # see https://github.com/boto/boto3/issues/125
         bucket = s3_session.create_bucket(Bucket=bucket_name)
