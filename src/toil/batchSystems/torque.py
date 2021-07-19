@@ -22,6 +22,7 @@ from queue import Empty
 
 from toil.batchSystems.abstractGridEngineBatchSystem import (AbstractGridEngineBatchSystem,
                                                              UpdatedBatchJobInfo)
+from toil.lib.conversions import hms_duration_to_seconds
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)
@@ -88,7 +89,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                         if walltime == '0':
                             walltime = time.mktime(time.strptime(walltime, "%S"))
                         else:
-                            walltime = time.mktime(time.strptime(walltime, "%H:%M:%S"))
+                            walltime = hms_duration_to_seconds(walltime)
                         times[currentjobs[jobid]] = walltime
 
             logger.debug("Job times from qstat are: " + str(times))
