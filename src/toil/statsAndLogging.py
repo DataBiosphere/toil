@@ -245,7 +245,7 @@ def configure_root_logger() -> None:
     root_logger.setLevel(DEFAULT_LOGLEVEL)
 
 
-def log_to_file(log_file: str, log_rotation: bool) -> None:
+def log_to_file(log_file: Optional[str], log_rotation: bool) -> None:
     if log_file and log_file not in __loggingFiles:
         logger.debug(f"Logging to file '{log_file}'.")
         __loggingFiles.append(log_file)
@@ -286,7 +286,7 @@ def suppress_exotic_logging(local_logger: str) -> None:
     top_level_loggers: List[str] = []
 
     # Due to https://stackoverflow.com/questions/61683713
-    for pkg_logger in list(logging.Logger.manager.loggerDict.keys()) + always_suppress: # type: ignore
+    for pkg_logger in list(logging.Logger.manager.loggerDict.keys()) + always_suppress:
         if pkg_logger != local_logger:
             # many sub-loggers may exist, like "boto.a", "boto.b", "boto.c"; we only want the top_level: "boto"
             top_level_logger = pkg_logger.split('.')[0] if '.' in pkg_logger else pkg_logger

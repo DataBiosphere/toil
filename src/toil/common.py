@@ -127,6 +127,8 @@ class Config:
         self.runCwlInternalJobsOnWorkers: bool = False
         self.statusWait: int = 3600
         self.disableProgress: bool = False
+        self.logFile: Optional[str] = None
+        self.logRotating: bool = False
 
         # Debug options
         self.debugWorker: bool = False

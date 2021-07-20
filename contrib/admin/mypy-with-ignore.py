@@ -103,7 +103,7 @@ def main():
     for file_path in all_files_to_check:
         if file_path not in ignore_paths and 'src/toil/test' not in file_path:
             filtered_files_to_check.append(file_path)
-    args = ['mypy'] + filtered_files_to_check
+    args = ['mypy', '--color-output'] + filtered_files_to_check
     p = subprocess.run(args=args, stdout=subprocess.PIPE)
     result = p.stdout.decode()
     print(result)
