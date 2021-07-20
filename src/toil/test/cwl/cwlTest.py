@@ -546,7 +546,7 @@ class CWLv12Test(ToilTest):
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_kubernetes_cwl_group(self):
         for caching in [True, False]:
-            self.run_kubernetes_cwl_conformance(selected_tests="20,35,39,42,56", caching=caching)
+            self.run_kubernetes_cwl_conformance(selected_tests="20,35,39,42,56,85,86,88", caching=caching)
 
 @needs_cwl
 class CWLSmallTests(ToilTest):
