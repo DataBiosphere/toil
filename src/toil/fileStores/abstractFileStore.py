@@ -17,8 +17,8 @@ import tempfile
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from threading import Event, Semaphore
-from typing import Callable, Generator, Union
-
+from typing import (List, Dict, Set, Any, BinaryIO, Callable, ContextManager, Generator, Iterator,
+                    Optional, TextIO, Tuple, Union, TYPE_CHECKING, cast)
 import dill
 
 from toil.common import cacheDirName
@@ -28,6 +28,9 @@ from toil.lib.io import WriteWatchingStream
 from toil.job import Job, JobDescription
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from toil.fileStores.nonCachingFileStore import NonCachingFileStore
+    from toil.fileStores.cachingFileStore import CachingFileStore
 
 class AbstractFileStore(ABC):
     """
@@ -55,10 +58,10 @@ class AbstractFileStore(ABC):
     """
     # Variables used for syncing reads/writes
     _pendingFileWritesLock = Semaphore()
-    _pendingFileWrites = set()
+    _pendingFileWrites: Set[str] = set()
     _terminateEvent = Event()  # Used to signify crashes in threads
 
-    def __init__(self, jobStore: AbstractJobStore, jobDesc: JobDescription, localTempDir: str, waitForPreviousCommit: Callable[[],None]) -> None:
+    def __init__(self, jobStore: AbstractJobStore, jobDesc: JobDescription, localTempDir: str, waitForPreviousCommit: Callable[[], None]) -> None:
         """
         Create a new file store object.
 
@@ -77,29 +80,29 @@ class AbstractFileStore(ABC):
                they did race, it might be possible for the later job to be fully
                marked as completed in the job store before the eralier job was.
         """
-        self.jobStore              = jobStore
-        self.jobDesc               = jobDesc
-        self.localTempDir: str     = os.path.abspath(localTempDir)
-        self.workFlowDir: str      = os.path.dirname(self.localTempDir)
-        self.workDir: str          = os.path.dirname(self.localTempDir)
-        self.jobName: str          = self.jobDesc.command.split()[1]
+        self.jobStore = jobStore
+        self.jobDesc = jobDesc
+        self.localTempDir: str = os.path.abspath(localTempDir)
+        self.workFlowDir = os.path.dirname(self.localTempDir)
+        self.workDir: str = os.path.dirname(self.localTempDir)
+        self.jobName: str = self.jobDesc.command.split()[1]
         self.waitForPreviousCommit = waitForPreviousCommit
-        self.loggingMessages       = []
+        self.loggingMessages: List[Dict[str, Union[int, str]]] = []
         # Records file IDs of files deleted during the current job. Doesn't get
         # committed back until the job is completely successful, because if the
         # job is re-run it will need to be able to re-delete these files.
         # This is a set of str objects, not FileIDs.
-        self.filesToDelete = set()
+        self.filesToDelete: Set[str] = set()
         # Records IDs of jobs that need to be deleted when the currently
         # running job is cleaned up.
         # May be modified by the worker to actually delete jobs!
-        self.jobsToDelete = set()
+        self.jobsToDelete: Set[str] = set()
         # Holds records of file ID, or file ID and local path, for reporting
         # the accessed files of failed jobs.
-        self._accessLog = []
+        self._accessLog: List[Tuple[str, ...]] = []
 
     @staticmethod
-    def createFileStore(jobStore, jobDesc, localTempDir, waitForPreviousCommit, caching):
+    def createFileStore(jobStore: AbstractJobStore, jobDesc: JobDescription, localTempDir: str, waitForPreviousCommit: Callable[[], bool], caching: bool) -> Union['NonCachingFileStore', 'CachingFileStore']:
         # Defer these imports until runtime, since these classes depend on us
         from toil.fileStores.cachingFileStore import CachingFileStore
         from toil.fileStores.nonCachingFileStore import NonCachingFileStore
@@ -107,7 +110,7 @@ class AbstractFileStore(ABC):
         return fileStoreCls(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
 
     @staticmethod
-    def shutdownFileStore(workflowDir, workflowID):
+    def shutdownFileStore(workflowDir: str, workflowID: str) -> None:
         """
         Carry out any necessary filestore-specific cleanup.
 
@@ -117,8 +120,8 @@ class AbstractFileStore(ABC):
         This is the intended to be the last call to the file store in a Toil run, called by the
         batch system cleanup function upon batch system shutdown.
 
-        :param str workflowDir: The path to the cache directory
-        :param str workflowID: The workflow ID for this invocation of the workflow
+        :param workflowDir: The path to the cache directory
+        :param workflowID: The workflow ID for this invocation of the workflow
         """
 
         # Defer these imports until runtime, since these classes depend on our file
@@ -158,7 +161,7 @@ class AbstractFileStore(ABC):
                 self._dumpAccessLogs()
 
     # Functions related to temp files and directories
-    def getLocalTempDir(self):
+    def getLocalTempDir(self) -> str:
         """
         Get a new local temporary directory in which to write files that persist for the duration of
         the job.
@@ -166,28 +169,25 @@ class AbstractFileStore(ABC):
         :return: The absolute path to a new local temporary directory. This directory will exist
                  for the duration of the job only, and is guaranteed to be deleted once the job
                  terminates, removing all files it contains recursively.
-        :rtype: str
         """
         return os.path.abspath(tempfile.mkdtemp(dir=self.localTempDir))
 
-    def getLocalTempFile(self):
+    def getLocalTempFile(self) -> str:
         """
         Get a new local temporary file that will persist for the duration of the job.
 
         :return: The absolute path to a local temporary file. This file will exist for the
                  duration of the job only, and is guaranteed to be deleted once the job terminates.
-        :rtype: str
         """
         handle, tmpFile = tempfile.mkstemp(prefix="tmp", suffix=".tmp", dir=self.localTempDir)
         os.close(handle)
         return os.path.abspath(tmpFile)
 
-    def getLocalTempFileName(self):
+    def getLocalTempFileName(self) -> str:
         """
         Get a valid name for a new local file. Don't actually create a file at the path.
 
         :return: Path to valid file
-        :rtype: str
         """
         # Create, and then delete a temp file. Creating will guarantee you a unique, unused
         # file name. There is a very, very, very low chance that another job will create the
@@ -198,7 +198,7 @@ class AbstractFileStore(ABC):
 
     # Functions related to reading, writing and removing files to/from the job store
     @abstractmethod
-    def writeGlobalFile(self, localFileName, cleanup=False):
+    def writeGlobalFile(self, localFileName: str, cleanup: bool = False) -> FileID:
         """
         Takes a file (as a path) and uploads it to the job store. If the file
         is in a FileStore-managed temporary directory (i.e. from
@@ -209,34 +209,35 @@ class AbstractFileStore(ABC):
         If an executable file on the local filesystem is uploaded, its executability will
         be preserved when it is downloaded again.
 
-        :param string localFileName: The path to the local file to upload. The
+        :param localFileName: The path to the local file to upload. The
                last path component (basename of the file) will remain
                associated with the file in the file store, if supported by the
                backing JobStore, so that the file can be searched for by name
                or name glob.
-        :param bool cleanup: if True then the copy of the global file will be deleted once the
+        :param cleanup: if True then the copy of the global file will be deleted once the
                job and all its successors have completed running.  If not the global file must be
                deleted manually.
+
         :return: an ID that can be used to retrieve the file.
-        :rtype: toil.fileStores.FileID
         """
         raise NotImplementedError()
 
     @contextmanager
-    def writeGlobalFileStream(self, cleanup=False, basename=None, encoding=None, errors=None):
+    def writeGlobalFileStream(self, cleanup: bool = False, basename: Optional[str] = None, encoding: Optional[str] = None,
+                                errors: Optional[str] = None) -> Iterator[Tuple[Union[BinaryIO, TextIO], FileID]]:
         """
         Similar to writeGlobalFile, but allows the writing of a stream to the job store.
         The yielded file handle does not need to and should not be closed explicitly.
 
-        :param str encoding: the name of the encoding used to decode the file. Encodings are the same as
+        :param encoding: The name of the encoding used to decode the file. Encodings are the same as
                 for decode(). Defaults to None which represents binary mode.
 
-        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+        :param errors: Specifies how encoding errors are to be handled. Errors
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
-        :param bool cleanup: is as in :func:`toil.fileStores.abstractFileStore.AbstractFileStore.writeGlobalFile`.
+        :param cleanup: is as in :func:`toil.fileStores.abstractFileStore.AbstractFileStore.writeGlobalFile`.
 
-        :param str basename: If supported by the backing JobStore, use the given
+        :param basename: If supported by the backing JobStore, use the given
                file basename so that when searching the job store with a query
                matching that basename, the file will be detected.
 
@@ -260,14 +261,14 @@ class AbstractFileStore(ABC):
             wrappedStream = WriteWatchingStream(backingStream)
 
             # When the stream is written to, count the bytes
-            def handle(numBytes):
+            def handle(numBytes: int) -> None:
                 # No scope problem here, because we don't assign to a fileID local
                 fileID.size += numBytes
             wrappedStream.onWrite(handle)
 
             yield wrappedStream, fileID
 
-    def _dumpAccessLogs(self):
+    def _dumpAccessLogs(self) -> None:
         """
         When something goes wrong, log a report of the files that were accessed
         while the file store was open.
@@ -285,7 +286,7 @@ class AbstractFileStore(ABC):
                     # Otherwise dump without the name
                     logger.warning('Streamed file \'%s\'', *item)
 
-    def logAccess(self, fileStoreID: Union[FileID, str], destination: Union[str, None] = None):
+    def logAccess(self, fileStoreID: Union[FileID, str], destination: Union[str, None] = None) -> None:
         """
         Record that the given file was read by the job, to be announced if the
         job fails. If destination is not None, it gives the path that the file
@@ -301,7 +302,8 @@ class AbstractFileStore(ABC):
             self._accessLog.append((fileStoreID,))
 
     @abstractmethod
-    def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
+    def readGlobalFile(self, fileStoreID: str, userPath: Optional[str] = None, cache: bool = True, mutable: bool = False,
+                        symlink: bool = False) -> str:
         """
         Makes the file associated with fileStoreID available locally. If mutable is True,
         then a copy of the file will be created locally so that the original is not modified
@@ -321,15 +323,15 @@ class AbstractFileStore(ABC):
         :param toil.fileStores.FileID or str fileStoreID: job store id for the file
         :param string userPath: a path to the name of file to which the global file will be copied
                or hard-linked (see below).
-        :param bool cache: Described in :func:`toil.fileStores.CachingFileStore.readGlobalFile`
-        :param bool mutable: Described in :func:`toil.fileStores.CachingFileStore.readGlobalFile`
+        :param cache: Described in :func:`toil.fileStores.CachingFileStore.readGlobalFile`
+        :param mutable: Described in :func:`toil.fileStores.CachingFileStore.readGlobalFile`
+
         :return: An absolute path to a local, temporary copy of the file keyed by fileStoreID.
-        :rtype: str
         """
         raise NotImplementedError()
 
     @abstractmethod
-    def readGlobalFileStream(self, fileStoreID, encoding=None, errors=None):
+    def readGlobalFileStream(self, fileStoreID: str, encoding: Optional[str] = None, errors: Optional[str] = None) -> ContextManager[Union[BinaryIO, TextIO]]:
         """
         Similar to readGlobalFile, but allows a stream to be read from the job store. The yielded
         file handle does not need to and should not be closed explicitly.
@@ -346,7 +348,7 @@ class AbstractFileStore(ABC):
         """
         raise NotImplementedError()
 
-    def getGlobalFileSize(self, fileStoreID):
+    def getGlobalFileSize(self, fileStoreID: Union[FileID, str]) -> int:
         """
         Get the size of the file pointed to by the given ID, in bytes.
 
@@ -358,9 +360,9 @@ class AbstractFileStore(ABC):
         if it is encrypted and had to be augmented with an IV or other
         encryption framing.
 
-        :param toil.fileStores.FileID or str fileStoreID: File ID for the file
+        :param fileStoreID: File ID for the file
+
         :return: File's size in bytes, as stored in the job store
-        :rtype: int
         """
 
         # First try and see if the size is still attached
@@ -371,10 +373,10 @@ class AbstractFileStore(ABC):
             # Someone is mixing FileStore and JobStore file APIs, or serializing FileIDs as strings.
             size = self.jobStore.getFileSize(fileStoreID)
 
-        return size
+        return cast(int, size)
 
     @abstractmethod
-    def deleteLocalFile(self, fileStoreID):
+    def deleteLocalFile(self, fileStoreID: Union[FileID, str]) -> None:
         """
         Deletes local copies of files associated with the provided job store ID.
 
@@ -387,39 +389,39 @@ class AbstractFileStore(ABC):
         ID, if it was written by the current job from the job's
         file-store-provided temp directory.
 
-        :param toil.fileStores.FileID or str fileStoreID: File Store ID of the file to be deleted.
+        :param fileStoreID: File Store ID of the file to be deleted.
         """
         raise NotImplementedError()
 
     @abstractmethod
-    def deleteGlobalFile(self, fileStoreID):
+    def deleteGlobalFile(self, fileStoreID: Union[FileID, str]) -> None:
         """
         Deletes local files with the provided job store ID and then permanently deletes them from
         the job store. To ensure that the job can be restarted if necessary, the delete will not
         happen until after the job's run method has completed.
 
-        :param toil.fileStores.FileID or str fileStoreID: the File Store ID of the file to be deleted.
+        :param fileStoreID: the File Store ID of the file to be deleted.
         """
         raise NotImplementedError()
 
     # Functions used to read and write files directly between a source url and the job store.
-    def importFile(self, srcUrl, sharedFileName=None):
+    def importFile(self, srcUrl: str, sharedFileName: Optional[str] = None) -> Optional[FileID]:
         return self.jobStore.importFile(srcUrl, sharedFileName=sharedFileName)
 
-    def exportFile(self, jobStoreFileID, dstUrl):
+    def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
         raise NotImplementedError()
 
     # A utility method for accessing filenames
-    def _resolveAbsoluteLocalPath(self, filePath):
+    def _resolveAbsoluteLocalPath(self, filePath: str) -> str:
         """
         Return the absolute path to filePath.  This is a wrapper for os.path.abspath because mac OS
         symlinks /tmp and /var (the most common places for a default tempdir) to /private/tmp and
         /private/var respectively.
 
-        :param str filePath: The absolute or relative path to the file. If relative, it must be
+        :param filePath: The absolute or relative path to the file. If relative, it must be
                relative to the local temp working dir
+
         :return: Absolute path to key
-        :rtype: str
         """
         if os.path.isabs(filePath):
             return os.path.abspath(filePath)
@@ -430,14 +432,14 @@ class AbstractFileStore(ABC):
         """
         Utility class to read and write dill-ed state dictionaries from/to a file into a namespace.
         """
-        def __init__(self, stateDict):
+        def __init__(self, stateDict: Dict[str, Any]):
             assert isinstance(stateDict, dict)
             self.__dict__.update(stateDict)
 
         @classmethod
         @abstractmethod
         @contextmanager
-        def open(cls, outer=None):
+        def open(cls, outer: Optional[Any] = None) -> Iterator[Any]:
             """
             This is a context manager that state file and reads it into an object that is returned
             to the user in the yield.
@@ -447,11 +449,12 @@ class AbstractFileStore(ABC):
             raise NotImplementedError()
 
         @classmethod
-        def _load(cls, fileName):
+        def _load(cls, fileName: str) -> Any: 
             """
             Load the state of the cache from the state file
 
-            :param str fileName: Path to the cache state file.
+            :param fileName: Path to the cache state file.
+
             :return: An instance of the state as a namespace.
             :rtype: _StateFile
             """
@@ -461,12 +464,12 @@ class AbstractFileStore(ABC):
                 infoDict = dill.load(fH)
             return cls(infoDict)
 
-        def write(self, fileName):
+        def write(self, fileName: str) -> None:
             """
             Write the current state into a temporary file then atomically rename it to the main
             state file.
 
-            :param str fileName: Path to the state file.
+            :param fileName: Path to the state file.
             """
             with open(fileName + '.tmp', 'wb') as fH:
                 # Based on answer by user "Mark" at:
@@ -477,33 +480,33 @@ class AbstractFileStore(ABC):
             os.rename(fileName + '.tmp', fileName)
 
     # Functions related to logging
-    def logToMaster(self, text: str, level: int =logging.INFO) -> None:
+    def logToMaster(self, text: str, level: int = logging.INFO) -> None:
         """
         Send a logging message to the leader. The message will also be \
         logged by the worker at the same level.
 
         :param text: The string to log.
-        :param int level: The logging level.
+        :param level: The logging level.
         """
         logger.log(level=level, msg=("LOG-TO-MASTER: " + text))
         self.loggingMessages.append(dict(text=text, level=level))
 
     # Functions run after the completion of the job.
     @abstractmethod
-    def startCommit(self, jobState=False):
+    def startCommit(self, jobState: bool = False) -> None:
         """
         Update the status of the job on the disk.
 
         May start an asynchronous process. Call waitForCommit() to wait on that process.
 
-        :param bool jobState: If True, commit the state of the FileStore's job,
+        :param jobState: If True, commit the state of the FileStore's job,
                     and file deletes. Otherwise, commit only file creates/updates.
 
         """
         raise NotImplementedError()
 
     @abstractmethod
-    def waitForCommit(self):
+    def waitForCommit(self) -> bool:
         """
         Blocks while startCommit is running. This function is called by this job's
         successor to ensure that it does not begin modifying the job store until after this job has
@@ -513,13 +516,12 @@ class AbstractFileStore(ABC):
         instance, in which case it does not block.
 
         :return: Always returns True
-        :rtype: bool
         """
         raise NotImplementedError()
 
     @classmethod
     @abstractmethod
-    def shutdown(cls, dir_):
+    def shutdown(cls, dir_: str) -> None:
         """
         Shutdown the filestore on this node.
 
