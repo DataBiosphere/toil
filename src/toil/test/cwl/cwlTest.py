@@ -353,7 +353,6 @@ class CWLv10Test(ToilTest):
 
     @slow
     @needs_kubernetes
-    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance(self, **kwargs):
         return self.test_run_conformance(batchSystem="kubernetes",
                                          **kwargs)
@@ -396,7 +395,6 @@ class CWLv10Test(ToilTest):
 
     @slow
     @needs_kubernetes
-    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance_with_caching(self):
         return self.test_kubernetes_cwl_conformance(caching=True)
 
@@ -476,15 +474,12 @@ class CWLv11Test(ToilTest):
 
     @slow
     @needs_kubernetes
-    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance(self, **kwargs):
         return self.test_run_conformance(batchSystem="kubernetes",
                                          **kwargs)
 
-
     @slow
     @needs_kubernetes
-    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance_with_caching(self):
         return self.test_kubernetes_cwl_conformance(caching=True)
 
@@ -534,19 +529,16 @@ class CWLv12Test(ToilTest):
         self.test_run_conformance(extra_args=['--bypass-file-store'],
                                   must_support_all_features=True)
 
-    def run_kubernetes_cwl_conformance(self, **kwargs):
-        """
-        Run the CWL conformance tests on Kubernetes, passing along keyword
-        arguments.
-        """
-        return self.test_run_conformance(batchSystem="kubernetes",
-                                         **kwargs)
     @slow
     @needs_kubernetes
-    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
-    def test_kubernetes_cwl_group(self):
-        for caching in [True, False]:
-            self.run_kubernetes_cwl_conformance(selected_tests="20,35,39,42,56", caching=caching)
+    def test_kubernetes_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="kubernetes",
+                                         **kwargs)
+
+    @slow
+    @needs_kubernetes
+    def test_kubernetes_cwl_conformance_with_caching(self):
+        return self.test_kubernetes_cwl_conformance(caching=True)
 
 @needs_cwl
 class CWLSmallTests(ToilTest):
