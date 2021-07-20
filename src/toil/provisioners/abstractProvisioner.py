@@ -189,7 +189,7 @@ class AbstractProvisioner(ABC):
         """
         raise NotImplementedError
 
-    def _writeGlobalFile(self, name: str, contents: Union[str, bytes]) -> str:
+    def _writeGlobalFile(self, key: str, contents: Union[str, bytes]) -> str:
         """
         Write a file to a physical storage system that is accessible to the
         leader and all nodes during the life of the cluster.
@@ -200,14 +200,14 @@ class AbstractProvisioner(ABC):
 
         :return: A public URL that can be used to retrieve the file.
         """
-        raise NotImplementedError(f"{self.__class__.__name__} does not support _writeGlobalFile().")
+        raise NotImplementedError
 
-    def _readGlobalFile(self, name: str):
+    def _readGlobalFile(self, key: str):
         """
         Read the file written by `self._writeGlobalFile()`.
         """
         # probably not going to be used for now.
-        raise NotImplementedError(f"{self.__class__.__name__} does not support _readGlobalFile().")
+        raise NotImplementedError
 
     def _setLeaderWorkerAuthentication(self, leader: Node = None):
         """
@@ -1172,7 +1172,7 @@ class AbstractProvisioner(ABC):
                 # This involves an SSH public key form the leader
                 config.addSSHRSAKey(self._leaderWorkerAuthentication)
             elif self.clusterType == 'kubernetes':
-                # We can install the Kubernetes wotker and make it phone home
+                # We can install the Kubernetes worker and make it phone home
                 # to the leader.
                 # TODO: this puts sufficient info to fake a malicious worker
                 # into the worker config, which probably is accessible by

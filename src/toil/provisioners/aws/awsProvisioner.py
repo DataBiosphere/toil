@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
 import logging
 import os
 import socket
@@ -19,7 +20,6 @@ import textwrap
 import time
 import uuid
 
-import boto3
 from botocore.exceptions import ClientError
 import boto.ec2
 
@@ -194,13 +194,39 @@ class AWSProvisioner(AbstractProvisioner):
         # workers for this leader.
         self._setLeaderWorkerAuthentication()
 
-    def _writeGlobalFile(self, name: str, contents) -> str:
+    def _writeGlobalFile(self, key: str, contents) -> str:
         bucket_name = self.clusterName + '--internal'
-        location = zone_to_region(self._zone)
+        region = zone_to_region(self._zone)
 
         # create bucket if need, then write file to S3.
+        try:
+            # the head_bucket() call makes sure that the bucket exists and the user can access it
+            self.s3_client.head_bucket(Bucket=bucket_name)
+            bucket = self.s3_resource.Bucket(bucket_name)
+        except ClientError as err:
+            if err.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+                # TODO: use create_s3_bucket() in lib/aws/utils.
+                #  https://github.com/DataBiosphere/toil/pull/3710
+                bucket = self.s3_resource.create_bucket(
+                    Bucket=bucket_name,
+                    CreateBucketConfiguration={'LocationConstraint': region})
+                bucket.wait_until_exists()
+                bucket.Versioning().enable()
 
-        return f"s3://{bucket_name}/{name}"
+                # TODO: do we have a central function for tagging our resources?
+                owner_tag = os.environ.get('TOIL_OWNER_TAG')
+                if owner_tag:
+                    bucket_tagging = self.s3_resource.BucketTagging(bucket_name)
+                    bucket_tagging.put(Tagging={'TagSet': [{'Key': 'Owner', 'Value': owner_tag}]})
+            else:
+                raise
+
+        # write file to bucket
+        obj = bucket.Object(key=key)
+        obj.put(Body=contents)
+
+        obj.wait_until_exists()
+        return f"s3://{bucket_name}/{key}"
 
     def launchCluster(self,
                       leaderNodeType: str,
@@ -452,7 +478,26 @@ class AWSProvisioner(AbstractProvisioner):
                            'roles will not be deleted.')
 
         # delete S3 buckets that might have been created by `self._writeGlobalFile()`
-        # TODO: cleanup
+        logger.info('Deleting S3 buckets ...')
+        bucket_name = f"{self.clusterName}--internal"
+
+        removed = False
+        try:
+            self.s3_client.head_bucket(Bucket=bucket_name)
+            bucket = self.s3_resource.Bucket(bucket_name)
+
+            bucket.objects.all().delete()
+            bucket.object_versions.delete()
+            bucket.delete()
+            removed = True
+        except self.s3_client.exceptions.NoSuchBucket:
+            pass
+        except ClientError as e:
+            if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') != 404:
+                # something else occurred so we can't delete the bucket
+                logger.warning(e)
+        if removed:
+            logger.debug('... Successfully deleted S3 buckets')
 
     def terminateNodes(self, nodes : List[Node]):
         self._terminateIDs([x.name for x in nodes])
@@ -463,9 +508,26 @@ class AWSProvisioner(AbstractProvisioner):
         # AWS has a hard 16KB limit on user data, so we have to write the config file to a S3 bucket and let Ignition
         # fetch it during startup.
         # See: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-add-user-data.html
-        if len(config) > 16000:
+        # if len(config) > 16384:
+        if len(config) > 100:  # TODO: change back to 16KB
             logger.warning(f"Ignition config size exceeds the AWS limit ({len(config)} > 16384).  Writing to S3...")
-            pass
+
+            # TODO: do we have to differentiate the configs for different workers? Or are they always the same?
+            src = self._writeGlobalFile(f"configs/{role}/config.ign", contents=config)
+
+            # See: https://github.com/coreos/ignition/blob/spec2x/doc/configuration-v2_2.md
+            new_config = {
+                'ignition': {
+                    'version': '2.2.0',
+                    'config': {
+                        'replace': {
+                            'source': src,
+                        }
+                    }
+                }
+            }
+
+            return json.dumps(new_config, separators=(',', ':'))
 
         return config
 
