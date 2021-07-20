@@ -413,7 +413,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
                 logger.debug("No user job to run, so finishing")
                 break
 
-            if AbstractFileStore._terminateEvent.isSet():
+            if AbstractFileStore._terminateEvent.is_set():
                 raise RuntimeError("The termination flag is set")
 
             ##########################################
@@ -521,7 +521,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
     #so safe to test if they completed okay
     ##########################################
 
-    if AbstractFileStore._terminateEvent.isSet():
+    if AbstractFileStore._terminateEvent.is_set():
         # Something has gone wrong.
 
         # Clobber any garbage state we have for this job from failing with

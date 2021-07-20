@@ -13,7 +13,7 @@
 # limitations under the License.
 import logging
 
-from toil.lib.conversions import convert_units, human2bytes
+from toil.lib.conversions import convert_units, human2bytes, hms_duration_to_seconds
 from toil.test import ToilTest
 
 logger = logging.getLogger(__name__)
@@ -194,4 +194,18 @@ class ConversionTest(ToilTest):
         for i in (0, 0.1, 0.5, 0.9, 1, 7, 7.42423, 10, 100, 1000, 11234234):
             for src_unit in ['b', 'Ki', 'Mi', 'Gi', 'Ti', 'K', 'M', 'G', 'T']:
                 results[f'{i} {src_unit}'] = human2bytes(f'{i} {src_unit}')
+        self.assertEqual(results, expected_results)
+
+    def test_hms_duration_to_seconds(self):
+        expected_results = {
+            '0:0:0' : 0.0,
+            '00:00:00' : 0.0,
+            '1:1:1' : 3661.0,
+            '20:14:33' : 72873.0,
+            '72:80:112' : 264112.0,
+        }
+        results = {}
+        for key in expected_results.keys():
+            results[key] = hms_duration_to_seconds(f'{key}')
+            
         self.assertEqual(results, expected_results)
