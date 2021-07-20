@@ -2243,28 +2243,23 @@ class Job:
 
         if pickleFile == "firstJob":
             #jobStore.readSharedFile(pickleFile)
-            with jobStore.readSharedFileStream(pickleFile) as fileHandle:
-                #job = cls._unpickle(userModule, fileHandle, requireInstanceOf=Job)
-                job = safeUnpickleFromStream(fileHandle)
-                # Fill in the current description
-                job._description = jobDescription
-
-                # Set up the registry again, so children and follow-ons can be added on the worker
-                job._registry = {job.jobStoreID: job}
-
-            return job
+            manager = jobStore.readSharedFileStream(pickleFile)
         else:
             #jobStore.readFile(pickleFile)
-            with jobStore.readFileStream(pickleFile) as fileHandle:
-                #job = cls._unpickle(userModule, fileHandle, requireInstanceOf=Job)
-                job = safeUnpickleFromStream(fileHandle)
-                # Fill in the current description
-                job._description = jobDescription
+            manager = jobStore.readFileStream(pickleFile)
+        
+        #manager = pickle.load(manager)
+        
+        with manager as fileHandle:
 
-                # Set up the registry again, so children and follow-ons can be added on the worker
-                job._registry = {job.jobStoreID: job}
+            job = cls._unpickle(userModule, fileHandle, requireInstanceOf=Job)
+            # Fill in the current description
+            job._description = jobDescription
 
-            return job
+            # Set up the registry again, so children and follow-ons can be added on the worker
+            job._registry = {job.jobStoreID: job}
+
+        return job
 
 
     def _run(self, jobGraph=None, fileStore=None, **kwargs):
