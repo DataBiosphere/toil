@@ -72,6 +72,7 @@ _TAG_KEY_TOIL_CLUSTER_NAME = 'clusterName'
 # TODO: measure
 _STORAGE_ROOT_OVERHEAD_GIGS = 4
 
+
 def awsRetryPredicate(e):
     if isinstance(e, socket.gaierror):
         # Could be a DNS outage:
@@ -89,8 +90,10 @@ def awsRetryPredicate(e):
         return True
     return False
 
+
 def expectedShutdownErrors(e):
     return get_error_status(e) == 400 and 'dependent object' in get_error_body(e)
+
 
 def awsRetry(f):
     """
@@ -123,6 +126,7 @@ def awsFilterImpairedNodes(nodes, ec2):
                    'will not be terminated.', ' '.join(impairedNodes))
     return healthyNodes
 
+
 class InvalidClusterStateException(Exception):
     pass
 
@@ -140,7 +144,6 @@ class AWSProvisioner(AbstractProvisioner):
                                'configuration file, TOIL_AWS_ZONE environment variable, or '
                                'on the command line.')
 
-
         # establish boto3 clients
         self.session = establish_boto3_session(region_name=zone_to_region(zone))
         # Boto3 splits functionality between a "resource" and a "client" for the same AWS aspect.
@@ -150,6 +153,11 @@ class AWSProvisioner(AbstractProvisioner):
         self.iam_client = self.session.client('iam')
         self.s3_resource = self.session.resource('s3')
         self.s3_client = self.session.client('s3')
+
+        # Set a valid name for the S3 bucket associated with this cluster
+        max_bucket_name_len = 63
+        suffix = '--internal'
+        self.s3_bucket_name = self.clusterName[:max_bucket_name_len - len(suffix)] + suffix
 
         # Call base class constructor, which will call createClusterSettings()
         # or readClusterSettings()
@@ -195,10 +203,10 @@ class AWSProvisioner(AbstractProvisioner):
         self._setLeaderWorkerAuthentication()
 
     def _writeGlobalFile(self, key: str, contents) -> str:
-        bucket_name = self.clusterName + '--internal'
+        bucket_name = self.s3_bucket_name
         region = zone_to_region(self._zone)
 
-        # create bucket if need, then write file to S3.
+        # create bucket if needed, then write file to S3.
         try:
             # the head_bucket() call makes sure that the bucket exists and the user can access it
             self.s3_client.head_bucket(Bucket=bucket_name)
@@ -479,12 +487,11 @@ class AWSProvisioner(AbstractProvisioner):
 
         # delete S3 buckets that might have been created by `self._writeGlobalFile()`
         logger.info('Deleting S3 buckets ...')
-        bucket_name = f"{self.clusterName}--internal"
 
         removed = False
         try:
-            self.s3_client.head_bucket(Bucket=bucket_name)
-            bucket = self.s3_resource.Bucket(bucket_name)
+            self.s3_client.head_bucket(Bucket=self.s3_bucket_name)
+            bucket = self.s3_resource.Bucket(self.s3_bucket_name)
 
             bucket.objects.all().delete()
             bucket.object_versions.delete()
