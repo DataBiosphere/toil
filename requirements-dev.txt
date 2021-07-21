@@ -5,7 +5,7 @@ pytest-timeout==1.4.2
 stubserver==1.1
 setuptools==51.3.3
 sphinx==3.5.3
-cwltest==2.0.20200626112502
+cwltest==2.1.20210626101542
 mypy==0.812
 flake8==3.8.4
 flake8-bugbear==20.11.1
