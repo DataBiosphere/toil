@@ -7,12 +7,12 @@ import uuid
 import shutil
 
 from multiprocessing import Process
-from wes_service.util import WESBackend
+from toil.server.api.backend import WESBackend
 
 logging.basicConfig(level=logging.INFO)
 
 
-class ToilWorkflow(object):
+class ToilWorkflow:
     def __init__(self, run_id):
         """
         Represents a toil workflow.
