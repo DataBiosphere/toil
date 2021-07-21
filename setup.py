@@ -57,10 +57,13 @@ def run_setup():
         addict,
         pytz,
         pyyaml,
-        enlighten]
+        enlighten,
+        "typing-extensions ; python_version < '3.8'"
+        ]
     aws_reqs = [
         boto,
         boto3,
+        "boto3-stubs[s3]>=1.17, <2",
         futures,
         pycryptodome]
     cwl_reqs = [
