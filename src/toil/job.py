@@ -2239,17 +2239,13 @@ class Job:
         userModule = cls._loadUserModule(userModule)
         pickleFile = commandTokens[1]
 
-        
-
+        #Loads context manager using file stream 
         if pickleFile == "firstJob":
-            #jobStore.readSharedFile(pickleFile)
             manager = jobStore.readSharedFileStream(pickleFile)
         else:
-            #jobStore.readFile(pickleFile)
             manager = jobStore.readFileStream(pickleFile)
         
-        #manager = pickle.load(manager)
-        
+        #Open and unpickle
         with manager as fileHandle:
 
             job = cls._unpickle(userModule, fileHandle, requireInstanceOf=Job)
