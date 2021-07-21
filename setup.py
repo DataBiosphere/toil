@@ -41,6 +41,7 @@ def runSetup():
     dateutil = 'python-dateutil'
     addict = 'addict>=2.2.1, <2.3'
     enlighten = 'enlighten>=1.5.2, <2'
+    connexion = 'connexion<3'
 
     core_reqs = [
         dill,
@@ -75,6 +76,7 @@ def runSetup():
         pymesos,
         psutil]
     wdl_reqs = []
+    server_reqs = [connexion]
     
 
     # htcondor is not supported by apple
@@ -87,7 +89,8 @@ def runSetup():
         encryption_reqs + \
         google_reqs + \
         kubernetes_reqs + \
-        mesos_reqs
+        mesos_reqs + \
+        server_reqs
 
 
     setup(
