@@ -109,7 +109,7 @@ class GCEProvisioner(AbstractProvisioner):
         self._projectId = self.googleConnectionParams['project_id']
         self._clientEmail = self.googleConnectionParams['client_email']
         self._credentialsPath = self._googleJson
-        self._clearLeaderWorkerAuthentication() # TODO: Why are we doing this?
+        self._clearLeaderWorkerAuthentication()  # TODO: Why are we doing this?
         self._gceDriver = self._getDriver()
 
     def _writeGlobalFile(self, key: str, contents) -> str:

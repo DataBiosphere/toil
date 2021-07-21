@@ -30,6 +30,7 @@ from boto.exception import BotoServerError, EC2ResponseError
 from boto.utils import get_instance_metadata
 from boto.ec2.instance import Instance as Boto2Instance
 
+from toil.lib.aws.utils import create_s3_bucket
 from toil.lib.ec2 import (a_short_time,
                           create_auto_scaling_group,
                           create_instances,
@@ -49,7 +50,9 @@ from toil.lib.retry import (get_error_body,
                             get_error_code,
                             get_error_message,
                             get_error_status,
-                            old_retry)
+                            old_retry,
+                            retry,
+                            ErrorCondition)
 from toil.provisioners import NoSuchClusterException
 from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
                                                    Shape,
@@ -71,6 +74,8 @@ _TAG_KEY_TOIL_CLUSTER_NAME = 'clusterName'
 # unavailable to jobs when the node comes up?
 # TODO: measure
 _STORAGE_ROOT_OVERHEAD_GIGS = 4
+# The suffix of the S3 bucket associated with the cluster
+_S3_INTERNAL_BUCKET_SUFFIX = '--internal'
 
 
 def awsRetryPredicate(e):
@@ -156,8 +161,8 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Set a valid name for the S3 bucket associated with this cluster
         max_bucket_name_len = 63
-        suffix = '--internal'
-        self.s3_bucket_name = self.clusterName[:max_bucket_name_len - len(suffix)] + suffix
+        suffix = _S3_INTERNAL_BUCKET_SUFFIX
+        self.s3_bucket_name = clusterName[:max_bucket_name_len - len(suffix)] + suffix
 
         # Call base class constructor, which will call createClusterSettings()
         # or readClusterSettings()
@@ -202,26 +207,25 @@ class AWSProvisioner(AbstractProvisioner):
         # workers for this leader.
         self._setLeaderWorkerAuthentication()
 
+    @retry(errors=[ErrorCondition(
+        error=ClientError,
+        error_codes=[404, 500, 502, 503, 504]
+    )])
     def _writeGlobalFile(self, key: str, contents) -> str:
         bucket_name = self.s3_bucket_name
         region = zone_to_region(self._zone)
 
-        # create bucket if needed, then write file to S3.
+        # create bucket if needed, then write file to S3
         try:
             # the head_bucket() call makes sure that the bucket exists and the user can access it
             self.s3_client.head_bucket(Bucket=bucket_name)
             bucket = self.s3_resource.Bucket(bucket_name)
         except ClientError as err:
             if err.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
-                # TODO: use create_s3_bucket() in lib/aws/utils.
-                #  https://github.com/DataBiosphere/toil/pull/3710
-                bucket = self.s3_resource.create_bucket(
-                    Bucket=bucket_name,
-                    CreateBucketConfiguration={'LocationConstraint': region})
+                bucket = create_s3_bucket(self.s3_resource, bucket_name=bucket_name, region=region)
                 bucket.wait_until_exists()
                 bucket.Versioning().enable()
 
-                # TODO: do we have a central function for tagging our resources?
                 owner_tag = os.environ.get('TOIL_OWNER_TAG')
                 if owner_tag:
                     bucket_tagging = self.s3_resource.BucketTagging(bucket_name)
@@ -230,11 +234,12 @@ class AWSProvisioner(AbstractProvisioner):
                 raise
 
         # write file to bucket
+        logger.debug(f'Writing "{key}" to bucket "{bucket_name}"...')
         obj = bucket.Object(key=key)
         obj.put(Body=contents)
 
         obj.wait_until_exists()
-        return f"s3://{bucket_name}/{key}"
+        return f's3://{bucket_name}/{key}'
 
     def launchCluster(self,
                       leaderNodeType: str,
@@ -487,22 +492,24 @@ class AWSProvisioner(AbstractProvisioner):
 
         # delete S3 buckets that might have been created by `self._writeGlobalFile()`
         logger.info('Deleting S3 buckets ...')
-
         removed = False
-        try:
-            self.s3_client.head_bucket(Bucket=self.s3_bucket_name)
-            bucket = self.s3_resource.Bucket(self.s3_bucket_name)
+        for attempt in old_retry(timeout=300, predicate=awsRetryPredicate):
+            with attempt:
+                try:
+                    self.s3_client.head_bucket(Bucket=self.s3_bucket_name)
+                    bucket = self.s3_resource.Bucket(self.s3_bucket_name)
 
-            bucket.objects.all().delete()
-            bucket.object_versions.delete()
-            bucket.delete()
-            removed = True
-        except self.s3_client.exceptions.NoSuchBucket:
-            pass
-        except ClientError as e:
-            if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') != 404:
-                # something else occurred so we can't delete the bucket
-                logger.warning(e)
+                    bucket.objects.all().delete()
+                    bucket.object_versions.delete()
+                    bucket.delete()
+                    removed = True
+                except self.s3_client.exceptions.NoSuchBucket:
+                    pass
+                except ClientError as e:
+                    if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+                        pass
+                    else:
+                        raise  # retry this
         if removed:
             logger.debug('... Successfully deleted S3 buckets')
 
@@ -519,8 +526,7 @@ class AWSProvisioner(AbstractProvisioner):
         if len(config) > 100:  # TODO: change back to 16KB
             logger.warning(f"Ignition config size exceeds the AWS limit ({len(config)} > 16384).  Writing to S3...")
 
-            # TODO: do we have to differentiate the configs for different workers? Or are they always the same?
-            src = self._writeGlobalFile(f"configs/{role}/config.ign", contents=config)
+            src = self._writeGlobalFile(f'configs/{role}/config-{uuid.uuid4()}.ign', contents=config)
 
             # See: https://github.com/coreos/ignition/blob/spec2x/doc/configuration-v2_2.md
             new_config = {
