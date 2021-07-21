@@ -272,6 +272,7 @@ py37_main:
     - make test tests=src/toil/test/src
     - make test tests=src/toil/test/utils
     - make test tests=src/toil/test/lib/test_ec2.py
+    - make test tests=src/toil/test/lib/aws
     - make test tests=src/toil/test/lib/test_conversions.py
 
 py37_appliance_build:
