@@ -441,4 +441,4 @@ def region_to_bucket_location(region):
 
 
 def bucket_location_to_region(location):
-    return 'us-east-1' if location == '' else location
+    return "us-east-1" if location == "" or location is None else location

@@ -57,6 +57,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
 from toil.jobStores.utils import (ReadablePipe,
                                   ReadableTransformingPipe,
                                   WritablePipe)
+from toil.lib.aws.utils import create_s3_bucket
 from toil.lib.compatibility import compat_bytes
 from toil.lib.ec2 import establish_boto3_session
 from toil.lib.ec2nodes import EC2Regions
@@ -744,11 +745,9 @@ class AWSJobStore(AbstractJobStore):
                         bucketExisted = False
                         logger.debug("Bucket '%s' does not exist.", bucket_name)
                         if create:
-                            logger.debug("Creating bucket '%s'.", bucket_name)
-                            location = region_to_bucket_location(self.region)
-                            bucket = self.s3_resource.create_bucket(
-                                Bucket=bucket_name,
-                                CreateBucketConfiguration={'LocationConstraint': location})
+                            bucket = create_s3_bucket(
+                                self.s3_resource, bucket_name, self.region
+                            )
                             # Wait until the bucket exists before checking the region and adding tags
                             bucket.wait_until_exists()
 
@@ -757,7 +756,9 @@ class AWSJobStore(AbstractJobStore):
                             # produce an S3ResponseError with code
                             # NoSuchBucket. We let that kick us back up to the
                             # main retry loop.
-                            assert self.getBucketRegion(bucket_name) == self.region
+                            assert (
+                                self.getBucketRegion(bucket_name) == self.region
+                            ), f"bucket_name: {bucket_name}, {self.getBucketRegion(bucket_name)} != {self.region}"
 
                             owner_tag = os.environ.get('TOIL_OWNER_TAG')
                             if owner_tag:
@@ -1637,7 +1638,8 @@ class AWSJobStore(AbstractJobStore):
                     if not no_such_sdb_domain(e):
                         raise
 
-    def _delete_bucket(self, bucket):
+    @staticmethod
+    def _delete_bucket(bucket):
         """
         :param bucket: S3.Bucket
         """
