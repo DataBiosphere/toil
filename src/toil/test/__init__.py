@@ -516,6 +516,21 @@ def needs_fetchable_appliance(test_item):
         return test_item
 
 
+def needs_internet(test_item):
+    """
+    Use as a decorator to run only if internet is accessible.
+    """
+    test_item = _mark_test('internet', test_item)
+    import requests
+    try:
+        requests.get('http://www.google.com')
+    except requests.ConnectionError:
+        return unittest.skip("Establish internet connection to include this test.")
+
+    else:
+        return test_item
+
+
 def integrative(test_item):
     """
     Use this to decorate integration tests so as to skip them during regular builds. We define
