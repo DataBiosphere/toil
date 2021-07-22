@@ -41,6 +41,7 @@ from toil.lib.io import make_public_dir
 from toil.lib.resources import (get_total_cpu_time,
                                 get_total_cpu_time_and_memory_usage)
 from toil.statsAndLogging import configure_root_logger, set_log_level
+from toil.toilState import ToilState
 
 try:
     from toil.cwl.cwltoil import (CWL_INTERNAL_JOBS,
@@ -55,7 +56,49 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, config: Config) -> Optional[JobDescription]:
+def checkSuccessorReadyToRunMultiplePredecessors(successor, predecessor, jobStore, toilState):
+    """
+    Handle the special cases of checking if a successor job is
+    ready to run when there are multiple predecessors.
+
+    :param toil.job.JobDescription successor: The successor which has failed.
+    :param toil.job.JobDescription predecessor: The job which the successor comes after.
+
+    """
+    # See implementation note at the top of this file for discussion of multiple predecessors
+    logger.debug("Successor job: %s of job: %s has multiple "
+                 "predecessors", successor, predecessor)
+    logger.debug("Already finished predecessors are: %s", successor.predecessorsFinished)
+
+    # Get the successor JobDescription, which is cached
+    if successor.jobStoreID not in toilState.jobsToBeScheduledWithMultiplePredecessors:
+        # TODO: We're loading from the job store in an ad-hoc way!
+        loaded = jobStore.load(successor.jobStoreID)
+        toilState.jobsToBeScheduledWithMultiplePredecessors[successor.jobStoreID] = loaded
+    # TODO: we're clobbering a JobDescription we're passing around by value.
+    successor = toilState.jobsToBeScheduledWithMultiplePredecessors[successor.jobStoreID]
+
+    logger.debug("Already finished predecessors are (2) : %s", successor.predecessorsFinished)
+
+    # Add the predecessor as a finished predecessor to the successor
+    successor.predecessorsFinished.add(predecessor.jobStoreID)
+
+
+    logger.debug("Already finished predecessors are (3) : %s", successor.predecessorsFinished)
+
+    # If the successor job's predecessors have all not all completed then
+    # ignore the successor as is not yet ready to run
+    assert len(successor.predecessorsFinished) <= successor.predecessorNumber
+    if len(successor.predecessorsFinished) < successor.predecessorNumber:
+        return False
+    else:
+        # Remove the successor job from the cache
+        toilState.jobsToBeScheduledWithMultiplePredecessors.pop(successor.jobStoreID)
+        return True
+
+
+
+def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, toilState, config: Config) -> Optional[JobDescription]:
     """
     Returns the next chainable job's JobDescription after the given predecessor
     JobDescription, if one exists, or None if the chain must terminate.
@@ -63,6 +106,7 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
     :param predecessor: The job to chain from
     :param jobStore: The JobStore to fetch JobDescriptions from.
     :param config: The configuration for the current run.
+    :param toil.toilState.ToilState toilState: A local toilState, for providing a mutatable stack 
     """
     #If no more jobs to run or services not finished, quit
     if len(predecessor.stack) == 0 or len(predecessor.services) > 0 or (isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint != None):
@@ -70,12 +114,15 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
                      len(predecessor.stack), len(predecessor.services), (isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint != None))
         return None
 
+#    logger.debug("Length of stack: %s",len(predecessor.stack))
+#    logger.debug("Number of : %s",len(predecessor.stack))
     if len(predecessor.stack) > 1 and len(predecessor.stack[-1]) > 0 and len(predecessor.stack[-2]) > 0:
         # TODO: Without a real stack list we can freely mutate, we can't chain
         # to a child, which may branch, and then go back and do the follow-ons
         # of the original job.
         # TODO: Go back to a free-form stack list and require some kind of
         # stack build phase?
+        #logger.debug("Job has both children and follow-ons - let's see if this breaks")
         logger.debug("Stopping running chain of jobs because job has both children and follow-ons")
         return None
 
@@ -89,7 +136,7 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
     #If there are 2 or more jobs to run in parallel we quit
     if len(jobs) >= 2:
         logger.debug("No more jobs can run in series by this worker,"
-                    " it's got %i children", len(jobs)-1)
+                    " it's got %i children", len(jobs))
         return None
 
     # Grab the only job that should be there.
@@ -97,6 +144,8 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
 
     # Load the successor JobDescription
     successor = jobStore.load(successorID)
+    
+    #testresult = checkSuccessorReadyToRunMultiplePredecessors(successor, predecessor, jobStore, toilState)
 
     #We check the requirements of the successor to see if we can run it
     #within the current worker
@@ -112,9 +161,14 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
     if successor.preemptable != predecessor.preemptable:
         logger.debug("Preemptability is different for the next job, returning to the leader")
         return None
-    if successor.predecessorNumber > 1:
-        logger.debug("The next job has multiple predecessors; we must return to the leader.")
+#    if (successor.predecessorNumber - len(successor.predecessorsFinished)) > 1:
+    if not checkSuccessorReadyToRunMultiplePredecessors(successor, predecessor, jobStore, toilState):
+        logger.debug("The next job has %i predecessors that are not yet "
+                     "recorded as finished; we must return to the leader.", successor.predecessorNumber)
+        logger.debug(successor.predecessorsFinished)
         return None
+    else:
+        logger.debug('all predecessors are finished, we can chain to the successor')
 
     if len(successor.services) > 0:
         logger.debug("The next job requires services that will not yet be started; we must return to the leader.")
@@ -128,7 +182,7 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
     # Made it through! This job is chainable.
     return successor
 
-def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobStoreID: str, redirectOutputToLogFile: bool = True) -> int:
+def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobStoreID: str, parentToilState, redirectOutputToLogFile: bool = True) -> int:
     """
     Worker process script, runs a job.
 
@@ -136,6 +190,8 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
     :param config: The configuration for the current run.
     :param jobName: The "job name" (a user friendly name) of the job to be run
     :param jobStoreID: The job store ID of the job to be run
+
+    :param str parentToilState: Pickle containing the parent toilState
 
     :return int: 1 if a job failed, or 0 if all jobs succeeded
     """
@@ -298,6 +354,11 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
 
         logProcessContext(config)
 
+        if parentToilState:
+            logger.debug(parentToilState)
+        else:
+            logger.debug('parentToilState empty')
+
         ##########################################
         #Connect to the deferred function system
         ##########################################
@@ -362,6 +423,17 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             startClock = get_total_cpu_time()
 
         startTime = time.time()
+
+
+        logger.debug(jobStore)        
+        # Get a snap shot of the current state of the jobs in the jobStore 
+        #   - creating a local version of the leader's ToilState
+        if parentToilState:
+            toilState = pickle.loads(base64.b64decode(parentToilState.encode('utf-8')))
+        else:
+            toilState = ToilState(jobStore, jobDesc, jobCache=None)
+        
+        
         while True:
             ##########################################
             #Run the job body, if there is one
@@ -419,7 +491,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             ##########################################
             #Establish if we can run another job within the worker
             ##########################################
-            successor = nextChainable(jobDesc, jobStore, config)
+            successor = nextChainable(jobDesc, jobStore, toilState, config)
             if successor is None or config.disableChaining:
                 # Can't chain any more jobs. We are going to stop.
 
@@ -653,6 +725,10 @@ def parse_args(args: List[str]) -> argparse.Namespace:
                 that the worker can then run before/after the job on the batch
                 system's behalf.""")
 
+    parser.add_argument("--toilState", default=None, type=str,
+         help="""Pickled, base64-encoded copy of the Toul leader's toilState.""")
+
+
     return parser.parse_args(args)
 
 
@@ -703,9 +779,10 @@ def main(argv: Optional[List[str]] = None) -> None:
     jobStore = Toil.resumeJobStore(options.jobStoreLocator)
     config = jobStore.config
 
+
     with in_contexts(options.context):
         # Call the worker
-        exit_code = workerScript(jobStore, config, options.jobName, options.jobStoreID)
+        exit_code = workerScript(jobStore, config, options.jobName, options.jobStoreID, options.toilState)
 
     # Exit with its return value
     sys.exit(exit_code)

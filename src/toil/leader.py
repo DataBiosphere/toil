@@ -664,8 +664,8 @@ class Leader(object):
 
         # Consistency check the toil state
         assert self.toilState.updatedJobs == {}
-        assert self.toilState.successorCounts == {}
-        assert self.toilState.successorJobStoreIDToPredecessorJobs == {}
+        #assert self.toilState.successorCounts == {}
+        #assert self.toilState.successorJobStoreIDToPredecessorJobs == {}
         assert self.toilState.serviceJobStoreIDToPredecessorJob == {}
         assert self.toilState.servicesIssued == {}
         # assert self.toilState.jobsToBeScheduledWithMultiplePredecessors # These are not properly emptied yet
@@ -752,6 +752,10 @@ class Leader(object):
             workerCommand.append('--context')
             workerCommand.append(base64.b64encode(pickle.dumps(context)).decode('utf-8'))
 
+        # add the toilState as a pickle
+        workerCommand.append('--toilState')
+        workerCommand.append(base64.b64encode(pickle.dumps(self.toilState)).decode('utf-8'))
+        
         jobNode.command = ' '.join(workerCommand)
         # jobBatchSystemID is an int that is an incremented counter for each job
         jobBatchSystemID = self.batchSystem.issueBatchJob(jobNode)

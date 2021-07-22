@@ -405,7 +405,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             # We can actually run in this thread
             jobName, jobStoreLocator, jobStoreID = jobCommand.split()[1:4] # Parse command
             jobStore = Toil.resumeJobStore(jobStoreLocator)
-            toil_worker.workerScript(jobStore, jobStore.config, jobName, jobStoreID,
+            toil_worker.workerScript(jobStore, jobStore.config, jobName, jobStoreID, None,
                                      redirectOutputToLogFile=not self.debugWorker) # Call the worker
         else:
             # Run synchronously. If starting or running the command fails, let the exception stop us.
