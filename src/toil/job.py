@@ -2239,44 +2239,24 @@ class Job:
         userModule = cls._loadUserModule(userModule)
         pickleFile = commandTokens[1]
 
-        # Get a directory to download the job in
-        directory = tempfile.mkdtemp()
-        # Initialize a blank filename so the finally below can't fail due to a
-        # missing variable
-        filename = ''
+        #Loads context manager using file stream 
+        if pickleFile == "firstJob":
+            manager = jobStore.readSharedFileStream(pickleFile)
+        else:
+            manager = jobStore.readFileStream(pickleFile)
+        
+        #Open and unpickle
+        with manager as fileHandle:
 
-        try:
-            # Get a filename to download the job to.
-            # Don't use mkstemp because we would need to delete and replace the
-            # file.
-            # Don't use a NamedTemporaryFile context manager because its
-            # context manager exit will crash if we deleted it.
-            filename = os.path.join(directory, 'job')
+            job = cls._unpickle(userModule, fileHandle, requireInstanceOf=Job)
+            # Fill in the current description
+            job._description = jobDescription
 
-            # Download the job
-            if pickleFile == "firstJob":
-                jobStore.readSharedFile(pickleFile, filename)
-            else:
-                jobStore.readFile(pickleFile, filename)
+            # Set up the registry again, so children and follow-ons can be added on the worker
+            job._registry = {job.jobStoreID: job}
 
-            # Open and unpickle
-            with open(filename, 'rb') as fileHandle:
-                job = cls._unpickle(userModule, fileHandle, requireInstanceOf=Job)
-                # Fill in the current description
-                job._description = jobDescription
+        return job
 
-                # Set up the registry again, so children and follow-ons can be added on the worker
-                job._registry = {job.jobStoreID: job}
-
-                return job
-
-                # TODO: We ought to just unpickle straight from a streaming read
-        finally:
-            # Clean up the file
-            if os.path.exists(filename):
-                os.unlink(filename)
-            # Clean up the directory we put it in
-            shutil.rmtree(directory)
 
     def _run(self, jobGraph=None, fileStore=None, **kwargs):
         """
