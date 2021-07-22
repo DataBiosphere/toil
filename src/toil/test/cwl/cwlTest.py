@@ -802,14 +802,8 @@ class CWLToilOptimizeTests(ToilTest):
         worker_list.sort()
         return(worker_list)
 
-    def test_biobb_success(self):
-        self._tester('src/toil/test/cwl/md_list_reduced_2nests.cwl',
-                     'src/toil/test/cwl/md_list_reduced.json',
-                     [['genion'], ['grompp'], ['pdb2gmx', 'editconf'], ['solvate']],
-                     main_args=[])
-
     def test_biobb_fail(self):
         self._tester('src/toil/test/cwl/md_list_reduced.cwl',
                      'src/toil/test/cwl/md_list_reduced.json',
-                     [['genion'], ['grompp'], ['pdb2gmx', 'editconf'], ['solvate']],
+                     [['genion', 'grompp', 'pdb2gmx', 'editconf', 'solvate']],
                      main_args=[])
