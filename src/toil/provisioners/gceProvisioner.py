@@ -17,6 +17,7 @@ import os
 import threading
 import time
 import uuid
+from typing import Set, Optional
 
 import requests
 from libcloud.compute.drivers.gce import GCEFailedNode
@@ -37,8 +38,8 @@ class GCEProvisioner(AbstractProvisioner):
     Implements a Google Compute Engine Provisioner using libcloud.
     """
 
-    NODE_BOTO_PATH = "/root/.boto" # boto file path on instances
-    SOURCE_IMAGE = (b'projects/flatcar-cloud/global/images/family/flatcar-stable')
+    NODE_BOTO_PATH = "/root/.boto"  # boto file path on instances
+    SOURCE_IMAGE = b'projects/flatcar-cloud/global/images/family/flatcar-stable'
 
     def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):
         self.cloud = 'gce'
@@ -147,10 +148,13 @@ class GCEProvisioner(AbstractProvisioner):
         disk = {}
         disk['initializeParams'] = {
             'sourceImage': self.SOURCE_IMAGE,
-            'diskSizeGb' : leaderStorage }
-        disk.update({'boot': True,
-             'autoDelete': True })
-        name= 'l' + str(uuid.uuid4())
+            'diskSizeGb': leaderStorage
+        }
+        disk.update({
+            'boot': True,
+            'autoDelete': True
+        })
+        name = 'l' + str(uuid.uuid4())
 
         leader = self._gceDriver.create_node(
             name,
@@ -166,8 +170,8 @@ class GCEProvisioner(AbstractProvisioner):
         )
 
         self._instanceGroup.add_instances([leader])
-        self._leaderPrivateIP = leader.private_ips[0] # needed if adding workers
-        #self.subnetID = leader.subnet_id #TODO: get subnetID
+        self._leaderPrivateIP = leader.private_ips[0]  # needed if adding workers
+        # self.subnetID = leader.subnet_id  # TODO: get subnetID
 
         # Wait for the appliance to start and inject credentials.
         leaderNode = Node(publicIP=leader.public_ips[0], privateIP=leader.private_ips[0],
@@ -190,16 +194,16 @@ class GCEProvisioner(AbstractProvisioner):
         assert len(sizes) == 1
         instanceType = sizes[0]
 
-        disk = 0 #instanceType.disks * instanceType.disk_capacity * 2 ** 30
+        disk = 0  # instanceType.disks * instanceType.disk_capacity * 2 ** 30
         if disk == 0:
             # This is an EBS-backed instance. We will use the root
             # volume, so add the amount of EBS storage requested forhe root volume
             disk = self._nodeStorageOverrides.get(instance_type, self._nodeStorage) * 2 ** 30
 
         # Ram is in M.
-        #Underestimate memory by 100M to prevent autoscaler from disagreeing with
-        #mesos about whether a job can run on a particular node type
-        memory = (instanceType.ram/1000 - 0.1) * 2** 30
+        # Underestimate memory by 100M to prevent autoscaler from disagreeing with
+        # mesos about whether a job can run on a particular node type
+        memory = (instanceType.ram/1000 - 0.1) * 2 ** 30
         return Shape(wallTime=60 * 60,
                      memory=memory,
                      cores=instanceType.extra['guestCpus'],
@@ -235,7 +239,7 @@ class GCEProvisioner(AbstractProvisioner):
 
     def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None):
         assert self._leaderPrivateIP
-        
+
         # We don't support any balancing here so just pick one of the
         # equivalent node types
         node_type = next(iter(nodeTypes))
@@ -257,7 +261,7 @@ class GCEProvisioner(AbstractProvisioner):
         else:
             logger.debug('Launching %s preemptable nodes', numNodes)
 
-        #kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
+        # kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
         userData = self._getIgnitionUserData('worker', keyPath, preemptable)
         metadata = {'items': [{'key': 'user-data', 'value': userData}]}
         imageType = 'flatcar-stable'
@@ -265,9 +269,11 @@ class GCEProvisioner(AbstractProvisioner):
         disk = {}
         disk['initializeParams'] = {
             'sourceImage': self.SOURCE_IMAGE,
-            'diskSizeGb' : self._nodeStorageOverrides.get(node_type, self._nodeStorage) }
-        disk.update({'boot': True,
-             'autoDelete': True })
+            'diskSizeGb': self._nodeStorageOverrides.get(node_type, self._nodeStorage) }
+        disk.update({
+            'boot': True,
+            'autoDelete': True
+        })
 
         # TODO:
         #  - bug in gce.py for ex_create_multiple_nodes (erroneously, doesn't allow image and disk to specified)
@@ -283,9 +289,9 @@ class GCEProvisioner(AbstractProvisioner):
                                     location=self._zone,
                                     ex_service_accounts=sa_scopes,
                                     ex_metadata=metadata,
-                                    ex_disks_gce_struct = [disk],
+                                    ex_disks_gce_struct=[disk],
                                     description=self._tags,
-                                    ex_preemptible = preemptable
+                                    ex_preemptible=preemptable
                                     )
             failedWorkers = []
             for instance in instancesLaunched:
@@ -296,7 +302,7 @@ class GCEProvisioner(AbstractProvisioner):
 
                 node = Node(publicIP=instance.public_ips[0], privateIP=instance.private_ips[0],
                             name=instance.name, launchTime=instance.created_at, nodeType=instance.size,
-                            preemptable=False, tags=self._tags) #FIXME: what should tags be set to?
+                            preemptable=False, tags=self._tags)  # FIXME: what should tags be set to?
                 try:
                     self._injectWorkerFiles(node, botoExists)
                     logger.debug("Created worker %s" % node.publicIP)
@@ -330,7 +336,7 @@ class GCEProvisioner(AbstractProvisioner):
             for ip in instance.private_ips:
                 if ip == self._leaderPrivateIP:
                     isWorker = False
-                    break # don't include the leader
+                    break  # don't include the leader
             if isWorker and instance.state == 'running':
                 workerInstances.append(instance)
 
@@ -348,8 +354,8 @@ class GCEProvisioner(AbstractProvisioner):
         except IndexError:
             raise NoSuchClusterException(self.clusterName)
         return Node(publicIP=leader.public_ips[0], privateIP=leader.private_ips[0],
-                          name=leader.name, launchTime=leader.created_at, nodeType=leader.size,
-                          preemptable=False, tags=None)
+                    name=leader.name, launchTime=leader.created_at, nodeType=leader.size,
+                    preemptable=False, tags=None)
 
     def _injectWorkerFiles(self, node, botoExists):
         """
@@ -395,6 +401,7 @@ class GCEProvisioner(AbstractProvisioner):
 
     # MONKEY PATCH - This function was copied form libcloud to fix a bug.
     DEFAULT_TASK_COMPLETION_TIMEOUT = 180
+
     def ex_create_multiple_nodes(
             self, base_name, size, image, number, location=None,
             ex_network='default', ex_subnetwork=None, ex_tags=None,
@@ -430,8 +437,7 @@ class GCEProvisioner(AbstractProvisioner):
         if ex_subnetwork and not hasattr(ex_subnetwork, 'name'):
             ex_subnetwork = \
                 driver.ex_get_subnetwork(ex_subnetwork,
-                                       region=driver._get_region_from_zone(
-                                           location))
+                                         region=driver._get_region_from_zone(location))
         if ex_image_family:
             image = driver.ex_get_image_from_family(ex_image_family)
         if image and not hasattr(image, 'name'):
@@ -464,14 +470,14 @@ class GCEProvisioner(AbstractProvisioner):
 
         for i in range(number):
             name = 'wp' if ex_preemptible else 'wn'
-            name += str(uuid.uuid4()) #'%s-%03d' % (base_name, i)
+            name += str(uuid.uuid4())  # '%s-%03d' % (base_name, i)
             status = {'name': name, 'node_response': None, 'node': None}
             status_list.append(status)
 
         start_time = time.time()
         complete = False
         while not complete:
-            if (time.time() - start_time >= timeout):
+            if time.time() - start_time >= timeout:
                 raise Exception("Timeout (%s sec) while waiting for multiple "
                                 "instances")
             complete = True

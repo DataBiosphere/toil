@@ -143,7 +143,7 @@ class AbstractProvisioner(ABC):
 
         if self.clusterType not in self.supportedClusterTypes():
             # This isn't actually a cluster type we can do
-            ClusterTypeNotSupportedException(type(self), clusterType)
+            raise ClusterTypeNotSupportedException(type(self), clusterType)
 
         self._zone = zone
         self._nodeStorage = nodeStorage

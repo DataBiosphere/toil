@@ -159,14 +159,14 @@ class AWSProvisioner(AbstractProvisioner):
         self.s3_resource = self.session.resource('s3')
         self.s3_client = self.session.client('s3')
 
-        # Set a valid name for the S3 bucket associated with this cluster
-        max_bucket_name_len = 63
-        suffix = _S3_INTERNAL_BUCKET_SUFFIX
-        self.s3_bucket_name = clusterName[:max_bucket_name_len - len(suffix)] + suffix
-
         # Call base class constructor, which will call createClusterSettings()
         # or readClusterSettings()
         super(AWSProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
+
+        # After self.clusterName is set, generate a valid name for the S3 bucket associated with this cluster
+        max_bucket_name_len = 63
+        suffix = _S3_INTERNAL_BUCKET_SUFFIX
+        self.s3_bucket_name = self.clusterName[:max_bucket_name_len - len(suffix)] + suffix
 
     def supportedClusterTypes(self):
         return {'mesos', 'kubernetes'}
