@@ -70,7 +70,7 @@ In this example, we set the following options, which are all passed to Toil:
 specified should be run using the Singularity container engine instead of the
 Docker container engine.
 
-``--jobStore``: Path to a folder that already exists, which will contain the
+``--jobStore``: Path to a parent folder that already exists, which will contain the
 Toil jobstore and all related job-tracking information.
 
 ``--batchSystem``: Use the specified HPC or Cloud-based cluster platform.
