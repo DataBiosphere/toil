@@ -525,7 +525,7 @@ def needs_internet(test_item):
     try:
         requests.get('http://www.google.com')
     except requests.ConnectionError:
-        return unittest.skip("Establish internet connection to include this test.")
+        return unittest.skip("Establish internet connection to include this test.")(test_item)
 
     else:
         return test_item
