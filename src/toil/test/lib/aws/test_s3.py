@@ -37,6 +37,7 @@ class S3Test(ToilTest):
 
     @classmethod
     def setUpClass(cls) -> None:
+        super(S3Test, cls).setUpClass()
         session = establish_boto3_session(region_name="us-east-1")
         cls.s3_resource = session.resource("s3", region_name="us-east-1")
         cls.bucket = None
@@ -45,8 +46,8 @@ class S3Test(ToilTest):
         """Test bucket creation for us-east-1."""
         bucket_name = f"toil-s3test-{uuid.uuid4()}"
         assert self.s3_resource
-        self.bucket = create_s3_bucket(self.s3_resource, bucket_name, "us-east-1")
-        self.bucket.wait_until_exists()
+        S3Test.bucket = create_s3_bucket(self.s3_resource, bucket_name, "us-east-1")
+        S3Test.bucket.wait_until_exists()
         owner_tag = os.environ.get("TOIL_OWNER_TAG")
         if owner_tag:
             bucket_tagging = self.s3_resource.BucketTagging(bucket_name)
