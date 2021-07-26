@@ -66,11 +66,11 @@ A more detailed example shows how we can specify both Toil and cwltool arguments
 
 In this example, we set the following options, which are all passed to Toil:
 
-``--singularity``: Specifies that all jobs with Docker fornat containers
+``--singularity``: Specifies that all jobs with Docker format containers
 specified should be run using the Singularity container engine instead of the
 Docker container engine.
 
-``--jobStore``: Path to a folder that already exists, which will contain the
+``--jobStore``: Path to a folder which doesn't exist yet, which will contain the
 Toil jobstore and all related job-tracking information.
 
 ``--batchSystem``: Use the specified HPC or Cloud-based cluster platform.

@@ -17,7 +17,7 @@ import logging
 import os
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import Callable, Dict, Optional, Generator
+from typing import DefaultDict, List, Dict, BinaryIO, Callable, Iterator, Optional, Generator, TextIO, Union, cast
 
 import dill
 
@@ -38,14 +38,13 @@ class NonCachingFileStore(AbstractFileStore):
         super().__init__(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
         # This will be defined in the `open` method.
         self.jobStateFile: Optional[str] = None
-        self.localFileMap: Dict[str, str] = {}
-        self.localFileMap = defaultdict(list)  # type: ignore
+        self.localFileMap: DefaultDict[str, List[str]] = defaultdict(list)
 
     @contextmanager
     def open(self, job: Job) -> Generator[None, None, None]:
         jobReqs = job.disk
         startingDir = os.getcwd()
-        self.localTempDir = make_public_dir(in_directory=self.localTempDir)
+        self.localTempDir: str = make_public_dir(in_directory=self.localTempDir)
         self._removeDeadJobs(self.workDir)
         self.jobStateFile = self._createJobStateFile()
         freeSpace, diskSize = getFileSystemSize(self.localTempDir)
@@ -70,7 +69,7 @@ class NonCachingFileStore(AbstractFileStore):
             # Finally delete the job from the worker
             os.remove(self.jobStateFile)
 
-    def writeGlobalFile(self, localFileName, cleanup=False):
+    def writeGlobalFile(self, localFileName: str, cleanup: bool=False) -> FileID:
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
         creatorID = self.jobDesc.jobStoreID
         fileStoreID = self.jobStore.writeFile(absLocalFileName, creatorID, cleanup)
@@ -80,7 +79,8 @@ class NonCachingFileStore(AbstractFileStore):
             self.localFileMap[fileStoreID].append(absLocalFileName)
         return FileID.forPath(fileStoreID, absLocalFileName)
 
-    def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
+    def readGlobalFile(self, fileStoreID: str, userPath: Optional[str] = None, cache: bool=True, mutable: bool=False,
+                            symlink: bool=False) -> str:
         if userPath is not None:
             localFilePath = self._resolveAbsoluteLocalPath(userPath)
             if os.path.exists(localFilePath):
@@ -94,15 +94,15 @@ class NonCachingFileStore(AbstractFileStore):
         return localFilePath
 
     @contextmanager
-    def readGlobalFileStream(self, fileStoreID, encoding=None, errors=None):
+    def readGlobalFileStream(self, fileStoreID: str, encoding: Optional[str] = None, errors: Optional[str] = None) -> Iterator[Union[BinaryIO, TextIO]]:
         with self.jobStore.readFileStream(fileStoreID, encoding=encoding, errors=errors) as f:
             self.logAccess(fileStoreID)
             yield f
 
-    def exportFile(self, jobStoreFileID, dstUrl):
+    def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
         self.jobStore.exportFile(jobStoreFileID, dstUrl)
 
-    def deleteLocalFile(self, fileStoreID):
+    def deleteLocalFile(self, fileStoreID: str) -> None:
         try:
             localFilePaths = self.localFileMap.pop(fileStoreID)
         except KeyError:
@@ -111,7 +111,7 @@ class NonCachingFileStore(AbstractFileStore):
             for localFilePath in localFilePaths:
                 os.remove(localFilePath)
 
-    def deleteGlobalFile(self, fileStoreID):
+    def deleteGlobalFile(self, fileStoreID: str) -> None:
         try:
             self.deleteLocalFile(fileStoreID)
         except OSError as e:
@@ -122,11 +122,11 @@ class NonCachingFileStore(AbstractFileStore):
                 raise
         self.filesToDelete.add(str(fileStoreID))
 
-    def waitForCommit(self):
+    def waitForCommit(self) -> bool:
         # there is no asynchronicity in this file store so no need to block at all
         return True
 
-    def startCommit(self, jobState=False):
+    def startCommit(self, jobState: bool = False) -> None:
         # Make sure the previous job is committed, if any
         if self.waitForPreviousCommit is not None:
             self.waitForPreviousCommit()
@@ -154,7 +154,7 @@ class NonCachingFileStore(AbstractFileStore):
             self._terminateEvent.set()
             raise
 
-    def __del__(self):
+    def __del__(self) -> None:
         """
         Cleanup function that is run when destroying the class instance.  Nothing to do since there
         are no async write events.
@@ -205,14 +205,14 @@ class NonCachingFileStore(AbstractFileStore):
                         os.close(dirFD)
 
     @staticmethod
-    def _getAllJobStates(workflowDir):
+    def _getAllJobStates(workflowDir: str) -> Iterator[Dict[str, str]]:
         """
         Generator function that deserializes and yields the job state for every job on the node,
         one at a time.
 
-        :param str workflowDir: The location of the workflow directory on the node.
+        :param workflowDir: The location of the workflow directory on the node.
+
         :return: dict with keys (jobName,  jobProcessName, jobDir)
-        :rtype: dict
         """
         jobStateFiles = []
         # Note that the directory tree may contain files whose names are not decodable to Unicode.
@@ -222,9 +222,9 @@ class NonCachingFileStore(AbstractFileStore):
             for filename in files:
                 if filename == '.jobState'.encode('utf-8'):
                     jobStateFiles.append(os.path.join(root, filename).decode('utf-8'))
-        for filename in jobStateFiles:
+        for fname in jobStateFiles:
             try:
-                yield NonCachingFileStore._readJobState(filename)
+                yield NonCachingFileStore._readJobState(fname)
             except OSError as e:
                 if e.errno == 2:
                     # job finished & deleted its jobState file since the jobState files were discovered
@@ -233,10 +233,10 @@ class NonCachingFileStore(AbstractFileStore):
                     raise
 
     @staticmethod
-    def _readJobState(jobStateFileName):
+    def _readJobState(jobStateFileName: str) -> Dict[str, str]:
         with open(jobStateFileName, 'rb') as fH:
             state = dill.load(fH)
-        return state
+        return cast(Dict[str, str], state)
 
     def _createJobStateFile(self) -> str:
         """
@@ -256,7 +256,7 @@ class NonCachingFileStore(AbstractFileStore):
         return jobStateFile
 
     @classmethod
-    def shutdown(cls, dir_):
+    def shutdown(cls, dir_: str) -> None:
         """
         :param dir_: The workflow directory that will contain all the individual worker directories.
         """

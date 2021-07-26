@@ -42,7 +42,7 @@ from typing import (cast, IO, List, TextIO, Tuple, Dict, Iterator, Callable,
 logger = logging.getLogger(__name__)
 
 try:
-    from botocore.exceptions import ProxyConnectionError # type: ignore
+    from botocore.exceptions import ProxyConnectionError
 except ImportError:
     class ProxyConnectionError(BaseException): # type: ignore
         pass

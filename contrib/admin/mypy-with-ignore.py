@@ -72,9 +72,6 @@ def main():
         'src/toil/cwl/__init__.py',
         'src/toil/cwl/cwltoil.py',
         'src/toil/fileStores/cachingFileStore.py',
-        'src/toil/fileStores/abstractFileStore.py',
-        'src/toil/fileStores/nonCachingFileStore.py',
-        'src/toil/fileStores/__init__.py',
         'src/toil/jobStores/utils.py',
         'src/toil/jobStores/conftest.py',
         'src/toil/jobStores/fileJobStore.py',
@@ -99,8 +96,7 @@ def main():
         'src/toil/lib/encryption/_dummy.py',
         'src/toil/lib/encryption/conftest.py',
         'src/toil/lib/encryption/__init__.py',
-        'src/toil/lib/aws/utils.py',
-        'src/toil/lib/aws/__init__.py'
+        'src/toil/lib/aws/__init__.py',
     ]]
 
     filtered_files_to_check = []

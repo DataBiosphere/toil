@@ -175,7 +175,8 @@ cwl_v1.2_kubernetes:
     - export TOIL_WORKDIR=/var/lib/toil
     - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
     - mkdir -p ${TOIL_WORKDIR}
-    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv12Test
+    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance
+    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance_with_caching
 
 wdl:
   stage: main_tests
@@ -272,6 +273,7 @@ py37_main:
     - make test tests=src/toil/test/src
     - make test tests=src/toil/test/utils
     - make test tests=src/toil/test/lib/test_ec2.py
+    - make test tests=src/toil/test/lib/aws
     - make test tests=src/toil/test/lib/test_conversions.py
 
 py37_appliance_build:
