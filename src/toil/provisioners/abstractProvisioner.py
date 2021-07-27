@@ -204,6 +204,13 @@ class AbstractProvisioner(ABC):
         """
         raise NotImplementedError
 
+    def _get_user_data_limit(self) -> int:
+        """
+        Get the maximum number of bytes that can be passed as the user data
+        during node creation.
+        """
+        raise NotImplementedError
+
     def _setLeaderWorkerAuthentication(self, leader: Node = None):
         """
         Configure authentication between the leader and the workers.

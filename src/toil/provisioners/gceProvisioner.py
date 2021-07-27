@@ -25,6 +25,7 @@ from libcloud.compute.providers import get_driver
 from libcloud.compute.types import Provider
 
 from toil.jobStores.googleJobStore import GoogleJobStore
+from toil.lib.conversions import human2bytes
 from toil.provisioners import NoSuchClusterException
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.node import Node
@@ -115,6 +116,10 @@ class GCEProvisioner(AbstractProvisioner):
 
     def _write_file_to_cloud(self, key: str, contents: bytes) -> str:
         raise NotImplementedError("The gceProvisioner doesn't support _writeGlobalFile().")
+
+    def _get_user_data_limit(self) -> int:
+        # See: https://cloud.google.com/compute/docs/metadata/setting-custom-metadata#limitations
+        return human2bytes('256KB')
 
     def launchCluster(self, leaderNodeType, leaderStorage, owner, **kwargs):
         """

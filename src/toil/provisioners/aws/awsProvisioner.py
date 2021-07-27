@@ -30,6 +30,7 @@ from boto.utils import get_instance_metadata
 from boto.ec2.instance import Instance as Boto2Instance
 
 from toil.lib.aws.utils import create_s3_bucket
+from toil.lib.conversions import human2bytes
 from toil.lib.ec2 import (a_short_time,
                           create_auto_scaling_group,
                           create_instances,
@@ -74,9 +75,9 @@ _TAG_KEY_TOIL_CLUSTER_NAME = 'clusterName'
 # TODO: measure
 _STORAGE_ROOT_OVERHEAD_GIGS = 4
 # The maximum length of a S3 bucket
-_S3_MAX_BUCKET_NAME_LEN = 63
+_S3_BUCKET_MAX_NAME_LEN = 63
 # The suffix of the S3 bucket associated with the cluster
-_S3_INTERNAL_BUCKET_SUFFIX = '--internal'
+_S3_BUCKET_INTERNAL_SUFFIX = '--internal'
 
 
 def awsRetryPredicate(e):
@@ -165,8 +166,8 @@ class AWSProvisioner(AbstractProvisioner):
         super(AWSProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
 
         # After self.clusterName is set, generate a valid name for the S3 bucket associated with this cluster
-        suffix = _S3_INTERNAL_BUCKET_SUFFIX
-        self.s3_bucket_name = self.clusterName[:_S3_MAX_BUCKET_NAME_LEN - len(suffix)] + suffix
+        suffix = _S3_BUCKET_INTERNAL_SUFFIX
+        self.s3_bucket_name = self.clusterName[:_S3_BUCKET_MAX_NAME_LEN - len(suffix)] + suffix
 
     def supportedClusterTypes(self):
         return {'mesos', 'kubernetes'}
@@ -251,6 +252,10 @@ class AWSProvisioner(AbstractProvisioner):
             if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
                 logger.warning(f'Trying to read non-existent file "{key}" from {bucket_name}.')
             raise
+
+    def _get_user_data_limit(self) -> 256:
+        # See: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-add-user-data.html
+        return human2bytes('16KB')
 
     def launchCluster(self,
                       leaderNodeType: str,
