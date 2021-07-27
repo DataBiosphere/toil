@@ -113,7 +113,7 @@ class GCEProvisioner(AbstractProvisioner):
         self._clearLeaderWorkerAuthentication()  # TODO: Why are we doing this?
         self._gceDriver = self._getDriver()
 
-    def _writeGlobalFile(self, key: str, contents: bytes) -> str:
+    def _write_file_to_cloud(self, key: str, contents: bytes) -> str:
         raise NotImplementedError("The gceProvisioner doesn't support _writeGlobalFile().")
 
     def launchCluster(self, leaderNodeType, leaderStorage, owner, **kwargs):

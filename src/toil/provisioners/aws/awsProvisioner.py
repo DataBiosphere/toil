@@ -73,6 +73,8 @@ _TAG_KEY_TOIL_CLUSTER_NAME = 'clusterName'
 # unavailable to jobs when the node comes up?
 # TODO: measure
 _STORAGE_ROOT_OVERHEAD_GIGS = 4
+# The maximum length of a S3 bucket
+_S3_MAX_BUCKET_NAME_LEN = 63
 # The suffix of the S3 bucket associated with the cluster
 _S3_INTERNAL_BUCKET_SUFFIX = '--internal'
 
@@ -163,9 +165,8 @@ class AWSProvisioner(AbstractProvisioner):
         super(AWSProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
 
         # After self.clusterName is set, generate a valid name for the S3 bucket associated with this cluster
-        max_bucket_name_len = 63
         suffix = _S3_INTERNAL_BUCKET_SUFFIX
-        self.s3_bucket_name = self.clusterName[:max_bucket_name_len - len(suffix)] + suffix
+        self.s3_bucket_name = self.clusterName[:_S3_MAX_BUCKET_NAME_LEN - len(suffix)] + suffix
 
     def supportedClusterTypes(self):
         return {'mesos', 'kubernetes'}
@@ -210,7 +211,7 @@ class AWSProvisioner(AbstractProvisioner):
         error=ClientError,
         error_codes=[404, 500, 502, 503, 504]
     )])
-    def _writeGlobalFile(self, key: str, contents: bytes) -> str:
+    def _write_file_to_cloud(self, key: str, contents: bytes) -> str:
         bucket_name = self.s3_bucket_name
         region = zone_to_region(self._zone)
 
@@ -240,7 +241,7 @@ class AWSProvisioner(AbstractProvisioner):
         obj.wait_until_exists()
         return f's3://{bucket_name}/{key}'
 
-    def _readGlobalFile(self, key: str) -> bytes:
+    def _read_file_from_cloud(self, key: str) -> bytes:
         bucket_name = self.s3_bucket_name
         obj = self.s3_resource.Object(bucket_name, key)
 

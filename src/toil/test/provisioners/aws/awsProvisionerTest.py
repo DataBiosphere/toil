@@ -62,10 +62,10 @@ class AWSProvisionerBenchTest(ToilTest):
         contents = "Hello, this is a test.".encode('utf-8')
 
         try:
-            url = provisioner._writeGlobalFile(key, contents=contents)
+            url = provisioner._write_file_to_cloud(key, contents=contents)
             self.assertTrue(url.startswith("s3://"))
 
-            self.assertEqual(contents, provisioner._readGlobalFile(key))
+            self.assertEqual(contents, provisioner._read_file_from_cloud(key))
         finally:
             # the cluster was never launched, but we need to clean up the s3 bucket
             provisioner.destroyCluster()

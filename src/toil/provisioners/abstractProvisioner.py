@@ -187,20 +187,18 @@ class AbstractProvisioner(ABC):
         """
         raise NotImplementedError
 
-    def _writeGlobalFile(self, key: str, contents: bytes) -> str:
+    # TODO: think of a better name
+    def _write_file_to_cloud(self, key: str, contents: bytes) -> str:
         """
         Write a file to a physical storage system that is accessible to the
-        leader and all nodes during the life of the cluster.
-
-        Not to be confused with the `writeGlobalFile()` method in the file
-        store, this is an internal system to store files for the cluster.
-        Additional resources should be cleaned up in `self.destroyCluster()`.
+        leader and all nodes during the life of the cluster. Additional
+        resources should be cleaned up in `self.destroyCluster()`.
 
         :return: A public URL that can be used to retrieve the file.
         """
         raise NotImplementedError
 
-    def _readGlobalFile(self, key: str) -> bytes:
+    def _read_file_from_cloud(self, key: str) -> bytes:
         """
         Return the contents of the file written by `self._writeGlobalFile()`.
         """
