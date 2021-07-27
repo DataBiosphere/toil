@@ -200,7 +200,7 @@ class AbstractProvisioner(ABC):
 
     def _read_file_from_cloud(self, key: str) -> bytes:
         """
-        Return the contents of the file written by `self._writeGlobalFile()`.
+        Return the contents of the file written by `self._write_file_to_cloud()`.
         """
         raise NotImplementedError
 

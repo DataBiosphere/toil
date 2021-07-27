@@ -115,7 +115,7 @@ class GCEProvisioner(AbstractProvisioner):
         self._gceDriver = self._getDriver()
 
     def _write_file_to_cloud(self, key: str, contents: bytes) -> str:
-        raise NotImplementedError("The gceProvisioner doesn't support _writeGlobalFile().")
+        raise NotImplementedError("The gceProvisioner doesn't support _write_file_to_cloud().")
 
     def _get_user_data_limit(self) -> int:
         # See: https://cloud.google.com/compute/docs/metadata/setting-custom-metadata#limitations

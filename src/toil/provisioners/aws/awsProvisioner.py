@@ -505,7 +505,7 @@ class AWSProvisioner(AbstractProvisioner):
                            'have failed health checks. As a result, the security group & IAM '
                            'roles will not be deleted.')
 
-        # delete S3 buckets that might have been created by `self._writeGlobalFile()`
+        # delete S3 buckets that might have been created by `self._write_file_to_cloud()`
         logger.info('Deleting S3 buckets ...')
         removed = False
         for attempt in old_retry(timeout=300, predicate=awsRetryPredicate):

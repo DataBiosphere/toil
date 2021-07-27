@@ -44,7 +44,7 @@ class AWSProvisionerBenchTest(ToilTest):
 
     # Needs to talk to EC2 for image discovery
     @needs_aws_ec2
-    def testAMIFinding(self):
+    def test_AMI_finding(self):
         for zone in ['us-west-2a', 'eu-central-1a', 'sa-east-1b']:
             provisioner = AWSProvisioner('fakename', 'mesos', zone, 10000, None, None)
             ami = provisioner._discoverAMI()
@@ -52,10 +52,10 @@ class AWSProvisionerBenchTest(ToilTest):
             assert(ami.startswith('ami-'))
 
     @needs_aws_ec2
-    def testReadWriteGlobalFiles(self):
+    def test_read_write_global_files(self):
         """
-        Make sure the `_writeGlobalFile()` and `_readGlobalFile()` functions
-        of the AWS provisioner work as intended.
+        Make sure the `_write_file_to_cloud()` and `_read_file_from_cloud()`
+        functions of the AWS provisioner work as intended.
         """
         provisioner = AWSProvisioner(f'aws-provisioner-test-{uuid4()}', 'mesos', 'us-west-2a', 50, None, None)
         key = 'config/test.txt'
