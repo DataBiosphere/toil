@@ -253,7 +253,7 @@ class AWSProvisioner(AbstractProvisioner):
                 logger.warning(f'Trying to read non-existent file "{key}" from {bucket_name}.')
             raise
 
-    def _get_user_data_limit(self) -> 256:
+    def _get_user_data_limit(self) -> int:
         # See: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-add-user-data.html
         return human2bytes('16KB')
 
