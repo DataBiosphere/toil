@@ -20,6 +20,7 @@ import time
 import uuid
 
 import boto3
+import boto3.resources.base
 from botocore.exceptions import ClientError
 import boto.ec2
 
@@ -125,6 +126,61 @@ def awsFilterImpairedNodes(nodes, ec2):
 
 class InvalidClusterStateException(Exception):
     pass
+    
+class AWSConnectionManager:
+    """
+    Class that represents a connection to AWS. Caches Boto 3 and Boto 2 objects
+    by region. 
+    
+    Access to any kind of item goes through the particular method for the thing
+    you want (session, resource, service, Boto2 Context), and then you pass the
+    zone you want to work in, and possibly the type of thing you want, as arguments.
+    """
+    
+    def __init__(self):
+        """
+        Make a new empty AWSConnectionManager.
+        """
+        # This stores Boto3 sessions by region
+        self.sessions_by_region = {}
+        # This stores Boto3 resources by (region, service name) tuples
+        self.resource_cache = {}
+        # This stores Boto3 clients by (region, service name) tuples 
+        self.service_cache = {}
+        # TODO: store the boto2 things also. Not Boto2Context because that is not a real Boto2 class.
+       
+    def session(self, zone: str) -> boto3.session.Session:
+        """
+        Get the Boto3 Session to use for the given zone.
+        """
+        # Sessions are only actually local to a region
+        region = zone_to_region(zone)
+        if region not in self.sessions_by_region:
+            self.sessions_by_region[region] = establish_boto3_session(region_name=region)
+        return self.sessions_by_region[region]
+        
+    def resource(self, zone: str, service_name: str) -> boto3.resources.base.ServiceResource:
+        """
+        Get the Boto3 Resource to use with the given service (like 'ec2') in the given zone.
+        """
+        # Resources are also per region
+        key = (zone_to_region(zone), service_name)
+        if key not in self.resource_cache:
+            self.resource_cache[key] = self.session(zone).resource(service_name)
+        return self.resource_cache[key]
+    
+    def client(self, zone: str, service_name: str) -> Any:
+        """
+        Get the Boto3 Client to use with the given service (like 'ec2') in the given zone.
+        """
+        # TODO: what base type are clients?
+        # Clients are also per region
+        key = (zone_to_region(zone), service_name)
+        if key not in self.client_cache:
+            self.client_cache[key] = self.session(zone).client(service_name)
+        return self.client_cache[key]
+        
+    
 
 
 class AWSProvisioner(AbstractProvisioner):
