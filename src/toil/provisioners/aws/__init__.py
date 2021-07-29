@@ -49,7 +49,7 @@ def get_current_aws_region():
     return zone_to_region(aws_zone) if aws_zone else None
 
 
-def get_current_aws_zone(spotBid=None, nodeType=None, ctx=None):
+def get_current_aws_zone(spotBid=None, nodeType=None, boto2_ec2=None):
     zone = os.environ.get('TOIL_AWS_ZONE', None)
     if not zone and running_on_ec2():
         try:
@@ -60,10 +60,10 @@ def get_current_aws_zone(spotBid=None, nodeType=None, ctx=None):
             pass
     if not zone and spotBid:
         # if spot bid is present, all the other parameters must be as well
-        assert bool(spotBid) == bool(nodeType) == bool(ctx)
+        assert bool(spotBid) == bool(nodeType) == bool(boto2_ec2)
         # if the zone is unset and we are using the spot market, optimize our
         # choice based on the spot history
-        return optimize_spot_bid(ctx=ctx, instance_type=nodeType, spot_bid=float(spotBid))
+        return optimize_spot_bid(boto2_ec2, instance_type=nodeType, spot_bid=float(spotBid))
     if not zone:
         try:
             import boto
@@ -133,14 +133,14 @@ def choose_spot_zone(zones, bid, spot_history):
     return min(markets_under_bid or markets_over_bid, key=attrgetter('price_deviation')).name
 
 
-def optimize_spot_bid(ctx, instance_type, spot_bid):
+def optimize_spot_bid(boto2_ec2, instance_type, spot_bid):
     """
     Check whether the bid is sane and makes an effort to place the instance in a sensible zone.
     """
-    spot_history = _get_spot_history(ctx, instance_type)
+    spot_history = _get_spot_history(boto2_ec2, instance_type)
     if spot_history:
         _check_spot_bid(spot_bid, spot_history)
-    zones = ctx.ec2.get_all_zones()
+    zones = boto2_ec2.get_all_zones()
     most_stable_zone = choose_spot_zone(zones, spot_bid, spot_history)
     logger.debug("Placing spot instances in zone %s.", most_stable_zone)
     return most_stable_zone
@@ -179,7 +179,7 @@ def _check_spot_bid(spot_bid, spot_history):
                  "spot price ($ %f) over the last week", spot_bid, average)
 
 
-def _get_spot_history(ctx, instance_type):
+def _get_spot_history(boto2_ec2, instance_type):
     """
     Returns list of 1,000 most recent spot market data points represented as SpotPriceHistory
     objects. Note: The most recent object/data point will be first in the list.
@@ -188,8 +188,8 @@ def _get_spot_history(ctx, instance_type):
     """
 
     one_week_ago = datetime.datetime.now() - datetime.timedelta(days=7)
-    spot_data = ctx.ec2.get_spot_price_history(start_time=one_week_ago.isoformat(),
-                                               instance_type=instance_type,
-                                               product_description="Linux/UNIX")
+    spot_data = boto2_ec2.get_spot_price_history(start_time=one_week_ago.isoformat(),
+                                                 instance_type=instance_type,
+                                                 product_description="Linux/UNIX")
     spot_data.sort(key=attrgetter("timestamp"), reverse=True)
     return spot_data
