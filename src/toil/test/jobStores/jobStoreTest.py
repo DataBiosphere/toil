@@ -41,6 +41,7 @@ from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobException)
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.lib.memoize import memoize
+from toil.lib.aws.utils import create_s3_bucket
 from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
                        make_tests,
@@ -1408,14 +1409,17 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
     def _createExternalStore(self):
         """A S3.Bucket instance is returned"""
         from toil.jobStores.aws.utils import retry_s3
-        from toil.jobStores.aws.utils import region_to_bucket_location
         from toil.jobStores.aws.jobStore import establish_boto3_session
-        resource = establish_boto3_session().resource('s3', region_name=self.awsRegion())
-        bucket = resource.Bucket('import-export-test-%s' % uuid.uuid4())
+
+        resource = establish_boto3_session().resource(
+            "s3", region_name=self.awsRegion()
+        )
+        bucket_name = f"import-export-test-{uuid.uuid4()}"
+        location = self.awsRegion()
 
         for attempt in retry_s3():
             with attempt:
-                bucket.create(CreateBucketConfiguration={'LocationConstraint': region_to_bucket_location(self.awsRegion())})
+                bucket = create_s3_bucket(resource, bucket_name, location)
                 bucket.wait_until_exists()
                 return bucket
 

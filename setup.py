@@ -33,7 +33,7 @@ def run_setup():
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
     apacheLibcloud = 'apache-libcloud==2.2.1'
-    cwltool = 'cwltool@git+https://github.com/mhpopescu/cwltool@allow_named_pipes'
+    cwltool = 'cwltool==3.1.20210628163208'
     galaxyToolUtil = 'galaxy-tool-util'
     htcondor = 'htcondor>=8.6.0'
     kubernetes = 'kubernetes>=12.0.1, <13'
@@ -57,10 +57,13 @@ def run_setup():
         addict,
         pytz,
         pyyaml,
-        enlighten]
+        enlighten,
+        "typing-extensions ; python_version < '3.8'"
+        ]
     aws_reqs = [
         boto,
         boto3,
+        "boto3-stubs[s3]>=1.17, <2",
         futures,
         pycryptodome]
     cwl_reqs = [

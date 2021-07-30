@@ -181,6 +181,7 @@ class GoogleJobStore(AbstractJobStore):
 
     def create(self, jobDescription):
         # TODO: we don't implement batching, but we probably should.
+        jobDescription.pre_update_hook()
         self._writeBytes(jobDescription.jobStoreID, pickle.dumps(jobDescription, protocol=pickle.HIGHEST_PROTOCOL))
         return jobDescription
 
@@ -212,6 +213,7 @@ class GoogleJobStore(AbstractJobStore):
         return job
 
     def update(self, job):
+        job.pre_update_hook()
         self._writeBytes(job.jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL), update=True)
 
     @googleRetry
