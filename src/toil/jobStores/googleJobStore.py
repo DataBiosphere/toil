@@ -179,13 +179,19 @@ class GoogleJobStore(AbstractJobStore):
                   jobStoreID, '<no command>' if jobDescription.command is None else jobDescription.command)
         jobDescription.jobStoreID = jobStoreID
 
+    jobsPerBatchInsert = 200
+
     @contextmanager
     def batch(self):
         self._batchedUpdates = []
         yield
-        for jobDescription in self._batchedUpdates:
-            jobDescription.pre_update_hook()
-            self._writeBytes(jobDescription.jobStoreID, pickle.dumps(jobDescription, protocol=pickle.HIGHEST_PROTOCOL))
+
+        batches = [self._batchedUpdates[i:i + self.jobsPerBatchInsert] for i in
+                   range(0, len(self._batchedUpdates), self.jobsPerBatchInsert)]
+        for batch in batches:
+            for jobDescription in batch:
+                jobDescription.pre_update_hook()
+                self._writeBytes(jobDescription.jobStoreID, pickle.dumps(jobDescription, protocol=pickle.HIGHEST_PROTOCOL))
         self._batchedUpdates = None
         
 
