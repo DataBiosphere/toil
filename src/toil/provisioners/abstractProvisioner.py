@@ -187,7 +187,6 @@ class AbstractProvisioner(ABC):
         """
         raise NotImplementedError
 
-    # TODO: think of a better name
     def _write_file_to_cloud(self, key: str, contents: bytes) -> str:
         """
         Write a file to a physical storage system that is accessible to the
