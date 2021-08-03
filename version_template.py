@@ -128,6 +128,14 @@ def dirty():
 
 
 def expand_(name=None, others=None):
+    """
+    Returns a string of all the globals and additional variables passed as the
+    others keyword argument.
+
+    :param str name: If set, only the value of the given symbol is returned.
+    :param dict others: A dictionary of additional variables to be included in
+                        the return value.
+    """
     variables = {k: v for k, v in globals().items()
                  if not k.startswith('_') and not k.endswith('_')}
 
