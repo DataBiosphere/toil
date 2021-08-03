@@ -158,9 +158,14 @@ class GoogleJobStore(AbstractJobStore):
         except exceptions.NotFound:
             # just return if not connect to physical storage. Needed for idempotency
             return
-        with self.storageClient.batch():
-            for blob in self.bucket.list_blobs():
-                blob.delete()
+        
+        try:
+            self.bucket.delete(force=True)
+        except ValueError:
+            with self.storageClient.batch():
+                for blob in self.bucket.list_blobs():
+                    blob.delete()
+            self.bucket.delete()
         self.bucket = None
         # try:
         #     self.bucket.delete(force=True)
@@ -243,8 +248,9 @@ class GoogleJobStore(AbstractJobStore):
         self._delete(jobStoreID)
 
         # best effort delete associated files
-        for blob in self.bucket.list_blobs(prefix=compat_bytes(jobStoreID)):
-            self._delete(blob.name)
+        with self.storageClient.batch():
+            for blob in self.bucket.list_blobs(prefix=compat_bytes(jobStoreID)):
+                self._delete(blob.name)
 
     def getEnv(self):
         """
