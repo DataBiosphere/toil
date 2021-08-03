@@ -54,8 +54,9 @@ log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 3600
 
 
-def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSystem: str = None, selected_tests: str = None,
-    selected_tags: str = None, extra_args: List[str] = [], must_support_all_features: bool = False) -> Optional[str]:
+def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSystem: str = None,
+    selected_tests: str = None, selected_tags: str = None, skipped_tests: str = None,
+    extra_args: List[str] = [], must_support_all_features: bool = False) -> Optional[str]:
     """
     Run the CWL conformance tests.
 
@@ -70,6 +71,8 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
     :param selected_tests: If set, use this description of test numbers to run (comma-separated numbers or ranges)
 
     :param selected_tags: As an alternative to selected_tests, run tests with the given tags.
+
+    :param skipped_tests: Comma-separated string labels of tests to skip.
 
     :param extra_args: Provide these extra arguments to toil-cwl-runner for each test.
 
@@ -86,6 +89,8 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
             cmd.append(f'-n={selected_tests}')
         if selected_tags:
             cmd.append(f'--tags={selected_tags}')
+        if skipped_tests:
+            cmd.append(f'-S{skipped_tests}')
 
         args_passed_directly_to_toil = [f'--disableCaching={not caching}',
                                         '--clean=always',
@@ -353,9 +358,12 @@ class CWLv10Test(ToilTest):
 
     @slow
     @needs_kubernetes
-    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance(self, **kwargs):
         return self.test_run_conformance(batchSystem="kubernetes",
+                                         # This test doesn't work with
+                                         # Singularity; see
+                                         # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
+                                         skipped_tests="docker_entrypoint",
                                          **kwargs)
 
     @slow
@@ -396,7 +404,6 @@ class CWLv10Test(ToilTest):
 
     @slow
     @needs_kubernetes
-    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance_with_caching(self):
         return self.test_kubernetes_cwl_conformance(caching=True)
 
@@ -476,15 +483,16 @@ class CWLv11Test(ToilTest):
 
     @slow
     @needs_kubernetes
-    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance(self, **kwargs):
         return self.test_run_conformance(batchSystem="kubernetes",
+                                         # These tests don't work with
+                                         # Singularity; see
+                                         # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
+                                         skipped_tests="docker_entrypoint,stdin_shorcut",
                                          **kwargs)
-
 
     @slow
     @needs_kubernetes
-    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance_with_caching(self):
         return self.test_kubernetes_cwl_conformance(caching=True)
 
@@ -534,19 +542,22 @@ class CWLv12Test(ToilTest):
         self.test_run_conformance(extra_args=['--bypass-file-store'],
                                   must_support_all_features=True)
 
-    def run_kubernetes_cwl_conformance(self, **kwargs):
-        """
-        Run the CWL conformance tests on Kubernetes, passing along keyword
-        arguments.
-        """
-        return self.test_run_conformance(batchSystem="kubernetes",
-                                         **kwargs)
     @slow
     @needs_kubernetes
-    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
-    def test_kubernetes_cwl_group(self):
-        for caching in [True, False]:
-            self.run_kubernetes_cwl_conformance(selected_tests="20,35,39,42,56", caching=caching)
+    def test_kubernetes_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="kubernetes",
+                                         # This test doesn't work with
+                                         # Singularity; see
+                                         # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
+                                         # and
+                                         # https://github.com/common-workflow-language/cwltool/issues/1441#issuecomment-826747975
+                                         skipped_tests="docker_entrypoint",
+                                         **kwargs)
+
+    @slow
+    @needs_kubernetes
+    def test_kubernetes_cwl_conformance_with_caching(self):
+        return self.test_kubernetes_cwl_conformance(caching=True)
 
 @needs_cwl
 class CWLSmallTests(ToilTest):
