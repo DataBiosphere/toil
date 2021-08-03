@@ -158,17 +158,21 @@ class GoogleJobStore(AbstractJobStore):
         except exceptions.NotFound:
             # just return if not connect to physical storage. Needed for idempotency
             return
-        try:
-            self.bucket.delete(force=True)
-            # throws ValueError if bucket has more than 256 objects. Then we must delete manually
-        except ValueError:
-            self.bucket.delete_blobs(self.bucket.list_blobs())
-            self.bucket.delete()
-            # if ^ throws a google.cloud.exceptions.Conflict, then we should have a deletion retry mechanism.
+        with self.storageClient.batch():
+            for blob in self.bucket.list_blobs():
+                blob.delete()
+        self.bucket = None
+        # try:
+        #     self.bucket.delete(force=True)
+        #     # throws ValueError if bucket has more than 256 objects. Then we must delete manually
+        # except ValueError:
+        #     self.bucket.delete_blobs(self.bucket.list_blobs())
+        #     self.bucket.delete()
+        #     # if ^ throws a google.cloud.exceptions.Conflict, then we should have a deletion retry mechanism.
 
         # google freaks out if we call delete multiple times on the bucket obj, so after success
         # just set to None.
-        self.bucket = None
+        #self.bucket = None
 
     def _newJobID(self):
         return "job"+str(uuid.uuid4())
