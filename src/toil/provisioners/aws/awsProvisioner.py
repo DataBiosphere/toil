@@ -208,7 +208,7 @@ class AWSProvisioner(AbstractProvisioner):
             raise RuntimeError('No AWS availability zone specified. Configure in Boto '
                                'configuration file, TOIL_AWS_ZONE environment variable, or '
                                'on the command line.')
-                               
+
         # Set up our connections to AWS
         self.aws = AWSConnectionManager()
 
@@ -876,7 +876,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
         Get Boto2 instance objects for all nodes in the cluster.
         """
-        
+
         allInstances = self.aws.boto2(self._zone, 'ec2').get_only_instances(filters={'instance.group-name': self.clusterName})
         def instanceFilter(i):
             # filter by type only if nodeType is true
@@ -895,10 +895,10 @@ class AWSProvisioner(AbstractProvisioner):
         """
         Get the IDs of all spot requests associated with the cluster.
         """
-        
+
         # Grab the connection we need to use for this operation.
         ec2 = self.aws.boto2(self._zone, 'ec2')
-        
+
         requests = ec2.get_all_spot_instance_requests()
         tags = ec2.get_all_tags({'tag:': {_TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName}})
         idsToCancel = [tag.id for tag in tags]
@@ -908,11 +908,11 @@ class AWSProvisioner(AbstractProvisioner):
         """
         Create security groups for the cluster. Returns a list of their IDs.
         """
-        
+
         # Grab the connection we need to use for this operation.
         # The VPC connection can do anything the EC2 one can do, but also look at subnets.
         vpc = self.aws.boto2(self._zone, 'vpc')
-        
+
         def groupNotFound(e):
             retry = (e.status == 400 and 'does not exist in default VPC' in e.body)
             return retry
@@ -972,7 +972,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         Returns a list of launch template IDs.
         """
-        
+
         # Grab the connection we need to use for this operation.
         ec2 = self.aws.client(self._zone, 'ec2')
 
@@ -1114,7 +1114,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         Returns a list of ASG IDs. ASG IDs and ASG names are the same things.
         """
-        
+
         # Grab the connection we need to use for this operation.
         autoscaling = self.aws.client(self._zone, 'autoscaling')
 
@@ -1235,7 +1235,7 @@ class AWSProvisioner(AbstractProvisioner):
                 marker = result.marker
             else:
                 break
-                
+
     def _pager(self, requestor_callable: Callable, result_attribute_name: str, **kwargs) -> Iterable[Dict[str, Any]]:
         """
         Yield all the results from calling the given Boto 3 method with the
@@ -1243,11 +1243,11 @@ class AWSProvisioner(AbstractProvisioner):
         fetching out and looping over the list in the response with the given
         attribute name.
         """
-        
+
         # We specify a page size once, here
         call_args = {'MaxItems': 200}
         call_args.update(kwargs)
-        
+
         response = requestor_callable(**call_args)
         while True:
             # Process the current page
@@ -1261,7 +1261,7 @@ class AWSProvisioner(AbstractProvisioner):
             else:
                 # No more pages
                 break
-        
+
 
     @awsRetry
     def _getRoleNames(self) -> List[str]:
@@ -1303,10 +1303,10 @@ class AWSProvisioner(AbstractProvisioner):
 
         Returns instance profile names.
         """
-        
+
         # Grab the connection we need to use for this operation.
         iam = self.aws.client(self._zone, 'iam')
-        
+
         return [item['InstanceProfileName'] for item in self._pager(iam.list_instance_profiles_for_role,
                                                                     'InstanceProfiles',
                                                                     RoleName=role_name)]
@@ -1339,7 +1339,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Grab the connection we need to use for this operation.
         iam = self.aws.client(self._zone, 'iam')
-        
+
         return [self._pager(iam.list_role_policies,
                             'PolicyNames',
                             RoleName=role_name)]
@@ -1416,7 +1416,7 @@ class AWSProvisioner(AbstractProvisioner):
         Create an IAM role with the given policies, using the given name in
         addition to the cluster name, and return its full name.
         """
-        
+
         # Grab the connection we need to use for this operation.
         iam = self.aws.boto2(self._zone, 'iam')
 
@@ -1470,10 +1470,10 @@ class AWSProvisioner(AbstractProvisioner):
 
         Returns its ARN.
         """
-        
+
         # Grab the connection we need to use for this operation.
         iam = self.aws.boto2(self._zone, 'iam')
-        
+
         policy = dict(iam_full=self.full_policy('iam'), ec2_full=self.full_policy('ec2'),
                       s3_full=self.full_policy('s3'), sbd_full=self.full_policy('sdb'))
         if self.clusterType == 'kubernetes':
