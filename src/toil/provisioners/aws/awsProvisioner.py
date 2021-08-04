@@ -222,21 +222,25 @@ class AWSProvisioner(AbstractProvisioner):
         return {'mesos', 'kubernetes'}
 
     def createClusterSettings(self):
-        # All we need to do for a new cluster is build the context
-        self._buildContext()
+        """
+        Create a new set of cluster settings for a cluster to be deployed into
+        AWS.
+        """
+
+        # Nothing needs to happen here; self._zone is always filled by the
+        # constructor.
+        assert self._zone is not None
 
     def readClusterSettings(self):
         """
-        Reads the cluster settings from the instance metadata, which assumes the instance
-        is the leader.
+        Reads the cluster settings from the instance metadata, which assumes
+        the instance is the leader.
         """
         instanceMetaData = get_instance_metadata()
-        region = zone_to_region(self._zone)
-        conn = boto.ec2.connect_to_region(region)
-        instance = conn.get_all_instances(instance_ids=[instanceMetaData["instance-id"]])[0].instances[0]
+        ec2 = self.aws.boto2(self._zone, 'ec2')
+        instance = ec2.get_all_instances(instance_ids=[instanceMetaData["instance-id"]])[0].instances[0]
         # The cluster name is the same as the name of the leader.
         self.clusterName = str(instance.tags["Name"])
-        self._buildContext()
         # This is where we will put the workers.
         # See also: self._vpcSubnet
         self._subnetID = instance.subnet_id
@@ -652,17 +656,6 @@ class AWSProvisioner(AbstractProvisioner):
                      name=i.id, launchTime=i.launch_time, nodeType=i.instance_type,
                      preemptable=i.spot_instance_request_id is not None, tags=i.tags)
                 for i in workerInstances]
-
-    def _buildContext(self):
-        if self._zone is None:
-            self._zone = get_current_aws_zone()
-            if self._zone is None:
-                raise RuntimeError(
-                    'Could not determine availability zone. Ensure that one of the following '
-                    'is true: the --zone flag is set, the TOIL_AWS_ZONE environment variable '
-                    'is set, ec2_region_name is set in the .boto file, or that '
-                    'you are running on EC2.')
-        logger.debug("Building AWS context in zone %s for cluster %s" % (self._zone, self.clusterName))
 
     @memoize
     def _discoverAMI(self) -> str:
