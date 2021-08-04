@@ -200,6 +200,7 @@ class AWSProvisioner(AbstractProvisioner):
         self.cloud = 'aws'
         self._sseKey = sseKey
         # self._zone will be filled in by base class constructor
+        # We will use it as the leader zone.
         zone = zone if zone else get_current_aws_zone()
 
         if zone is None:
@@ -207,20 +208,9 @@ class AWSProvisioner(AbstractProvisioner):
             raise RuntimeError('No AWS availability zone specified. Configure in Boto '
                                'configuration file, TOIL_AWS_ZONE environment variable, or '
                                'on the command line.')
-
-
-        # establish boto3 clients
-        self.session = establish_boto3_session(region_name=zone_to_region(zone))
-        # Boto3 splits functionality between a "resource" and a "client" for the same AWS aspect.
-        self.ec2_resource = self.session.resource('ec2')
-        self.ec2_client = self.session.client('ec2')
-        self.autoscaling_client = self.session.client('autoscaling')
-        self.iam_client = self.session.client('iam')
-
-        # establish Boto 2 clients
-        self.boto2_ec2 = boto.vpc.connect_to_region(zone_to_region(zone))
-        self.boto2_iam = boto.iam.connect_to_region('universal')
-
+                               
+        # Set up our connections to AWS
+        self.aws = AWSConnectionManager()
 
         # Call base class constructor, which will call createClusterSettings()
         # or readClusterSettings()
@@ -327,7 +317,7 @@ class AWSProvisioner(AbstractProvisioner):
         leader_tags = dict(self._tags)
         leader_tags[_TAG_KEY_TOIL_NODE_TYPE] = 'leader'
 
-        instances = create_instances(self.ec2_resource,
+        instances = create_instances(self.aws.resource(self._zone, 'ec2'),
                                      image_id=self._discoverAMI(),
                                      num_instances=1,
                                      key_name=self._keyName,
@@ -444,7 +434,7 @@ class AWSProvisioner(AbstractProvisioner):
             with attempt:
                 for asgName in self._getAutoScalingGroupNames():
                     # We delete the group and all the instances via ForceDelete.
-                    self.autoscaling_client.delete_auto_scaling_group(AutoScalingGroupName=asgName, ForceDelete=True)
+                    self.aws.client(self._zone, 'autoscaling').delete_auto_scaling_group(AutoScalingGroupName=asgName, ForceDelete=True)
                     removed = True
         if removed:
             logger.debug('... Succesfully deleted autoscaling groups')
@@ -455,9 +445,9 @@ class AWSProvisioner(AbstractProvisioner):
         instances = self._getNodesInCluster(both=True)
         spotIDs = self._getSpotRequestIDs()
         if spotIDs:
-            self.boto2_ec2.cancel_spot_instance_requests(request_ids=spotIDs)
+            self.aws.boto2(self._zone, 'ec2').cancel_spot_instance_requests(request_ids=spotIDs)
             removed = True
-        instancesToTerminate = awsFilterImpairedNodes(instances, self.boto2_ec2)
+        instancesToTerminate = awsFilterImpairedNodes(instances, self.aws.boto2(self._zone, 'ec2'))
         if instancesToTerminate:
             vpcId = vpcId or instancesToTerminate[0].vpc_id
             self._terminateInstances(instancesToTerminate)
@@ -473,7 +463,7 @@ class AWSProvisioner(AbstractProvisioner):
                 # for some LuanchTemplate.
                 mistake = False
                 for ltID in self._get_launch_template_ids():
-                    response = self.ec2_client.delete_launch_template(LaunchTemplateId=ltID)
+                    response = self.aws.client(self._zone, 'ec2').delete_launch_template(LaunchTemplateId=ltID)
                     if 'LaunchTemplate' not in response:
                         mistake = True
                     else:
@@ -496,10 +486,10 @@ class AWSProvisioner(AbstractProvisioner):
             removed = False
             for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                 with attempt:
-                    for sg in self.boto2_ec2.get_all_security_groups():
+                    for sg in self.aws.boto2(self._zone, 'ec2').get_all_security_groups():
                         if sg.name == self.clusterName and vpcId and sg.vpc_id == vpcId:
                             try:
-                                self.boto2_ec2.delete_security_group(group_id=sg.id)
+                                self.aws.boto2(self._zone, 'ec2').delete_security_group(group_id=sg.id)
                                 removed = True
                             except BotoServerError as e:
                                 if e.error_code == 'InvalidGroup.NotFound':
@@ -591,15 +581,16 @@ class AWSProvisioner(AbstractProvisioner):
                 # every request in this method
                 if not preemptable:
                     logger.debug('Launching %s non-preemptable nodes', numNodes)
-                    instancesLaunched = create_ondemand_instances(self.boto2_ec2, image_id=self._discoverAMI(),
+                    instancesLaunched = create_ondemand_instances(self.aws.boto2(self._zone, 'ec2'),
+                                                                  image_id=self._discoverAMI(),
                                                                   spec=kwargs, num_instances=numNodes)
                 else:
                     logger.debug('Launching %s preemptable nodes', numNodes)
                     # If the current zone isn't set, this will get the best
                     # spot zone in the region instead.
-                    kwargs['placement'] = get_current_aws_zone(spotBid, type_info.name, self.boto2_ec2)
+                    kwargs['placement'] = get_current_aws_zone(spotBid, type_info.name, self.aws.boto2(self._zone, 'ec2'))
                     # force generator to evaluate
-                    instancesLaunched = list(create_spot_instances(ec2=self.boto2_ec2,
+                    instancesLaunched = list(create_spot_instances(ec2=self.aws.boto2(self._zone, 'ec2'),
                                                                    price=spotBid,
                                                                    image_id=self._discoverAMI(),
                                                                    tags={_TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName},
@@ -612,7 +603,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         for attempt in old_retry(predicate=awsRetryPredicate):
             with attempt:
-                wait_instances_running(self.boto2_ec2, instancesLaunched)
+                wait_instances_running(self.aws.boto2(self._zone, 'ec2'), instancesLaunched)
 
         self._tags[_TAG_KEY_TOIL_NODE_TYPE] = 'worker'
         AWSProvisioner._addTags(instancesLaunched, self._tags)
@@ -656,7 +647,7 @@ class AWSProvisioner(AbstractProvisioner):
         if preemptable is not None:
             workerInstances = [i for i in workerInstances if preemptable == (i.spot_instance_request_id is not None)]
             logger.debug('%spreemptable workers found in cluster: %s', 'non-' if not preemptable else '', workerInstances)
-        workerInstances = awsFilterImpairedNodes(workerInstances, self.boto2_ec2)
+        workerInstances = awsFilterImpairedNodes(workerInstances, self.aws.boto2(self._zone, 'ec2'))
         return [Node(publicIP=i.ip_address, privateIP=i.private_ip_address,
                      name=i.id, launchTime=i.launch_time, nodeType=i.instance_type,
                      preemptable=i.spot_instance_request_id is not None, tags=i.tags)
@@ -679,7 +670,7 @@ class AWSProvisioner(AbstractProvisioner):
         :return: The AMI ID (a string like 'ami-0a9a5d2b65cce04eb') for Flatcar.
         :rtype: str
         """
-        return get_flatcar_ami(self.ec2_client)
+        return get_flatcar_ami(self.aws.client(self._zone, 'ec2'))
 
     def _toNameSpace(self) -> str:
         assert isinstance(self.clusterName, (str, bytes))
@@ -742,7 +733,7 @@ class AWSProvisioner(AbstractProvisioner):
                           preemptable=False, tags=leader.tags)
         if wait:
             logger.debug("Waiting for toil_leader to enter 'running' state...")
-            wait_instances_running(self.boto2_ec2, [leader])
+            wait_instances_running(self.aws.boto2(self._zone, 'ec2'), [leader])
             logger.debug('... toil_leader is running')
             self._waitForIP(leader)
             leaderNode.waitForNode('toil_leader')
@@ -786,7 +777,7 @@ class AWSProvisioner(AbstractProvisioner):
     @awsRetry
     def _terminateIDs(self, instanceIDs: List[str]):
         logger.info('Terminating instance(s): %s', instanceIDs)
-        self.boto2_ec2.terminate_instances(instance_ids=instanceIDs)
+        self.aws.boto2(self._zone, 'ec2').terminate_instances(instance_ids=instanceIDs)
         logger.info('Instance(s) terminated.')
 
     @awsRetry
@@ -803,18 +794,18 @@ class AWSProvisioner(AbstractProvisioner):
 
                 for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                     with attempt:
-                        self.iam_client.remove_role_from_instance_profile(InstanceProfileName=profile_name,
+                        self.aws.client(self._zone, 'iam').remove_role_from_instance_profile(InstanceProfileName=profile_name,
                                                                           RoleName=role_name)
             # We also need to drop all inline policies
             for policy_name in self._getRoleInlinePolicyNames(role_name):
                 for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                     with attempt:
-                        self.iam_client.delete_role_policy(PolicyName=policy_name,
+                        self.aws.client(self._zone, 'iam').delete_role_policy(PolicyName=policy_name,
                                                            RoleName=role_name)
 
             for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                 with attempt:
-                    self.iam_client.delete_role(RoleName=role_name)
+                    self.aws.client(self._zone, 'iam').delete_role(RoleName=role_name)
                     logger.debug('... Succesfully deleted IAM role %s', role_name)
 
 
@@ -828,7 +819,7 @@ class AWSProvisioner(AbstractProvisioner):
         for profile_name in names:
             for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                 with attempt:
-                    self.iam_client.delete_instance_profile(InstanceProfileName=profile_name)
+                    self.aws.client(self._zone, 'iam').delete_instance_profile(InstanceProfileName=profile_name)
                     logger.debug('... Succesfully deleted instance profile %s', profile_name)
 
     @classmethod
@@ -885,7 +876,8 @@ class AWSProvisioner(AbstractProvisioner):
         """
         Get Boto2 instance objects for all nodes in the cluster.
         """
-        allInstances = self.boto2_ec2.get_only_instances(filters={'instance.group-name': self.clusterName})
+        
+        allInstances = self.aws.boto2(self._zone, 'ec2').get_only_instances(filters={'instance.group-name': self.clusterName})
         def instanceFilter(i):
             # filter by type only if nodeType is true
             rightType = not instance_type or i.instance_type == instance_type
@@ -903,8 +895,12 @@ class AWSProvisioner(AbstractProvisioner):
         """
         Get the IDs of all spot requests associated with the cluster.
         """
-        requests = self.boto2_ec2.get_all_spot_instance_requests()
-        tags = self.boto2_ec2.get_all_tags({'tag:': {_TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName}})
+        
+        # Grab the connection we need to use for this operation.
+        ec2 = self.aws.boto2(self._zone, 'ec2')
+        
+        requests = ec2.get_all_spot_instance_requests()
+        tags = ec2.get_all_tags({'tag:': {_TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName}})
         idsToCancel = [tag.id for tag in tags]
         return [request for request in requests if request.id in idsToCancel]
 
@@ -912,19 +908,23 @@ class AWSProvisioner(AbstractProvisioner):
         """
         Create security groups for the cluster. Returns a list of their IDs.
         """
+        
+        # Grab the connection we need to use for this operation.
+        # The VPC connection can do anything the EC2 one can do, but also look at subnets.
+        vpc = self.aws.boto2(self._zone, 'vpc')
+        
         def groupNotFound(e):
             retry = (e.status == 400 and 'does not exist in default VPC' in e.body)
             return retry
         vpcId = None
         if self._vpcSubnet:
-            conn = boto.connect_vpc(region=self.boto2_ec2.region)
-            subnets = conn.get_all_subnets(subnet_ids=[self._vpcSubnet])
+            subnets = vpc.get_all_subnets(subnet_ids=[self._vpcSubnet])
             if len(subnets) > 0:
                 vpcId = subnets[0].vpc_id
         # security group create/get. ssh + all ports open within the group
         try:
-            web = self.boto2_ec2.create_security_group(self.clusterName,
-                                                     'Toil appliance security group', vpc_id=vpcId)
+            web = vpc.create_security_group(self.clusterName,
+                                            'Toil appliance security group', vpc_id=vpcId)
         except EC2ResponseError as e:
             if e.status == 400 and 'already exists' in e.body:
                 pass  # group exists- nothing to do
@@ -945,7 +945,7 @@ class AWSProvisioner(AbstractProvisioner):
                     # We also want to open up UDP, both for user code and for the RealtimeLogger
                     web.authorize(ip_protocol='udp', from_port=0, to_port=65535, src_group=web)
         out = []
-        for sg in self.boto2_ec2.get_all_security_groups():
+        for sg in vpc.get_all_security_groups():
             if sg.name == self.clusterName and (vpcId is None or sg.vpc_id == vpcId):
                 out.append(sg)
         return [sg.id for sg in out]
@@ -960,7 +960,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Depending on if we enumerated them on the leader or locally, we might
         # know the required security groups by name, ID, or both.
-        sgs = [sg for sg in self.boto2_ec2.get_all_security_groups()
+        sgs = [sg for sg in self.aws.boto2(self._zone, 'ec2').get_all_security_groups()
                if (sg.name in self._leaderSecurityGroupNames or
                    sg.id in self._leaderSecurityGroupIDs)]
         return [sg.id for sg in sgs]
@@ -972,7 +972,9 @@ class AWSProvisioner(AbstractProvisioner):
 
         Returns a list of launch template IDs.
         """
-
+        
+        # Grab the connection we need to use for this operation.
+        ec2 = self.aws.client(self._zone, 'ec2')
 
         # How do we match the right templates?
         combined_filters = [{'Name': 'tag:' + _TAG_KEY_TOIL_CLUSTER_NAME, 'Values': [self.clusterName]}]
@@ -983,16 +985,16 @@ class AWSProvisioner(AbstractProvisioner):
 
         allTemplateIDs = []
         # Get the first page with no NextToken
-        response = self.ec2_client.describe_launch_templates(Filters=combined_filters,
-                                                             MaxResults=200)
+        response = ec2.describe_launch_templates(Filters=combined_filters,
+                                                 MaxResults=200)
         while True:
             # Process the current page
             allTemplateIDs += [item['LaunchTemplateId'] for item in response.get('LaunchTemplates', [])]
             if 'NextToken' in response:
                 # There are more pages. Get the next one, supplying the token.
-                response = self.ec2_client.describe_launch_templates(Filters=filters,
-                                                                     NextToken=response['NextToken'],
-                                                                     MaxResults=200)
+                response = ec2.describe_launch_templates(Filters=filters,
+                                                         NextToken=response['NextToken'],
+                                                         MaxResults=200)
             else:
                 # No more pages
                 break
@@ -1094,7 +1096,7 @@ class AWSProvisioner(AbstractProvisioner):
         tags = dict(self._tags)
         tags[_TAG_KEY_TOIL_NODE_TYPE] = 'worker'
 
-        return create_launch_template(self.ec2_client,
+        return create_launch_template(self.aws.client(self._zone, 'ec2'),
                                       template_name=lt_name,
                                       image_id=self._discoverAMI(),
                                       key_name=self._keyName,
@@ -1112,6 +1114,9 @@ class AWSProvisioner(AbstractProvisioner):
 
         Returns a list of ASG IDs. ASG IDs and ASG names are the same things.
         """
+        
+        # Grab the connection we need to use for this operation.
+        autoscaling = self.aws.client(self._zone, 'autoscaling')
 
         # AWS won't filter ASGs server-side for us in describe_auto_scaling_groups.
         # So we search instances of applied tags for the ASGs they are on.
@@ -1124,7 +1129,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         matchedASGs = []
         # Get the first page with no NextToken
-        response = self.autoscaling_client.describe_tags(Filters=filters)
+        response = autoscaling.describe_tags(Filters=filters)
         while True:
             # Process the current page
             matchedASGs += [item['ResourceId'] for item in response.get('Tags', [])
@@ -1132,8 +1137,8 @@ class AWSProvisioner(AbstractProvisioner):
                             item['Value'] == self.clusterName]
             if 'NextToken' in response:
                 # There are more pages. Get the next one, supplying the token.
-                response = self.autoscaling_client.describe_tags(Filters=filters,
-                                                                 NextToken=response['NextToken'])
+                response = autoscaling.describe_tags(Filters=filters,
+                                                     NextToken=response['NextToken'])
             else:
                 # No more pages
                 break
@@ -1203,7 +1208,7 @@ class AWSProvisioner(AbstractProvisioner):
         # TODO: can we make this more semantic without risking collisions? Maybe count up in memory?
         asg_name = 'toil-' + str(uuid.uuid4())
 
-        create_auto_scaling_group(self.autoscaling_client,
+        create_auto_scaling_group(self.aws.client(self._zone, 'autoscaling'),
                                   asg_name=asg_name,
                                   launch_template_ids=launch_template_ids,
                                   vpc_subnets=[self._subnetID],
@@ -1238,7 +1243,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         results = []
-        for result in self._boto2_pager(self.boto2_iam.list_roles, 'roles'):
+        for result in self._boto2_pager(self.aws.boto2(self._zone, 'iam').list_roles, 'roles'):
             # For each Boto2 role object
             # Grab out the name
             name = result['role_name']
@@ -1254,7 +1259,8 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         results = []
-        for result in self._boto2_pager(self.boto2_iam.list_instance_profiles, 'instance_profiles'):
+        for result in self._boto2_pager(self.aws.boto2(self._zone, 'iam').list_instance_profiles,
+                                        'instance_profiles'):
             # For each Boto2 role object
             # Grab out the name
             name = result['instance_profile_name']
@@ -1270,19 +1276,22 @@ class AWSProvisioner(AbstractProvisioner):
 
         Returns instance profile names.
         """
+        
+        # Grab the connection we need to use for this operation.
+        iam = self.aws.client(self._zone, 'iam')
 
         allProfiles = []
 
-        response = self.iam_client.list_instance_profiles_for_role(RoleName=role_name,
-                                                                   MaxItems=200)
+        response = iam.list_instance_profiles_for_role(RoleName=role_name,
+                                                       MaxItems=200)
         while True:
             # Process the current page
             allProfiles += [item['InstanceProfileName'] for item in response.get('InstanceProfiles', [])]
             if 'IsTruncated' in response and response['IsTruncated']:
                 # There are more pages. Get the next one, supplying the marker.
-                response = self.iam_client.list_instance_profiles_for_role(RoleName=role_name,
-                                                                           MaxItems=200,
-                                                                           Marker=response['Marker'])
+                response = iam.list_instance_profiles_for_role(RoleName=role_name,
+                                                               MaxItems=200,
+                                                               Marker=response['Marker'])
             else:
                 # No more pages
                 break
@@ -1299,20 +1308,23 @@ class AWSProvisioner(AbstractProvisioner):
         Returns policy ARNs.
         """
 
+        # Grab the connection we need to use for this operation.
+        iam = self.aws.client(self._zone, 'iam')
+
         # TODO: we don't currently use attached policies.
 
         allPolicies = []
 
-        response = self.iam_client.list_attached_role_policies(RoleName=role_name,
-                                                               MaxItems=200)
+        response = iam.list_attached_role_policies(RoleName=role_name,
+                                                   MaxItems=200)
         while True:
             # Process the current page
             allPolicies += [item['PolicyArn'] for item in response.get('AttachedPolicies', [])]
             if 'IsTruncated' in response and response['IsTruncated']:
                 # There are more pages. Get the next one, supplying the marker.
-                response = self.iam_client.list_attached_role_policies(RoleName=role_name,
-                                                                       MaxItems=200,
-                                                                       Marker=response['Marker'])
+                response = iam.list_attached_role_policies(RoleName=role_name,
+                                                           MaxItems=200,
+                                                           Marker=response['Marker'])
             else:
                 # No more pages
                 break
@@ -1327,17 +1339,20 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         allPolicies = []
+        
+        # Grab the connection we need to use for this operation.
+        iam = self.aws.client(self._zone, 'iam')
 
-        response = self.iam_client.list_role_policies(RoleName=role_name,
-                                                      MaxItems=200)
+        response = iam.list_role_policies(RoleName=role_name,
+                                          MaxItems=200)
         while True:
             # Process the current page
             allPolicies += response.get('PolicyNames', [])
             if 'IsTruncated' in response and response['IsTruncated']:
                 # There are more pages. Get the next one, supplying the marker.
-                response = self.iam_client.list_role_policies(RoleName=role_name,
-                                                              MaxItems=200,
-                                                              Marker=response['Marker'])
+                response = iam.list_role_policies(RoleName=role_name,
+                                                  MaxItems=200,
+                                                  Marker=response['Marker'])
             else:
                 # No more pages
                 break
@@ -1417,13 +1432,16 @@ class AWSProvisioner(AbstractProvisioner):
         Create an IAM role with the given policies, using the given name in
         addition to the cluster name, and return its full name.
         """
+        
+        # Grab the connection we need to use for this operation.
+        iam = self.aws.boto2(self._zone, 'iam')
 
         # Make sure we can tell our roles apart from roles for other clusters
         aws_role_name = self._namespace_name(local_role_name)
         try:
             # Make the role
             logger.debug('Creating IAM role...')
-            self.boto2_iam.create_role(aws_role_name, assume_role_policy_document=json.dumps({
+            iam.create_role(aws_role_name, assume_role_policy_document=json.dumps({
                 "Version": "2012-10-17",
                 "Statement": [{
                     "Effect": "Allow",
@@ -1439,23 +1457,23 @@ class AWSProvisioner(AbstractProvisioner):
                 raise
 
         # Delete superfluous policies
-        policy_names = set(self.boto2_iam.list_role_policies(aws_role_name).policy_names)
+        policy_names = set(iam.list_role_policies(aws_role_name).policy_names)
         for policy_name in policy_names.difference(set(list(policies.keys()))):
-            self.boto2_iam.delete_role_policy(aws_role_name, policy_name)
+            iam.delete_role_policy(aws_role_name, policy_name)
 
         # Create expected policies
         for policy_name, policy in policies.items():
             current_policy = None
             try:
                 current_policy = json.loads(unquote(
-                    self.boto2_iam.get_role_policy(aws_role_name, policy_name).policy_document))
+                    iam.get_role_policy(aws_role_name, policy_name).policy_document))
             except BotoServerError as e:
                 if e.status == 404 and e.error_code == 'NoSuchEntity':
                     pass
                 else:
                     raise
             if current_policy != policy:
-                self.boto2_iam.put_role_policy(aws_role_name, policy_name, json.dumps(policy))
+                iam.put_role_policy(aws_role_name, policy_name, json.dumps(policy))
 
         # Now the role has the right policies so it is ready.
         return aws_role_name
@@ -1468,6 +1486,10 @@ class AWSProvisioner(AbstractProvisioner):
 
         Returns its ARN.
         """
+        
+        # Grab the connection we need to use for this operation.
+        iam = self.aws.boto2(self._zone, 'iam')
+        
         policy = dict(iam_full=self.full_policy('iam'), ec2_full=self.full_policy('ec2'),
                       s3_full=self.full_policy('s3'), sbd_full=self.full_policy('sdb'))
         if self.clusterType == 'kubernetes':
@@ -1477,10 +1499,10 @@ class AWSProvisioner(AbstractProvisioner):
         iamRoleName = self._setup_iam_ec2_role(_INSTANCE_PROFILE_ROLE_NAME, policy)
 
         try:
-            profile = self.boto2_iam.get_instance_profile(iamRoleName)
+            profile = iam.get_instance_profile(iamRoleName)
         except BotoServerError as e:
             if e.status == 404:
-                profile = self.boto2_iam.create_instance_profile(iamRoleName)
+                profile = iam.create_instance_profile(iamRoleName)
                 profile = profile.create_instance_profile_response.create_instance_profile_result
             else:
                 raise
@@ -1496,11 +1518,11 @@ class AWSProvisioner(AbstractProvisioner):
             if profile.roles.member.role_name == iamRoleName:
                 return profile_arn
             else:
-                self.boto2_iam.remove_role_from_instance_profile(iamRoleName,
+                iam.remove_role_from_instance_profile(iamRoleName,
                                                                 profile.roles.member.role_name)
         for attempt in old_retry(predicate=lambda err: err.status == 404):
             with attempt:
-                self.boto2_iam.add_role_to_instance_profile(iamRoleName, iamRoleName)
+                iam.add_role_to_instance_profile(iamRoleName, iamRoleName)
         return profile_arn
 
 
