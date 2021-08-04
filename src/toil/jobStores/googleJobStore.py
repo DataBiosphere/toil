@@ -248,9 +248,8 @@ class GoogleJobStore(AbstractJobStore):
         self._delete(jobStoreID)
 
         # best effort delete associated files
-        with self.storageClient.batch():
-            for blob in self.bucket.list_blobs(prefix=compat_bytes(jobStoreID)):
-                self._delete(blob.name)
+        for blob in self.bucket.list_blobs(prefix=compat_bytes(jobStoreID)):
+            self._delete(blob.name)
 
     def getEnv(self):
         """
