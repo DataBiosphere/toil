@@ -1235,6 +1235,33 @@ class AWSProvisioner(AbstractProvisioner):
                 marker = result.marker
             else:
                 break
+                
+    def _pager(self, requestor_callable: Callable, result_attribute_name: str, **kwargs) -> Iterable[Dict[str, Any]]:
+        """
+        Yield all the results from calling the given Boto 3 method with the
+        given keyword arguments, paging through the results using the Marker, and
+        fetching out and looping over the list in the response with the given
+        attribute name.
+        """
+        
+        # We specify a page size once, here
+        call_args = {'MaxItems': 200}
+        call_args.update(kwargs)
+        
+        response = requestor_callable(**call_args)
+        while True:
+            # Process the current page
+            for item in response.get(result_attribute_name, []):
+                # Yield each returned item
+                yield item
+            if 'IsTruncated' in response and response['IsTruncated']:
+                # There are more pages. Get the next one, supplying the marker.
+                call_args['Marker'] = response['Marker']
+                response = requestor_callable(**call_args)
+            else:
+                # No more pages
+                break
+        
 
     @awsRetry
     def _getRoleNames(self) -> List[str]:
@@ -1279,24 +1306,10 @@ class AWSProvisioner(AbstractProvisioner):
         
         # Grab the connection we need to use for this operation.
         iam = self.aws.client(self._zone, 'iam')
-
-        allProfiles = []
-
-        response = iam.list_instance_profiles_for_role(RoleName=role_name,
-                                                       MaxItems=200)
-        while True:
-            # Process the current page
-            allProfiles += [item['InstanceProfileName'] for item in response.get('InstanceProfiles', [])]
-            if 'IsTruncated' in response and response['IsTruncated']:
-                # There are more pages. Get the next one, supplying the marker.
-                response = iam.list_instance_profiles_for_role(RoleName=role_name,
-                                                               MaxItems=200,
-                                                               Marker=response['Marker'])
-            else:
-                # No more pages
-                break
-
-        return allProfiles
+        
+        return [item['InstanceProfileName'] for item in self._pager(iam.list_instance_profiles_for_role,
+                                                                    'InstanceProfiles',
+                                                                    RoleName=role_name)]
 
     @awsRetry
     def _getRolePolicyArns(self, role_name: str) -> List[str]:
@@ -1313,23 +1326,9 @@ class AWSProvisioner(AbstractProvisioner):
 
         # TODO: we don't currently use attached policies.
 
-        allPolicies = []
-
-        response = iam.list_attached_role_policies(RoleName=role_name,
-                                                   MaxItems=200)
-        while True:
-            # Process the current page
-            allPolicies += [item['PolicyArn'] for item in response.get('AttachedPolicies', [])]
-            if 'IsTruncated' in response and response['IsTruncated']:
-                # There are more pages. Get the next one, supplying the marker.
-                response = iam.list_attached_role_policies(RoleName=role_name,
-                                                           MaxItems=200,
-                                                           Marker=response['Marker'])
-            else:
-                # No more pages
-                break
-
-        return allPolicies
+        return [item['PolicyArn'] for item in self._pager(iam.list_attached_role_policies,
+                                                          'AttachedPolicies',
+                                                          RoleName=role_name)]
 
     @awsRetry
     def _getRoleInlinePolicyNames(self, role_name: str) -> List[str]:
@@ -1338,27 +1337,12 @@ class AWSProvisioner(AbstractProvisioner):
         Returns policy names.
         """
 
-        allPolicies = []
-        
         # Grab the connection we need to use for this operation.
         iam = self.aws.client(self._zone, 'iam')
-
-        response = iam.list_role_policies(RoleName=role_name,
-                                          MaxItems=200)
-        while True:
-            # Process the current page
-            allPolicies += response.get('PolicyNames', [])
-            if 'IsTruncated' in response and response['IsTruncated']:
-                # There are more pages. Get the next one, supplying the marker.
-                response = iam.list_role_policies(RoleName=role_name,
-                                                  MaxItems=200,
-                                                  Marker=response['Marker'])
-            else:
-                # No more pages
-                break
-
-        return allPolicies
-
+        
+        return [self._pager(iam.list_role_policies,
+                            'PolicyNames',
+                            RoleName=role_name)]
 
     def full_policy(self, resource: str) -> dict:
         """
