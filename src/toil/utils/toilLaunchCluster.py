@@ -60,8 +60,8 @@ def main() -> None:
                              "      \"Owner\": IAM username\n"
                              " }. ")
     parser.add_argument("--vpcSubnet",
-                        help="VPC subnet ID to launch cluster in. Uses default subnet if not "
-                        "specified. This subnet needs to have auto assign IPs turned on.")
+                        help="VPC subnet ID to launch cluster leader in. Uses default subnet "
+                        "if not specified. This subnet needs to have auto assign IPs turned on.")
     parser.add_argument("--nodeTypes", dest='nodeTypes', default=None, type=str,
                         help="Specifies a list of comma-separated node types, each of which is "
                              "composed of slash-separated instance types, and an optional spot "

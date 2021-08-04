@@ -504,7 +504,7 @@ def create_auto_scaling_group(autoscaling_client: BaseClient,
 
     if len(vpc_subnets) == 0:
         raise RuntimeError("No VPC subnets specified to launch into; not clear where to put instances")
-        
+
     def get_launch_template_spec(instance_type):
         """
         Get a LaunchTemplateSpecification for the given instance type.

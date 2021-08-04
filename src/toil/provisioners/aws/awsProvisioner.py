@@ -58,7 +58,7 @@ from toil.provisioners import NoSuchClusterException
 from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
                                                    Shape,
                                                    ManagedNodesNotSupportedException)
-from toil.provisioners.aws import get_current_aws_zone
+from toil.provisioners.aws import get_best_aws_zone
 from toil.provisioners.node import Node
 
 logger = logging.getLogger(__name__)
@@ -201,7 +201,7 @@ class AWSProvisioner(AbstractProvisioner):
         self._sseKey = sseKey
         # self._zone will be filled in by base class constructor
         # We will use it as the leader zone.
-        zone = zone if zone else get_current_aws_zone()
+        zone = zone if zone else get_best_aws_zone()
 
         if zone is None:
             # Can't proceed without a real zone
@@ -241,9 +241,13 @@ class AWSProvisioner(AbstractProvisioner):
         instance = ec2.get_all_instances(instance_ids=[instanceMetaData["instance-id"]])[0].instances[0]
         # The cluster name is the same as the name of the leader.
         self.clusterName = str(instance.tags["Name"])
-        # This is where we will put the workers.
-        # See also: self._vpcSubnet
-        self._subnetID = instance.subnet_id
+        # Determine what subnet we, the leader, are in
+        self._leader_subnet = instance.subnet_id
+        # What VPC is that?
+        vpc_id = self._get_subnet_vpc(self._leader_subnet)
+        # Determine where to deploy workers (into any subnet in the same VPC).
+        self._worker_subnets_by_zone = self._get_subnets_in_vpc(vpc_id)
+
         self._leaderPrivateIP = instanceMetaData['local-ipv4']  # this is PRIVATE IP
         self._keyName = list(instanceMetaData['public-keys'].keys())[0]
         self._tags = {k: v for k, v in self.getLeader().tags.items() if k != _TAG_KEY_TOIL_NODE_TYPE}
@@ -266,10 +270,10 @@ class AWSProvisioner(AbstractProvisioner):
                       owner: str,
                       keyName: str,
                       botoPath: str,
-                      userTags: dict,
-                      vpcSubnet: str,
-                      awsEc2ProfileArn: str,
-                      awsEc2ExtraSecurityGroupIds: list):
+                      userTags: Optional[dict],
+                      vpcSubnet: Optional[str],
+                      awsEc2ProfileArn: Optional[str],
+                      awsEc2ExtraSecurityGroupIds: Optional[list]):
         """
         Starts a single leader node and populates this class with the leader's metadata.
 
@@ -279,7 +283,7 @@ class AWSProvisioner(AbstractProvisioner):
         :param keyName: The ssh key to use to access the leader node.
         :param botoPath: The path to the boto credentials directory.
         :param userTags: Optionally provided user tags to put on the cluster.
-        :param vpcSubnet: Optionally specify the VPC subnet.
+        :param vpcSubnet: Optionally specify the VPC subnet for the leader.
         :param awsEc2ProfileArn: Optionally provide the profile ARN.
         :param awsEc2ExtraSecurityGroupIds: Optionally provide additional security group IDs.
         :return: None
@@ -295,8 +299,16 @@ class AWSProvisioner(AbstractProvisioner):
 
 
         self._keyName = keyName
-        # This is where we put the leader
-        self._vpcSubnet = vpcSubnet
+
+        if vpcSubnet:
+            # This is where we put the leader
+            self._leader_subnet = vpcSubnet
+        else:
+            # Find the default subnet for the zone
+            self._leader_subnet = self._get_default_subnet(self._zone)
+
+        # Find the VPC for the subnet, where the workers will have to live.
+        vpc_id = self._get_subnet_vpc(self._leader_subnet)
 
         profileArn = awsEc2ProfileArn or self._createProfileArn()
         # the security group name is used as the cluster identifier
@@ -315,7 +327,8 @@ class AWSProvisioner(AbstractProvisioner):
             # This tag needs to be on there before the a leader can finish its startup.
             self._tags['kubernetes.io/cluster/' + self.clusterName] = ''
 
-        self._tags.update(userTags)
+        if userTags is not None:
+            self._tags.update(userTags)
 
         # Make tags for the leader specifically
         leader_tags = dict(self._tags)
@@ -325,13 +338,13 @@ class AWSProvisioner(AbstractProvisioner):
                                      image_id=self._discoverAMI(),
                                      num_instances=1,
                                      key_name=self._keyName,
-                                     security_group_ids=createdSGs + awsEc2ExtraSecurityGroupIds,
+                                     security_group_ids=createdSGs + (awsEc2ExtraSecurityGroupIds or []),
                                      instance_type=leader_type.name,
                                      user_data=userData,
                                      block_device_map=bdms,
                                      instance_profile_arn=profileArn,
                                      placement_az=self._zone,
-                                     subnet_id=self._vpcSubnet,
+                                     subnet_id=self._leader_subnet,
                                      tags=leader_tags)
 
         # wait for the leader to exist at all
@@ -350,11 +363,9 @@ class AWSProvisioner(AbstractProvisioner):
         # Remember enough about the leader to let us launch workers in its
         # cluster.
         self._leaderPrivateIP = leader.private_ip_address
-        # This is where we will put the workers.
-        # See also: self._vpcSubnet
-        self._subnetID = leader.subnet_id
+        self._worker_subnets_by_zone = self._get_subnets_in_vpc(vpc_id)
         self._leaderSecurityGroupNames = set()
-        self._leaderSecurityGroupIDs = set(createdSGs + awsEc2ExtraSecurityGroupIds)
+        self._leaderSecurityGroupIDs = set(createdSGs + (awsEc2ExtraSecurityGroupIds or []))
         self._leaderProfileArn = profileArn
 
         leaderNode = Node(publicIP=leader.public_ip_address, privateIP=leader.private_ip_address,
@@ -365,6 +376,85 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Download credentials
         self._setLeaderWorkerAuthentication(leaderNode)
+
+    @awsRetry
+    def _get_worker_subnets(self) -> List[str]:
+        """
+        Get all worker subnets we should balance across, as a flat list.
+        """
+        # TODO: When we get multi-region clusters, scope this by region
+
+        # This will hold the collected list of subnet IDs.
+        collected = []
+        for subnets in self._worker_subnets_by_zone.values:
+            # We assume all zones are in the same region here.
+            for subnet in subnets:
+                # We don't need to deduplicate because each subnet is in only one region
+                collected.append(subnet)
+        return collected
+
+    @awsRetry
+    def _get_subnets_in_vpc(self, vpc: str) -> Dict[str, List[str]]:
+        """
+        Given a VPC ID, get all the subnets in that VPC, broken up by availability zone.
+        """
+
+        # Compose a filter that selects the subnets
+        filters = [{
+            'Name': 'vpc-id',
+            'Values': [vpc]
+        }]
+
+        # Fill in this collection
+        by_az = {}
+
+        # Go get all the subnets. There's no way to page manually here (we get
+        # a list back so where would NextToken be?) so it must page
+        # automatically? Also, there should never be many subnets in a single
+        # VPC unless someone is doing something weird.
+        # See:
+        for subnet in self.aws.resource(self._zone, 'ec2').subnets.filter(Filters=filters):
+            # For each subnet in the VPC
+            if subnet.availability_zone not in by_az:
+                # Make sure we have a bucket of subnets for this AZ
+                by_az[subnet.availability_zone] = []
+            # Bucket the IDs by availability zone
+            by_az[subnet.availability_zone].append(subnet.subnet_id)
+
+        return by_az
+
+    @awsRetry
+    def _get_subnet_vpc(self, subnet: str) -> str:
+        """
+        Given a subnet ID, get the ID of the VPC it belongs to.
+        """
+
+        return self.aws.resource(self._zone, 'ec2').Subnet(subnet).vpc_id
+
+    @awsRetry
+    def _get_default_subnet(self, zone: str) -> str:
+        """
+        Given an availability zone, get the default subnet for the default VPC
+        in that zone.
+        """
+
+        # Compose a filter that selects the default subnet in the AZ
+        filters = [{
+            'Name': 'default-for-az',
+            'Values': ['true']
+        }, {
+            'Name': 'availability-zone',
+            'Values': [zone]
+        }]
+
+        for subnet in self.aws.resource(zone, 'ec2').subnets.filter(Filters=filters):
+            # There should only be one result, so when we see it, return it
+            return subnet.subnet_id
+        # If we don't find a subnet, something is wrong. Maybe this zone was
+        # added after your account?
+        raise RuntimeError(f"No default subnet found in availability zone {zone}. "
+                           f"Specify a VPC subnet ID to use, or create a default "
+                           f"subnet in the zone.")
 
     def getKubernetesAutoscalerSetupCommands(self, values: Dict[str, str]) -> str:
         """
@@ -546,6 +636,9 @@ class AWSProvisioner(AbstractProvisioner):
         return spot_bid
 
     def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None) -> int:
+        # Grab the AWS connection we need
+        ec2 = self.aws.boto2(self._zone, 'ec2')
+
         assert self._leaderPrivateIP
 
         if preemptable:
@@ -555,6 +648,32 @@ class AWSProvisioner(AbstractProvisioner):
         # We don't support any balancing here so just pick one of the
         # equivalent node types
         node_type = next(iter(nodeTypes))
+
+        # Pick a zone and subnet_id to launch into
+        if preemptable:
+            # We may need to balance preemptable instances across zones, which
+            # then affects the subnets they can use.
+
+            # We're allowed to pick from any of these zones.
+            zone_options = list(self._worker_subnets_by_zone.keys)
+
+            zone = get_best_aws_zone(spotBid, type_info.name, ec2, zone_options)
+        else:
+            # We don't need to ever do any balancing across zones for on-demand
+            # instances. Just pick a zone.
+            if self._zone in self._worker_subnets_by_zone:
+                # We can launch into the same zone as the leader
+                zone = self._zone
+            else:
+                # The workers aren't allowed in the leader's zone.
+                # Pick an arbitrary zone we can use.
+                zone = next(iter(self._worker_subnets_by_zone.keys))
+        if self._leader_subnet in self._worker_subnets_by_zone.get(zone, []):
+            # The leader's subnet is an option for this zone, so use it.
+            subnet_id = self._leader_subnet
+        else:
+            # Use an arbitrary subnet from the zone
+            subnet_id = next(iter(self._worker_subnets_by_zone[zone]))
 
         type_info = E2Instances[node_type]
         root_vol_size = self._nodeStorageOverrides.get(node_type, self._nodeStorage)
@@ -573,8 +692,8 @@ class AWSProvisioner(AbstractProvisioner):
                   'user_data': userData,
                   'block_device_map': bdm,
                   'instance_profile_arn': self._leaderProfileArn,
-                  'placement': self._zone,
-                  'subnet_id': self._subnetID}
+                  'placement': zone,
+                  'subnet_id': subnet_id}
 
         instancesLaunched = []
 
@@ -585,16 +704,13 @@ class AWSProvisioner(AbstractProvisioner):
                 # every request in this method
                 if not preemptable:
                     logger.debug('Launching %s non-preemptable nodes', numNodes)
-                    instancesLaunched = create_ondemand_instances(self.aws.boto2(self._zone, 'ec2'),
+                    instancesLaunched = create_ondemand_instances(ec2,
                                                                   image_id=self._discoverAMI(),
                                                                   spec=kwargs, num_instances=numNodes)
                 else:
                     logger.debug('Launching %s preemptable nodes', numNodes)
-                    # If the current zone isn't set, this will get the best
-                    # spot zone in the region instead.
-                    kwargs['placement'] = get_current_aws_zone(spotBid, type_info.name, self.aws.boto2(self._zone, 'ec2'))
                     # force generator to evaluate
-                    instancesLaunched = list(create_spot_instances(ec2=self.aws.boto2(self._zone, 'ec2'),
+                    instancesLaunched = list(create_spot_instances(ec2=ec2,
                                                                    price=spotBid,
                                                                    image_id=self._discoverAMI(),
                                                                    tags={_TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName},
@@ -607,7 +723,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         for attempt in old_retry(predicate=awsRetryPredicate):
             with attempt:
-                wait_instances_running(self.aws.boto2(self._zone, 'ec2'), instancesLaunched)
+                wait_instances_running(ec2, instancesLaunched)
 
         self._tags[_TAG_KEY_TOIL_NODE_TYPE] = 'worker'
         AWSProvisioner._addTags(instancesLaunched, self._tags)
@@ -909,9 +1025,12 @@ class AWSProvisioner(AbstractProvisioner):
         def groupNotFound(e):
             retry = (e.status == 400 and 'does not exist in default VPC' in e.body)
             return retry
+        # Security groups need to belong to the same VPC as the leader. If we
+        # put the leader in a particular non-default subnet, it may be in a
+        # particular non-default VPC, which we need to know about.
         vpcId = None
-        if self._vpcSubnet:
-            subnets = vpc.get_all_subnets(subnet_ids=[self._vpcSubnet])
+        if self._leader_subnet:
+            subnets = vpc.get_all_subnets(subnet_ids=[self._leader_subnet])
             if len(subnets) > 0:
                 vpcId = subnets[0].vpc_id
         # security group create/get. ssh + all ports open within the group
@@ -1204,7 +1323,7 @@ class AWSProvisioner(AbstractProvisioner):
         create_auto_scaling_group(self.aws.client(self._zone, 'autoscaling'),
                                   asg_name=asg_name,
                                   launch_template_ids=launch_template_ids,
-                                  vpc_subnets=[self._subnetID],
+                                  vpc_subnets=self._worker_subnets_by_zone[self._zone],
                                   min_size=min_size,
                                   max_size=max_size,
                                   instance_types=instance_types,
@@ -1254,7 +1373,6 @@ class AWSProvisioner(AbstractProvisioner):
             else:
                 # No more pages
                 break
-
 
     @awsRetry
     def _getRoleNames(self) -> List[str]:

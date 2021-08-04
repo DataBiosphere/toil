@@ -24,7 +24,7 @@ from uuid import uuid4
 import pytest
 
 from toil.provisioners import cluster_factory
-from toil.provisioners.aws import get_current_aws_zone
+from toil.provisioners.aws import get_best_aws_zone
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from toil.test import (ToilTest,
                        integrative,
@@ -63,7 +63,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.numWorkers = ['2']
         self.numSamples = 2
         self.spotBid = 0.15
-        self.zone = get_current_aws_zone()
+        self.zone = get_best_aws_zone()
         assert self.zone is not None, "Could not determine AWS availability zone to test in; is TOIL_AWS_ZONE set?"
         # We can't dump our user script right in /tmp or /home, because hot
         # deploy refuses to zip up those whole directories. So we make sure to

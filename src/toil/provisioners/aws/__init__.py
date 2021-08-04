@@ -45,11 +45,11 @@ def running_on_ec2():
         return False
 
 def get_current_aws_region():
-    aws_zone = get_current_aws_zone()
+    aws_zone = get_best_aws_zone()
     return zone_to_region(aws_zone) if aws_zone else None
 
 
-def get_current_aws_zone(spotBid=None, nodeType=None, boto2_ec2=None):
+def get_best_aws_zone(spotBid=None, nodeType=None, boto2_ec2=None):
     zone = os.environ.get('TOIL_AWS_ZONE', None)
     if not zone and running_on_ec2():
         try:
