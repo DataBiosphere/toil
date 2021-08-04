@@ -648,6 +648,10 @@ class AWSProvisioner(AbstractProvisioner):
         # We don't support any balancing here so just pick one of the
         # equivalent node types
         node_type = next(iter(nodeTypes))
+        type_info = E2Instances[node_type]
+        root_vol_size = self._nodeStorageOverrides.get(node_type, self._nodeStorage)
+        bdm = self._getBoto2BlockDeviceMapping(type_info,
+                                               rootVolSize=root_vol_size)
 
         # Pick a zone and subnet_id to launch into
         if preemptable:
@@ -674,11 +678,6 @@ class AWSProvisioner(AbstractProvisioner):
         else:
             # Use an arbitrary subnet from the zone
             subnet_id = next(iter(self._worker_subnets_by_zone[zone]))
-
-        type_info = E2Instances[node_type]
-        root_vol_size = self._nodeStorageOverrides.get(node_type, self._nodeStorage)
-        bdm = self._getBoto2BlockDeviceMapping(type_info,
-                                               rootVolSize=root_vol_size)
 
         keyPath = self._sseKey if self._sseKey else None
         userData = self._getCloudConfigUserData('worker', keyPath, preemptable)
