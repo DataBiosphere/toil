@@ -753,8 +753,14 @@ class Leader(object):
             workerCommand.append(base64.b64encode(pickle.dumps(context)).decode('utf-8'))
 
         jobNode.command = ' '.join(workerCommand)
+
+        job_environment = {
+            # set the correct number of cores used by OpenMP applications
+            'OMP_NUM_THREADS': str(jobNode.cores),
+        }
+
         # jobBatchSystemID is an int that is an incremented counter for each job
-        jobBatchSystemID = self.batchSystem.issueBatchJob(jobNode)
+        jobBatchSystemID = self.batchSystem.issueBatchJob(jobNode, job_environment=job_environment)
         self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = jobNode
         if jobNode.preemptable:
             # len(jobBatchSystemIDToIssuedJob) should always be greater than or equal to preemptableJobsIssued,

@@ -16,7 +16,7 @@ import logging
 import math
 import os
 import time
-from typing import Any
+from typing import Any, Optional, Dict
 
 import htcondor
 
@@ -277,12 +277,12 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             return schedd
 
         def getEnvString(self):
-            '''Build an environment string that a HTCondor Submit object can use.
+            """
+            Build an environment string that a HTCondor Submit object can use.
 
             For examples of valid strings, see:
             http://research.cs.wisc.edu/htcondor/manual/current/condor_submit.html#man-condor-submit-environment
-
-            '''
+            """
 
             env_items = []
             if self.boss.environment:
@@ -302,7 +302,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             return '"' + ' '.join(env_items) + '"'
 
     # Override the issueBatchJob method so HTCondor can be given the disk request
-    def issueBatchJob(self, jobNode):
+    def issueBatchJob(self, jobNode, job_environment: Optional[Dict[str, str]] = None):
         # Avoid submitting internal jobs to the batch queue, handle locally
         localID = self.handleLocalJob(jobNode)
         if localID:
@@ -313,6 +313,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             self.currentJobs.add(jobID)
 
             # Add the jobNode.disk and jobNode.jobName to the job tuple
-            self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.disk, jobNode.jobName, jobNode.command))
+            self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.disk, jobNode.jobName, jobNode.command,
+                                   job_environment))
             logger.debug("Issued the job command: %s with job id: %s ", jobNode.command, str(jobID))
         return jobID
