@@ -754,9 +754,12 @@ class Leader(object):
 
         jobNode.command = ' '.join(workerCommand)
 
+        # Make sure OMP_NUM_THREADS is a positive integer
+        omp_threads = int(jobNode.cores) if jobNode.cores >= 1 else 1
+
         job_environment = {
             # set the correct number of cores used by OpenMP applications
-            'OMP_NUM_THREADS': str(jobNode.cores),
+            'OMP_NUM_THREADS': str(omp_threads),
         }
 
         # jobBatchSystemID is an int that is an incremented counter for each job
