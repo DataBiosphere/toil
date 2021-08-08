@@ -383,6 +383,9 @@ class hidden(object):
             options = self.getOptions(temp_dir)
 
             for cores, expected_omp_threads in test_cases.items():
+                if os.environ.get('OMP_NUM_THREADS'):
+                    expected_omp_threads = os.environ.get('OMP_NUM_THREADS')
+                    logger.info(f"OMP_NUM_THREADS is set.  Using OMP_NUM_THREADS={expected_omp_threads} instead.")
                 with Toil(options) as toil:
                     output = toil.start(Job.wrapFn(get_omp_threads, memory='1Mi', cores=cores, disk='1Mi'))
                 self.assertEqual(output, expected_omp_threads)
