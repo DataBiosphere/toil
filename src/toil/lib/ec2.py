@@ -537,6 +537,8 @@ def create_auto_scaling_group(autoscaling_client: BaseClient,
         # Tag the ASG itself.
         asg['Tags'] = flatten_tags(tags)
 
+    logger.debug("Creating Autoscaling Group across subnets: %s", vpc_subnets)
+
     # Don't prune the ASG because MinSize and MaxSize are required and may be 0.
     autoscaling_client.create_auto_scaling_group(**asg)
 

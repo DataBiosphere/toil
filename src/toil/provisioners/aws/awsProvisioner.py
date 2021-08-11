@@ -380,7 +380,6 @@ class AWSProvisioner(AbstractProvisioner):
         # Download credentials
         self._setLeaderWorkerAuthentication(leaderNode)
 
-    @awsRetry
     def _get_worker_subnets(self) -> List[str]:
         """
         Get all worker subnets we should balance across, as a flat list.
@@ -389,7 +388,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         # This will hold the collected list of subnet IDs.
         collected = []
-        for subnets in self._worker_subnets_by_zone.values:
+        for subnets in self._worker_subnets_by_zone.values():
             # We assume all zones are in the same region here.
             for subnet in subnets:
                 # We don't need to deduplicate because each subnet is in only one region
@@ -1325,7 +1324,7 @@ class AWSProvisioner(AbstractProvisioner):
         create_auto_scaling_group(self.aws.client(self._zone, 'autoscaling'),
                                   asg_name=asg_name,
                                   launch_template_ids=launch_template_ids,
-                                  vpc_subnets=self._worker_subnets_by_zone[self._zone],
+                                  vpc_subnets=self._get_worker_subnets(),
                                   min_size=min_size,
                                   max_size=max_size,
                                   instance_types=instance_types,
@@ -1453,9 +1452,9 @@ class AWSProvisioner(AbstractProvisioner):
         # Grab the connection we need to use for this operation.
         iam = self.aws.client(self._zone, 'iam')
 
-        return [self._pager(iam.list_role_policies,
-                            'PolicyNames',
-                            RoleName=role_name)]
+        return list(self._pager(iam.list_role_policies,
+                                'PolicyNames',
+                                RoleName=role_name))
 
     def full_policy(self, resource: str) -> dict:
         """
