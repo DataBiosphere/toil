@@ -23,7 +23,10 @@ import uuid
 import boto3
 import boto3.resources.base
 from botocore.exceptions import ClientError
+# We need these to exist as attributes we can get off of the boto object
 import boto.ec2
+import boto.iam
+import boto.vpc
 
 from typing import Any, Callable, Collection, Dict, Iterable, List, Optional, Set
 from functools import wraps
