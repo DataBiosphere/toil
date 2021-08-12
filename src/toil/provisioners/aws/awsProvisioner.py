@@ -246,10 +246,8 @@ class AWSProvisioner(AbstractProvisioner):
         self.clusterName = str(instance.tags["Name"])
         # Determine what subnet we, the leader, are in
         self._leader_subnet = instance.subnet_id
-        # What VPC is that?
-        vpc_id = self._get_subnet_vpc(self._leader_subnet)
-        # Determine where to deploy workers (into any subnet in the same VPC).
-        self._worker_subnets_by_zone = self._get_subnets_in_vpc(vpc_id)
+        # Determine where to deploy workers.
+        self._worker_subnets_by_zone = self._get_good_subnets_like(self._leader_subnet)
 
         self._leaderPrivateIP = instanceMetaData['local-ipv4']  # this is PRIVATE IP
         self._keyName = list(instanceMetaData['public-keys'].keys())[0]
@@ -310,9 +308,6 @@ class AWSProvisioner(AbstractProvisioner):
             # Find the default subnet for the zone
             self._leader_subnet = self._get_default_subnet(self._zone)
 
-        # Find the VPC for the subnet, where the workers will have to live.
-        vpc_id = self._get_subnet_vpc(self._leader_subnet)
-
         profileArn = awsEc2ProfileArn or self._createProfileArn()
         # the security group name is used as the cluster identifier
         createdSGs = self._createSecurityGroups()
@@ -366,7 +361,7 @@ class AWSProvisioner(AbstractProvisioner):
         # Remember enough about the leader to let us launch workers in its
         # cluster.
         self._leaderPrivateIP = leader.private_ip_address
-        self._worker_subnets_by_zone = self._get_subnets_in_vpc(vpc_id)
+        self._worker_subnets_by_zone = self._get_good_subnets_like(self._leader_subnet)
         self._leaderSecurityGroupNames = set()
         self._leaderSecurityGroupIDs = set(createdSGs + (awsEc2ExtraSecurityGroupIds or []))
         self._leaderProfileArn = profileArn
@@ -396,27 +391,61 @@ class AWSProvisioner(AbstractProvisioner):
         return collected
 
     @awsRetry
-    def _get_subnets_in_vpc(self, vpc: str) -> Dict[str, List[str]]:
+    def _get_good_subnets_like(self, base_subnet_id: str) -> Dict[str, List[str]]:
         """
-        Given a VPC ID, get all the subnets in that VPC, broken up by availability zone.
+        Given a subnet ID, get all the similar subnets (including it),
+        organized by availability zone.
+
+        The input subnet must be in the available state.
+
+        Similar subnets are ones with the same default-ness and ACLs.
         """
 
-        # Compose a filter that selects the subnets
+        # Grab the ec2 resource we need to make queries
+        ec2 = self.aws.resource(self._zone, 'ec2')
+        # And the client
+        ec2_client = self.aws.client(self._zone, 'ec2')
+
+        # What subnet are we basing this on?
+        base_subnet = ec2.Subnet(base_subnet_id)
+
+        # What VPC is it in?
+        vpc_id = base_subnet.vpc_id
+
+        # Is it default for its VPC?
+        is_default = base_subnet.default_for_az
+
+        # What ACLs does it have?
+        acls = set(self._get_subnet_acls(base_subnet_id))
+
+        # Compose a filter that selects the subnets we might want
         filters = [{
             'Name': 'vpc-id',
-            'Values': [vpc]
+            'Values': [vpc_id]
+        }, {
+            'Name': 'default-for-az',
+            'Values': ['true' if is_default else 'false']
+        }, {
+            'Name': 'state',
+            'Values': ['available']
         }]
 
         # Fill in this collection
         by_az = {}
 
-        # Go get all the subnets. There's no way to page manually here (we get
-        # a list back so where would NextToken be?) so it must page
-        # automatically? Also, there should never be many subnets in a single
-        # VPC unless someone is doing something weird.
-        # See:
+        # Go get all the subnets. There's no way to page manually here so it
+        # must page automatically.
         for subnet in self.aws.resource(self._zone, 'ec2').subnets.filter(Filters=filters):
             # For each subnet in the VPC
+
+            # See if it has the right ACLs
+            subnet_acls = set(self._get_subnet_acls(subnet.subnet_id))
+            if subnet_acls != acls:
+                # Reject this subnet because it has different ACLs
+                logger.debug('Subnet %s is a lot like subnet %s but has ACLs of %s instead of %s; skipping',
+                             subnet.subnet_id, base_subnet_id, subnet_acls, acls)
+                continue
+
             if subnet.availability_zone not in by_az:
                 # Make sure we have a bucket of subnets for this AZ
                 by_az[subnet.availability_zone] = []
@@ -426,12 +455,24 @@ class AWSProvisioner(AbstractProvisioner):
         return by_az
 
     @awsRetry
-    def _get_subnet_vpc(self, subnet: str) -> str:
+    def _get_subnet_acls(self, subnet: str) -> List[str]:
         """
-        Given a subnet ID, get the ID of the VPC it belongs to.
+        Get all Network ACL IDs associated with a given subnet ID.
         """
 
-        return self.aws.resource(self._zone, 'ec2').Subnet(subnet).vpc_id
+        # Grab the connection we need to use for this operation.
+        ec2 = self.aws.client(self._zone, 'ec2')
+
+        # Compose a filter that selects the default subnet in the AZ
+        filters = [{
+            'Name': 'association.subnet-id',
+            'Values': [subnet]
+        }]
+
+        # TODO: Can't we use the resource's network_acls.filter(Filters=)?
+        return [item['NetworkAclId'] for item in self._pager(ec2.describe_network_acls,
+                                                             'NetworkAcls',
+                                                             Filters=filters)]
 
     @awsRetry
     def _get_default_subnet(self, zone: str) -> str:
@@ -583,6 +624,9 @@ class AWSProvisioner(AbstractProvisioner):
             for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                 with attempt:
                     for sg in self.aws.boto2(self._zone, 'ec2').get_all_security_groups():
+                        # TODO: If we terminate the leader and the workers but
+                        # miss the security group, we won't find it now because
+                        # we won't have vpcId set.
                         if sg.name == self.clusterName and vpcId and sg.vpc_id == vpcId:
                             try:
                                 self.aws.boto2(self._zone, 'ec2').delete_security_group(group_id=sg.id)
@@ -1352,28 +1396,24 @@ class AWSProvisioner(AbstractProvisioner):
     def _pager(self, requestor_callable: Callable, result_attribute_name: str, **kwargs) -> Iterable[Dict[str, Any]]:
         """
         Yield all the results from calling the given Boto 3 method with the
-        given keyword arguments, paging through the results using the Marker, and
-        fetching out and looping over the list in the response with the given
-        attribute name.
+        given keyword arguments, paging through the results using the Marker or
+        NextToken, and fetching out and looping over the list in the response
+        with the given attribute name.
         """
 
-        # We specify a page size once, here
-        call_args = {'MaxItems': 200}
-        call_args.update(kwargs)
+        # Recover the Boto3 client, and the name of the operation
+        client = requestor_callable.__self__
+        op_name = requestor_callable.__name__
 
-        response = requestor_callable(**call_args)
-        while True:
-            # Process the current page
-            for item in response.get(result_attribute_name, []):
+        # grab a Boto 3 built-in paginator. See
+        # <https://boto3.amazonaws.com/v1/documentation/api/latest/guide/paginators.html>
+        paginator = client.get_paginator(op_name)
+
+        for page in paginator.paginate(**kwargs):
+            # Invoke it and go through the pages
+            for item in page.get(result_attribute_name, []):
                 # Yield each returned item
                 yield item
-            if 'IsTruncated' in response and response['IsTruncated']:
-                # There are more pages. Get the next one, supplying the marker.
-                call_args['Marker'] = response['Marker']
-                response = requestor_callable(**call_args)
-            else:
-                # No more pages
-                break
 
     @awsRetry
     def _getRoleNames(self) -> List[str]:
