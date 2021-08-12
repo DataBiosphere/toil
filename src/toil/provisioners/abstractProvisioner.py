@@ -29,6 +29,7 @@ from toil.provisioners.node import Node
 a_short_time = 5
 logger = logging.getLogger(__name__)
 
+
 class ManagedNodesNotSupportedException(RuntimeError):
     """
     Raised when attempting to add managed nodes (which autoscale up and down by
@@ -39,6 +40,7 @@ class ManagedNodesNotSupportedException(RuntimeError):
     are available from a provisioner.
     """
     pass
+
 
 @total_ordering
 class Shape(object):
@@ -52,6 +54,7 @@ class Shape(object):
     The memory and disk attributes store the number of bytes required by a job (or provided by a
     node) in RAM or on disk (SSD or HDD), respectively.
     """
+
     def __init__(self, wallTime, memory, cores, disk, preemptable):
         self.wallTime = wallTime
         self.memory = memory
@@ -138,7 +141,7 @@ class AbstractProvisioner(ABC):
 
         if self.clusterType not in self.supportedClusterTypes():
             # This isn't actually a cluster type we can do
-            ClusterTypeNotSupportedException(type(self), clusterType)
+            raise ClusterTypeNotSupportedException(type(self), clusterType)
 
         self._zone = zone
         self._nodeStorage = nodeStorage
@@ -181,6 +184,29 @@ class AbstractProvisioner(ABC):
         the instance we are running on is the leader.
 
         Implementations must call _setLeaderWorkerAuthentication().
+        """
+        raise NotImplementedError
+
+    def _write_file_to_cloud(self, key: str, contents: bytes) -> str:
+        """
+        Write a file to a physical storage system that is accessible to the
+        leader and all nodes during the life of the cluster. Additional
+        resources should be cleaned up in `self.destroyCluster()`.
+
+        :return: A public URL that can be used to retrieve the file.
+        """
+        raise NotImplementedError
+
+    def _read_file_from_cloud(self, key: str) -> bytes:
+        """
+        Return the contents of the file written by `self._write_file_to_cloud()`.
+        """
+        raise NotImplementedError
+
+    def _get_user_data_limit(self) -> int:
+        """
+        Get the maximum number of bytes that can be passed as the user data
+        during node creation.
         """
         raise NotImplementedError
 
@@ -235,8 +261,8 @@ class AbstractProvisioner(ABC):
         # To work locally or remotely we need to do all our setup work as one
         # big bash -c
         command = ['bash', '-c', ('set -e; if [ ! -e /root/.sshSuccess ] ; '
-                    'then ssh-keygen -f /root/.ssh/id_rsa -t rsa -N ""; '
-                    'touch /root/.sshSuccess; fi; chmod 700 /root/.ssh;')]
+                                  'then ssh-keygen -f /root/.ssh/id_rsa -t rsa -N ""; '
+                                  'touch /root/.sshSuccess; fi; chmod 700 /root/.ssh;')]
 
         if leader is None:
             # Run locally
@@ -258,7 +284,7 @@ class AbstractProvisioner(ABC):
                     leaderPublicKey = f.read()
 
         # Drop the key type and keep just the key data
-        leaderPublicKey=leaderPublicKey.split(' ')[1]
+        leaderPublicKey = leaderPublicKey.split(' ')[1]
 
         # confirm it really is an RSA public key
         assert leaderPublicKey.startswith('AAAAB3NzaC1yc2E'), leaderPublicKey
@@ -384,7 +410,6 @@ class AbstractProvisioner(ABC):
         """
         raise NotImplementedError
 
-
     def addManagedNodes(self, nodeTypes: Set[str], minNodes, maxNodes, preemptable, spotBid=None) -> None:
         """
         Add a group of managed nodes of the given type, up to the given maximum.
@@ -453,7 +478,6 @@ class AbstractProvisioner(ABC):
         """
         raise NotImplementedError
 
-
     class InstanceConfiguration:
         """
         Allows defining the initial setup for an instance and then turning it
@@ -520,7 +544,6 @@ class AbstractProvisioner(ABC):
 
             # Mark as CloudConfig and serialize as YAML
             return '#cloud-config\n\n' + yaml.dump(config)
-
 
     def getBaseInstanceConfiguration(self) -> InstanceConfiguration:
         """
@@ -671,7 +694,7 @@ class AbstractProvisioner(ABC):
             elif role == 'worker':
                 entryPoint = 'mesos-agent'
                 entryPointArgs = MESOS_LOG_DIR + WORKER_DOCKER_ARGS.format(ip=self._leaderPrivateIP,
-                                                            preemptable=preemptable)
+                                                                           preemptable=preemptable)
             else:
                 raise RuntimeError("Unknown role %s" % role)
         elif self.clusterType == 'kubernetes':
@@ -682,7 +705,7 @@ class AbstractProvisioner(ABC):
                 entryPointArgs = 'infinity'
             else:
                 raise RuntimeError('Toil service not needed for %s nodes in a %s cluster',
-                    role, self.clusterType)
+                                   role, self.clusterType)
         else:
             raise RuntimeError('Toil service not needed in a %s cluster', self.clusterType)
 
@@ -830,7 +853,6 @@ class AbstractProvisioner(ABC):
 
         # Now we should have the kubeadm command, and the bootlooping kubelet
         # waiting for kubeadm to configure it.
-
 
     def getKubernetesAutoscalerSetupCommands(self, values: Dict[str, str]) -> str:
         """
@@ -1113,7 +1135,7 @@ class AbstractProvisioner(ABC):
                 # This involves an SSH public key form the leader
                 config.addSSHRSAKey(self._leaderWorkerAuthentication)
             elif self.clusterType == 'kubernetes':
-                # We can install the Kubernetes wotker and make it phone home
+                # We can install the Kubernetes worker and make it phone home
                 # to the leader.
                 # TODO: this puts sufficient info to fake a malicious worker
                 # into the worker config, which probably is accessible by
