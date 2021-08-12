@@ -242,22 +242,21 @@ class hidden(object):
             command = "bash -c \"\\${@}\" bash eval " + script.replace(';', r'\;')
 
             # Issue a job with a job environment variable
-            jobDesc6 = self._mockJobDescription(command=command, jobName='test6', unitName=None,
-                                                jobStoreID='6', requirements=defaultRequirements)
-            job6 = self.batchSystem.issueBatchJob(jobDesc6, job_environment={
+            job_desc_6 = self._mockJobDescription(command=command, jobName='test6', unitName=None,
+                                                  jobStoreID='6', requirements=defaultRequirements)
+            job6 = self.batchSystem.issueBatchJob(job_desc_6, job_environment={
                 'FOO': 'bar'
             })
-            jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
-            jobID, exitStatus, wallTime = jobUpdateInfo.jobID, jobUpdateInfo.exitStatus, jobUpdateInfo.wallTime
-            self.assertEqual(exitStatus, 23)  # this should succeed
-            self.assertEqual(jobID, job6)
+            job_update_info = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            self.assertEqual(job_update_info.exitStatus, 23)  # this should succeed
+            self.assertEqual(job_update_info.jobID, job6)
             # Now check that the environment variable doesn't exist for other jobs
-            jobDesc7 = self._mockJobDescription(command=command, jobName='test7', unitName=None,
-                                                jobStoreID='7', requirements=defaultRequirements)
-            job7 = self.batchSystem.issueBatchJob(jobDesc7)
-            jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
-            self.assertEqual(jobUpdateInfo.exitStatus, 42)
-            self.assertEqual(jobUpdateInfo.jobID, job7)
+            job_desc_7 = self._mockJobDescription(command=command, jobName='test7', unitName=None,
+                                                  jobStoreID='7', requirements=defaultRequirements)
+            job7 = self.batchSystem.issueBatchJob(job_desc_7)
+            job_update_info = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            self.assertEqual(job_update_info.exitStatus, 42)
+            self.assertEqual(job_update_info.jobID, job7)
 
         def testCheckResourceRequest(self):
             if isinstance(self.batchSystem, BatchSystemSupport):
