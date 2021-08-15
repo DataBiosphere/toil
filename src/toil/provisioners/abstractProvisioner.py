@@ -22,7 +22,8 @@ from abc import ABC, abstractmethod
 from base64 import b64encode
 
 from functools import total_ordering
-from typing import List, Dict, Tuple, Optional, Set
+from typing import List, Dict, Tuple, Optional, Set, Union
+from urllib.parse import quote
 
 from toil import applianceSelf, customDockerInitCmd, customInitCmd
 from toil.provisioners import ClusterTypeNotSupportedException
@@ -495,12 +496,19 @@ class AbstractProvisioner(ABC):
             # Holds strings like "ssh-rsa actualKeyData" for keys to authorize (independently of cloud provider's system)
             self.sshPublicKeys = []
 
-        def addFile(self, path: str, filesystem: str = 'root', mode: int = int("0755", 8), contents: str = ''):
+        def addFile(self, path: str, filesystem: str = 'root', mode: Union[str, int] = '0755', contents: str = ''):
             """
-            Make a file on the instance with the given filesystem, mode (in decimal), and contents.
-            """
+            Make a file on the instance with the given filesystem, mode, and contents.
 
-            contents = 'data:text/plain;charset=utf-8;base64,' + b64encode(contents.encode('utf-8')).decode('utf-8')
+            See the storage.files section:
+            https://github.com/kinvolk/ignition/blob/flatcar-master/doc/configuration-v2_2.md
+            """
+            if isinstance(mode, str):
+                # Convert mode from octal to decimal
+                mode = int(mode, 8)
+            assert isinstance(mode, int)
+
+            contents = 'data:,' + quote(contents.encode('utf-8'))
 
             self.files.append({'path': path, 'filesystem': filesystem, 'mode': mode, 'contents': {'source': contents}})
 
@@ -529,7 +537,8 @@ class AbstractProvisioner(ABC):
             Return an Ignition configuration describing the desired config.
             """
 
-            # Define the base config
+            # Define the base config.  We're using Ignition's v2.2.0 fork
+            # See: https://github.com/kinvolk/ignition/blob/flatcar-master/doc/configuration-v2_2.md
             config = {
                 'ignition': {
                     'version': '2.2.0'
@@ -564,7 +573,7 @@ class AbstractProvisioner(ABC):
         config = self.InstanceConfiguration()
 
         # We set Flatcar's update reboot strategy to off
-        config.addFile("/etc/coreos/update.conf", mode=int("0644", 8), contents=textwrap.dedent("""\
+        config.addFile("/etc/coreos/update.conf", mode='0644', contents=textwrap.dedent("""\
         GROUP=stable
         REBOOT_STRATEGY=off
         """))
@@ -829,7 +838,7 @@ class AbstractProvisioner(ABC):
             ''').format(**values))
 
         # It needs this config file
-        config.addFile("/etc/systemd/system/kubelet.service.d/10-kubeadm.conf", mode=int("0644", 8),
+        config.addFile("/etc/systemd/system/kubelet.service.d/10-kubeadm.conf", mode='0644',
                        contents=textwrap.dedent('''\
             # This came from https://raw.githubusercontent.com/kubernetes/release/v0.4.0/cmd/kubepkg/templates/latest/deb/kubeadm/10-kubeadm.conf
             # It has been modified to replace /usr/bin with {DOWNLOAD_DIR}
@@ -919,7 +928,7 @@ class AbstractProvisioner(ABC):
 
         # Customize scheduler to pack jobs into as few nodes as possible
         # See: https://kubernetes.io/docs/reference/scheduling/config/#profiles
-        config.addFile("/home/core/scheduler-config.yml", mode=int("0644", 8), contents=textwrap.dedent('''\
+        config.addFile("/home/core/scheduler-config.yml", mode='0644', contents=textwrap.dedent('''\
             apiVersion: kubescheduler.config.k8s.io/v1beta1
             kind: KubeSchedulerConfiguration
             clientConnection:
@@ -939,7 +948,7 @@ class AbstractProvisioner(ABC):
         # Make sure to mount the scheduler config where the scheduler can see
         # it, which is undocumented but inferred from
         # https://pkg.go.dev/k8s.io/kubernetes@v1.21.0/cmd/kubeadm/app/apis/kubeadm#ControlPlaneComponent
-        config.addFile("/home/core/kubernetes-leader.yml", mode=int("0644", 8), contents=textwrap.dedent('''\
+        config.addFile("/home/core/kubernetes-leader.yml", mode='0644', contents=textwrap.dedent('''\
             apiVersion: kubeadm.k8s.io/v1beta2
             kind: InitConfiguration
             nodeRegistration:
@@ -998,12 +1007,11 @@ class AbstractProvisioner(ABC):
             kubectl apply -f https://raw.githubusercontent.com/flannel-io/flannel/{FLANNEL_VERSION}/Documentation/kube-flannel.yml
 
             # Deploy rubber stamp CSR signing bot
-            base=https://raw.githubusercontent.com/kontena/kubelet-rubber-stamp/release/{RUBBER_STAMP_VERSION}/deploy
+            kubectl apply -f https://raw.githubusercontent.com/kontena/kubelet-rubber-stamp/release/{RUBBER_STAMP_VERSION}/deploy/service_account.yaml
+            kubectl apply -f https://raw.githubusercontent.com/kontena/kubelet-rubber-stamp/release/{RUBBER_STAMP_VERSION}/deploy/role.yaml
+            kubectl apply -f https://raw.githubusercontent.com/kontena/kubelet-rubber-stamp/release/{RUBBER_STAMP_VERSION}/deploy/role_binding.yaml
+            kubectl apply -f https://raw.githubusercontent.com/kontena/kubelet-rubber-stamp/release/{RUBBER_STAMP_VERSION}/deploy/operator.yaml
 
-            kubectl apply -f ${{base}}/service_account.yaml
-            kubectl apply -f ${{base}}/role.yaml
-            kubectl apply -f ${{base}}/role_binding.yaml
-            kubectl apply -f ${{base}}/operator.yaml
             ''').format(**values) + self.getKubernetesAutoscalerSetupCommands(values) + textwrap.dedent('''\
             # Set up metrics server, which needs serverTLSBootstrap and rubber stamp, and insists on running on a worker
             curl -sSL https://github.com/kubernetes-sigs/metrics-server/releases/download/{METRICS_API_VERSION}/components.yaml | \\
@@ -1090,7 +1098,7 @@ class AbstractProvisioner(ABC):
         values['WORKER_LABEL_SPEC'] = 'node-labels: "eks.amazonaws.com/capacityType=SPOT"' if preemptable else ''
 
         # Kubeadm worker configuration
-        config.addFile("/home/core/kubernetes-worker.yml", mode=int("0644", 8), contents=textwrap.dedent('''\
+        config.addFile("/home/core/kubernetes-worker.yml", mode='0644', contents=textwrap.dedent('''\
             apiVersion: kubeadm.k8s.io/v1beta2
             kind: JoinConfiguration
             nodeRegistration:
@@ -1140,7 +1148,7 @@ class AbstractProvisioner(ABC):
             WantedBy=multi-user.target
             '''))
 
-    def _getIgnitionConfigUserData(self, role, keyPath=None, preemptable=False):
+    def _getIgnitionUserData(self, role, keyPath=None, preemptable=False):
         """
         Return the text (not bytes) user data to pass to a provisioned node.
 
