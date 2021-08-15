@@ -1,4 +1,8 @@
-"""Conversion utilities for mapping memory, disk, core declarations from strings to numbers and vice versa."""
+"""
+Conversion utilities for mapping memory, disk, core declarations from strings to numbers and vice versa.
+Also contains general conversion functions
+"""
+
 import math
 from typing import Optional, SupportsInt, Tuple
 
@@ -84,3 +88,26 @@ def bytes2human(n: SupportsInt) -> str:
     unit = units[power_level if power_level < len(units) else -1]
     value = convert_units(n, "b", unit)
     return f'{value:.1f} {unit}'
+
+#General Conversions
+
+def hms_duration_to_seconds(hms: str) -> float: 
+    """
+    Parses a given time string in hours:minutes:seconds, 
+    returns an equivalent total seconds value
+    """
+    vals_to_convert = hms.split(':')
+    seconds = 0.0
+    
+    for val in vals_to_convert:
+        if(float(val) < 0): 
+            raise ValueError("Invalid Time, negative value")
+
+    if(len(vals_to_convert) != 3):
+        raise ValueError("Invalid amount of fields, function takes input in 'hh:mm:ss'")
+
+    seconds += float(vals_to_convert[0]) * 60 * 60 
+    seconds += float(vals_to_convert[1]) * 60 
+    seconds += float(vals_to_convert[2]) 
+
+    return seconds

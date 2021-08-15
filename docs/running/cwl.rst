@@ -5,7 +5,7 @@ CWL in Toil
 
 The Common Workflow Language (CWL) is an emerging standard for writing workflows
 that are portable across multiple workflow engines and platforms.
-Toil has full support for the CWL v1.0.1 specification.
+Toil has full support for the CWL v1.0, v1.1, and v1.2 standards.
 
 Running CWL Locally
 -------------------
@@ -66,11 +66,11 @@ A more detailed example shows how we can specify both Toil and cwltool arguments
 
 In this example, we set the following options, which are all passed to Toil:
 
-``--singularity``: Specifies that all jobs with Docker fornat containers
+``--singularity``: Specifies that all jobs with Docker format containers
 specified should be run using the Singularity container engine instead of the
 Docker container engine.
 
-``--jobStore``: Path to a folder that already exists, which will contain the
+``--jobStore``: Path to a folder which doesn't exist yet, which will contain the
 Toil jobstore and all related job-tracking information.
 
 ``--batchSystem``: Use the specified HPC or Cloud-based cluster platform.
@@ -117,6 +117,18 @@ multiple files, it may be useful. For example, if you want to run a CWL workflow
 samples inputs, it could look something like:
 
 .. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_cwlexample.py
+
+Running CWL workflows with InplaceUpdateRequirement
+---------------------------------------------------
+
+Some CWL workflows use the ``InplaceUpdateRequirement`` feature, which requires
+that operations on files have visible side effects that Toil's file store
+cannot support. If you need to run a workflow like this, you can make sure that
+all of your worker nodes have a shared filesystem, and use the
+``--bypass-file-store`` option to ``toil-cwl-runner``. This will make it leave
+all CWL intermediate files on disk and share them between jobs using file
+paths, instead of storing them in the file store and downloading them when jobs
+need them.
 
 Toil & CWL Tips
 ---------------

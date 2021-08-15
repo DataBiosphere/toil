@@ -18,6 +18,9 @@ from tempfile import NamedTemporaryFile
 from setuptools import find_packages, setup
 
 
+cwltool_version = '3.1.20210616134059'
+
+
 def run_setup():
     """
     Calls setup(). This function exists so the setup() invocation preceded more internal
@@ -33,7 +36,7 @@ def run_setup():
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
     apacheLibcloud = 'apache-libcloud==2.2.1'
-    cwltool = 'cwltool==3.0.20201203173111'
+    cwltool = f'cwltool=={cwltool_version}'
     galaxyToolUtil = 'galaxy-tool-util'
     htcondor = 'htcondor>=8.6.0'
     kubernetes = 'kubernetes>=12.0.1, <13'
@@ -57,10 +60,13 @@ def run_setup():
         addict,
         pytz,
         pyyaml,
-        enlighten]
+        enlighten,
+        "typing-extensions ; python_version < '3.8'"
+        ]
     aws_reqs = [
         boto,
         boto3,
+        "boto3-stubs[s3]>=1.17, <2",
         futures,
         pycryptodome]
     cwl_reqs = [
@@ -165,7 +171,10 @@ def import_version():
         # Use the template to generate src/toil/version.py
         import version_template
         with NamedTemporaryFile(mode='w', dir='src/toil', prefix='version.py.', delete=False) as f:
-            f.write(version_template.expand_())
+            f.write(version_template.expand_(others={
+                # expose the dependency versions that we may need to access in Toil
+                'cwltool_version': cwltool_version,
+            }))
         os.rename(f.name, 'src/toil/version.py')
 
     # Unfortunately, we can't use a straight import here because that would also load the stuff

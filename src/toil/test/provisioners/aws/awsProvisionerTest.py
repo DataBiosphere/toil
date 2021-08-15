@@ -44,12 +44,31 @@ class AWSProvisionerBenchTest(ToilTest):
 
     # Needs to talk to EC2 for image discovery
     @needs_aws_ec2
-    def testAMIFinding(self):
+    def test_AMI_finding(self):
         for zone in ['us-west-2a', 'eu-central-1a', 'sa-east-1b']:
             provisioner = AWSProvisioner('fakename', 'mesos', zone, 10000, None, None)
             ami = provisioner._discoverAMI()
             # Make sure we got an AMI and it looks plausible
             assert(ami.startswith('ami-'))
+
+    @needs_aws_ec2
+    def test_read_write_global_files(self):
+        """
+        Make sure the `_write_file_to_cloud()` and `_read_file_from_cloud()`
+        functions of the AWS provisioner work as intended.
+        """
+        provisioner = AWSProvisioner(f'aws-provisioner-test-{uuid4()}', 'mesos', 'us-west-2a', 50, None, None)
+        key = 'config/test.txt'
+        contents = "Hello, this is a test.".encode('utf-8')
+
+        try:
+            url = provisioner._write_file_to_cloud(key, contents=contents)
+            self.assertTrue(url.startswith("s3://"))
+
+            self.assertEqual(contents, provisioner._read_file_from_cloud(key))
+        finally:
+            # the cluster was never launched, but we need to clean up the s3 bucket
+            provisioner.destroyCluster()
 
 
 @needs_aws_ec2

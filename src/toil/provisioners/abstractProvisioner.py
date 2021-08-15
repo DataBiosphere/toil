@@ -143,7 +143,7 @@ class AbstractProvisioner(ABC):
 
         if self.clusterType not in self.supportedClusterTypes():
             # This isn't actually a cluster type we can do
-            ClusterTypeNotSupportedException(type(self), clusterType)
+            raise ClusterTypeNotSupportedException(type(self), clusterType)
 
         self._zone = zone
         self._nodeStorage = nodeStorage
@@ -186,6 +186,29 @@ class AbstractProvisioner(ABC):
         the instance we are running on is the leader.
 
         Implementations must call _setLeaderWorkerAuthentication().
+        """
+        raise NotImplementedError
+
+    def _write_file_to_cloud(self, key: str, contents: bytes) -> str:
+        """
+        Write a file to a physical storage system that is accessible to the
+        leader and all nodes during the life of the cluster. Additional
+        resources should be cleaned up in `self.destroyCluster()`.
+
+        :return: A public URL that can be used to retrieve the file.
+        """
+        raise NotImplementedError
+
+    def _read_file_from_cloud(self, key: str) -> bytes:
+        """
+        Return the contents of the file written by `self._write_file_to_cloud()`.
+        """
+        raise NotImplementedError
+
+    def _get_user_data_limit(self) -> int:
+        """
+        Get the maximum number of bytes that can be passed as the user data
+        during node creation.
         """
         raise NotImplementedError
 
@@ -1152,7 +1175,7 @@ class AbstractProvisioner(ABC):
                 # This involves an SSH public key form the leader
                 config.addSSHRSAKey(self._leaderWorkerAuthentication)
             elif self.clusterType == 'kubernetes':
-                # We can install the Kubernetes wotker and make it phone home
+                # We can install the Kubernetes worker and make it phone home
                 # to the leader.
                 # TODO: this puts sufficient info to fake a malicious worker
                 # into the worker config, which probably is accessible by

@@ -22,16 +22,20 @@ import random
 import shutil
 import signal
 import socket
+import stat
 import sys
 import time
 import traceback
+
 from contextlib import contextmanager
+from typing import Any, Callable, Iterator, List, Optional
 
 from toil import logProcessContext
-from toil.common import Toil, safeUnpickleFromStream
+from toil.common import Toil, Config, safeUnpickleFromStream
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.job import CheckpointJobDescription, Job
+from toil.job import CheckpointJobDescription, Job, JobDescription
+from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.expando import MagicExpando
 from toil.lib.io import make_public_dir
 from toil.lib.resources import (get_total_cpu_time,
@@ -39,23 +43,26 @@ from toil.lib.resources import (get_total_cpu_time,
 from toil.statsAndLogging import configure_root_logger, set_log_level
 
 try:
-    from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
+    from toil.cwl.cwltoil import (CWL_INTERNAL_JOBS,
+                                  CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
+                                  CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION)
 except ImportError:
     # CWL extra not installed
     CWL_INTERNAL_JOBS = ()
+    CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE = None
+    CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION = type(None)
 
 logger = logging.getLogger(__name__)
 
 
-def nextChainable(predecessor, jobStore, config):
+def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, config: Config) -> Optional[JobDescription]:
     """
     Returns the next chainable job's JobDescription after the given predecessor
     JobDescription, if one exists, or None if the chain must terminate.
 
-    :param toil.job.JobDescription predecessor: The job to chain from
-    :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: The JobStore to fetch JobDescriptions from.
-    :param toil.common.Config config: The configuration for the current run.
-    :rtype: toil.job.JobDescription or None
+    :param predecessor: The job to chain from
+    :param jobStore: The JobStore to fetch JobDescriptions from.
+    :param config: The configuration for the current run.
     """
     #If no more jobs to run or services not finished, quit
     if len(predecessor.stack) == 0 or len(predecessor.services) > 0 or (isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint != None):
@@ -121,13 +128,14 @@ def nextChainable(predecessor, jobStore, config):
     # Made it through! This job is chainable.
     return successor
 
-def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=True):
+def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobStoreID: str, redirectOutputToLogFile: bool = True) -> int:
     """
     Worker process script, runs a job.
 
-    :param str jobName: The "job name" (a user friendly name) of the job to be run
-    :param str jobStoreLocator: Specifies the job store to use
-    :param str jobStoreID: The job store ID of the job to be run
+    :param jobStore: The JobStore to fetch JobDescriptions from.
+    :param config: The configuration for the current run.
+    :param jobName: The "job name" (a user friendly name) of the job to be run
+    :param jobStoreID: The job store ID of the job to be run
 
     :return int: 1 if a job failed, or 0 if all jobs succeeded
     """
@@ -275,6 +283,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     ##########################################
 
     jobAttemptFailed = False
+    failure_exit_code = 1
     statsDict = MagicExpando()
     statsDict.jobs = []
     statsDict.workers.logsToMaster = []
@@ -404,7 +413,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                 logger.debug("No user job to run, so finishing")
                 break
 
-            if AbstractFileStore._terminateEvent.isSet():
+            if AbstractFileStore._terminateEvent.is_set():
                 raise RuntimeError("The termination flag is set")
 
             ##########################################
@@ -492,9 +501,13 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     ##########################################
     #Trapping where worker goes wrong
     ##########################################
-    except: #Case that something goes wrong in worker
+    except Exception as e: #Case that something goes wrong in worker
         traceback.print_exc()
         logger.error("Exiting the worker because of a failed job on host %s", socket.gethostname())
+        if isinstance(e, CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION):
+            # We need to inform the leader that this is a CWL workflow problem
+            # and it needs to inform its caller.
+            failure_exit_code = CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
         AbstractFileStore._terminateEvent.set()
 
     ##########################################
@@ -508,7 +521,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     #so safe to test if they completed okay
     ##########################################
 
-    if AbstractFileStore._terminateEvent.isSet():
+    if AbstractFileStore._terminateEvent.is_set():
         # Something has gone wrong.
 
         # Clobber any garbage state we have for this job from failing with
@@ -582,12 +595,22 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         statsDict.logs.messages = logMessages
 
     if (debugging or config.stats or statsDict.workers.logsToMaster) and not jobAttemptFailed:  # We have stats/logging to report back
-        jobStore.writeStatsAndLogging(json.dumps(statsDict, ensure_ascii=True).encode())
+        jobStore.writeStatsAndLogging(json.dumps(statsDict, ensure_ascii=True))
 
     #Remove the temp dir
     cleanUp = config.cleanWorkDir
     if cleanUp == 'always' or (cleanUp == 'onSuccess' and not jobAttemptFailed) or (cleanUp == 'onError' and jobAttemptFailed):
-        shutil.rmtree(localWorkerTempDir)
+        def make_parent_writable(func: Callable[[str], Any], path: str, _: Any) -> None:
+            """
+            When encountering an error removing a file or directory, make sure
+            the parent directory is writable.
+
+            cwltool likes to lock down directory permissions, and doesn't clean
+            up after itself.
+            """
+            # Just chmod it for rwx for user. This can't work anyway if it isn't ours.
+            os.chmod(os.path.dirname(path),  stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+        shutil.rmtree(localWorkerTempDir, onerror=make_parent_writable)
 
     #This must happen after the log file is done with, else there is no place to put the log
     if (not jobAttemptFailed) and jobDesc.command == None and next(jobDesc.successorsAndServiceHosts(), None) is None:
@@ -597,11 +620,11 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         jobStore.delete(jobDesc.jobStoreID)
 
     if jobAttemptFailed:
-        return 1
+        return failure_exit_code
     else:
         return 0
 
-def parse_args(args):
+def parse_args(args: List[str]) -> argparse.Namespace:
     """
     Parse command-line arguments to the worker.
     """
@@ -634,7 +657,7 @@ def parse_args(args):
 
 
 @contextmanager
-def in_contexts(contexts):
+def in_contexts(contexts: List[str]) -> Iterator[None]:
     """
     Unpickle and enter all the pickled, base64-encoded context managers in the
     given list. Then do the body, then leave them all.
@@ -661,7 +684,7 @@ def in_contexts(contexts):
                 yield
 
 
-def main(argv=None):
+def main(argv: Optional[List[str]] = None) -> None:
     if argv is None:
         argv = sys.argv
 

@@ -28,7 +28,7 @@ import the expand_ function and invoke it directly with either no or exactly one
 #  - don't import even standard modules at global scope without renaming them
 #    to have leading/trailing underscores
 
-baseVersion = '5.4.0a1'
+baseVersion = '5.5.0a1'
 cgcloudVersion = '1.6.0a1.dev393'
 
 
@@ -88,7 +88,7 @@ def dockerTag():
     """The primary tag of the Docker image for the appliance. This uniquely identifies the appliance image."""
     return version() + _pythonVersionSuffix()
 
-  
+
 def currentCommit():
     import os
     from subprocess import check_output
@@ -127,12 +127,23 @@ def dirty():
         return False  # In case the git call fails.
 
 
-def expand_(name=None):
+def expand_(name=None, others=None):
+    """
+    Returns a string of all the globals and additional variables passed as the
+    others keyword argument.
+
+    :param str name: If set, only the value of the given symbol is returned.
+    :param dict others: A dictionary of additional variables to be included in
+                        the return value.
+    """
     variables = {k: v for k, v in globals().items()
                  if not k.startswith('_') and not k.endswith('_')}
 
+    if others is not None:
+        variables.update(others)
+
     def resolve(k):
-        v = variables[k]
+        v = variables.get(k, None)
         if callable(v):
             v = v()
         return v
