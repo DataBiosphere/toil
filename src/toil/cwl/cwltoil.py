@@ -1102,25 +1102,6 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             path = self._abs(path)
         return os.path.realpath(path)
 
-def write_to_pipe(
-    file_store: AbstractFileStore, pipe_name: str, file_store_id: FileID
-) -> None:
-    try:
-        with open(pipe_name, "wb") as pipe:
-            with file_store.jobStore.readFileStream(file_store_id) as fi:
-                file_store.logAccess(file_store_id)
-                chunk_sz = 1024
-                while True:
-                    data = fi.read(chunk_sz)
-                    if not data:
-                        break
-                    pipe.write(data)
-    except IOError as e:
-        # The other side of the pipe may have been closed by the
-        # reading thread, which is OK.
-        if e.errno != errno.EPIPE:
-            raise
-
 
 def toil_get_file(
     file_store: AbstractFileStore,
@@ -1180,6 +1161,25 @@ def toil_get_file(
             return schema_salad.ref_resolver.file_uri(dest_path)
     elif file_store_id.startswith("toilfile:"):
         # This is a plain file with no context.
+        def write_to_pipe(
+                file_store: AbstractFileStore, pipe_name: str, file_store_id: FileID
+        ) -> None:
+            try:
+                with open(pipe_name, "wb") as pipe:
+                    with file_store.jobStore.readFileStream(file_store_id) as fi:
+                        file_store.logAccess(file_store_id)
+                        chunk_sz = 1024
+                        while True:
+                            data = fi.read(chunk_sz)
+                            if not data:
+                                break
+                            pipe.write(data)
+            except IOError as e:
+                # The other side of the pipe may have been closed by the
+                # reading thread, which is OK.
+                if e.errno != errno.EPIPE:
+                    raise
+
         if (
                 streaming_allowed
                 and streamable
