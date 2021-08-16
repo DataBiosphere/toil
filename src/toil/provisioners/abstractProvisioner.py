@@ -19,11 +19,11 @@ import tempfile
 import textwrap
 import json
 from abc import ABC, abstractmethod
-from base64 import b64encode
 
 from functools import total_ordering
 from typing import List, Dict, Tuple, Optional, Set, Union
 from urllib.parse import quote
+from uuid import uuid4
 
 from toil import applianceSelf, customDockerInitCmd, customInitCmd
 from toil.provisioners import ClusterTypeNotSupportedException
@@ -537,7 +537,7 @@ class AbstractProvisioner(ABC):
             Return an Ignition configuration describing the desired config.
             """
 
-            # Define the base config.  We're using Ignition's v2.2.0 fork
+            # Define the base config.  We're using Flatcar's v2.2.0 fork
             # See: https://github.com/kinvolk/ignition/blob/flatcar-master/doc/configuration-v2_2.md
             config = {
                 'ignition': {
@@ -1191,4 +1191,30 @@ class AbstractProvisioner(ABC):
                 self.addKubernetesWorker(config, self._leaderWorkerAuthentication, preemptable=preemptable)
 
         # Make it into a string for Ignition
-        return config.toIgnitionConfig()
+        user_data = config.toIgnitionConfig()
+
+        # Check if the config size exceeds the user data limit. If so, we'll
+        # write it to the cloud and let Ignition fetch it during startup.
+
+        # user_data_limit: int = self._get_user_data_limit()
+        user_data_limit: int = 100  # TODO: this is only for testing
+
+        if len(user_data) > user_data_limit:
+            logger.warning(f"Ignition config size exceeds the user data limit ({len(user_data)} > {user_data_limit}).  "
+                           "Writing to cloud storage...")
+
+            src = self._write_file_to_cloud(f'configs/{role}/config-{uuid4()}.ign', contents=user_data.encode('utf-8'))
+
+            return json.dumps({
+                'ignition': {
+                    'version': '2.2.0',
+                    # See: https://github.com/coreos/ignition/blob/spec2x/doc/configuration-v2_2.md
+                    'config': {
+                        'replace': {
+                            'source': src,
+                        }
+                    }
+                }
+            }, separators=(',', ':'))
+
+        return user_data
