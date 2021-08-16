@@ -1108,8 +1108,8 @@ def toil_get_file(
     index: Dict[str, str],
     existing: Dict[str, str],
     file_store_id: str,
-    streamable: bool,
-    streaming_allowed: bool,
+    streamable: bool = False,
+    streaming_allowed: bool = True,
     pipe_threads: list = None,
 ) -> str:
     """
