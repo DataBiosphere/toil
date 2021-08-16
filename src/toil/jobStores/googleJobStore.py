@@ -190,11 +190,8 @@ class GoogleJobStore(AbstractJobStore):
         
 
     def create(self, jobDescription):
-        if hasattr(self, "_batchedUpdates") and self._batchedUpdates is not None:
-            self._batchedUpdates.append(jobDescription)
-        else:
-            jobDescription.pre_update_hook()
-            self._writeBytes(jobDescription.jobStoreID, pickle.dumps(jobDescription, protocol=pickle.HIGHEST_PROTOCOL))
+        jobDescription.pre_update_hook()
+        self._writeBytes(jobDescription.jobStoreID, pickle.dumps(jobDescription, protocol=pickle.HIGHEST_PROTOCOL))
         return jobDescription
 
     @googleRetry
