@@ -185,7 +185,7 @@ class GoogleJobStore(AbstractJobStore):
 
     @contextmanager
     def batch(self):
-        # not implemented, google could storage does not support batching for uploading
+        # not implemented, google could storage does not support batching for uploading or downloading
         yield
         
 
