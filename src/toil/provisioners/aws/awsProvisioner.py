@@ -22,6 +22,7 @@ import uuid
 
 import boto3
 import boto3.resources.base
+import botocore
 from botocore.exceptions import ClientError
 # We need these to exist as attributes we can get off of the boto object
 import boto.ec2
@@ -153,6 +154,12 @@ class AWSConnectionManager:
     you want (session, resource, service, Boto2 Context), and then you pass the
     zone you want to work in, and possibly the type of thing you want, as arguments.
     """
+    
+    # TODO: mypy is going to have !!FUN!! with this API because the final type
+    # we get out (and whether it has the right methods for where we want to use
+    # it) depends on having the right string value for the service. We could
+    # also individually wrap every service we use, but that seems like a good
+    # way to generate a lot of boring code.
 
     def __init__(self):
         """
@@ -187,22 +194,20 @@ class AWSConnectionManager:
             self.resource_cache[key] = self.session(zone).resource(service_name)
         return self.resource_cache[key]
 
-    def client(self, zone: str, service_name: str) -> Any:
+    def client(self, zone: str, service_name: str) -> botocore.client.BaseClient:
         """
         Get the Boto3 Client to use with the given service (like 'ec2') in the given zone.
         """
-        # TODO: what base type are clients?
         # Clients are also per region
         key = (zone_to_region(zone), service_name)
         if key not in self.client_cache:
             self.client_cache[key] = self.session(zone).client(service_name)
         return self.client_cache[key]
 
-    def boto2(self, zone: str, service_name: str) -> Any:
+    def boto2(self, zone: str, service_name: str) -> boto.connection.AWSAuthConnection:
         """
         Get the connected boto2 connection for the given zone and service.
         """
-        # TODO: what base type are these connections?
         # These are per region, except 'iam' which has to be 'universal'
         region = zone_to_region(zone) if service_name != 'iam' else 'universal'
         key = (region, service_name)
