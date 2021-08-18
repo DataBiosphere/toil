@@ -152,7 +152,7 @@ class AWSConnectionManager:
 
     Access to any kind of item goes through the particular method for the thing
     you want (session, resource, service, Boto2 Context), and then you pass the
-    zone you want to work in, and possibly the type of thing you want, as arguments.
+    region you want to work in, and possibly the type of thing you want, as arguments.
     """
     
     # TODO: mypy is going to have !!FUN!! with this API because the final type
@@ -174,42 +174,39 @@ class AWSConnectionManager:
         # This stores Boto 2 connections by (region, service name) tuples.
         self.boto2_cache = {}
 
-    def session(self, zone: str) -> boto3.session.Session:
+    def session(self, region: str) -> boto3.session.Session:
         """
-        Get the Boto3 Session to use for the given zone.
+        Get the Boto3 Session to use for the given region.
         """
-        # Sessions are only actually local to a region
-        region = zone_to_region(zone)
         if region not in self.sessions_by_region:
             self.sessions_by_region[region] = establish_boto3_session(region_name=region)
         return self.sessions_by_region[region]
 
-    def resource(self, zone: str, service_name: str) -> boto3.resources.base.ServiceResource:
+    def resource(self, region: str, service_name: str) -> boto3.resources.base.ServiceResource:
         """
-        Get the Boto3 Resource to use with the given service (like 'ec2') in the given zone.
+        Get the Boto3 Resource to use with the given service (like 'ec2') in the given region.
         """
-        # Resources are also per region
-        key = (zone_to_region(zone), service_name)
+        key = (region, service_name)
         if key not in self.resource_cache:
             self.resource_cache[key] = self.session(zone).resource(service_name)
         return self.resource_cache[key]
 
-    def client(self, zone: str, service_name: str) -> botocore.client.BaseClient:
+    def client(self, region: str, service_name: str) -> botocore.client.BaseClient:
         """
-        Get the Boto3 Client to use with the given service (like 'ec2') in the given zone.
+        Get the Boto3 Client to use with the given service (like 'ec2') in the given region.
         """
-        # Clients are also per region
-        key = (zone_to_region(zone), service_name)
+        key = (region, service_name)
         if key not in self.client_cache:
             self.client_cache[key] = self.session(zone).client(service_name)
         return self.client_cache[key]
 
-    def boto2(self, zone: str, service_name: str) -> boto.connection.AWSAuthConnection:
+    def boto2(self, region: str, service_name: str) -> boto.connection.AWSAuthConnection:
         """
-        Get the connected boto2 connection for the given zone and service.
+        Get the connected boto2 connection for the given region and service.
         """
-        # These are per region, except 'iam' which has to be 'universal'
-        region = zone_to_region(zone) if service_name != 'iam' else 'universal'
+        if service_name == 'iam':
+            # IAM connections are regionless
+            region = 'universal'
         key = (region, service_name)
         if key not in self.boto2_cache:
             self.boto2_cache[key] = getattr(boto, service_name).connect_to_region(region)
@@ -239,6 +236,9 @@ class AWSProvisioner(AbstractProvisioner):
         # After self.clusterName is set, generate a valid name for the S3 bucket associated with this cluster
         suffix = _S3_BUCKET_INTERNAL_SUFFIX
         self.s3_bucket_name = self.clusterName[:_S3_BUCKET_MAX_NAME_LEN - len(suffix)] + suffix
+        
+        # And now that self._zone is set, determine our region to work in
+        self._region = zone_to_region(self._zone)
 
     def supportedClusterTypes(self):
         return {'mesos', 'kubernetes'}
@@ -259,7 +259,7 @@ class AWSProvisioner(AbstractProvisioner):
         the instance is the leader.
         """
         instanceMetaData = get_instance_metadata()
-        ec2 = self.aws.boto2(self._zone, 'ec2')
+        ec2 = self.aws.boto2(self._region, 'ec2')
         instance = ec2.get_all_instances(instance_ids=[instanceMetaData["instance-id"]])[0].instances[0]
         # The cluster name is the same as the name of the leader.
         self.clusterName = str(instance.tags["Name"])
@@ -292,10 +292,8 @@ class AWSProvisioner(AbstractProvisioner):
         bucket_name = self.s3_bucket_name
 
         # Connect to S3
-        s3 = self.aws.resource(self._zone, 's3')
-        s3_client = self.aws.client(self._zone, 's3')
-        # Determine what region to put the bucket in
-        region = zone_to_region(self._zone)
+        s3 = self.aws.resource(self._region, 's3')
+        s3_client = self.aws.client(self._region, 's3')
 
         # create bucket if needed, then write file to S3
         try:
@@ -304,7 +302,7 @@ class AWSProvisioner(AbstractProvisioner):
             bucket = s3.Bucket(bucket_name)
         except ClientError as err:
             if err.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
-                bucket = create_s3_bucket(s3, bucket_name=bucket_name, region=region)
+                bucket = create_s3_bucket(s3, bucket_name=bucket_name, region=self._region)
                 bucket.wait_until_exists()
                 bucket.Versioning().enable()
 
@@ -325,7 +323,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     def _read_file_from_cloud(self, key: str) -> bytes:
         bucket_name = self.s3_bucket_name
-        obj = self.aws.resource(self._zone, 's3').Object(bucket_name, key)
+        obj = self.aws.resource(self._region, 's3').Object(bucket_name, key)
 
         try:
             return obj.get().get('Body').read()
@@ -404,7 +402,7 @@ class AWSProvisioner(AbstractProvisioner):
         leader_tags = dict(self._tags)
         leader_tags[_TAG_KEY_TOIL_NODE_TYPE] = 'leader'
 
-        instances = create_instances(self.aws.resource(self._zone, 'ec2'),
+        instances = create_instances(self.aws.resource(self._region, 'ec2'),
                                      image_id=self._discoverAMI(),
                                      num_instances=1,
                                      key_name=self._keyName,
@@ -474,9 +472,9 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         # Grab the ec2 resource we need to make queries
-        ec2 = self.aws.resource(self._zone, 'ec2')
+        ec2 = self.aws.resource(self._region, 'ec2')
         # And the client
-        ec2_client = self.aws.client(self._zone, 'ec2')
+        ec2_client = self.aws.client(self._region, 'ec2')
 
         # What subnet are we basing this on?
         base_subnet = ec2.Subnet(base_subnet_id)
@@ -507,7 +505,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Go get all the subnets. There's no way to page manually here so it
         # must page automatically.
-        for subnet in self.aws.resource(self._zone, 'ec2').subnets.filter(Filters=filters):
+        for subnet in self.aws.resource(self._region, 'ec2').subnets.filter(Filters=filters):
             # For each subnet in the VPC
 
             # See if it has the right ACLs
@@ -533,7 +531,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         # Grab the connection we need to use for this operation.
-        ec2 = self.aws.client(self._zone, 'ec2')
+        ec2 = self.aws.client(self._region, 'ec2')
 
         # Compose a filter that selects the default subnet in the AZ
         filters = [{
@@ -643,7 +641,7 @@ class AWSProvisioner(AbstractProvisioner):
             with attempt:
                 for asgName in self._getAutoScalingGroupNames():
                     # We delete the group and all the instances via ForceDelete.
-                    self.aws.client(self._zone, 'autoscaling').delete_auto_scaling_group(AutoScalingGroupName=asgName, ForceDelete=True)
+                    self.aws.client(self._region, 'autoscaling').delete_auto_scaling_group(AutoScalingGroupName=asgName, ForceDelete=True)
                     removed = True
         if removed:
             logger.debug('... Successfully deleted autoscaling groups')
@@ -654,9 +652,9 @@ class AWSProvisioner(AbstractProvisioner):
         instances = self._getNodesInCluster(both=True)
         spotIDs = self._getSpotRequestIDs()
         if spotIDs:
-            self.aws.boto2(self._zone, 'ec2').cancel_spot_instance_requests(request_ids=spotIDs)
+            self.aws.boto2(self._region, 'ec2').cancel_spot_instance_requests(request_ids=spotIDs)
             removed = True
-        instancesToTerminate = awsFilterImpairedNodes(instances, self.aws.boto2(self._zone, 'ec2'))
+        instancesToTerminate = awsFilterImpairedNodes(instances, self.aws.boto2(self._region, 'ec2'))
         if instancesToTerminate:
             vpcId = vpcId or instancesToTerminate[0].vpc_id
             self._terminateInstances(instancesToTerminate)
@@ -672,7 +670,7 @@ class AWSProvisioner(AbstractProvisioner):
                 # for some LuanchTemplate.
                 mistake = False
                 for ltID in self._get_launch_template_ids():
-                    response = self.aws.client(self._zone, 'ec2').delete_launch_template(LaunchTemplateId=ltID)
+                    response = self.aws.client(self._region, 'ec2').delete_launch_template(LaunchTemplateId=ltID)
                     if 'LaunchTemplate' not in response:
                         mistake = True
                     else:
@@ -694,13 +692,13 @@ class AWSProvisioner(AbstractProvisioner):
             removed = False
             for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                 with attempt:
-                    for sg in self.aws.boto2(self._zone, 'ec2').get_all_security_groups():
+                    for sg in self.aws.boto2(self._region, 'ec2').get_all_security_groups():
                         # TODO: If we terminate the leader and the workers but
                         # miss the security group, we won't find it now because
                         # we won't have vpcId set.
                         if sg.name == self.clusterName and vpcId and sg.vpc_id == vpcId:
                             try:
-                                self.aws.boto2(self._zone, 'ec2').delete_security_group(group_id=sg.id)
+                                self.aws.boto2(self._region, 'ec2').delete_security_group(group_id=sg.id)
                                 removed = True
                             except BotoServerError as e:
                                 if e.error_code == 'InvalidGroup.NotFound':
@@ -722,7 +720,7 @@ class AWSProvisioner(AbstractProvisioner):
         for attempt in old_retry(timeout=300, predicate=awsRetryPredicate):
             with attempt:
                 # Grab the S3 resource to use
-                s3 = self.aws.resource(self._zone, 's3')
+                s3 = self.aws.resource(self._region, 's3')
                 try:
                     bucket = s3.Bucket(self.s3_bucket_name)
 
@@ -778,7 +776,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None) -> int:
         # Grab the AWS connection we need
-        ec2 = self.aws.boto2(self._zone, 'ec2')
+        ec2 = self.aws.boto2(self._region, 'ec2')
 
         assert self._leaderPrivateIP
 
@@ -907,7 +905,7 @@ class AWSProvisioner(AbstractProvisioner):
         if preemptable is not None:
             workerInstances = [i for i in workerInstances if preemptable == (i.spot_instance_request_id is not None)]
             logger.debug('%spreemptable workers found in cluster: %s', 'non-' if not preemptable else '', workerInstances)
-        workerInstances = awsFilterImpairedNodes(workerInstances, self.aws.boto2(self._zone, 'ec2'))
+        workerInstances = awsFilterImpairedNodes(workerInstances, self.aws.boto2(self._region, 'ec2'))
         return [Node(publicIP=i.ip_address, privateIP=i.private_ip_address,
                      name=i.id, launchTime=i.launch_time, nodeType=i.instance_type,
                      preemptable=i.spot_instance_request_id is not None, tags=i.tags)
@@ -919,7 +917,7 @@ class AWSProvisioner(AbstractProvisioner):
         :return: The AMI ID (a string like 'ami-0a9a5d2b65cce04eb') for Flatcar.
         :rtype: str
         """
-        return get_flatcar_ami(self.aws.client(self._zone, 'ec2'))
+        return get_flatcar_ami(self.aws.client(self._region, 'ec2'))
 
     def _toNameSpace(self) -> str:
         assert isinstance(self.clusterName, (str, bytes))
@@ -981,7 +979,7 @@ class AWSProvisioner(AbstractProvisioner):
                           preemptable=False, tags=leader.tags)
         if wait:
             logger.debug("Waiting for toil_leader to enter 'running' state...")
-            wait_instances_running(self.aws.boto2(self._zone, 'ec2'), [leader])
+            wait_instances_running(self.aws.boto2(self._region, 'ec2'), [leader])
             logger.debug('... toil_leader is running')
             self._waitForIP(leader)
             leaderNode.waitForNode('toil_leader')
@@ -1025,7 +1023,7 @@ class AWSProvisioner(AbstractProvisioner):
     @awsRetry
     def _terminateIDs(self, instanceIDs: List[str]):
         logger.info('Terminating instance(s): %s', instanceIDs)
-        self.aws.boto2(self._zone, 'ec2').terminate_instances(instance_ids=instanceIDs)
+        self.aws.boto2(self._region, 'ec2').terminate_instances(instance_ids=instanceIDs)
         logger.info('Instance(s) terminated.')
 
     @awsRetry
@@ -1042,18 +1040,18 @@ class AWSProvisioner(AbstractProvisioner):
 
                 for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                     with attempt:
-                        self.aws.client(self._zone, 'iam').remove_role_from_instance_profile(InstanceProfileName=profile_name,
-                                                                          RoleName=role_name)
+                        self.aws.client(self._region, 'iam').remove_role_from_instance_profile(InstanceProfileName=profile_name,
+                                                                                               RoleName=role_name)
             # We also need to drop all inline policies
             for policy_name in self._getRoleInlinePolicyNames(role_name):
                 for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                     with attempt:
-                        self.aws.client(self._zone, 'iam').delete_role_policy(PolicyName=policy_name,
-                                                           RoleName=role_name)
+                        self.aws.client(self._region, 'iam').delete_role_policy(PolicyName=policy_name,
+                                                                                RoleName=role_name)
 
             for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                 with attempt:
-                    self.aws.client(self._zone, 'iam').delete_role(RoleName=role_name)
+                    self.aws.client(self._region, 'iam').delete_role(RoleName=role_name)
                     logger.debug('... Successfully deleted IAM role %s', role_name)
 
 
@@ -1067,7 +1065,7 @@ class AWSProvisioner(AbstractProvisioner):
         for profile_name in names:
             for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                 with attempt:
-                    self.aws.client(self._zone, 'iam').delete_instance_profile(InstanceProfileName=profile_name)
+                    self.aws.client(self._region, 'iam').delete_instance_profile(InstanceProfileName=profile_name)
                     logger.debug('... Succesfully deleted instance profile %s', profile_name)
 
     @classmethod
@@ -1125,7 +1123,7 @@ class AWSProvisioner(AbstractProvisioner):
         Get Boto2 instance objects for all nodes in the cluster.
         """
 
-        allInstances = self.aws.boto2(self._zone, 'ec2').get_only_instances(filters={'instance.group-name': self.clusterName})
+        allInstances = self.aws.boto2(self._region, 'ec2').get_only_instances(filters={'instance.group-name': self.clusterName})
         def instanceFilter(i):
             # filter by type only if nodeType is true
             rightType = not instance_type or i.instance_type == instance_type
@@ -1145,7 +1143,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         # Grab the connection we need to use for this operation.
-        ec2 = self.aws.boto2(self._zone, 'ec2')
+        ec2 = self.aws.boto2(self._region, 'ec2')
 
         requests = ec2.get_all_spot_instance_requests()
         tags = ec2.get_all_tags({'tag:': {_TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName}})
@@ -1159,7 +1157,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Grab the connection we need to use for this operation.
         # The VPC connection can do anything the EC2 one can do, but also look at subnets.
-        vpc = self.aws.boto2(self._zone, 'vpc')
+        vpc = self.aws.boto2(self._region, 'vpc')
 
         def groupNotFound(e):
             retry = (e.status == 400 and 'does not exist in default VPC' in e.body)
@@ -1211,7 +1209,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Depending on if we enumerated them on the leader or locally, we might
         # know the required security groups by name, ID, or both.
-        sgs = [sg for sg in self.aws.boto2(self._zone, 'ec2').get_all_security_groups()
+        sgs = [sg for sg in self.aws.boto2(self._region, 'ec2').get_all_security_groups()
                if (sg.name in self._leaderSecurityGroupNames or
                    sg.id in self._leaderSecurityGroupIDs)]
         return [sg.id for sg in sgs]
@@ -1225,7 +1223,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         # Grab the connection we need to use for this operation.
-        ec2 = self.aws.client(self._zone, 'ec2')
+        ec2 = self.aws.client(self._region, 'ec2')
 
         # How do we match the right templates?
         combined_filters = [{'Name': 'tag:' + _TAG_KEY_TOIL_CLUSTER_NAME, 'Values': [self.clusterName]}]
@@ -1346,7 +1344,7 @@ class AWSProvisioner(AbstractProvisioner):
         tags = dict(self._tags)
         tags[_TAG_KEY_TOIL_NODE_TYPE] = 'worker'
 
-        return create_launch_template(self.aws.client(self._zone, 'ec2'),
+        return create_launch_template(self.aws.client(self._region, 'ec2'),
                                       template_name=lt_name,
                                       image_id=self._discoverAMI(),
                                       key_name=self._keyName,
@@ -1366,7 +1364,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         # Grab the connection we need to use for this operation.
-        autoscaling = self.aws.client(self._zone, 'autoscaling')
+        autoscaling = self.aws.client(self._region, 'autoscaling')
 
         # AWS won't filter ASGs server-side for us in describe_auto_scaling_groups.
         # So we search instances of applied tags for the ASGs they are on.
@@ -1458,7 +1456,7 @@ class AWSProvisioner(AbstractProvisioner):
         # TODO: can we make this more semantic without risking collisions? Maybe count up in memory?
         asg_name = 'toil-' + str(uuid.uuid4())
 
-        create_auto_scaling_group(self.aws.client(self._zone, 'autoscaling'),
+        create_auto_scaling_group(self.aws.client(self._region, 'autoscaling'),
                                   asg_name=asg_name,
                                   launch_template_ids=launch_template_ids,
                                   vpc_subnets=self._get_worker_subnets(),
@@ -1515,7 +1513,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         results = []
-        for result in self._boto2_pager(self.aws.boto2(self._zone, 'iam').list_roles, 'roles'):
+        for result in self._boto2_pager(self.aws.boto2(self._region, 'iam').list_roles, 'roles'):
             # For each Boto2 role object
             # Grab out the name
             name = result['role_name']
@@ -1531,7 +1529,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         results = []
-        for result in self._boto2_pager(self.aws.boto2(self._zone, 'iam').list_instance_profiles,
+        for result in self._boto2_pager(self.aws.boto2(self._region, 'iam').list_instance_profiles,
                                         'instance_profiles'):
             # For each Boto2 role object
             # Grab out the name
@@ -1550,7 +1548,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         # Grab the connection we need to use for this operation.
-        iam = self.aws.client(self._zone, 'iam')
+        iam = self.aws.client(self._region, 'iam')
 
         return [item['InstanceProfileName'] for item in self._pager(iam.list_instance_profiles_for_role,
                                                                     'InstanceProfiles',
@@ -1567,7 +1565,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         # Grab the connection we need to use for this operation.
-        iam = self.aws.client(self._zone, 'iam')
+        iam = self.aws.client(self._region, 'iam')
 
         # TODO: we don't currently use attached policies.
 
@@ -1583,7 +1581,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         # Grab the connection we need to use for this operation.
-        iam = self.aws.client(self._zone, 'iam')
+        iam = self.aws.client(self._region, 'iam')
 
         return list(self._pager(iam.list_role_policies,
                                 'PolicyNames',
@@ -1663,7 +1661,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         # Grab the connection we need to use for this operation.
-        iam = self.aws.boto2(self._zone, 'iam')
+        iam = self.aws.boto2(self._region, 'iam')
 
         # Make sure we can tell our roles apart from roles for other clusters
         aws_role_name = self._namespace_name(local_role_name)
@@ -1717,7 +1715,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         # Grab the connection we need to use for this operation.
-        iam = self.aws.boto2(self._zone, 'iam')
+        iam = self.aws.boto2(self._region, 'iam')
 
         policy = dict(iam_full=self.full_policy('iam'), ec2_full=self.full_policy('ec2'),
                       s3_full=self.full_policy('s3'), sbd_full=self.full_policy('sdb'))
