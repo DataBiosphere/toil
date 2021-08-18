@@ -153,8 +153,12 @@ class AWSConnectionManager:
     Access to any kind of item goes through the particular method for the thing
     you want (session, resource, service, Boto2 Context), and then you pass the
     region you want to work in, and possibly the type of thing you want, as arguments.
+
+    This class is intended to eventually enable multi-region clusters, where
+    connections to multiple regions may need to be managed in the same
+    provisioner.
     """
-    
+
     # TODO: mypy is going to have !!FUN!! with this API because the final type
     # we get out (and whether it has the right methods for where we want to use
     # it) depends on having the right string value for the service. We could
@@ -236,8 +240,9 @@ class AWSProvisioner(AbstractProvisioner):
         # After self.clusterName is set, generate a valid name for the S3 bucket associated with this cluster
         suffix = _S3_BUCKET_INTERNAL_SUFFIX
         self.s3_bucket_name = self.clusterName[:_S3_BUCKET_MAX_NAME_LEN - len(suffix)] + suffix
-        
-        # And now that self._zone is set, determine our region to work in
+
+        # And now that self._zone is set, determine our region to work in.
+        # TODO: support multiple regions in one cluster
         self._region = zone_to_region(self._zone)
 
     def supportedClusterTypes(self):
