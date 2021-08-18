@@ -192,7 +192,7 @@ class AWSConnectionManager:
         """
         key = (region, service_name)
         if key not in self.resource_cache:
-            self.resource_cache[key] = self.session(zone).resource(service_name)
+            self.resource_cache[key] = self.session(region).resource(service_name)
         return self.resource_cache[key]
 
     def client(self, region: str, service_name: str) -> botocore.client.BaseClient:
@@ -201,7 +201,7 @@ class AWSConnectionManager:
         """
         key = (region, service_name)
         if key not in self.client_cache:
-            self.client_cache[key] = self.session(zone).client(service_name)
+            self.client_cache[key] = self.session(region).client(service_name)
         return self.client_cache[key]
 
     def boto2(self, region: str, service_name: str) -> boto.connection.AWSAuthConnection:
