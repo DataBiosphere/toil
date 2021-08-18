@@ -37,6 +37,8 @@ from boto.exception import BotoServerError, EC2ResponseError
 from boto.utils import get_instance_metadata
 from boto.ec2.instance import Instance as Boto2Instance
 
+from toil.lib.aws.utils import create_s3_bucket
+from toil.lib.conversions import human2bytes
 from toil.lib.ec2 import (a_short_time,
                           create_auto_scaling_group,
                           create_instances,
@@ -56,7 +58,9 @@ from toil.lib.retry import (get_error_body,
                             get_error_code,
                             get_error_message,
                             get_error_status,
-                            old_retry)
+                            old_retry,
+                            retry,
+                            ErrorCondition)
 from toil.provisioners import NoSuchClusterException
 from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
                                                    Shape,
@@ -77,6 +81,11 @@ _TAG_KEY_TOIL_CLUSTER_NAME = 'clusterName'
 # unavailable to jobs when the node comes up?
 # TODO: measure
 _STORAGE_ROOT_OVERHEAD_GIGS = 4
+# The maximum length of a S3 bucket
+_S3_BUCKET_MAX_NAME_LEN = 63
+# The suffix of the S3 bucket associated with the cluster
+_S3_BUCKET_INTERNAL_SUFFIX = '--internal'
+
 
 def awsRetryPredicate(e):
     if isinstance(e, socket.gaierror):
@@ -95,8 +104,10 @@ def awsRetryPredicate(e):
         return True
     return False
 
+
 def expectedShutdownErrors(e):
     return get_error_status(e) == 400 and 'dependent object' in get_error_body(e)
+
 
 def awsRetry(f):
     """
@@ -128,6 +139,7 @@ def awsFilterImpairedNodes(nodes, ec2):
     logger.warning('TOIL_AWS_NODE_DEBUG is set and nodes %s have failed EC2 status checks so '
                    'will not be terminated.', ' '.join(impairedNodes))
     return healthyNodes
+
 
 class InvalidClusterStateException(Exception):
     pass
@@ -219,7 +231,9 @@ class AWSProvisioner(AbstractProvisioner):
         # or readClusterSettings()
         super(AWSProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
 
-
+        # After self.clusterName is set, generate a valid name for the S3 bucket associated with this cluster
+        suffix = _S3_BUCKET_INTERNAL_SUFFIX
+        self.s3_bucket_name = self.clusterName[:_S3_BUCKET_MAX_NAME_LEN - len(suffix)] + suffix
 
     def supportedClusterTypes(self):
         return {'mesos', 'kubernetes'}
@@ -265,6 +279,60 @@ class AWSProvisioner(AbstractProvisioner):
         # workers for this leader.
         self._setLeaderWorkerAuthentication()
 
+    @retry(errors=[ErrorCondition(
+        error=ClientError,
+        error_codes=[404, 500, 502, 503, 504]
+    )])
+    def _write_file_to_cloud(self, key: str, contents: bytes) -> str:
+        bucket_name = self.s3_bucket_name
+
+        # Connect to S3
+        s3 = self.aws.resource(self._zone, 's3')
+        s3_client = self.aws.client(self._zone, 's3')
+        # Determine what region to put the bucket in
+        region = zone_to_region(self._zone)
+
+        # create bucket if needed, then write file to S3
+        try:
+            # the head_bucket() call makes sure that the bucket exists and the user can access it
+            s3_client.head_bucket(Bucket=bucket_name)
+            bucket = s3.Bucket(bucket_name)
+        except ClientError as err:
+            if err.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+                bucket = create_s3_bucket(s3, bucket_name=bucket_name, region=region)
+                bucket.wait_until_exists()
+                bucket.Versioning().enable()
+
+                owner_tag = os.environ.get('TOIL_OWNER_TAG')
+                if owner_tag:
+                    bucket_tagging = s3.BucketTagging(bucket_name)
+                    bucket_tagging.put(Tagging={'TagSet': [{'Key': 'Owner', 'Value': owner_tag}]})
+            else:
+                raise
+
+        # write file to bucket
+        logger.debug(f'Writing "{key}" to bucket "{bucket_name}"...')
+        obj = bucket.Object(key=key)
+        obj.put(Body=contents)
+
+        obj.wait_until_exists()
+        return f's3://{bucket_name}/{key}'
+
+    def _read_file_from_cloud(self, key: str) -> bytes:
+        bucket_name = self.s3_bucket_name
+        obj = self.aws.resource(self._zone, 's3').Object(bucket_name, key)
+
+        try:
+            return obj.get().get('Body').read()
+        except ClientError as e:
+            if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+                logger.warning(f'Trying to read non-existent file "{key}" from {bucket_name}.')
+            raise
+
+    def _get_user_data_limit(self) -> int:
+        # See: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-add-user-data.html
+        return human2bytes('16KB')
+
     def launchCluster(self,
                       leaderNodeType: str,
                       leaderStorage: int,
@@ -297,7 +365,6 @@ class AWSProvisioner(AbstractProvisioner):
                 # Kubernetes won't run here.
                 raise RuntimeError('Kubernetes requires 2 or more cores, and %s is too small' %
                                    leaderNodeType)
-
 
         self._keyName = keyName
 
@@ -534,9 +601,9 @@ class AWSProvisioner(AbstractProvisioner):
             # the root volume
             disk = self._nodeStorageOverrides.get(instance_type, self._nodeStorage) * 2 ** 30
 
-        #Underestimate memory by 100M to prevent autoscaler from disagreeing with
-        #mesos about whether a job can run on a particular node type
-        memory = (type_info.memory - 0.1) * 2** 30
+        # Underestimate memory by 100M to prevent autoscaler from disagreeing with
+        # mesos about whether a job can run on a particular node type
+        memory = (type_info.memory - 0.1) * 2 ** 30
         return Shape(wallTime=60 * 60,
                      memory=memory,
                      cores=type_info.cores,
@@ -574,7 +641,7 @@ class AWSProvisioner(AbstractProvisioner):
                     self.aws.client(self._zone, 'autoscaling').delete_auto_scaling_group(AutoScalingGroupName=asgName, ForceDelete=True)
                     removed = True
         if removed:
-            logger.debug('... Succesfully deleted autoscaling groups')
+            logger.debug('... Successfully deleted autoscaling groups')
 
         # Do the workers after the ASGs because some may belong to ASGs
         logger.info('Terminating any remaining workers ...')
@@ -590,7 +657,7 @@ class AWSProvisioner(AbstractProvisioner):
             self._terminateInstances(instancesToTerminate)
             removed = True
         if removed:
-            logger.debug('... Succesfully terminated workers')
+            logger.debug('... Successfully terminated workers')
 
         logger.info('Deleting launch templates ...')
         removed = False
@@ -609,8 +676,7 @@ class AWSProvisioner(AbstractProvisioner):
             # We missed something
             removed = False
         if removed:
-            logger.debug('... Succesfully deleted launch templates')
-
+            logger.debug('... Successfully deleted launch templates')
 
         if len(instances) == len(instancesToTerminate):
             # All nodes are gone now.
@@ -637,13 +703,37 @@ class AWSProvisioner(AbstractProvisioner):
                                 else:
                                     raise
             if removed:
-                logger.debug('... Succesfully deleted security group')
+                logger.debug('... Successfully deleted security group')
         else:
             assert len(instances) > len(instancesToTerminate)
             # the security group can't be deleted until all nodes are terminated
             logger.warning('The TOIL_AWS_NODE_DEBUG environment variable is set and some nodes '
                            'have failed health checks. As a result, the security group & IAM '
                            'roles will not be deleted.')
+
+        # delete S3 buckets that might have been created by `self._write_file_to_cloud()`
+        logger.info('Deleting S3 buckets ...')
+        removed = False
+        for attempt in old_retry(timeout=300, predicate=awsRetryPredicate):
+            with attempt:
+                # Grab the S3 resource to use
+                s3 = self.aws.resource(self._zone, 's3')
+                try:
+                    bucket = s3.Bucket(self.s3_bucket_name)
+
+                    bucket.objects.all().delete()
+                    bucket.object_versions.delete()
+                    bucket.delete()
+                    removed = True
+                except s3.meta.client.exceptions.NoSuchBucket:
+                    pass
+                except ClientError as e:
+                    if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+                        pass
+                    else:
+                        raise  # retry this
+        if removed:
+            print('... Successfully deleted S3 buckets')
 
     def terminateNodes(self, nodes : List[Node]):
         self._terminateIDs([x.name for x in nodes])
@@ -875,7 +965,6 @@ class AWSProvisioner(AbstractProvisioner):
             )
         return leader
 
-
     def getLeader(self, wait=False) -> Node:
         """
         Get the leader for the cluster as a Toil Node object.
@@ -960,7 +1049,7 @@ class AWSProvisioner(AbstractProvisioner):
             for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                 with attempt:
                     self.aws.client(self._zone, 'iam').delete_role(RoleName=role_name)
-                    logger.debug('... Succesfully deleted IAM role %s', role_name)
+                    logger.debug('... Successfully deleted IAM role %s', role_name)
 
 
     @awsRetry
@@ -1020,7 +1109,7 @@ class AWSProvisioner(AbstractProvisioner):
             # virtual block device in the VM
             bdms.append({
                 'DeviceName': bdtKeys[disk],
-                'VirtualName': 'ephemeral{}'.format(disk - 1) # ephemeral counts start at 0
+                'VirtualName': 'ephemeral{}'.format(disk - 1)  # ephemeral counts start at 0
             })
         logger.debug('Device mapping: %s', bdms)
         return bdms
@@ -1189,7 +1278,7 @@ class AWSProvisioner(AbstractProvisioner):
         if len(templates) > 1:
             # There shouldn't ever be multiple templates with our reserved name
             raise RuntimeError(f"Multiple launch templates already exist named {lt_name}; "
-                                "something else is operating in our cluster namespace.")
+                               "something else is operating in our cluster namespace.")
         elif len(templates) == 0:
             # Template doesn't exist so we can create it.
             try:
@@ -1206,7 +1295,6 @@ class AWSProvisioner(AbstractProvisioner):
         else:
             # There must be exactly one template
             return templates[0]
-
 
     def _name_worker_launch_template(self, instance_type: str, preemptable: bool = False) -> str:
         """
@@ -1648,14 +1736,14 @@ class AWSProvisioner(AbstractProvisioner):
         profile_arn = profile.arn
 
         if len(profile.roles) > 1:
-                raise RuntimeError('Did not expect profile to contain more than one role')
+            raise RuntimeError('Did not expect profile to contain more than one role')
         elif len(profile.roles) == 1:
             # this should be profile.roles[0].role_name
             if profile.roles.member.role_name == iamRoleName:
                 return profile_arn
             else:
                 iam.remove_role_from_instance_profile(iamRoleName,
-                                                                profile.roles.member.role_name)
+                                                      profile.roles.member.role_name)
         for attempt in old_retry(predicate=lambda err: err.status == 404):
             with attempt:
                 iam.add_role_to_instance_profile(iamRoleName, iamRoleName)

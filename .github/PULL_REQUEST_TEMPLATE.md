@@ -19,7 +19,7 @@ To be copied to the [draft changelog](https://github.com/DataBiosphere/toil/wiki
     * [ ] New functions without [type hints](https://docs.python.org/3/library/typing.html).
     * [ ] New functions or classes without informative docstrings.
     * [ ] Changes to semantics not reflected in the relevant docstrings.
-    * [ ] New or changed command line options for Toil workflows that are not reflected in `docs/running/cliOptions.rst`
+    * [ ] New or changed command line options for Toil workflows that are not reflected in `docs/running/{cliOptions,cwl,wdl}.rst` 
     * [ ] New features without tests.
 * [ ] Comment on the lines of code where problems exist with a review comment. You can shift-click the line numbers in the diff to select multiple lines.
 * [ ] Finish the review with an overall description of your opinion.
