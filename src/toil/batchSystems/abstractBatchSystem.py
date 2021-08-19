@@ -110,11 +110,13 @@ class AbstractBatchSystem(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def issueBatchJob(self, jobDesc):
+    def issueBatchJob(self, jobDesc, job_environment: Optional[Dict[str, str]] = None):
         """
         Issues a job with the specified command to the batch system and returns a unique jobID.
 
         :param jobDesc a toil.job.JobDescription
+        :param job_environment: a collection of job-specific environment variables
+                                to be set on the worker.
 
         :return: a unique jobID that can be used to reference the newly issued job
         :rtype: int
@@ -442,6 +444,7 @@ class BatchSystemLocalSupport(BatchSystemSupport):
     def shutdownLocal(self):  # type: () -> None
         """To be called from shutdown()"""
         self.localBatch.shutdown()
+
 
 class BatchSystemCleanupSupport(BatchSystemLocalSupport):
     """
