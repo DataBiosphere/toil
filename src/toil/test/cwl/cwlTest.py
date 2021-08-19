@@ -581,14 +581,14 @@ class CWLv12Test(ToilTest):
         cwlfile = "src/toil/test/cwl/stream.cwl"
         jobfile = "src/toil/test/cwl/stream.json"
         out_name = "output"
+        jobstore = f'--jobStore=aws:us-west-1:cwltoil-streaming-test-{uuid.uuid4()}'
         from toil.cwl import cwltoil
 
         st = StringIO()
         args = [
             "--outdir",
             self.outDir,
-            "--jobstore",
-            "aws:us-west-1:cwltoil-streaming-test",
+            jobstore,
             os.path.join(self.rootDir, cwlfile),
             os.path.join(self.rootDir, jobfile),
         ]
