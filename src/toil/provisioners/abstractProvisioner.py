@@ -1196,8 +1196,7 @@ class AbstractProvisioner(ABC):
         # Check if the config size exceeds the user data limit. If so, we'll
         # write it to the cloud and let Ignition fetch it during startup.
 
-        # user_data_limit: int = self._get_user_data_limit()
-        user_data_limit: int = 100  # TODO: this is only for testing
+        user_data_limit: int = self._get_user_data_limit()
 
         if len(user_data) > user_data_limit:
             logger.warning(f"Ignition config size exceeds the user data limit ({len(user_data)} > {user_data_limit}).  "
