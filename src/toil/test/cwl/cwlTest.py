@@ -581,7 +581,7 @@ class CWLv12Test(ToilTest):
         cwlfile = "src/toil/test/cwl/stream.cwl"
         jobfile = "src/toil/test/cwl/stream.json"
         out_name = "output"
-        jobstore = f'--jobStore=aws:us-west-1:cwltoil-streaming-test-{uuid.uuid4()}'
+        jobstore = f'--jobStore=aws:us-west-1:toil-stream-{uuid.uuid4()}'
         from toil.cwl import cwltoil
 
         st = StringIO()
