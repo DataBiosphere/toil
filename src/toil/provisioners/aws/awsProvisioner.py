@@ -162,7 +162,7 @@ class AWSConnectionManager:
     
     Since connection objects may not be thread safe (see
     <https://boto3.amazonaws.com/v1/documentation/api/1.14.31/guide/session.html#multithreading-or-multiprocessing-with-sessions>),
-    one is created per thread.
+    one is created for each thread that calls the relevant lookup method.
     """
 
     # TODO: mypy is going to have !!FUN!! with this API because the final type
@@ -587,8 +587,9 @@ class AWSProvisioner(AbstractProvisioner):
         # If we don't find a subnet, something is wrong. Maybe this zone was
         # added after your account?
         raise RuntimeError(f"No default subnet found in availability zone {zone}. "
-                           f"Specify a VPC subnet ID to use, or create a default "
-                           f"subnet in the zone.")
+                           f"Note that Amazon does not add default subnets for new "
+                           f"zones to old accounts. Specify a VPC subnet ID to use, "
+                           f"or create a default subnet in the zone.")
 
     def getKubernetesAutoscalerSetupCommands(self, values: Dict[str, str]) -> str:
         """
