@@ -71,3 +71,7 @@ BATCH_SYSTEM_FACTORY_REGISTRY = {
 }
 BATCH_SYSTEMS = list(BATCH_SYSTEM_FACTORY_REGISTRY.keys())
 DEFAULT_BATCH_SYSTEM = 'single_machine'
+
+def addBatchSystemFactory(key, batchSystemFactory):
+    BATCH_SYSTEMS.append(key)
+    BATCH_SYSTEM_FACTORY_REGISTRY[key] = batchSystemFactory
