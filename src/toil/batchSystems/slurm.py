@@ -15,7 +15,7 @@ import logging
 import math
 import os
 from pipes import quote
-from typing import List
+from typing import List, Dict, Optional
 
 from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
 from toil.lib.misc import CalledProcessErrorStderr, call_command
@@ -52,8 +52,14 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         def killJob(self, jobID):
             call_command(['scancel', self.getBatchSystemID(jobID)])
 
-        def prepareSubmission(self, cpu, memory, jobID, command, jobName):
-            return self.prepareSbatch(cpu, memory, jobID, jobName) + ['--wrap={}'.format(command)]
+        def prepareSubmission(self,
+                              cpu: int,
+                              memory: int,
+                              jobID: int,
+                              command: str,
+                              jobName: str,
+                              job_environment: Optional[Dict[str, str]] = None) -> List[str]:
+            return self.prepareSbatch(cpu, memory, jobID, jobName, job_environment) + ['--wrap={}'.format(command)]
 
         def submitJob(self, subLine):
             try:
@@ -159,14 +165,25 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         Implementation-specific helper methods
         """
 
-        def prepareSbatch(self, cpu: int, mem: int, jobID: int, jobName: str) -> List[str]:
+        def prepareSbatch(self,
+                          cpu: int,
+                          mem: int,
+                          jobID: int,
+                          jobName: str,
+                          job_environment: Optional[Dict[str, str]]) -> List[str]:
+
             #  Returns the sbatch command line before the script to run
             sbatch_line = ['sbatch', '-J', 'toil_job_{}_{}'.format(jobID, jobName)]
 
-            if self.boss.environment:
+            environment = {}
+            environment.update(self.boss.environment)
+            if job_environment:
+                environment.update(job_environment)
+
+            if environment:
                 argList = []
 
-                for k, v in self.boss.environment.items():
+                for k, v in environment.items():
                     quoted_value = quote(os.environ[k] if v is None else v)
                     argList.append('{}={}'.format(k, quoted_value))
 
