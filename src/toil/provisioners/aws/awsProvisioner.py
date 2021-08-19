@@ -11,12 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import collections
 import json
 import logging
 import os
 import socket
 import string
 import textwrap
+import threading
 import time
 import uuid
 
@@ -157,6 +159,10 @@ class AWSConnectionManager:
     This class is intended to eventually enable multi-region clusters, where
     connections to multiple regions may need to be managed in the same
     provisioner.
+    
+    Since connection objects may not be thread safe (see
+    <https://boto3.amazonaws.com/v1/documentation/api/1.14.31/guide/session.html#multithreading-or-multiprocessing-with-sessions>),
+    one is created per thread.
     """
 
     # TODO: mypy is going to have !!FUN!! with this API because the final type
@@ -169,40 +175,49 @@ class AWSConnectionManager:
         """
         Make a new empty AWSConnectionManager.
         """
-        # This stores Boto3 sessions by region
-        self.sessions_by_region = {}
-        # This stores Boto3 resources by (region, service name) tuples
-        self.resource_cache = {}
-        # This stores Boto3 clients by (region, service name) tuples
-        self.client_cache = {}
-        # This stores Boto 2 connections by (region, service name) tuples.
-        self.boto2_cache = {}
+        # This stores Boto3 sessions in .item of a thread-local storage, by
+        # region.
+        self.sessions_by_region = collections.defaultdict(threading.local)
+        # This stores Boto3 resources in .item of a thread-local storage, by
+        # (region, service name) tuples
+        self.resource_cache = collections.defaultdict(threading.local)
+        # This stores Boto3 clients in .item of a thread-local storage, by
+        # (region, service name) tuples
+        self.client_cache = collections.defaultdict(threading.local)
+        # This stores Boto 2 connections in .item of a thread-local storage, by
+        # (region, service name) tuples.
+        self.boto2_cache = collections.defaultdict(threading.local)
 
     def session(self, region: str) -> boto3.session.Session:
         """
         Get the Boto3 Session to use for the given region.
         """
-        if region not in self.sessions_by_region:
-            self.sessions_by_region[region] = establish_boto3_session(region_name=region)
-        return self.sessions_by_region[region]
+        storage = self.sessions_by_region[region]
+        if not hasattr(storage, 'item'):
+            # This is the first time this thread wants to talk to this region
+            # through this manager
+            storage.item = establish_boto3_session(region_name=region)
+        return storage.item
 
     def resource(self, region: str, service_name: str) -> boto3.resources.base.ServiceResource:
         """
         Get the Boto3 Resource to use with the given service (like 'ec2') in the given region.
         """
         key = (region, service_name)
-        if key not in self.resource_cache:
-            self.resource_cache[key] = self.session(region).resource(service_name)
-        return self.resource_cache[key]
+        storage = self.resource_cache[key]
+        if not hasattr(storage, 'item'):
+            storage.item = self.session(region).resource(service_name)
+        return storage.item
 
     def client(self, region: str, service_name: str) -> botocore.client.BaseClient:
         """
         Get the Boto3 Client to use with the given service (like 'ec2') in the given region.
         """
         key = (region, service_name)
-        if key not in self.client_cache:
-            self.client_cache[key] = self.session(region).client(service_name)
-        return self.client_cache[key]
+        storage = self.client_cache[key]
+        if not hasattr(storage, 'item'):
+            storage.item = self.session(region).client(service_name)
+        return storage.item
 
     def boto2(self, region: str, service_name: str) -> boto.connection.AWSAuthConnection:
         """
@@ -212,9 +227,10 @@ class AWSConnectionManager:
             # IAM connections are regionless
             region = 'universal'
         key = (region, service_name)
-        if key not in self.boto2_cache:
-            self.boto2_cache[key] = getattr(boto, service_name).connect_to_region(region)
-        return self.boto2_cache[key]
+        storage = self.boto2_cache[key]
+        if not hasattr(storage, 'item'):
+            storage.item = getattr(boto, service_name).connect_to_region(region)
+        return storage.item
 
 class AWSProvisioner(AbstractProvisioner):
     def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):
