@@ -41,6 +41,7 @@ log = logging.getLogger(__name__)
 
 GOOGLE_STORAGE = 'gs'
 
+MAX_BATCH_SIZE = 1000
 
 # TODO
 #   - needed to run 'gsutil config' to get 'gs_oauth2_refresh_token' in the boto file
@@ -158,17 +159,20 @@ class GoogleJobStore(AbstractJobStore):
         except exceptions.NotFound:
             # just return if not connect to physical storage. Needed for idempotency
             return
+        
         try:
             self.bucket.delete(force=True)
             # throws ValueError if bucket has more than 256 objects. Then we must delete manually
         except ValueError:
-            self.bucket.delete_blobs(self.bucket.list_blobs())
+            # use google batching to delete. Improved efficiency compared to deleting sequentially 
+            blobs_to_delete = self.buckets.list_blobs()
+            count = 0
+            while count < len(blobs_to_delete):
+                with self.storageClient.batch():
+                    for blob in blobs_to_delete[count:count + MAX_BATCH_SIZE]:
+                        blob.delete()
+                    count = count + MAX_BATCH_SIZE
             self.bucket.delete()
-            # if ^ throws a google.cloud.exceptions.Conflict, then we should have a deletion retry mechanism.
-
-        # google freaks out if we call delete multiple times on the bucket obj, so after success
-        # just set to None.
-        self.bucket = None
 
     def _newJobID(self):
         return "job"+str(uuid.uuid4())
@@ -179,8 +183,13 @@ class GoogleJobStore(AbstractJobStore):
                   jobStoreID, '<no command>' if jobDescription.command is None else jobDescription.command)
         jobDescription.jobStoreID = jobStoreID
 
+    @contextmanager
+    def batch(self):
+        # not implemented, google could storage does not support batching for uploading or downloading (2021)
+        yield
+        
+
     def create(self, jobDescription):
-        # TODO: we don't implement batching, but we probably should.
         jobDescription.pre_update_hook()
         self._writeBytes(jobDescription.jobStoreID, pickle.dumps(jobDescription, protocol=pickle.HIGHEST_PROTOCOL))
         return jobDescription
