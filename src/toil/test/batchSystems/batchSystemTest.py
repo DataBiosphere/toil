@@ -36,7 +36,8 @@ from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
-                                        DEFAULT_BATCH_SYSTEM,
+                                        BATCH_SYSTEMS,
+                                        single_machine_batch_system_factory,
                                         addBatchSystemFactory)
 from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
@@ -289,6 +290,14 @@ class hidden(object):
                 time.sleep(1)
             return runningIDs
 
+        def testAddBatchSystemFactory(self):
+            def test_batch_system_factory():
+                return SingleMachineBatchSystem
+
+            addBatchSystemFactory('testBatchSystem', test_batch_system_factory)
+            assert ('testBatchSystem', test_batch_system_factory) in BATCH_SYSTEM_FACTORY_REGISTRY.items()
+            assert 'testBatchSystem' in BATCH_SYSTEMS
+
     class AbstractBatchSystemJobTest(ToilTest, metaclass=ABCMeta):
         """
         An abstract base class for batch system tests that use a full Toil workflow rather
@@ -347,6 +356,7 @@ class hidden(object):
                 Job.Runner.startToil(root, options)
                 _, maxValue = getCounters(counterPath)
                 self.assertEqual(maxValue, self.cpuCount // coresPerJob)
+        
 
     class AbstractGridEngineBatchSystemTest(AbstractBatchSystemTest):
         """
