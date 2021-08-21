@@ -17,7 +17,7 @@ from abc import ABCMeta, abstractmethod
 from datetime import datetime
 from queue import Empty, Queue
 from threading import Lock, Thread
-from typing import Any, List, Union
+from typing import Any, List, Dict, Union, Optional
 
 from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
                                                    BatchSystemCleanupSupport,
@@ -107,10 +107,10 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             while len(self.waitingJobs) > 0 and \
                     len(self.runningJobs) < int(self.boss.config.maxLocalJobs):
                 activity = True
-                jobID, cpu, memory, command, jobName = self.waitingJobs.pop(0)
+                jobID, cpu, memory, command, jobName, environment = self.waitingJobs.pop(0)
 
                 # prepare job submission command
-                subLine = self.prepareSubmission(cpu, memory, jobID, command, jobName)
+                subLine = self.prepareSubmission(cpu, memory, jobID, command, jobName, environment)
                 logger.debug("Running %r", subLine)
                 batchJobID = self.boss.with_retries(self.submitJob, subLine)
                 logger.debug("Submitted job %s", str(batchJobID))
@@ -255,29 +255,35 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 logger.error("GridEngine like batch system failure", exc_info=ex)
                 raise
 
-        @abstractmethod
         def coalesce_job_exit_codes(self, batch_job_id_list: list) -> list:
             """
             Returns exit codes for a list of jobs.
             Implementation-specific; called by
             AbstractGridEngineWorker.checkOnJobs()
-            :param string batchjobIDList: List of batch system job ID
+            :param string batch_job_id_list: List of batch system job ID
             """
             raise NotImplementedError()
 
         @abstractmethod
-        def prepareSubmission(self, cpu, memory, jobID, command, jobName):
+        def prepareSubmission(self,
+                              cpu: int,
+                              memory: int,
+                              jobID: int,
+                              command: str,
+                              jobName: str,
+                              job_environment: Optional[Dict[str, str]] = None) -> List[str]:
             """
             Preparation in putting together a command-line string
             for submitting to batch system (via submitJob().)
 
-            :param: string cpu
-            :param: string memory
-            :param: string jobID  : Toil job ID
+            :param: int cpu
+            :param: int memory
+            :param: int jobID: Toil job ID
             :param: string subLine: the command line string to be called
             :param: string jobName: the name of the Toil job, to provide metadata to batch systems if desired
+            :param: dict job_environment: the environment variables to be set on the worker
 
-            :rtype: string
+            :rtype: List[str]
             """
             raise NotImplementedError()
 
@@ -354,7 +360,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     def supportsAutoDeployment(cls):
         return False
 
-    def issueBatchJob(self, jobDesc):
+    def issueBatchJob(self, jobDesc, job_environment: Optional[Dict[str, str]] = None):
         # Avoid submitting internal jobs to the batch queue, handle locally
         localID = self.handleLocalJob(jobDesc)
         if localID:
@@ -363,7 +369,8 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             self.checkResourceRequest(jobDesc.memory, jobDesc.cores, jobDesc.disk)
             jobID = self.getNextJobID()
             self.currentJobs.add(jobID)
-            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, jobDesc.jobName))
+            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, jobDesc.jobName,
+                                   job_environment))
             logger.debug("Issued the job command: %s with job id: %s and job name %s", jobDesc.command, str(jobID),
                          jobDesc.jobName)
         return jobID

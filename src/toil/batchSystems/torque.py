@@ -19,6 +19,7 @@ import tempfile
 import time
 from pipes import quote
 from queue import Empty
+from typing import Optional, List, Dict
 
 from toil.batchSystems.abstractGridEngineBatchSystem import (AbstractGridEngineBatchSystem,
                                                              UpdatedBatchJobInfo)
@@ -110,8 +111,14 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
         def killJob(self, jobID):
             call_command(['qdel', self.getBatchSystemID(jobID)])
 
-        def prepareSubmission(self, cpu, memory, jobID, command, jobName):
-            return self.prepareQsub(cpu, memory, jobID) + [self.generateTorqueWrapper(command, jobID)]
+        def prepareSubmission(self,
+                              cpu: int,
+                              memory: int,
+                              jobID: int,
+                              command: str,
+                              jobName: str,
+                              job_environment: Optional[Dict[str, str]] = None) -> List[str]:
+            return self.prepareQsub(cpu, memory, jobID, job_environment) + [self.generateTorqueWrapper(command, jobID)]
 
         def submitJob(self, subLine):
             return call_command(subLine)
@@ -143,14 +150,22 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
         """
         Implementation-specific helper methods
         """
-        def prepareQsub(self, cpu, mem, jobID):
+        def prepareQsub(self,
+                        cpu: int,
+                        mem: int,
+                        jobID: int,
+                        job_environment: Optional[Dict[str, str]]) -> List[str]:
 
             # TODO: passing $PWD on command line not working for -d, resorting to
             # $PBS_O_WORKDIR but maybe should fix this here instead of in script?
 
             qsubline = ['qsub', '-S', '/bin/sh', '-V', '-N', 'toil_job_{}'.format(jobID)]
 
-            if self.boss.environment:
+            environment = self.boss.environment.copy()
+            if job_environment:
+                environment.update(job_environment)
+
+            if environment:
                 qsubline.append('-v')
                 qsubline.append(','.join(k + '=' + quote(os.environ[k] if v is None else v)
                                          for k, v in self.boss.environment.items()))
@@ -165,23 +180,23 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             # Other resource requirements can be passed through the environment (see man qsub)
             reqlineEnv = os.getenv('TOIL_TORQUE_REQS')
             if reqlineEnv is not None:
-                logger.debug("Additional Torque resource requirements appended to qsub from "\
-                        "TOIL_TORQUE_REQS env. variable: {}".format(reqlineEnv))
+                logger.debug("Additional Torque resource requirements appended to qsub from "
+                             "TOIL_TORQUE_REQS env. variable: {}".format(reqlineEnv))
                 if ("mem=" in reqlineEnv) or ("nodes=" in reqlineEnv) or ("ppn=" in reqlineEnv):
                     raise ValueError("Incompatible resource arguments ('mem=', 'nodes=', 'ppn='): {}".format(reqlineEnv))
 
                 reqline.append(reqlineEnv)
 
             if reqline:
-                qsubline += ['-l',','.join(reqline)]
+                qsubline += ['-l', ','.join(reqline)]
 
             # All other qsub parameters can be passed through the environment (see man qsub).
             # No attempt is made to parse them out here and check that they do not conflict
             # with those that we already constructed above
             arglineEnv = os.getenv('TOIL_TORQUE_ARGS')
             if arglineEnv is not None:
-                logger.debug("Native Torque options appended to qsub from TOIL_TORQUE_ARGS env. variable: {}".\
-                        format(arglineEnv))
+                logger.debug("Native Torque options appended to qsub from TOIL_TORQUE_ARGS env. variable: {}"
+                             .format(arglineEnv))
                 if ("mem=" in arglineEnv) or ("nodes=" in arglineEnv) or ("ppn=" in arglineEnv):
                     raise ValueError("Incompatible resource arguments ('mem=', 'nodes=', 'ppn='): {}".format(arglineEnv))
                 qsubline += shlex.split(arglineEnv)
