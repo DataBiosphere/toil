@@ -356,7 +356,6 @@ class hidden(object):
                 Job.Runner.startToil(root, options)
                 _, maxValue = getCounters(counterPath)
                 self.assertEqual(maxValue, self.cpuCount // coresPerJob)
-        
 
     class AbstractGridEngineBatchSystemTest(AbstractBatchSystemTest):
         """
