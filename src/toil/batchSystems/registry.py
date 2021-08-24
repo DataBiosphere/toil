@@ -13,8 +13,10 @@
 # limitations under the License.
 
 
-from typing import Callable, Type
-from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
+from typing import Callable, Type, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
 
 
 def gridengine_batch_system_factory():
