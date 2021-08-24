@@ -78,7 +78,7 @@ BATCH_SYSTEM_FACTORY_REGISTRY = {
 BATCH_SYSTEMS = list(BATCH_SYSTEM_FACTORY_REGISTRY.keys())
 DEFAULT_BATCH_SYSTEM = 'single_machine'
 
-def addBatchSystemFactory(key: str, batchSystemFactory: Callable[[], Type[AbstractBatchSystem]]):
+def addBatchSystemFactory(key: str, batchSystemFactory: Callable[[], Type['AbstractBatchSystem']]):
     """
     Adds a batch system to the registry for workflow-supplied batch systems.
     """
