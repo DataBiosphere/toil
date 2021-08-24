@@ -24,6 +24,7 @@ import time
 import traceback
 from contextlib import contextmanager
 from queue import Empty, Queue
+from typing import Optional, Dict
 from urllib.parse import quote_plus
 from urllib.request import urlopen
 
@@ -167,7 +168,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
     def unignoreNode(self, nodeAddress):
         self.ignoredNodes.remove(nodeAddress)
 
-    def issueBatchJob(self, jobNode: JobDescription):
+    def issueBatchJob(self, jobNode: JobDescription, job_environment: Optional[Dict[str, str]] = None):
         """
         Issues the following command returning a unique jobID. Command is the string to run, memory
         is an int giving the number of bytes the job needs to run in and cores is the number of cpus
@@ -190,12 +191,16 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         )
 
         jobID = self.getNextJobID()
+        environment = self.environment.copy()
+        if job_environment:
+            environment.update(job_environment)
+
         job = ToilJob(jobID=jobID,
                       name=str(jobNode),
                       resources=MesosShape(wallTime=0, **mesos_resources),
                       command=jobNode.command,
                       userScript=self.userScript,
-                      environment=self.environment.copy(),
+                      environment=environment,
                       workerCleanupInfo=self.workerCleanupInfo)
         jobType = job.resources
         log.debug("Queueing the job command: %s with job id: %s ...", jobNode.command, str(jobID))
