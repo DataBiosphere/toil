@@ -35,19 +35,19 @@ class ServiceManager( object ):
         self.__job_store = job_store
 
         self.__toil_state = toil_state
-        
+
         # We call the jobs that have services they need "client" jobs.
-        
+
         # These are all the client jobs that are waiting for their services to
         # start.
         self.__waiting_clients: Set[str] = set()
 
         # This is used to terminate the thread associated with the service
         # manager
-        self.__terminate = Event() 
-        
+        self.__terminate = Event()
+
         # This is the input queue of jobs that have services that need to be started
-        self.__clients_in: Queue[str] = Queue() 
+        self.__clients_in: Queue[str] = Queue()
 
         # This is the output queue of jobs that have services that
         # are already started
@@ -56,13 +56,13 @@ class ServiceManager( object ):
         # This is the output queue of jobs that have services that are unable
         # to start
         self.__failed_clients_out: Queue[str] = Queue()
-        
+
         # This is the queue of services for the batch system to start
         self.__services_out: Queue[str] = Queue()
 
         self.__service_manager_jobs = 0 # The number of jobs the service manager is scheduling
 
-        # Set up the service-managing thread. 
+        # Set up the service-managing thread.
         self.__service_starter = Thread(target=self.__start_services, daemon=True)
 
     def services_are_starting(self, job_id: str) -> bool:
@@ -92,6 +92,9 @@ class ServiceManager( object ):
 
         :param toil.job.JobDescription jobDesc: description job with services to schedule.
         """
+
+        logger.debug("Service manager queueing %s as client", job_desc)
+
         # Add job to set being processed by the service manager
         self.__waiting_clients.add(job_desc.jobStoreID)
 
@@ -218,7 +221,9 @@ class ServiceManager( object ):
                     break
                 try:
                     client_id = self.__clients_in.get_nowait()
-                    host_id_batches = list(self.__toil_state.get_job(client_id).serviceHostIDsInBatches())
+                    client = self.__toil_state.get_job(client_id)
+                    host_id_batches = list(client.serviceHostIDsInBatches())
+                    logger.debug("Service manager processing client %s with %d batches of services", client, len(host_id_batches))
                     if len(host_id_batches) > 1:
                         # Have to fall back to the old blocking behavior to
                         # ensure entire service "groups" are issued as a whole.
@@ -248,7 +253,7 @@ class ServiceManager( object ):
                     logger.debug('%d services are starting...', pending_service_count)
 
                 for service_id in list(starting_services):
-                    service_job_desc = self.__toil_state.get_job(service_id) 
+                    service_job_desc = self.__toil_state.get_job(service_id)
                     if not self.__job_store.fileExists(service_job_desc.startJobStoreID):
                         # Service has started (or failed)
                         logger.debug('Service %s has removed %s and is therefore started', service_job_desc, service_job_desc.startJobStoreID)
@@ -284,7 +289,7 @@ class ServiceManager( object ):
 
         # Keep the user informed, but not too informed, as services start up
         log_limiter = LocalThrottle(60)
-        
+
         # Start the service jobs in batches, waiting for each batch
         # to become established before starting the next batch
         for service_job_list in self.__toil_state.get_job(client_id).serviceHostIDsInBatches():

@@ -23,7 +23,7 @@ import os
 import pickle
 import sys
 import time
-from typing import List
+from typing import List, Set
 
 import enlighten
 
@@ -83,8 +83,6 @@ class FailedJobsException(Exception):
         try:
             self.msg += ": %s" % ", ".join((str(failedJob) for failedJob in failedJobs))
             for jobDesc in failedJobs:
-                # Reload from JobStore. TODO: avoid this!
-                jobDesc = jobStore.load(jobDesc.jobStoreID)
                 if jobDesc.logJobStoreFileID:
                     with jobDesc.getLogFileHandle(jobStore) as fH:
                         self.msg += "\n" + StatsAndLogging.formatLogStream(fH, jobDesc)
@@ -261,7 +259,7 @@ class Leader(object):
                     self.toilMetrics.shutdown()
 
             # Filter the failed jobs
-            self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.jobStore.exists(j.jobStoreID)]
+            self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.toilState.job_exists(j)]
 
             try:
                 self.create_status_sentinel_file(self.toilState.totalFailedJobs)
@@ -273,8 +271,14 @@ class Leader(object):
                     else ("with %s failed jobs." % len(self.toilState.totalFailedJobs))))
 
             if len(self.toilState.totalFailedJobs):
-                logger.info("Failed jobs at end of the run: %s", ' '.join(str(job) for job in self.toilState.totalFailedJobs))
-                raise FailedJobsException(self.config.jobStore, self.toilState.totalFailedJobs,
+                failed_jobs = []
+                for job_id in self.toilState.totalFailedJobs:
+                    # Refresh all the failed jobs to get e.g. the log file IDs that the workers wrote
+                    self.toilState.reset_job(job_id)
+                    failed_jobs.append(self.toilState.get_job(job_id))
+
+                logger.info("Failed jobs at end of the run: %s", ' '.join(str(j) for j in failed_jobs))
+                raise FailedJobsException(self.config.jobStore, failed_jobs,
                                           self.jobStore, exit_code=self.recommended_fail_exit_code)
 
             return self.jobStore.getRootJobReturnValue()
@@ -337,13 +341,13 @@ class Leader(object):
         logger.debug("Successor job: %s of job: %s has multiple "
                      "predecessors", successor, predecessor)
 
-        # Get the successor JobDescription, which is cached
-        if successor.jobStoreID not in self.toilState.jobsToBeScheduledWithMultiplePredecessors:
-            # TODO: We're loading from the job store in an ad-hoc way!
-            loaded = self.jobStore.load(successor.jobStoreID)
-            self.toilState.jobsToBeScheduledWithMultiplePredecessors[successor.jobStoreID] = loaded
+        # Remember that we have multiple predecessors, if we haven't already
+        # TODO: do we ever consult this after building the ToilState?
+        self.toilState.jobsToBeScheduledWithMultiplePredecessors.add(successor.jobStoreID)
+
+        # Grab the cached version of the job, where we have the in-memory finished predecessor info.
         # TODO: we're clobbering a JobDescription we're passing around by value.
-        successor = self.toilState.jobsToBeScheduledWithMultiplePredecessors[successor.jobStoreID]
+        successor = self.toilState.get_job(successor.jobStoreID)
 
         # Add the predecessor as a finished predecessor to the successor
         successor.predecessorsFinished.add(predecessor.jobStoreID)
@@ -351,16 +355,18 @@ class Leader(object):
         # If the successor is in the set of successors of failed jobs
         if successor.jobStoreID in self.toilState.failedSuccessors:
             if not self._handledFailedSuccessor(successor, predecessor):
+                # The job is not ready to run
                 return False
 
         # If the successor job's predecessors have all not all completed then
         # ignore the successor as is not yet ready to run
         assert len(successor.predecessorsFinished) <= successor.predecessorNumber
         if len(successor.predecessorsFinished) < successor.predecessorNumber:
+            # The job is not ready to run
             return False
         else:
-            # Remove the successor job from the cache
-            self.toilState.jobsToBeScheduledWithMultiplePredecessors.pop(successor.jobStoreID)
+            # Remove the successor job from the set of waiting multi-predecessor jobs
+            self.toilState.jobsToBeScheduledWithMultiplePredecessors.remove(successor.jobStoreID)
             return True
 
     def _makeJobSuccessorReadyToRun(self, successor, predecessor):
@@ -403,7 +409,7 @@ class Leader(object):
         successors = []
         for successorID in predecessor.stack[-1]:
             try:
-                successor = self.jobStore.load(successorID)
+                successor = self.toilState.get_job(successorID)
             except NoSuchJobException:
                 # Job already done and gone
                 logger.warning("Job %s is a successor of %s but is already done and gone.", successorID, predecessor.jobStoreID)
@@ -485,14 +491,14 @@ class Leader(object):
             for serviceJobList in readyJob.serviceHostIDsInBatches():
                 for serviceID in serviceJobList:
                     assert serviceID not in self.toilState.serviceJobStoreIDToPredecessorJob
-                    serviceHost = self.jobStore.load(serviceID)
+                    self.toilState.reset_job(serviceID)
+                    serviceHost = self.toilState.get_job(serviceID)
                     self.toilState.serviceJobStoreIDToPredecessorJob[serviceID] = readyJob
                     self.toilState.servicesIssued[readyJob.jobStoreID][serviceID] = serviceHost
 
+            logger.debug("Giving job: %s to service manager to schedule its jobs", readyJob)
             # Use the service manager to start the services
             self.serviceManager.scheduleServices(readyJob)
-
-            logger.debug("Giving job: %s to service manager to schedule its jobs", readyJob.jobStoreID)
         elif len(readyJob.stack) > 0:
             # There are exist successors to run
             self._runJobSuccessors(readyJob)
@@ -985,11 +991,12 @@ class Leader(object):
         jobStoreID = issuedJob.jobStoreID
         if wallTime is not None and self.clusterScaler is not None:
             self.clusterScaler.addCompletedJob(issuedJob, wallTime)
-        if self.jobStore.exists(jobStoreID):
+        if self.toilState.job_exists(jobStoreID):
             logger.debug("Job %s continues to exist (i.e. has more to do)", issuedJob)
             try:
                 # Reload the job as modified by the worker
-                replacementJob = self.jobStore.load(jobStoreID)
+                self.toilState.reset_job(jobStoreID)
+                replacementJob = self.toilState.get_job(jobStoreID)
             except NoSuchJobException:
                 # Avoid importing AWSJobStore as the corresponding extra might be missing
                 if self.jobStore.__class__.__name__ == 'AWSJobStore':
@@ -1053,7 +1060,7 @@ class Leader(object):
                                 logger.warning('The batch system left an empty file %s' % batchSystemFile)
 
                 replacementJob.setupJobAfterFailure(exitReason=exitReason)
-                self.jobStore.update(replacementJob)
+                self.toilState.commit_job(jobStoreID)
 
                 # Show job as failed in progress (and take it from completed)
                 self.progress_overall.update(incr=-1)
@@ -1076,14 +1083,17 @@ class Leader(object):
             # Being done, it won't run again.
             return False
 
-    def getSuccessors(self, jobDesc, alreadySeenSuccessors, jobStore):
+    def getSuccessors(self, job_id: str, alreadySeenSuccessors: Set[str]) -> Set[str]:
         """
         Gets successors of the given job by walking the job graph recursively.
         Any successor in alreadySeenSuccessors is ignored and not traversed.
         Returns the set of found successors. This set is added to alreadySeenSuccessors.
         """
         successors = set()
-        def successorRecursion(jobDesc):
+        def successorRecursion(job_id: str) -> None:
+            # TODO: do we need to reload from the job store here, or is the cache OK?
+            jobDesc = self.toilState.get_job(job_id)
+
             # For lists of successors
             for successorList in jobDesc.stack:
 
@@ -1099,11 +1109,10 @@ class Leader(object):
 
                         # Recurse if job exists
                         # (job may not exist if already completed)
-                        if jobStore.exists(successorID):
-                            loaded = jobStore.load(successorID)
-                            successorRecursion(loaded)
+                        if self.toilState.job_exists(successorID):
+                            successorRecursion(successorID)
 
-        successorRecursion(jobDesc)  # Recurse from passed job
+        successorRecursion(job_id)  # Recurse from passed job
 
         return successors
 
@@ -1112,7 +1121,7 @@ class Leader(object):
         Processes a totally failed job.
         """
         # Mark job as a totally failed job
-        self.toilState.totalFailedJobs.add(jobDesc)
+        self.toilState.totalFailedJobs.add(jobDesc.jobStoreID)
         if self.toilMetrics:
             self.toilMetrics.logFailedJob(jobDesc)
 
@@ -1163,8 +1172,7 @@ class Leader(object):
             # Any successor already in toilState.failedSuccessors will not be traversed
             # All successors traversed will be added to toilState.failedSuccessors and returned
             # as a set (unseenSuccessors).
-            unseenSuccessors = self.getSuccessors(jobDesc, self.toilState.failedSuccessors,
-                                                  self.jobStore)
+            unseenSuccessors = self.getSuccessors(jobDesc.jobStoreID, self.toilState.failedSuccessors)
             logger.debug("Found new failed successors: %s of job: %s", " ".join(
                          unseenSuccessors), jobDesc)
 

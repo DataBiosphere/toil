@@ -446,7 +446,7 @@ class JobDescription(Requirer):
 
         # The IDs of predecessor jobs that have finished. Managed by the Leader
         # and ToilState, and just stored in the JobDescription. Never changed
-        # after the job is scheduled, so we don't ahve to worry about
+        # after the job is scheduled, so we don't have to worry about
         # conflicting updates from workers.
         # TODO: Move into ToilState itself so leader stops mutating us so much?
         self.predecessorsFinished = set()
