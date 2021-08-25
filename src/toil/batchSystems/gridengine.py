@@ -16,6 +16,7 @@ import math
 import os
 import time
 from pipes import quote
+from typing import Optional, List, Dict
 
 from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
 from toil.lib.misc import CalledProcessErrorStderr, call_command
@@ -48,8 +49,14 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
         def killJob(self, jobID):
             call_command(['qdel', self.getBatchSystemID(jobID)])
 
-        def prepareSubmission(self, cpu, memory, jobID, command, jobName):
-            return self.prepareQsub(cpu, memory, jobID) + [command]
+        def prepareSubmission(self,
+                              cpu: int,
+                              memory: int,
+                              jobID: int,
+                              command: str,
+                              jobName: str,
+                              job_environment: Optional[Dict[str, str]] = None):
+            return self.prepareQsub(cpu, memory, jobID, job_environment) + [command]
 
         def submitJob(self, subLine):
             stdout = call_command(subLine)
@@ -94,14 +101,22 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
         """
         Implementation-specific helper methods
         """
-        def prepareQsub(self, cpu: int, mem: int, jobID: int) -> List[str]:
+        def prepareQsub(self,
+                        cpu: int,
+                        mem: int,
+                        jobID: int,
+                        job_environment: Optional[Dict[str, str]] = None) -> List[str]:
             qsubline = ['qsub', '-V', '-b', 'y', '-terse', '-j', 'y', '-cwd',
                         '-N', 'toil_job_' + str(jobID)]
 
-            if self.boss.environment:
+            environment = self.boss.environment.copy()
+            if job_environment:
+                environment.update(job_environment)
+
+            if environment:
                 qsubline.append('-v')
                 qsubline.append(','.join(k + '=' + quote(os.environ[k] if v is None else v)
-                                         for k, v in self.boss.environment.items()))
+                                         for k, v in environment.items()))
 
             reqline = list()
             sgeArgs = os.getenv('TOIL_GRIDENGINE_ARGS')

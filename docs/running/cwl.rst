@@ -95,6 +95,10 @@ printed to the stdout stream after workflow execution.
 ``--stats``: Save resources usages in json files that can be collected with the
 ``toil stats`` command after the workflow is done.
 
+``--disable-streaming``: Does not allow streaming of input files. This is enabled
+by default for files marked with ``streamable`` flag True and only for remote files
+when the jobStore is not on local machine.
+
 Running CWL in the Cloud
 ------------------------
 
