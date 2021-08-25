@@ -581,7 +581,7 @@ class AWSProvisioner(AbstractProvisioner):
             'Values': [zone]
         }]
 
-        for subnet in self.aws.resource(zone, 'ec2').subnets.filter(Filters=filters):
+        for subnet in self.aws.resource(zone_to_region(zone), 'ec2').subnets.filter(Filters=filters):
             # There should only be one result, so when we see it, return it
             return subnet.subnet_id
         # If we don't find a subnet, something is wrong. Maybe this zone was
