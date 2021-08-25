@@ -1,4 +1,4 @@
-image: quay.io/vgteam/vg_ci_prebake:latest
+image: quay.io/jonathanxu18/graviton2-tests:latest
 # Note that we must run in a privileged container for our internal Docker daemon to come up.
 
 variables:
