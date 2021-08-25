@@ -1531,7 +1531,7 @@ class AWSProvisioner(AbstractProvisioner):
     @awsRetry
     def _getRoleNames(self) -> List[str]:
         """
-        Get all the roles belonging to the cluster, as names.
+        Get all the IAM roles belonging to the cluster, as names.
         """
 
         results = []
