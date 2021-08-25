@@ -25,12 +25,16 @@ class ToilState:
     Holds the leader's scheduling information that does not need to be
     persisted back to the JobStore (such as information on completed and
     outstanding predecessors).
+    
+    Holds the true single copies of all JobDescription objects that the Leader
+    and ServiceManager will use. The leader and service manager shouldn't do
+    their own load() and update() calls on the JobStore; they should go through
+    this class.
+    
+    Everything in the leader should reference JobDescriptions by ID.
 
     Only holds JobDescription objects, not Job objects, and those
     JobDescription objects only exist in single copies.
-
-    Everything else in the leader should reference JobDescriptions by ID
-    instead of moving them around between lists.
     """
     def __init__(self, jobStore: AbstractJobStore, rootJob: JobDescription, jobCache: Optional[Dict[str, JobDescription]] = None):
         """
@@ -47,6 +51,14 @@ class ToilState:
 
         :param jobCache: A dict to cache downloaded job descriptions in, keyed by ID.
         """
+        
+        # We need to keep the job store so we can load and save jobs.
+        self.__job_store = jobStore
+        
+        # This holds the one true copy of every JobDescription in the leader.
+        # TODO: Do in-place update instead of assignment when we load so we
+        # can't let any non-true copies escape.
+        self.__job_database = {}
 
         # Maps from successor (child or follow-on) jobStoreID to predecessor jobStoreID
         self.successorJobStoreIDToPredecessorJobs: Dict[str, List[JobDescription]] = {}
@@ -81,16 +93,52 @@ class ToilState:
         # finished, but not all of them. This acts as a cache for these jobs.
         # Stored as hash from jobStoreIDs to JobDescriptions
         self.jobsToBeScheduledWithMultiplePredecessors: Dict[str, JobDescription] = {}
+        
+        if jobCache is not None:
+            # Load any pre-cached JobDescriptions we were given
+            self.__job_database.update(jobCache)
 
-        # Algorithm to build this information
-        self._buildToilState(rootJob, jobStore, jobCache)
-
-
+        # Build the state from the jobs
+        self._buildToilState(rootJob)
+        
+    def get_job(self, job_id: str) -> JobDescription:
+        """
+        Get the one true copy of the JobDescription with the given ID.
+        """
+        if job_id not in self.__job_database:
+            # Go get the job for the first time
+            self.__job_database[job_id] = self.__job_store.load(job_id)
+        return self.__job_database[job_id]
+        
+    def commit_job(self, job_id: str) -> None:
+        """
+        Save back any modifications made to a JobDescription retrieved from get_job()
+        """
+        self.__job_store.update(self.__job_database[job_id])
+        
+    def reset_job(self, job_id: str) -> None:
+        """
+        Discard any local modifications to a JobDescription and make
+        modifications from other hosts visible.
+        """
+        new_truth = self.__job_store.load(job_id)
+        if job_id in self.__job_database:
+            # Update the one true copy in place
+            old_truth = self.__job_database[job_id]
+            old_truth.__dict__.update(new_truth.__dict__)
+        else:
+            # Just keep the new one
+            self.__job_database[job_id] = new_truth
+        
     def allJobDescriptions(self) -> Iterator[JobDescription]:
         """
         Returns an iterator over all JobDescription objects referenced by the
         ToilState, with some possibly being visited multiple times.
         """
+        
+        for item in self.__job_database.values():
+            assert isinstance(item, JobDescription)
+            yield item
 
         for item in self.serviceJobStoreIDToPredecessorJob.values():
             assert isinstance(item, JobDescription)
@@ -112,27 +160,13 @@ class ToilState:
             assert isinstance(item, JobDescription)
             yield item
 
-    def _buildToilState(self, jobDesc: JobDescription, jobStore: AbstractJobStore, jobCache: Optional[Dict[str, JobDescription]] = None) -> None:
+    def _buildToilState(self, jobDesc: JobDescription) -> None:
         """
-        Traverses tree of jobs from the root JobDescription (rootJob) building the
-        ToilState class.
-
-        If jobCache is passed, it must be a dict from job ID to JobDescription
-        object. Jobs will be loaded from the cache (which can be downloaded from
-        the jobStore in a batch) instead of piecemeal when recursed into.
+        Traverses tree of jobs down from the subtree root JobDescription
+        (jobDesc), building the ToilState class.
 
         :param jobDesc: The description for the root job of the workflow being run.
-
-        :param jobStore: The job store to use.
-
-        :param jobCache: A dict to cache downloaded job descriptions in, keyed by ID.
         """
-
-        def getJob(jobId: str) -> JobDescription:
-            if jobCache is not None:
-                if jobId in jobCache:
-                    return jobCache[jobId]
-            return jobStore.load(jobId)
 
         # If the job description has a command, is a checkpoint, has services
         # or is ready to be deleted it is ready to be processed
@@ -167,7 +201,7 @@ class ToilState:
                     self.jobsToBeScheduledWithMultiplePredecessors.pop(successorJobStoreID)
 
                     # Recursively consider the successor
-                    self._buildToilState(successor, jobStore, jobCache=jobCache)
+                    self._buildToilState(successor)
 
             # For each successor
             for successorJobStoreID in jobDesc.nextSuccessors():
@@ -180,7 +214,7 @@ class ToilState:
                     self.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = [jobDesc]
 
                     # We load the successor job
-                    successor = getJob(successorJobStoreID)
+                    successor = self.get_job(successorJobStoreID)
 
                     # If predecessor number > 1 then the successor has multiple predecessors
                     if successor.predecessorNumber > 1:
@@ -195,7 +229,7 @@ class ToilState:
                     else:
                         # The successor has only this job as a predecessor so
                         # recursively consider the successor
-                        self._buildToilState(successor, jobStore, jobCache=jobCache)
+                        self._buildToilState(successor)
 
                 else:
                     # We've already seen the successor

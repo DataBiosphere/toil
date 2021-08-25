@@ -202,13 +202,12 @@ class Leader(object):
         # And set a format that shows failures
         self.PROGRESS_BAR_FORMAT = ('{desc}{desc_pad}{percentage:3.0f}%|{bar}| {count:{len_total}d}/{total:d} '
                                     '({count_1:d} failures) [{elapsed}<{eta}, {rate:.2f}{unit_pad}{unit}/s]')
+        # TODO: No way to set background color on the terminal for the bar.
 
         # What exit code should the process use if the workflow failed?
         # Needed in case a worker detects a CWL issue that a CWL runner must
         # report to its caller.
         self.recommended_fail_exit_code = 1
-
-        # TODO: No way to set background color on the terminal for the bar.
 
     def run(self):
         """
