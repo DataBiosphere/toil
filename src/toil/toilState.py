@@ -25,12 +25,12 @@ class ToilState:
     Holds the leader's scheduling information that does not need to be
     persisted back to the JobStore (such as information on completed and
     outstanding predecessors).
-    
+
     Holds the true single copies of all JobDescription objects that the Leader
     and ServiceManager will use. The leader and service manager shouldn't do
     their own load() and update() calls on the JobStore; they should go through
     this class.
-    
+
     Everything in the leader should reference JobDescriptions by ID.
 
     Only holds JobDescription objects, not Job objects, and those
@@ -51,10 +51,10 @@ class ToilState:
 
         :param jobCache: A dict to cache downloaded job descriptions in, keyed by ID.
         """
-        
+
         # We need to keep the job store so we can load and save jobs.
         self.__job_store = jobStore
-        
+
         # This holds the one true copy of every JobDescription in the leader.
         # TODO: Do in-place update instead of assignment when we load so we
         # can't let any non-true copies escape.
@@ -93,14 +93,25 @@ class ToilState:
         # finished, but not all of them. This acts as a cache for these jobs.
         # Stored as hash from jobStoreIDs to JobDescriptions
         self.jobsToBeScheduledWithMultiplePredecessors: Dict[str, JobDescription] = {}
-        
+
         if jobCache is not None:
             # Load any pre-cached JobDescriptions we were given
             self.__job_database.update(jobCache)
 
         # Build the state from the jobs
         self._buildToilState(rootJob)
-        
+
+    def job_exists(self, job_id: str) -> bool:
+        """
+        Returns True if the given job exists right now, and false if it hasn't
+        been created or it has been deleted elsewhere.
+
+        Doesn't guarantee that the job will or will not be gettable, if racing
+        another process, or if it is still cached.
+        """
+
+        return self.__job_store.exists(job_id)
+
     def get_job(self, job_id: str) -> JobDescription:
         """
         Get the one true copy of the JobDescription with the given ID.
@@ -109,19 +120,27 @@ class ToilState:
             # Go get the job for the first time
             self.__job_database[job_id] = self.__job_store.load(job_id)
         return self.__job_database[job_id]
-        
+
     def commit_job(self, job_id: str) -> None:
         """
         Save back any modifications made to a JobDescription retrieved from get_job()
         """
         self.__job_store.update(self.__job_database[job_id])
-        
+
     def reset_job(self, job_id: str) -> None:
         """
         Discard any local modifications to a JobDescription and make
         modifications from other hosts visible.
         """
-        new_truth = self.__job_store.load(job_id)
+        try:
+            new_truth = self.__job_store.load(job_id)
+        except NoSuchJobException:
+            # The job is gone now.
+            if job_id in self.__job_database:
+                # So forget about it
+                del self.__job_database[job_id]
+                # TODO: Other collections may still reference it.
+            return
         if job_id in self.__job_database:
             # Update the one true copy in place
             old_truth = self.__job_database[job_id]
@@ -129,13 +148,14 @@ class ToilState:
         else:
             # Just keep the new one
             self.__job_database[job_id] = new_truth
-        
+
+
     def allJobDescriptions(self) -> Iterator[JobDescription]:
         """
         Returns an iterator over all JobDescription objects referenced by the
         ToilState, with some possibly being visited multiple times.
         """
-        
+
         for item in self.__job_database.values():
             assert isinstance(item, JobDescription)
             yield item
