@@ -36,7 +36,7 @@ class ServiceManager( object ):
 
         self.toilState = toilState
 
-        self.jobsWithServicesBeingStarted: Set[str] = set()
+        self.__jobsWithServicesBeingStarted: Set[str] = set()
 
         self._terminate = Event() # This is used to terminate the thread associated
         # with the service manager
@@ -72,6 +72,12 @@ class ServiceManager( object ):
 
 
 
+    def services_are_starting(self, jobStoreID: str) -> bool:
+        """
+        Return True if the services for the given job are currently being started, and False otherwise.
+        """
+        return jobStoreID in self.__jobsWithServicesBeingStarted
+
     def start(self) -> None:
         """
         Start the service scheduling thread.
@@ -87,7 +93,7 @@ class ServiceManager( object ):
         :param toil.job.JobDescription jobDesc: description job with services to schedule.
         """
         # Add job to set being processed by the service manager
-        self.jobsWithServicesBeingStarted.add(jobDesc.jobStoreID)
+        self.__jobsWithServicesBeingStarted.add(jobDesc.jobStoreID)
 
         # Add number of jobs managed by ServiceManager
         self.jobsIssuedToServiceManager += len(jobDesc.services) + 1 # The plus one accounts for the root job
@@ -104,7 +110,7 @@ class ServiceManager( object ):
         """
         try:
             jobDesc = self._jobDescriptionsWithServicesThatHaveStarted.get(timeout=maxWait)
-            self.jobsWithServicesBeingStarted.remove(jobDesc.jobStoreID)
+            self.__jobsWithServicesBeingStarted.remove(jobDesc.jobStoreID)
             assert self.jobsIssuedToServiceManager >= 0
             self.jobsIssuedToServiceManager -= 1
             return jobDesc
@@ -120,7 +126,7 @@ class ServiceManager( object ):
         """
         try:
             jobDesc = self._jobDescriptionsWithServicesThatHaveFailedToStart.get(timeout=maxWait)
-            self.jobsWithServicesBeingStarted.remove(jobDesc.jobStoreID)
+            self.__jobsWithServicesBeingStarted.remove(jobDesc.jobStoreID)
             assert self.jobsIssuedToServiceManager >= 0
             self.jobsIssuedToServiceManager -= 1
             return jobDesc
