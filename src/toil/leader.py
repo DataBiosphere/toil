@@ -664,8 +664,8 @@ class Leader(object):
 
         # Consistency check the toil state
         assert self.toilState.updatedJobs == {}
-        #assert self.toilState.successorCounts == {}
-        #assert self.toilState.successorJobStoreIDToPredecessorJobs == {}
+        # assert self.toilState.successorCounts == {}
+        # assert self.toilState.successorJobStoreIDToPredecessorJobs == {}
         assert self.toilState.serviceJobStoreIDToPredecessorJob == {}
         assert self.toilState.servicesIssued == {}
         # assert self.toilState.jobsToBeScheduledWithMultiplePredecessors # These are not properly emptied yet
@@ -749,17 +749,22 @@ class Leader(object):
         for context in self.batchSystem.getWorkerContexts():
             # For each context manager hook the batch system wants to run in
             # the worker, serialize and send it.
-            workerCommand.append('--context')
-            workerCommand.append(base64.b64encode(pickle.dumps(context)).decode('utf-8'))
+            workerCommand.append("--context")
+            workerCommand.append(
+                base64.b64encode(pickle.dumps(context)).decode("utf-8")
+            )
 
         # add the toilState as a pickle
-        workerCommand.append('--toilState')
-        workerCommand.append(base64.b64encode(pickle.dumps(self.toilState)).decode('utf-8'))
-        
-        jobNode.command = ' '.join(workerCommand)
+        workerCommand.append("--toilState")
+        workerCommand.append(
+            base64.b64encode(pickle.dumps(self.toilState)).decode("utf-8")
+        )
 
-        omp_threads = os.environ.get('OMP_NUM_THREADS') \
-            or str(max(1, int(jobNode.cores)))  # make sure OMP_NUM_THREADS is a positive integer
+        jobNode.command = " ".join(workerCommand)
+
+        omp_threads = os.environ.get("OMP_NUM_THREADS") or str(
+            max(1, int(jobNode.cores))
+        )  # make sure OMP_NUM_THREADS is a positive integer
 
         job_environment = {
             # Set the number of cores used by OpenMP applications

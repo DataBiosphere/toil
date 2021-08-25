@@ -46,5 +46,5 @@ def main() -> None:
 
     jobID = options.jobID[0]
     logger.debug(f"Running the following job locally: {jobID}")
-    workerScript(jobStore, config, jobID, jobID, redirectOutputToLogFile=False)
+    workerScript(jobStore, config, jobID, jobID, None, redirectOutputToLogFile=False)
     logger.debug(f"Finished running: {jobID}")
