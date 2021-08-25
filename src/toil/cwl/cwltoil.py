@@ -21,6 +21,7 @@ import argparse
 import base64
 import copy
 import datetime
+import errno
 import functools
 import json
 import logging
@@ -96,6 +97,7 @@ from ruamel.yaml.comments import CommentedMap
 from schema_salad import validate
 from schema_salad.schema import Names
 from schema_salad.sourceline import SourceLine
+from threading import Thread
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Config, Toil, addOptions
@@ -104,6 +106,8 @@ from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException
+from toil.jobStores.fileJobStore import FileJobStore
+from toil.lib.threading import ExceptionalThread
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
@@ -578,6 +582,7 @@ class ToilPathMapper(PathMapper):
         separateDirs: bool = True,
         get_file: Union[Any, None] = None,
         stage_listing: bool = False,
+        streaming_allowed: bool = True,
     ):
         """
         Initialize this ToilPathMapper.
@@ -587,6 +592,8 @@ class ToilPathMapper(PathMapper):
         """
         self.get_file = get_file
         self.stage_listing = stage_listing
+        self.streaming_allowed = streaming_allowed
+
         super(ToilPathMapper, self).__init__(
             referenced_files, basedir, stagedir, separateDirs=separateDirs
         )
@@ -786,7 +793,12 @@ class ToilPathMapper(PathMapper):
                     # If we have access to the Toil file store, we will have a
                     # get_file set, and it will convert this path to a file:
                     # URI for a local file it downloaded.
-                    deref = self.get_file(path) if self.get_file else ab
+                    if self.get_file:
+                        deref = self.get_file(
+                            path, obj.get("streamable", False), self.streaming_allowed
+                        )
+                    else:
+                        deref = ab
 
                     if deref.startswith("file:"):
                         deref = schema_salad.ref_resolver.uri_file_path(deref)
@@ -876,7 +888,8 @@ class ToilCommandLineTool(cwltool.command_line_tool.CommandLineTool):
                 runtimeContext.basedir,
                 stagedir,
                 separateDirs,
-                getattr(runtimeContext, 'toil_get_file', None)  # type: ignore
+                getattr(runtimeContext, 'toil_get_file', None),  # type: ignore
+                streaming_allowed=runtimeContext.streaming_allowed
             )
 
 
@@ -1089,11 +1102,15 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             path = self._abs(path)
         return os.path.realpath(path)
 
+
 def toil_get_file(
     file_store: AbstractFileStore,
     index: Dict[str, str],
     existing: Dict[str, str],
-    file_store_id: str
+    file_store_id: str,
+    streamable: bool = False,
+    streaming_allowed: bool = True,
+    pipe_threads: list = None,
 ) -> str:
     """
     Set up the given file or directory from the Toil jobstore at a file URI
@@ -1108,6 +1125,14 @@ def toil_get_file(
     :param existing: Maps from file_store_id URI to downloaded file path.
 
     :param file_store_id: The URI for the file to download.
+
+    :param streamable: If the file is has 'streamable' flag set
+
+    :param streaming_allowed: If streaming is allowed
+
+    :param pipe_threads: List of threads responsible for streaming the data
+    and open file descriptors corresponding to those files. Caller is resposible
+    to close the file descriptors (to break the pipes) and join the threads
     """
 
     if file_store_id.startswith("toildir:"):
@@ -1136,7 +1161,41 @@ def toil_get_file(
             return schema_salad.ref_resolver.file_uri(dest_path)
     elif file_store_id.startswith("toilfile:"):
         # This is a plain file with no context.
-        src_path = file_store.readGlobalFile(FileID.unpack(file_store_id[len("toilfile:"):]), symlink=True)
+        def write_to_pipe(
+                file_store: AbstractFileStore, pipe_name: str, file_store_id: FileID
+        ) -> None:
+            try:
+                with open(pipe_name, "wb") as pipe:
+                    with file_store.jobStore.readFileStream(file_store_id) as fi:
+                        file_store.logAccess(file_store_id)
+                        chunk_sz = 1024
+                        while True:
+                            data = fi.read(chunk_sz)
+                            if not data:
+                                break
+                            pipe.write(data)
+            except IOError as e:
+                # The other side of the pipe may have been closed by the
+                # reading thread, which is OK.
+                if e.errno != errno.EPIPE:
+                    raise
+
+        if (
+                streaming_allowed
+                and streamable
+                and not isinstance(file_store.jobStore, FileJobStore)
+        ):
+            logger.debug("Streaming file %s", FileID.unpack(file_store_id[len("toilfile:"):]))
+            src_path = file_store.getLocalTempFileName()
+            os.mkfifo(src_path)
+            th = ExceptionalThread(
+                target=write_to_pipe, args=(file_store, src_path, FileID.unpack(file_store_id[len("toilfile:"):]))
+            )
+            th.start()
+            pipe_threads.append((th, os.open(src_path, os.O_RDONLY)))
+        else:
+            src_path = file_store.readGlobalFile(FileID.unpack(file_store_id[len("toilfile:"):]), symlink=True)
+
         # TODO: shouldn't we be using these as a cache?
         index[src_path] = file_store_id
         existing[file_store_id] = src_path
@@ -1850,9 +1909,10 @@ class CWLJob(Job):
                 ToilFsAccess, file_store=file_store
             )
 
-            runtime_context.toil_get_file = functools.partial(  # type: ignore
-                toil_get_file, file_store, index, existing
-            )
+        pipe_threads = []
+        runtime_context.toil_get_file = functools.partial(  # type: ignore
+            toil_get_file, file_store, index, existing, pipe_threads=pipe_threads
+        )
 
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
@@ -1870,6 +1930,10 @@ class CWLJob(Job):
         ended_at = datetime.datetime.now()  # noqa F841
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
+
+        for t, fd in pipe_threads:
+            os.close(fd)
+            t.join()
 
         # Get ahold of the filesystem
         fs_access = runtime_context.make_fs_access(runtime_context.basedir)
@@ -2769,6 +2833,13 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
              "paths are accessible in place from all nodes.",
         dest="bypass_file_store"
     )
+    parser.add_argument(
+        "--disable-streaming",
+        action="store_true",
+        default=False,
+        help="Disable file streaming for files that have 'streamable' flag True",
+        dest="disable_streaming",
+    )
 
     provgroup = parser.add_argument_group(
         "Options for recording provenance " "information of the execution"
@@ -2910,6 +2981,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     runtime_context.workdir = workdir  # type: ignore
     runtime_context.move_outputs = "leave"
     runtime_context.rm_tmpdir = False
+    runtime_context.streaming_allowed = not options.disable_streaming
     if options.mpi_config_file is not None:
         runtime_context.mpi_config = MpiConfig.load(options.mpi_config_file)
     runtime_context.bypass_file_store = options.bypass_file_store
@@ -3062,6 +3134,14 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
                 if shortname(inp["id"]) in initialized_job_order and inp.get("secondaryFiles"):
                     set_secondary(initialized_job_order[shortname(inp["id"])])
+
+                if (
+                    shortname(inp["id"]) in initialized_job_order
+                    and inp["type"] == "File"
+                ):
+                    initialized_job_order[shortname(inp["id"])]["streamable"] = inp.get(
+                        "streamable", False
+                    )
 
             runtime_context.use_container = not options.no_container
             runtime_context.tmp_outdir_prefix = os.path.realpath(tmp_outdir_prefix)
