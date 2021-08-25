@@ -449,7 +449,7 @@ class Leader(object):
         logger.debug('Updating status of job %s with result status: %s',
                      readyJob, resultStatus)
 
-        if readyJob in self.serviceManager.jobDescriptionsWithServicesBeingStarted:
+        if readyJob.jobStoreID in self.serviceManager.jobsWithServicesBeingStarted:
             # This stops a job with services being issued by the serviceManager from
             # being considered further in this loop. This catch is necessary because
             # the job's service's can fail while being issued, causing the job to be
