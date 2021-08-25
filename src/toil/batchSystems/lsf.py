@@ -25,7 +25,7 @@ import re
 import subprocess
 from datetime import datetime
 from random import randint
-from typing import List, Union
+from typing import Union, Optional, List, Dict
 
 from dateutil.parser import parse
 from dateutil.tz import tzlocal
@@ -85,12 +85,23 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         def killJob(self, jobID):
             call_command(['bkill', self.getBatchSystemID(jobID)])
 
-        def prepareSubmission(self, cpu, memory, jobID, command, jobName):
-            return self.prepareBsub(cpu, memory, jobID) + [command]
+        def prepareSubmission(self,
+                              cpu: int,
+                              memory: int,
+                              jobID: int,
+                              command: str,
+                              jobName: str,
+                              job_environment: Optional[Dict[str, str]] = None):
+            return (self.prepareBsub(cpu, memory, jobID) + [command],
+                    job_environment)  # pass job_environment to .submitJob()
 
         def submitJob(self, subLine):
+            subLine, job_environment = subLine
             combinedEnv = self.boss.environment
             combinedEnv.update(os.environ)
+            if job_environment:
+                combinedEnv.update(job_environment)
+
             stdout = call_command(subLine, env=combinedEnv)
             # Example success: Job <39605914> is submitted to default queue <general>.
             # Example fail: Service class does not exist. Job not submitted.
@@ -102,7 +113,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             else:
                 logger.error("Could not submit job\nReason: {}".format(stdout))
                 temp_id = randint(10000000, 99999999)
-                #Flag this job to be handled by getJobExitCode
+                # Flag this job to be handled by getJobExitCode
                 result = "NOT_SUBMITTED_{}".format(temp_id)
             return result
 
@@ -229,7 +240,6 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
                 return self.getJobExitCodeBACCT(job)
 
-
         def getJobExitCodeBACCT(self,job):
             # if not found in bjobs, then try bacct (slower than bjobs)
             logger.debug("bjobs failed to detect job - trying bacct: "
@@ -318,7 +328,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 bsubline.extend(lsfArgs.split())
             return bsubline
 
-        def parseBjobs(self,bjobs_output_str):
+        def parseBjobs(self, bjobs_output_str):
             """
             Parse records from bjobs json type output
             params:
