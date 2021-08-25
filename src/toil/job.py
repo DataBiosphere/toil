@@ -472,6 +472,10 @@ class JobDescription(Requirer):
         # the logging has been captured to be reported on the leader.
         self.logJobStoreFileID = None
 
+        # Every time we update a job description in place in the job store, we
+        # increment this.
+        self._job_version = 0
+
     def serviceHostIDsInBatches(self):
         """
         Get an iterator over all batches of service host job IDs that can be
@@ -634,6 +638,8 @@ class JobDescription(Requirer):
         # roll up a whole chain of jobs and delete them when they're all done.
         self.filesToDelete += other.filesToDelete
         self.jobsToDelete += other.jobsToDelete
+
+        self._job_version = other._job_version
 
     def addChild(self, childID):
         """
@@ -814,6 +820,8 @@ class JobDescription(Requirer):
         if self.jobStoreID is not None:
             printedName += ' ' + str(self.jobStoreID)
 
+        printedName += ' v' + str(self._job_version)
+
         return printedName
 
     # Not usable as a key (not hashable) and doesn't have any value-equality.
@@ -822,6 +830,16 @@ class JobDescription(Requirer):
 
     def __repr__(self):
         return '%s( **%r )' % (self.__class__.__name__, self.__dict__)
+
+    def pre_update_hook(self) -> None:
+        """
+        Called by the job store before pickling and saving a created or updated
+        version of a job.
+        """
+
+        self._job_version += 1
+        logger.debug("New job version: %s", self)
+
 
 
 class ServiceJobDescription(JobDescription):
@@ -1448,7 +1466,8 @@ class Job:
             raise JobPromiseConstraintError(self)
         # TODO: can we guarantee self.jobStoreID is populated and so pass that here?
         with self._promiseJobStore.writeFileStream() as (fileHandle, jobStoreFileID):
-            promise = UnfulfilledPromiseSentinel(str(self.description), False)
+            promise = UnfulfilledPromiseSentinel(str(self.description), jobStoreFileID, False)
+            logger.debug('Issuing promise %s for result of %s', jobStoreFileID, self.description)
             pickle.dump(promise, fileHandle, pickle.HIGHEST_PROTOCOL)
         self._rvs[path].append(jobStoreFileID)
         return self._promiseJobStore.config.jobStore, jobStoreFileID
@@ -1874,7 +1893,7 @@ class Job:
                 # either case, we just pass it on.
                 promisedValue = returnValues
             else:
-                # If there is an path ...
+                # If there is a path ...
                 if isinstance(returnValues, Promise):
                     # ... and the value itself is a Promise, we need to created a new, narrower
                     # promise and pass it on.
@@ -1888,8 +1907,11 @@ class Job:
                 # File may be gone if the job is a service being re-run and the accessing job is
                 # already complete.
                 if jobStore.fileExists(promiseFileStoreID):
+                    logger.debug("Resolve promise %s from %s with a %s", promiseFileStoreID, self, type(promisedValue))
                     with jobStore.updateFileStream(promiseFileStoreID) as fileHandle:
                         pickle.dump(promisedValue, fileHandle, pickle.HIGHEST_PROTOCOL)
+                else:
+                    logger.debug("Do not resolve promise %s from %s because it is no longer needed", promiseFileStoreID, self)
 
     # Functions associated with Job.checkJobGraphAcyclic to establish that the job graph does not
     # contain any cycles of dependencies:
@@ -2217,44 +2239,24 @@ class Job:
         userModule = cls._loadUserModule(userModule)
         pickleFile = commandTokens[1]
 
-        # Get a directory to download the job in
-        directory = tempfile.mkdtemp()
-        # Initialize a blank filename so the finally below can't fail due to a
-        # missing variable
-        filename = ''
+        #Loads context manager using file stream 
+        if pickleFile == "firstJob":
+            manager = jobStore.readSharedFileStream(pickleFile)
+        else:
+            manager = jobStore.readFileStream(pickleFile)
+        
+        #Open and unpickle
+        with manager as fileHandle:
 
-        try:
-            # Get a filename to download the job to.
-            # Don't use mkstemp because we would need to delete and replace the
-            # file.
-            # Don't use a NamedTemporaryFile context manager because its
-            # context manager exit will crash if we deleted it.
-            filename = os.path.join(directory, 'job')
+            job = cls._unpickle(userModule, fileHandle, requireInstanceOf=Job)
+            # Fill in the current description
+            job._description = jobDescription
 
-            # Download the job
-            if pickleFile == "firstJob":
-                jobStore.readSharedFile(pickleFile, filename)
-            else:
-                jobStore.readFile(pickleFile, filename)
+            # Set up the registry again, so children and follow-ons can be added on the worker
+            job._registry = {job.jobStoreID: job}
 
-            # Open and unpickle
-            with open(filename, 'rb') as fileHandle:
-                job = cls._unpickle(userModule, fileHandle, requireInstanceOf=Job)
-                # Fill in the current description
-                job._description = jobDescription
+        return job
 
-                # Set up the registry again, so children and follow-ons can be added on the worker
-                job._registry = {job.jobStoreID: job}
-
-                return job
-
-                # TODO: We ought to just unpickle straight from a streaming read
-        finally:
-            # Clean up the file
-            if os.path.exists(filename):
-                os.unlink(filename)
-            # Clean up the directory we put it in
-            shutil.rmtree(directory)
 
     def _run(self, jobGraph=None, fileStore=None, **kwargs):
         """
@@ -2380,7 +2382,6 @@ class Job:
         :rtype : string, used as identifier of the job class in the stats report.
         """
         return self._description.displayName
-
 
 class JobException(Exception):
     """
@@ -2577,7 +2578,7 @@ class EncapsulatedJob(Job):
     predecessors automatically. Care should be exercised to ensure the encapsulated job has the
     proper set of predecessors.
 
-    The return value of an encapsulatd job (as accessed by the :func:`toil.job.Job.rv` function)
+    The return value of an encapsulated job (as accessed by the :func:`toil.job.Job.rv` function)
     is the return value of the root job, e.g. A().encapsulate().rv() and A().rv() will resolve to
     the same value after A or A.encapsulate() has been run.
     """
@@ -2930,17 +2931,19 @@ class PromisedRequirement:
 class UnfulfilledPromiseSentinel:
     """This should be overwritten by a proper promised value. Throws an
     exception when unpickled."""
-    def __init__(self, fulfillingJobName, unpickled):
+    def __init__(self, fulfillingJobName, file_id: str, unpickled):
         self.fulfillingJobName = fulfillingJobName
+        self.file_id = file_id
 
     @staticmethod
     def __setstate__(stateDict):
         """Only called when unpickling. This won't be unpickled unless the
         promise wasn't resolved, so we throw an exception."""
         jobName = stateDict['fulfillingJobName']
-        raise RuntimeError("This job was passed a promise that wasn't yet resolved when it "
-                           "ran. The job {jobName} that fulfills this promise hasn't yet "
-                           "finished. This means that there aren't enough constraints to "
-                           "ensure the current job always runs after {jobName}. Consider adding a "
-                           "follow-on indirection between this job and its parent, or adding "
-                           "this job as a child/follow-on of {jobName}.".format(jobName=jobName))
+        file_id = stateDict['file_id']
+        raise RuntimeError(f"This job was passed promise {file_id} that wasn't yet resolved when it "
+                           f"ran. The job {jobName} that fulfills this promise hasn't yet "
+                           f"finished. This means that there aren't enough constraints to "
+                           f"ensure the current job always runs after {jobName}. Consider adding a "
+                           f"follow-on indirection between this job and its parent, or adding "
+                           f"this job as a child/follow-on of {jobName}.")

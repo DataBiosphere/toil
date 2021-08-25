@@ -162,6 +162,10 @@ class ToilDocumentationTest(ToilTest):
     def testServices(self):
         self.checkExitCode("tutorial_services.py")
 
+    @travis_test
+    def testStaging(self):
+        self.checkExitCode("tutorial_staging.py")
+
     @unittest.skip('Needs cromwell jar file to run.')
     def testWdlexample(self):
         self.checkExitCode("tutorial_wdlexample.py")

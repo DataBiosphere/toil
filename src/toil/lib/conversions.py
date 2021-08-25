@@ -1,4 +1,8 @@
-"""Conversion utilities for mapping memory, disk, core declarations from strings to numbers and vice versa."""
+"""
+Conversion utilities for mapping memory, disk, core declarations from strings to numbers and vice versa.
+Also contains general conversion functions
+"""
+
 import math
 import urllib.parse
 
@@ -100,3 +104,25 @@ def modify_url(url: str, remove: List[str]) -> str:
             del params[param_key]
     query = urllib.parse.urlencode(params, doseq=True)
     return urllib.parse.urlunsplit((scheme, netloc, path, query, fragment))
+
+
+def hms_duration_to_seconds(hms: str) -> float: 
+    """
+    Parses a given time string in hours:minutes:seconds, 
+    returns an equivalent total seconds value
+    """
+    vals_to_convert = hms.split(':')
+    seconds = 0.0
+    
+    for val in vals_to_convert:
+        if(float(val) < 0): 
+            raise ValueError("Invalid Time, negative value")
+
+    if(len(vals_to_convert) != 3):
+        raise ValueError("Invalid amount of fields, function takes input in 'hh:mm:ss'")
+
+    seconds += float(vals_to_convert[0]) * 60 * 60 
+    seconds += float(vals_to_convert[1]) * 60 
+    seconds += float(vals_to_convert[2]) 
+
+    return seconds

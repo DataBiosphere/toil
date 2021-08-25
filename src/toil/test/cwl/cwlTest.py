@@ -23,6 +23,8 @@ import unittest
 import uuid
 import zipfile
 from io import StringIO
+from mock import Mock, call
+from typing import Dict, List, MutableMapping, Optional
 from urllib.request import urlretrieve
 
 import psutil
@@ -30,6 +32,10 @@ import pytest
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
+
+from toil.cwl.utils import visit_top_cwl_class, visit_cwl_class_and_reduce, download_structure
+from toil.fileStores import FileID
+from toil.fileStores.abstractFileStore import AbstractFileStore
 
 from toil.test import (ToilTest,
                        needs_aws_s3,
@@ -48,7 +54,30 @@ log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 3600
 
 
-def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selected_tests=None):
+def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSystem: str = None,
+    selected_tests: str = None, selected_tags: str = None, skipped_tests: str = None,
+    extra_args: List[str] = [], must_support_all_features: bool = False) -> Optional[str]:
+    """
+    Run the CWL conformance tests.
+
+    :param workDir: Directory to run tests in.
+
+    :param yml: CWL test list YML to run tests from.
+
+    :param caching: If True, use Toil file store caching.
+
+    :param batchSystem: If set, use this batch system instead of the default single_machine.
+
+    :param selected_tests: If set, use this description of test numbers to run (comma-separated numbers or ranges)
+
+    :param selected_tags: As an alternative to selected_tests, run tests with the given tags.
+
+    :param skipped_tests: Comma-separated string labels of tests to skip.
+
+    :param extra_args: Provide these extra arguments to toil-cwl-runner for each test.
+
+    :param must_support_all_features: If set, fail if some CWL optional features are unsupported.
+    """
     try:
         cmd = ['cwltest',
                '--verbose',
@@ -58,10 +87,14 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
                f'--basedir={workDir}']
         if selected_tests:
             cmd.append(f'-n={selected_tests}')
+        if selected_tags:
+            cmd.append(f'--tags={selected_tags}')
+        if skipped_tests:
+            cmd.append(f'-S{skipped_tests}')
 
         args_passed_directly_to_toil = [f'--disableCaching={not caching}',
                                         '--clean=always',
-                                        '--logDebug']
+                                        '--logDebug'] + extra_args
 
         if 'SINGULARITY_DOCKER_HUB_MIRROR' in os.environ:
             args_passed_directly_to_toil.append('--setEnv=SINGULARITY_DOCKER_HUB_MIRROR')
@@ -82,7 +115,7 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
 
         log.info("Running: '%s'", "' '".join(cmd))
         try:
-            subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
+            output = subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
         finally:
             if job_store_override:
                 # Clean up the job store we used for all the tests, if it is still there.
@@ -100,7 +133,7 @@ def run_conformance_tests(workDir, yml, caching=False, batchSystem=None, selecte
                 if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
                     only_unsupported = True
                     break
-        if not only_unsupported:
+        if (not only_unsupported) or must_support_all_features:
             print(error_log)
             raise e
 
@@ -325,9 +358,12 @@ class CWLv10Test(ToilTest):
 
     @slow
     @needs_kubernetes
-    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance(self, **kwargs):
         return self.test_run_conformance(batchSystem="kubernetes",
+                                         # This test doesn't work with
+                                         # Singularity; see
+                                         # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
+                                         skipped_tests="docker_entrypoint",
                                          **kwargs)
 
     @slow
@@ -368,7 +404,6 @@ class CWLv10Test(ToilTest):
 
     @slow
     @needs_kubernetes
-    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance_with_caching(self):
         return self.test_kubernetes_cwl_conformance(caching=True)
 
@@ -448,15 +483,16 @@ class CWLv11Test(ToilTest):
 
     @slow
     @needs_kubernetes
-    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance(self, **kwargs):
         return self.test_run_conformance(batchSystem="kubernetes",
+                                         # These tests don't work with
+                                         # Singularity; see
+                                         # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
+                                         skipped_tests="docker_entrypoint,stdin_shorcut",
                                          **kwargs)
-
 
     @slow
     @needs_kubernetes
-    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance_with_caching(self):
         return self.test_kubernetes_cwl_conformance(caching=True)
 
@@ -495,18 +531,76 @@ class CWLv12Test(ToilTest):
     def test_run_conformance_with_caching(self):
         self.test_run_conformance(caching=True)
 
-    def run_kubernetes_cwl_conformance(self, **kwargs):
+    @slow
+    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
+    def test_run_conformance_with_in_place_update(self):
         """
-        Run the CWL conformance tests on Kubernetes, passing along keyword
-        arguments.
+        Make sure that with --bypass-file-store we properly support in place
+        update on a single node, and that this doesn't break any other
+        features.
         """
-        return self.test_run_conformance(batchSystem="kubernetes",
-                                         **kwargs)
+        self.test_run_conformance(extra_args=['--bypass-file-store'],
+                                  must_support_all_features=True)
+
     @slow
     @needs_kubernetes
-    def test_kubernetes_cwl_20(self):
-        for caching in [True, False]:
-            self.run_kubernetes_cwl_conformance(selected_tests="20", caching=caching)
+    def test_kubernetes_cwl_conformance(self, **kwargs):
+        return self.test_run_conformance(batchSystem="kubernetes",
+                                         # This test doesn't work with
+                                         # Singularity; see
+                                         # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
+                                         # and
+                                         # https://github.com/common-workflow-language/cwltool/issues/1441#issuecomment-826747975
+                                         skipped_tests="docker_entrypoint",
+                                         **kwargs)
+
+    @slow
+    @needs_kubernetes
+    def test_kubernetes_cwl_conformance_with_caching(self):
+        return self.test_kubernetes_cwl_conformance(caching=True)
+
+    def _expected_streaming_output(self, outDir):
+        # Having unicode string literals isn't necessary for the assertion but
+        # makes for a less noisy diff in case the assertion fails.
+        loc = "file://" + os.path.join(outDir, "output.txt")
+        return {
+            "output": {
+                "location": loc,
+                "basename": "output.txt",
+                "size": 24,
+                "class": "File",
+                "checksum": "sha1$d14dd02e354918b4776b941d154c18ebc15b9b38",
+            }
+        }
+
+    @needs_aws_s3
+    def test_streamable(self):
+        """
+        Test that a file with 'streamable'=True is a named pipe
+        """
+        cwlfile = "src/toil/test/cwl/stream.cwl"
+        jobfile = "src/toil/test/cwl/stream.json"
+        out_name = "output"
+        jobstore = f'--jobStore=aws:us-west-1:toil-stream-{uuid.uuid4()}'
+        from toil.cwl import cwltoil
+
+        st = StringIO()
+        args = [
+            "--outdir",
+            self.outDir,
+            jobstore,
+            os.path.join(self.rootDir, cwlfile),
+            os.path.join(self.rootDir, jobfile),
+        ]
+        cwltoil.main(args, stdout=st)
+        out = json.loads(st.getvalue())
+        out[out_name].pop("http://commonwl.org/cwltool#generation", None)
+        out[out_name].pop("nameext", None)
+        out[out_name].pop("nameroot", None)
+        self.assertEqual(out, self._expected_streaming_output(self.outDir))
+        with open(out[out_name]["location"][len("file://") :], "r") as f:
+            self.assertEqual(f.read().strip(), "When is s4 coming out?")
+
 
 @needs_cwl
 class CWLSmallTests(ToilTest):
@@ -543,6 +637,179 @@ class CWLSmallTests(ToilTest):
         log.debug(f'Now running: {" ".join(cmd)}')
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
-        assert stdout == b'{}'
+        assert stdout == b'{}', f"Got wrong output: {stdout}\nWith error: {stderr}"
         assert b'Finished toil run successfully' in stderr
         assert p.returncode == 0
+
+    def test_visit_top_cwl_class(self):
+        structure = {
+            'class': 'Directory',
+            'listing': [
+                {
+                    'class': 'Directory',
+                    'listing': [
+                        {'class': 'File'},
+                        {
+                            'class': 'File',
+                            'secondaryFiles': [
+                                {'class': 'Directory'},
+                                {'class': 'File'},
+                                {'cruft'}
+                            ]
+                        }
+                    ]
+                },
+                {'some garbage': 'yep'},
+                [],
+                None
+            ]
+        }
+
+        self.counter = 0
+        def increment(thing: Dict) -> None:
+            """
+            Make sure we are at something CWL object like, and count it.
+            """
+            self.assertIn('class', thing)
+            self.counter += 1
+
+        # We should stop at the root when looking for a Directory
+        visit_top_cwl_class(structure, ('Directory',), increment)
+        self.assertEqual(self.counter, 1)
+
+        # We should see the top-level files when looking for a file
+        self.counter = 0
+        visit_top_cwl_class(structure, ('File',), increment)
+        self.assertEqual(self.counter, 2)
+
+        # When looking for a file or a directory we should stop at the first match to either.
+        self.counter = 0
+        visit_top_cwl_class(structure, ('File', 'Directory'), increment)
+        self.assertEqual(self.counter, 1)
+
+    def test_visit_cwl_class_and_reduce(self):
+        structure = {
+            'class': 'Directory',
+            'listing': [
+                {
+                    'class': 'Directory',
+                    'listing': [
+                        {'class': 'File'},
+                        {
+                            'class': 'File',
+                            'secondaryFiles': [
+                                {'class': 'Directory'},
+                                {'class': 'File'},
+                                {'cruft'}
+                            ]
+                        }
+                    ]
+                },
+                {'some garbage': 'yep'},
+                [],
+                None
+            ]
+        }
+
+        self.down_count = 0
+        def op_down(thing: MutableMapping) -> int:
+            """
+            Grab the ID of the thing we are at, and count what we visit going
+            down.
+            """
+            self.down_count += 1
+            return id(thing)
+
+        self.up_count = 0
+        self.up_child_count = 0
+        def op_up(thing: MutableMapping, down_value: int, child_results: List[str]) -> str:
+            """
+            Check the down return value and the up return values, and count
+            what we visit going up and what child relationships we have.
+            """
+            self.assertEqual(down_value, id(thing))
+            for res in child_results:
+                self.assertEqual(res, "Sentinel value!")
+                self.up_child_count += 1
+            self.up_count += 1
+            return "Sentinel value!"
+
+
+        visit_cwl_class_and_reduce(structure, ('Directory',), op_down, op_up)
+        self.assertEqual(self.down_count, 3)
+        self.assertEqual(self.up_count, 3)
+        # Only 2 child relationships
+        self.assertEqual(self.up_child_count, 2)
+
+    def test_download_structure(self) -> None:
+        """
+        Make sure that download_structure makes the right calls to what it thinks is the file store.
+        """
+
+        # Define what we would download
+        fid1 = FileID('afile', 10, False)
+        fid2 = FileID('adifferentfile', 1000, True)
+
+        # And what directory structure it would be in
+        structure = {
+            'dir1': {
+                'dir2': {
+                    'f1': 'toilfile:' + fid1.pack(),
+                    'f1again': 'toilfile:' + fid1.pack(),
+                    'dir2sub': {}
+                },
+                'dir3': {}
+            },
+            'anotherfile': 'toilfile:' + fid2.pack()
+        }
+
+        # Say where to put it on the filesystem
+        to_dir = self._createTempDir()
+
+        # Make a fake file store
+        file_store = Mock(AbstractFileStore)
+
+        # These will be populated.
+        # TODO: This cache seems unused. Remove it?
+        # This maps filesystem path to CWL URI
+        index = {}
+        # This maps CWL URI to filesystem path
+        existing = {}
+
+        # Do the download
+        download_structure(file_store, index, existing, structure, to_dir)
+
+        # Check the results
+        # 3 files should be made
+        self.assertEqual(len(index), 3)
+        # From 2 unique URIs
+        self.assertEqual(len(existing), 2)
+
+        # Make sure that the index contents (path to URI) are correct
+        self.assertIn(os.path.join(to_dir, 'dir1/dir2/f1'), index)
+        self.assertIn(os.path.join(to_dir, 'dir1/dir2/f1again'), index)
+        self.assertIn(os.path.join(to_dir, 'anotherfile'), index)
+        self.assertEqual(index[os.path.join(to_dir, 'dir1/dir2/f1')], structure['dir1']['dir2']['f1'])
+        self.assertEqual(index[os.path.join(to_dir, 'dir1/dir2/f1again')], structure['dir1']['dir2']['f1again'])
+        self.assertEqual(index[os.path.join(to_dir, 'anotherfile')], structure['anotherfile'])
+
+        # And the existing contents (URI to path)
+        self.assertIn('toilfile:' + fid1.pack(), existing)
+        self.assertIn('toilfile:' + fid2.pack(), existing)
+        self.assertIn(existing['toilfile:' + fid1.pack()], [os.path.join(to_dir, 'dir1/dir2/f1'), os.path.join(to_dir, 'dir1/dir2/f1again')])
+        self.assertEqual(existing['toilfile:' + fid2.pack()], os.path.join(to_dir, 'anotherfile'))
+
+        # The directory structure should be created for real
+        self.assertTrue(os.path.isdir(os.path.join(to_dir, 'dir1')))
+        self.assertTrue(os.path.isdir(os.path.join(to_dir, 'dir1/dir2')))
+        self.assertTrue(os.path.isdir(os.path.join(to_dir, 'dir1/dir2/dir2sub')))
+        self.assertTrue(os.path.isdir(os.path.join(to_dir, 'dir1/dir3')))
+
+        # The file store should have been asked to do the download
+        file_store.readGlobalFile.assert_has_calls([call(fid1, os.path.join(to_dir, 'dir1/dir2/f1'), symlink=True),
+                                                    call(fid1, os.path.join(to_dir, 'dir1/dir2/f1again'), symlink=True),
+                                                    call(fid2, os.path.join(to_dir, 'anotherfile'), symlink=True)], any_order=True)
+
+
+
+

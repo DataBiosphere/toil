@@ -22,6 +22,7 @@ import time
 from queue import Empty, Queue
 from shutil import which
 from threading import Thread
+from typing import Optional, Dict
 
 from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
@@ -123,7 +124,7 @@ class ParasolBatchSystem(BatchSystemSupport):
 
     parasolOutputPattern = re.compile("your job ([0-9]+).*")
 
-    def issueBatchJob(self, jobDesc):
+    def issueBatchJob(self, jobDesc, job_environment: Optional[Dict[str, str]] = None):
         """
         Issues parasol with job commands.
         """
@@ -136,7 +137,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         # meams the new job can't ever decrease the memory requirements
         # of jobs already in the batch.
         if len(self.resultsFiles) >= self.maxBatches:
-            raise RuntimeError( 'Number of batches reached limit of %i' % self.maxBatches)
+            raise RuntimeError('Number of batches reached limit of %i' % self.maxBatches)
         try:
             results = self.resultsFiles[(truncatedMemory, jobDesc.cores)]
         except KeyError:
@@ -145,7 +146,7 @@ class ParasolBatchSystem(BatchSystemSupport):
 
         # Prefix the command with environment overrides, optionally looking them up from the
         # current environment if the value is None
-        command = ' '.join(concat('env', self.__environment(), jobDesc.command))
+        command = ' '.join(concat('env', self.__environment(job_environment), jobDesc.command))
         parasolCommand = ['-verbose',
                           '-ram=%i' % jobDesc.memory,
                           '-cpu=%i' % jobDesc.cores,
@@ -187,8 +188,12 @@ class ParasolBatchSystem(BatchSystemSupport):
             raise ValueError('Parasol does not support spaces in environment variable values.')
         return super(ParasolBatchSystem, self).setEnv(name, value)
 
-    def __environment(self):
-        return (k + '=' + (os.environ[k] if v is None else v) for k, v in list(self.environment.items()))
+    def __environment(self, job_environment: Optional[Dict[str, str]] = None):
+        environment = self.environment.copy()
+        if job_environment:
+            environment.update(job_environment)
+
+        return (k + '=' + (os.environ[k] if v is None else v) for k, v in list(environment.items()))
 
     def killBatchJobs(self, jobIDs):
         """Kills the given jobs, represented as Job ids, then checks they are dead by checking
@@ -204,8 +209,8 @@ class ParasolBatchSystem(BatchSystemSupport):
             runningJobs = self.getIssuedBatchJobIDs()
             if set(jobIDs).difference(set(runningJobs)) == set(jobIDs):
                 break
-            logger.warning( 'Tried to kill some jobs, but something happened and they are still '
-                         'going, will try againin 5s.')
+            logger.warning('Tried to kill some jobs, but something happened and they are still '
+                           'going, will try again in 5s.')
             time.sleep(5)
         # Update the CPU usage, because killed jobs aren't written to the results file.
         for jobID in jobIDs:
@@ -329,7 +334,7 @@ class ParasolBatchSystem(BatchSystemSupport):
                             # second.
                             usrTicks = int(usrTicks)
                             sysTicks = int(sysTicks)
-                            wallTime = float( max( 1, usrTicks + sysTicks) ) * 0.01
+                            wallTime = float(max(1, usrTicks + sysTicks)) * 0.01
                         else:
                             wallTime = float(endTime - startTime)
                         self.updatedJobsQueue.put(UpdatedBatchJobInfo(jobID=jobId, exitStatus=status, wallTime=wallTime, exitReason=None))
@@ -359,7 +364,6 @@ class ParasolBatchSystem(BatchSystemSupport):
         for results in list(self.resultsFiles.values()):
             os.remove(results)
         os.rmdir(self.parasolResultsDir)
-
 
     @classmethod
     def setOptions(cls, setOption):

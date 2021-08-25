@@ -22,7 +22,7 @@ from toil.worker import workerScript
 logger = logging.getLogger(__name__)
 
 
-def main():
+def main() -> None:
     parser = parser_with_common_options(jobstore_option=True)
     parser.add_argument("jobID", nargs=1,
                         help="The job store id of a job within the provided jobstore to run by itself.")

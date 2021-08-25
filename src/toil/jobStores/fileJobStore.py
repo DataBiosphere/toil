@@ -224,6 +224,8 @@ class FileJobStore(AbstractJobStore):
         assert job.jobStoreID is not None, f"Tried to update job {job} without an ID"
         assert not isinstance(job.jobStoreID, TemporaryID), f"Tried to update job {job} without an assigned ID"
 
+        job.pre_update_hook()
+
         # The job is serialised to a file suffixed by ".new"
         # We insist on creating the file; an existing .new file indicates
         # multiple simultaneous attempts to update the job, which will lose

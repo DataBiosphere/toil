@@ -22,6 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 import fnmatch
+import logging
 import os
 import re
 import subprocess
@@ -36,6 +37,8 @@ LSF_CONF_ENV = ["LSF_CONFDIR", "LSF_ENVDIR"]
 DEFAULT_LSF_UNITS = "KB"
 DEFAULT_RESOURCE_UNITS = "MB"
 LSF_JSON_OUTPUT_MIN_VERSION = "10.1.0.2"
+
+logger = logging.getLogger(__name__)
 
 
 def find(basedir, string):
@@ -109,8 +112,9 @@ def apply_bparams(fn):
     """
     cmd = ["bparams", "-a"]
     try:
-        output = subprocess.check_output(cmd).decode('utf-8')
-    except:
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode('utf-8')
+    except subprocess.CalledProcessError as exc:
+        logger.debug(exc.output.decode('utf-8'))
         return None
     return fn(output.split("\n"))
 
@@ -121,8 +125,9 @@ def apply_lsadmin(fn):
     """
     cmd = ["lsadmin", "showconf", "lim"]
     try:
-        output = subprocess.check_output(cmd).decode('utf-8')
-    except:
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode('utf-8')
+    except subprocess.CalledProcessError as exc:
+        logger.debug(exc.output.decode('utf-8'))
         return None
     return fn(output.split("\n"))
 
@@ -203,11 +208,11 @@ def parse_memory_limit(mem: float) -> str:
 def parse_memory(mem: float, resource: bool) -> str:
     """Parse memory parameter."""
     lsf_unit = get_lsf_units(resource=resource)
-    megabytes_of_mem = convert_units(float(mem) * 1024, src_unit=lsf_unit, dst_unit='MB')
+    megabytes_of_mem = convert_units(float(mem), src_unit=lsf_unit, dst_unit='MB')
     if megabytes_of_mem < 1:
         megabytes_of_mem = 1.0
     # round as a string here to avoid returning something like 1.231e+12
-    return f'{megabytes_of_mem:.4f}'
+    return f'{megabytes_of_mem:.0f}MB'
 
 
 def per_core_reservation():

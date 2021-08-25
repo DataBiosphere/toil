@@ -123,6 +123,7 @@ def parse_node_types(node_type_specs: Optional[str]) -> List[Tuple[Set[str], Opt
 
     return parsed
 
+
 def check_valid_node_types(provisioner, node_types: List[Tuple[Set[str], Optional[float]]]):
     """
     Raises if an invalid nodeType is specified for aws or gce.
@@ -163,6 +164,7 @@ class NoSuchClusterException(Exception):
     """Indicates that the specified cluster does not exist."""
     def __init__(self, cluster_name):
         super(NoSuchClusterException, self).__init__(f"The cluster '{cluster_name}' could not be found")
+
 
 class ClusterTypeNotSupportedException(Exception):
     """Indicates that a provisioner does not support a given cluster type."""
