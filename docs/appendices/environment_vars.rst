@@ -174,5 +174,9 @@ There are several environment variables that affect the way Toil runs.
 |                                  | in the Toil Docker container to use as a mirror    |
 |                                  | for Docker Hub.                                    |
 +----------------------------------+----------------------------------------------------+
+| OMP_NUM_THREADS                  | The number of cores set for OpenMP applications in |
+|                                  | the workers. If not set, Toil will use the number  |
+|                                  | of job threads.                                    |
++----------------------------------+----------------------------------------------------+
 
 .. _standard temporary directory: https://docs.python.org/3/library/tempfile.html#tempfile.gettempdir

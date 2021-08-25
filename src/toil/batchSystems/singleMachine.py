@@ -600,8 +600,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         log.debug('Child %d for job %s succeeded', pid, jobID)
 
-
-    def issueBatchJob(self, jobDesc):
+    def issueBatchJob(self, jobDesc, job_environment: Optional[Dict[str, str]] = None):
         """Adds the command and resources to a queue to be run."""
 
         self._checkOnDaddy()
@@ -621,15 +620,18 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             self.jobIndex += 1
         self.jobs[jobID] = jobDesc.command
 
+        environment = self.environment.copy()
+        if job_environment:
+            environment.update(job_environment)
+
         if self.debugWorker:
             # Run immediately, blocking for return.
             # Ignore resource requirements; we run one job at a time
-            self._runDebugJob(jobDesc.command, jobID, self.environment.copy())
+            self._runDebugJob(jobDesc.command, jobID, environment)
         else:
             # Queue the job for later
             self.inputQueue.put((jobDesc.command, jobID, cores, jobDesc.memory,
-                                jobDesc.disk, self.environment.copy()))
-
+                                jobDesc.disk, environment))
 
         return jobID
 

@@ -32,6 +32,7 @@ import sys
 import tempfile
 import time
 import uuid
+from typing import Optional, Dict
 
 import kubernetes
 import pytz
@@ -362,15 +363,23 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Make the node affinity into an overall affinity
         return kubernetes.client.V1Affinity(node_affinity=node_affinity)
 
-    def _create_pod_spec(self, jobDesc: JobDescription) -> kubernetes.client.V1PodSpec:
+    def _create_pod_spec(
+            self,
+            jobDesc: JobDescription,
+            job_environment: Optional[Dict[str, str]] = None
+    ) -> kubernetes.client.V1PodSpec:
         """
         Make the specification for a pod that can execute the given job.
         """
 
+        environment = self.environment.copy()
+        if job_environment:
+            environment.update(job_environment)
+
         # Make a job dict to send to the executor.
         # First just wrap the command and the environment to run it in
         job = {'command': jobDesc.command,
-               'environment': self.environment.copy()}
+               'environment': environment}
         # TODO: query customDockerInitCmd to respect TOIL_CUSTOM_DOCKER_INIT_COMMAND
 
         if self.userScript is not None:
@@ -456,8 +465,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         return pod_spec
 
-
-    def issueBatchJob(self, jobDesc):
+    def issueBatchJob(self, jobDesc, job_environment: Optional[Dict[str, str]] = None):
         # TODO: get a sensible self.maxCores, etc. so we can checkResourceRequest.
         # How do we know if the cluster will autoscale?
 
@@ -473,7 +481,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             self.checkResourceRequest(jobDesc.memory, jobDesc.cores, jobDesc.disk)
 
             # Make a pod that describes running the job
-            pod_spec = self._create_pod_spec(jobDesc)
+            pod_spec = self._create_pod_spec(jobDesc, job_environment=job_environment)
 
             # Make a batch system scope job ID
             jobID = self.getNextJobID()
