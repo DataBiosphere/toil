@@ -274,7 +274,7 @@ class AWSJobStore(AbstractJobStore):
     def job_exists(self, job_id: str, check: bool = False):
         """Checks if the job_id is found in s3."""
         try:
-            self.s3_client.head_object(Bucket=self.bucket_name, Key=f'{self.job_key_prefix}{job_id}')
+            self.s3_client.head_object(Bucket=self.bucket_name, Key=f'{self.job_key_prefix}{job_id}', **self.encryption_args)
             return True
         except ClientError as e:
             if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
@@ -487,11 +487,11 @@ class AWSJobStore(AbstractJobStore):
     @contextmanager
     def readSharedFileStream(self, sharedFileName, encoding=None, errors=None):
         self._requireValidSharedFileName(sharedFileName)
-        # import time
-        # time.sleep(10)
-        assert s3_key_exists(s3_resource=self.s3_resource,
+        if not s3_key_exists(s3_resource=self.s3_resource,  # necessary?
                              bucket=self.bucket_name,
-                             key=f'{self.shared_key_prefix}{sharedFileName}'), f's3://{self.bucket_name}/{self.shared_key_prefix}{sharedFileName}'
+                             key=f'{self.shared_key_prefix}{sharedFileName}'):
+            raise NoSuchFileException(f's3://{self.bucket_name}/{self.shared_key_prefix}{sharedFileName}')
+
         try:
             with download_stream(self.s3_resource,
                                  bucket=self.bucket_name,
@@ -539,7 +539,8 @@ class AWSJobStore(AbstractJobStore):
             # etags are unique hashes, so this may exist if another process uploaded the exact same file
             copy_s3_to_s3(s3_resource=self.s3_resource,
                           src_bucket=src_bucket_name, src_key=src_key_name,
-                          dst_bucket=self.bucket_name, dst_key=f'{prefix}{file_id}')
+                          dst_bucket=self.bucket_name, dst_key=f'{prefix}{file_id}',
+                          extra_args=self.encryption_args)
             # verify etag after copying here
 
             if not sharedFileName:
@@ -558,7 +559,8 @@ class AWSJobStore(AbstractJobStore):
             metadata = self.get_file_metadata(file_id)
             copy_s3_to_s3(s3_resource=self.s3_resource,
                           src_bucket=self.bucket_name, src_key=f'{self.content_key_prefix}{file_id}',
-                          dst_bucket=dst_bucket_name, dst_key=dst_key_name)
+                          dst_bucket=dst_bucket_name, dst_key=dst_key_name,
+                          extra_args=self.encryption_args)
         else:
             super(AWSJobStore, self)._defaultExportFile(otherCls, file_id, url)
 
@@ -676,8 +678,9 @@ class AWSJobStore(AbstractJobStore):
                 dst_key = result['Key'].replace(self.unread_logs_key_prefix, self.read_logs_key_prefix)
                 copy_s3_to_s3(s3_resource=self.s3_resource,
                               src_bucket=self.bucket_name, src_key=src_key,
-                              dst_bucket=self.bucket_name, dst_key=dst_key)
-                self.s3_client.delete_object(Bucket=self.bucket_name, Key=src_key)
+                              dst_bucket=self.bucket_name, dst_key=dst_key,
+                              extra_args=self.encryption_args)
+                # self.s3_client.delete_object(Bucket=self.bucket_name, Key=src_key)
             itemsProcessed += 1
         return itemsProcessed
 

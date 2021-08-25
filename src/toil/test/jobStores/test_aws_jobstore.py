@@ -42,11 +42,11 @@ from toil.test import ToilTest
 
 
 class AWSJobstoreUnitTests(ToilTest):
-    # def setUp(self):
-    #     aws_jobstore = AWSJobStore()
-    #
-    # def tearDown(self):
-    #     pass
+    def setUp(self):
+        aws_jobstore = AWSJobStore()
+
+    def tearDown(self):
+        pass
 
     def test_set_encryption_from_config(self):
         pass

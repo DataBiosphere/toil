@@ -28,9 +28,7 @@ from botocore.exceptions import ClientError
 
 from toil.lib.aws.credentials import client, resource
 from toil.lib.conversions import modify_url
-from toil.lib.pipes import WritablePipe
-from toil.lib.compatibility import compat_bytes
-from toil.lib.pipes import ReadablePipe, HashingPipe
+from toil.lib.pipes import WritablePipe, ReadablePipe, HashingPipe
 from toil.lib.retry import retry, ErrorCondition
 # from toil.jobStores.exceptions import NoSuchFileException
 
@@ -108,17 +106,17 @@ def bucket_exists(s3_resource, bucket: str) -> Union[bool, Bucket]:
 
 # TODO: Determine specific retries
 @retry()
-def copy_s3_to_s3(s3_resource, src_bucket, src_key, dst_bucket, dst_key):
+def copy_s3_to_s3(s3_resource, src_bucket, src_key, dst_bucket, dst_key, extra_args: Optional[dict] = None):
     source = {'Bucket': src_bucket, 'Key': src_key}
-    dest = s3_resource.Bucket(dst_bucket)
-    dest.copy(source, dst_key)
+    s3_resource.meta.client.copy(source, dst_bucket, dst_key, ExtraArgs=extra_args)
 
 
 # TODO: Determine specific retries
 @retry()
-def copy_local_to_s3(s3_resource, local_file_path, dst_bucket, dst_key):
+def copy_local_to_s3(s3_resource, local_file_path, dst_bucket, dst_key, extra_args: Optional[dict] = None):
     s3_client = s3_resource.meta.client
-    s3_client.upload_file(local_file_path, dst_bucket, dst_key)
+    s3_client.upload_file(local_file_path, dst_bucket, dst_key, ExtraArgs=extra_args)
+    # s3_client.upload_file(local_file_path, dst_bucket, dst_key)
 
 
 # TODO: Determine specific retries

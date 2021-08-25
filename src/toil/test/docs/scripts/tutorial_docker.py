@@ -5,7 +5,7 @@ from toil.job import Job
 from toil.lib.docker import apiDockerCall
 
 align = Job.wrapJobFn(apiDockerCall,
-                      image='ubuntu',
+                      image='ubuntu:latest',
                       working_dir=os.getcwd(),
                       parameters=['ls', '-lha'])
 
