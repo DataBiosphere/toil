@@ -245,6 +245,10 @@ class AWSProvisioner(AbstractProvisioner):
             raise RuntimeError('No AWS availability zone specified. Configure in Boto '
                                'configuration file, TOIL_AWS_ZONE environment variable, or '
                                'on the command line.')
+                               
+        # Determine our region to work in, before readClusterSettings() which
+        # might need it. TODO: support multiple regions in one cluster
+        self._region = zone_to_region(zone)
 
         # Set up our connections to AWS
         self.aws = AWSConnectionManager()
@@ -256,10 +260,6 @@ class AWSProvisioner(AbstractProvisioner):
         # After self.clusterName is set, generate a valid name for the S3 bucket associated with this cluster
         suffix = _S3_BUCKET_INTERNAL_SUFFIX
         self.s3_bucket_name = self.clusterName[:_S3_BUCKET_MAX_NAME_LEN - len(suffix)] + suffix
-
-        # And now that self._zone is set, determine our region to work in.
-        # TODO: support multiple regions in one cluster
-        self._region = zone_to_region(self._zone)
 
     def supportedClusterTypes(self):
         return {'mesos', 'kubernetes'}
