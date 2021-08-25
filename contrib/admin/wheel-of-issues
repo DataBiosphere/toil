@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# wheel-of-issues: choose a random open Toil issue
+# Note that Github limits unauthenticated requests to 60 per hour, so don't run this too often or you will run out.
+
+# To save on API rate limits we keep our own idea of issues that are closed already
+SCRIPT_DIR="$(dirname "${0}")"
+CACHE_DIR="${SCRIPT_DIR}/.issue_cache"
+
+LAST_ISSUE_DATA="$(curl -sSL -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/DataBiosphere/toil/issues?per_page=1)"
+if grep '^{"message":"API rate limit exceeded' <(echo "${LAST_ISSUE_DATA}") >/dev/null ; then
+    # We can't count the issues because we are out of requests
+    echo "Out of Github requests; can't get total number of issues." 1>&2
+    exit 1
+fi
+MAX_ISSUE="$(echo "${LAST_ISSUE_DATA}" | jq -r '.[0].number')"
+while true ; do
+    ((RANDOM_ISSUE = RANDOM % (MAX_ISSUE + 1)))
+    
+    if [[ -e "${CACHE_DIR}/${RANDOM_ISSUE}" ]] ; then
+        # We already looked at this issue and it wasn't an open issue.
+        # Might have been reopened since but too bad. Skip it.
+        continue
+    fi
+    
+    # If it isn't cached as a non-issue, go see if it is open or not.
+    ISSUE_DATA="$(curl -sSL -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/DataBiosphere/toil/issues/${RANDOM_ISSUE})"
+    ISSUE_MESSAGE="$(echo "${ISSUE_DATA}" | jq -r '.message')"
+    ISSUE_STATE="$(echo "${ISSUE_DATA}" | jq -r '.state')"
+    if [[ "${ISSUE_STATE}" == "open" ]] ; then
+        # We found an open issue
+        echo "Random Open Issue: https://github.com/DataBiosphere/toil/issues/${RANDOM_ISSUE}"
+        break
+    elif grep "API rate limit exceeded" <(echo "${ISSUE_MESSAGE}") >/dev/null ; then
+        # We can't look for issues anymore
+        echo "Out of Github requests; can't get a random issue." 1>&2
+        exit 1
+    else
+        # We found a closed issue or non-issue. Record it in the cache
+        mkdir -p "${CACHE_DIR}"
+        touch "${CACHE_DIR}/${RANDOM_ISSUE}"
+    fi
+done
+
