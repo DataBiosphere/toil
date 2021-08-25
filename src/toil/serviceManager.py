@@ -36,9 +36,9 @@ class ServiceManager( object ):
 
         self.toilState = toilState
 
-        self.__jobsWithServicesBeingStarted: Set[str] = set()
+        self.__waiting_jobs: Set[str] = set()
 
-        self._terminate = Event() # This is used to terminate the thread associated
+        self.__terminate = Event() # This is used to terminate the thread associated
         # with the service manager
 
         self._jobDescriptionsWithServicesToStart: Queue[ServiceJobDescription] = Queue() # This is the input queue of
@@ -53,8 +53,7 @@ class ServiceManager( object ):
         self.serviceJobDescriptionsToStart: Queue[ServiceJobDescription] = Queue() # This is the queue of services for the
         # batch system to start
 
-        self.jobsIssuedToServiceManager = 0 # The number of jobs the service manager
-        # is scheduling
+        self.__service_manager_jobs = 0 # The number of jobs the service manager is scheduling
 
         # Start a thread that starts the services of JobDescriptions in the
         # _jobDescriptionsWithServicesToStart input queue and puts the
@@ -66,7 +65,7 @@ class ServiceManager( object ):
                                       args=(self._jobDescriptionsWithServicesToStart,
                                             self._jobDescriptionsWithServicesThatHaveStarted,
                                             self._jobDescriptionsWithServicesThatHaveFailedToStart,
-                                            self.serviceJobDescriptionsToStart, self._terminate,
+                                            self.serviceJobDescriptionsToStart, self.__terminate,
                                             self.jobStore),
                                       daemon=True)
 
@@ -76,7 +75,14 @@ class ServiceManager( object ):
         """
         Return True if the services for the given job are currently being started, and False otherwise.
         """
-        return jobStoreID in self.__jobsWithServicesBeingStarted
+        return jobStoreID in self.__waiting_jobs
+
+    def get_job_count(self) -> int:
+        """
+        Get the total number of jobs we are working on (services and their parent non-service jobs).
+        """
+
+        return self.__service_manager_jobs
 
     def start(self) -> None:
         """
@@ -93,10 +99,10 @@ class ServiceManager( object ):
         :param toil.job.JobDescription jobDesc: description job with services to schedule.
         """
         # Add job to set being processed by the service manager
-        self.__jobsWithServicesBeingStarted.add(jobDesc.jobStoreID)
+        self.__waiting_jobs.add(jobDesc.jobStoreID)
 
         # Add number of jobs managed by ServiceManager
-        self.jobsIssuedToServiceManager += len(jobDesc.services) + 1 # The plus one accounts for the root job
+        self.__service_manager_jobs += len(jobDesc.services) + 1 # The plus one accounts for the root job
 
         # Asynchronously schedule the services
         self._jobDescriptionsWithServicesToStart.put(jobDesc)
@@ -110,9 +116,9 @@ class ServiceManager( object ):
         """
         try:
             jobDesc = self._jobDescriptionsWithServicesThatHaveStarted.get(timeout=maxWait)
-            self.__jobsWithServicesBeingStarted.remove(jobDesc.jobStoreID)
-            assert self.jobsIssuedToServiceManager >= 0
-            self.jobsIssuedToServiceManager -= 1
+            self.__waiting_jobs.remove(jobDesc.jobStoreID)
+            assert self.__service_manager_jobs >= 0
+            self.__service_manager_jobs -= 1
             return jobDesc
         except Empty:
             return None
@@ -126,9 +132,9 @@ class ServiceManager( object ):
         """
         try:
             jobDesc = self._jobDescriptionsWithServicesThatHaveFailedToStart.get(timeout=maxWait)
-            self.__jobsWithServicesBeingStarted.remove(jobDesc.jobStoreID)
-            assert self.jobsIssuedToServiceManager >= 0
-            self.jobsIssuedToServiceManager -= 1
+            self.__waiting_jobs.remove(jobDesc.jobStoreID)
+            assert self.__service_manager_jobs >= 0
+            self.__service_manager_jobs -= 1
             return jobDesc
         except Empty:
             return None
@@ -143,8 +149,8 @@ class ServiceManager( object ):
         try:
             serviceJob = self.serviceJobDescriptionsToStart.get(timeout=maxWait)
             assert isinstance(serviceJob, ServiceJobDescription)
-            assert self.jobsIssuedToServiceManager >= 0
-            self.jobsIssuedToServiceManager -= 1
+            assert self.__service_manager_jobs >= 0
+            self.__service_manager_jobs -= 1
             return serviceJob
         except Empty:
             return None
@@ -192,7 +198,7 @@ class ServiceManager( object ):
         """
         logger.debug('Waiting for service manager thread to finish ...')
         startTime = time.time()
-        self._terminate.set()
+        self.__terminate.set()
         self._serviceStarter.join()
         # Kill any services still running to avoid deadlock
         for services in list(self.toilState.servicesIssued.values()):

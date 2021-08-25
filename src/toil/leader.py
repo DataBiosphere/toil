@@ -622,7 +622,7 @@ class Leader(object):
 
         while self.toilState.updatedJobs or \
               self.getNumberOfJobsIssued() or \
-              self.serviceManager.jobsIssuedToServiceManager:
+              self.serviceManager.get_job_count():
 
             if self.toilState.updatedJobs:
                 self._processReadyJobs()
