@@ -50,7 +50,8 @@ from toil.lib.ec2 import (a_short_time,
                           create_spot_instances,
                           establish_boto3_session,
                           wait_instances_running,
-                          wait_transition)
+                          wait_transition,
+                          wait_until_instance_profile_arn_exists)
 from toil.lib.aws import zone_to_region
 from toil.lib.ec2nodes import InstanceType
 from toil.lib.generatedEC2Lists import E2Instances
@@ -159,7 +160,7 @@ class AWSConnectionManager:
     This class is intended to eventually enable multi-region clusters, where
     connections to multiple regions may need to be managed in the same
     provisioner.
-    
+
     Since connection objects may not be thread safe (see
     <https://boto3.amazonaws.com/v1/documentation/api/1.14.31/guide/session.html#multithreading-or-multiprocessing-with-sessions>),
     one is created for each thread that calls the relevant lookup method.
@@ -245,7 +246,7 @@ class AWSProvisioner(AbstractProvisioner):
             raise RuntimeError('No AWS availability zone specified. Configure in Boto '
                                'configuration file, TOIL_AWS_ZONE environment variable, or '
                                'on the command line.')
-                               
+
         # Determine our region to work in, before readClusterSettings() which
         # might need it. TODO: support multiple regions in one cluster
         self._region = zone_to_region(zone)
@@ -1689,7 +1690,7 @@ class AWSProvisioner(AbstractProvisioner):
         aws_role_name = self._namespace_name(local_role_name)
         try:
             # Make the role
-            logger.debug('Creating IAM role...')
+            logger.debug('Creating IAM role %s...', aws_role_name)
             iam.create_role(aws_role_name, assume_role_policy_document=json.dumps({
                 "Version": "2012-10-17",
                 "Statement": [{
@@ -1749,29 +1750,46 @@ class AWSProvisioner(AbstractProvisioner):
 
         try:
             profile = iam.get_instance_profile(iamRoleName)
+            logger.debug("Have preexisting instance profile: %s", profile.get_instance_profile_response.get_instance_profile_result.instance_profile)
         except BotoServerError as e:
             if e.status == 404:
                 profile = iam.create_instance_profile(iamRoleName)
                 profile = profile.create_instance_profile_response.create_instance_profile_result
+                logger.debug("Created new instance profile: %s", profile.instance_profile)
             else:
                 raise
         else:
             profile = profile.get_instance_profile_response.get_instance_profile_result
         profile = profile.instance_profile
+
         profile_arn = profile.arn
 
+        # Now we have the profile ARN, but we want to make sure it really is
+        # visible by name in a different session.
+        wait_until_instance_profile_arn_exists(profile_arn)
+
         if len(profile.roles) > 1:
-            raise RuntimeError('Did not expect profile to contain more than one role')
+            # This is too many roles. We probably grabbed something we should
+            # not have by mistake, and this is some important profile for
+            # something else.
+            raise RuntimeError(f'Did not expect instance profile {profile_arn} to contain '
+                               f'more than one role; is it really a Toil-managed profile?')
         elif len(profile.roles) == 1:
             # this should be profile.roles[0].role_name
             if profile.roles.member.role_name == iamRoleName:
                 return profile_arn
             else:
+                # Drop this wrong role and use the fallback code for 0 roles
                 iam.remove_role_from_instance_profile(iamRoleName,
                                                       profile.roles.member.role_name)
+
+        # If we get here, we had 0 roles on the profile, or we had 1 but we removed it.
         for attempt in old_retry(predicate=lambda err: err.status == 404):
             with attempt:
-                iam.add_role_to_instance_profile(iamRoleName, iamRoleName)
-        return profile_arn
+                # Put the IAM role on the profile
+                iam.add_role_to_instance_profile(profile.instance_profile_name, iamRoleName)
+                logger.debug("Associated role %s with profile", iamRoleName)
 
+
+        return profile_arn
 
