@@ -820,7 +820,7 @@ class AWSProvisioner(AbstractProvisioner):
             # then affects the subnets they can use.
 
             # We're allowed to pick from any of these zones.
-            zone_options = list(self._worker_subnets_by_zone.keys)
+            zone_options = list(self._worker_subnets_by_zone.keys())
 
             zone = get_best_aws_zone(spotBid, type_info.name, ec2, zone_options)
         else:
@@ -832,7 +832,7 @@ class AWSProvisioner(AbstractProvisioner):
             else:
                 # The workers aren't allowed in the leader's zone.
                 # Pick an arbitrary zone we can use.
-                zone = next(iter(self._worker_subnets_by_zone.keys))
+                zone = next(iter(self._worker_subnets_by_zone.keys()))
         if self._leader_subnet in self._worker_subnets_by_zone.get(zone, []):
             # The leader's subnet is an option for this zone, so use it.
             subnet_id = self._leader_subnet
