@@ -224,7 +224,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         args = [] if args is None else args
 
         command = ['toil', 'launch-cluster', '-p=aws', '-z', self.zone, f'--keyPairName={self.keyName}',
-                   '--leaderNodeType=t2.medium', self.clusterName] + args
+                   '--leaderNodeType=t2.medium', '--logDebug', self.clusterName] + args
 
         log.debug('Launching cluster: %s', command)
 
