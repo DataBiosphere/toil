@@ -405,7 +405,7 @@ class AWSProvisioner(AbstractProvisioner):
         createdSGs = self._createSecurityGroups()
         bdms = self._getBoto3BlockDeviceMappings(leader_type, rootVolSize=leaderStorage)
 
-        userData = self._getCloudConfigUserData('leader')
+        userData = self._getIgnitionUserData('leader')
 
         # Make up the tags
         self._tags = {'Name': self.clusterName,
@@ -842,7 +842,7 @@ class AWSProvisioner(AbstractProvisioner):
             subnet_id = next(iter(self._worker_subnets_by_zone[zone]))
 
         keyPath = self._sseKey if self._sseKey else None
-        userData = self._getCloudConfigUserData('worker', keyPath, preemptable)
+        userData = self._getIgnitionUserData('worker', keyPath, preemptable)
         if isinstance(userData, str):
             # Spot-market provisioning requires bytes for user data.
             userData = userData.encode('utf-8')
@@ -1359,7 +1359,7 @@ class AWSProvisioner(AbstractProvisioner):
         bdms = self._getBoto3BlockDeviceMappings(type_info, rootVolSize=rootVolSize)
 
         keyPath = self._sseKey if self._sseKey else None
-        userData = self._getCloudConfigUserData('worker', keyPath, preemptable)
+        userData = self._getIgnitionUserData('worker', keyPath, preemptable)
 
         lt_name = self._name_worker_launch_template(instance_type, preemptable=preemptable)
 
