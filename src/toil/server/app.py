@@ -15,6 +15,7 @@ import argparse
 import connexion  # type: ignore
 from flask_cors import CORS  # type: ignore
 
+from toil.server.wes.runners import PythonRunner, CWLRunner, WDLRunner
 from toil.server.wes.toilBackend import ToilBackend
 from toil.server.wsgi import GunicornApplication
 
@@ -32,6 +33,10 @@ def start_server(args: argparse.Namespace) -> None:
 
     # workflow execution service (WES) API
     backend = ToilBackend(args.opt)
+
+    backend.register_runner("py", PythonRunner)
+    backend.register_runner("CWL", CWLRunner)
+    backend.register_runner("WDL", WDLRunner)
 
     flask_app.add_api('workflow_execution_service.swagger.yaml',
                 resolver=connexion.Resolver(backend.resolve_operation_id))  # noqa
