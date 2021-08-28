@@ -56,7 +56,7 @@ paths:
       summary: Get information about Workflow Execution Service.
       description: |-
         May include information related (but not limited to) the workflow descriptor formats, versions supported, the WES API versions supported, and information about general service availability.
-      operationId: api.GetServiceInfo
+      operationId: api.get_service_info
       responses:
         '200':
           description: ''
@@ -91,7 +91,7 @@ paths:
         contents of the list reflect the workflow list at the moment
         that the first page is requested.  To monitor a specific
         workflow run, use GetRunStatus or GetRunLog.
-      operationId: api.ListRuns
+      operationId: api.list_runs
       responses:
         '200':
           description: ''
@@ -185,7 +185,7 @@ paths:
 
 
         See the `RunRequest` documentation for details about other fields.
-      operationId: api.RunWorkflow
+      operationId: api.run_workflow
       responses:
         '200':
           description: ''
@@ -254,7 +254,7 @@ paths:
         (if available), a log object which allows the stderr and stdout to be retrieved,
         a log array so stderr/stdout for individual tasks can be retrieved,
         and the overall state of the workflow run (e.g. RUNNING, see the State section).
-      operationId: api.GetRunLog
+      operationId: api.get_run_log
       responses:
         '200':
           description: ''
@@ -286,7 +286,7 @@ paths:
   /runs/{run_id}/cancel:
     post:
       summary: Cancel a running workflow.
-      operationId: api.CancelRun
+      operationId: api.cancel_run
       responses:
         '200':
           description: ''
@@ -322,7 +322,7 @@ paths:
         This provides an abbreviated (and likely fast depending on implementation)
         status of the running workflow, returning a simple result with the 
         overall state of the workflow run (e.g. RUNNING, see the State section).
-      operationId: api.GetRunStatus
+      operationId: api.get_run_status
       responses:
         '200':
           description: ''

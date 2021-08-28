@@ -1,6 +1,0 @@
-title: RunId
-type: object
-properties:
-  run_id:
-    type: string
-    description: workflow run ID
