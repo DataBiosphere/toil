@@ -1,4 +1,4 @@
-# Copyright (C) 2018-2020 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import csv
-import fnmatch
 import json
 import logging
 import math
@@ -24,12 +23,11 @@ import uuid
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.wdl.wdl_types import (
-    WDLFile,
-    WDLPair
-)
+from toil.wdl.wdl_types import WDLFile, WDLPair
+from toil.lib.conversions import bytes_in_unit
+from toil.lib.resources import glob  # type: ignore
 
-wdllogger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class WDLRuntimeError(Exception):
@@ -48,23 +46,6 @@ class WDLJSONEncoder(json.JSONEncoder):
         if isinstance(obj, WDLPair):
             return obj.to_dict()
         return json.JSONEncoder.default(self, obj)
-
-
-def glob(glob_pattern, directoryname):
-    '''
-    Walks through a directory and its subdirectories looking for files matching
-    the glob_pattern and returns a list=[].
-
-    :param directoryname: Any accessible folder name on the filesystem.
-    :param glob_pattern: A string like "*.txt", which would find all text files.
-    :return: A list=[] of absolute filepaths matching the glob pattern.
-    '''
-    matches = []
-    for root, dirnames, filenames in os.walk(directoryname):
-        for filename in fnmatch.filter(filenames, glob_pattern):
-            absolute_filepath = os.path.join(root, filename)
-            matches.append(absolute_filepath)
-    return matches
 
 
 def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
@@ -96,8 +77,8 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
              intended to be run inside of a docker container for this job.
     '''
     wdl_copyright = heredoc_wdl('''        \n
-        # Borrowed/rewritten from the Broad's Cromwell implementation.  As 
-        # that is under a BSD-ish license, I include here the license off 
+        # Borrowed/rewritten from the Broad's Cromwell implementation.  As
+        # that is under a BSD-ish license, I include here the license off
         # of their GitHub repo.  Thank you Broadies!
 
         # Copyright (c) 2015, Broad Institute, Inc.
@@ -183,7 +164,7 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
 
 def process_single_infile(wdl_file: WDLFile, fileStore: AbstractFileStore) -> WDLFile:
     f = wdl_file.file_path
-    wdllogger.info('Importing {f} into the jobstore.'.format(f=f))
+    logger.info('Importing {f} into the jobstore.'.format(f=f))
     if f.startswith('http://') or f.startswith('https://') or \
             f.startswith('file://') or f.startswith('wasb://'):
         filepath = fileStore.importFile(f)
@@ -295,7 +276,7 @@ def process_single_outfile(wdl_file: WDLFile, fileStore, workDir, outDir) -> WDL
             std_file = os.path.join(workDir, 'execution', std_file)
             if os.path.exists(std_file):
                 with open(std_file, 'rb') as f:
-                    wdllogger.info(f.read())
+                    logger.info(f.read())
 
         raise RuntimeError('OUTPUT FILE: {} was not found in {}!\n'
                            '{}\n\n'
@@ -429,28 +410,6 @@ def generate_stdout_file(output, tempDir, fileStore, stderr=False):
     return fileStore.readGlobalFile(fileStoreID=file_id, userPath=local_path)
 
 
-def return_bytes(unit='B'):
-    num_bytes = 1
-    if unit.lower() in ['ki', 'kib']:
-        num_bytes = 1 << 10
-    if unit.lower() in ['mi', 'mib']:
-        num_bytes = 1 << 20
-    if unit.lower() in ['gi', 'gib']:
-        num_bytes = 1 << 30
-    if unit.lower() in ['ti', 'tib']:
-        num_bytes = 1 << 40
-
-    if unit.lower() in ['k', 'kb']:
-        num_bytes = 1000
-    if unit.lower() in ['m', 'mb']:
-        num_bytes = 1000 ** 2
-    if unit.lower() in ['g', 'gb']:
-        num_bytes = 1000 ** 3
-    if unit.lower() in ['t', 'tb']:
-        num_bytes = 1000 ** 4
-    return num_bytes
-
-
 def parse_memory(memory):
     """
     Parses a string representing memory and returns
@@ -477,7 +436,7 @@ def parse_memory(memory):
         if len(mem_split) == 2:
             num = mem_split[0]
             unit = mem_split[1]
-            return int(float(num) * return_bytes(unit))
+            return int(float(num) * bytes_in_unit(unit))
         else:
             raise RuntimeError('Memory parsing failed: {}'.format(memory))
     except:
@@ -554,7 +513,7 @@ def size(f: Optional[Union[str, WDLFile, List[Union[str, WDLFile]]]] = None,
     # validate the input. fileStore is only required if the input is not processed.
     f = process_infile(f, fileStore)
 
-    divisor = return_bytes(unit)
+    divisor = bytes_in_unit(unit)
 
     if isinstance(f, list):
         total_size = sum(file.file_path.size for file in f)
@@ -937,3 +896,102 @@ def wdl_zip(left: List[Any], right: List[Any]) -> List[WDLPair]:
 
     return list(WDLPair(left=left_val, right=right_val) for left_val, right_val in zip(left, right))
 
+
+def cross(left: List[Any], right: List[Any]) -> List[WDLPair]:
+    """
+    Return the cross product of the two arrays. Array[Y][1] appears before
+    Array[X][1] in the output.
+
+    WDL syntax: Array[Pair[X,Y]] cross(Array[X], Array[Y])
+    """
+    if not isinstance(left, list) or not isinstance(right, list):
+        raise WDLRuntimeError(f'cross() requires both inputs to be Array[]!  Not: {type(left)} and {type(right)}')
+
+    return list(WDLPair(left=left_val, right=right_val) for left_val in left for right_val in right)
+
+
+def as_pairs(in_map: dict) -> List[WDLPair]:
+    """
+    Given a Map, the `as_pairs` function returns an Array containing each element
+    in the form of a Pair. The key will be the left element of the Pair and the
+    value the right element. The order of the the Pairs in the resulting Array
+    is the same as the order of the key/value pairs in the Map.
+
+    WDL syntax: Array[Pair[X,Y]] as_pairs(Map[X,Y])
+    """
+    if not isinstance(in_map, dict):
+        raise WDLRuntimeError(f'as_pairs() requires "{in_map}" to be Map[]!  Not: {type(in_map)}')
+
+    return list(WDLPair(left=k, right=v) for k, v in in_map.items())
+
+
+def as_map(in_array: List[WDLPair]) -> dict:
+    """
+    Given an Array consisting of Pairs, the `as_map` function returns a Map in
+    which the left elements of the Pairs are the keys and the right elements the
+    values.
+
+    WDL syntax: Map[X,Y] as_map(Array[Pair[X,Y]])
+    """
+    if not isinstance(in_array, list):
+        raise WDLRuntimeError(f'as_map() requires "{in_array}" to be a list!  Not: {type(in_array)}')
+
+    map = {}
+
+    for pair in in_array:
+        if map.get(pair.left):
+            raise WDLRuntimeError('Cannot evaluate "as_map()" with duplicated keys.')
+
+        map[pair.left] = pair.right
+
+    return map
+
+
+def keys(in_map: dict) -> list:
+    """
+    Given a Map, the `keys` function returns an Array consisting of the keys in
+    the Map. The order of the keys in the resulting Array is the same as the
+    order of the Pairs in the Map.
+
+    WDL syntax: Array[X] keys(Map[X,Y])
+    """
+
+    return list(in_map.keys())
+
+
+def collect_by_key(in_array: List[WDLPair]) -> dict:
+    """
+    Given an Array consisting of Pairs, the `collect_by_key` function returns a Map
+    in which the left elements of the Pairs are the keys and the right elements the
+    values.
+
+    WDL syntax: Map[X,Array[Y]] collect_by_key(Array[Pair[X,Y]])
+    """
+    if not isinstance(in_array, list):
+        raise WDLRuntimeError(f'as_map() requires "{in_array}" to be a list!  Not: {type(in_array)}')
+
+    map = {}
+
+    for pair in in_array:
+        map.setdefault(pair.left, []).append(pair.right)
+
+    return map
+
+
+def flatten(in_array: List[list]) -> list:
+    """
+    Given an array of arrays, the `flatten` function concatenates all the member
+    arrays in the order to appearance to give the result. It does not deduplicate
+    the elements.
+
+    WDL syntax: Array[X] flatten(Array[Array[X]])
+    """
+    assert isinstance(in_array, list), f'flatten() requires "{in_array}" to be a list!  Not: {type(in_array)}'
+
+    arr = []
+
+    for element in in_array:
+        assert isinstance(element, list), f'flatten() requires all collections to be a list!  Not: {type(element)}'
+        arr.extend(element)
+
+    return arr

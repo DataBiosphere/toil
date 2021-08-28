@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,8 +21,8 @@ from uuid import uuid4
 
 from toil.common import getNodeID
 from toil.lib.exceptions import panic, raise_
-from toil.lib.misc import (AtomicFileCreate, CalledProcessErrorStderr,
-                           atomic_install, atomic_tmp_file, call_command)
+from toil.lib.io import AtomicFileCreate, atomic_install, atomic_tmp_file
+from toil.lib.misc import CalledProcessErrorStderr, call_command
 from toil.test import ToilTest, slow, travis_test
 
 log = logging.getLogger(__name__)

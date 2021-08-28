@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ from toil.test import ToilTest, travis_test
 
 
 class JobDescriptionTest(ToilTest):
-    
+
     def setUp(self):
         super().setUp()
         self.jobStorePath = self._getTestJobStorePath()
@@ -37,20 +37,20 @@ class JobDescriptionTest(ToilTest):
         self.assertFalse(os.path.exists(self.jobStorePath))
         super().tearDown()
     @travis_test
-    def testJobDescription(self):       
+    def testJobDescription(self):
         """
         Tests the public interface of a JobDescription.
-        """ 
-    
+        """
+
         command = "by your command"
         memory = 2^32
         disk = 2^32
         cores = "1"
         preemptable = 1
-        
+
         j = JobDescription(command=command, requirements={"memory": memory, "cores": cores, "disk": disk, "preemptable": preemptable},
                            jobName='testJobGraph', unitName='noName')
-        
+
         #Check attributes
         self.assertEqual(j.command, command)
         self.assertEqual(j.memory, memory)
@@ -66,35 +66,34 @@ class JobDescriptionTest(ToilTest):
         self.assertEqual(sum((len(level) for level in j.stack)), 0)
         self.assertEqual(j.predecessorsFinished, set())
         self.assertEqual(j.logJobStoreFileID, None)
-        
+
         #Check equals function (should be based on object identity and not contents)
         j2 = JobDescription(command=command, requirements={"memory": memory, "cores": cores, "disk": disk, "preemptable": preemptable},
                             jobName='testJobGraph', unitName='noName')
         self.assertNotEqual(j, j2)
-        
+
         ###TODO test other functionality
-        
-        
+
+
     @travis_test
     def testJobDescriptionSequencing(self):
         j = JobDescription(command='command', requirements={},  jobName='unimportant')
-        
+
         j.addChild('child')
         j.addFollowOn('followOn')
-        
+
         # With a command, nothing should be ready to run
         self.assertEqual(list(j.nextSuccessors()), [])
-        
+
         # With command cleared, child should be ready to run
         j.command = None
         self.assertEqual(list(j.nextSuccessors()), ['child'])
-        
+
         # Without the child, the follow-on should be ready to run
         j.filterSuccessors(lambda jID: jID != 'child')
         self.assertEqual(list(j.nextSuccessors()), ['followOn'])
-        
+
         # Without the follow-on, we should return None, to be distinct from an
         # empty list. Nothing left to do!
         j.filterSuccessors(lambda jID: jID != 'followOn')
         self.assertEqual(j.nextSuccessors(), None)
-        

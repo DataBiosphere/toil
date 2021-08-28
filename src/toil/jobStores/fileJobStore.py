@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
 import errno
 import logging
 import os
+import stat
 import pickle
 import random
 import re
@@ -31,8 +32,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchFileException,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
-from toil.lib.misc import (AtomicFileCreate, atomic_copy, atomic_copyobj,
-                           robust_rmtree)
+from toil.lib.io import AtomicFileCreate, atomic_copy, atomic_copyobj, robust_rmtree
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ class FileJobStore(AbstractJobStore):
         self.moveExports = None
 
     def __repr__(self):
-        return 'FileJobStore({})'.format(self.jobStoreDir)
+        return f'FileJobStore({self.jobStoreDir})'
 
     def initialize(self, config):
         try:
@@ -126,14 +126,14 @@ class FileJobStore(AbstractJobStore):
         # This will be e.g. the function name for wrapped-function jobs.
         # Make sure to render it filename-safe
         usefulFilename = self._makeStringFilenameSafe(jobDescription.jobName)
-        
+
         # Make a unique temp directory under a directory for this job name,
         # possibly sprayed across multiple levels of subdirectories.
         absJobDir = tempfile.mkdtemp(prefix=self.JOB_DIR_PREFIX,
                                      dir=self._getArbitraryJobsDirForName(usefulFilename))
-                                     
+
         jobDescription.jobStoreID = self._getJobIdFromDir(absJobDir)
-        
+
     def create(self, jobDescription):
         if hasattr(self, "_batchedUpdates") and self._batchedUpdates is not None:
             # Save it later
@@ -198,10 +198,9 @@ class FileJobStore(AbstractJobStore):
 
     def getSharedPublicUrl(self, sharedFileName):
         jobStorePath = os.path.join(self.sharedFilesDir, sharedFileName)
-        if os.path.exists(jobStorePath):
-            return 'file:' + jobStorePath
-        else:
+        if not os.path.exists(jobStorePath):
             raise NoSuchFileException(sharedFileName)
+        return 'file:' + jobStorePath
 
     def load(self, jobStoreID):
         self._checkJobStoreIdExists(jobStoreID)
@@ -209,10 +208,10 @@ class FileJobStore(AbstractJobStore):
         jobFile = self._getJobFileName(jobStoreID)
         with open(jobFile, 'rb') as fileHandle:
             job = pickle.load(fileHandle)
-        
+
         # Pass along the current config, which is the JobStore's responsibility.
         job.assignConfig(self.config)
-            
+
         # The following cleans up any issues resulting from the failure of the
         # job during writing by the batch system.
         if os.path.isfile(jobFile + ".new"):
@@ -224,12 +223,17 @@ class FileJobStore(AbstractJobStore):
     def update(self, job):
         assert job.jobStoreID is not None, f"Tried to update job {job} without an ID"
         assert not isinstance(job.jobStoreID, TemporaryID), f"Tried to update job {job} without an assigned ID"
-    
+
+        job.pre_update_hook()
+
         # The job is serialised to a file suffixed by ".new"
+        # We insist on creating the file; an existing .new file indicates
+        # multiple simultaneous attempts to update the job, which will lose
+        # updates.
         # The file is then moved to its correct path.
         # Atomicity guarantees use the fact the underlying file systems "move"
         # function is atomic.
-        with open(self._getJobFileName(job.jobStoreID) + ".new", 'wb') as f:
+        with open(self._getJobFileName(job.jobStoreID) + ".new", 'xb') as f:
             pickle.dump(job, f)
         # This should be atomic for the file system
         os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
@@ -274,28 +278,29 @@ class FileJobStore(AbstractJobStore):
         if hardlink:
             self.linkImports = saved
 
-    def _copyOrLink(self, srcURL, destPath):
+    def _copyOrLink(self, srcURL, destPath, symlink=False):
         # linking is not done be default because of issue #1755
         srcPath = self._extractPathFromUrl(srcURL)
-        if self.linkImports:
+        if self.linkImports or symlink:
             os.symlink(os.path.realpath(srcPath), destPath)
         else:
             atomic_copy(srcPath, destPath)
 
-    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False):
+    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False, symlink=False):
         if issubclass(otherCls, FileJobStore):
             if sharedFileName is None:
+                executable = os.stat(url.path).st_mode & stat.S_IXUSR != 0
                 absPath = self._getUniqueFilePath(url.path)  # use this to get a valid path to write to in job store
                 with self.optionalHardCopy(hardlink):
-                    self._copyOrLink(url, absPath)
+                    self._copyOrLink(url, absPath, symlink=symlink)
                 # TODO: os.stat(absPath).st_size consistently gives values lower than
                 # getDirSizeRecursively()
-                return FileID(self._getFileIdFromPath(absPath), os.stat(absPath).st_size)
+                return FileID(self._getFileIdFromPath(absPath), os.stat(absPath).st_size, executable)
             else:
                 self._requireValidSharedFileName(sharedFileName)
                 path = self._getSharedFilePath(sharedFileName)
                 with self.optionalHardCopy(hardlink):
-                    self._copyOrLink(url, path)
+                    self._copyOrLink(url, path, symlink=symlink)
                 return None
         else:
             return super(FileJobStore, self)._importFile(otherCls, url,
@@ -305,17 +310,20 @@ class FileJobStore(AbstractJobStore):
         if issubclass(otherCls, FileJobStore):
             srcPath = self._getFilePathFromId(jobStoreFileID)
             destPath = self._extractPathFromUrl(url)
+            executable = getattr(jobStoreFileID, 'executable', False)
             if self.moveExports:
-                self._move_and_linkback(srcPath, destPath)
+                self._move_and_linkback(srcPath, destPath, executable=executable)
             else:
-                atomic_copy(srcPath, destPath)
+                atomic_copy(srcPath, destPath, executable=executable)
         else:
             super(FileJobStore, self)._defaultExportFile(otherCls, jobStoreFileID, url)
 
-    def _move_and_linkback(self, srcPath, destPath):
+    def _move_and_linkback(self, srcPath, destPath, executable):
         logger.debug("moveExports option, Moving src=%s to dest=%s ; then symlinking dest to src", srcPath, destPath)
         shutil.move(srcPath, destPath)
         os.symlink(destPath, srcPath)
+        if executable:
+            os.chmod(destPath, os.stat(destPath).st_mode | stat.S_IXUSR)
 
     @classmethod
     def getSize(cls, url):
@@ -330,16 +338,17 @@ class FileJobStore(AbstractJobStore):
         :param str url: A path as a string of the file to be read from.
         :param object writable: An open file object to write to.
         """
-        
+
         # we use a ~10Mb buffer to improve speed
         with open(cls._extractPathFromUrl(url), 'rb') as readable:
             shutil.copyfileobj(readable, writable, length=cls.BUFFER_SIZE)
             # Return the number of bytes we read when we reached EOF.
-            return readable.tell()
-        
+            executable = os.stat(readable.name).st_mode & stat.S_IXUSR
+            return readable.tell(), executable
+
 
     @classmethod
-    def _writeToUrl(cls, readable, url):
+    def _writeToUrl(cls, readable, url, executable=False):
         """
         Writes the contents of a file to a source (writes readable to url)
         using a ~10Mb buffer.
@@ -348,7 +357,11 @@ class FileJobStore(AbstractJobStore):
         :param object readable: An open file object to read from.
         """
         # we use a ~10Mb buffer to improve speed
-        atomic_copyobj(readable, cls._extractPathFromUrl(url), length=cls.BUFFER_SIZE)
+        atomic_copyobj(readable,
+                       cls._extractPathFromUrl(url),
+                       length=cls.BUFFER_SIZE,
+                       executable=executable)
+
 
     @staticmethod
     def _extractPathFromUrl(url):
@@ -399,12 +412,13 @@ class FileJobStore(AbstractJobStore):
         return relPath
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None):
+    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None, encoding=None, errors=None):
         if not basename:
             basename = 'stream'
         absPath = self._getUniqueFilePath(basename, jobStoreID, cleanup)
         relPath = self._getFileIdFromPath(absPath)
-        with open(absPath, 'wb') as f:
+
+        with open(absPath, 'wb' if encoding == None else 'wt', encoding=encoding, errors=errors) as f:
             # Don't yield while holding an open file descriptor to the temp
             # file. That can result in temp files still being open when we try
             # to clean ourselves up, somehow, for certain workloads.
@@ -428,6 +442,7 @@ class FileJobStore(AbstractJobStore):
         self._checkJobStoreFileID(jobStoreFileID)
         jobStoreFilePath = self._getFilePathFromId(jobStoreFileID)
         localDirPath = os.path.dirname(localFilePath)
+        executable = getattr(jobStoreFileID, 'executable', False)
 
         if not symlink and os.path.islink(localFilePath):
             # We had a symlink and want to clobber it with a hardlink or copy.
@@ -453,7 +468,6 @@ class FileJobStore(AbstractJobStore):
                     # It would be very unlikely to fail again for same reason but possible
                     # nonetheless in which case we should just give up.
                     os.symlink(jobStoreFilePath, localFilePath)
-
                     # Now we succeeded and don't need to copy
                     return
                 else:
@@ -476,7 +490,6 @@ class FileJobStore(AbstractJobStore):
                     # It would be very unlikely to fail again for same reason but possible
                     # nonetheless in which case we should just give up.
                     os.link(jobStoreFilePath, localFilePath)
-
                     # Now we succeeded and don't need to copy
                     return
                 elif e.errno == errno.EXDEV:
@@ -491,7 +504,7 @@ class FileJobStore(AbstractJobStore):
 
         # If we get here, neither a symlink nor a hardlink will work.
         # Make a complete copy.
-        atomic_copy(jobStoreFilePath, localFilePath)
+        atomic_copy(jobStoreFilePath, localFilePath, executable=executable)
 
     def deleteFile(self, jobStoreFileID):
         if not self.fileExists(jobStoreFileID):
@@ -532,18 +545,18 @@ class FileJobStore(AbstractJobStore):
         return st.st_size
 
     @contextmanager
-    def updateFileStream(self, jobStoreFileID):
+    def updateFileStream(self, jobStoreFileID, encoding=None, errors=None):
         self._checkJobStoreFileID(jobStoreFileID)
         # File objects are context managers (CM) so we could simply return what open returns.
         # However, it is better to wrap it in another CM so as to prevent users from accessing
         # the file object directly, without a with statement.
-        with open(self._getFilePathFromId(jobStoreFileID), 'wb') as f:
+        with open(self._getFilePathFromId(jobStoreFileID), 'wb' if encoding == None else 'wt', encoding=encoding, errors=errors) as f:
             yield f
 
     @contextmanager
-    def readFileStream(self, jobStoreFileID):
+    def readFileStream(self, jobStoreFileID, encoding=None, errors=None):
         self._checkJobStoreFileID(jobStoreFileID)
-        with open(self._getFilePathFromId(jobStoreFileID), 'rb') as f:
+        with open(self._getFilePathFromId(jobStoreFileID), 'rb' if encoding == None else 'rt', encoding=encoding, errors=errors) as f:
             yield f
 
     ##########################################
@@ -555,19 +568,20 @@ class FileJobStore(AbstractJobStore):
         return os.path.join(self.sharedFilesDir, sharedFileName)
 
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName, isProtected=None):
+    def writeSharedFileStream(self, sharedFileName, isProtected=None, encoding=None, errors=None):
         # the isProtected parameter has no effect on the fileStore
         self._requireValidSharedFileName(sharedFileName)
         with AtomicFileCreate(self._getSharedFilePath(sharedFileName)) as tmpSharedFilePath:
-            with open(tmpSharedFilePath, 'wb') as f:
+            with open(tmpSharedFilePath, 'wb' if encoding == None else 'wt', encoding=encoding, errors=None) as f:
                 yield f
 
     @contextmanager
-    def readSharedFileStream(self, sharedFileName):
+    def readSharedFileStream(self, sharedFileName, encoding=None, errors=None):
         self._requireValidSharedFileName(sharedFileName)
         try:
-            with open(self._getSharedFilePath(sharedFileName), 'rb') as f:
+            with open(self._getSharedFilePath(sharedFileName), 'rb' if encoding == None else 'rt', encoding=encoding, errors=errors) as f:
                 yield f
+
         except IOError as e:
             if e.errno == errno.ENOENT:
                 raise NoSuchFileException(sharedFileName)
@@ -664,13 +678,12 @@ class FileJobStore(AbstractJobStore):
         :meth:`assignID`, and the corresponding job has not yet been
         deleted, even if the JobDescription hasn't yet been saved for the first
         time.
-        
+
         If the ID has not been assigned, raises a NoSuchJobException.
         """
-        
+
         if not self._waitForFile(self._getJobDirFromId(jobStoreID)):
             raise NoSuchJobException(jobStoreID)
-
 
     def _checkJobStoreIdExists(self, jobStoreID):
         """
@@ -921,8 +934,7 @@ class FileJobStore(AbstractJobStore):
             self._checkJobStoreIdAssigned(jobStoreID)
             # Find where all its created files should live, depending on if
             # they need to go away when the job is deleted or not.
-            jobFilesDir = self._getJobFilesDir(jobStoreID) if not cleanup \
-                else self._getJobFilesCleanupDir(jobStoreID)
+            jobFilesDir = self._getJobFilesDir(jobStoreID) if not cleanup else self._getJobFilesCleanupDir(jobStoreID)
 
             # Lazily create the parent directory.
             # We don't want our tree filled with confusingly empty directories.

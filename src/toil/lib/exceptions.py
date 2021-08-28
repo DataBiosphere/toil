@@ -16,7 +16,7 @@
 
 import sys
 
-
+# TODO: isn't this built in to Python 3 now?
 class panic( object ):
     """
     The Python idiom for reraising a primary exception fails when the except block raises a
@@ -52,11 +52,10 @@ class panic( object ):
         raise_(exc_type, exc_value, traceback)
 
 def raise_(exc_type, exc_value, traceback) -> None:
-     if exc_value is not None:
-         exc = exc_type(exc_value)
-     else:
-         exc = exc_type
-     if exc.__traceback__ is not traceback:
-         raise exc.with_traceback(traceback)
-     raise exc
-
+    if exc_value is not None:
+        exc = exc_value
+    else:
+        exc = exc_type
+    if exc.__traceback__ is not traceback:
+        raise exc.with_traceback(traceback)
+    raise exc

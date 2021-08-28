@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,8 +26,8 @@ a_short_time = 5
 logger = logging.getLogger(__name__)
 
 
-class Node(object):
-    maxWaitTime = 5 * 60
+class Node:
+    maxWaitTime = 7 * 60
 
     def __init__(self, publicIP, privateIP, name, launchTime, nodeType, preemptable, tags=None):
         self.publicIP = publicIP
@@ -91,7 +91,7 @@ class Node(object):
 
     def injectFile(self, fromFile, toFile, role):
         """
-        rysnc a file to the vm with the given role
+        rysnc a file to the container with the given role
         """
         maxRetries = 10
         for retry in range(maxRetries):
@@ -103,17 +103,38 @@ class Node(object):
                 time.sleep(10 * retry)
         raise RuntimeError("Failed to inject file %s to %s with ip %s" % (fromFile, role, self.effectiveIP))
 
+    def extractFile(self, fromFile, toFile, role):
+        """
+        rysnc a file from the container with the given role
+        """
+        maxRetries = 10
+        for retry in range(maxRetries):
+            try:
+                self.coreRsync([":" + fromFile, toFile], applianceName=role)
+                return True
+            except Exception as e:
+                logger.debug("Rsync from new node failed, trying again. Error message: %s" % e)
+                time.sleep(10 * retry)
+        raise RuntimeError("Failed to extract file %s from %s with ip %s" % (fromFile, role, self.effectiveIP))
+
     def _waitForSSHKeys(self, keyName='core'):
         # the propagation of public ssh keys vs. opening the SSH port is racey, so this method blocks until
         # the keys are propagated and the instance can be SSH into
-        startTime = time.time()
+        start_time = time.time()
+        last_error = None
         while True:
-            if time.time() - startTime > self.maxWaitTime:
-                raise RuntimeError("Key propagation failed on machine with ip %s" % self.effectiveIP)
+            if time.time() - start_time > self.maxWaitTime:
+                raise RuntimeError(f"Key propagation failed on machine with ip {self.effectiveIP}." +
+                                   ("\n\nMake sure that your public key is attached to your account and you are using "
+                                    "the correct private key. If you are using a key with a passphrase, be sure to "
+                                    "set up ssh-agent. For details, refer to "
+                                    "https://toil.readthedocs.io/en/latest/running/cloud/cloud.html."
+                                    if last_error and 'Permission denied' in last_error else ""))
             try:
                 logger.info('Attempting to establish SSH connection...')
                 self.sshInstance('ps', sshOptions=['-oBatchMode=yes'], user=keyName)
-            except RuntimeError:
+            except RuntimeError as err:
+                last_error = str(err)
                 logger.info('Connection rejected, waiting for public SSH key to be propagated. Trying again in 10s.')
                 time.sleep(10)
             else:
@@ -173,7 +194,7 @@ class Node(object):
         :return: the number of unsuccessful attempts to connect to the port before a the first
         success
         """
-        logger.debug('Waiting for ssh port to open...')
+        logger.debug('Waiting for ssh port on %s to open...', self.effectiveIP)
         for i in count():
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             try:
@@ -213,6 +234,9 @@ class Node(object):
         to be False by default.
 
         kwargs: input, tty, appliance, collectStdout, sshOptions, strict
+
+        :param bytes input: UTF-8 encoded input bytes to send to the command
+
         """
         commandTokens = ['ssh', '-tt']
         if not kwargs.pop('strict', False):
@@ -220,12 +244,8 @@ class Node(object):
                 'sshOptions', [])
         sshOptions = kwargs.pop('sshOptions', None)
         # Forward ports:
-        # 3000 for Grafana dashboard
-        # 9090 for Prometheus dashboard
         # 5050 for Mesos dashboard (although to talk to agents you will need a proxy)
-        commandTokens.extend(['-L', '3000:localhost:3000', \
-                              '-L', '9090:localhost:9090', \
-                              '-L', '5050:localhost:5050'])
+        commandTokens.extend(['-L', '5050:localhost:5050'])
         if sshOptions:
             # add specified options to ssh command
             assert isinstance(sshOptions, list)

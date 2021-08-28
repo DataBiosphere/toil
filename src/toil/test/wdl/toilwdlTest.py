@@ -6,31 +6,24 @@ import uuid
 import zipfile
 from urllib.request import urlretrieve
 
-import toil.wdl.wdl_parser as wdl_parser
-from toil.test import ToilTest, needs_docker, slow
+from toil.test import ToilTest, needs_docker, needs_java, slow
 from toil.version import exactPython
-from toil.wdl.wdl_analysis import AnalyzeWDL
-from toil.wdl.wdl_synthesis import SynthesizeWDL
-from toil.wdl.wdl_functions import generate_docker_bashscript_file
-from toil.wdl.wdl_functions import select_first
-from toil.wdl.wdl_functions import size
-from toil.wdl.wdl_functions import glob
-from toil.wdl.wdl_functions import process_and_read_file
-from toil.wdl.wdl_functions import process_infile
-from toil.wdl.wdl_functions import process_outfile
-from toil.wdl.wdl_functions import abspath_file
-from toil.wdl.wdl_functions import combine_dicts
-from toil.wdl.wdl_functions import parse_memory
-from toil.wdl.wdl_functions import parse_cores
-from toil.wdl.wdl_functions import parse_disk
-from toil.wdl.wdl_functions import defined
-from toil.wdl.wdl_functions import read_tsv
-from toil.wdl.wdl_functions import read_csv
-from toil.wdl.wdl_functions import basename
-from toil.test import ToilTest, slow, needs_docker, needs_java
-import zipfile
-import shutil
-import uuid
+from toil.wdl.utils import get_analyzer
+from toil.wdl.wdl_functions import (abspath_file,
+                                    basename,
+                                    combine_dicts,
+                                    generate_docker_bashscript_file,
+                                    glob,
+                                    parse_cores,
+                                    parse_disk,
+                                    parse_memory,
+                                    process_and_read_file,
+                                    process_infile,
+                                    process_outfile,
+                                    read_csv,
+                                    read_tsv,
+                                    select_first,
+                                    size)
 
 
 class ToilWdlIntegrationTest(ToilTest):
@@ -115,8 +108,8 @@ class ToilWdlIntegrationTest(ToilTest):
 
     @needs_docker
     def testMD5sum(self):
-        '''Test if toilwdl produces the same outputs as known good outputs for WDL's
-        GATK tutorial #1.'''
+        """Test if toilwdl produces the same outputs as known good outputs for WDL's
+        GATK tutorial #1."""
         wdl = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.wdl')
         inputfile = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.input')
         json = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.json')
@@ -171,8 +164,7 @@ class ToilWdlIntegrationTest(ToilTest):
         wdl_that_should_exist = [os.path.abspath('src/toil/wdl/wdl_analysis.py'),
                                  os.path.abspath('src/toil/wdl/wdl_synthesis.py'),
                                  os.path.abspath('src/toil/wdl/wdl_types.py'),
-                                 os.path.abspath('src/toil/wdl/wdl_functions.py'),
-                                 os.path.abspath('src/toil/wdl/wdl_parser.py')]
+                                 os.path.abspath('src/toil/wdl/wdl_functions.py')]
         # make sure the files match the expected files
         for location in wdl_that_should_exist:
             assert location in wdl_locations, '{} not in {}!'.format(str(location), str(wdl_locations))
@@ -224,45 +216,45 @@ class ToilWdlIntegrationTest(ToilTest):
 
     # estimated run time <1 sec
     def testPrimitives(self):
-        '''Test if toilwdl correctly interprets some basic declarations.'''
+        """Test if toilwdl correctly interprets some basic declarations."""
         wdl = os.path.abspath('src/toil/test/wdl/testfiles/vocab.wdl')
-        json = os.path.abspath('src/toil/test/wdl/testfiles/vocab.json')
 
-        aWDL = AnalyzeWDL(wdl, json, self.output_dir)
-        with open(wdl, 'r') as wdl:
-            wdl_string = wdl.read()
-            ast = wdl_parser.parse(wdl_string).ast()
-            aWDL.create_tasks_dict(ast)
-            aWDL.create_workflows_dict(ast)
+        # TODO: test for all version.
+        aWDL = get_analyzer(wdl)
+        aWDL.analyze()
 
         no_declaration = ['bool1', 'int1', 'float1', 'file1', 'string1']
         collection_counter = []
-        for name, declaration in aWDL.workflows_dictionary['vocabulary']['wf_declarations'].items():
+        for key, declaration in aWDL.workflows_dictionary['vocabulary'].items():
+            if not key.startswith('declaration'):
+                continue
+
+            name, var_type, var_expr = declaration
 
             if name in no_declaration:
                 collection_counter.append(name)
-                assert not declaration['value']
+                assert not var_expr
 
             if name == 'bool2':
                 collection_counter.append(name)
-                assert declaration['value'] == 'True', declaration['value']
-                assert declaration['type'] == 'Boolean', declaration['type']
+                assert var_expr == 'True', var_expr
+                assert var_type == 'Boolean', var_type
             if name == 'int2':
                 collection_counter.append(name)
-                assert declaration['value'] == '1', declaration['value']
-                assert declaration['type'] == 'Int', declaration['type']
+                assert var_expr == '1', var_expr
+                assert var_type == 'Int', var_type
             if name == 'float2':
                 collection_counter.append(name)
-                assert declaration['value'] == '1.1', declaration['value']
-                assert declaration['type'] == 'Float', declaration['type']
+                assert var_expr == '1.1', var_expr
+                assert var_type == 'Float', var_type
             if name == 'file2':
                 collection_counter.append(name)
-                assert declaration['value'] == "'src/toil/test/wdl/test.tsv'", declaration['value']
-                assert declaration['type'] == 'File', declaration['type']
+                assert var_expr == "'src/toil/test/wdl/test.tsv'", var_expr
+                assert var_type == 'File', var_type
             if name == 'string2':
                 collection_counter.append(name)
-                assert declaration['value'] == "'x'", declaration['value']
-                assert declaration['type'] == 'String', declaration['type']
+                assert var_expr == "'x'", var_expr
+                assert var_type == 'String', var_type
         assert collection_counter == ['bool1', 'int1', 'float1', 'file1', 'string1',
                                       'bool2', 'int2', 'float2', 'file2', 'string2']
 
@@ -270,8 +262,8 @@ class ToilWdlIntegrationTest(ToilTest):
     @slow
     @needs_java
     def testTut01(self):
-        '''Test if toilwdl produces the same outputs as known good outputs for WDL's
-        GATK tutorial #1.'''
+        """Test if toilwdl produces the same outputs as known good outputs for WDL's
+        GATK tutorial #1."""
         wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl")
         json = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
         ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/output/")
@@ -284,8 +276,8 @@ class ToilWdlIntegrationTest(ToilTest):
     @slow
     @needs_java
     def testTut02(self):
-        '''Test if toilwdl produces the same outputs as known good outputs for WDL's
-        GATK tutorial #2.'''
+        """Test if toilwdl produces the same outputs as known good outputs for WDL's
+        GATK tutorial #2."""
         wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/simpleVariantSelection.wdl")
         json = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/simpleVariantSelection_inputs.json")
         ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/output/")
@@ -298,8 +290,8 @@ class ToilWdlIntegrationTest(ToilTest):
     @slow
     @needs_java
     def testTut03(self):
-        '''Test if toilwdl produces the same outputs as known good outputs for WDL's
-        GATK tutorial #3.'''
+        """Test if toilwdl produces the same outputs as known good outputs for WDL's
+        GATK tutorial #3."""
         wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/simpleVariantDiscovery.wdl")
         json = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/simpleVariantDiscovery_inputs.json")
         ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/output/")
@@ -313,8 +305,8 @@ class ToilWdlIntegrationTest(ToilTest):
     @needs_java
     @unittest.skip('broken; see: https://github.com/DataBiosphere/toil/issues/3339')
     def testTut04(self):
-        '''Test if toilwdl produces the same outputs as known good outputs for WDL's
-        GATK tutorial #4.'''
+        """Test if toilwdl produces the same outputs as known good outputs for WDL's
+        GATK tutorial #4."""
         wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/jointCallingGenotypes.wdl")
         json = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/jointCallingGenotypes_inputs.json")
         ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/output/")
@@ -327,8 +319,8 @@ class ToilWdlIntegrationTest(ToilTest):
     @slow
     @needs_docker
     def testENCODE(self):
-        '''Test if toilwdl produces the same outputs as known good outputs for
-        a short ENCODE run.'''
+        """Test if toilwdl produces the same outputs as known good outputs for
+        a short ENCODE run."""
         wdl = os.path.abspath(
             "src/toil/test/wdl/wdl_templates/testENCODE/encode_mapping_workflow.wdl")
         json = os.path.abspath(
@@ -343,7 +335,7 @@ class ToilWdlIntegrationTest(ToilTest):
 
     # estimated run time 2 sec
     def testPipe(self):
-        '''Test basic bash input functionality with a pipe.'''
+        """Test basic bash input functionality with a pipe."""
         wdl = os.path.abspath(
             "src/toil/test/wdl/wdl_templates/testPipe/call.wdl")
         json = os.path.abspath(
@@ -383,13 +375,10 @@ class ToilWdlIntegrationTest(ToilTest):
             u'helloHaplotypeCaller.haplotypeCaller.RefDict': u'"src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.dict"',
             u'helloHaplotypeCaller.haplotypeCaller.RefFasta': u'"src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.fasta"'}
 
-        t = AnalyzeWDL(
-            "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl",
-            "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json",
-            self.output_dir)
-
-        json_dict = t.dict_from_JSON("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
-        assert json_dict == default_json_dict_output, (str(json_dict) + '\nAssertionError: ' + str(default_json_dict_output))
+        from toil.wdl.utils import dict_from_JSON
+        json_dict = dict_from_JSON("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
+        assert json_dict == default_json_dict_output, (
+                str(json_dict) + '\nAssertionError: ' + str(default_json_dict_output))
 
     @classmethod
     def fetch_and_unzip_from_s3(cls, filename, data, data_dir):

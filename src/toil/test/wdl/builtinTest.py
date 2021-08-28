@@ -8,27 +8,27 @@ from typing import List, Optional
 
 from toil.test import ToilTest
 from toil.version import exactPython
-from toil.wdl.wdl_functions import (
-    ceil,
-    floor,
-    length,
-    read_boolean,
-    read_float,
-    read_int,
-    read_json,
-    read_lines,
-    read_map,
-    read_string,
-    read_tsv,
-    sub,
-    transpose,
-    write_json,
-    write_lines,
-    write_map,
-    write_tsv,
-    wdl_zip,
-    WDLPair,
-    WDLRuntimeError)
+from toil.wdl.wdl_functions import (WDLPair,
+                                    WDLRuntimeError,
+                                    ceil,
+                                    cross,
+                                    floor,
+                                    length,
+                                    read_boolean,
+                                    read_float,
+                                    read_int,
+                                    read_json,
+                                    read_lines,
+                                    read_map,
+                                    read_string,
+                                    read_tsv,
+                                    sub,
+                                    transpose,
+                                    wdl_zip,
+                                    write_json,
+                                    write_lines,
+                                    write_map,
+                                    write_tsv)
 
 
 class WdlStandardLibraryFunctionsTest(ToilTest):
@@ -250,18 +250,24 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
         """Test the wdl built-in functional equivalent of 'zip()'."""
         left_array = [1, 2, 3]
         right_array = ['a', 'b', 'c']
-        zipped = wdl_zip(left_array, right_array)  # [WDLPair(1, 'a'), WDLPair(2, 'b'), WDLPair(3, 'c')]
+        zipped = wdl_zip(left_array, right_array)
+        expected_results = [WDLPair(1, 'a'), WDLPair(2, 'b'), WDLPair(3, 'c')]
 
-        self.assertEqual(3, len(zipped))
-
-        for index, pair in enumerate(zipped):
-            self.assertIsInstance(pair, WDLPair)
-            # check left and right values
-            self.assertEqual(left_array[index], pair.left)
-            self.assertEqual(right_array[index], pair.right)
+        self.assertEqual(zipped, expected_results)
 
         # input with different size should fail.
         self.assertRaises(WDLRuntimeError, wdl_zip, [1, 2, 3], ['a', 'b'])
+
+    def testFn_Cross(self):
+        """Test the wdl built-in functional equivalent of 'cross()'."""
+        left_array = [1, 2, 3]
+        right_array = ['a', 'b']
+        crossed = cross(left_array, right_array)
+        expected_results = [WDLPair(1, 'a'), WDLPair(1, 'b'),
+                            WDLPair(2, 'a'), WDLPair(2, 'b'),
+                            WDLPair(3, 'a'), WDLPair(3, 'b')]
+
+        self.assertEqual(crossed, expected_results)
 
 
 class WdlWorkflowsTest(ToilTest):
@@ -348,6 +354,15 @@ class WdlLanguageSpecWorkflowsTest(WdlWorkflowsTest):
         # 3. src/toil/test/wdl/testfiles/test_int.txt           -> '11'
         expected_result = '[["A Whale of a Tale."],["true"],["11"]]'
         self.check_function('type_pair', cases=['with_files'], expected_result=expected_result)
+
+    def test_v1_declaration(self):
+        """
+        Basic declaration example modified from the WDL 1.0 spec:
+
+        https://github.com/openwdl/wdl/blob/main/versions/1.0/SPEC.md#declarations
+        """
+        expected_result = 'Hello, x!; Hello, y!'
+        self.check_function('v1_spec', cases=['declaration'], expected_result=expected_result)
 
 
 class WdlStandardLibraryWorkflowsTest(WdlWorkflowsTest):
@@ -462,6 +477,29 @@ class WdlStandardLibraryWorkflowsTest(WdlWorkflowsTest):
     def test_zip(self):
         self.check_function('zip', cases=['as_input'],
                             expected_result='[{"left":1,"right":"a"},{"left":2,"right":"b"},{"left":3,"right":"c"}]')
+
+    def test_cross(self):
+        self.check_function('cross', cases=['as_input'],
+                            expected_result='[{"left":1,"right":"a"},{"left":1,"right":"b"},'
+                                            '{"left":2,"right":"a"},{"left":2,"right":"b"},'
+                                            '{"left":3,"right":"a"},{"left":3,"right":"b"}]')
+
+    def test_as_pairs(self):
+        self.check_function('as_pairs', cases=['as_input'],
+                            expected_result='[{"left":"a","right":1},{"left":"b","right":2},{"left":"c","right":3}]')
+
+    def test_as_map(self):
+        self.check_function('as_map', cases=['as_input'], expected_result='{"a":1,"b":2,"c":3}')
+
+    def test_keys(self):
+        self.check_function('keys', cases=['as_input'], expected_result='["a","b","c"]')
+
+    def test_collect_by_key(self):
+        # NOTE: this result is expected according to the spec but differs from Cromwell.
+        self.check_function('collect_by_key', cases=['as_input'], expected_result='{"a":[1,3],"b":[2]}')
+
+    def test_flatten(self):
+        self.check_function('flatten', cases=['as_input'], expected_result='[1,2,3,1,21,22]')
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+
+from typing import Callable, Type, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
 
 
 def gridengine_batch_system_factory():
@@ -71,3 +77,10 @@ BATCH_SYSTEM_FACTORY_REGISTRY = {
 }
 BATCH_SYSTEMS = list(BATCH_SYSTEM_FACTORY_REGISTRY.keys())
 DEFAULT_BATCH_SYSTEM = 'single_machine'
+
+def addBatchSystemFactory(key: str, batchSystemFactory: Callable[[], Type['AbstractBatchSystem']]):
+    """
+    Adds a batch system to the registry for workflow-supplied batch systems.
+    """
+    BATCH_SYSTEMS.append(key)
+    BATCH_SYSTEM_FACTORY_REGISTRY[key] = batchSystemFactory

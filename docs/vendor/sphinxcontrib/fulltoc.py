@@ -1,5 +1,3 @@
-# -*- encoding: utf-8 -*-
-#
 # Copyright © 2012 New Dream Network, LLC (DreamHost)
 # Copyright © 2020 Regents of the University of California
 #
@@ -16,8 +14,6 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations
 # under the License.
-
-
 from sphinx import addnodes
 
 
@@ -55,12 +51,12 @@ def get_rendered_toctree(builder, docname, **kwargs):
     with the given parameters, and then return the rendered
     HTML fragment.
     """
-    
+
     if kwargs.get('prune', None) is None:
         kwargs['prune'] = False
     if kwargs.get('collapse', None) is None:
         kwargs['collapse'] = True
-    
+
     fulltoc = build_full_toctree(builder,
                                  docname,
                                  **kwargs

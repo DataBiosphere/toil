@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,19 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import logging
 import math
 import os
 import time
 from pipes import quote
+from typing import Optional, List, Dict
 
-from toil.batchSystems import MemoryString
-from toil.batchSystems.abstractGridEngineBatchSystem import \
-    AbstractGridEngineBatchSystem
+from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)
+
 
 class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
 
@@ -50,8 +49,14 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
         def killJob(self, jobID):
             call_command(['qdel', self.getBatchSystemID(jobID)])
 
-        def prepareSubmission(self, cpu, memory, jobID, command, jobName):
-            return self.prepareQsub(cpu, memory, jobID) + [command]
+        def prepareSubmission(self,
+                              cpu: int,
+                              memory: int,
+                              jobID: int,
+                              command: str,
+                              jobName: str,
+                              job_environment: Optional[Dict[str, str]] = None):
+            return self.prepareQsub(cpu, memory, jobID, job_environment) + [command]
 
         def submitJob(self, subLine):
             stdout = call_command(subLine)
@@ -96,14 +101,22 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
         """
         Implementation-specific helper methods
         """
-        def prepareQsub(self, cpu, mem, jobID):
+        def prepareQsub(self,
+                        cpu: int,
+                        mem: int,
+                        jobID: int,
+                        job_environment: Optional[Dict[str, str]] = None) -> List[str]:
             qsubline = ['qsub', '-V', '-b', 'y', '-terse', '-j', 'y', '-cwd',
                         '-N', 'toil_job_' + str(jobID)]
 
-            if self.boss.environment:
+            environment = self.boss.environment.copy()
+            if job_environment:
+                environment.update(job_environment)
+
+            if environment:
                 qsubline.append('-v')
                 qsubline.append(','.join(k + '=' + quote(os.environ[k] if v is None else v)
-                                         for k, v in self.boss.environment.items()))
+                                         for k, v in environment.items()))
 
             reqline = list()
             sgeArgs = os.getenv('TOIL_GRIDENGINE_ARGS')
@@ -132,8 +145,8 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                 raise RuntimeError("must specify PE in TOIL_GRIDENGINE_PE environment variable when using multiple CPUs. "
                                    "Run qconf -spl and your local documentation for possible values")
 
-            stdoutfile = self.boss.formatStdOutErrPath(jobID, 'gridengine', '$JOB_ID', 'std_output')
-            stderrfile = self.boss.formatStdOutErrPath(jobID, 'gridengine', '$JOB_ID', 'std_error')
+            stdoutfile: str = self.boss.formatStdOutErrPath(jobID, '$JOB_ID', 'out')
+            stderrfile: str = self.boss.formatStdOutErrPath(jobID, '$JOB_ID', 'err')
             qsubline.extend(['-o', stdoutfile, '-e', stderrfile])
 
             return qsubline
@@ -145,37 +158,3 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
     @classmethod
     def getWaitDuration(cls):
         return 1
-
-    @classmethod
-    def obtainSystemConstants(cls):
-        # expect qhost output is in the form:
-        # HOSTNAME                ARCH         NCPU NSOC NCOR NTHR NLOAD  MEMTOT  MEMUSE  SWAPTO  SWAPUS
-        # ----------------------------------------------------------------------------------------------
-        # global                  -               -    -    -    -     -       -       -       -       -
-        # compute-1-1             lx-amd64       72    2   36   72  0.49  188.8G   79.6G   92.7G   19.2G
-        # compute-1-10            lx-amd64       72    2   36   72  0.22  188.8G   51.1G   92.7G    2.8G
-        lines = call_command(["qhost"]).strip().split('\n')
-        items = lines[0].strip().split()
-        num_columns = len(items)
-        cpu_index = None
-        mem_index = None
-        for i in range(num_columns):
-            if items[i] == 'NCPU':
-                cpu_index = i
-            elif items[i] == 'MEMTOT':
-                mem_index = i
-        if cpu_index is None or mem_index is None:
-            raise RuntimeError('qhost command does not return NCPU or MEMTOT columns')
-        maxCPU = 0
-        maxMEM = MemoryString("0")
-        for line in lines[2:]:
-            items = line.strip().split()
-            if len(items) < num_columns:
-                raise RuntimeError('qhost output has a varying number of columns')
-            if items[cpu_index] != '-' and int(items[cpu_index]) > maxCPU:
-                maxCPU = int(items[cpu_index])
-            if items[mem_index] != '-' and MemoryString(items[mem_index]) > maxMEM:
-                maxMEM = MemoryString(items[mem_index])
-        if maxCPU == 0 or maxMEM == 0:
-            raise RuntimeError('qhost returned null NCPU or MEMTOT info')
-        return maxCPU, maxMEM

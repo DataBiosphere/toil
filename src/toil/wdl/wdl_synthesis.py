@@ -1,4 +1,4 @@
-# Copyright (C) 2018-2020 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,23 +13,21 @@
 # limitations under the License.
 import logging
 import os
+from typing import Optional
 
-import toil.wdl.wdl_parser as wdl_parser
 from toil.wdl.wdl_functions import heredoc_wdl
-from toil.wdl.wdl_types import (
-    WDLType,
-    WDLCompoundType,
-    WDLFileType,
-    WDLArrayType,
-    WDLPairType,
-    WDLMapType
-)
+from toil.wdl.wdl_types import (WDLArrayType,
+                                WDLCompoundType,
+                                WDLFileType,
+                                WDLMapType,
+                                WDLPairType,
+                                WDLType)
 
-wdllogger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class SynthesizeWDL:
-    '''
+    """
     SynthesizeWDL takes the "workflows_dictionary" and "tasks_dictionary" produced by
     wdl_analysis.py and uses them to write a native python script for use with Toil.
 
@@ -44,17 +42,27 @@ class SynthesizeWDL:
     For example: write the imports, then write all functions defining jobs (which have subsections
     like: write header, define variables, read "File" types into the jobstore, docker call, etc.),
     then write the main and all of its subsections.
-    '''
+    """
 
     def __init__(self,
-                 tasks_dictionary,
-                 workflows_dictionary,
-                 output_directory,
-                 json_dict,
-                 docker_user,
-                 jobstore=None,
-                 destBucket=None):
+                 version: str,
+                 tasks_dictionary: dict,
+                 workflows_dictionary: dict,
+                 output_directory: str,
+                 json_dict: dict,
+                 docker_user: str,
+                 jobstore: Optional[str] = None,
+                 destBucket: Optional[str] = None):
+
+        self.version = version
         self.output_directory = output_directory
+        if not os.path.exists(self.output_directory):
+            try:
+                os.makedirs(self.output_directory)
+            except:
+                raise OSError(
+                    'Could not create directory.  Insufficient permissions or disk space most likely.')
+
         self.output_file = os.path.join(self.output_directory, 'toilwdl_compiled.py')
 
         self.jobstore = jobstore if jobstore else './toilWorkflowRun'
@@ -71,6 +79,9 @@ class SynthesizeWDL:
         self.tasks_dictionary = tasks_dictionary
         # holds workflow structure from WDL workflow objects
         self.workflows_dictionary = workflows_dictionary
+
+        # keep track of which workflow is being written
+        self.current_workflow = None
 
         # unique iterator to add to cmd names
         self.cmd_num = 0
@@ -130,6 +141,12 @@ class SynthesizeWDL:
                     from toil.wdl.wdl_functions import transpose
                     from toil.wdl.wdl_functions import length
                     from toil.wdl.wdl_functions import wdl_zip
+                    from toil.wdl.wdl_functions import cross
+                    from toil.wdl.wdl_functions import as_pairs
+                    from toil.wdl.wdl_functions import as_map
+                    from toil.wdl.wdl_functions import keys
+                    from toil.wdl.wdl_functions import collect_by_key
+                    from toil.wdl.wdl_functions import flatten
                     import fnmatch
                     import textwrap
                     import subprocess
@@ -140,7 +157,7 @@ class SynthesizeWDL:
                     import shlex
                     import uuid
                     import logging
-                    
+
                     _toil_wdl_internal__current_working_dir = os.getcwd()
 
                     logger = logging.getLogger(__name__)
@@ -150,7 +167,7 @@ class SynthesizeWDL:
         return module_string
 
     def write_main(self):
-        '''
+        """
         Writes out a huge string representing the main section of the python
         compiled toil script.
 
@@ -168,18 +185,13 @@ class SynthesizeWDL:
         addChild and encapsulate commands provided by toil.
 
         :return: giant string containing the main def for the toil script.
-        '''
+        """
 
         main_section = ''
 
         # write out the main header
         main_header = self.write_main_header()
         main_section = main_section + main_header
-
-        # write out the workflow declarations
-        main_section = main_section + '        # WF Declarations\n'
-        wf_declarations_to_write = self.write_main_wfdeclarations()
-        main_section = main_section + wf_declarations_to_write
 
         # write toil job wrappers with input vars
         jobs_to_write = self.write_main_jobwrappers()
@@ -201,43 +213,24 @@ class SynthesizeWDL:
             ''', {'jobstore': self.jobstore})
         return main_header
 
-    def write_main_wfdeclarations(self):
-        main_section = ''
-        for wfname, wf in self.workflows_dictionary.items():
-            if 'wf_declarations' in wf:
-                for var, var_expressn in wf['wf_declarations'].items():
-                    var_type = var_expressn['type']
-
-                    # check the json file for the expression's value
-                    # this is a higher priority and overrides anything written in the .wdl
-                    json_expressn = self.json_var(wf=wfname, var=var)
-                    if json_expressn is not None:
-                        var_expressn['value'] = json_expressn
-
-                    main_section += '        {} = {}.create(\n                {})\n'\
-                        .format(var, self.write_declaration_type(var_type), var_expressn['value'])
-
-                    # import filepath into jobstore
-                    if self.needs_file_import(var_type) and var_expressn['value']:
-                        main_section += '        {} = process_infile({}, fileStore)\n'.format(var, var)
-
-        return main_section
-
     def write_main_jobwrappers(self):
-        '''
+        """
         Writes out 'jobs' as wrapped toil objects in preparation for calling.
 
         :return: A string representing this.
-        '''
+        """
         main_section = ''
 
         # toil cannot technically start with multiple jobs, so an empty
         # 'initialize_jobs' function is always called first to get around this
-        main_section = main_section + '\n        job0 = Job.wrapJobFn(initialize_jobs)\n'
+        main_section = main_section + '        job0 = Job.wrapJobFn(initialize_jobs)\n'
 
         # declare each job in main as a wrapped toil function in order of priority
         for wf in self.workflows_dictionary:
+            self.current_workflow = wf
             for assignment in self.workflows_dictionary[wf]:
+                if assignment.startswith('declaration'):
+                    main_section += self.write_main_jobwrappers_declaration(self.workflows_dictionary[wf][assignment])
                 if assignment.startswith('call'):
                     main_section += '        job0 = job0.encapsulate()\n'
                     main_section += self.write_main_jobwrappers_call(self.workflows_dictionary[wf][assignment])
@@ -253,12 +246,32 @@ class SynthesizeWDL:
 
         return main_section
 
+    def write_main_jobwrappers_declaration(self, declaration):
+
+        main_section = ''
+        var_name, var_type, var_expr = declaration
+
+        # check the json file for the expression's value
+        # this is a higher priority and overrides anything written in the .wdl
+        json_expressn = self.json_var(wf=self.current_workflow, var=var_name)
+        if json_expressn is not None:
+            var_expr = json_expressn
+
+        main_section += '        {} = {}.create(\n                {})\n' \
+            .format(var_name, self.write_declaration_type(var_type), var_expr)
+
+        # import filepath into jobstore
+        if self.needs_file_import(var_type) and var_expr:
+            main_section += '        {} = process_infile({}, fileStore)\n'.format(var_name, var_name)
+
+        return main_section
+
     def write_main_destbucket(self):
-        '''
+        """
         Writes out a loop for exporting outputs to a cloud bucket.
 
         :return: A string representing this.
-        '''
+        """
         main_section = heredoc_wdl('''
             outdir = '{outdir}'
             onlyfiles = [os.path.join(outdir, f) for f in os.listdir(outdir) if os.path.isfile(os.path.join(outdir, f))]
@@ -295,8 +308,14 @@ class SynthesizeWDL:
         return False
 
     def write_main_jobwrappers_if(self, if_statement):
+        # check for empty if statement
+        if not if_statement:
+            return self.indent('        pass')
+
         main_section = ''
         for assignment in if_statement:
+            if assignment.startswith('declaration'):
+                main_section += self.write_main_jobwrappers_declaration(if_statement[assignment])
             if assignment.startswith('call'):
                 main_section += '        job0 = job0.encapsulate()\n'
                 main_section += self.write_main_jobwrappers_call(if_statement[assignment])
@@ -306,7 +325,7 @@ class SynthesizeWDL:
             if assignment.startswith('if'):
                 main_section += '        if {}:\n'.format(if_statement[assignment]['expression'])
                 main_section += self.write_main_jobwrappers_if(if_statement[assignment]['body'])
-        main_section = self.indent_docstring(main_section)
+        main_section = self.indent(main_section)
         return main_section
 
     def write_main_jobwrappers_scatter(self, task, assignment):
@@ -345,15 +364,13 @@ class SynthesizeWDL:
 
         scatternamespace = []
 
-        for wfname, wf in self.workflows_dictionary.items():
-            if 'wf_declarations' in wf:
-                for var in wf['wf_declarations']:
-                    scatternamespace.append(var)
-
         for wf in self.workflows_dictionary:
             for assignment in self.workflows_dictionary[wf]:
                 if assignment == assigned:
                     return scatternamespace
+                elif assignment.startswith('declaration'):
+                    name, _, _ = self.workflows_dictionary[wf][assignment]
+                    scatternamespace.append(name)
                 elif assignment.startswith('call'):
                     if 'outputs' in self.tasks_dictionary[self.workflows_dictionary[wf][assignment]['task']]:
                         for output in self.tasks_dictionary[self.workflows_dictionary[wf][assignment]['task']]['outputs']:
@@ -411,11 +428,11 @@ class SynthesizeWDL:
         return calloutputs
 
     def write_functions(self):
-        '''
+        """
         Writes out a python function for each WDL "task" object.
 
         :return: a giant string containing the meat of the job defs.
-        '''
+        """
 
         # toil cannot technically start with multiple jobs, so an empty
         # 'initialize_jobs' function is always called first to get around this
@@ -444,9 +461,9 @@ class SynthesizeWDL:
         return fn_section
 
     def write_scatterfunction(self, job, scattername):
-        '''
+        """
         Writes out a python function for each WDL "scatter" object.
-        '''
+        """
 
         scatter_outputs = self.fetch_scatter_outputs(job)
 
@@ -486,7 +503,7 @@ class SynthesizeWDL:
                              def run(self, fileStore):
                                  fileStore.logToMaster("{jobname}")
                                  tempDir = fileStore.getLocalTempDir()
-                                 
+
                                  try:
                                      os.makedirs(os.path.join(tempDir, 'execution'))
                                  except OSError as e:
@@ -535,17 +552,28 @@ class SynthesizeWDL:
 
         previous_dependency = 'self'
         for statement in job['body']:
-            if statement.startswith('call'):
+            if statement.startswith('declaration'):
+                # reusing write_main_jobwrappers_declaration() here, but it needs to be indented one more level.
+                fn_section += self.indent(
+                    self.write_main_jobwrappers_declaration(job['body'][statement]))
+            elif statement.startswith('call'):
                 fn_section += self.write_scatter_callwrapper(job['body'][statement], previous_dependency)
                 previous_dependency = 'job_' + job['body'][statement]['alias']
-            elif statement.startswith('variable'):
-                fn_section += '            {var} = {expr}\n'.format(var=job['body'][statement]['name'],
-                                                                    expr=job['body'][statement]['value'])
+            elif statement.startswith('scatter'):
+                raise NotImplementedError('nested scatter not implemented.')
+            elif statement.startswith('if'):
+                fn_section += '            if {}:\n'.format(job['body'][statement]['expression'])
+                # reusing write_main_jobwrappers_if() here, but it needs to be indented one more level.
+                fn_section += self.indent(self.write_main_jobwrappers_if(job['body'][statement]['body']))
+
+        # check for empty scatter section
+        if len(job['body']) == 0:
+            fn_section += '            pass'
 
         for var in scatter_outputs:
             fn_section += '            {var}.append({task}.rv("{output}"))\n'.format(var=var['task'] + '_' + var['output'],
-                                                                                   task='job_' + var['task'],
-                                                                                   output=var['output'])
+                                                                                     task='job_' + var['task'],
+                                                                                     output=var['output'])
         return fn_section
 
     def write_scatter_callwrapper(self, job, previous_dependency):
@@ -559,26 +587,8 @@ class SynthesizeWDL:
         fn_section += '))\n'
         return fn_section
 
-    def fetch_scatter_varwrapper_inputs(self, job, scattername):
-        varwrapper_inputs = self.fetch_scatter_inputs(scattername)
-
-        for wf in self.workflows_dictionary:
-            for assignment in self.workflows_dictionary[wf]:
-                if assignment == scattername:
-                    for scatterassignment in self.workflows_dictionary[wf][assignment]['body']:
-                        if scatterassignment.startswith('variable'):
-                            if job['name'] == self.workflows_dictionary[wf][assignment]['body'][scatterassignment]['name']:
-                                varwrapper_inputs.append(self.workflows_dictionary[wf][assignment]['item'])
-                                return varwrapper_inputs
-                            else:
-                                varwrapper_inputs.append(self.workflows_dictionary[wf][assignment]['body'][scatterassignment]['name'])
-                        if scatterassignment.startswith('call'):
-                            varwrapper_inputs.append(self.workflows_dictionary[wf][assignment]['body'][scatterassignment]['alias'])
-                    varwrapper_inputs.append(self.workflows_dictionary[wf][assignment]['item'])
-        return varwrapper_inputs
-
     def write_function(self, job):
-        '''
+        """
         Writes out a python function for each WDL "task" object.
 
         Each python function is a unit of work written out as a string in
@@ -595,7 +605,7 @@ class SynthesizeWDL:
         7: Write the section returning the outputs.  Also logs stats.
 
         :return: a giant string containing the meat of the job defs for the toil script.
-        '''
+        """
 
         # write the function header
         fn_section = self.write_function_header(job)
@@ -618,7 +628,7 @@ class SynthesizeWDL:
         return fn_section
 
     def write_function_header(self, job):
-        '''
+        """
         Writes the header that starts each function, for example, this function
         can write and return:
 
@@ -628,7 +638,7 @@ class SynthesizeWDL:
                         (job priority #, job ID #, Job Skeleton Name, Job Alias)
         :param job_declaration_array: A list of all inputs that job requires.
         :return: A string representing this.
-        '''
+        """
         fn_section = '\n\nclass {jobname}Cls(Job):\n'.format(jobname=job)
         fn_section += '    def __init__(self, '
         if 'inputs' in self.tasks_dictionary[job]:
@@ -687,10 +697,10 @@ class SynthesizeWDL:
                              def run(self, fileStore):
                                  fileStore.logToMaster("{jobname}")
                                  tempDir = fileStore.getLocalTempDir()
-                                 
+
                                  _toil_wdl_internal__stdout_file = os.path.join(tempDir, 'stdout')
                                  _toil_wdl_internal__stderr_file = os.path.join(tempDir, 'stderr')
-                                 
+
                                  try:
                                      os.makedirs(os.path.join(tempDir, 'execution'))
                                  except OSError as e:
@@ -788,14 +798,14 @@ class SynthesizeWDL:
         return section + ')'
 
     def write_function_bashscriptline(self, job):
-        '''
+        """
         Writes a function to create a bashscript for injection into the docker
         container.
 
         :param job_task_reference: The job referenced in WDL's Task section.
         :param job_alias: The actual job name to be written.
         :return: A string writing all of this.
-        '''
+        """
         fn_section = "        generate_docker_bashscript_file(temp_dir=tempDir, docker_dir=tempDir, globs=["
         # TODO: Add glob
         # if 'outputs' in self.tasks_dictionary[job]:
@@ -808,28 +818,28 @@ class SynthesizeWDL:
         return fn_section
 
     def write_function_dockercall(self, job):
-        '''
+        """
         Writes a string containing the apiDockerCall() that will run the job.
 
         :param job_task_reference: The name of the job calling docker.
         :param docker_image: The corresponding name of the docker image.
                                                             e.g. "ubuntu:latest"
         :return: A string containing the apiDockerCall() that will run the job.
-        '''
+        """
         docker_dict = {"docker_image": self.tasks_dictionary[job]['runtime']['docker'],
                        "job_task_reference": job,
                        "docker_user": str(self.docker_user)}
         docker_template = heredoc_wdl('''
         # apiDockerCall() with demux=True returns a tuple of bytes objects (stdout, stderr).
         _toil_wdl_internal__stdout, _toil_wdl_internal__stderr = \\
-            apiDockerCall(self, 
-                          image={docker_image}, 
-                          working_dir=tempDir, 
-                          parameters=[os.path.join(tempDir, "{job_task_reference}_script.sh")], 
-                          entrypoint="/bin/bash", 
-                          user={docker_user}, 
-                          stderr=True, 
-                          demux=True, 
+            apiDockerCall(self,
+                          image={docker_image},
+                          working_dir=tempDir,
+                          parameters=[os.path.join(tempDir, "{job_task_reference}_script.sh")],
+                          entrypoint="/bin/bash",
+                          user={docker_user},
+                          stderr=True,
+                          demux=True,
                           volumes={{tempDir: {{"bind": tempDir}}}})
         with open(os.path.join(_toil_wdl_internal__current_working_dir, '{job_task_reference}.log'), 'wb') as f:
             if _toil_wdl_internal__stdout:
@@ -841,7 +851,7 @@ class SynthesizeWDL:
         return docker_template
 
     def write_function_cmdline(self, job):
-        '''
+        """
         Write a series of commandline variables to be concatenated together
         eventually and either called with subprocess.Popen() or with
         apiDockerCall() if a docker image is called for.
@@ -849,7 +859,7 @@ class SynthesizeWDL:
         :param job: A list such that:
                         (job priority #, job ID #, Job Skeleton Name, Job Alias)
         :return: A string representing this.
-        '''
+        """
 
         fn_section = '\n'
         cmd_array = []
@@ -874,18 +884,21 @@ class SynthesizeWDL:
             if fn_section.endswith(' + '):
                 fn_section = fn_section[:-3]
             fn_section += '\n        cmd = textwrap.dedent(cmd.strip("{nl}"))\n'.format(nl=r"\n")
+        else:
+            # empty command section
+            fn_section += '        cmd = ""'
 
         return fn_section
 
     def write_function_subprocesspopen(self):
-        '''
+        """
         Write a subprocess.Popen() call for this function and write it out as a
         string.
 
         :param job: A list such that:
                         (job priority #, job ID #, Job Skeleton Name, Job Alias)
         :return: A string representing this.
-        '''
+        """
         fn_section = heredoc_wdl('''
                 this_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 _toil_wdl_internal__stdout, _toil_wdl_internal__stderr = this_process.communicate()\n''', indent='        ')
@@ -893,7 +906,7 @@ class SynthesizeWDL:
         return fn_section
 
     def write_function_outputreturn(self, job, docker=False):
-        '''
+        """
         Find the output values that this function needs and write them out as a
         string.
 
@@ -901,17 +914,17 @@ class SynthesizeWDL:
                         (job priority #, job ID #, Job Skeleton Name, Job Alias)
         :param job_task_reference: The name of the job to look up values for.
         :return: A string representing this.
-        '''
+        """
 
         fn_section = ''
 
         fn_section += heredoc_wdl('''
-            _toil_wdl_internal__stdout_file = generate_stdout_file(_toil_wdl_internal__stdout, 
-                                                                   tempDir, 
+            _toil_wdl_internal__stdout_file = generate_stdout_file(_toil_wdl_internal__stdout,
+                                                                   tempDir,
                                                                    fileStore=fileStore)
-            _toil_wdl_internal__stderr_file = generate_stdout_file(_toil_wdl_internal__stderr, 
-                                                                   tempDir, 
-                                                                   fileStore=fileStore, 
+            _toil_wdl_internal__stderr_file = generate_stdout_file(_toil_wdl_internal__stderr,
+                                                                   tempDir,
+                                                                   fileStore=fileStore,
                                                                    stderr=True)
         ''', indent='        ')[1:]
 
@@ -954,12 +967,12 @@ class SynthesizeWDL:
 
         return fn_section
 
-    def indent_docstring(self, string2indent):
+    def indent(self, string2indent: str) -> str:
+        """
+        Indent the input string by 4 spaces.
+        """
         split_string = string2indent.split('\n')
-        new_string = ''
-        for line in split_string:
-            new_string += '    {}\n'.format(line)
-        return new_string
+        return '\n'.join(f'    {line}' for line in split_string)
 
     def needsdocker(self, job):
         """
@@ -978,7 +991,7 @@ class SynthesizeWDL:
                           fn_section,
                           main_section,
                           output_file):
-        '''
+        """
         Just takes three strings and writes them to output_file.
 
         :param module_section: A string of 'import modules'.
@@ -986,99 +999,8 @@ class SynthesizeWDL:
         :param main_section: A string declaring toil options and main's header.
         :param job_section: A string import files into toil and declaring jobs.
         :param output_file: The file to write the compiled toil script to.
-        '''
+        """
         with open(output_file, 'w') as file:
             file.write(module_section)
             file.write(fn_section)
             file.write(main_section)
-
-    def write_mappings(self, i):
-        '''
-        Intended to take a ToilWDL_instance (i) and prints the final task dict,
-        and workflow dict.
-
-        Does not work by default with toil since Toil actively suppresses stdout
-        during the run.
-
-        :param i: A class object instance with the following dict variables:
-                                self.tasks_dictionary
-                                self.workflows_dictionary
-        '''
-        from collections import OrderedDict
-
-        class Formatter(object):
-            def __init__(self):
-                self.types = {}
-                self.htchar = '\t'
-                self.lfchar = '\n'
-                self.indent = 0
-                self.set_formater(object, self.__class__.format_object)
-                self.set_formater(dict, self.__class__.format_dict)
-                self.set_formater(list, self.__class__.format_list)
-                self.set_formater(tuple, self.__class__.format_tuple)
-
-            def set_formater(self, obj, callback):
-                self.types[obj] = callback
-
-            def __call__(self, value, **args):
-                for key in args:
-                    setattr(self, key, args[key])
-                formater = self.types[type(value) if type(value) in self.types else object]
-                return formater(self, value, self.indent)
-
-            def format_object(self, value, indent):
-                return repr(value)
-
-            def format_dict(self, value, indent):
-                items = [
-                    self.lfchar + self.htchar * (indent + 1) + repr(key) + ': ' +
-                    (self.types[type(value[key]) if type(value[key]) in self.types else object])(self, value[key], indent + 1)
-                    for key in value]
-                return '{%s}' % (','.join(items) + self.lfchar + self.htchar * indent)
-
-            def format_list(self, value, indent):
-                items = [
-                    self.lfchar + self.htchar * (indent + 1) + (
-                    self.types[type(item) if type(item) in self.types else object])(self, item, indent + 1)
-                    for item in value]
-                return '[%s]' % (','.join(items) + self.lfchar + self.htchar * indent)
-
-            def format_tuple(self, value, indent):
-                items = [
-                    self.lfchar + self.htchar * (indent + 1) + (
-                    self.types[type(item) if type(item) in self.types else object])(self, item, indent + 1)
-                    for item in value]
-                return '(%s)' % (','.join(items) + self.lfchar + self.htchar * indent)
-
-        pretty = Formatter()
-
-        def format_ordereddict(self, value, indent):
-            items = [
-                self.lfchar + self.htchar * (indent + 1) +
-                "(" + repr(key) + ', ' + (self.types[
-                    type(value[key]) if type(value[key]) in self.types else object
-                ])(self, value[key], indent + 1) + ")"
-                for key in value
-            ]
-            return 'OrderedDict([%s])' % (','.join(items) +
-                                          self.lfchar + self.htchar * indent)
-
-        pretty.set_formater(OrderedDict, format_ordereddict)
-
-        with open('mappings.out', 'w') as f:
-            f.write(pretty(i.tasks_dictionary))
-            f.write('\n\n\n\n\n\n')
-            f.write(pretty(i.workflows_dictionary))
-
-
-def write_AST(wdl_file, outdir=None):
-    '''
-    Writes a file with the AST for a wdl file in the outdir.
-    '''
-    if outdir is None:
-        outdir = os.getcwd()
-    with open(os.path.join(outdir, 'AST.out'), 'w') as f:
-        with open(wdl_file, 'r') as wdl:
-            wdl_string = wdl.read()
-            ast = wdl_parser.parse(wdl_string).ast()
-            f.write(ast.dumps(indent=2))

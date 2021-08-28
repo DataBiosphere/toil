@@ -12,15 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import math
 import os
 from pipes import quote
-import math
-from toil.lib.misc import call_command, CalledProcessErrorStderr
+from typing import List, Dict, Optional
 
-from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
+from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)
+
 
 class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
@@ -51,8 +52,14 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         def killJob(self, jobID):
             call_command(['scancel', self.getBatchSystemID(jobID)])
 
-        def prepareSubmission(self, cpu, memory, jobID, command, jobName):
-            return self.prepareSbatch(cpu, memory, jobID, jobName) + ['--wrap={}'.format(command)]
+        def prepareSubmission(self,
+                              cpu: int,
+                              memory: int,
+                              jobID: int,
+                              command: str,
+                              jobName: str,
+                              job_environment: Optional[Dict[str, str]] = None) -> List[str]:
+            return self.prepareSbatch(cpu, memory, jobID, jobName, job_environment) + ['--wrap={}'.format(command)]
 
         def submitJob(self, subLine):
             try:
@@ -66,7 +73,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 raise e
 
         def getJobExitCode(self, slurmJobID):
-            logger.debug("Getting exit code for slurm job %d", int(slurmJobID))
+            logger.debug(f"Getting exit code for slurm job: {slurmJobID}")
 
             try:
                 state, rc = self._getJobDetailsFromSacct(slurmJobID)
@@ -128,7 +135,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             job = dict()
             for item in values:
-                logger.debug("%s output %s", args[0], line)
+                logger.debug(f"{args[0]} output {item}")
 
                 # Output is in the form of many key=value pairs, multiple pairs on each line
                 # and multiple lines in the output. Each pair is pulled out of each line and
@@ -158,27 +165,38 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         Implementation-specific helper methods
         """
 
-        def prepareSbatch(self, cpu, mem, jobID, jobName):
+        def prepareSbatch(self,
+                          cpu: int,
+                          mem: int,
+                          jobID: int,
+                          jobName: str,
+                          job_environment: Optional[Dict[str, str]]) -> List[str]:
+
             #  Returns the sbatch command line before the script to run
             sbatch_line = ['sbatch', '-J', 'toil_job_{}_{}'.format(jobID, jobName)]
 
-            if self.boss.environment:
+            environment = {}
+            environment.update(self.boss.environment)
+            if job_environment:
+                environment.update(job_environment)
+
+            if environment:
                 argList = []
 
-                for k, v in self.boss.environment.items():
+                for k, v in environment.items():
                     quoted_value = quote(os.environ[k] if v is None else v)
                     argList.append('{}={}'.format(k, quoted_value))
 
                 sbatch_line.append('--export=' + ','.join(argList))
 
-            if mem is not None:
+            if mem is not None and self.boss.config.allocate_mem:
                 # memory passed in is in bytes, but slurm expects megabytes
                 sbatch_line.append(f'--mem={math.ceil(mem / 2 ** 20)}')
             if cpu is not None:
                 sbatch_line.append(f'--cpus-per-task={math.ceil(cpu)}')
 
-            stdoutfile = self.boss.formatStdOutErrPath(jobID, 'slurm', '%j', 'std_output')
-            stderrfile = self.boss.formatStdOutErrPath(jobID, 'slurm', '%j', 'std_error')
+            stdoutfile: str = self.boss.formatStdOutErrPath(jobID, '%j', 'out')
+            stderrfile: str = self.boss.formatStdOutErrPath(jobID, '%j', 'err')
             sbatch_line.extend(['-o', stdoutfile, '-e', stderrfile])
 
             # "Native extensions" for SLURM (see DRMAA or SAGA)
@@ -229,26 +247,3 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 # Add a 20% ceiling on the wait duration relative to the scheduler update duration
                 time_value_list.append(math.ceil(time_value*1.2))
         return max(time_value_list)
-
-    @classmethod
-    def obtainSystemConstants(cls):
-        # sinfo -Ne --format '%m,%c'
-        # sinfo arguments:
-        # -N for node-oriented
-        # -h for no header
-        # -e for exact values (e.g. don't return 32+)
-        # --format to get memory, cpu
-        max_cpu = 0
-        max_mem = MemoryString('0')
-        lines = call_command(['sinfo', '-Nhe', '--format', '%m %c']).split('\n')
-        for line in lines:
-            logger.debug("sinfo output %s", line)
-            values = line.split()
-            if len(values) < 2:
-                continue
-            mem, cpu = values
-            max_cpu = max(max_cpu, int(cpu))
-            max_mem = max(max_mem, MemoryString(mem + 'M'))
-        if max_cpu == 0 or max_mem.byteVal() == 0:
-            raise RuntimeError('sinfo did not return memory or cpu info')
-        return max_cpu, max_mem

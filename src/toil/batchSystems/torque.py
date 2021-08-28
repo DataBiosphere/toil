@@ -1,4 +1,4 @@
-# Copyright (C) 2015 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import logging
 import math
 import os
@@ -20,16 +19,17 @@ import tempfile
 import time
 from pipes import quote
 from queue import Empty
+from typing import Optional, List, Dict
 
-from toil.batchSystems.abstractGridEngineBatchSystem import (
-    AbstractGridEngineBatchSystem, UpdatedBatchJobInfo)
+from toil.batchSystems.abstractGridEngineBatchSystem import (AbstractGridEngineBatchSystem,
+                                                             UpdatedBatchJobInfo)
+from toil.lib.conversions import hms_duration_to_seconds
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)
 
 
 class TorqueBatchSystem(AbstractGridEngineBatchSystem):
-
 
     # class-specific Worker
     class Worker(AbstractGridEngineBatchSystem.Worker):
@@ -90,7 +90,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                         if walltime == '0':
                             walltime = time.mktime(time.strptime(walltime, "%S"))
                         else:
-                            walltime = time.mktime(time.strptime(walltime, "%H:%M:%S"))
+                            walltime = hms_duration_to_seconds(walltime)
                         times[currentjobs[jobid]] = walltime
 
             logger.debug("Job times from qstat are: " + str(times))
@@ -111,8 +111,14 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
         def killJob(self, jobID):
             call_command(['qdel', self.getBatchSystemID(jobID)])
 
-        def prepareSubmission(self, cpu, memory, jobID, command, jobName):
-            return self.prepareQsub(cpu, memory, jobID) + [self.generateTorqueWrapper(command, jobID)]
+        def prepareSubmission(self,
+                              cpu: int,
+                              memory: int,
+                              jobID: int,
+                              command: str,
+                              jobName: str,
+                              job_environment: Optional[Dict[str, str]] = None) -> List[str]:
+            return self.prepareQsub(cpu, memory, jobID, job_environment) + [self.generateTorqueWrapper(command, jobID)]
 
         def submitJob(self, subLine):
             return call_command(subLine)
@@ -144,14 +150,22 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
         """
         Implementation-specific helper methods
         """
-        def prepareQsub(self, cpu, mem, jobID):
+        def prepareQsub(self,
+                        cpu: int,
+                        mem: int,
+                        jobID: int,
+                        job_environment: Optional[Dict[str, str]]) -> List[str]:
 
             # TODO: passing $PWD on command line not working for -d, resorting to
             # $PBS_O_WORKDIR but maybe should fix this here instead of in script?
 
             qsubline = ['qsub', '-S', '/bin/sh', '-V', '-N', 'toil_job_{}'.format(jobID)]
 
-            if self.boss.environment:
+            environment = self.boss.environment.copy()
+            if job_environment:
+                environment.update(job_environment)
+
+            if environment:
                 qsubline.append('-v')
                 qsubline.append(','.join(k + '=' + quote(os.environ[k] if v is None else v)
                                          for k, v in self.boss.environment.items()))
@@ -166,23 +180,23 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             # Other resource requirements can be passed through the environment (see man qsub)
             reqlineEnv = os.getenv('TOIL_TORQUE_REQS')
             if reqlineEnv is not None:
-                logger.debug("Additional Torque resource requirements appended to qsub from "\
-                        "TOIL_TORQUE_REQS env. variable: {}".format(reqlineEnv))
+                logger.debug("Additional Torque resource requirements appended to qsub from "
+                             "TOIL_TORQUE_REQS env. variable: {}".format(reqlineEnv))
                 if ("mem=" in reqlineEnv) or ("nodes=" in reqlineEnv) or ("ppn=" in reqlineEnv):
                     raise ValueError("Incompatible resource arguments ('mem=', 'nodes=', 'ppn='): {}".format(reqlineEnv))
 
                 reqline.append(reqlineEnv)
 
             if reqline:
-                qsubline += ['-l',','.join(reqline)]
+                qsubline += ['-l', ','.join(reqline)]
 
             # All other qsub parameters can be passed through the environment (see man qsub).
             # No attempt is made to parse them out here and check that they do not conflict
             # with those that we already constructed above
             arglineEnv = os.getenv('TOIL_TORQUE_ARGS')
             if arglineEnv is not None:
-                logger.debug("Native Torque options appended to qsub from TOIL_TORQUE_ARGS env. variable: {}".\
-                        format(arglineEnv))
+                logger.debug("Native Torque options appended to qsub from TOIL_TORQUE_ARGS env. variable: {}"
+                             .format(arglineEnv))
                 if ("mem=" in arglineEnv) or ("nodes=" in arglineEnv) or ("ppn=" in arglineEnv):
                     raise ValueError("Incompatible resource arguments ('mem=', 'nodes=', 'ppn='): {}".format(arglineEnv))
                 qsubline += shlex.split(arglineEnv)
@@ -194,28 +208,15 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             A very simple script generator that just wraps the command given; for
             now this goes to default tempdir
             """
-            stdoutfile = self.boss.formatStdOutErrPath(jobID, 'torque', r'${PBS_JOBID}', 'std_output')
-            stderrfile = self.boss.formatStdOutErrPath(jobID, 'torque', r'${PBS_JOBID}', 'std_error')
+            stdoutfile: str = self.boss.formatStdOutErrPath(jobID, r'${PBS_JOBID}', 'out')
+            stderrfile: str = self.boss.formatStdOutErrPath(jobID, r'${PBS_JOBID}', 'err')
 
-            _, tmpFile = tempfile.mkstemp(suffix='.sh', prefix='torque_wrapper')
-            fh = open(tmpFile , 'w')
-            fh.write("#!/bin/sh\n")
-            fh.write("#PBS -o {}\n".format(stdoutfile))
-            fh.write("#PBS -e {}\n".format(stderrfile))
-            fh.write("cd $PBS_O_WORKDIR\n\n")
-            fh.write(command + "\n")
+            _, tmp_file = tempfile.mkstemp(suffix='.sh', prefix='torque_wrapper')
+            with open(tmp_file, 'w') as f:
+                f.write("#!/bin/sh\n")
+                f.write("#PBS -o {}\n".format(stdoutfile))
+                f.write("#PBS -e {}\n".format(stderrfile))
+                f.write("cd $PBS_O_WORKDIR\n\n")
+                f.write(command + "\n")
 
-            fh.close
-
-            return tmpFile
-
-
-    @classmethod
-    def obtainSystemConstants(cls):
-
-        # See: https://github.com/BD2KGenomics/toil/pull/1617#issuecomment-293525747
-        logger.debug("PBS/Torque does not need obtainSystemConstants to assess global cluster resources.")
-
-
-        #return maxCPU, maxMEM
-        return None, None
+            return tmp_file

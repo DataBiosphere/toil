@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ class DataStructuresTest(ToilTest):
                       environment=None,
                       workerCleanupInfo=None)
         return job
-    
+
     @travis_test
     def testJobQueue(self, testJobs=1000):
         """

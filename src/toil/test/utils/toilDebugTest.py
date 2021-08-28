@@ -1,4 +1,4 @@
-# Copyright (C) 2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@ import subprocess
 import unittest
 
 from toil.test import ToilTest, slow, travis_test
-from toil.utils.toilDebugFile import recursiveGlob
-
+from toil.lib.resources import glob
+from toil.version import python
 logger = logging.getLogger(__name__)
 
 class ToilDebugFileTest(ToilTest):
@@ -27,7 +27,7 @@ class ToilDebugFileTest(ToilTest):
 
     def setUp(self):
         """Initial set up of variables for the test."""
-        subprocess.check_call(['python', os.path.abspath('src/toil/test/utils/ABCWorkflowDebug/debugWorkflow.py')])
+        subprocess.check_call([python, os.path.abspath('src/toil/test/utils/ABCWorkflowDebug/debugWorkflow.py')])
         self.jobStoreDir = os.path.abspath('toilWorkflowRun')
         self.tempDir = self._createTempDir(purpose='tempDir')
         self.outputDir = os.path.abspath('testoutput')
@@ -54,7 +54,7 @@ class ToilDebugFileTest(ToilTest):
 
         contents = ['A.txt', 'B.txt', 'C.txt', 'ABC.txt', 'mkFile.py']
 
-        subprocess.check_call(['python', os.path.abspath('src/toil/utils/toilDebugFile.py'), self.jobStoreDir, '--listFilesInJobStore=True'])
+        subprocess.check_call([python, os.path.abspath('src/toil/utils/toilDebugFile.py'), self.jobStoreDir, '--listFilesInJobStore=True'])
         jobstoreFileContents = os.path.abspath('jobstore_files.txt')
         files = []
         match = 0
@@ -95,7 +95,7 @@ class ToilDebugFileTest(ToilTest):
         then delete them.
         """
         contents = ['A.txt', 'B.txt', 'C.txt', 'ABC.txt', 'mkFile.py']
-        cmd = ['python', os.path.abspath('src/toil/utils/toilDebugFile.py'),
+        cmd = [python, os.path.abspath('src/toil/utils/toilDebugFile.py'),
                self.jobStoreDir,
                '--fetch', '*A.txt', '*B.txt', '*C.txt', '*ABC.txt', '*mkFile.py',
                '--localFilePath=' + self.outputDir,
@@ -103,7 +103,7 @@ class ToilDebugFileTest(ToilTest):
         print(cmd)
         subprocess.check_call(cmd)
         for xfile in contents:
-            matchingFilesFound = recursiveGlob(self.outputDir, '*' + xfile)
+            matchingFilesFound = glob(glob_pattern='*' + xfile, directoryname=self.outputDir)
             self.assertGreaterEqual(len(matchingFilesFound), 1)
             for fileFound in matchingFilesFound:
                 assert fileFound.endswith(xfile) and os.path.exists(fileFound)

@@ -1,4 +1,4 @@
-# Copyright (C) 2017-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,38 +11,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-"""Debug tool for copying files contained in a toil jobStore.
-"""
-
-import fnmatch
+"""Debug tool for copying files contained in a toil jobStore."""
 import logging
 import os.path
 
-from toil.common import Config, Toil, jobStoreLocatorHelp
-from toil.lib.bioio import getBasicOptionParser, parseBasicOptions
-from toil.version import version
+from toil.common import Config, Toil, parser_with_common_options
+from toil.jobStores.abstractJobStore import AbstractJobStore
+from toil.statsAndLogging import set_logging_from_options
+from toil.lib.resources import glob
+from toil.lib.expando import Expando
+from typing import Optional
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
-def recursiveGlob(directoryname, glob_pattern):
-    '''
-    Walks through a directory and its subdirectories looking for files matching
-    the glob_pattern and returns a list=[].
 
-    :param directoryname: Any accessible folder name on the filesystem.
-    :param glob_pattern: A string like "*.txt", which would find all text files.
-    :return: A list=[] of absolute filepaths matching the glob pattern.
-    '''
-    directoryname = os.path.abspath(directoryname)
-    matches = []
-    for root, dirnames, filenames in os.walk(directoryname):
-        for filename in fnmatch.filter(filenames, glob_pattern):
-            absolute_filepath = os.path.join(root, filename)
-            matches.append(absolute_filepath)
-    return matches
-
-def fetchJobStoreFiles(jobStore, options):
+def fetchJobStoreFiles(jobStore: AbstractJobStore, options: Expando) -> None:
     """
     Takes a list of file names as glob patterns, searches for these within a
     given directory, and attempts to take all of the files found and copy them
@@ -55,18 +38,17 @@ def fetchJobStoreFiles(jobStore, options):
     :param options.jobStore: The path to the jobStore directory.
     """
     for jobStoreFile in options.fetch:
-        jobStoreHits = recursiveGlob(directoryname=options.jobStore,
-                                     glob_pattern=jobStoreFile)
+        jobStoreHits = glob(directoryname=options.jobStore,
+                            glob_pattern=jobStoreFile)
         for jobStoreFileID in jobStoreHits:
-            logger.debug("Copying job store file: %s to %s",
-                        jobStoreFileID,
-                        options.localFilePath[0])
+            logger.debug(f"Copying job store file: {jobStoreFileID} to {options.localFilePath[0]}")
             jobStore.readFile(jobStoreFileID,
                               os.path.join(options.localFilePath[0],
-                              os.path.basename(jobStoreFileID)),
+                                           os.path.basename(jobStoreFileID)),
                               symlink=options.useSymlinks)
 
-def printContentsOfJobStore(jobStorePath, nameOfJob=None):
+
+def printContentsOfJobStore(jobStorePath: str, nameOfJob: Optional[str] = None) -> None:
     """
     Fetch a list of all files contained in the jobStore directory input if
     nameOfJob is not declared, otherwise it only prints out the names of files
@@ -80,50 +62,46 @@ def printContentsOfJobStore(jobStorePath, nameOfJob=None):
     """
 
     if nameOfJob:
-        glob = "*" + nameOfJob + "*"
+        glob_pattern = "*" + nameOfJob + "*"
         logFile = nameOfJob + "_fileset.txt"
     else:
-        glob = "*"
+        glob_pattern = "*"
         logFile = "jobstore_files.txt"
         nameOfJob = ""
 
-    list_of_files = recursiveGlob(directoryname=jobStorePath, glob_pattern=glob)
+    list_of_files = glob(directoryname=jobStorePath, glob_pattern=glob_pattern)
     if os.path.exists(logFile):
         os.remove(logFile)
     for gfile in sorted(list_of_files):
         if not gfile.endswith('.new'):
-            logger.debug(nameOfJob + "File: %s", os.path.basename(gfile))
+            logger.debug(f"{nameOfJob} File: {os.path.basename(gfile)}")
             with open(logFile, "a+") as f:
-                    f.write(os.path.basename(gfile))
-                    f.write("\n")
+                f.write(os.path.basename(gfile))
+                f.write("\n")
 
-def main():
-    parser = getBasicOptionParser()
 
-    parser.add_argument("jobStore",
-                        type=str,
-                        help="The location of the job store used by the workflow." +
-                        jobStoreLocatorHelp)
+def main() -> None:
+    parser = parser_with_common_options(jobstore_option=True)
     parser.add_argument("--localFilePath",
                         nargs=1,
                         help="Location to which to copy job store files.")
     parser.add_argument("--fetch",
                         nargs="+",
                         help="List of job-store files to be copied locally."
-                        "Use either explicit names (i.e. 'data.txt'), or "
-                        "specify glob patterns (i.e. '*.txt')")
+                             "Use either explicit names (i.e. 'data.txt'), or "
+                             "specify glob patterns (i.e. '*.txt')")
     parser.add_argument("--listFilesInJobStore",
                         help="Prints a list of the current files in the jobStore.")
     parser.add_argument("--fetchEntireJobStore",
                         help="Copy all job store files into a local directory.")
     parser.add_argument("--useSymlinks",
                         help="Creates symlink 'shortcuts' of files in the localFilePath"
-                        " instead of hardlinking or copying, where possible.  If this is"
-                        " not possible, it will copy the files (shutil.copyfile()).")
-    parser.add_argument("--version", action='version', version=version)
-    
+                             " instead of hardlinking or copying, where possible.  If this is"
+                             " not possible, it will copy the files (shutil.copyfile()).")
+
     # Load the jobStore
-    options = parseBasicOptions(parser)
+    options = parser.parse_args()
+    set_logging_from_options(options)
     config = Config()
     config.setOptions(options)
     jobStore = Toil.resumeJobStore(config.jobStore)
@@ -144,5 +122,6 @@ def main():
         # Log filenames and create a file containing these names in cwd
         printContentsOfJobStore(jobStorePath=options.jobStore)
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     main()

@@ -21,3 +21,4 @@ tmp/
 /src/toil/version.py
 .coverage*
 .mypy_cache
+/contrib/admin/.issue_cache/

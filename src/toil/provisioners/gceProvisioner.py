@@ -1,4 +1,4 @@
-# Copyright (C) 2015 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ import os
 import threading
 import time
 import uuid
+from typing import Set, Optional
 
 import requests
 from libcloud.compute.drivers.gce import GCEFailedNode
@@ -24,6 +25,7 @@ from libcloud.compute.providers import get_driver
 from libcloud.compute.types import Provider
 
 from toil.jobStores.googleJobStore import GoogleJobStore
+from toil.lib.conversions import human2bytes
 from toil.provisioners import NoSuchClusterException
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.node import Node
@@ -37,22 +39,26 @@ class GCEProvisioner(AbstractProvisioner):
     Implements a Google Compute Engine Provisioner using libcloud.
     """
 
-    NODE_BOTO_PATH = "/root/.boto" # boto file path on instances
-    SOURCE_IMAGE = (b'projects/flatcar-cloud/global/images/family/flatcar-stable')
+    NODE_BOTO_PATH = "/root/.boto"  # boto file path on instances
+    SOURCE_IMAGE = b'projects/flatcar-cloud/global/images/family/flatcar-stable'
 
-    def __init__(self, clusterName, zone, nodeStorage, nodeStorageOverrides, sseKey):
-        super(GCEProvisioner, self).__init__(clusterName, zone, nodeStorage, nodeStorageOverrides)
+    def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):
         self.cloud = 'gce'
         self._sseKey = sseKey
 
-        # If the clusterName is not given, then Toil must be running on the leader
-        # and should read the settings from the instance meta-data.
-        if clusterName:
-            self._readCredentials()
-        else:
-            self._readClusterSettings()
+        # Call base class constructor, which will call createClusterSettings()
+        # or readClusterSettings()
+        super(GCEProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
 
-    def _readClusterSettings(self):
+    def supportedClusterTypes(self):
+        return {'mesos'}
+
+    def createClusterSettings(self):
+        # All we need to do is read the Google credentials we need to provision
+        # things
+        self._readCredentials()
+
+    def readClusterSettings(self):
         """
         Read the cluster settings from the instance, which should be the leader.
         See https://cloud.google.com/compute/docs/storing-retrieving-metadata for details about
@@ -79,13 +85,14 @@ class GCEProvisioner(AbstractProvisioner):
         leader = self.getLeader()
         self._leaderPrivateIP = leader.privateIP
 
-        # generate a public key for the leader, which is used to talk to workers
-        self._masterPublicKey = self._setSSH()
-
         # The location of the Google credentials file on instances.
         self._credentialsPath = GoogleJobStore.nodeServiceAccountJson
         self._keyName = 'core' # key name leader users to communicate with works
         self._botoPath = self.NODE_BOTO_PATH # boto credentials (used if reading an AWS bucket)
+
+        # Let the base provisioner work out how to deploy duly authorized
+        # workers for this leader.
+        self._setLeaderWorkerAuthentication()
 
     def _readCredentials(self):
         """
@@ -104,9 +111,15 @@ class GCEProvisioner(AbstractProvisioner):
         self._projectId = self.googleConnectionParams['project_id']
         self._clientEmail = self.googleConnectionParams['client_email']
         self._credentialsPath = self._googleJson
-        self._masterPublicKey = None
+        self._clearLeaderWorkerAuthentication()  # TODO: Why are we doing this?
         self._gceDriver = self._getDriver()
 
+    def _write_file_to_cloud(self, key: str, contents: bytes) -> str:
+        raise NotImplementedError("The gceProvisioner doesn't support _write_file_to_cloud().")
+
+    def _get_user_data_limit(self) -> int:
+        # See: https://cloud.google.com/compute/docs/metadata/setting-custom-metadata#limitations
+        return human2bytes('256KB')
 
     def launchCluster(self, leaderNodeType, leaderStorage, owner, **kwargs):
         """
@@ -134,29 +147,36 @@ class GCEProvisioner(AbstractProvisioner):
             tags.update(kwargs['userTags'])
         self._tags = json.dumps(tags)
 
-        userData =  self._getCloudConfigUserData('leader')
-        metadata = {'items': [{'key': 'user-data', 'value': userData}]}
+        metadata = {'items': [{'key': 'user-data', 'value': self._getIgnitionUserData('leader')}]}
         imageType = 'flatcar-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
         disk = {}
         disk['initializeParams'] = {
             'sourceImage': self.SOURCE_IMAGE,
-            'diskSizeGb' : leaderStorage }
-        disk.update({'boot': True,
-             'autoDelete': True })
-        name= 'l' + str(uuid.uuid4())
-        leader = self._gceDriver.create_node(name, leaderNodeType, imageType,
-                                            location=self._zone,
-                                            ex_service_accounts=sa_scopes,
-                                            ex_metadata=metadata,
-                                            ex_subnetwork=self._vpcSubnet,
-                                            ex_disks_gce_struct = [disk],
-                                            description=self._tags,
-                                            ex_preemptible=False)
+            'diskSizeGb': leaderStorage
+        }
+        disk.update({
+            'boot': True,
+            'autoDelete': True
+        })
+        name = 'l' + str(uuid.uuid4())
+
+        leader = self._gceDriver.create_node(
+            name,
+            leaderNodeType,
+            imageType,
+            location=self._zone,
+            ex_service_accounts=sa_scopes,
+            ex_metadata=metadata,
+            ex_subnetwork=self._vpcSubnet,
+            ex_disks_gce_struct = [disk],
+            description=self._tags,
+            ex_preemptible=False
+        )
 
         self._instanceGroup.add_instances([leader])
-        self._leaderPrivateIP = leader.private_ips[0] # needed if adding workers
-        #self.subnetID = leader.subnet_id #TODO: get subnetID
+        self._leaderPrivateIP = leader.private_ips[0]  # needed if adding workers
+        # self.subnetID = leader.subnet_id  # TODO: get subnetID
 
         # Wait for the appliance to start and inject credentials.
         leaderNode = Node(publicIP=leader.public_ips[0], privateIP=leader.private_ips[0],
@@ -167,25 +187,28 @@ class GCEProvisioner(AbstractProvisioner):
         leaderNode.injectFile(self._credentialsPath, GoogleJobStore.nodeServiceAccountJson, 'toil_leader')
         if self._botoPath:
             leaderNode.injectFile(self._botoPath, self.NODE_BOTO_PATH, 'toil_leader')
+        # Download credentials
+        self._setLeaderWorkerAuthentication(leaderNode)
+
         logger.debug('Launched leader')
 
-    def getNodeShape(self, nodeType, preemptable=False):
+    def getNodeShape(self, instance_type: str, preemptable=False):
         # TODO: read this value only once
         sizes = self._gceDriver.list_sizes(location=self._zone)
-        sizes = [x for x in sizes if x.name == nodeType]
+        sizes = [x for x in sizes if x.name == instance_type]
         assert len(sizes) == 1
         instanceType = sizes[0]
 
-        disk = 0 #instanceType.disks * instanceType.disk_capacity * 2 ** 30
+        disk = 0  # instanceType.disks * instanceType.disk_capacity * 2 ** 30
         if disk == 0:
             # This is an EBS-backed instance. We will use the root
             # volume, so add the amount of EBS storage requested forhe root volume
-            disk = self._nodeStorageOverrides.get(nodeType, self._nodeStorage) * 2 ** 30
+            disk = self._nodeStorageOverrides.get(instance_type, self._nodeStorage) * 2 ** 30
 
         # Ram is in M.
-        #Underestimate memory by 100M to prevent autoscaler from disagreeing with
-        #mesos about whether a job can run on a particular node type
-        memory = (instanceType.ram/1000 - 0.1) * 2** 30
+        # Underestimate memory by 100M to prevent autoscaler from disagreeing with
+        # mesos about whether a job can run on a particular node type
+        memory = (instanceType.ram/1000 - 0.1) * 2 ** 30
         return Shape(wallTime=60 * 60,
                      memory=memory,
                      cores=instanceType.extra['guestCpus'],
@@ -219,8 +242,12 @@ class GCEProvisioner(AbstractProvisioner):
         instancesToKill = [i for i in instances if i.name in nodeNames]
         self._terminateInstances(instancesToKill)
 
-    def addNodes(self, nodeType, numNodes, preemptable, spotBid=None):
+    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None):
         assert self._leaderPrivateIP
+
+        # We don't support any balancing here so just pick one of the
+        # equivalent node types
+        node_type = next(iter(nodeTypes))
 
         # If keys are rsynced, then the mesos-slave needs to be started after the keys have been
         # transferred. The waitForKey.sh script loops on the new VM until it finds the keyPath file, then it starts the
@@ -239,36 +266,37 @@ class GCEProvisioner(AbstractProvisioner):
         else:
             logger.debug('Launching %s preemptable nodes', numNodes)
 
-        #kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
-        userData =  self._getCloudConfigUserData('worker', self._masterPublicKey, keyPath, preemptable)
+        # kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
+        userData = self._getIgnitionUserData('worker', keyPath, preemptable)
         metadata = {'items': [{'key': 'user-data', 'value': userData}]}
         imageType = 'flatcar-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
         disk = {}
         disk['initializeParams'] = {
             'sourceImage': self.SOURCE_IMAGE,
-            'diskSizeGb' : self._nodeStorageOverrides.get(nodeType, self._nodeStorage) }
-        disk.update({'boot': True,
-             'autoDelete': True })
+            'diskSizeGb': self._nodeStorageOverrides.get(node_type, self._nodeStorage) }
+        disk.update({
+            'boot': True,
+            'autoDelete': True
+        })
 
         # TODO:
         #  - bug in gce.py for ex_create_multiple_nodes (erroneously, doesn't allow image and disk to specified)
         #  - ex_create_multiple_nodes is limited to 1000 nodes
         #    - use a different function
         #    - or write a loop over the rest of this function, with 1K nodes max on each iteration
-        #instancesLaunched = driver.ex_create_multiple_nodes(
         retries = 0
         workersCreated = 0
         # Try a few times to create the requested number of workers
         while numNodes-workersCreated > 0 and retries < 3:
             instancesLaunched = self.ex_create_multiple_nodes(
-                                    '', nodeType, imageType, numNodes-workersCreated,
+                                    '', node_type, imageType, numNodes-workersCreated,
                                     location=self._zone,
                                     ex_service_accounts=sa_scopes,
                                     ex_metadata=metadata,
-                                    ex_disks_gce_struct = [disk],
+                                    ex_disks_gce_struct=[disk],
                                     description=self._tags,
-                                    ex_preemptible = preemptable
+                                    ex_preemptible=preemptable
                                     )
             failedWorkers = []
             for instance in instancesLaunched:
@@ -279,7 +307,7 @@ class GCEProvisioner(AbstractProvisioner):
 
                 node = Node(publicIP=instance.public_ips[0], privateIP=instance.private_ips[0],
                             name=instance.name, launchTime=instance.created_at, nodeType=instance.size,
-                            preemptable=False, tags=self._tags) #FIXME: what should tags be set to?
+                            preemptable=False, tags=self._tags)  # FIXME: what should tags be set to?
                 try:
                     self._injectWorkerFiles(node, botoExists)
                     logger.debug("Created worker %s" % node.publicIP)
@@ -298,28 +326,29 @@ class GCEProvisioner(AbstractProvisioner):
             logger.error("Failed to launch %d worker(s)", numNodes-workersCreated)
         return workersCreated
 
-    def getProvisionedWorkers(self, nodeType, preemptable):
+    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptable: Optional[bool] = None):
         assert self._leaderPrivateIP
-        entireCluster = self._getNodesInCluster(nodeType=nodeType)
+        entireCluster = self._getNodesInCluster(instance_type=instance_type)
         logger.debug('All nodes in cluster: %s', entireCluster)
         workerInstances = []
         for instance in entireCluster:
-            scheduling = instance.extra.get('scheduling')
-            # If this field is not found in the extra meta-data, assume the node is not preemptable.
-            if scheduling and scheduling.get('preemptible', False) != preemptable:
-                continue
+            if preemptable is not None:
+                scheduling = instance.extra.get('scheduling')
+                # If this field is not found in the extra meta-data, assume the node is not preemptable.
+                if scheduling and scheduling.get('preemptible', False) != preemptable:
+                    continue
             isWorker = True
             for ip in instance.private_ips:
                 if ip == self._leaderPrivateIP:
                     isWorker = False
-                    break # don't include the leader
+                    break  # don't include the leader
             if isWorker and instance.state == 'running':
                 workerInstances.append(instance)
 
         logger.debug('All workers found in cluster: %s', workerInstances)
         return [Node(publicIP=i.public_ips[0], privateIP=i.private_ips[0],
                      name=i.name, launchTime=i.created_at, nodeType=i.size,
-                     preemptable=preemptable, tags=None)
+                     preemptable=i.extra.get('scheduling', {}).get('preemptible', False), tags=None)
                 for i in workerInstances]
 
     def getLeader(self):
@@ -330,8 +359,8 @@ class GCEProvisioner(AbstractProvisioner):
         except IndexError:
             raise NoSuchClusterException(self.clusterName)
         return Node(publicIP=leader.public_ips[0], privateIP=leader.private_ips[0],
-                          name=leader.name, launchTime=leader.created_at, nodeType=leader.size,
-                          preemptable=False, tags=None)
+                    name=leader.name, launchTime=leader.created_at, nodeType=leader.size,
+                    preemptable=False, tags=None)
 
     def _injectWorkerFiles(self, node, botoExists):
         """
@@ -345,11 +374,11 @@ class GCEProvisioner(AbstractProvisioner):
         if botoExists:
             node.injectFile(self._botoPath, self.NODE_BOTO_PATH, 'toil_worker')
 
-    def _getNodesInCluster(self, nodeType=None):
+    def _getNodesInCluster(self, instance_type: Optional[str] = None):
         instanceGroup = self._gceDriver.ex_get_instancegroup(self.clusterName, zone=self._zone)
         instances = instanceGroup.list_instances()
-        if nodeType:
-            instances = [instance for instance in instances if instance.size == nodeType]
+        if instance_type:
+            instances = [instance for instance in instances if instance.size == instance_type]
         return instances
 
     def _getDriver(self):
@@ -377,6 +406,7 @@ class GCEProvisioner(AbstractProvisioner):
 
     # MONKEY PATCH - This function was copied form libcloud to fix a bug.
     DEFAULT_TASK_COMPLETION_TIMEOUT = 180
+
     def ex_create_multiple_nodes(
             self, base_name, size, image, number, location=None,
             ex_network='default', ex_subnetwork=None, ex_tags=None,
@@ -412,8 +442,7 @@ class GCEProvisioner(AbstractProvisioner):
         if ex_subnetwork and not hasattr(ex_subnetwork, 'name'):
             ex_subnetwork = \
                 driver.ex_get_subnetwork(ex_subnetwork,
-                                       region=driver._get_region_from_zone(
-                                           location))
+                                         region=driver._get_region_from_zone(location))
         if ex_image_family:
             image = driver.ex_get_image_from_family(ex_image_family)
         if image and not hasattr(image, 'name'):
@@ -446,14 +475,14 @@ class GCEProvisioner(AbstractProvisioner):
 
         for i in range(number):
             name = 'wp' if ex_preemptible else 'wn'
-            name += str(uuid.uuid4()) #'%s-%03d' % (base_name, i)
+            name += str(uuid.uuid4())  # '%s-%03d' % (base_name, i)
             status = {'name': name, 'node_response': None, 'node': None}
             status_list.append(status)
 
         start_time = time.time()
         complete = False
         while not complete:
-            if (time.time() - start_time >= timeout):
+            if time.time() - start_time >= timeout:
                 raise Exception("Timeout (%s sec) while waiting for multiple "
                                 "instances")
             complete = True

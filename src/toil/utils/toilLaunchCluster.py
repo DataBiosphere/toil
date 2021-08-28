@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,31 +11,32 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""
-Launches a toil leader instance with the specified provisioner.
-"""
+"""Launches a toil leader instance with the specified provisioner."""
 import logging
+import os
 
 from toil import applianceSelf
-from toil.lib.bioio import getBasicOptionParser, parseBasicOptions
-from toil.provisioners import clusterFactory
-from toil.provisioners.aws import checkValidNodeTypes
-from toil.utils import addBasicProvisionerOptions, getZoneFromEnv
+from toil.common import parser_with_common_options
+from toil.provisioners import parse_node_types, check_valid_node_types, cluster_factory
+from toil.statsAndLogging import set_logging_from_options
+from typing import List, Dict, Union, Tuple
 
 logger = logging.getLogger(__name__)
 
 
-def createTagsDict(tagList):
-    tagsDict = dict()
-    for tag in tagList:
+def create_tags_dict(tags: List[str]) -> Dict[str, str]:
+    tags_dict = dict()
+    for tag in tags:
         key, value = tag.split('=')
-        tagsDict[key] = value
-    return tagsDict
+        tags_dict[key] = value
+    return tags_dict
 
 
-def main():
-    parser = getBasicOptionParser()
-    parser = addBasicProvisionerOptions(parser)
+def main() -> None:
+    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
+    parser.add_argument("-T", "--clusterType", dest="clusterType",
+                        choices=['mesos', 'kubernetes'], default='mesos',
+                        help="Cluster scheduler to use.")
     parser.add_argument("--leaderNodeType", dest="leaderNodeType", required=True,
                         help="Non-preemptable node type to use for the cluster leader.")
     parser.add_argument("--keyPairName", dest='keyPairName',
@@ -62,21 +63,31 @@ def main():
                         help="VPC subnet ID to launch cluster in. Uses default subnet if not "
                         "specified. This subnet needs to have auto assign IPs turned on.")
     parser.add_argument("--nodeTypes", dest='nodeTypes', default=None, type=str,
-                        help="Comma-separated list of node types to create while launching the "
-                             "leader. The syntax for each node type depends on the provisioner "
-                             "used. For the aws provisioner this is the name of an EC2 instance "
-                             "type followed by a colon and the price in dollar to bid for a spot "
-                             "instance, for example 'c3.8xlarge:0.42'. Must also provide the "
-                             "--workers argument to specify how many workers of each node type "
-                             "to create.")
+                        help="Specifies a list of comma-separated node types, each of which is "
+                             "composed of slash-separated instance types, and an optional spot "
+                             "bid set off by a colon, making the node type preemptable. Instance "
+                             "types may appear in multiple node types, and the same node type "
+                             "may appear as both preemptable and non-preemptable.\n"
+                             "Valid argument specifying two node types:\n"
+                             "\tc5.4xlarge/c5a.4xlarge:0.42,t2.large\n"
+                             "Node types:\n"
+                             "\tc5.4xlarge/c5a.4xlarge:0.42 and t2.large\n"
+                             "Instance types:\n"
+                             "\tc5.4xlarge, c5a.4xlarge, and t2.large\n"
+                             "Semantics:\n"
+                             "\tBid $0.42/hour for either c5.4xlarge or c5a.4xlarge instances,\n"
+                             "\ttreated interchangeably, while they are available at that price,\n"
+                             "\tand buy t2.large instances at full price\n"
+                             "Must also provide the --workers argument to specify how many "
+                             "workers of each node type to create.")
     parser.add_argument("-w", "--workers", dest='workers', default=None, type=str,
-                        help="Comma-separated list of the number of workers of each node type to "
-                             "launch alongside the leader when the cluster is created. This can be "
-                             "useful if running toil without auto-scaling but with need of more "
-                             "hardware support")
+                        help="Comma-separated list of the ranges of numbers of workers of each "
+                             "node type to launch, such as '0-2,5,1-3'. If a range is given, "
+                             "workers will automatically be launched and terminated by the cluster "
+                             "to auto-scale to the workload.")
     parser.add_argument("--leaderStorage", dest='leaderStorage', type=int, default=50,
                         help="Specify the size (in gigabytes) of the root volume for the leader "
-                             "instance.  This is an EBS volume.")
+                             "instance. This is an EBS volume.")
     parser.add_argument("--nodeStorage", dest='nodeStorage', type=int, default=50,
                         help="Specify the size (in gigabytes) of the root volume for any worker "
                              "instances created when using the -w flag. This is an EBS volume.")
@@ -93,65 +104,108 @@ def main():
                         help="Any additional security groups to attach to EC2 instances. Note that a security group "
                              "with its name equal to the cluster name will always be created, thus ensure that "
                              "the extra security groups do not have the same name as the cluster name.")
-    config = parseBasicOptions(parser)
-    tags = createTagsDict(config.tags) if config.tags else dict()
-    checkValidNodeTypes(config.provisioner, config.nodeTypes)
-    checkValidNodeTypes(config.provisioner, config.leaderNodeType)
+    options = parser.parse_args()
+    set_logging_from_options(options)
+    tags = create_tags_dict(options.tags) if options.tags else dict()
 
+    # Get worker node types
+    worker_node_types = parse_node_types(options.nodeTypes)
+    check_valid_node_types(options.provisioner, worker_node_types + [({options.leaderNodeType}, None)])
+
+    # Holds string ranges, like "5", or "3-10"
+    worker_node_ranges = options.workers.split(',') if options.workers else []
 
     # checks the validity of TOIL_APPLIANCE_SELF before proceeding
-    applianceSelf(forceDockerAppliance=config.forceDockerAppliance)
+    applianceSelf(forceDockerAppliance=options.forceDockerAppliance)
 
-    spotBids = []
-    nodeTypes = []
-    preemptableNodeTypes = []
-    numNodes = []
-    numPreemptableNodes = []
-    if (config.nodeTypes or config.workers) and not (config.nodeTypes and config.workers):
-        raise RuntimeError("The --nodeTypes and --workers options must be specified together,")
-    if config.nodeTypes:
-        nodeTypesList = config.nodeTypes.split(",")
-        numWorkersList = config.workers.split(",")
-        if not len(nodeTypesList) == len(numWorkersList):
-            raise RuntimeError("List of node types must be the same length as the list of workers.")
-        for nodeTypeStr, num in zip(nodeTypesList, numWorkersList):
-            parsedBid = nodeTypeStr.split(':', 1)
-            if len(nodeTypeStr) != len(parsedBid[0]):
-                #Is a preemptable node
-                preemptableNodeTypes.append(parsedBid[0])
-                spotBids.append(float(parsedBid[1]))
-                numPreemptableNodes.append(int(num))
-            else:
-                nodeTypes.append(nodeTypeStr)
-                numNodes.append(int(num))
+    # This holds either ints to launch static nodes, or tuples of ints
+    # specifying ranges to launch managed auto-scaling nodes, for each type.
+    nodeCounts: List[Union[int, Tuple[int, int]]] = []
 
-    owner = config.owner or config.keyPairName or 'toil'
+    if ((worker_node_types != [] or worker_node_ranges != []) and not
+        (worker_node_types != [] and worker_node_ranges != [])):
+        raise RuntimeError("The --nodeTypes option requires --workers, and visa versa.")
+    if worker_node_types and worker_node_ranges:
+            if not len(worker_node_types) == len(worker_node_ranges):
+                raise RuntimeError("List of worker count ranges must be the same length as the list of node types.")
+
+            for spec in worker_node_ranges:
+                if '-' in spec:
+                    # Provision via autoscaling
+                    parts = spec.split('-')
+                    if len(parts) != 2:
+                        raise RuntimeError("Unacceptable range: " + spec)
+                    nodeCounts.append((int(parts[0]), int(parts[1])))
+                else:
+                    # Provision fixed nodes
+                    nodeCounts.append(int(spec))
+
+    owner = options.owner or options.keyPairName or 'toil'
 
     # Check to see if the user specified a zone. If not, see if one is stored in an environment variable.
-    config.zone = config.zone or getZoneFromEnv(config.provisioner)
+    options.zone = options.zone or os.environ.get(f'TOIL_{options.provisioner.upper()}_ZONE')
 
-    if not config.zone:
-        raise RuntimeError('Please provide a value for --zone or set a default in the TOIL_' +
-                           config.provisioner.upper() + '_ZONE environment variable.')
+    if not options.zone:
+        raise RuntimeError(f'Please provide a value for --zone or set a default in the '
+                           f'TOIL_{options.provisioner.upper()}_ZONE environment variable.')
 
-    cluster = clusterFactory(provisioner=config.provisioner,
-                             clusterName=config.clusterName,
-                             zone=config.zone,
-                             nodeStorage=config.nodeStorage)
+    logger.info('Creating cluster %s...', options.clusterName)
 
-    cluster.launchCluster(leaderNodeType=config.leaderNodeType,
-                          leaderStorage=config.leaderStorage,
+    cluster = cluster_factory(provisioner=options.provisioner,
+                              clusterName=options.clusterName,
+                              clusterType=options.clusterType,
+                              zone=options.zone,
+                              nodeStorage=options.nodeStorage)
+
+    cluster.launchCluster(leaderNodeType=options.leaderNodeType,
+                          leaderStorage=options.leaderStorage,
                           owner=owner,
-                          keyName=config.keyPairName,
-                          botoPath=config.botoPath,
+                          keyName=options.keyPairName,
+                          botoPath=options.botoPath,
                           userTags=tags,
-                          vpcSubnet=config.vpcSubnet,
-                          awsEc2ProfileArn=config.awsEc2ProfileArn,
-                          awsEc2ExtraSecurityGroupIds=config.awsEc2ExtraSecurityGroupIds)
+                          vpcSubnet=options.vpcSubnet,
+                          awsEc2ProfileArn=options.awsEc2ProfileArn,
+                          awsEc2ExtraSecurityGroupIds=options.awsEc2ExtraSecurityGroupIds)
 
-    for nodeType, workers in zip(nodeTypes, numNodes):
-        cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=False)
-    for nodeType, workers, spotBid in zip(preemptableNodeTypes, numPreemptableNodes, spotBids):
-        cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=True,
-                         spotBid=spotBid)
+    for typeNum, spec in enumerate(nodeCounts):
+        # For each batch of workers to make
+        wanted = worker_node_types[typeNum]
 
+        if isinstance(spec, int):
+            # Make static nodes
+
+            if spec == 0:
+                # Don't make anything
+                continue
+
+            if wanted[1] is None:
+                # Make non-spot instances
+                cluster.addNodes(nodeTypes=wanted[0], numNodes=spec, preemptable=False)
+            else:
+                # We have a spot bid
+                cluster.addNodes(nodeTypes=wanted[0], numNodes=spec, preemptable=True,
+                                 spotBid=wanted[1])
+
+        elif isinstance(spec, tuple):
+            # Make a range of auto-scaling nodes
+
+            max_count, min_count = spec
+
+            if max_count < min_count:
+                # Flip them around
+                min_count, max_count = max_count, min_count
+
+            if max_count == 0:
+                # Don't want any
+                continue
+
+            if wanted[1] is None:
+                # Make non-spot instances
+                cluster.addManagedNodes(nodeTypes=wanted[0], minNodes=min_count, maxNodes=max_count,
+                                        preemptable=False)
+            else:
+                # Bid at the given price.
+                cluster.addManagedNodes(nodeTypes=wanted[0], minNodes=min_count, maxNodes=max_count,
+                                        preemptable=True, spotBid=wanted[1])
+
+    logger.info('Cluster created successfully.')

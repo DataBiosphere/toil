@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2019 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import fcntl
 import logging
 import os
@@ -26,6 +25,7 @@ from toil.realtimeLogger import RealtimeLogger
 from toil.resource import ModuleDescriptor
 
 logger = logging.getLogger(__name__)
+
 
 class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name module')):
     """
@@ -160,8 +160,8 @@ class DeferredFunctionManager(object):
         fcntl.lockf(self.stateFD, fcntl.LOCK_UN)
 
         # Don't bother with close, destroying will close and it seems to maybe
-        # have been GC'd already anyway. 
-        
+        # have been GC'd already anyway.
+
     @contextmanager
     def open(self):
         """
@@ -175,7 +175,7 @@ class DeferredFunctionManager(object):
 
         # Clean up other jobs before we run, so our job has a nice clean node
         self._runOrphanedDeferredFunctions()
-    
+
         try:
             def defer(deferredFunction):
                 # Just serialize defered functions one after the other.
@@ -252,7 +252,7 @@ class DeferredFunctionManager(object):
         """
         Run all of the deferred functions that were registered.
         """
-        
+
         logger.debug("Running own deferred functions")
 
         # Seek back to the start of our file
@@ -334,15 +334,10 @@ class DeferredFunctionManager(object):
                 except OSError:
                     # Maybe the file vanished.
                     pass
-                
+
                 # Unlock it
                 fcntl.lockf(fd, fcntl.LOCK_UN)
 
                 # Now close it. This closes the backing file descriptor. See
                 # <https://stackoverflow.com/a/24984929>
                 fileObj.close()
-
-                
-                
-
-         

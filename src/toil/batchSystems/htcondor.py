@@ -12,18 +12,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import logging
 import math
 import os
 import time
+from typing import Any, Optional, Dict
 
 import htcondor
 
-from toil.batchSystems.abstractGridEngineBatchSystem import \
-    AbstractGridEngineBatchSystem
+from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
 
 logger = logging.getLogger(__name__)
+
 
 class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
     # When using HTCondor, the Schedd handles scheduling
@@ -32,7 +32,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
         # Override the createJobs method so that we can use htcondor.Submit objects
         # and so that we can get disk allocation requests and ceil the CPU request.
-        def createJobs(self, newJob):
+        def createJobs(self, newJob: Any) -> bool:
             activity = False
 
             if newJob is not None:
@@ -44,7 +44,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 jobID, cpu, memory, disk, jobName, command = self.waitingJobs.pop(0)
 
                 # Prepare the htcondor.Submit object
-                submitObj = self.prepareSubmission(cpu, memory, disk, jobID, jobName, command)
+                submitObj: htcondor.Submit = self.prepareHTSubmission(cpu, memory, disk, jobID, jobName, command)
                 logger.debug("Submitting %r", submitObj)
 
                 # Submit job and get batch system ID (i.e. the ClusterId)
@@ -62,22 +62,21 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
             return activity
 
-        def prepareSubmission(self, cpu, memory, disk, jobID, jobName, command):
+        def prepareHTSubmission(self, cpu: int, memory: int, disk: int, jobID: int, jobName: str, command: str) -> htcondor.Submit:
 
             # Convert resource requests
             cpu = int(math.ceil(cpu)) # integer CPUs
-            memory = float(memory)/1024 # memory in KB
-            disk = float(disk)/1024 # disk in KB
+            ht_memory = float(memory)/1024 # memory in KB
+            ht_disk = float(disk)/1024 # disk in KB
 
             # NOTE: formatStdOutErrPath() puts files in the Toil workflow directory, which defaults
             # to being in the system temporary directory ($TMPDIR, /tmp) which is unlikely to be on
             # a shared filesystem. So to make this work we need to set should_transfer_files = Yes
             # in the submit file, so that HTCondor will write the standard output/error files on the
             # compute node, then transfer back once the job has completed.
-            stdoutfile = self.boss.formatStdOutErrPath(jobID, 'htcondor', '$(cluster)', 'std_output')
-            stderrfile = self.boss.formatStdOutErrPath(jobID, 'htcondor', '$(cluster)', 'std_error')
-
-            condorlogfile = self.boss.formatStdOutErrPath(jobID, 'htcondor', '$(cluster)', 'job_events')
+            stdoutfile: str = self.boss.formatStdOutErrPath(jobID, '$(cluster)', 'out')
+            stderrfile: str = self.boss.formatStdOutErrPath(jobID, '$(cluster)', 'err')
+            condorlogfile: str = self.boss.formatStdOutErrPath(jobID, '$(cluster)', 'events')
 
             # Execute the entire command as /bin/sh -c "command"
             # TODO: Transfer the jobStore directory if using a local file store with a relative path.
@@ -92,8 +91,8 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 'error': stderrfile,
                 'log': condorlogfile,
                 'request_cpus': '{0}'.format(cpu),
-                'request_memory': '{0:.3f}KB'.format(memory),
-                'request_disk': '{0:.3f}KB'.format(disk),
+                'request_memory': '{0:.3f}KB'.format(ht_memory),
+                'request_disk': '{0:.3f}KB'.format(ht_disk),
                 'leave_in_queue': '(JobStatus == 4)',
                 '+IsToilJob': 'True',
                 '+ToilJobID': '{0}'.format(jobID),
@@ -143,7 +142,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 jobID = int(ad['ToilJobID'])
                 if not (batchJobID in batchJobIDs):
                     continue
-                
+
                 # HTCondor stores the start of the runtime as a Unix timestamp
                 runtime = time.time() - ad['EnteredCurrentStatus']
                 job_runtimes[jobID] = runtime
@@ -278,17 +277,17 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             return schedd
 
         def getEnvString(self):
-            '''Build an environment string that a HTCondor Submit object can use.
+            """
+            Build an environment string that a HTCondor Submit object can use.
 
             For examples of valid strings, see:
             http://research.cs.wisc.edu/htcondor/manual/current/condor_submit.html#man-condor-submit-environment
-
-            '''
+            """
 
             env_items = []
             if self.boss.environment:
                 for key, value in self.boss.environment.items():
-                    
+
                     # Each variable should be in the form of <key>='<value>'
                     env_string = key + "="
 
@@ -303,7 +302,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             return '"' + ' '.join(env_items) + '"'
 
     # Override the issueBatchJob method so HTCondor can be given the disk request
-    def issueBatchJob(self, jobNode):
+    def issueBatchJob(self, jobNode, job_environment: Optional[Dict[str, str]] = None):
         # Avoid submitting internal jobs to the batch queue, handle locally
         localID = self.handleLocalJob(jobNode)
         if localID:
@@ -314,16 +313,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             self.currentJobs.add(jobID)
 
             # Add the jobNode.disk and jobNode.jobName to the job tuple
-            self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.disk, jobNode.jobName, jobNode.command))
+            self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.disk, jobNode.jobName, jobNode.command,
+                                   job_environment))
             logger.debug("Issued the job command: %s with job id: %s ", jobNode.command, str(jobID))
         return jobID
-
-    @classmethod
-    def obtainSystemConstants(cls):
-
-        # Since it's not always clear what the max cpus and max memory available
-        # in an HTCondor slot might be, use some reasonable constants for now.
-        # TODO: Use a htcondor.Collector().query() to determine reasonable values.
-        max_cpu = 4
-        max_mem = 4e9
-        return max_cpu, max_mem

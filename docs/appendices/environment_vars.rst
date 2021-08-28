@@ -31,6 +31,11 @@ There are several environment variables that affect the way Toil runs.
 |                                  | the Mesos sandbox. In all other cases, the         |
 |                                  | system's `standard temporary directory`_ is used.  |
 +----------------------------------+----------------------------------------------------+
+| TOIL_WORKDIR_OVERRIDE            | An absolute path to a directory where Toil will    |
+|                                  | write its temporary files. This overrides          |
+|                                  | ``TOIL_WORKDIR`` and the  ``--workDir`` command    |
+|                                  | line option.                                       |
++----------------------------------+----------------------------------------------------+
 | TOIL_KUBERNETES_HOST_PATH        | A path on Kubernetes hosts that will be mounted as |
 |                                  | /tmp in the workers, to allow for shared caching.  |
 +----------------------------------+----------------------------------------------------+
@@ -40,7 +45,7 @@ There are several environment variables that affect the way Toil runs.
 +----------------------------------+----------------------------------------------------+
 | KUBE_WATCH_ENABLED               | A boolean variable that allows for users           |
 |                                  | to utilize kubernetes watch stream feature         |
-|                                  | intead of polling for running jobs. Default        | 
+|                                  | intead of polling for running jobs. Default        |
 |                                  | value is set to False.                             |
 +----------------------------------+----------------------------------------------------+
 | TOIL_APPLIANCE_SELF              | The fully qualified reference for the Toil         |
@@ -86,6 +91,9 @@ There are several environment variables that affect the way Toil runs.
 |                                  | also be left behind by necessity as it cannot be   |
 |                                  | deleted until all associated nodes have been       |
 |                                  | terminated.                                        |
++----------------------------------+----------------------------------------------------+
+| TOIL_GOOGLE_PROJECTID            | The Google project ID to use when generating       |
+|                                  | Google job store names for tests or CWL workflows. |
 +----------------------------------+----------------------------------------------------+
 | TOIL_SLURM_ARGS                  | Arguments for sbatch for the slurm batch system.   |
 |                                  | Do not pass CPU or memory specifications here.     |
@@ -146,6 +154,29 @@ There are several environment variables that affect the way Toil runs.
 |                                  | initialization in the worker and/or primary nodes  |
 |                                  | such as private docker authentication for the Toil |
 |                                  | appliance itself (i.e. from TOIL_APPLIANCE_SELF).  |
++----------------------------------+----------------------------------------------------+
+| TOIL_S3_HOST                     | the IP address or hostname to use for connecting   |
+|                                  | to S3. Example: ``TOIL_S3_HOST=127.0.0.1``         |
++----------------------------------+----------------------------------------------------+
+| TOIL_S3_PORT                     | a port number to use for connecting to S3.         |
+|                                  | Example: ``TOIL_S3_PORT=9001``                     |
++----------------------------------+----------------------------------------------------+
+| TOIL_S3_USE_SSL                  | enable or disable the usage of SSL for connecting  |
+|                                  | to S3 (``True`` by default).                       |
+|                                  | Example: ``TOIL_S3_USE_SSL=False``                 |
++----------------------------------+----------------------------------------------------+
+| TOIL_OWNER_TAG                   | This will tag cloud resources with a tag reading:  |
+|                                  | "Owner: $TOIL_OWNER_TAG".  Currently only on AWS   |
+|                                  | buckets, this is an internal UCSC flag to stop a   |
+|                                  | bot we have that terminates untagged resources.    |
++----------------------------------+----------------------------------------------------+
+| SINGULARITY_DOCKER_HUB_MIRROR    | An http or https URL for the Singularity wrapper   |
+|                                  | in the Toil Docker container to use as a mirror    |
+|                                  | for Docker Hub.                                    |
++----------------------------------+----------------------------------------------------+
+| OMP_NUM_THREADS                  | The number of cores set for OpenMP applications in |
+|                                  | the workers. If not set, Toil will use the number  |
+|                                  | of job threads.                                    |
 +----------------------------------+----------------------------------------------------+
 
 .. _standard temporary directory: https://docs.python.org/3/library/tempfile.html#tempfile.gettempdir

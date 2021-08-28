@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,126 +11,64 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-"""
-Reports statistical data about a given Toil workflow.
-"""
-
+"""Reports statistical data about a given Toil workflow."""
 import json
 import logging
 from functools import partial
+from argparse import ArgumentParser, Namespace
+from typing import Optional, Dict, List, Callable, TextIO, Any
 
-from toil.common import Config, Toil, jobStoreLocatorHelp
-from toil.lib.bioio import getBasicOptionParser, parseBasicOptions
+from toil.job import Job
+from toil.common import Config, Toil, parser_with_common_options
+from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.expando import Expando
-from toil.version import version
+from toil.statsAndLogging import set_logging_from_options
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
 
-class ColumnWidths(object):
+class ColumnWidths:
     """
     Convenience object that stores the width of columns for printing. Helps make things pretty.
     """
-    def __init__(self):
+    def __init__(self) -> None:
         self.categories = ["time", "clock", "wait", "memory"]
         self.fields_count = ["count", "min", "med", "ave", "max", "total"]
         self.fields = ["min", "med", "ave", "max", "total"]
-        self.data = {}
+        self.data: Dict[str, int] = {}
         for category in self.categories:
             for field in self.fields_count:
                 self.setWidth(category, field, 8)
-    def title(self, category):
+
+    def title(self, category: str) -> int:
         """ Return the total printed length of this category item.
         """
-        return sum(
-            [self.getWidth(category, x) for x in self.fields])
-    def getWidth(self, category, field):
+        return sum([self.getWidth(category, x) for x in self.fields])
+
+    def getWidth(self, category: str, field: str ) -> int:
         category = category.lower()
         return self.data["%s_%s" % (category, field)]
-    def setWidth(self, category, field, width):
+
+    def setWidth(self, category: str, field: str, width: int) -> None:
         category = category.lower()
         self.data["%s_%s" % (category, field)] = width
-    def report(self):
+
+    def report(self) -> None:
         for c in self.categories:
             for f in self.fields:
                 print('%s %s %d' % (c, f, self.getWidth(c, f)))
 
-def initializeOptions(parser):
-    parser.add_argument("jobStore", type=str,
-                        help="The location of the job store used by the workflow for which "
-                             "statistics should be reported. " + jobStoreLocatorHelp)
-    parser.add_argument("--outputFile", dest="outputFile", default=None,
-                      help="File in which to write results")
-    parser.add_argument("--raw", action="store_true", default=False,
-                      help="output the raw json data.")
-    parser.add_argument("--pretty", "--human", action="store_true", default=False,
-                      help=("if not raw, prettify the numbers to be "
-                            "human readable."))
-    parser.add_argument("--categories",
-                      help=("comma separated list from [time, clock, wait, "
-                            "memory]"))
-    parser.add_argument("--sortCategory", default="time",
-                      help=("how to sort Job list. may be from [alpha, "
-                            "time, clock, wait, memory, count]. "
-                            "default=%(default)s"))
-    parser.add_argument("--sortField", default="med",
-                      help=("how to sort Job list. may be from [min, "
-                            "med, ave, max, total]. "
-                            "default=%(default)s"))
-    parser.add_argument("--sortReverse", "--reverseSort", default=False,
-                      action="store_true",
-                      help="reverse sort order.")
-    parser.add_argument("--version", action='version', version=version)
 
-def checkOptions(options, parser):
-    """ Check options, throw parser.error() if something goes wrong
-    """
-
-    if options.jobStore == None:
-        parser.error("Specify --jobStore")
-    defaultCategories = ["time", "clock", "wait", "memory"]
-    if options.categories is None:
-        options.categories = defaultCategories
-    else:
-        options.categories = [x.lower() for x in options.categories.split(",")]
-    for c in options.categories:
-        if c not in defaultCategories:
-            parser.error("Unknown category %s. Must be from %s"
-                         % (c, str(defaultCategories)))
-    extraSort = ["count", "alpha"]
-    if options.sortCategory is not None:
-        if (options.sortCategory not in defaultCategories and
-            options.sortCategory not in extraSort):
-            parser.error("Unknown --sortCategory %s. Must be from %s"
-                         % (options.sortCategory,
-                            str(defaultCategories + extraSort)))
-    sortFields = ["min", "med", "ave", "max", "total"]
-    if options.sortField is not None:
-        if (options.sortField not in sortFields):
-            parser.error("Unknown --sortField %s. Must be from %s"
-                         % (options.sortField, str(sortFields)))
-
-def printJson(elem):
-    """ Return a JSON formatted string
-    """
-    prettyString = json.dumps(elem, indent=4, separators=(',',': '))
-    return prettyString
-
-def padStr(s, field=None):
-    """ Pad the begining of a string with spaces, if necessary.
-    """
-    if field is None:
+def padStr(s: str, field: Optional[int] = None) -> str:
+    """Pad the beginning of a string with spaces, if necessary."""
+    if field is None or len(s) >= field:
         return s
     else:
-      if len(s) >= field:
-          return s
-      else:
-          return " " * (field - len(s)) + s
+        return " " * (field - len(s)) + s
 
-def prettyMemory(k, field=None, isBytes=False):
-    """ Given input k as kilobytes, return a nicely formatted string.
-    """
+
+def prettyMemory(k: float, field: Optional[int] = None, isBytes: bool = False) -> str:
+    """Given input k as kilobytes, return a nicely formatted string."""
     if isBytes:
         k /= 1024
     if k < 1024:
@@ -144,7 +82,11 @@ def prettyMemory(k, field=None, isBytes=False):
     if k < (1024 * 1024 * 1024 * 1024 * 1024):
         return padStr("%.1fP" % (k / 1024.0 / 1024.0 / 1024.0 / 1024.0), field)
 
-def prettyTime(t, field=None):
+    # due to https://stackoverflow.com/questions/47149154
+    assert False
+
+
+def prettyTime(t: float, field: Optional[int] = None) -> str:
     """ Given input t as seconds, return a nicely formatted string.
     """
     from math import floor
@@ -171,12 +113,10 @@ def prettyTime(t, field=None):
         return padStr("%dday%s%dh%dm%ds" % (d, dPlural, h, m, s), field)
     w = floor(t / 7. / 24. / 60. / 60.)
     d = floor((t - (w * 7 * 24 * 60 * 60)) / 24. / 60. / 60.)
-    h = floor((t
-                 - (w * 7. * 24. * 60. * 60.)
+    h = floor((t - (w * 7. * 24. * 60. * 60.)
                  - (d * 24. * 60. * 60.))
-                / 60. / 60.)
-    m = floor((t
-                 - (w * 7. * 24. * 60. * 60.)
+              / 60. / 60.)
+    m = floor((t - (w * 7. * 24. * 60. * 60.)
                  - (d * 24. * 60. * 60.)
                  - (h * 60. * 60.)) / 60.)
     s = t % 60
@@ -185,20 +125,18 @@ def prettyTime(t, field=None):
     return padStr("%dweek%s%dday%s%dh%dm%ds" % (w, wPlural, d,
                                                 dPlural, h, m, s), field)
 
-def reportTime(t, options, field=None):
-    """ Given t seconds, report back the correct format as string.
-    """
+
+def reportTime(t: float, options: Namespace, field: Optional[int] = None) -> str:
+    """Given t seconds, report back the correct format as string."""
     if options.pretty:
         return prettyTime(t, field=field)
-    else:
-        if field is not None:
-            return "%*.2f" % (field, t)
-        else:
-            return "%.2f" % t
+    elif field is not None:
+        return "%*.2f" % (field, t)
+    return "%.2f" % t
 
-def reportMemory(k, options, field=None, isBytes=False):
-    """ Given k kilobytes, report back the correct format as string.
-    """
+
+def reportMemory(k: float, options: Namespace, field: Optional[int] = None, isBytes: bool = False) -> str:
+    """Given k kilobytes, report back the correct format as string."""
     if options.pretty:
         return prettyMemory(int(k), field=field, isBytes=isBytes)
     else:
@@ -209,33 +147,20 @@ def reportMemory(k, options, field=None, isBytes=False):
         else:
             return "%dK" % int(k)
 
-def reportNumber(n, options, field=None):
-    """ Given n an integer, report back the correct format as string.
-    """
-    if field is not None:
-        return "%*g" % (field, n)
-    else:
-        return "%g" % n
 
-def refineData(root, options):
-    """ walk down from the root and gather up the important bits.
-    """
-    worker = root.worker
-    job = root.jobs
-    jobTypesTree = root.job_types
-    jobTypes = []
-    for childName in jobTypesTree:
-        jobTypes.append(jobTypesTree[childName])
-    return root, worker, job, jobTypes
+def reportNumber(n: float, field: Optional[int] = None) -> str:
+    """Given n an integer, report back the correct format as string."""
+    return "%*g" % (field, n) if field else "%g" % n
 
-def sprintTag(key, tag, options, columnWidths=None):
+
+def sprintTag(key: str, tag: Expando, options: Namespace, columnWidths: Optional[ColumnWidths] = None) -> str:
     """ Generate a pretty-print ready string from a JTTag().
     """
     if columnWidths is None:
         columnWidths = ColumnWidths()
     header = "  %7s " % decorateTitle("Count", options)
     sub_header = "  %7s " % "n"
-    tag_str = "  %s" % reportNumber(tag.total_number, options, field=7)
+    tag_str = f"  {reportNumber(n=tag.total_number, field=7)}"
     out_str = ""
     if key == "job":
         out_str += " %-12s | %7s%7s%7s%7s\n" % ("Worker Jobs", "min",
@@ -243,7 +168,7 @@ def sprintTag(key, tag, options, columnWidths=None):
         worker_str = "%s| " % (" " * 14)
         for t in [tag.min_number_per_worker, tag.median_number_per_worker,
                   tag.average_number_per_worker, tag.max_number_per_worker]:
-            worker_str += reportNumber(t, options, field=7)
+            worker_str += reportNumber(n=t, field=7)
         out_str += worker_str + "\n"
     if "time" in options.categories:
         header += "| %*s " % (columnWidths.title("time"),
@@ -302,7 +227,7 @@ def sprintTag(key, tag, options, columnWidths=None):
     out_str += tag_str + "\n"
     return out_str
 
-def decorateTitle(title, options):
+def decorateTitle(title: str, options: Namespace) -> str:
     """ Add a marker to TITLE if the TITLE is sorted on.
     """
     if title.lower() == options.sortCategory:
@@ -310,7 +235,7 @@ def decorateTitle(title, options):
     else:
         return title
 
-def decorateSubHeader(title, columnWidths, options):
+def decorateSubHeader(title: str, columnWidths: ColumnWidths, options: Namespace) -> str:
     """ Add a marker to the correct field if the TITLE is sorted on.
     """
     title = title.lower()
@@ -336,22 +261,17 @@ def decorateSubHeader(title, columnWidths, options):
         s += " "
         return s
 
-def get(tree, name):
-    """ Return a float value attribute NAME from TREE.
-    """
-    if name in tree:
-        value = tree[name]
-    else:
-        return float("nan")
-    try:
-        a = float(value)
-    except ValueError:
-        a = float("nan")
-    return a
 
-def sortJobs(jobTypes, options):
-    """ Return a jobTypes all sorted.
-    """
+def get(tree: Expando, name: str) -> float:
+    """Return a float value attribute NAME from TREE."""
+    try:
+        return float(tree.get(name, "nan"))
+    except ValueError:
+        return float("nan")
+
+
+def sortJobs(jobTypes: List[Any], options: Namespace) -> List[Any]:
+    """Return a jobTypes all sorted."""
     longforms = {"med": "median",
                  "ave": "average",
                  "min": "min",
@@ -365,26 +285,30 @@ def sortJobs(jobTypes, options):
         ):
         return sorted(
             jobTypes,
-            key=lambda tag: getattr(tag, "%s_%s"
+            # due to https://github.com/python/mypy/issues/9656
+            key=lambda tag: getattr(tag, "%s_%s" # type: ignore
                                     % (sortField, options.sortCategory)),
             reverse=options.sortReverse)
     elif options.sortCategory == "alpha":
         return sorted(
-            jobTypes, key=lambda tag: tag.name,
+            jobTypes, key=lambda tag: tag.name, # type: ignore
             reverse=options.sortReverse)
     elif options.sortCategory == "count":
-        return sorted(jobTypes, key=lambda tag: tag.total_number,
+        return sorted(jobTypes, key=lambda tag: tag.total_number, # type: ignore
                       reverse=options.sortReverse)
 
-def reportPrettyData(root, worker, job, job_types, options):
-    """ print the important bits out.
-    """
+    # due to https://stackoverflow.com/questions/47149154
+    assert False
+
+
+def reportPrettyData(root: Expando, worker: List[Job], job: List[Job], job_types: List[Any], options: Namespace) -> str:
+    """Print the important bits out."""
     out_str = "Batch System: %s\n" % root.batch_system
     out_str += ("Default Cores: %s  Default Memory: %s\n"
                 "Max Cores: %s\n" % (
-        reportNumber(get(root, "default_cores"), options),
+        reportNumber(n=get(root, "default_cores")),
         reportMemory(get(root, "default_memory"), options, isBytes=True),
-        reportNumber(get(root, "max_cores"), options),
+        reportNumber(n=get(root, "max_cores")),
         ))
     out_str += ("Total Clock: %s  Total Runtime: %s\n" % (
         reportTime(get(root, "total_clock"), options),
@@ -401,7 +325,8 @@ def reportPrettyData(root, worker, job, job_types, options):
         out_str += sprintTag(t.name, t, options, columnWidths=columnWidths)
     return out_str
 
-def computeColumnWidths(job_types, worker, job, options):
+
+def computeColumnWidths(job_types: List[Any], worker: List[Job], job: List[Job], options: Expando) -> ColumnWidths:
     """ Return a ColumnWidths() object with the correct max widths.
     """
     cw = ColumnWidths()
@@ -411,7 +336,8 @@ def computeColumnWidths(job_types, worker, job, options):
     updateColumnWidths(job, cw, options)
     return cw
 
-def updateColumnWidths(tag, cw, options):
+
+def updateColumnWidths(tag: Expando, cw: ColumnWidths, options: Expando) -> None:
     """ Update the column width attributes for this tag's fields.
     """
     longforms = {"med": "median",
@@ -433,10 +359,11 @@ def updateColumnWidths(tag, cw, options):
                     # this string is larger than max, width must be increased
                     cw.setWidth(category, field, len(s) + 1)
 
-def buildElement(element, items, itemName):
+
+def buildElement(element: Expando, items: List[Job], itemName: str) -> Expando:
     """ Create an element for output.
     """
-    def assertNonnegative(i,name):
+    def assertNonnegative(i: float, name: str) -> float:
         if i < 0:
             raise RuntimeError("Negative value %s reported for %s" %(i,name) )
         else:
@@ -494,7 +421,8 @@ def buildElement(element, items, itemName):
     )
     return element[itemName]
 
-def createSummary(element, containingItems, containingItemName, getFn):
+
+def createSummary(element: Expando, containingItems: List[Job], containingItemName: str, getFn: Callable[[Job], List[Optional[Job]]]) -> None:
     itemCounts = [len(getFn(containingItem)) for
                   containingItem in containingItems]
     itemCounts.sort()
@@ -506,10 +434,10 @@ def createSummary(element, containingItems, containingItemName, getFn):
     element["max_number_per_%s" % containingItemName] = max(itemCounts)
 
 
-def getStats(jobStore):
+def getStats(jobStore: AbstractJobStore) -> Expando:
     """ Collect and return the stats and config data.
     """
-    def aggregateStats(fileHandle,aggregateObject):
+    def aggregateStats(fileHandle: TextIO, aggregateObject: Expando) -> None:
         try:
             stats = json.load(fileHandle, object_hook=Expando)
             for key in list(stats.keys()):
@@ -527,7 +455,7 @@ def getStats(jobStore):
     return aggregateObject
 
 
-def processData(config, stats):
+def processData(config: Config, stats: Expando) -> Expando:
     """
     Collate the stats and report
     """
@@ -552,7 +480,7 @@ def processData(config, stats):
     jobs = [_f for _f in getattr(stats, 'jobs', []) if _f]
     jobs = [item for sublist in jobs for item in sublist]
 
-    def fn4(job):
+    def fn4(job: Job) -> List[Optional[Job]]:
         try:
             return list(jobs)
         except TypeError:
@@ -573,13 +501,13 @@ def processData(config, stats):
     collatedStatsTag.name = "collatedStatsTag"
     return collatedStatsTag
 
-def reportData(tree, options):
+
+def reportData(tree: Expando, options: Namespace) -> None:
     # Now dump it all out to file
     if options.raw:
-        out_str = printJson(tree)
+        out_str = json.dumps(tree, indent=4, separators=(',', ': '))
     else:
-        root, worker, job, job_types = refineData(tree, options)
-        out_str = reportPrettyData(root, worker, job, job_types, options)
+        out_str = reportPrettyData(tree, tree.worker, tree.jobs, tree.job_types.values(), options)
     if options.outputFile is not None:
         fileHandle = open(options.outputFile, "w")
         fileHandle.write(out_str)
@@ -587,13 +515,38 @@ def reportData(tree, options):
     # Now dump onto the screen
     print(out_str)
 
-def main():
-    """ Reports stats on the workflow, use with --stats option to toil.
-    """
-    parser = getBasicOptionParser()
-    initializeOptions(parser)
-    options = parseBasicOptions(parser)
-    checkOptions(options, parser)
+
+category_choices = ["time", "clock", "wait", "memory"]
+sort_category_choices = ["time", "clock", "wait", "memory", "alpha", "count"]
+sort_field_choices = ['min', 'med', 'ave', 'max', 'total']
+
+
+def add_stats_options(parser: ArgumentParser) -> None:
+    parser.add_argument("--outputFile", dest="outputFile", default=None, help="File in which to write results.")
+    parser.add_argument("--raw", action="store_true", default=False, help="Return raw json data.")
+    parser.add_argument("--pretty", "--human", action="store_true", default=False,
+                        help="if not raw, prettify the numbers to be human readable.")
+    parser.add_argument("--sortReverse", "--reverseSort", default=False, action="store_true", help="Reverse sort.")
+    parser.add_argument("--categories", default=','.join(category_choices), type=str,
+                        help=f"Comma separated list of any of the following: {category_choices}.")
+    parser.add_argument("--sortCategory", default="time", choices=sort_category_choices,
+                        help=f"How to sort job categories.  Choices: {sort_category_choices}. Default: time.")
+    parser.add_argument("--sortField", default="med", choices=sort_field_choices,
+                        help=f"How to sort job fields.  Choices: {sort_field_choices}. Default: med.")
+
+
+def main() -> None:
+    """Reports stats on the workflow, use with --stats option to toil."""
+    parser = parser_with_common_options()
+    add_stats_options(parser)
+    options = parser.parse_args()
+
+    for c in options.categories.split(","):
+        if c.strip() not in category_choices:
+            raise ValueError(f'{c} not in {category_choices}!')
+    options.categories = [x.strip().lower() for x in options.categories.split(",")]
+
+    set_logging_from_options(options)
     config = Config()
     config.setOptions(options)
     jobStore = Toil.resumeJobStore(config.jobStore)

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import pytest
 from toil.common import Toil
 from toil.job import Job, JobFunctionWrappingJob, JobGraphDeadlockException
 from toil.leader import FailedJobsException
-from toil.lib.bioio import getTempFile
+from toil.test import get_temp_file
 from toil.test import ToilTest, slow, travis_test
 
 logger = logging.getLogger(__name__)
@@ -41,16 +41,16 @@ class JobTest(ToilTest):
     def testStatic(self):
         r"""
         Create a DAG of jobs non-dynamically and run it. DAG is:
-        
+
         A -> F
         \-------
-        B -> D  \ 
+        B -> D  \
          \       \
           ------- C -> E
-          
+
         Follow on is marked by ->
         """
-        outFile = getTempFile(rootDir=self._createTempDir())
+        outFile = get_temp_file(rootDir=self._createTempDir())
         try:
 
             # Create the jobs
@@ -81,21 +81,21 @@ class JobTest(ToilTest):
             self.assertEqual(open(outFile, 'r').readline(), "ABCDEFG")
         finally:
             os.remove(outFile)
-    
+
     @travis_test
     def testStatic2(self):
         r"""
         Create a DAG of jobs non-dynamically and run it. DAG is:
-        
+
         A -> F
         \-------
-        B -> D  \ 
+        B -> D  \
          \       \
           ------- C -> E
-          
+
         Follow on is marked by ->
         """
-        outFile = getTempFile(rootDir=self._createTempDir())
+        outFile = get_temp_file(rootDir=self._createTempDir())
         try:
 
             # Create the jobs
@@ -137,7 +137,7 @@ class JobTest(ToilTest):
                 pass
             else:
                 self.fail()
-    
+
     @travis_test
     @pytest.mark.timeout(30)
     def testDAGConsistency(self):
@@ -172,12 +172,12 @@ class JobTest(ToilTest):
                 pass
             else:
                 self.fail()
-    
+
     @travis_test
     def testDeadlockDetection(self):
         """
         Randomly generate job graphs with various types of cycle in them and
-        check they cause an exception properly. Also check that multiple roots 
+        check they cause an exception properly. Also check that multiple roots
         causes a deadlock exception.
         """
         for test in range(10):
@@ -187,7 +187,7 @@ class JobTest(ToilTest):
             # Get an adjacency list representation and check is acyclic
             adjacencyList = self.getAdjacencyList(nodeNumber, childEdges)
             self.assertTrue(self.isAcyclic(adjacencyList))
-            
+
             # Add in follow-on edges - these are returned as a list, and as a set of augmented
             # edges in the adjacency list
             # edges in the adjacency list
@@ -210,7 +210,7 @@ class JobTest(ToilTest):
             except JobGraphDeadlockException:
                 pass  # This is the expected behaviour
 
-            def checkChildEdgeCycleDetection(fNode, tNode):                
+            def checkChildEdgeCycleDetection(fNode, tNode):
                 childEdges.add((fNode, tNode))  # Create a cycle
                 adjacencyList[fNode].add(tNode)
                 self.assertTrue(not self.isAcyclic(adjacencyList))
@@ -226,7 +226,7 @@ class JobTest(ToilTest):
                 # Check is now acyclic again
                 self.makeJobGraph(nodeNumber, childEdges,
                                   followOnEdges, None, False).checkJobGraphAcylic()
-                                  
+
             def checkFollowOnEdgeCycleDetection(fNode, tNode):
                 followOnEdges.add((fNode, tNode))  # Create a cycle
                 try:
@@ -246,10 +246,10 @@ class JobTest(ToilTest):
             # Pick a random existing order relationship
             fNode, tNode = self.getRandomEdge(nodeNumber)
             while tNode not in self.reachable(fNode, adjacencyList):
-                fNode, tNode = self.getRandomEdge(nodeNumber)  
-            
+                fNode, tNode = self.getRandomEdge(nodeNumber)
+
             # Try creating a cycle of child edges
-            checkChildEdgeCycleDetection(tNode, fNode)   
+            checkChildEdgeCycleDetection(tNode, fNode)
 
             # Try adding a self child edge
             node = random.choice(range(nodeNumber))
@@ -379,7 +379,7 @@ class JobTest(ToilTest):
     @slow
     def testEvaluatingRandomDAG(self):
         """
-        Randomly generate test input then check that the job graph can be 
+        Randomly generate test input then check that the job graph can be
         run successfully, using the existence of promises
         to validate the run.
         """
@@ -413,7 +413,7 @@ class JobTest(ToilTest):
                 numberOfFailedJobs = 0
             except FailedJobsException as e:
                 numberOfFailedJobs = e.numberOfFailedJobs
-            
+
             # Restart until successful or failed
             totalTrys = 1
             options.restart = True
@@ -425,9 +425,9 @@ class JobTest(ToilTest):
                 except FailedJobsException as e:
                     numberOfFailedJobs = e.numberOfFailedJobs
                     if totalTrys > 32: #p(fail after this many restarts) ~= 0.5**32
-                        self.fail() #Exceeded a reasonable number of restarts    
+                        self.fail() #Exceeded a reasonable number of restarts
                     totalTrys += 1
-            
+
             # For each job check it created a valid output file and add the ordering
             # relationships contained within the output file to the ordering relationship,
             # so we can check they are compatible with the relationships defined by the job DAG.
@@ -507,9 +507,9 @@ class JobTest(ToilTest):
 
             def addImpliedEdges(node, followOnEdges):
                 # Let node2 be a child of node or a successor of a child of node.
-                # For all node2 the following adds an edge to the augmented 
+                # For all node2 the following adds an edge to the augmented
                 # adjacency list from node2 to each followOn of node
-                
+
                 visited = set()
 
                 def f(node2):
@@ -564,16 +564,16 @@ class JobTest(ToilTest):
         def makeJob(string):
             promises = []
             job = Job.wrapFn(fn2Test, promises, string,
-                             None if outPath is None else os.path.join(outPath, string)) 
+                             None if outPath is None else os.path.join(outPath, string))
             jobsToPromisesMap[job] = promises
             return job
 
         # Make the jobs
         jobs = [makeJob(str(i)) for i in range(nodeNumber)]
-        
+
         # Record predecessors for sampling
         predecessors = collections.defaultdict(list)
-        
+
         # Make the edges
         for fNode, tNode in childEdges:
             jobs[fNode].addChild(jobs[tNode])
@@ -581,7 +581,7 @@ class JobTest(ToilTest):
         for fNode, tNode in followOnEdges:
             jobs[fNode].addFollowOn(jobs[tNode])
             predecessors[jobs[tNode]].append(jobs[fNode])
-            
+
         # Map of jobs to return values
         jobsToRvs = dict([(job, job.addService(TrivialService(job.rv())) if addServices else job.rv()) for job in jobs])
 
@@ -591,7 +591,7 @@ class JobTest(ToilTest):
                 predecessor = random.choice(list(predecessors[predecessor]))
             return predecessor
 
-        # Connect up set of random promises compatible with graph                                          
+        # Connect up set of random promises compatible with graph
         while random.random() > 0.01:
             job = random.choice(list(jobsToPromisesMap.keys()))
             promises = jobsToPromisesMap[job]

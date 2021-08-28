@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,37 +30,37 @@ class CleanWorkDirTest(ToilTest):
     def tearDown(self):
         super(CleanWorkDirTest, self).tearDown()
         shutil.rmtree(self.testDir)
-    
+
     @travis_test
     def testNever(self):
         retainedTempData = self._runAndReturnWorkDir("never", job=tempFileTestJob)
         self.assertNotEqual(retainedTempData, [], "The worker's temporary workspace was deleted despite "
                                                   "cleanWorkDir being set to 'never'")
-    
+
     @travis_test
     def testAlways(self):
         retainedTempData = self._runAndReturnWorkDir("always", job=tempFileTestJob)
         self.assertEqual(retainedTempData, [], "The worker's temporary workspace was not deleted despite "
                                                "cleanWorkDir being set to 'always'")
-    
+
     @travis_test
     def testOnErrorWithError(self):
         retainedTempData = self._runAndReturnWorkDir("onError", job=tempFileTestErrorJob, expectError=True)
         self.assertEqual(retainedTempData, [], "The worker's temporary workspace was not deleted despite "
                                                "an error occurring and cleanWorkDir being set to 'onError'")
-    
+
     @travis_test
     def testOnErrorWithNoError(self):
         retainedTempData = self._runAndReturnWorkDir("onError", job=tempFileTestJob)
         self.assertNotEqual(retainedTempData, [], "The worker's temporary workspace was deleted despite "
                                                   "no error occurring and cleanWorkDir being set to 'onError'")
-    
+
     @travis_test
     def testOnSuccessWithError(self):
         retainedTempData = self._runAndReturnWorkDir("onSuccess", job=tempFileTestErrorJob, expectError=True)
         self.assertNotEqual(retainedTempData, [], "The worker's temporary workspace was deleted despite "
                                                   "an error occurring and cleanWorkDir being set to 'onSuccesss'")
-    
+
     @travis_test
     def testOnSuccessWithSuccess(self):
         retainedTempData = self._runAndReturnWorkDir("onSuccess", job=tempFileTestJob)

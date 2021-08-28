@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import time
 import toil.test.batchSystems.batchSystemTest as batchSystemTest
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.job import Job, PromisedRequirement
+from toil.lib.retry import retry_flaky_test
 from toil.test import needs_mesos, slow, travis_test
 
 log = logging.getLogger(__name__)
@@ -53,6 +54,7 @@ class hidden(object):
                 self.assertEqual(maxValue, self.cpuCount // coresPerJob)
 
         @slow
+        @retry_flaky_test()
         def testConcurrencyStatic(self):
             """
             Asserts that promised core resources are allocated properly using a static DAG
@@ -100,7 +102,7 @@ class hidden(object):
         @travis_test
         def testJobConcurrency(self):
             pass
-        
+
         @travis_test
         def testPromisesWithJobStoreFileObjects(self, caching=True):
             """
@@ -121,7 +123,7 @@ class hidden(object):
             F2.addChild(G)
 
             Job.Runner.startToil(F1, self.getOptions(self._createTempDir('testFiles'), caching=caching))
-        
+
         @travis_test
         def testPromisesWithNonCachingFileStore(self):
             self.testPromisesWithJobStoreFileObjects(caching=False)
@@ -235,4 +237,3 @@ class MesosPromisedRequirementsTest(hidden.AbstractPromisedRequirementsTest, Mes
 
     def tearDown(self):
         self._stopMesos()
-

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2020 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -112,7 +112,7 @@ Use-cases covered currently:
 
 1. Retrying on a normal error, like a KeyError.
 2. Retrying on HTTP error codes (use ErrorCondition).
-3. Retrying on boto's specific status errors, like "BucketNotFound" (use ErrorCondition).
+3. Retrying on boto 3's specific status errors, like "BucketNotFound" (use ErrorCondition).
 4. Retrying when an error message contains a certain phrase (use ErrorCondition).
 5. Explicitly NOT retrying on a condition (use ErrorCondition).
 
@@ -150,7 +150,7 @@ try:
 except ModuleNotFoundError:
     botocore = None
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ErrorCondition:
@@ -159,21 +159,31 @@ class ErrorCondition:
 
     ErrorCondition events may be used to define errors in more detail to determine whether to retry.
 
-    :param error: An Exception (required)
+    :param error: An Exception class to restrict to. Must be specified if error_codes is used.
     :param error_codes: Numeric error codes (e.g. 404, 500, etc.) that must match to be retried
         (optional; defaults to not checking).
     :param boto_error_codes: Human-readable error codes (e.g. "BucketNotFound", "ClientError", etc.) that
-        are specific to boto and must match to be retried (optional; defaults to not checking).
+        are specific to Boto 3 and must match to be retried (optional; defaults to not checking).
     :param error_message_must_include: A string that must be in the error message to be retried
         (optional; defaults to not checking)
     :param retry_on_this_condition: This can be set to False to always error on this condition.
     """
     def __init__(self,
-                 error: Any,
+                 error: Optional[Any] = None,
                  error_codes: List[int] = None,
                  boto_error_codes: List[str] = None,
                  error_message_must_include: str = None,
                  retry_on_this_condition: bool = True):
+
+        if error is None:
+            if boto_error_codes:
+                # Default to the base Boto 3 error
+                error = botocore.exceptions.ClientError
+            else:
+                # Default to base Exception
+                error = Exception
+
+
         self.error = error
         self.error_codes = error_codes
         self.boto_error_codes = boto_error_codes
@@ -185,7 +195,7 @@ class ErrorCondition:
                 raise NotImplementedError(f'Unknown error type used with error_codes: {error}')
 
         if self.boto_error_codes:
-            if not isinstance(error, botocore.exceptions.ClientError):
+            if not issubclass(error, botocore.exceptions.ClientError):
                 raise NotImplementedError(f'Unknown error type used with boto_error_codes: {error}')
 
 
@@ -257,7 +267,7 @@ def retry(intervals: Optional[List] = None,
                             raise
 
                     interval = intervals_remaining.pop(0)
-                    log.debug(f"Error in {func}: {e}. Retrying after {interval} s...")
+                    logger.debug(f"Error in {func}: {e}. Retrying after {interval} s...")
                     time.sleep(interval)
         return call
     return decorate
@@ -282,25 +292,117 @@ def return_status_code(e):
     else:
         raise ValueError(f'Unsupported error type; cannot grok status code: {e}.')
 
+def get_error_code(e: Exception) -> str:
+    """
+    Get the error code name from a Boto 2 or 3 error, or compatible types.
+
+    Returns empty string for other errors.
+    """
+    if hasattr(e, 'error_code') and isinstance(e.error_code, str):
+        # A Boto 2 error
+        return e.error_code
+    if hasattr(e, 'code') and isinstance(e.code, str):
+        # A (different?) Boto 2 error
+        return e.code
+    elif hasattr(e, 'response') and hasattr(e.response, 'get'):
+        # A Boto 3 error
+        code = e.response.get('Error', {}).get('Code')
+        if isinstance(code, str):
+            return code
+        else:
+            return ''
+    else:
+        return ''
+
+def get_error_message(e: Exception) -> str:
+    """
+    Get the error message string from a Boto 2 or 3 error, or compatible types.
+
+    Note that error message conditions also chack more than this; this function
+    does not fall back to the traceback for incompatible types.
+    """
+    if hasattr(e, 'error_message') and isinstance(e.error_message, str):
+        # A Boto 2 error
+        return e.error_message
+    elif hasattr(e, 'response') and hasattr(e.response, 'get'):
+        # A Boto 3 error
+        message = e.response.get('Error', {}).get('Message')
+        if isinstance(message, str):
+            return message
+        else:
+            return ''
+    else:
+        return ''
+
+def get_error_status(e: Exception) -> int:
+    """
+    Get the HTTP status code from a Boto 2 or 3 error,
+    kubernetes.client.rest.ApiException, http.client.HTTPException,
+    urllib3.exceptions.HTTPError, requests.exceptions.HTTPError,
+    urllib.error.HTTPError, or compatible type
+
+    Returns 0 from other errors.
+    """
+
+    def numify(x):
+        """Make sure a value is an integer"""
+        return int(str(x).strip())
+
+    if hasattr(e, 'status'):
+        # A Boto 2 error, kubernetes.client.rest.ApiException,
+        # http.client.HTTPException, or urllib3.exceptions.HTTPError
+        return numify(e.status)
+    elif hasattr(e, 'response'):
+        if hasattr(e.response, 'status_code'):
+            # A requests.exceptions.HTTPError
+            return numify(e.response.status_code)
+        elif hasattr(e.response, 'get'):
+            # A Boto 3 error
+            return numify(e.response.get('ResponseMetadata', {}).get('HTTPStatusCode'))
+    elif hasattr(e, 'code'):
+        # A urllib.error.HTTPError
+        return numify(e.code)
+    else:
+        return 0
+
+def get_error_body(e: Exception) -> str:
+    """
+    Gets the body from a Boto 2 or 3 error, or compatible types.
+
+    Returns the code and message if the error does not have a body.
+    """
+
+    if hasattr(e, 'body'):
+        # A Boto 2 error
+        if isinstance(e.body, bytes):
+            # Decode the body first
+            return e.body.decode('utf-8')
+        elif isinstance(e.body, str):
+            return e.body
+
+    # Anything else
+    return f'{get_error_code(e)}: {get_error_message(e)}'
 
 def meets_error_message_condition(e: Exception, error_message: Optional[str]):
     if error_message:
         if kubernetes:
-            if isinstance(e, kubernetes.client.rest.ApiException) or isinstance(sqlite3.OperationalError):
+            if isinstance(e, kubernetes.client.rest.ApiException):
                 return error_message in str(e)
 
         if botocore:
             if isinstance(e, botocore.exceptions.ClientError):
-                return error_message in e.msg
+                return error_message in str(e)
 
         if isinstance(e, http.client.HTTPException) or isinstance(e, urllib3.exceptions.HTTPError):
             return error_message in e.reason
-        elif isinstance(sqlite3.OperationalError):
+        elif isinstance(e, sqlite3.OperationalError):
             return error_message in str(e)
         elif isinstance(e, urllib.error.HTTPError):
             return error_message in e.msg
         elif isinstance(e, requests.exceptions.HTTPError):
             return error_message in e.raw
+        elif hasattr(e, 'msg'):
+            return error_message in e.msg
         else:
             return error_message in traceback.format_exc()
     else:  # there is no error message, so the user is not expecting it to be present
@@ -310,8 +412,8 @@ def meets_error_message_condition(e: Exception, error_message: Optional[str]):
 def meets_error_code_condition(e: Exception, error_codes: Optional[List[int]]):
     """These are expected to be normal HTTP error codes, like 404 or 500."""
     if error_codes:
-        status_code = return_status_code(e)
-        return int(str(status_code).strip()) in error_codes
+        status_code = get_error_status(e)
+        return status_code in error_codes
     else:  # there are no error codes, so the user is not expecting the status to match
         return True
 
@@ -319,7 +421,7 @@ def meets_error_code_condition(e: Exception, error_codes: Optional[List[int]]):
 def meets_boto_error_code_condition(e: Exception, boto_error_codes: Optional[List[str]]):
     """These are expected to be AWS's custom error aliases, like 'BucketNotFound' or 'AccessDenied'."""
     if boto_error_codes:
-        status_code = e.response.get('Error', {}).get('Code')
+        status_code = get_error_code(e)
         return status_code in boto_error_codes
     else:  # there are no boto error codes, so the user is not expecting the status to match
         return True
@@ -424,7 +526,7 @@ def old_retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: Fals
                 yield
             except Exception as e:
                 if time.time( ) + delay < expiration and predicate( e ):
-                    log.info( 'Got %s, trying again in %is.', e, delay )
+                    logger.info('Got %s, trying again in %is.', e, delay)
                     time.sleep( delay )
                 else:
                     raise
@@ -443,3 +545,6 @@ def old_retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: Fals
             yield
 
         yield single_attempt( )
+
+
+retry_flaky_test = functools.partial(retry, intervals=[1, 1, 1])

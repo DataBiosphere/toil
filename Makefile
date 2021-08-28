@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -47,9 +47,11 @@ set the 'tests' variable to run a particular test, e.g.
 
 	make test tests=src/toil/test/sort/sortTest.py::SortTest::testSort
     
+The 'cov' variable can be set to '' to suppress the test coverage report.
+    
 The 'test_offline' target is similar, but runs only tests that don't need
-Internet or Docker by default.  The 'test_offline' target takes the same tests
-argument as the 'test' target.
+Internet or Docker by default.  The 'test_offline' target takes the same
+arguments as the 'test' target.
 
     make test_offline tests=src/toil/test/src/threadingTest.py
 
@@ -78,7 +80,11 @@ help:
 # This Makefile uses bash features like printf and <()
 SHELL=bash
 tests=src/toil/test
+cov="--cov=toil"
 extras=
+# You can say make develop packages=xxx to install packages in the same Python
+# environemnt as Toil itself without creating dependency conflicts with Toil
+packages=
 sdist_name:=toil-$(shell python version_template.py distVersion).tar.gz
 
 green=\033[0;32m
@@ -87,7 +93,7 @@ red=\033[0;31m
 cyan=\033[0;36m
 
 develop: check_venv
-	pip install -e .$(extras)
+	pip install -e .$(extras) $(packages)
 
 clean_develop: check_venv
 	- pip uninstall -y toil
@@ -111,9 +117,10 @@ clean_sdist:
 	- rm src/toil/version.py
 
 # We always claim to be Travis, so that local test runs will not skip Travis tests.
+# Setting SET_OWNER_TAG will tag cloud resources so that UCSC's cloud murder bot won't kill them.
 test: check_venv check_build_reqs
-	TRAVIS=true \
-	    python -m pytest --cov=toil --duration=0 -s -r s $(tests)
+	TRAVIS=true TOIL_OWNER_TAG="shared" \
+	    python -m pytest --durations=0 --log-level DEBUG --log-cli-level INFO -r s $(cov) $(tests)
 
 
 # This target will skip building docker and all docker based tests
@@ -122,7 +129,7 @@ test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
 	TRAVIS=true \
-	    python -m pytest -vv --timeout=530 --cov=toil $(tests)
+	    python -m pytest -vv --timeout=530 --log-level DEBUG --log-cli-level INFO $(cov) $(tests)
 
 ifdef TOIL_DOCKER_REGISTRY
 
@@ -142,7 +149,7 @@ endef
 docker: docker/Dockerfile
 	# Pre-pull everything
 	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull ubuntu:16.04 && break || sleep 60; done
-	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull prom/prometheus:v2.0.0 && break || sleep 60; done
+	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull prom/prometheus:v2.24.1 && break || sleep 60; done
 	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull grafana/grafana && break || sleep 60; done
 	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull sscaling/mtail && break || sleep 60; done
 
@@ -202,9 +209,7 @@ check_build_reqs:
 		|| ( printf "$(red)Build requirements are missing. Run 'make prepare' to install them.$(normal)\n" ; false )
 
 prepare: check_venv
-	pip install mock==1.0.1 pytest==4.3.1 pytest-cov==2.6.1 stubserver==1.0.1 \
-		pytest-timeout==1.3.3 setuptools==45.3.0 'sphinx>=2.4.4,<3' \
-		cwltest mypy flake8 flake8-bugbear black isort pydocstyle
+	pip install -r requirements-dev.txt
 
 check_venv:
 	@python -c 'import sys, os; sys.exit( int( 0 if "VIRTUAL_ENV" in os.environ else 1 ) )' \
@@ -231,18 +236,25 @@ PYSOURCES=$(shell find src -name '*.py') setup.py version_template.py
 # Linting and code style related targets
 ## sorting imports using isort: https://github.com/timothycrosley/isort
 sort_imports: $(PYSOURCES)
-	isort $^
+	isort -m VERTICAL $^
+	make format
 
 remove_unused_imports: $(PYSOURCES)
 	autoflake --in-place --remove-all-unused-imports $^
+	make format
+
+remove_trailing_whitespace:
+	$(CURDIR)/contrib/admin/remove_trailing_whitespace.py
 
 format: $(wildcard src/toil/cwl/*.py)
 	black $^
 
 mypy:
-	mypy --ignore-missing-imports --no-strict-optional \
-		--warn-redundant-casts --warn-unused-ignores \
-		$(CURDIR)/src/toil/cwl/cwltoil.py
+	$(CURDIR)/contrib/admin/mypy-with-ignore.py
+
+diff_mypy:
+	mypy --cobertura-xml-report . src/toil || true
+	diff-cover --fail-under=100 cobertura.xml
 
 flake8: $(PYSOURCES)
 	flake8 --ignore=E501,W293,W291,E265,E302,E722,E126,E303,E261,E201,E202,W503,W504,W391,E128,E301,E127,E502,E129,E262,E111,E117,E306,E203,E231,E226,E741,E122,E251,E305,E701,E222,E225,E241,E305,E123,E121,E703,E704,E125,E402 $^
@@ -255,6 +267,7 @@ flake8: $(PYSOURCES)
 		test test_offline \
 		docs clean_docs \
 		clean \
+		format mypy sort_imports remove_unused_imports \
 		check_venv \
 		check_clean_working_copy \
 		check_build_reqs \

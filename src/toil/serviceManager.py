@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,9 +17,12 @@ import logging
 import time
 from queue import Empty, Queue
 from threading import Event, Thread
+from typing import Dict, Set, Optional
 
 from toil.job import ServiceJobDescription
 from toil.lib.throttle import LocalThrottle, throttle
+from toil.jobStores.abstractJobStore import AbstractJobStore
+from toil.toilState import ToilState
 
 logger = logging.getLogger( __name__ )
 
@@ -27,27 +30,27 @@ class ServiceManager( object ):
     """
     Manages the scheduling of services.
     """
-    def __init__(self, jobStore, toilState):
+    def __init__(self, jobStore: AbstractJobStore, toilState: ToilState):
         logger.debug("Initializing service manager")
         self.jobStore = jobStore
-        
+
         self.toilState = toilState
 
-        self.jobDescriptionsWithServicesBeingStarted = set()
+        self.jobDescriptionsWithServicesBeingStarted: Set[ServiceJobDescription] = set()
 
         self._terminate = Event() # This is used to terminate the thread associated
         # with the service manager
 
-        self._jobDescriptionsWithServicesToStart = Queue() # This is the input queue of
+        self._jobDescriptionsWithServicesToStart: Queue[ServiceJobDescription] = Queue() # This is the input queue of
         # JobDescriptions that have services that need to be started
 
-        self._jobDescriptionsWithServicesThatHaveStarted = Queue() # This is the output queue
+        self._jobDescriptionsWithServicesThatHaveStarted: Queue[ServiceJobDescription] = Queue() # This is the output queue
         # of JobDescriptions that have services that are already started
-        
-        self._jobDescriptionsWithServicesThatHaveFailedToStart = Queue() # This is the output queue
+
+        self._jobDescriptionsWithServicesThatHaveFailedToStart: Queue[ServiceJobDescription] = Queue() # This is the output queue
         # of JobDescriptions that have services that are unable to start
 
-        self.serviceJobDescriptionsToStart = Queue() # This is the queue of services for the
+        self.serviceJobDescriptionsToStart: Queue[ServiceJobDescription] = Queue() # This is the queue of services for the
         # batch system to start
 
         self.jobsIssuedToServiceManager = 0 # The number of jobs the service manager
@@ -66,16 +69,16 @@ class ServiceManager( object ):
                                             self.serviceJobDescriptionsToStart, self._terminate,
                                             self.jobStore),
                                       daemon=True)
-                                      
-                        
-        
-    def start(self): 
+
+
+
+    def start(self) -> None:
         """
         Start the service scheduling thread.
         """
         self._serviceStarter.start()
 
-    def scheduleServices(self, jobDesc):
+    def scheduleServices(self, jobDesc: ServiceJobDescription) -> None:
         """
         Schedule the services of a job asynchronously.
         When the job's services are running the JobDescription for the job will
@@ -92,7 +95,7 @@ class ServiceManager( object ):
         # Asynchronously schedule the services
         self._jobDescriptionsWithServicesToStart.put(jobDesc)
 
-    def getJobDescriptionWhoseServicesAreRunning(self, maxWait):
+    def getJobDescriptionWhoseServicesAreRunning(self, maxWait: float) -> Optional[ServiceJobDescription]:
         """
         :param float maxWait: Time in seconds to wait to get a JobDescription before returning
         :return: a JobDescription added to scheduleServices whose services are running, or None if
@@ -107,8 +110,8 @@ class ServiceManager( object ):
             return jobDesc
         except Empty:
             return None
-            
-    def getJobDescriptionWhoseServicesFailedToStart(self, maxWait):
+
+    def getJobDescriptionWhoseServicesFailedToStart(self, maxWait: float) -> Optional[ServiceJobDescription]:
         """
         :param float maxWait: Time in seconds to wait to get a JobDescription before returning
         :return: a JobDescription added to scheduleServices whose services failed to start, or None if
@@ -124,7 +127,7 @@ class ServiceManager( object ):
         except Empty:
             return None
 
-    def getServiceJobsToStart(self, maxWait):
+    def getServiceJobsToStart(self, maxWait: float) -> ServiceJobDescription:
         """
         :param float maxWait: Time in seconds to wait to get a job before returning.
         :return: a tuple of (serviceJobStoreID, memory, cores, disk, ..) representing
@@ -140,7 +143,7 @@ class ServiceManager( object ):
         except Empty:
             return None
 
-    def killServices(self, services, error=False):
+    def killServices(self, services: Dict[str, ServiceJobDescription], error: bool =False) -> None:
         """
         :param dict services: Maps service jobStoreIDs to the communication flags for the service
         """
@@ -149,26 +152,26 @@ class ServiceManager( object ):
             if error:
                 self.jobStore.deleteFile(serviceJob.errorJobStoreID)
             self.jobStore.deleteFile(serviceJob.terminateJobStoreID)
-            
-    def isActive(self, service):
+
+    def isActive(self, service: ServiceJobDescription) -> bool:
         """
         Returns true if the service job has not been told to terminate.
-        
+
         :param toil.job.JobDescription service: Service to check on
         :rtype: boolean
         """
         return self.jobStore.fileExists(service.terminateJobStoreID)
 
-    def isRunning(self, service):
+    def isRunning(self, service: ServiceJobDescription) -> bool:
         """
         Returns true if the service job has started and is active
-        
+
         :param toil.job.JobDescription service: Service to check on
         :rtype: boolean
         """
         return (not self.jobStore.fileExists(service.startJobStoreID)) and self.isActive(service)
 
-    def check(self):
+    def check(self) -> None:
         """
         Check on the service manager thread.
         :raise RuntimeError: If the underlying thread has quit.
@@ -176,7 +179,7 @@ class ServiceManager( object ):
         if not self._serviceStarter.is_alive():
             raise RuntimeError("Service manager has quit")
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """
         Cleanly terminate worker threads starting and killing services. Will block
         until all services are started and blocked.
@@ -191,18 +194,19 @@ class ServiceManager( object ):
         logger.debug('... finished shutting down the service manager. Took %s seconds', time.time() - startTime)
 
     @staticmethod
-    def _startServices(jobDescriptionsWithServicesToStart,
-                       jobDescriptionsWithServicesThatHaveStarted,
-                       jobDescriptionsWithServicesThatHaveFailedToStart,
-                       serviceJobsToStart,
-                       terminate, jobStore):
+    def _startServices(jobDescriptionsWithServicesToStart: 'Queue[ServiceJobDescription]',
+                       jobDescriptionsWithServicesThatHaveStarted: 'Queue[ServiceJobDescription]',
+                       jobDescriptionsWithServicesThatHaveFailedToStart: 'Queue[ServiceJobDescription]',
+                       serviceJobsToStart: 'Queue[ServiceJobDescription]',
+                       terminate: Event,
+                       jobStore: AbstractJobStore) -> None:
         """
         Thread used to schedule services.
         """
-        
+
         # Keep the user informed, but not too informed, as services start up
         logLimiter = LocalThrottle(60)
-        
+
         # These are all keyed by service JobDescription object, not ID
         # TODO: refactor!
         servicesThatAreStarting = set()
@@ -221,7 +225,6 @@ class ServiceManager( object ):
                         # ensure entire service "groups" are issued as a whole.
                         blockUntilServiceGroupIsStarted(jobDesc,
                                                         jobDescriptionsWithServicesThatHaveStarted,
-                                                        jobDescriptionsWithServicesThatHaveFailedToStart,
                                                         serviceJobsToStart, terminate, jobStore)
                         continue
                     # Found a new job that needs to schedule its services.
@@ -243,7 +246,7 @@ class ServiceManager( object ):
                 except Empty:
                     # No new jobs that need services scheduled.
                     pass
-                    
+
                 pendingServiceCount = len(servicesThatAreStarting)
                 if pendingServiceCount > 0 and logLimiter.throttle(False):
                     logger.debug('%d services are starting...', pendingServiceCount)
@@ -276,11 +279,15 @@ class ServiceManager( object ):
                 for jobDesc in jobDescriptionsToRemove:
                     del servicesRemainingToStartForJob[jobDesc]
 
-def blockUntilServiceGroupIsStarted(jobDesc, jobDescriptionsWithServicesThatHaveStarted, jobDescriptionsWithServicesThatHaveFailedToStart, serviceJobsToStart, terminate, jobStore):
-    
+def blockUntilServiceGroupIsStarted(jobDesc: ServiceJobDescription,
+                                    jobDescriptionsWithServicesThatHaveStarted: 'Queue[ServiceJobDescription]',
+                                    serviceJobsToStart: 'Queue[ServiceJobDescription]',
+                                    terminate: Event,
+                                    jobStore: AbstractJobStore) -> None:
+
     # Keep the user informed, but not too informed, as services start up
     logLimiter = LocalThrottle(60)
-    
+
     # Start the service jobs in batches, waiting for each batch
     # to become established before starting the next batch
     for serviceJobList in jobDesc.serviceHostIDsInBatches():
@@ -302,16 +309,16 @@ def blockUntilServiceGroupIsStarted(jobDesc, jobDescriptionsWithServicesThatHave
             while jobStore.fileExists(serviceJobDesc.startJobStoreID):
                 # Sleep to avoid thrashing
                 time.sleep(1.0)
-                
+
                 if logLimiter.throttle(False):
                     logger.info('Service %s is starting...', serviceJobDesc)
 
                 # Check if the thread should quit
                 if terminate.is_set():
                     return
-                    
+
             # We don't bail out early here.
-            
+
             # We need to try and fail to start *all* the services, so they
             # *all* come back to the leaser as expected, or the leader will get
             # stuck waiting to hear about a later dependent service failing. So
@@ -319,7 +326,7 @@ def blockUntilServiceGroupIsStarted(jobDesc, jobDescriptionsWithServicesThatHave
             # they depend on failed. They should already have been killed,
             # though, so they should stop immediately when we run them. TODO:
             # this is a bad design!
-            
+
 
     # Add the JobDescription to the output queue of jobs whose services have been started
     jobDescriptionsWithServicesThatHaveStarted.put(jobDesc)

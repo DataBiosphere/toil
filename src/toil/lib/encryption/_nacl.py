@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ from nacl.secret import SecretBox
 overhead = 16 + SecretBox.NONCE_SIZE
 
 
-def encrypt(message, keyPath):
+def encrypt(message: bytes, keyPath: str) -> bytes:
     """
     Encrypts a message given a path to a local file containing a key.
 
@@ -57,7 +57,7 @@ def encrypt(message, keyPath):
     return bytes(sb.encrypt(message, nonce))
 
 
-def decrypt(ciphertext, keyPath):
+def decrypt(ciphertext: bytes, keyPath: str) -> bytes:
     """
     Decrypts a given message that was encrypted with the encrypt() method.
 
