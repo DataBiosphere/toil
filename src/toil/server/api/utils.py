@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class DefaultOptions:
     """
-    Stores and retrieves options.
+    A class to store and retrieve options.
     """
     def __init__(self, options: List[str]):
         """
@@ -35,7 +35,7 @@ class DefaultOptions:
 
     def get_option(self, p: str, default: Optional[str] = None) -> Optional[str]:
         """
-        Returns the first option value stored that matches p or default.
+        Return the first option value stored that matches p or default.
         """
         for k, v in self.pairs:
             if k == p:
@@ -44,7 +44,7 @@ class DefaultOptions:
 
     def get_options(self, p: str) -> List[str]:
         """
-        Returns all option values stored that match p as a list.
+        Return all option values stored that match p as a list.
         """
         opt_list = []
         for k, v in self.pairs:
@@ -90,6 +90,6 @@ def handle_errors(func: Callable[..., Any]) -> Callable[..., Any]:
 
 def get_iso_time() -> str:
     """
-    Returns the current time in ISO 8601 format.
+    Return the current time in ISO 8601 format.
     """
     return datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")

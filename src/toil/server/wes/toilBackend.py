@@ -19,7 +19,7 @@ from multiprocessing import Process
 from typing import Optional, List, Dict, Any, overload, Generator, Tuple
 
 from toil.server.api.abstractBackend import WESBackend
-from toil.server.api.utils import handle_errors, WorkflowNotFoundError
+from toil.server.api.utils import handle_errors, WorkflowNotFoundError, get_iso_time
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ logging.basicConfig(level=logging.INFO)
 class ToilWorkflow:
     def __init__(self, run_id: str, work_dir: str):
         """
-        Represents a toil workflow.
+        Class to represent a Toil workflow.
 
         :param run_id: A uuid string.  Used to name the folder that contains
                        all of the files containing this particular workflow
@@ -39,6 +39,9 @@ class ToilWorkflow:
         self.run_id = run_id
         self.work_dir = os.path.join(work_dir, run_id)
 
+        self.exec_dir = os.path.join(self.work_dir, "execution")
+        self.out_dir = os.path.join(self.work_dir, "outputs")
+
     @overload
     def fetch(self, filename: str, default: str) -> str: ...
     @overload
@@ -46,7 +49,7 @@ class ToilWorkflow:
 
     def fetch(self, filename: str, default: Optional[str] = None) -> Optional[str]:
         """
-        Returns the contents of the given file. If the file does not exist, the
+        Return the contents of the given file. If the file does not exist, the
         default value is returned.
         """
         if os.path.exists(os.path.join(self.work_dir, filename)):
@@ -63,13 +66,13 @@ class ToilWorkflow:
 
     def exists(self) -> bool:
         """
-        Returns True if the workflow run exists.
+        Return True if the workflow run exists.
         """
         return os.path.isdir(self.work_dir)
 
     def get_state(self) -> str:
         """
-        Returns the state of the current run.
+        Return the state of the current run.
         """
         return self.fetch("state", "UNKNOWN")
 
@@ -80,13 +83,46 @@ class ToilWorkflow:
         logger.info(f"Workflow {self.run_id}: {state}")
         self._write("state", state)
 
+    def prepare_run(self) -> None:
+        """
+        Prepare necessary directories for the run and set state to QUEUED.
+        """
+        if not os.path.exists(self.exec_dir):
+            os.makedirs(self.exec_dir)
+        if not os.path.exists(self.out_dir):
+            os.makedirs(self.out_dir)
+        self._set_state("QUEUED")
+
+    def prepare_workflow(self, request: Dict[str, Any], engine_options: List[str]) -> None:
+        """
+        Prepare workflow and input files and construct a shell command that can
+        be executed.
+        """
+        wf_type = request["workflow_type"].lower().strip()
+        version = request["workflow_type_version"]
+
+        # TODO: verify that the workflow type and version is supported
+
+        logger.info(f"Beginning Toil Workflow ID: {self.run_id}")
+
+        self._set_state("INITIALIZING")
+
+        self._write("start_time", get_iso_time())
+        self._write("request.json", json.dumps(request))
+        self._write("wes_input.json", json.dumps(request["workflow_params"]))
+
+    def run(self) -> None:
+        """
+        This can be a blocking call.
+        """
+
 
 class ToilWorkflowExecutor:
     """
-    Responsible for creating and executing submitted workflows.
+    A class responsible for creating and executing submitted workflows.
 
     Local implementation -
-    Interacts with the "workflows/" directory to store and retrieve data
+    Interact with the "workflows/" directory to store and retrieve data
     associated with all the workflow runs in the filesystem.
     """
 
@@ -94,16 +130,21 @@ class ToilWorkflowExecutor:
         self.work_dir = os.path.join(os.getcwd(), "workflows")
         self.processes: Dict[str, "Process"] = {}
 
-    def _get_run(self, run_id: str, exists: bool = False) -> ToilWorkflow:
+    def _get_run(self, run_id: str, should_exists: Optional[bool] = None) -> ToilWorkflow:
         """
         Helper method to instantiate a ToilWorkflow object.
 
-        :param exists: The run ID.
-        :param exists: If True, check if the workflow run exists.
+        :param run_id: The run ID.
+        :param should_exists: If set, ensures that the workflow run exists (or
+                              does not exist) according to the value.
         """
         run = ToilWorkflow(run_id, self.work_dir)
-        if exists and not run.exists():
-            raise WorkflowNotFoundError
+
+        if should_exists is not None:
+            if should_exists and not run.exists():
+                raise WorkflowNotFoundError
+            if should_exists is False and run.exists():
+                raise RuntimeError(f"Workflow {run_id} already exists.")
         return run
 
     def get_runs(self) -> Generator[Tuple[str, str], None, None]:
@@ -120,17 +161,45 @@ class ToilWorkflowExecutor:
 
     def get_state(self, run_id: str) -> str:
         """
-        Returns the state of the workflow run with the given run ID. May raise
+        Return the state of the workflow run with the given run ID. May raise
         an error if the workflow does not exist.
         """
-        return self._get_run(run_id, exists=True).get_state()
+        return self._get_run(run_id, should_exists=True).get_state()
+
+    def prepare_run(self, run_id: str) -> Optional[str]:
+        """
+        Called when a new workflow run has just been requested, before parsing
+        and validating the request. Returns the directory where attachments
+        should be staged. If None is returned, the backend will generate a
+        temporary directory to store uploaded files.
+        """
+        run = self._get_run(run_id, should_exists=False)
+        run.prepare_run()
+
+        # returns the run directory for the workflow for uploaded files to be staged, so that
+        # we can run the workflow file directly in the execution folder.
+        return run.exec_dir
+
+    def run_workflow(self, run_id: str, temp_dir: str, request: Dict[str, Any], engine_options: List[str]) -> None:
+        """
+        Called after the request body is parsed and attachments are collected.
+        This function should validate the request and submit the workflow for
+        execution. This should not be a blocking call.
+        """
+        run = self._get_run(run_id, should_exists=True)
+        assert temp_dir == run.exec_dir  # should be True since we're staging the files to the execution folder
+
+        run.prepare_workflow(request, engine_options=engine_options)
+
+        # Call run() using multiprocessing
+        # run.run()
 
     def get_run_log(self, run_id: str) -> Dict[str, Any]:
         """
-        Returns a JSON serializable dictionary containing detailed information
+        Return a JSON serializable dictionary containing detailed information
         about the given run.
         """
-        run = self._get_run(run_id, exists=True)
+        run = self._get_run(run_id, should_exists=True)
         state = run.get_state()
 
         request = json.loads(run.fetch("request.json", "{}"))
@@ -212,7 +281,10 @@ class ToilBackend(WESBackend):
         """ Run a workflow."""
         run_id = uuid.uuid4().hex
 
-        # TODO: submit the workflow to run!
+        temp_dir = self.executor.prepare_run(run_id)
+        attachments = self.collect_attachments(run_id, temp_dir=temp_dir)
+
+        self.executor.run_workflow(run_id, *attachments, engine_options=[])
 
         return {
             "run_id": run_id

@@ -2,8 +2,9 @@
 import json
 import os
 import logging
+import tempfile
 from abc import abstractmethod
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 import connexion  # type: ignore
 from werkzeug.utils import secure_filename
@@ -13,9 +14,9 @@ from toil.server.api.utils import DefaultOptions
 
 class WESBackend:
     """
-    Represents a workflow execution service (WES) API backend. Intended to be
-    inherited. Subclasses should implement all abstract methods to handle user
-    requests when they hit different endpoints.
+    A class to represent a GA4GH Workflow Execution Service (WES) API backend.
+    Intended to be inherited. Subclasses should implement all abstract methods
+    to handle user requests when they hit different endpoints.
     """
 
     def __init__(self, opts: List[str]):
@@ -27,10 +28,10 @@ class WESBackend:
 
     def resolve_operation_id(self, operation_id: str) -> Any:
         """
-        A function that maps an operationId defined in the OpenAPI or swagger
-        yaml file to a function.
+        Map an operationId defined in the OpenAPI or swagger yaml file to a
+        function.
 
-        :param operation_id: The operationId.
+        :param operation_id: The operation ID defined in the specification.
         :returns: A function that should be called when the given endpoint is
                   reached.
         """
@@ -101,14 +102,17 @@ class WESBackend:
         else:
             logging.info(message)
 
-    def collect_attachments(self, run_id: str, temp_dir: str) -> Dict[str, Any]:
+    def collect_attachments(self, run_id: Optional[str], temp_dir: Optional[str]) -> Tuple[str, Dict[str, Any]]:
         """
-        Collect the attachments of the current request by staging uploaded
-        files to temp_dir, and return the parsed body of the request.
+        Collect attachments from the current request by staging uploaded files
+        to temp_dir, and return the temp_dir and parsed body of the request.
 
         :param run_id: The run ID for logging.
         :param temp_dir: The directory where uploaded files should be staged.
+                         If None, a temporary directory is generated.
         """
+        if not temp_dir:
+            temp_dir = tempfile.mkdtemp()
         body = {}
         has_attachments = False
         for key, ls in connexion.request.files.lists():
@@ -168,4 +172,4 @@ class WESBackend:
         if "workflow_params" not in body:
             raise ValueError("Missing 'workflow_params' in submission")
 
-        return body
+        return temp_dir, body
