@@ -41,3 +41,10 @@ class GunicornApplication(BaseApplication):  # type: ignore
 
     def load(self) -> object:
         return self.application
+
+
+def run_app(app: object, options: Optional[Dict[str, Any]] = None) -> None:
+    """
+    Run a Gunicorn WSGI server.
+    """
+    GunicornApplication(app, options=options).run()

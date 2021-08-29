@@ -14,9 +14,11 @@
 import json
 import logging
 import os
+import shutil
+import subprocess
 import uuid
 from multiprocessing import Process
-from typing import Optional, List, Dict, Any, overload, Generator, Tuple, Type
+from typing import Optional, List, Dict, Any, overload, Generator, Tuple, Type, Union
 
 from toil.server.api.abstractBackend import WESBackend
 from toil.server.api.utils import handle_errors, WorkflowNotFoundError, get_iso_time
@@ -77,45 +79,141 @@ class ToilWorkflow:
         """
         return self.fetch("state", "UNKNOWN")
 
-    def _set_state(self, state: str) -> None:
+    def set_state(self, state: str) -> None:
         """
         Set the state for the current run.
         """
         logger.info(f"Workflow {self.run_id}: {state}")
         self._write("state", state)
 
-    def prepare_run(self) -> None:
+    @staticmethod
+    def _get_file_class(location: str) -> str:
+        """ Return the file class as a human readable string."""
+        if os.path.islink(location):
+            return "Link"
+        elif os.path.isfile(location):
+            return "File"
+        elif os.path.isdir(location):
+            return "Directory"
+        return "Unknown"
+
+    def get_output_files(self) -> Dict[str, Any]:
         """
-        Prepare necessary directories for the run and set state to QUEUED.
+        Return a collection of output files that this workflow generated.
+        """
+        output_obj = {}
+        job_store = self.fetch("job_store", "")
+
+        if job_store.startswith("file:"):
+            for file in os.listdir(self.out_dir):
+                if file.startswith("out_tmpdir"):
+                    shutil.rmtree(os.path.join(self.out_dir, file))
+
+            for file in os.listdir(self.out_dir):
+                location = os.path.join(self.out_dir, file)
+                output_obj[file] = {
+                    "location": location,
+                    "size": os.stat(location).st_size,
+                    "class": self._get_file_class(location),
+                }
+        # TODO: other job stores
+
+        return output_obj
+
+    def set_up_run(self) -> None:
+        """
+        Set up necessary directories for the run and set state to QUEUED.
         """
         if not os.path.exists(self.exec_dir):
             os.makedirs(self.exec_dir)
         if not os.path.exists(self.out_dir):
             os.makedirs(self.out_dir)
-        self._set_state("QUEUED")
+        self.set_state("QUEUED")
 
-    def prepare_workflow(self, request: Dict[str, Any], engine_options: List[str]) -> None:
+    @staticmethod
+    def _link_file(src: str, dest: str) -> None:
+        try:
+            os.link(src, dest)
+        except OSError:
+            os.symlink(src, dest)
+
+    def write_workflow(self, runner: WorkflowRunner, request: Dict[str, Any], engine_options: List[str]) -> List[str]:
         """
-        Prepare workflow and input files and construct a shell command that can
+        Write workflow and input files and construct a shell command that can
         be executed.
         """
-        wf_type = request["workflow_type"].lower().strip()
-        version = request["workflow_type_version"]
+        workflow_url = request["workflow_url"]
+        input_json = os.path.join(self.exec_dir, "wes_input.json")
+        job_store = "file:" + os.path.join(self.work_dir, "jobStore")  # default
 
-        # TODO: verify that the workflow type and version is supported
+        # link the workflow file into the cwd
+        if workflow_url.startswith("file://"):
+            dest = os.path.join(self.exec_dir, "wes_workflow" + os.path.splitext(workflow_url)[1])
+            self._link_file(src=workflow_url[7:], dest=dest)
+            workflow_url = dest
 
+        args = runner.sort_options(job_store=job_store,
+                                   out_dir=self.out_dir,
+                                   default_engine_options=engine_options)
+
+        return runner.construct_command(workflow_url, input_json=input_json, options=args)
+
+    def call_cmd(self, cmd: Union[List[str], str], cwd: str) -> int:
+        """
+        Calls a command with Popen. Writes stdout, stderr, and the command to
+        separate files. This is a blocking call.
+
+        :returns: The exit code of the command.
+        """
+        self._write("cmd", " ".join(cmd))
+
+        stdout_f = os.path.join(self.work_dir, "stdout")
+        stderr_f = os.path.join(self.work_dir, "stderr")
+
+        with open(stdout_f, "w") as stdout, open(stderr_f, "w") as stderr:
+            logger.info("Calling: " + " ".join(cmd))
+            process = subprocess.Popen(cmd, stdout=stdout, stderr=stderr, close_fds=True, cwd=cwd)
+
+        self._write("pid", str(process.pid))
+
+        # FIXME: should we wait on a multiprocessing Process?
+        try:
+            return process.wait()
+        except KeyboardInterrupt:
+            logger.info("Child process terminated by parent")
+            return 130
+
+    def run(self, runner: WorkflowRunner, request: Dict[str, Any], engine_options: List[str]) -> str:
+        """
+        Construct a command to run a the requested workflow with the options,
+        run it, and deposit the outputs in the output directory.
+        """
+        self.set_state("INITIALIZING")
         logger.info(f"Beginning Toil Workflow ID: {self.run_id}")
-
-        self._set_state("INITIALIZING")
 
         self._write("start_time", get_iso_time())
         self._write("request.json", json.dumps(request))
-        self._write("wes_input.json", json.dumps(request["workflow_params"]))
+        with open(os.path.join(self.exec_dir, "wes_input.json"), "w") as f:
+            json.dump(request["workflow_params"], f)
 
-    def run(self) -> None:
-        """
-        This can be a blocking call.
-        """
+        command = self.write_workflow(runner, request=request, engine_options=engine_options)
+        if runner.job_store:
+            self._write("job_store", runner.job_store)
+
+        self.set_state("RUNNING")
+
+        exit_code = self.call_cmd(cmd=command, cwd=self.exec_dir)
+
+        self._write("end_time", get_iso_time())
+        self._write("exit_code", str(exit_code))
+
+        if exit_code == 0:
+            self.set_state("COMPLETE")
+        else:
+            # non-zero exit code indicates failure
+            self.set_state("EXECUTOR_ERROR")
+
+        return self.get_state()
 
 
 class ToilBackend(WESBackend):
@@ -160,9 +258,7 @@ class ToilBackend(WESBackend):
         return run
 
     def get_runs(self) -> Generator[Tuple[str, str], None, None]:
-        """
-        A generator of a list of run ids and their state.
-        """
+        """ A generator of a list of run ids and their state."""
         if not os.path.exists(self.work_dir):
             return
 
@@ -182,11 +278,11 @@ class ToilBackend(WESBackend):
     def get_service_info(self) -> Dict[str, Any]:
         """ Get information about Workflow Execution Service."""
 
-        # state_counts = {state: 0 for state in (
-        #     "QUEUED", "INITIALIZING", "RUNNING", "COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELING", "CANCELED"
-        # )}
-        # for _, state in self.get_runs():
-        #     state_counts[state] += 1
+        state_counts = {state: 0 for state in (
+            "QUEUED", "INITIALIZING", "RUNNING", "COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELING", "CANCELED"
+        )}
+        for _, state in self.get_runs():
+            state_counts[state] += 1
 
         return {
             "workflow_type_versions": {
@@ -197,7 +293,7 @@ class ToilBackend(WESBackend):
             "supported_wes_versions": ["1.0.0"],
             "supported_filesystem_protocols": ["file", "http", "https"],
             "workflow_engine_versions": {"toil": baseVersion},
-            "system_state_counts": {},
+            "system_state_counts": state_counts,
             "tags": {},
         }
 
@@ -219,20 +315,32 @@ class ToilBackend(WESBackend):
     def run_workflow(self) -> Dict[str, str]:
         """ Run a workflow."""
         run_id = uuid.uuid4().hex
-        run = self._get_run(run_id, should_exists=False)
+        job = self._get_run(run_id, should_exists=False)
 
-        # prepare necessary directories for the run
-        run.prepare_run()
+        # set up necessary directories for the run
+        job.set_up_run()
 
         # stage the uploaded files to the execution directory, so that we can run the workflow file directly
-        temp_dir = run.exec_dir
-        _, body = self.collect_attachments(run_id, temp_dir=temp_dir)
+        temp_dir = job.exec_dir
+        _, request = self.collect_attachments(run_id, temp_dir=temp_dir)
 
-        # validate the request and prepare workflow and input files
-        run.prepare_workflow(request=body, engine_options=[])
+        wf_type = request["workflow_type"].lower().strip()
+        version = request["workflow_type_version"]
 
-        # Call run() using multiprocessing
-        # run.run()
+        runner = self.runners.get(wf_type, None)
+        if not runner:
+            job.set_state("EXECUTOR_ERROR")
+            raise RuntimeError(f"workflow_type '{wf_type}' is not supported.")
+        if version not in runner.supported_versions():
+            job.set_state("EXECUTOR_ERROR")
+            raise RuntimeError("workflow_type '{}' requires 'workflow_type_version' to be one of '{}'.  Got '{}'"
+                               "instead.".format(wf_type, str(runner.supported_versions()), version))
+
+        p = Process(target=job.run, args=(runner.create(run_id, version=version),
+                                          request,
+                                          self.opts.get_options("extra")))
+        p.start()
+        self.processes[run_id] = p
 
         return {
             "run_id": run_id
@@ -245,7 +353,6 @@ class ToilBackend(WESBackend):
         state = run.get_state()
 
         request = json.loads(run.fetch("request.json", "{}"))
-        job_store = run.fetch("job_store", "")
 
         cmd = run.fetch("cmd", "").split("\n")
         start_time = run.fetch("start_time")
@@ -256,12 +363,9 @@ class ToilBackend(WESBackend):
         stderr = run.fetch("stderr")
         exit_code = run.fetch("exit_code")
 
-        # output_obj = {}
+        output_obj = {}
         if state == "COMPLETE":
-            # only tested locally
-            if job_store.startswith("file:"):
-                # TODO: get output files
-                pass
+            output_obj = run.get_output_files()
 
         return {
             "run_id": run_id,
@@ -273,10 +377,10 @@ class ToilBackend(WESBackend):
                 "end_time": end_time,
                 "stdout": stdout,
                 "stderr": stderr,
-                "exit_code": exit_code,
+                "exit_code": int(exit_code) if exit_code is not None else None,
             },
             "task_logs": [],
-            "outputs": None,
+            "outputs": output_obj,
         }
 
     @handle_errors

@@ -17,7 +17,7 @@ from flask_cors import CORS  # type: ignore
 
 from toil.server.wes.runners import PythonRunner, CWLRunner, WDLRunner
 from toil.server.wes.toilBackend import ToilBackend
-from toil.server.wsgi import GunicornApplication
+from toil.server.wsgiApp import run_app
 
 
 def start_server(args: argparse.Namespace) -> None:
@@ -44,8 +44,8 @@ def start_server(args: argparse.Namespace) -> None:
     if args.debug:
         flask_app.run(port=args.port)
     else:
-        # start a production WSGI server with gunicorn
-        GunicornApplication(flask_app.app, options={
+        # start a production WSGI server
+        run_app(flask_app.app, options={
             "bind": f"127.0.0.1:{args.port}",
             "workers": 2,
-        }).run()
+        })
