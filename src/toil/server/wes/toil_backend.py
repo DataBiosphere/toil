@@ -215,7 +215,7 @@ class ToilBackend(WESBackend):
 
         runner_log = os.path.join(work_dir, "runner.log")
         with open(runner_log, "w") as log:
-            process = subprocess.Popen(command, stdout=log, stderr=log, cwd=work_dir, start_new_session=True)
+            process = subprocess.Popen(command, stdout=log, stderr=log, cwd=work_dir)
 
         self.processes[run_id] = process
         logger.info(f"Spawned child process ({process.pid}) to run the requested workflow.")

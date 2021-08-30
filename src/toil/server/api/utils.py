@@ -98,11 +98,8 @@ def get_iso_time() -> str:
 
 def get_file_class(path: str) -> str:
     """
-    Return the file class as a human readable string.
+    Return the type of the file as a human readable string.
     """
-    if ":" in path:
-        return "File"
-
     if os.path.islink(path):
         return "Link"
     elif os.path.isfile(path):

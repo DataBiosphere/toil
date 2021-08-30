@@ -93,14 +93,16 @@ class WESBackend:
         """
         raise NotImplementedError
 
-    # --- helper functions ---
-
     @staticmethod
     def log_for_run(run_id: Optional[str], message: str) -> None:
         if run_id:
             logging.info("Workflow %s: %s", run_id, message)
         else:
             logging.info(message)
+
+    @staticmethod
+    def secure_path(path) -> str:
+        return os.path.join(*[secure_filename(p) for p in path.split("/") if p not in ("", ".", "..")])
 
     def collect_attachments(self, run_id: Optional[str], temp_dir: Optional[str]) -> Tuple[str, Dict[str, Any]]:
         """
@@ -121,12 +123,8 @@ class WESBackend:
                     # uploaded files that are required to execute the workflow
                     if key == "workflow_attachment":
                         # guard against maliciously constructed filenames
-                        sp = value.filename.split("/")
-                        fn = []
-                        for p in sp:
-                            if p not in ("", ".", ".."):
-                                fn.append(secure_filename(p))
-                        dest = os.path.join(temp_dir, *fn)
+                        dest = os.path.join(temp_dir, self.secure_path(value.filename))
+
                         if not os.path.isdir(os.path.dirname(dest)):
                             os.makedirs(os.path.dirname(dest))
 
@@ -143,7 +141,6 @@ class WESBackend:
             except Exception as e:
                 raise ValueError(f"Error reading parameter '{key}': {e}")
 
-        # form data
         for key, ls in connexion.request.form.lists():
             try:
                 for value in ls:
@@ -160,11 +157,7 @@ class WESBackend:
             if ":" not in body["workflow_url"]:
                 if not has_attachments:
                     raise ValueError("Relative 'workflow_url' but missing 'workflow_attachment'")
-                fn = []
-                for p in body["workflow_url"].split("/"):
-                    if p not in ("", ".", ".."):
-                        fn.append(secure_filename(p))
-                body["workflow_url"] = os.path.join(*fn)  # keep this relative
+                body["workflow_url"] = self.secure_path(body["workflow_url"])  # keep this relative
             self.log_for_run(run_id, "Using workflow_url '%s'" % body.get("workflow_url"))
         else:
             raise ValueError("Missing 'workflow_url' in submission")

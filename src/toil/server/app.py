@@ -13,22 +13,21 @@
 # limitations under the License.
 import argparse
 import connexion  # type: ignore
-from flask_cors import CORS  # type: ignore
 
 from toil.server.wes.toil_backend import ToilBackend
 from toil.server.wsgi_app import run_app
 
 
 def start_server(args: argparse.Namespace) -> None:
-    """
-    Start a Toil server.
-    """
+    """ Start a Toil server."""
     flask_app = connexion.FlaskApp(__name__,
                                    specification_dir='ga4gh_api_spec/',
                                    options={"swagger_ui": args.swagger_ui})
 
-    # enable cross origin resource sharing
-    CORS(flask_app.app)
+    if args.cors:
+        # enable cross origin resource sharing
+        from flask_cors import CORS  # type: ignore
+        CORS(flask_app.app, resources={r"/ga4gh/*": {"origins": args.cors_origins}})
 
     # workflow execution service (WES) API
     backend = ToilBackend(args.opt)

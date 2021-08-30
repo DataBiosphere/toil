@@ -102,7 +102,7 @@ class WorkflowRunner:
         Fetch the workflow file from its source and write it to a destination
         file. The destination is returned.
         """
-        logger.info(f"Processing workflow_url: {src_url}...")
+        logger.info(f"Processing workflow_url: '{src_url}'...")
         dest = src_url
 
         if src_url.startswith("file://"):
@@ -125,12 +125,11 @@ class WorkflowRunner:
         """
         options = []
 
-        user_options = self.request.get("workflow_engine_parameters")
-        if user_options:
-            # in the format of something like: "--jobStore=xxx --logDebug ..."
-            options.extend(user_options.split(" "))
-
         # TODO: extend the default engine options
+
+        user_options = self.request.get("workflow_engine_parameters", {})
+        for key, val in user_options.items():
+            options.append(f"{key}={val}" if val is not None else key)
 
         # determine job store and set a new default if the user did not set one
         cloud = False
@@ -166,10 +165,15 @@ class WorkflowRunner:
         workflow_url = self.write_workflow(src_url=self.request["workflow_url"])
         input_json = os.path.join(self.exec_dir, "wes_inputs.json")
 
-        logger.info(f"workflow_url = {workflow_url}.")
+        logger.info(f"workflow_url = '{workflow_url}'.")
 
+        # write input file as JSON
         with open(input_json, "w") as f:
             json.dump(self.request["workflow_params"], f)
+
+        # create output directory
+        if not os.path.exists(self.out_dir):
+            os.makedirs(self.out_dir)
 
         # sort commands
         options = self.sort_options()
@@ -184,7 +188,7 @@ class WorkflowRunner:
                 ["toil-wdl-runner"] + options + [workflow_url, input_json]
             )
         elif self.wf_type == "py":
-            command_args = ["python"] + options + [workflow_url]
+            command_args = ["python", workflow_url] + options
         else:
             # This shouldn't happen if this was executed from the Toil WES server.
             raise RuntimeError(f"Unsupported workflow type: {self.wf_type}")
@@ -203,7 +207,7 @@ class WorkflowRunner:
         stderr_f = os.path.join(self.work_dir, "stderr")
 
         with open(stdout_f, "w") as stdout, open(stderr_f, "w") as stderr:
-            logger.info("Calling: " + " ".join(cmd))
+            logger.info(f"Calling: '{' '.join(cmd)}'")
             process = subprocess.Popen(cmd, stdout=stdout, stderr=stderr, close_fds=True, cwd=cwd)
 
         self.write("pid", str(process.pid))
@@ -281,7 +285,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser("Execution script for the workflow submitted through the Toil WES servers.")
     parser.add_argument("--work_dir", type=str, default=os.getcwd(),
-                        help="The working directory of the workflow run. (Default: current working directory)")
+                        help=f"The working directory of the workflow run. (default: {os.getcwd()}).")
     parser.add_argument("--engine_options", default=[], action="append",
                         help="A list of default engine parameters that should be passed into the workflow "
                              "execution engine if they are not overwritten by the user request.")
@@ -301,7 +305,7 @@ def main() -> None:
 
     try:
         state = runner.run()
-        logger.info(f"Workflow run completed with state: {state}.")
+        logger.info(f"Workflow run completed with state: '{state}'.")
 
         if state == "COMPLETE":
             logger.info(f"Fetching output files.")
