@@ -14,6 +14,7 @@
 import json
 import logging
 import os
+import signal
 import subprocess
 import uuid
 from typing import Optional, List, Dict, Any, overload, Generator, Tuple
@@ -104,7 +105,7 @@ class ToilBackend(WESBackend):
 
     def __init__(self, opts: List[str]) -> None:
         super(ToilBackend, self).__init__(opts)
-        self.processes: Dict[str, "subprocess.Popen[bytes]"] = {}
+        self.processes: Dict[str, int] = {}
         self.work_dir = os.path.join(os.getcwd(), "workflows")
         self.supported_versions: Dict[str, List[str]] = {}
 
@@ -217,7 +218,7 @@ class ToilBackend(WESBackend):
         with open(runner_log, "w") as log:
             process = subprocess.Popen(command, stdout=log, stderr=log, cwd=work_dir)
 
-        self.processes[run_id] = process
+        self.processes[run_id] = process.pid
         logger.info(f"Spawned child process ({process.pid}) to run the requested workflow.")
 
         return {
@@ -264,7 +265,18 @@ class ToilBackend(WESBackend):
     @handle_errors
     def cancel_run(self, run_id: str) -> Dict[str, str]:
         """ Cancel a running workflow."""
-        # TODO: cancel run
+        run = self._get_run(run_id, should_exists=True)
+        state = run.get_state()
+
+        if state not in ("QUEUED", "INITIALIZING", "RUNNING"):
+            raise RuntimeError(f"Workflow is in state: '{state}', which cannot be cancelled.")
+        run.set_state("CANCELING")
+
+        pid = self.processes.get(run_id)
+        if not pid:
+            raise RuntimeError("Workflow runner process is not found.")
+
+        os.kill(pid, signal.SIGINT)
 
         return {
             "run_id": run_id

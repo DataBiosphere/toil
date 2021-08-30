@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import shutil
+import signal
 import subprocess
 from typing import Dict, Any, List, Union
 
@@ -215,6 +216,8 @@ class WorkflowRunner:
         try:
             return process.wait()
         except KeyboardInterrupt:
+            # signal an interrupt to kill the process gently
+            process.send_signal(signal.SIGINT)
             logger.info("Child process terminated by interruption.")
             return 130
 
@@ -246,8 +249,10 @@ class WorkflowRunner:
 
         if exit_code == 0:
             self.set_state("COMPLETE")
+        # non-zero exit code indicates failure
+        elif exit_code == 130:
+            self.set_state("CANCELED")
         else:
-            # non-zero exit code indicates failure
             self.set_state("EXECUTOR_ERROR")
 
         return self.get_state()
