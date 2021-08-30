@@ -164,7 +164,7 @@ class WESBackend:
                 for p in body["workflow_url"].split("/"):
                     if p not in ("", ".", ".."):
                         fn.append(secure_filename(p))
-                body["workflow_url"] = "file://%s" % os.path.join(temp_dir, *fn)
+                body["workflow_url"] = os.path.join(*fn)  # keep this relative
             self.log_for_run(run_id, "Using workflow_url '%s'" % body.get("workflow_url"))
         else:
             raise ValueError("Missing 'workflow_url' in submission")

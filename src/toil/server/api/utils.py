@@ -13,6 +13,7 @@
 # limitations under the License.
 import functools
 import logging
+import os
 from datetime import datetime
 from typing import Callable, Any, List, Optional
 
@@ -93,3 +94,19 @@ def get_iso_time() -> str:
     Return the current time in ISO 8601 format.
     """
     return datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def get_file_class(path: str) -> str:
+    """
+    Return the file class as a human readable string.
+    """
+    if ":" in path:
+        return "File"
+
+    if os.path.islink(path):
+        return "Link"
+    elif os.path.isfile(path):
+        return "File"
+    elif os.path.isdir(path):
+        return "Directory"
+    return "Unknown"
