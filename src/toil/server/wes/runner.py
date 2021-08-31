@@ -20,7 +20,7 @@ import signal
 import subprocess
 from typing import Dict, Any, List, Union
 
-from toil.server.api.utils import get_iso_time, get_file_class
+from toil.server.api.utils import get_iso_time, get_file_class, link_file
 from toil.statsAndLogging import configure_root_logger, set_log_level
 
 """    
@@ -88,16 +88,6 @@ class WorkflowRunner:
     def set_state(self, state: str) -> None:
         self.write("state", state)
 
-    @staticmethod
-    def link(src: str, dest: str) -> None:
-        if os.path.exists(dest):
-            raise RuntimeError(f"Destination file '{dest}' already exists.")
-
-        try:
-            os.link(src, dest)
-        except OSError:
-            os.symlink(src, dest)
-
     def write_workflow(self, src_url: str) -> str:
         """
         Fetch the workflow file from its source and write it to a destination
@@ -109,7 +99,7 @@ class WorkflowRunner:
         if src_url.startswith("file://"):
             logger.info(f"Linking workflow from filesystem.")
             dest = os.path.join(self.exec_dir, os.path.basename(src_url))
-            self.link(src=src_url[7:], dest=dest)
+            link_file(src=src_url[7:], dest=dest)
         elif src_url.startswith(("http://", "https://")):
             logger.info(f"Downloading workflow_url from the Internet.")
             raise NotImplementedError
@@ -166,8 +156,6 @@ class WorkflowRunner:
         workflow_url = self.write_workflow(src_url=self.request["workflow_url"])
         input_json = os.path.join(self.exec_dir, "wes_inputs.json")
 
-        logger.info(f"workflow_url = '{workflow_url}'.")
-
         # write input file as JSON
         with open(input_json, "w") as f:
             json.dump(self.request["workflow_params"], f)
@@ -203,7 +191,6 @@ class WorkflowRunner:
 
         :returns: The exit code of the command.
         """
-
         stdout_f = os.path.join(self.work_dir, "stdout")
         stderr_f = os.path.join(self.work_dir, "stderr")
 

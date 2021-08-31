@@ -86,7 +86,7 @@ class ToilWorkflow:
 
         return [resolveEntryPoint("_toil_wes_runner"), "--work_dir", self.work_dir], self.work_dir
 
-    def get_output_files(self) -> Dict[str, Any]:
+    def get_output_files(self) -> Any:
         """
         Return a collection of output files that this workflow generated.
         """
@@ -152,7 +152,7 @@ class ToilBackend(WESBackend):
 
     @handle_errors
     def get_service_info(self) -> Dict[str, Any]:
-        """ Get information about Workflow Execution Service."""
+        """ Get information about the Workflow Execution Service."""
 
         state_counts = {state: 0 for state in (
             "QUEUED", "INITIALIZING", "RUNNING", "COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELING", "CANCELED"
@@ -169,6 +169,7 @@ class ToilBackend(WESBackend):
             "supported_wes_versions": ["1.0.0"],
             "supported_filesystem_protocols": ["file", "http", "https"],
             "workflow_engine_versions": {"toil": baseVersion},
+            # "default_workflow_engine_parameters": {},
             "system_state_counts": state_counts,
             "tags": {},
         }

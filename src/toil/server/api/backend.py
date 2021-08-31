@@ -40,7 +40,7 @@ class WESBackend:
     @abstractmethod
     def get_service_info(self) -> Dict[str, Any]:
         """
-        Get information about Workflow Execution Service.
+        Get information about the Workflow Execution Service.
 
         GET /service-info
         """
@@ -101,7 +101,7 @@ class WESBackend:
             logging.info(message)
 
     @staticmethod
-    def secure_path(path) -> str:
+    def secure_path(path: str) -> str:
         return os.path.join(*[secure_filename(p) for p in path.split("/") if p not in ("", ".", "..")])
 
     def collect_attachments(self, run_id: Optional[str], temp_dir: Optional[str]) -> Tuple[str, Dict[str, Any]]:
@@ -124,10 +124,8 @@ class WESBackend:
                     if key == "workflow_attachment":
                         # guard against maliciously constructed filenames
                         dest = os.path.join(temp_dir, self.secure_path(value.filename))
-
                         if not os.path.isdir(os.path.dirname(dest)):
                             os.makedirs(os.path.dirname(dest))
-
                         self.log_for_run(run_id, f"Staging attachment '{value.filename}' to '{dest}'")
                         value.save(dest)
                         has_attachments = True
@@ -161,7 +159,6 @@ class WESBackend:
             self.log_for_run(run_id, "Using workflow_url '%s'" % body.get("workflow_url"))
         else:
             raise ValueError("Missing 'workflow_url' in submission")
-
         if "workflow_params" not in body:
             raise ValueError("Missing 'workflow_params' in submission")
 

@@ -96,6 +96,18 @@ def get_iso_time() -> str:
     return datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def link_file(src: str, dest: str) -> None:
+    """
+    Create a link to a file from src to dest.
+    """
+    if os.path.exists(dest):
+        raise RuntimeError(f"Destination file '{dest}' already exists.")
+    try:
+        os.link(src, dest)
+    except OSError:
+        os.symlink(src, dest)
+
+
 def get_file_class(path: str) -> str:
     """
     Return the type of the file as a human readable string.
