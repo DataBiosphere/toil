@@ -199,9 +199,9 @@ exist yet, Toil will create it for you.
                         flag. By default the cluster is tagged with:
                         { "Name": clusterName, "Owner": IAM username }.
   --vpcSubnet VPCSUBNET
-                        VPC subnet ID to launch cluster in. Uses default
-                        subnet if not specified. This subnet needs to have
-                        auto assign IPs turned on.
+                        VPC subnet ID to launch cluster leader in. Uses default
+                        subnet if not specified. This subnet needs to have auto
+                        assign IPs turned on.
   --nodeTypes NODETYPES
                         Comma-separated list of node types to create while
                         launching the leader. The syntax for each node type
