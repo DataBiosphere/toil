@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import argparse
+import os
+
 import connexion  # type: ignore
 
 from toil.server.wes.toil_backend import ToilBackend
@@ -41,8 +43,9 @@ def parser_with_server_options() -> argparse.ArgumentParser:
                         help="Ignored if --debug is True. The number of worker processes launched by the "
                              "WSGI server. (recommended: 2-4 workers per core, default: 2).")
 
-    # parser.add_argument("--work_dir", type=str, default=os.path.join(os.getcwd(), "workflows"),
-    #                     help="The directory where workflows should be stored. (default: './workflows')")
+    parser.add_argument("--work_dir", type=str, default=os.path.join(os.getcwd(), "workflows"),
+                        help="The directory where workflows should be stored. This directory should be "
+                             "empty or only contain workflows. (default: './workflows').")
     parser.add_argument("--opt", "-o", type=str, action="append",
                         help="Example: '--opt runner=cwltoil --opt extra=--logLevel=CRITICAL' "
                              "or '--opt extra=--workDir=/'.  Accepts multiple values.")
@@ -50,8 +53,10 @@ def parser_with_server_options() -> argparse.ArgumentParser:
     return parser
 
 
-def start_server(args: argparse.Namespace) -> None:
-    """ Start a Toil server."""
+def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
+    """
+    Create a "connexion.FlaskApp" instance with Toil server configurations.
+    """
     flask_app = connexion.FlaskApp(__name__,
                                    specification_dir='ga4gh_api_spec/',
                                    options={"swagger_ui": args.swagger_ui})
@@ -64,13 +69,20 @@ def start_server(args: argparse.Namespace) -> None:
         CORS(flask_app.app, resources={r"/ga4gh/*": {"origins": args.cors_origins}})
 
     # workflow execution service (WES) API
-    backend = ToilBackend(args.opt)
+    backend = ToilBackend(work_dir=args.work_dir, opts=args.opt)
     backend.register_wf_type("py", ["3.6", "3.7", "3.8", ])
     backend.register_wf_type("CWL", ["v1.0", "v1.1", "v1.2"])
     backend.register_wf_type("WDL", ["draft-2", "1.0"])
 
     flask_app.add_api('workflow_execution_service.swagger.yaml',
                 resolver=connexion.Resolver(backend.resolve_operation_id))  # noqa
+
+    return flask_app
+
+
+def start_server(args: argparse.Namespace) -> None:
+    """ Start a Toil server."""
+    flask_app = create_app(args)
 
     if args.debug:
         flask_app.run(port=args.port)

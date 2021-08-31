@@ -70,7 +70,7 @@ def handle_errors(func: Callable[..., Any]) -> Callable[..., Any]:
     """
 
     def error(msg, code: int = 500):  # type: ignore
-        logger.exception(f"Exception raised when calling '{func.__name__}()':")
+        logger.warning(f"Exception raised when calling '{func.__name__}()':", exc_info=True)
         return {"msg": str(msg), "status_code": code}, code
 
     @functools.wraps(func)

@@ -14,6 +14,7 @@
 import json
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import uuid
@@ -75,6 +76,10 @@ class ToilWorkflow:
         if not os.path.exists(self.exec_dir):
             os.makedirs(self.exec_dir)
 
+    def clean_up(self) -> None:
+        """ Clean directory and files related to the run."""
+        shutil.rmtree(os.path.join(self.work_dir))
+
     def get_run_command(self, request: Dict[str, Any], options: List[str]) -> Tuple[List[str], str]:
         """
         Return a list of commands, and the working directory for the run.
@@ -103,10 +108,10 @@ class ToilBackend(WESBackend):
     associated with all the workflow runs in the filesystem.
     """
 
-    def __init__(self, opts: List[str]) -> None:
+    def __init__(self, work_dir: str, opts: List[str]) -> None:
         super(ToilBackend, self).__init__(opts)
+        self.work_dir = work_dir
         self.processes: Dict[str, int] = {}
-        self.work_dir = os.path.join(os.getcwd(), "workflows")
         self.supported_versions: Dict[str, List[str]] = {}
 
     def register_wf_type(self, name: str, supported_versions: List[str]) -> None:
@@ -161,6 +166,7 @@ class ToilBackend(WESBackend):
             state_counts[state] += 1
 
         return {
+            "version": baseVersion,
             "workflow_type_versions": {
                 k: {
                     "workflow_type_version": v
@@ -169,7 +175,7 @@ class ToilBackend(WESBackend):
             "supported_wes_versions": ["1.0.0"],
             "supported_filesystem_protocols": ["file", "http", "https"],
             "workflow_engine_versions": {"toil": baseVersion},
-            # "default_workflow_engine_parameters": {},
+            "default_workflow_engine_parameters": {},
             "system_state_counts": state_counts,
             "tags": {},
         }
@@ -199,7 +205,11 @@ class ToilBackend(WESBackend):
 
         # stage the uploaded files to the execution directory, so that we can run the workflow file directly
         temp_dir = job.exec_dir
-        _, request = self.collect_attachments(run_id, temp_dir=temp_dir)
+        try:
+            _, request = self.collect_attachments(run_id, temp_dir=temp_dir)
+        except ValueError:
+            job.clean_up()
+            raise
 
         wf_type = request["workflow_type"].lower().strip()
         version = request["workflow_type_version"]
@@ -207,8 +217,10 @@ class ToilBackend(WESBackend):
         # validate workflow request
         supported_versions = self.supported_versions.get(wf_type, None)
         if not supported_versions:
+            job.clean_up()
             raise RuntimeError(f"workflow_type '{wf_type}' is not supported.")
         if version not in supported_versions:
+            job.clean_up()
             raise RuntimeError("workflow_type '{}' requires 'workflow_type_version' to be one of '{}'.  Got '{}'"
                                "instead.".format(wf_type, str(supported_versions), version))
 

@@ -35,17 +35,20 @@ There are many other command line options. Help information can be found by usin
 Below is a detailed summary of all available options:
 
 
---debug         Enable debug mode.
---port          The port that the Toil server listens on. (default: 8080).
---swagger_ui    If True, the swagger UI will be enabled and hosted on the ``ga4gh/wes/v1/ui`` endpoint.
-                (default: False).
---cors          Enable Cross Origin Resource Sharing (CORS). This should only be turned on if the server is intended
-                to be used by a website or domain. (default: False).
---cors_origins  Ignored if ``--cors`` is False. This sets the allowed origins for CORS. For details about CORS and
-                its security risks, see the `GA4GH docs on CORS`_. (default: "*").
---workers       Ignored if debug mode is on. The number of worker processes launched by the production WSGI server.
-                `2-4 workers per core`_ is recommended. (default: 2).
---opt           *TBU*
+--debug
+            Enable debug mode.
+--port PORT
+            The port that the Toil server listens on. (default: 8080).
+--swagger_ui
+            If True, the swagger UI will be enabled and hosted on the ``ga4gh/wes/v1/ui`` endpoint. (default: False).
+--cors
+            Enable Cross Origin Resource Sharing (CORS). This should only be turned on if the server is intended to be used by a website or domain. (default: False).
+--cors_origins ORIGIN
+            Ignored if ``--cors`` is False. This sets the allowed origins for CORS. For details about CORS and its security risks, see the `GA4GH docs on CORS`_. (default: "*").
+--workers WORKERS
+            Ignored if debug mode is on. The number of worker processes launched by the production WSGI server. `2-4 workers per core`_ is recommended. (default: 2).
+--opt ENGINE_OPTION
+            *TBU*
 
 .. _2-4 workers per core: https://docs.gunicorn.org/en/stable/design.html#how-many-workers
 .. _GA4GH docs on CORS: https://w3id.org/ga4gh/product-approval-support/cors
@@ -65,7 +68,7 @@ by Toil:
 | GET /runs                      | List the workflow runs.                                |
 +--------------------------------+--------------------------------------------------------+
 | POST /runs                     | Run a workflow. This endpoint creates a new workflow   |
-|                                | run and returns a `run_id` to monitor its progress.    |
+|                                | run and returns a ``run_id`` to monitor its progress.  |
 +--------------------------------+--------------------------------------------------------+
 | GET /runs/{run_id}             | Get detailed info about a workflow run.                |
 +--------------------------------+--------------------------------------------------------+
@@ -142,7 +145,7 @@ This can be shown by the following example::
         --form 'workflow_attachment=@"./toil_test_files/2.fasta";filename=inputs/test.fasta' \
         --form 'workflow_attachment=@"./toil_test_files/2.fastq";filename=inputs/test.fastq'
 
-The execution directory would have the following structure from the above request::
+On the server, the execution directory would have the following structure from the above request::
 
     execution/
     ├── example.cwl

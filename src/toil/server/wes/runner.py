@@ -68,7 +68,7 @@ class WorkflowRunner:
         self.request = request
         self.engine_options = engine_options
 
-        self.wf_type: str = request["workflow_type"]
+        self.wf_type: str = request["workflow_type"].lower().strip()
         self.version: str = request["workflow_type_version"]
 
         self.exec_dir = os.path.join(self.work_dir, "execution")
@@ -205,6 +205,7 @@ class WorkflowRunner:
         except KeyboardInterrupt:
             # signal an interrupt to kill the process gently
             process.send_signal(signal.SIGINT)
+            process.wait()
             logger.info("Child process terminated by interruption.")
             return 130
 
