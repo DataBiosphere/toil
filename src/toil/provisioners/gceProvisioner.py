@@ -147,7 +147,7 @@ class GCEProvisioner(AbstractProvisioner):
             tags.update(kwargs['userTags'])
         self._tags = json.dumps(tags)
 
-        metadata = {'items': [{'key': 'user-data', 'value': self._getCloudConfigUserData('leader')}]}
+        metadata = {'items': [{'key': 'user-data', 'value': self._getIgnitionUserData('leader')}]}
         imageType = 'flatcar-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
         disk = {}
@@ -267,7 +267,7 @@ class GCEProvisioner(AbstractProvisioner):
             logger.debug('Launching %s preemptable nodes', numNodes)
 
         # kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
-        userData = self._getCloudConfigUserData('worker', keyPath, preemptable)
+        userData = self._getIgnitionUserData('worker', keyPath, preemptable)
         metadata = {'items': [{'key': 'user-data', 'value': userData}]}
         imageType = 'flatcar-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
