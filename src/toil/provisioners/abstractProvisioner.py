@@ -830,12 +830,12 @@ class AbstractProvisioner(ABC):
             systemctl enable docker.service
 
             mkdir -p {CNI_DIR}
-            curl -L "https://github.com/containernetworking/plugins/releases/download/{CNI_VERSION}/cni-plugins-linux-amd64-{CNI_VERSION}.tgz" | tar -C {CNI_DIR} -xz
+            curl -L "https://github.com/containernetworking/plugins/releases/download/{CNI_VERSION}/cni-plugins-linux-arm64-{CNI_VERSION}.tgz" | tar -C {CNI_DIR} -xz
             mkdir -p {DOWNLOAD_DIR}
-            curl -L "https://github.com/kubernetes-sigs/cri-tools/releases/download/{CRICTL_VERSION}/crictl-{CRICTL_VERSION}-linux-amd64.tar.gz" | tar -C {DOWNLOAD_DIR} -xz
+            curl -L "https://github.com/kubernetes-sigs/cri-tools/releases/download/{CRICTL_VERSION}/crictl-{CRICTL_VERSION}-linux-arm64.tar.gz" | tar -C {DOWNLOAD_DIR} -xz
 
             cd {DOWNLOAD_DIR}
-            curl -L --remote-name-all https://storage.googleapis.com/kubernetes-release/release/{KUBERNETES_VERSION}/bin/linux/amd64/{{kubeadm,kubelet,kubectl}}
+            curl -L --remote-name-all https://storage.googleapis.com/kubernetes-release/release/{KUBERNETES_VERSION}/bin/linux/arm64/{{kubeadm,kubelet,kubectl}}
             chmod +x {{kubeadm,kubelet,kubectl}}
             ''').format(**values))
         config.addUnit("install-kubernetes.service", content=textwrap.dedent('''\
