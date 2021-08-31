@@ -76,6 +76,6 @@ def badChild(job):
         with job.fileStore.jobStore.readSharedFileStream("alreadyRun") as fileHandle:
             fileHandle.read()
     except NoSuchFileException as ex:
-        with job.fileStore.jobStore.writeSharedFileStream("alreadyRun", isProtected=False) as fileHandle:
+        with job.fileStore.jobStore.writeSharedFileStream("alreadyRun") as fileHandle:
             fileHandle.write(b"failed once\n")
         raise RuntimeError("this is an expected error: {}".format(str(ex)))

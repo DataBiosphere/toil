@@ -52,7 +52,6 @@ from toil.lib.aws.s3 import (create_bucket,
                              bucket_exists,
                              copy_s3_to_s3,
                              copy_local_to_s3,
-                             boto_args,
                              parse_s3_uri,
                              MultiPartPipe,
                              list_s3_items,
@@ -72,6 +71,7 @@ from toil.lib.ec2nodes import EC2Regions
 from toil.lib.checksum import compute_checksum_for_file, ChecksumError
 from toil.lib.io import AtomicFileCreate
 from toil.version import version
+from toil.lib.encryption import encrypt, decrypt
 
 
 DEFAULT_AWS_PART_SIZE = 52428800
@@ -131,7 +131,7 @@ class AWSJobStore(AbstractJobStore):
         # TODO: parsing of user options seems like it should be done outside of this class;
         #  pass in only the bucket name and region?
         self.region, self.bucket_name = parse_jobstore_identifier(locator)
-        self.s3_resource = resource('s3', region_name=self.region, **boto_args())
+        self.s3_resource = resource('s3', region_name=self.region)
         self.s3_client = self.s3_resource.meta.client
         self.check_bucket_region_conflict()
         logger.debug(f"Instantiating {self.__class__} with region: {self.region}")
@@ -150,18 +150,14 @@ class AWSJobStore(AbstractJobStore):
         # these are special files, like 'environment.pickle'; place them in root
         self.shared_key_prefix = ''
         # these represent input/output files, but are small json files pointing to the files with the real content in
-        # self.file_key_prefix; also contains the file's metadata, like if it should executable; named with uuid4
+        # self.content_key_prefix; also contains the file's metadata, like if it's executable; named with uuid4
         self.metadata_key_prefix = 'file-meta/'
         # read and unread; named with uuid4
-        self.read_logs_key_prefix = 'logs/read/'
-        # read and unread; named with uuid4
-        self.unread_logs_key_prefix = 'logs/unread/'
-        # read and unread; named with uuid4
-        self.all_logs_key_prefix = 'logs/'
+        self.logs_key_prefix = 'logs/'
 
-        # needs "self.config", which is not set until self.initialize() or self.resume() are called
+        # encryption is not set until self.initialize() or self.resume() are called
         self.sse_key = None
-        self.encryption_args = None
+        self.encryption_args = {}
 
         self._batchedUpdates = []  # unused; we don't batch requests to simpledb anymore
 
@@ -174,21 +170,22 @@ class AWSJobStore(AbstractJobStore):
         Create bucket, raise if it already exists.
         Set options from config.  Set sse key from that.
         """
-        self.sse_key, self.encryption_args = set_encryption_from_config(config)
         logger.debug(f"Instantiating {self.__class__} for region {self.region} with bucket: '{self.bucket_name}'")
+        self.configure_encryption(config.sseKey)
         if bucket_exists(self.s3_resource, self.bucket_name):
             raise JobStoreExistsException(self.locator)
         self.bucket = create_bucket(self.s3_resource, self.bucket_name)
         self.write_to_bucket(identifier='toil.init',  # TODO: use write_shared_file() here
                              prefix=self.shared_key_prefix,
                              data={'timestamp': str(datetime.datetime.now()), 'version': version})
+        self.write_to_bucket(identifier='most_recently_read_log.marker',
+                             prefix=self.shared_key_prefix,
+                             data='0')
         super(AWSJobStore, self).initialize(config)
-        # self.writeConfig()
 
-    def resume(self):
+    def resume(self, sse_key_path: Optional[str] = None):
         """Called when reusing an old jobstore with an existing bucket.  Raise if the bucket doesn't exist."""
-        super(AWSJobStore, self).resume()  # this sets self.config to not be None
-        self.sse_key, self.encryption_args = set_encryption_from_config(self.config)
+        super(AWSJobStore, self).resume(sse_key_path)  # this sets self.config to not be None and configures encryption
         if self.bucket is None:
             self.bucket = bucket_exists(self.s3_resource, self.bucket_name)
         if not self.bucket:
@@ -199,8 +196,11 @@ class AWSJobStore(AbstractJobStore):
 
         ###################################### BUCKET UTIL API ######################################
 
-    def write_to_bucket(self, identifier, prefix, data=None):
+    def write_to_bucket(self, identifier, prefix, data=None, bucket=None, encrypted=True):
         """Use for small files.  Does not parallelize or use multipart."""
+        if not encrypted:  # only used if exporting to a URL
+            self.encryption_args = {}
+        bucket = bucket or self.bucket_name
         if isinstance(data, dict):
             data = json.dumps(data).encode('utf-8')
         elif isinstance(data, str):
@@ -210,8 +210,9 @@ class AWSJobStore(AbstractJobStore):
 
         assert isinstance(data, bytes)
         try:
+            logger.critical(f'Putting s3: {bucket} {prefix}{identifier}')
             put_s3_object(s3_resource=self.s3_resource,
-                          bucket=self.bucket_name,
+                          bucket=bucket,
                           key=f'{prefix}{identifier}',
                           body=data,
                           extra_args=self.encryption_args)
@@ -409,9 +410,8 @@ class AWSJobStore(AbstractJobStore):
         with pipe as writable:
             yield writable
 
-    # determine isProtected from presence of sse_path?  why is this an input here?
     @contextmanager
-    def writeSharedFileStream(self, file_id, isProtected=None, encoding=None, errors=None):
+    def writeSharedFileStream(self, file_id, encoding=None, errors=None):
         # TODO
         self._requireValidSharedFileName(file_id)
         pipe = MultiPartPipe(encoding=encoding,
@@ -420,7 +420,7 @@ class AWSJobStore(AbstractJobStore):
                              s3_client=self.s3_client,
                              bucket_name=self.bucket_name,
                              file_id=f'{self.shared_key_prefix}{file_id}',
-                             encryption_args={})
+                             encryption_args=self.encryption_args)
         with pipe as writable:
             yield writable
 
@@ -430,9 +430,11 @@ class AWSJobStore(AbstractJobStore):
         self.writeFile(localFilePath=localFilePath, file_id=file_id)
 
     def fileExists(self, file_id):
+        logger.critical(f'Checking existence of: {self.bucket_name}{self.content_key_prefix}{file_id}')
         return s3_key_exists(s3_resource=self.s3_resource,
                              bucket=self.bucket_name,
-                             key=f'{self.content_key_prefix}{file_id}')
+                             key=f'{self.content_key_prefix}{file_id}',
+                             extra_args=self.encryption_args)
 
     def getFileSize(self, file_id: str) -> int:
         """Do we need both getFileSize and getSize???"""
@@ -470,12 +472,11 @@ class AWSJobStore(AbstractJobStore):
 
     @contextmanager
     def readFileStream(self, file_id, encoding=None, errors=None):
-        actual_file_content_path = f'{self.content_key_prefix}{file_id}'
         try:
             metadata = self.get_file_metadata(file_id)
             with download_stream(self.s3_resource,
                                  bucket=self.bucket_name,
-                                 key=actual_file_content_path,
+                                 key=f'{self.content_key_prefix}{file_id}',
                                  extra_args=self.encryption_args,
                                  encoding=encoding,
                                  errors=errors) as readable:
@@ -485,13 +486,18 @@ class AWSJobStore(AbstractJobStore):
         except ClientError as e:
             if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
                 raise NoSuchFileException(file_id)
+            else:
+                raise
 
     @contextmanager
     def readSharedFileStream(self, sharedFileName, encoding=None, errors=None):
         self._requireValidSharedFileName(sharedFileName)
         if not s3_key_exists(s3_resource=self.s3_resource,  # necessary?
                              bucket=self.bucket_name,
-                             key=f'{self.shared_key_prefix}{sharedFileName}'):
+                             key=f'{self.shared_key_prefix}{sharedFileName}',
+                             extra_args=self.encryption_args):
+            # TRAVIS=true TOIL_OWNER_TAG="shared" /home/quokka/git/toil/v3nv/bin/python -m pytest --durations=0 --log-level DEBUG --log-cli-level INFO -r s /home/quokka/git/toil/src/toil/test/jobStores/jobStoreTest.py::EncryptedAWSJobStoreTest::testJobDeletions
+            # throw NoSuchFileException in download_stream
             raise NoSuchFileException(f's3://{self.bucket_name}/{self.shared_key_prefix}{sharedFileName}')
 
         try:
@@ -499,7 +505,8 @@ class AWSJobStore(AbstractJobStore):
                                  bucket=self.bucket_name,
                                  key=f'{self.shared_key_prefix}{sharedFileName}',
                                  encoding=encoding,
-                                 errors=errors) as readable:
+                                 errors=errors,
+                                 extra_args=self.encryption_args) as readable:
                 yield readable
         except self.s3_client.exceptions.NoSuchKey:
             raise NoSuchFileException(sharedFileName)
@@ -539,10 +546,16 @@ class AWSJobStore(AbstractJobStore):
 
             # upload actual file content if it does not exist already
             # etags are unique hashes, so this may exist if another process uploaded the exact same file
-            copy_s3_to_s3(s3_resource=self.s3_resource,
-                          src_bucket=src_bucket_name, src_key=src_key_name,
-                          dst_bucket=self.bucket_name, dst_key=f'{prefix}{file_id}',
-                          extra_args=self.encryption_args)
+                # AWS copy and copy_object functions should be used here, but don't work with sse-c encryption
+                # see: https://github.com/aws/aws-cli/issues/6012
+            with download_stream(self.s3_resource,
+                                 bucket=src_bucket_name,
+                                 key=src_key_name) as readable:
+                logger.critical(f'Importing s3: {src_bucket_name} {src_key_name}')
+                self.write_to_bucket(bucket=self.bucket_name,
+                                     identifier=file_id,
+                                     prefix=prefix,
+                                     data=readable.read())
             # verify etag after copying here
 
             if not sharedFileName:
@@ -559,10 +572,20 @@ class AWSJobStore(AbstractJobStore):
         if issubclass(otherCls, AWSJobStore):
             dst_bucket_name, dst_key_name = parse_s3_uri(url)
             metadata = self.get_file_metadata(file_id)
-            copy_s3_to_s3(s3_resource=self.s3_resource,
-                          src_bucket=self.bucket_name, src_key=f'{self.content_key_prefix}{file_id}',
-                          dst_bucket=dst_bucket_name, dst_key=dst_key_name,
-                          extra_args=self.encryption_args)
+            if not self.encryption_args:
+                copy_s3_to_s3(s3_resource=self.s3_resource,
+                              src_bucket=self.bucket_name, src_key=f'{self.content_key_prefix}{file_id}',
+                              dst_bucket=dst_bucket_name, dst_key=dst_key_name)
+            else:
+                # AWS copy and copy_object functions should be used here, but don't work with sse-c encryption
+                # see: https://github.com/aws/aws-cli/issues/6012
+                with self.readFileStream(file_id) as readable:
+                    logger.critical(f'Exporting s3: {dst_bucket_name} {dst_key_name}')
+                    self.write_to_bucket(bucket=dst_bucket_name,
+                                         identifier=dst_key_name,
+                                         prefix='',
+                                         data=readable.read(),
+                                         encrypted=False)
         else:
             super(AWSJobStore, self)._defaultExportFile(otherCls, file_id, url)
 
@@ -648,42 +671,42 @@ class AWSJobStore(AbstractJobStore):
     def write_logs(self, log_msg: Union[bytes, str]):
         if isinstance(log_msg, str):
             log_msg = log_msg.encode('utf-8', errors='ignore')
+        # if self.encryption_args.get('SSECustomerKey'):
+        #     log_msg = encrypt(log_msg, key=self.encryption_args['SSECustomerKey'])
         file_obj = BytesIO(log_msg)
 
-        key_name = f'{self.unread_logs_key_prefix}{datetime.datetime.now()}'
+        key_name = f'{self.logs_key_prefix}{datetime.datetime.now()}'.replace(' ', '_')
+        # Note: we omit ExtraArgs=self.encryption_args here because we encrypt/decrypt logs with nacl
+        # this is because of a bug with encryption using copy and copy_object:
+        # https://github.com/aws/aws-cli/issues/6012
+        logger.critical(f'uploading: {key_name}')
         self.s3_client.upload_fileobj(Bucket=self.bucket_name,
                                       Key=key_name,
                                       Fileobj=file_obj,
                                       ExtraArgs=self.encryption_args)
 
-        # use head_object with the SSE headers to access versionId and content_length attributes
-        response = self.s3_client.head_object(Bucket=self.bucket_name,
-                                              Key=key_name,
-                                              **self.encryption_args)
-        # checking message length is sufficient; don't checksum log messages
-        assert len(log_msg) == response.get('ContentLength')
-
     def read_logs(self, callback, readAll=False):
         """
         This fetches all referenced logs in the database from s3 as readable objects and runs "callback()" on them.
         """
-        prefix = self.all_logs_key_prefix if readAll else self.unread_logs_key_prefix
         itemsProcessed = 0
-        for result in list_s3_items(self.s3_resource, bucket=self.bucket_name, prefix=prefix):
-            with download_stream(self.s3_resource,
-                                 bucket=self.bucket_name,
-                                 key=result['Key'],
-                                 extra_args=self.encryption_args) as readable:
-                callback(readable)
-            if not readAll:
-                src_key = result['Key']
-                dst_key = result['Key'].replace(self.unread_logs_key_prefix, self.read_logs_key_prefix)
-                copy_s3_to_s3(s3_resource=self.s3_resource,
-                              src_bucket=self.bucket_name, src_key=src_key,
-                              dst_bucket=self.bucket_name, dst_key=dst_key,
-                              extra_args=self.encryption_args)
-                # self.s3_client.delete_object(Bucket=self.bucket_name, Key=src_key)
-            itemsProcessed += 1
+        read_log_marker = self.read_from_bucket(identifier='most_recently_read_log.marker',
+                                                prefix=self.shared_key_prefix).decode('utf-8')
+        startafter = None if read_log_marker == '0' or readAll else read_log_marker
+        for result in list_s3_items(self.s3_resource, bucket=self.bucket_name, prefix=self.logs_key_prefix, startafter=startafter):
+            logger.critical(f'current: {result["Key"]}')
+            logger.critical(f'read_log_marker: {read_log_marker}')
+            if result['Key'] > read_log_marker or readAll:
+                read_log_marker = result['Key']
+                with download_stream(self.s3_resource,
+                                     bucket=self.bucket_name,
+                                     key=result['Key'],
+                                     extra_args=self.encryption_args) as readable:
+                    callback(readable)
+                itemsProcessed += 1
+        self.write_to_bucket(identifier='most_recently_read_log.marker',
+                             prefix=self.shared_key_prefix,
+                             data=read_log_marker)
         return itemsProcessed
 
     def check_bucket_region_conflict(self):
@@ -693,6 +716,16 @@ class AWSJobStore(AbstractJobStore):
             if response["LocationConstraint"] != self.region:
                 raise ValueError(f'Bucket region conflict.  Bucket already exists in region '
                                  f'"{response["LocationConstraint"]}" but "{self.region}" was specified.')
+
+    def configure_encryption(self, sse_key_path: Optional[str] = None):
+        if sse_key_path:
+            with open(sse_key_path, 'r') as f:
+                sse_key = f.read()
+            if not len(sse_key) == 32:  # TODO: regex
+                raise ValueError(f'Check that {sse_key_path} is the path to a real SSE key.  '
+                                 f'(Key length {len(sse_key)} != 32)')
+            self.sse_key = sse_key
+            self.encryption_args = {'SSECustomerAlgorithm': 'AES256', 'SSECustomerKey': sse_key}
 
 
 def parse_jobstore_identifier(jobstore_identifier: str) -> Tuple[str, str]:
@@ -714,13 +747,3 @@ def parse_jobstore_identifier(jobstore_identifier: str) -> Tuple[str, str]:
     if '--' in jobstore_name:
         raise ValueError(f"AWS jobstore names may not contain '--': {jobstore_name}")
     return region, bucket_name
-
-
-def set_encryption_from_config(config):
-    if config.sseKey:
-        with open(config.sseKey, 'r') as f:
-            sse_key = f.read()
-        assert len(sse_key) == 32  # TODO: regex
-        return sse_key, {'SSECustomerAlgorithm': 'AES256', 'SSECustomerKey': sse_key}
-    else:
-        return None, {}

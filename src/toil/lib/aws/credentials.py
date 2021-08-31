@@ -19,6 +19,8 @@ Each of session, resource, and client should all cache the same session if withi
 AWS recommends a new Session object for each thread to be thread-safe, so there are thread-safe versions as well:
 https://boto3.amazonaws.com/v1/documentation/api/latest/guide/session.html#multithreading-or-multiprocessing-with-sessions
 """
+import os
+
 from functools import lru_cache
 from typing import Optional
 from boto3 import Session
@@ -33,17 +35,35 @@ def session(region_name: Optional[str] = None) -> Session:
 
 
 @lru_cache(maxsize=None)
-def client(*args, **kwargs):
+def client(*args, thread_safe=False, **kwargs):
     """Quickly retrieve and use cached clients."""
-    boto3_session = session(region_name=kwargs.get('region_name'))
-    return boto3_session.client(*args, **kwargs)
+    if thread_safe:
+        boto3_session = thread_safe_session(region_name=kwargs.get('region_name'))
+    else:
+        boto3_session = session(region_name=kwargs.get('region_name'))
+    if 's3' == args[0]:
+        s3_boto_args = boto_args()
+        if 'endpoint_url' in s3_boto_args:
+            kwargs['endpoint_url'] = s3_boto_args['endpoint_url']
+        return boto3_session.client(*args, **kwargs)
+    else:
+        return boto3_session.client(*args, **kwargs)
 
 
 @lru_cache(maxsize=None)
-def resource(*args, **kwargs):
+def resource(*args, thread_safe=False, **kwargs):
     """Quickly retrieve and use cached resources."""
-    boto3_session = session(region_name=kwargs.get('region_name'))
-    return boto3_session.resource(*args, **kwargs)
+    if thread_safe:
+        boto3_session = thread_safe_session(region_name=kwargs.get('region_name'))
+    else:
+        boto3_session = session(region_name=kwargs.get('region_name'))
+    if 's3' == args[0]:
+        s3_boto_args = boto_args()
+        if 'endpoint_url' in s3_boto_args:
+            kwargs['endpoint_url'] = s3_boto_args['endpoint_url']
+        return boto3_session.resource(*args, **kwargs)
+    else:
+        return boto3_session.resource(*args, **kwargs)
 
 
 def thread_safe_session(region_name: Optional[str] = None) -> Session:
@@ -64,11 +84,12 @@ def thread_safe_session(region_name: Optional[str] = None) -> Session:
     return Session(botocore_session=botocore_session, region_name=region_name)
 
 
-def thread_safe_client(*args, **kwargs):
-    boto3_session = thread_safe_session(region_name=kwargs.get('region_name'))
-    return boto3_session.client(*args, **kwargs)
-
-
-def thread_safe_resource(*args, **kwargs):
-    boto3_session = thread_safe_session(region_name=kwargs.get('region_name'))
-    return boto3_session.resource(*args, **kwargs)
+def boto_args():
+    host = os.environ.get('TOIL_S3_HOST', None)
+    port = os.environ.get('TOIL_S3_PORT', None)
+    protocol = 'https'
+    if os.environ.get('TOIL_S3_USE_SSL', True) == 'False':
+        protocol = 'http'
+    if host:
+        return {'endpoint_url': f'{protocol}://{host}' + f':{port}' if port else ''}
+    return {}

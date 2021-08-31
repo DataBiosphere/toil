@@ -43,6 +43,7 @@ from toil.job import JobDescription, TemporaryID
 from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobException
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.lib.memoize import memoize
+from toil.lib.aws.s3 import AWSBadEncryptionKeyError
 from toil.lib.aws.utils import create_s3_bucket
 from toil.statsAndLogging import StatsAndLogging, suppress_exotic_logging
 from toil.test import (ToilTest,
@@ -161,7 +162,7 @@ class AbstractJobStoreTest:
             self.jobstore_initialized = self._createJobStore()
             self.jobstore_initialized.initialize(self.config)
             self.jobstore_resumed_noconfig = self._createJobStore()
-            self.jobstore_resumed_noconfig.resume()
+            self.jobstore_resumed_noconfig.resume(self.config.sseKey)
 
             # Requirements for jobs to be created.
             self.arbitraryRequirements = {'memory': 1, 'disk': 2, 'cores': 1, 'preemptable': False}
@@ -226,7 +227,7 @@ class AbstractJobStoreTest:
             to be equal but not the same object.
             """
             newJobStore = self._createJobStore()
-            newJobStore.resume()
+            newJobStore.resume(self.config.sseKey)
             self.assertEqual(newJobStore.config, self.config)
             self.assertIsNot(newJobStore.config, self.config)
 
@@ -415,10 +416,10 @@ class AbstractJobStoreTest:
             with jobstore1.readSharedFileStream('foo') as f:
                 self.assertEqual(bar, f.read())
 
-            with jobstore1.writeSharedFileStream('nonEncrypted', isProtected=False) as f:
-                f.write(bar)
-            self.assertTrue(isinstance(jobstore1.getSharedPublicUrl('nonEncrypted'), str) and len(jobstore1.getSharedPublicUrl('nonEncrypted')) > 0)
-            self.assertRaises(NoSuchFileException, jobstore1.getSharedPublicUrl, 'missing')
+            # with jobstore1.writeSharedFileStream('nonEncrypted') as f:
+            #     f.write(bar)
+            # self.assertTrue(isinstance(jobstore1.getSharedPublicUrl('nonEncrypted'), str) and len(jobstore1.getSharedPublicUrl('nonEncrypted')) > 0)
+            # self.assertRaises(NoSuchFileException, jobstore1.getSharedPublicUrl, 'missing')
 
         def testReadWriteSharedFilesTextMode(self):
             """Checks if text mode is compatible for shared file streams."""
@@ -689,8 +690,6 @@ class AbstractJobStoreTest:
                 logger.debug('Cleaning up external store for %s.', test)
                 test._cleanUpExternalStore(store)
 
-        mpTestPartSize = 5 << 20
-
         @classmethod
         def makeImportExportTests(cls):
 
@@ -710,7 +709,6 @@ class AbstractJobStoreTest:
                 :param int size: the size of the file to test importing/exporting with
                 """
                 # Prepare test file in other job store
-                self.jobstore_initialized.partSize = cls.mpTestPartSize
                 self.jobstore_initialized.moveExports = moveExports
 
                 # The string in otherCls() is arbitrary as long as it returns a class that has access
@@ -728,6 +726,7 @@ class AbstractJobStoreTest:
                 # Export back into other job store
                 dstUrl = other._prepareTestFile(store)
                 self.jobstore_initialized.exportFile(jobStoreFileID, dstUrl)
+                logger.critical(f'Creating: {dstUrl}')
                 self.assertEqual(fileMD5, other._hashTestFile(dstUrl))
 
                 if otherCls.__name__ == 'FileJobStoreTest':
@@ -747,12 +746,7 @@ class AbstractJobStoreTest:
                     os.remove(dstUrl[7:])
 
             make_tests(testImportExportFile, cls, otherCls=activeTestClassesByName,
-                       size=dict(zero=0,
-                                 one=1,
-                                 oneMiB=2 ** 20,
-                                 partSizeMinusOne=cls.mpTestPartSize - 1,
-                                 partSize=cls.mpTestPartSize,
-                                 partSizePlusOne=cls.mpTestPartSize + 1),
+                       size=dict(zero=0, one=1, oneMiB=2 ** 20),
                        moveExports={'deactivated': None, 'activated': True})
 
             def testImportSharedFile(self, otherCls):
@@ -763,7 +757,6 @@ class AbstractJobStoreTest:
                        to import from or export to
                 """
                 # Prepare test file in other job store
-                self.jobstore_initialized.partSize = cls.mpTestPartSize
                 other = otherCls('testSharedFiles')
                 store = other._externalStore()
 
@@ -1127,27 +1120,27 @@ class AbstractEncryptedJobStoreTest:
                 f.write('01234567890123456789012345678901')
             return config
 
-        # def testEncrypted(self):
-        #     """
-        #     Create an encrypted file. Read it in encrypted mode then try with encryption off
-        #     to ensure that it fails.
-        #     """
-        #     phrase = 'This file is encrypted.'.encode('utf-8')
-        #     fileName = 'foo'
-        #     with self.jobstore_initialized.writeFileStream(fileName) as f:
-        #         f[0].write(phrase)
-        #     with self.jobstore_initialized.readFileStream(fileName) as f:
-        #         self.assertEqual(phrase, f.read())
-        #
-        #     # disable encryption
-        #     self.jobstore_initialized.config.sseKey = None
-        #     try:
-        #         with self.jobstore_initialized.readFileStream(fileName) as f:
-        #             self.assertEqual(phrase, f.read())
-        #     except AssertionError as e:
-        #         self.assertEqual("Content is encrypted but no key was provided.", e.args[0])
-        #     else:
-        #         self.fail("Read encryption content with encryption off.")
+        def testEncrypted(self):
+            """
+            Create an encrypted file. Read it in encrypted mode then try with encryption off
+            to ensure that it fails.
+            """
+            phrase = 'This file is encrypted.'.encode('utf-8')
+            fileName = 'foo'
+            with self.jobstore_initialized.writeSharedFileStream(fileName) as f:
+                f.write(phrase)
+            with self.jobstore_initialized.readSharedFileStream(fileName) as f:
+                self.assertEqual(phrase, f.read())
+
+            # disable encryption
+            self.jobstore_initialized.encryption_args = {}
+            try:
+                with self.jobstore_initialized.readSharedFileStream(fileName) as f:
+                    self.assertEqual(phrase, f.read())
+            except AWSBadEncryptionKeyError:
+                pass
+            else:
+                self.fail("Read encryption content with encryption off.")
 
 
 class FileJobStoreTest(AbstractJobStoreTest.Test):
@@ -1308,7 +1301,6 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def testMultiThreadImportFile(self) -> None:
         """ Tests that importFile is thread-safe."""
-
         from concurrent.futures.thread import ThreadPoolExecutor
         from toil.lib.threading import cpu_count
 
@@ -1361,6 +1353,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         from toil.lib.aws.credentials import resource
         s3_resource = resource('s3', region_name=self.awsRegion())
         bucket_name, key_name = url[len('s3://'):].split('/', 1)
+        logger.critical(f'Hash test file (s3): {bucket_name} {key_name}')
         contents = get_s3_object(s3_resource=s3_resource,
                                  bucket=bucket_name,
                                  key=key_name)['Body'].read()

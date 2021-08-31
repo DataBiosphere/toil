@@ -20,6 +20,7 @@ import uuid
 from contextlib import contextmanager
 from functools import wraps
 from io import BytesIO
+from typing import Optional
 
 from google.api_core.exceptions import (GoogleAPICallError,
                                         InternalServerError,
@@ -144,12 +145,19 @@ class GoogleJobStore(AbstractJobStore):
                 assert len(self.sseKey) == 32
 
     @googleRetry
-    def resume(self):
+    def resume(self, sse_key_path: Optional[str] = None) -> None:
+        # TODO: force google encrypted jobstore to need an encryption key to resume (otherwise, what's the point?)
+        self.configure_encryption(sse_key_path)
         try:
             self.bucket = self.storageClient.get_bucket(self.bucketName)
         except exceptions.NotFound:
             raise NoSuchJobStoreException(self.locator)
         super(GoogleJobStore, self).resume()
+
+    def configure_encryption(self, sse_key_path: Optional[str] = None):
+        # we should not be able to resume someone's encrypted bucket without the original encryption key
+        log.warning('Google encryption is insecure until fixed.  '
+                    'Please do not use encrypted Google Jobstores in production (AWS is suitable).')
 
     @googleRetry
     def destroy(self):
@@ -287,8 +295,7 @@ class GoogleJobStore(AbstractJobStore):
 
     @contextmanager
     def readFileStream(self, jobStoreFileID, encoding=None, errors=None):
-        with self.readSharedFileStream(jobStoreFileID, isProtected=True, encoding=encoding,
-                            errors=errors) as readable:
+        with self.readSharedFileStream(jobStoreFileID, encoding=encoding, errors=errors) as readable:
             yield readable
 
     def delete_file(self, jobStoreFileID):
@@ -314,14 +321,13 @@ class GoogleJobStore(AbstractJobStore):
             yield writable
 
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName, isProtected=True, encoding=None, errors=None):
-        with self._uploadStream(sharedFileName, encrypt=isProtected, update=True, encoding=encoding,
-                                    errors=errors) as writable:
+    def writeSharedFileStream(self, sharedFileName, encoding=None, errors=None):
+        with self._uploadStream(sharedFileName, encrypt=False, update=True, encoding=encoding, errors=errors) as writable:
             yield writable
 
     @contextmanager
-    def readSharedFileStream(self, sharedFileName, isProtected=True, encoding=None, errors=None):
-        with self._downloadStream(sharedFileName, encrypt=isProtected, encoding=encoding, errors=errors) as readable:
+    def readSharedFileStream(self, sharedFileName, encoding=None, errors=None):
+        with self._downloadStream(sharedFileName, encrypt=False, encoding=encoding, errors=errors) as readable:
             yield readable
 
     @classmethod

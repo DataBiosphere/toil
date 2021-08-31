@@ -156,8 +156,7 @@ class ResourceTest(ToilTest):
         # Ensure that the URL generation method is actually called, ...
         jobStore.getSharedPublicUrl.assert_called_once_with(sharedFileName=resource.pathHash)
         # ... and that ensure that writeSharedFileStream is called.
-        jobStore.writeSharedFileStream.assert_called_once_with(sharedFileName=resource.pathHash,
-                                                               isProtected=False)
+        jobStore.writeSharedFileStream.assert_called_once_with(sharedFileName=resource.pathHash)
         # Now it gets a bit complicated: Ensure that the context manager returned by the
         # jobStore's writeSharedFileStream() method is entered and that the file handle yielded
         # by the context manager is written to once with the zipped source tree from which

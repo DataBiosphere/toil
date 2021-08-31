@@ -24,6 +24,7 @@ import tempfile
 import time
 import uuid
 from contextlib import contextmanager
+from typing import Optional
 
 from toil.fileStores import FileID
 from toil.job import TemporaryID
@@ -107,10 +108,15 @@ class FileJobStore(AbstractJobStore):
         self.moveExports = config.moveExports
         super(FileJobStore, self).initialize(config)
 
-    def resume(self):
+    def resume(self, sse_key_path: Optional[str] = None):
         if not os.path.isdir(self.jobStoreDir):
             raise NoSuchJobStoreException(self.jobStoreDir)
         super(FileJobStore, self).resume()
+
+    def configure_encryption(self, sse_key_path: Optional[str] = None):
+        # TODO: Implement encryption for the file job store
+        if sse_key_path:
+            raise NotImplementedError('The Toil jobstore only implements encryption for AWS and Google.')
 
     def destroy(self):
         if os.path.exists(self.jobStoreDir):
@@ -568,8 +574,7 @@ class FileJobStore(AbstractJobStore):
         return os.path.join(self.sharedFilesDir, sharedFileName)
 
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName, isProtected=None, encoding=None, errors=None):
-        # the isProtected parameter has no effect on the fileStore
+    def writeSharedFileStream(self, sharedFileName, encoding=None, errors=None):
         self._requireValidSharedFileName(sharedFileName)
         with AtomicFileCreate(self._getSharedFilePath(sharedFileName)) as tmpSharedFilePath:
             with open(tmpSharedFilePath, 'wb' if encoding == None else 'wt', encoding=encoding, errors=None) as f:

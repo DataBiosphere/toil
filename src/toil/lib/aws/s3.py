@@ -39,11 +39,16 @@ logger = logging.getLogger(__name__)
 class NoSuchFileException(Exception):
     pass
 
+
 class AWSKeyNotFoundError(Exception):
     pass
 
 
 class AWSKeyAlreadyExistsError(Exception):
+    pass
+
+
+class AWSBadEncryptionKeyError(Exception):
     pass
 
 
@@ -105,10 +110,19 @@ def bucket_exists(s3_resource, bucket: str) -> Union[bool, Bucket]:
 
 
 # TODO: Determine specific retries
-@retry()
+# @retry()
 def copy_s3_to_s3(s3_resource, src_bucket, src_key, dst_bucket, dst_key, extra_args: Optional[dict] = None):
-    source = {'Bucket': src_bucket, 'Key': src_key}
-    s3_resource.meta.client.copy(source, dst_bucket, dst_key, ExtraArgs=extra_args)
+    if not extra_args:
+        source = {'Bucket': src_bucket, 'Key': src_key}
+        # Note: this may have errors if using sse-c because of
+        # a bug with encryption using copy_object and copy (which uses copy_object for files <5GB):
+        # https://github.com/aws/aws-cli/issues/6012
+        # this will only happen if we attempt to copy a file previously encrypted with sse-c
+        # copying an unencrypted file and encrypting it as sse-c seems to work fine though
+        kwargs = dict(CopySource=source, Bucket=dst_bucket, Key=dst_key, ExtraArgs=extra_args)
+        s3_resource.meta.client.copy(**kwargs)
+    else:
+        pass
 
 
 # TODO: Determine specific retries
@@ -116,15 +130,6 @@ def copy_s3_to_s3(s3_resource, src_bucket, src_key, dst_bucket, dst_key, extra_a
 def copy_local_to_s3(s3_resource, local_file_path, dst_bucket, dst_key, extra_args: Optional[dict] = None):
     s3_client = s3_resource.meta.client
     s3_client.upload_file(local_file_path, dst_bucket, dst_key, ExtraArgs=extra_args)
-    # s3_client.upload_file(local_file_path, dst_bucket, dst_key)
-
-
-# TODO: Determine specific retries
-@retry()
-def bucket_versioning_enabled(s3_resource, bucket: str):
-    versionings = dict(Enabled=True, Disabled=False, Suspended=None)
-    status = s3_resource.BucketVersioning(bucket).status
-    return versionings.get(status) if status else False
 
 
 class MultiPartPipe(WritablePipe):
@@ -155,7 +160,7 @@ class MultiPartPipe(WritablePipe):
         parts = []
         try:
             for part_num in itertools.count():
-                logger.debug('Uploading part %d of %d bytes', part_num + 1, len(buf))
+                logger.debug(f'[{upload_id}] Uploading part %d of %d bytes', part_num + 1, len(buf))
                 # TODO: include the Content-MD5 header:
                 #  https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#S3.Client.complete_multipart_upload
                 part = self.s3_client.upload_part(Bucket=self.bucket_name,
@@ -179,11 +184,11 @@ class MultiPartPipe(WritablePipe):
         else:
             # Save the checksum
             checksum = f'sha1${hasher.hexdigest()}'
-            logger.debug('Attempting to complete upload...')
             response = self.s3_client.complete_multipart_upload(Bucket=self.bucket_name,
                                                                 Key=self.file_id,
                                                                 UploadId=upload_id,
                                                                 MultipartUpload={"Parts": parts})
+            logger.debug(f'[{upload_id}] Upload complete...')
 
 
 def parse_s3_uri(uri: str) -> Tuple[str, str]:
@@ -198,21 +203,13 @@ def parse_s3_uri(uri: str) -> Tuple[str, str]:
     return bucket_name, key_name
 
 
-def boto_args():
-    host = os.environ.get('TOIL_S3_HOST', None)
-    port = os.environ.get('TOIL_S3_PORT', None)
-    protocol = 'https'
-    if os.environ.get('TOIL_S3_USE_SSL', True) == 'False':
-        protocol = 'http'
-    if host:
-        return {'endpoint_url': f'{protocol}://{host}' + f':{port}' if port else ''}
-    return {}
-
-
-def list_s3_items(s3_resource, bucket, prefix):
+def list_s3_items(s3_resource, bucket, prefix, startafter=None):
     s3_client = s3_resource.meta.client
     paginator = s3_client.get_paginator('list_objects_v2')
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+    kwargs = dict(Bucket=bucket, Prefix=prefix)
+    if startafter:
+        kwargs['StartAfter'] = startafter
+    for page in paginator.paginate(**kwargs):
         for key in page.get('Contents', []):
             yield key
 
@@ -264,69 +261,59 @@ def upload_to_s3(readable,
 
 
 @contextmanager
-def download_stream(s3_resource, bucket: str, key: str, checksum_to_verify: Optional[str] = None, extra_args: Optional[dict] = None, encoding=None, errors=None):
+def download_stream(s3_resource, bucket: str, key: str, checksum_to_verify: Optional[str] = None,
+                    extra_args: Optional[dict] = None, encoding=None, errors=None):
     """Context manager that gives out a download stream to download data."""
     bucket = s3_resource.Bucket(bucket)
 
     class DownloadPipe(ReadablePipe):
         def writeTo(self, writable):
-            bucket.download_fileobj(Key=key, Fileobj=writable, ExtraArgs=extra_args)
+            kwargs = dict(Key=key, Fileobj=writable, ExtraArgs=extra_args)
+            if not extra_args:
+                del kwargs['ExtraArgs']
+            bucket.download_fileobj(**kwargs)
 
-    with DownloadPipe(encoding=encoding, errors=errors) as readable:
-        yield readable
+    try:
+        if checksum_to_verify:
+            with DownloadPipe(encoding=encoding, errors=errors) as readable:
+                # Interpose a pipe to check the hash
+                with HashingPipe(readable, encoding=encoding, errors=errors) as verified:
+                    yield verified
+        else:
+            # Readable end of pipe produces text mode output if encoding specified
+            with DownloadPipe(encoding=encoding, errors=errors) as readable:
+                # No true checksum available, so don't hash
+                yield readable
+    except s3_resource.meta.client.exceptions.NoSuchKey:
+        raise AWSKeyNotFoundError(f"Key '{key}' does not exist in bucket '{bucket}'.")
+    except ClientError as e:
+        if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+            raise AWSKeyNotFoundError(f"Key '{key}' does not exist in bucket '{bucket}'.")
+        elif e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 400 and \
+                e.response.get('Error', {}).get('Message') == 'Bad Request' and \
+                e.operation_name == 'HeadObject':
+            # An error occurred (400) when calling the HeadObject operation: Bad Request
+            raise AWSBadEncryptionKeyError('Your AWS encryption key is most likely configured incorrectly '
+                                           '(HeadObject operation: Bad Request).')
+        raise
 
 
-# @contextmanager
-# def downloadStream(self, verifyChecksum=True, encoding=None, errors=None):
-#     """
-#     Context manager that gives out a download stream to download data.
-#     """
-#     class DownloadPipe(ReadablePipe):
-#         def writeTo(self, writable):
-#             if info.content is not None:
-#                 writable.write(info.content)
-#             elif info.version:
-#                 headerArgs = info._s3EncryptionArgs()
-#                 obj = info.outer.filesBucket.Object(compat_bytes(info.fileID))
-#                 obj.download_fileobj(writable, ExtraArgs={'VersionId': info.version, **headerArgs})
-#             else:
-#                 assert False
-#
-#     class HashingPipe(ReadableTransformingPipe):
-#         """
-#         Class which checksums all the data read through it. If it
-#         reaches EOF and the checksum isn't correct, raises
-#         ChecksumError.
-#         Assumes info actually has a checksum.
-#         """
-#
-#         def transform(self, readable, writable):
-#             hasher = info._start_checksum(to_match=info.checksum)
-#             contents = readable.read(1024 * 1024)
-#             while contents != b'':
-#                 info._update_checksum(hasher, contents)
-#                 try:
-#                     writable.write(contents)
-#                 except BrokenPipeError:
-#                     # Read was stopped early by user code.
-#                     # Can't check the checksum.
-#                     return
-#                 contents = readable.read(1024 * 1024)
-#             # We reached EOF in the input.
-#             # Finish checksumming and verify.
-#             info._finish_checksum(hasher)
-#             # Now stop so EOF happens in the output.
-#
-#     if verifyChecksum and self.checksum:
-#         with DownloadPipe() as readable:
-#             # Interpose a pipe to check the hash
-#             with HashingPipe(readable, encoding=encoding, errors=errors) as verified:
-#                 yield verified
-#     else:
-#         # Readable end of pipe produces text mode output if encoding specified
-#         with DownloadPipe(encoding=encoding, errors=errors) as readable:
-#             # No true checksum available, so don't hash
-#             yield readable
+def download_fileobject(s3_resource, bucket: Bucket, key: str, fileobj, extra_args: Optional[dict] = None):
+    try:
+        bucket.download_fileobj(Key=key, Fileobj=fileobj, ExtraArgs=extra_args)
+    except s3_resource.meta.client.exceptions.NoSuchKey:
+        raise AWSKeyNotFoundError(f"Key '{key}' does not exist in bucket '{bucket}'.")
+    except ClientError as e:
+        if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+            raise AWSKeyNotFoundError(f"Key '{key}' does not exist in bucket '{bucket}'.")
+        elif e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 400 and \
+                e.response.get('Error', {}).get('Message') == 'Bad Request' and \
+                e.operation_name == 'HeadObject':
+            # An error occurred (400) when calling the HeadObject operation: Bad Request
+            raise AWSBadEncryptionKeyError('Your AWS encryption key is most likely configured incorrectly '
+                                           '(HeadObject operation: Bad Request).')
+        raise
+
 
 # TODO: test below
 # def multipart_parallel_upload(
@@ -397,25 +384,37 @@ def download_stream(s3_resource, bucket: str, key: str, checksum_to_verify: Opti
 #         blobstore.upload_file_handle(bucket, key, BytesIO(data))
 
 
-def s3_key_exists(s3_resource, bucket: str, key: str, check: bool = False):
+def s3_key_exists(s3_resource, bucket: str, key: str, check: bool = False, extra_args: dict = None):
+    """Return True if the s3 obect exists, and False if not.  Will error if encryption args are incorrect."""
+    extra_args = extra_args or {}
     s3_client = s3_resource.meta.client
     try:
-        s3_client.head_object(Bucket=bucket, Key=key)
+        s3_client.head_object(Bucket=bucket, Key=key, **extra_args)
         return True
     except s3_client.exceptions.NoSuchKey:
         if check:
             raise AWSKeyNotFoundError(f"Key '{key}' does not exist in bucket '{bucket}'.")
+        return False
     except ClientError as e:
         if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
             if check:
                 raise AWSKeyNotFoundError(f"Key '{key}' does not exist in bucket '{bucket}'.")
-    return False
+            return False
+        elif e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 400 and \
+                e.response.get('Error', {}).get('Message') == 'Bad Request' and \
+                e.operation_name == 'HeadObject':
+            # An error occurred (400) when calling the HeadObject operation: Bad Request
+            raise AWSBadEncryptionKeyError('Your AWS encryption key is most likely configured incorrectly '
+                                           '(HeadObject operation: Bad Request).')
+        else:
+            raise
 
 
-def head_s3_object(s3_resource, bucket: str, key: str, check=False):
+def head_s3_object(s3_resource, bucket: str, key: str, check=False, extra_args: dict = None):
     s3_client = s3_resource.meta.client
+    extra_args = extra_args or {}
     try:
-        return s3_client.head_object(Bucket=bucket, Key=key)
+        return s3_client.head_object(Bucket=bucket, Key=key, **extra_args)
     except s3_client.exceptions.NoSuchKey:
         if check:
             raise NoSuchFileException(f"File '{key}' not found in AWS jobstore bucket: '{bucket}'")

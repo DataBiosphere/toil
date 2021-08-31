@@ -78,6 +78,7 @@ class AbstractJobStore(ABC):
         methods.
         """
         self.__config = None
+        self.sse_key_path = None
 
     def initialize(self, config: Config) -> None:
         """
@@ -89,6 +90,7 @@ class AbstractJobStore(ABC):
 
         :raises JobStoreExistsException: if the physical storage for this job store already exists
         """
+        self.configure_encryption(config.sseKey)
         assert config.workflowID is None
         config.workflowID = str(uuid4())
         logger.debug("The workflow ID is: '%s'" % config.workflowID)
@@ -100,24 +102,33 @@ class AbstractJobStore(ABC):
         Persists the value of the :attr:`AbstractJobStore.config` attribute to the
         job store, so that it can be retrieved later by other instances of this class.
         """
-        with open('/home/quokka/git/toil/note.log', 'a+') as f:
-            f.write(f'Writing config.pickle: {self.__config}\n')
-        with self.writeSharedFileStream('config.pickle', isProtected=False) as fileHandle:
+        with self.writeSharedFileStream('config.pickle') as fileHandle:
             pickle.dump(self.__config, fileHandle, pickle.HIGHEST_PROTOCOL)
 
-    def resume(self) -> None:
+    def resume(self, sse_key_path: Optional[str] = None) -> None:
         """
         Connect this instance to the physical storage it represents and load the Toil configuration
         into the :attr:`AbstractJobStore.config` attribute.
 
         :raises NoSuchJobStoreException: if the physical storage for this job store doesn't exist
         """
-        with open('/home/quokka/git/toil/note.log', 'a+') as f:
-            f.write('Reading config.pickle\n')
-        with self.readSharedFileStream('config.pickle') as fileHandle:
-            config = safeUnpickleFromStream(fileHandle)
-            assert config.workflowID is not None
-            self.__config = config
+        # this loads the sse key from the user so that we can fetch and decrypt files in the jobstore
+        self.configure_encryption(sse_key_path)
+        try:
+            with self.readSharedFileStream('config.pickle') as fileHandle:
+                config = safeUnpickleFromStream(fileHandle)
+                assert config.workflowID is not None
+                self.__config = config
+        except NoSuchFileException:
+            raise RuntimeError('Jobstore cannot be resumed.  No previous config was found.')
+
+    def configure_encryption(self, sse_key_path: Optional[str] = None):
+        """
+        Reading and writing to an encrypted jobstore will not work until this has been run.
+
+        For example, in the AWS jobstore, this forces encryption headers to be sent with every s3 call.
+        """
+        raise NotImplementedError
 
     @property
     def config(self) -> Config:
@@ -1025,7 +1036,10 @@ class AbstractJobStore(ABC):
 
     @abstractmethod
     @contextmanager
-    def updateFileStream(self, jobStoreFileID: str, encoding: Optional[str] = None, errors: Optional[str] = None) -> Iterator[IO[Any]]:
+    def updateFileStream(self,
+                         jobStoreFileID: str,
+                         encoding: Optional[str] = None,
+                         errors: Optional[str] = None) -> Iterator[IO[Any]]:
         """
         Replaces the existing version of a file in the job store. Similar to writeFile, but
         returns a context manager yielding a file handle which can be written to. The
@@ -1055,17 +1069,16 @@ class AbstractJobStore(ABC):
 
     @abstractmethod
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName: str, isProtected: Optional[bool] = None, encoding: Optional[str] = None,
-                                errors: Optional[str] = None) -> Iterator[IO[bytes]]:
+    def writeSharedFileStream(self,
+                              sharedFileName: str,
+                              encoding: Optional[str] = None,
+                              errors: Optional[str] = None) -> Iterator[IO[bytes]]:
         """
         Returns a context manager yielding a writable file handle to the global file referenced
         by the given name.  File will be created in an atomic manner.
 
         :param str sharedFileName: A file name matching AbstractJobStore.fileNameRegex, unique within
                this job store
-
-        :param bool isProtected: True if the file must be encrypted, None if it may be encrypted or
-               False if it must be stored in the clear.
 
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
                 as for encode(). Defaults to None which represents binary mode.
@@ -1083,7 +1096,10 @@ class AbstractJobStore(ABC):
 
     @abstractmethod
     @contextmanager
-    def readSharedFileStream(self, sharedFileName: str, encoding: Optional[str] = None, errors: Optional[str] = None) -> Iterator[BytesIO]:
+    def readSharedFileStream(self,
+                             sharedFileName: str,
+                             encoding: Optional[str] = None,
+                             errors: Optional[str] = None) -> Iterator[BytesIO]:
         """
         Returns a context manager yielding a readable file handle to the global file referenced
         by the given name.
