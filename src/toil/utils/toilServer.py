@@ -12,42 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """CLI entry for the Toil servers."""
-import argparse
 import logging
-
-from toil.server.app import start_server
-from toil.version import version
 
 logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="The Toil Workflow Execution Service Server.")
-    parser.add_argument("--debug", action="store_true", default=False)
-    parser.add_argument("--port", type=int, default=8080,
-                        help="The port that the Toil server listens on. (default: 8080).")
-    parser.add_argument("--swagger_ui", action="store_true", default=False,
-                        help="If True, the swagger UI will be enabled and hosted on the "
-                             "`{api_base_path}/ui` endpoint. (default: False)")
-    # CORS
-    parser.add_argument("--cors", action="store_true", default=False,
-                        help="Enable Cross Origin Resource Sharing (CORS). This should only be turned on "
-                             "if the server is intended to be used by a website or domain.")
-    parser.add_argument("--cors_origins", type=str, default="*",
-                        help="Ignored if --cors is False. This sets the allowed origins for CORS. "
-                             "For details about CORS and its security risks, see: "
-                             "https://w3id.org/ga4gh/product-approval-support/cors. (default: *)")
-    # production only
-    parser.add_argument("--workers", type=int, default=2,
-                        help="Ignored if --debug is True. The number of worker processes launched by the "
-                             "WSGI server. (recommended: 2-4 workers per core, default: 2).")
+    try:
+        from toil.server.app import (start_server,
+                                     parser_with_server_options)
+    except ImportError:
+        logger.warning("The toil[server] extra is not installed.")
+        return
 
-    # parser.add_argument("--work_dir", type=str, default=os.path.join(os.getcwd(), "workflows"),
-    #                     help="The directory where workflows should be stored. (default: './workflows')")
-    parser.add_argument("--opt", "-o", type=str, action="append",
-                        help="Example: '--opt runner=cwltoil --opt extra=--logLevel=CRITICAL' "
-                             "or '--opt extra=--workDir=/'.  Accepts multiple values.")
-    parser.add_argument("--version", action='version', version=version)
+    parser = parser_with_server_options()
     args = parser.parse_args()
 
     start_server(args)

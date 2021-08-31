@@ -60,20 +60,18 @@ As defined by the GA4GH WES API specification, the following endpoints with base
 by Toil:
 
 +--------------------------------+--------------------------------------------------------+
-| GET /service-info              | Get information about the Workflow Execution Service   |
+| GET /service-info              | Get information about the Workflow Execution Service.  |
 +--------------------------------+--------------------------------------------------------+
 | GET /runs                      | List the workflow runs.                                |
 +--------------------------------+--------------------------------------------------------+
 | POST /runs                     | Run a workflow. This endpoint creates a new workflow   |
-|                                | run and returns a `RunId` to monitor its progress.     |
+|                                | run and returns a `run_id` to monitor its progress.    |
 +--------------------------------+--------------------------------------------------------+
 | GET /runs/{run_id}             | Get detailed info about a workflow run.                |
 +--------------------------------+--------------------------------------------------------+
 | POST /runs/{run_id}/cancel     | Cancel a running workflow.                             |
 +--------------------------------+--------------------------------------------------------+
-| GET /runs/{run_id}/status      | Get quick status info about a workflow run, returning  |
-|                                | a simple result with the overall state of the workflow |
-|                                | run.                                                   |
+| GET /runs/{run_id}/status      | Get the status (overall state) of a workflow run.      |
 +--------------------------------+--------------------------------------------------------+
 
 .. _WESSubmitWorkflow:
@@ -101,12 +99,12 @@ If the workflow is submitted successfully, a JSON object containing a ``run_id``
 unique identifier of your requested workflow, which can be used to monitor or cancel the run.
 
 
-There are a few required parameters that has to be set for the body of the request, which are the following:
+There are a few required parameters that have to be set for all workflow submissions, which are the following:
 
     * workflow_url
-            The URL of the workflow to run. This can be a relative path that points to a file from ``workflow_attachment``.
+            The URL of the workflow to run. This can refer to a file from ``workflow_attachment``.
     * workflow_type
-            The type of workflow language. Toil currently supports only one of the following: ``"CWL"``, ``"WDL"``, or
+            The type of workflow language. Toil currently supports one of the following: ``"CWL"``, ``"WDL"``, or
             ``"py"``. To run a Toil script, set the ``workflow_type`` to ``"py"``.
     * workflow_type_version
             The version of the workflow language. Supported versions can be found by accessing the ``GET /service-info``
@@ -114,7 +112,7 @@ There are a few required parameters that has to be set for the body of the reque
     * workflow_params
             A JSON object that specifies the inputs of the workflow.
 
-Additionally, there are the following optional parameters available:
+Additionally, the following optional parameters are also available:
 
     * workflow_attachment
             A list of files that are needed by the workflow to run.
@@ -123,17 +121,15 @@ Additionally, there are the following optional parameters available:
     * tags
             (not supported by Toil, yet)
 
-For more details about these parameters, refer to the `RunWorkflow section`_ in the WES API spec.
+For more details about these parameters, refer to the `Run Workflow section`_ in the WES API spec.
 
-.. _`RunWorkflow section`: https://ga4gh.github.io/workflow-execution-service-schemas/docs/#operation/RunWorkflow
+.. _`Run Workflow section`: https://ga4gh.github.io/workflow-execution-service-schemas/docs/#operation/RunWorkflow
 
 
-Looking at the body of the request, note that the ``workflow_url`` is a relative URL that refers to the ``"example.cwl"``
-file uploaded from the relative path ``"./toil_test_files/example.cwl"`` as ``workflow_attachment``.
-
-To run a workflow that requires multiple files, you can set the ``workflow_attachment`` parameter multiple times with
-different files. You could also specify the file name (and sub directory) by setting the "filename" in the
-Content-Disposition header.
+Looking at the body of the request, note that the ``workflow_url`` is a relative URL that refers to the
+``"example.cwl"`` file uploaded from the local path ``"./toil_test_files/example.cwl"``. To specify the file name (or
+subdirectory) of the remote destination file, set the ``"filename"`` field in the ``Content-Disposition`` header. You
+could also upload more than one file by set the ``workflow_attachment`` parameter multiple times with different files.
 
 This can be shown by the following example::
 
@@ -151,8 +147,8 @@ The execution directory would have the following structure from the above reques
     execution/
     ├── example.cwl
     └── inputs/
-      ├── test.fasta
-      └── test.fastq
+        ├── test.fasta
+        └── test.fastq
 
 
 .. _WESMonitoring:
@@ -163,8 +159,8 @@ Monitoring a Workflow
 With the ``run_id`` returned when submitting the workflow, we can check the status or get the full logs of the workflow
 run.
 
-Checking the status info
-^^^^^^^^^^^^^^^^^^^^^^^^
+Checking the state
+^^^^^^^^^^^^^^^^^^
 
 The ``GET /runs/{run_id}/status`` endpoint can be used to get a simple result with the overall state of your run::
 
@@ -175,15 +171,15 @@ The ``GET /runs/{run_id}/status`` endpoint can be used to get a simple result wi
     }
 
 
-The possible states are: ``"QUEUED"``, ``"INITIALIZING"``, ``"RUNNING"``, ``"COMPLETE"``, ``"EXECUTOR_ERROR"``,
+The possible states here are: ``"QUEUED"``, ``"INITIALIZING"``, ``"RUNNING"``, ``"COMPLETE"``, ``"EXECUTOR_ERROR"``,
 ``"SYSTEM_ERROR"``, ``"CANCELING"``, and ``"CANCELED"``.
 
 Getting the full logs
 ^^^^^^^^^^^^^^^^^^^^^
 
-To the the detailed information about a workflow run, use the ``GET /runs/{run_id}`` endpoint::
+To get the detailed information about a workflow run, use the ``GET /runs/{run_id}`` endpoint::
 
-    % curl http://localhost:8080/ga4gh/wes/v1/runs/4deb8beb24894e9eb7c74b0f010305d1
+    $ curl http://localhost:8080/ga4gh/wes/v1/runs/4deb8beb24894e9eb7c74b0f010305d1
     {
       "run_id": "4deb8beb24894e9eb7c74b0f010305d1",
       "request": {
