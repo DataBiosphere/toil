@@ -358,6 +358,7 @@ class Requirer:
     def preemptable(self, val):
          self._requirementOverrides['preemptable'] = self._parseResource('preemptable', val)
 
+
 class JobDescription(Requirer):
     """
     Stores all the information that the Toil Leader ever needs to know about a

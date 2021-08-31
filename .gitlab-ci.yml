@@ -37,10 +37,9 @@ after_script:
 
 stages:
   - linting_and_dependencies
-  - aws_jobstore_temp
-#  - basic_tests
-#  - main_tests
-#  - integration
+  - basic_tests
+  - main_tests
+  - integration
 
 
 lint:
@@ -48,6 +47,7 @@ lint:
   script:
     - pwd
     - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && make prepare && make develop extras=[all] packages=htcondor
+    - make mypy
     - make docs
 
 
@@ -81,7 +81,7 @@ quick_test_offline:
 
 # Python3.6
 py36_main:
-  stage: aws_jobstore_temp
+  stage: basic_tests
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages=htcondor
@@ -147,7 +147,7 @@ cwl_v1.0_kubernetes:
     - mkdir -p ${TOIL_WORKDIR}
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance_with_caching
-    
+
 cwl_v1.1_kubernetes:
   stage: main_tests
   only: []
@@ -162,7 +162,7 @@ cwl_v1.1_kubernetes:
     - mkdir -p ${TOIL_WORKDIR}
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance_with_caching
-    
+
 cwl_v1.2_kubernetes:
   stage: main_tests
   script:
@@ -187,12 +187,11 @@ wdl:
     - make test tests=src/toil/test/wdl/toilwdlTest.py  # needs java (default-jre) to run "GATK.jar"
     - make test tests=src/toil/test/wdl/builtinTest.py
 
-jobstore_and_provisioning:
+provisioning:
   stage: main_tests
   script:
     - pwd
     - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages=htcondor
-    - make test tests=src/toil/test/jobStores/jobStoreTest.py
     - make test tests=src/toil/test/sort/sortTest.py
     - make test tests=src/toil/test/provisioners/aws/awsProvisionerTest.py
     - make test tests=src/toil/test/provisioners/clusterScalerTest.py
@@ -207,7 +206,7 @@ main:
     - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages=htcondor
     - make test tests=src/toil/test/src
     - make test tests=src/toil/test/utils
-#    - make test tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testDocker
+    - make test tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testDocker
 
 appliance_build:
   stage: basic_tests
@@ -230,7 +229,6 @@ integration:
     - python setup_gitlab_ssh.py
     - chmod 400 /root/.ssh/id_rsa
     - make test tests=src/toil/test/jobStores/jobStoreTest.py
-    - make test tests=src/toil/test/jobStores/test_aws_jobstore.py
 
 provisioner_integration:
   stage: integration
