@@ -320,9 +320,17 @@ class AbstractJobStore(ABC):
         # destination (which is the current job store in this case). To implement any
         # optimizations that circumvent this, the _importFile method should be overridden by
         # subclasses of AbstractJobStore.
-        if urlparse(srcUrl).scheme == 'file':
-            srcUrl = f'file://{os.path.abspath(srcUrl[len("file://"):])}'
-        if urlparse(srcUrl).scheme == '':
+
+        # account for the schema-less case, which should be coerced to a local abosulte path
+        if urlparse.urlparse(srcUrl).scheme == '':
+            if not os.path.exists(os.path.abspath(srcUrl)):
+                raise FileNotFoundError(
+                    f'Import failed for: "{srcUrl}"\n'
+                    f'No schema (http://, s3://, file://, etc.) for path was included.\n'
+                    f'Attempting to import as an absolute local file path: "{os.path.abspath(srcUrl)}"\n'
+                    f'Relative to directory: "{os.getcwd()}".\n'
+                    f'Please try to include the schema, and adjust the path as necessary, '
+                    f'using absolute paths where possible.')
             srcUrl = f'file://{os.path.abspath(srcUrl)}'
         parseResult = urlparse.urlparse(srcUrl)
         otherCls = self._findJobStoreForUrl(parseResult)
