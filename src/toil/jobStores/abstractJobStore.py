@@ -494,7 +494,7 @@ class AbstractJobStore(ABC):
         def updateJobDescription(jobDescription: JobDescription) -> None:
             if jobCache is not None:
                 jobCache[jobDescription.jobStoreID] = jobDescription
-                self.update(jobDescription)
+                self.update_job(jobDescription)
 
         def getJobDescriptions() -> Union[ValuesView[JobDescription], Iterator[JobDescription]]:
             if jobCache is not None:
@@ -808,7 +808,7 @@ class AbstractJobStore(ABC):
     def delete_job(self, jobStoreID: str) -> None:
         """
         Removes the JobDescription from the store atomically. You may not then
-        subsequently call load(), write(), update(), etc. with the same
+        subsequently call load_job(), write_job(), update_job(), etc. with the same
         jobStoreID or any JobDescription bearing it.
 
         This operation is idempotent, i.e. deleting a job twice or deleting a non-existent job

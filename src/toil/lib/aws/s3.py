@@ -15,6 +15,7 @@ import logging
 import hashlib
 import itertools
 import urllib.parse
+import math
 import os
 from io import BytesIO
 from typing import Optional, Tuple, Union
@@ -27,13 +28,32 @@ from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
 
 from toil.lib.aws.credentials import client, resource
-from toil.lib.conversions import modify_url
+from toil.lib.conversions import modify_url, MB, MIB, TB
 from toil.lib.pipes import WritablePipe, ReadablePipe, HashingPipe
 from toil.lib.retry import retry, ErrorCondition
-# from toil.jobStores.exceptions import NoSuchFileException
 
 Bucket = resource('s3').Bucket  # only declared for mypy typing
 logger = logging.getLogger(__name__)
+
+# AWS Defined Limits
+# https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html
+AWS_MAX_MULTIPART_COUNT = 10000
+AWS_MAX_CHUNK_SIZE = 5 * TB
+AWS_MIN_CHUNK_SIZE = 5 * MB
+# Note: There is no minimum size limit on the last part of a multipart upload.
+
+# The chunk size we chose arbitrarily, but it must be consistent for etags
+DEFAULT_AWS_CHUNK_SIZE = 128 * MIB
+assert AWS_MAX_CHUNK_SIZE > DEFAULT_AWS_CHUNK_SIZE > AWS_MIN_CHUNK_SIZE
+
+
+def get_s3_multipart_chunk_size(file_size: int) -> int:
+    if file_size >= AWS_MAX_CHUNK_SIZE * AWS_MAX_MULTIPART_COUNT:
+        return AWS_MAX_CHUNK_SIZE
+    elif file_size <= DEFAULT_AWS_CHUNK_SIZE * AWS_MAX_MULTIPART_COUNT:
+        return DEFAULT_AWS_CHUNK_SIZE
+    else:
+        return math.ceil(file_size / AWS_MAX_MULTIPART_COUNT)
 
 
 class NoSuchFileException(Exception):
@@ -153,10 +173,10 @@ class MultiPartPipe(WritablePipe):
         hasher.update(buf)
 
         # low-level clients are thread safe
-        upload = self.s3_client.create_multipart_upload(Bucket=self.bucket_name,
-                                                        Key=self.file_id,
-                                                        **self.encryption_args)
-        upload_id = upload['UploadId']
+        response = self.s3_client.create_multipart_upload(Bucket=self.bucket_name,
+                                                          Key=self.file_id,
+                                                          **self.encryption_args)
+        upload_id = response['UploadId']
         parts = []
         try:
             for part_num in itertools.count():
@@ -219,45 +239,44 @@ def upload_to_s3(readable,
                  s3_resource,
                  bucket: str,
                  key: str,
-                 headerArgs: Optional[dict] = None,
-                 partSize: int = 50 << 20):
+                 extra_args: Optional[dict] = None):
     """
     Upload a readable object to s3, using multipart uploading if applicable.
 
-    :param readable: a readable stream or a file path to upload to s3
+    :param readable: a readable stream or a local file path to upload to s3
     :param S3.Resource resource: boto3 resource
     :param str bucket: name of the bucket to upload to
     :param str key: the name of the file to upload to
-    :param dict headerArgs: http headers to use when uploading - generally used for encryption purposes
+    :param dict extra_args: http headers to use when uploading - generally used for encryption purposes
     :param int partSize: max size of each part in the multipart upload, in bytes
     :return: version of the newly uploaded file
     """
-    if headerArgs is None:
-        headerArgs = {}
+    if extra_args is None:
+        extra_args = {}
 
     s3_client = s3_resource.meta.client
     config = TransferConfig(
-        multipart_threshold=partSize,
-        multipart_chunksize=partSize,
+        multipart_threshold=DEFAULT_AWS_CHUNK_SIZE,
+        multipart_chunksize=DEFAULT_AWS_CHUNK_SIZE,
         use_threads=True
     )
     logger.debug("Uploading %s", key)
+    # these methods use multipart if necessary
     if isinstance(readable, str):
         s3_client.upload_file(Filename=readable,
                               Bucket=bucket,
                               Key=key,
-                              ExtraArgs=headerArgs,
+                              ExtraArgs=extra_args,
                               Config=config)
     else:
         s3_client.upload_fileobj(Fileobj=readable,
                                  Bucket=bucket,
                                  Key=key,
-                                 ExtraArgs=headerArgs,
+                                 ExtraArgs=extra_args,
                                  Config=config)
 
-        # Wait until the object exists before calling head_object
-        object_summary = s3_resource.ObjectSummary(bucket, key)
-        object_summary.wait_until_exists(**headerArgs)
+    object_summary = s3_resource.ObjectSummary(bucket, key)
+    object_summary.wait_until_exists(**extra_args)
 
 
 @contextmanager
@@ -313,75 +332,6 @@ def download_fileobject(s3_resource, bucket: Bucket, key: str, fileobj, extra_ar
             raise AWSBadEncryptionKeyError('Your AWS encryption key is most likely configured incorrectly '
                                            '(HeadObject operation: Bad Request).')
         raise
-
-
-# TODO: test below
-# def multipart_parallel_upload(
-#         s3_resource: typing.Any,
-#         bucket: str,
-#         key: str,
-#         src_file_handle: typing.BinaryIO,
-#         *,
-#         part_size: int,
-#         content_type: str=None,
-#         metadata: dict=None,
-#         parallelization_factor=8) -> typing.Sequence[dict]:
-#     """
-#     Upload a file object to s3 in parallel.
-#     """
-#     s3_client = s3_resource.meta.client
-#     kwargs: dict = dict()
-#     if content_type is not None:
-#         kwargs['ContentType'] = content_type
-#     if metadata is not None:
-#         kwargs['Metadata'] = metadata
-#     upload_id = s3_client.create_multipart_upload(Bucket=bucket, Key=key, **kwargs)['UploadId']
-#
-#     def _copy_part(data, part_number):
-#         resp = s3_client.upload_part(
-#             Body=data,
-#             Bucket=bucket,
-#             Key=key,
-#             PartNumber=part_number,
-#             UploadId=upload_id,
-#         )
-#         return resp['ETag']
-#
-#     def _chunks():
-#         while True:
-#             data = src_file_handle.read(part_size)
-#             if not data:
-#                 break
-#             yield data
-#
-#     with ThreadPoolExecutor(max_workers=parallelization_factor) as e:
-#         futures = {e.submit(_copy_part, data, part_number): part_number
-#                    for part_number, data in enumerate(_chunks(), start=1)}
-#         parts = [dict(ETag=f.result(), PartNumber=futures[f]) for f in as_completed(futures)]
-#         parts.sort(key=lambda p: p['PartNumber'])
-#     s3_client.complete_multipart_upload(
-#         Bucket=bucket,
-#         Key=key,
-#         MultipartUpload=dict(Parts=parts),
-#         UploadId=upload_id,
-#     )
-#     return parts
-#
-#
-# def upload_file_to_s3(s3_resource, bucket: str, key: str, data: bytes):
-#     part_size = 16 * 1024 * 1024
-#     if len(data) > part_size:
-#         with BytesIO(data) as fh:
-#             multipart_parallel_upload(
-#                 s3_resource,
-#                 bucket,
-#                 key,
-#                 fh,
-#                 part_size=part_size,
-#                 parallelization_factor=20
-#             )
-#     else:
-#         blobstore.upload_file_handle(bucket, key, BytesIO(data))
 
 
 def s3_key_exists(s3_resource, bucket: str, key: str, check: bool = False, extra_args: dict = None):
@@ -456,3 +406,34 @@ def create_public_url(s3_resource, bucket: str, key: str):
     # even if the resource is public, so we need to remove it.
     # TODO: verify that this is still the case
     return modify_url(url, remove=['x-amz-security-token', 'AWSAccessKeyId', 'Signature'])
+
+# def update_aws_content_type(s3_client, bucket, key, content_type):
+#     blob = resources.s3.Bucket(bucket).Object(key)
+#     size = blob.content_length
+#     part_size = get_s3_multipart_chunk_size(size)
+#     if size <= part_size:
+#         s3_client.copy_object(Bucket=bucket,
+#                               Key=key,
+#                               CopySource=dict(Bucket=bucket, Key=key),
+#                               MetadataDirective="REPLACE")
+#     else:
+#         resp = s3_client.create_multipart_upload(Bucket=bucket,
+#                                                  Key=key)
+#         upload_id = resp['UploadId']
+#         multipart_upload = dict(Parts=list())
+#         for i in range(math.ceil(size / part_size)):
+#             start_range = i * part_size
+#             end_range = (i + 1) * part_size - 1
+#             if end_range >= size:
+#                 end_range = size - 1
+#             resp = s3_client.upload_part_copy(CopySource=dict(Bucket=bucket, Key=key),
+#                                               Bucket=bucket,
+#                                               Key=key,
+#                                               CopySourceRange=f"bytes={start_range}-{end_range}",
+#                                               PartNumber=i + 1,
+#                                               UploadId=upload_id)
+#             multipart_upload['Parts'].append(dict(ETag=resp['CopyPartResult']['ETag'], PartNumber=i + 1))
+#         s3_client.complete_multipart_upload(Bucket=bucket,
+#                                             Key=key,
+#                                             MultipartUpload=multipart_upload,
+#                                             UploadId=upload_id)

@@ -580,12 +580,11 @@ class AWSJobStore(AbstractJobStore):
                 # AWS copy and copy_object functions should be used here, but don't work with sse-c encryption
                 # see: https://github.com/aws/aws-cli/issues/6012
                 with self.readFileStream(file_id) as readable:
-                    logger.critical(f'Exporting s3: {dst_bucket_name} {dst_key_name}')
-                    self.write_to_bucket(bucket=dst_bucket_name,
-                                         identifier=dst_key_name,
-                                         prefix='',
-                                         data=readable.read(),
-                                         encrypted=False)
+                    upload_to_s3(readable,
+                                 self.s3_resource,
+                                 dst_bucket_name,
+                                 dst_key_name,
+                                 extra_args=None)
         else:
             super(AWSJobStore, self)._defaultExportFile(otherCls, file_id, url)
 
@@ -603,8 +602,7 @@ class AWSJobStore(AbstractJobStore):
         upload_to_s3(readable=readable,
                      s3_resource=self.s3_resource,
                      bucket=dstObj.bucket_name,
-                     key=dstObj.key,
-                     partSize=DEFAULT_AWS_PART_SIZE)
+                     key=dstObj.key)
 
     def _getObjectForUrl(self, url: str, existing: Optional[bool] = None):
         """
