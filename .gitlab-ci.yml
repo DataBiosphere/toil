@@ -47,7 +47,7 @@ lint:
   script:
     - pwd
     - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && make prepare && make develop extras=[all] packages=htcondor
-    - make mypy
+    # - make mypy
     - make docs
 
 
