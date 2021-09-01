@@ -15,6 +15,7 @@ import logging
 import pickle
 import re
 import shutil
+import os
 import urllib.parse as urlparse
 
 from abc import ABC, ABCMeta, abstractmethod
@@ -319,6 +320,10 @@ class AbstractJobStore(ABC):
         # destination (which is the current job store in this case). To implement any
         # optimizations that circumvent this, the _importFile method should be overridden by
         # subclasses of AbstractJobStore.
+        if urlparse(srcUrl).scheme == 'file':
+            srcUrl = f'file://{os.path.abspath(srcUrl[len("file://"):])}'
+        if urlparse(srcUrl).scheme == '':
+            srcUrl = f'file://{os.path.abspath(srcUrl)}'
         parseResult = urlparse.urlparse(srcUrl)
         otherCls = self._findJobStoreForUrl(parseResult)
         return self._importFile(otherCls, parseResult, sharedFileName=sharedFileName, hardlink=hardlink, symlink=symlink)
