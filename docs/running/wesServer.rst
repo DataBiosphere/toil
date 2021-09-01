@@ -48,11 +48,10 @@ Below is a detailed summary of all available options:
 --cors_origins ORIGIN
             Ignored if ``--cors`` is False. This sets the allowed origins for CORS. For details about CORS and its security risks, see the `GA4GH docs on CORS`_. (default: "*").
 --workers WORKERS
-            Ignored if debug mode is on. The number of worker processes launched by the production WSGI server. `2-4 workers per core`_ is recommended. (default: 2).
+            Ignored if debug mode is on. The number of worker processes launched by the production WSGI server. (default: 2).
 --opt ENGINE_OPTION
             *TBU*
 
-.. _2-4 workers per core: https://docs.gunicorn.org/en/stable/design.html#how-many-workers
 .. _GA4GH docs on CORS: https://w3id.org/ga4gh/product-approval-support/cors
 
 

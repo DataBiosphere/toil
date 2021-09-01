@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import argparse
 import json
 import logging
 import os
@@ -21,46 +20,17 @@ import subprocess
 from typing import Dict, Any, List, Union
 
 from toil.server.api.utils import get_iso_time, get_file_class, link_file
-from toil.statsAndLogging import configure_root_logger, set_log_level
 
-"""
-Toil WES workflow runner.
-
-Helper script to run a requested WES workflow through subprocess. Responsible
-for parsing the user request into a shell command, executing that command, and
-collecting the outputs of the resulting workflow run.
-
-This script expects the given `--work_dir` directory to contain an `execution`
-directory where workflow attachments are staged, and a `request.json` JSON file
-containing the body of the request:
-
-.
-├── execution/
-│   └── ...
-└── request.json
-
-During execution, this script may write the following files to the working
-directory:
-
-.
-├── cmd
-├── end_time
-├── exit_code
-├── job_store
-├── outputs.json
-├── pid
-├── start_time
-├── state
-├── stderr
-└── stdout
-"""
 
 logger = logging.getLogger(__name__)
 
 
-class WorkflowRunner:
+class ToilWorkflowRunner:
     """
     A class to represent a workflow runner to run the requested workflow.
+
+    Responsible for parsing the user request into a shell command, executing
+    that command, and collecting the outputs of the resulting workflow run.
     """
 
     def __init__(self, work_dir: str, request: Dict[str, Any], engine_options: List[str]):
@@ -151,6 +121,8 @@ class WorkflowRunner:
         to be executed. Return that list of shell commands that should be
         executed in order to complete this workflow run.
         """
+        with open(os.path.join(self.work_dir, "request.json"), "w") as f:
+            json.dump(self.request, f)
 
         # write main workflow file and its secondary input file
         workflow_url = self.write_workflow(src_url=self.request["workflow_url"])
@@ -272,44 +244,3 @@ class WorkflowRunner:
 
         self.write("outputs.json", json.dumps(output_obj))
         return output_obj
-
-
-def main() -> None:
-    configure_root_logger()
-    set_log_level("INFO")
-    logger.info("Preparing requested workflow to run.")
-
-    parser = argparse.ArgumentParser("Execution script for the workflow submitted through the Toil WES servers.")
-    parser.add_argument("--work_dir", type=str, default=os.getcwd(),
-                        help=f"The working directory of the workflow run. (default: {os.getcwd()}).")
-    parser.add_argument("--engine_options", default=[], action="append",
-                        help="A list of default engine parameters that should be passed into the workflow "
-                             "execution engine if they are not overwritten by the user request.")
-    args = parser.parse_args()
-
-    work_dir = args.work_dir
-    # engine_options = args.engine_options
-
-    if not os.path.isfile(os.path.join(work_dir, "request.json")):
-        logger.error(f"Cannot process the requested workflow: 'request.json' is not found in '{work_dir}'.")
-        exit(1)
-
-    with open(os.path.join(work_dir, "request.json"), "r") as f:
-        request = json.load(f)
-
-    runner = WorkflowRunner(work_dir, request=request, engine_options=args.engine_options)
-
-    try:
-        state = runner.run()
-        logger.info(f"Workflow run completed with state: '{state}'.")
-
-        if state == "COMPLETE":
-            logger.info(f"Fetching output files.")
-            runner.fetch_output_files()
-    except:
-        runner.set_state("EXECUTOR_ERROR")
-        raise
-
-
-if __name__ == '__main__':
-    main()

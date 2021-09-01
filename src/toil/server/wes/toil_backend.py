@@ -13,16 +13,16 @@
 # limitations under the License.
 import json
 import logging
+import multiprocessing
 import os
 import shutil
 import signal
-import subprocess
 import uuid
 from typing import Optional, List, Dict, Any, overload, Generator, Tuple
 
-from toil import resolveEntryPoint
 from toil.server.api.backend import WESBackend
 from toil.server.api.utils import handle_errors, WorkflowNotFoundError
+from toil.server.wes.runner import ToilWorkflowRunner
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,8 @@ logging.basicConfig(level=logging.INFO)
 class ToilWorkflow:
     def __init__(self, run_id: str, work_dir: str):
         """
-        Class to represent a Toil workflow.
+        Class to represent a Toil workflow. This class is responsible for
+        launching workflow runs and retrieving data generated from them.
 
         :param run_id: A uuid string.  Used to name the folder that contains
                        all of the files containing this particular workflow
@@ -80,16 +81,20 @@ class ToilWorkflow:
         """ Clean directory and files related to the run."""
         shutil.rmtree(os.path.join(self.work_dir))
 
-    def get_run_command(self, request: Dict[str, Any], options: List[str]) -> List[str]:
+    @staticmethod
+    def run(work_dir: str, request: Dict[str, Any], options: List[str]) -> None:
         """
-        Return a list of commands, and the working directory for the run.
+        Run the requested workflow. This is a blocking call and is intended to
+        be run on a separate process.
         """
-        with open(os.path.join(self.work_dir, "request.json"), "w") as f:
-            json.dump(request, f)
-
-        # TODO: default engine options
-
-        return [resolveEntryPoint("_toil_wes_runner"), "--work_dir", self.work_dir]
+        runner = ToilWorkflowRunner(work_dir, request, engine_options=options)
+        try:
+            state = runner.run()
+            if state == "COMPLETE":
+                runner.fetch_output_files()
+        except:
+            runner.set_state("EXECUTOR_ERROR")
+            raise
 
     def get_output_files(self) -> Any:
         """
@@ -104,14 +109,16 @@ class ToilBackend(WESBackend):
     class is responsible for validating and executing submitted workflows.
 
     Local implementation -
-    Interact with the "workflows/" directory to store and retrieve data
-    associated with all the workflow runs in the filesystem.
+    Spawn workflow run processes with multiprocessing.Process and interact with
+    the "workflows/" directory in the filesystem to store and retrieve data
+    associated with the runs.
     """
 
     def __init__(self, work_dir: str, opts: List[str]) -> None:
         super(ToilBackend, self).__init__(opts)
         self.work_dir = work_dir
         self.supported_versions: Dict[str, List[str]] = {}
+        self.processes: Dict[str, "multiprocessing.Process"] = {}
 
     def register_wf_type(self, name: str, supported_versions: List[str]) -> None:
         """
@@ -134,6 +141,12 @@ class ToilBackend(WESBackend):
                 raise WorkflowNotFoundError
             if should_exists is False and run.exists():
                 raise RuntimeError(f"Workflow {run_id} exists when it shouldn't.")
+
+        # Since we can't schedule tasks with Flask, we do the cleanup here..
+        process = self.processes.get(run_id)
+        if process and not process.is_alive():
+            process.close()
+            self.processes.pop(run_id)
 
         return run
 
@@ -224,15 +237,18 @@ class ToilBackend(WESBackend):
                                "instead.".format(wf_type, str(supported_versions), version))
 
         job.set_state("QUEUED")
-        command = job.get_run_command(request=request, options=self.opts.get_options("extra"))
 
-        with open(os.path.join(job.work_dir, "runner.log"), "w") as log:
-            process = subprocess.Popen(command, stdout=log, stderr=log, cwd=job.work_dir)
+        # TODO: Flask recommends using a task queue (like Celery or rq) to run tasks like these, since this way
+        #  will likely leave behind zombie child processes until we do process.close().
+        # https://flask.palletsprojects.com/en/2.0.x/patterns/celery/
+        # https://python-rq.org/
+        p = multiprocessing.Process(target=job.run, args=(job.work_dir, request, self.opts.get_options("extra")))
+        p.start()
 
         with open(os.path.join(job.work_dir, "runner.pid"), "w") as f:
-            f.write(str(process.pid))
+            f.write(str(p.pid))
 
-        logger.info(f"Spawned child process ({process.pid}) to run the requested workflow.")
+        self.processes[run_id] = p
 
         return {
             "run_id": run_id
