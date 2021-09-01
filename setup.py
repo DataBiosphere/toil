@@ -157,7 +157,7 @@ def run_setup():
                                # functionality like the @experimental and @integrative decorators:
                                exclude=['*.test.*']),
         package_data={
-            '': ['*.yml', 'cloud-config'],
+            '': ['*.yml', '*.yaml', 'cloud-config'],
         },
         # Unfortunately, the names of the entry points are hard-coded elsewhere in the code base so
         # you can't just change them here. Luckily, most of them are pretty unique strings, and thus

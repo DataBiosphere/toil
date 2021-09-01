@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import argparse
+import logging
 import os
 
 import connexion  # type: ignore
@@ -20,11 +21,15 @@ from toil.server.wes.toil_backend import ToilBackend
 from toil.server.wsgi_app import run_app
 from toil.version import version
 
+logger = logging.getLogger(__name__)
+
 
 def parser_with_server_options() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="The Toil Workflow Execution Service Server.")
 
     parser.add_argument("--debug", action="store_true", default=False)
+    parser.add_argument("--host", type=str, default="0.0.0.0",
+                        help="The host interface that the Toil server binds on. (default: '0.0.0.0').")
     parser.add_argument("--port", type=int, default=8080,
                         help="The port that the Toil server listens on. (default: 8080).")
     parser.add_argument("--swagger_ui", action="store_true", default=False,
@@ -37,7 +42,7 @@ def parser_with_server_options() -> argparse.ArgumentParser:
     parser.add_argument("--cors_origins", type=str, default="*",
                         help="Ignored if --cors is False. This sets the allowed origins for CORS. "
                              "For details about CORS and its security risks, see: "
-                             "https://w3id.org/ga4gh/product-approval-support/cors. (default: *)")
+                             "https://w3id.org/ga4gh/product-approval-support/cors. (default: '*')")
     # production only
     parser.add_argument("--workers", type=int, default=2,
                         help="Ignored if --debug is True. The number of worker processes launched by the "
@@ -84,11 +89,14 @@ def start_server(args: argparse.Namespace) -> None:
     """ Start a Toil server."""
     flask_app = create_app(args)
 
+    host = args.host
+    port = args.port
+
     if args.debug:
-        flask_app.run(port=args.port)
+        flask_app.run(host=host, port=port)
     else:
         # start a production WSGI server
         run_app(flask_app.app, options={
-            "bind": f"127.0.0.1:{args.port}",
-            "workers": 2,
+            "bind": f"{host}:{port}",
+            "workers": args.workers,
         })

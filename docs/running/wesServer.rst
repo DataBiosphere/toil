@@ -37,6 +37,8 @@ Below is a detailed summary of all available options:
 
 --debug
             Enable debug mode.
+--host HOST
+            The host interface that the Toil server binds on. (default: "0.0.0.0").
 --port PORT
             The port that the Toil server listens on. (default: 8080).
 --swagger_ui
