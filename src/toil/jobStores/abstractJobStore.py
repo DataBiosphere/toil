@@ -321,7 +321,7 @@ class AbstractJobStore(ABC):
         # optimizations that circumvent this, the _importFile method should be overridden by
         # subclasses of AbstractJobStore.
 
-        # account for the schema-less case, which should be coerced to a local abosulte path
+        # account for the schema-less case, which should be coerced to a local absolute path
         if urlparse.urlparse(srcUrl).scheme == '':
             if not os.path.exists(os.path.abspath(srcUrl)):
                 raise FileNotFoundError(
