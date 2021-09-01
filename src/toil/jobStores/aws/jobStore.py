@@ -444,7 +444,7 @@ class AWSJobStore(AbstractJobStore):
         """Do we need both getFileSize and getSize???"""
         try:
             return self._getObjectForUrl(url, existing=True).content_length
-        except AWSKeyNotFoundError:
+        except (AWSKeyNotFoundError, NoSuchFileException):
             return 0
 
     def readFile(self, file_id, local_path, symlink=False):
@@ -564,7 +564,12 @@ class AWSJobStore(AbstractJobStore):
                 self.write_to_bucket(identifier=file_id, prefix=self.metadata_key_prefix, data=metadata)
                 return FileID(file_id, content_length)
         else:
-            return super(AWSJobStore, self)._importFile(otherCls, url, sharedFileName=sharedFileName)
+            file_id = super(AWSJobStore, self)._importFile(otherCls, url, sharedFileName=sharedFileName)
+            if file_id:  # this will be None for shared_files and FileID for everything else
+                # rely on the other jobstore to determine exec bit
+                metadata = {'etag': None, 'executable': file_id.executable}
+                self.write_to_bucket(identifier=file_id, prefix=self.metadata_key_prefix, data=metadata)
+            return file_id
 
     def _exportFile(self, otherCls, file_id: str, url) -> None:
         """Export a file_id in the jobstore to the url."""

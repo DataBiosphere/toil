@@ -34,6 +34,8 @@ class FileID(str):
         super(FileID, self).__init__()
         self.size = size
         self.executable = executable
+        self.md5sum = None
+        self.etag = None
 
     def pack(self) -> str:
         """

@@ -2152,7 +2152,7 @@ class Job:
         # Set up to save last job first, so promises flow the right way
         ordering.reverse()
 
-        logger.info("Saving graph of %d jobs, %d new", len(allJobs), len(fakeToReal))
+        logger.debug("Saving graph of %d jobs, %d new", len(allJobs), len(fakeToReal))
 
         # Make sure we're the root
         assert ordering[-1] == self

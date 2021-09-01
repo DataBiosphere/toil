@@ -333,10 +333,10 @@ class hidden:
 
         def testReadWriteFileStreamTextMode(self):
             """
-            Checks if text mode is compatibile with file streams.
+            Checks if text mode is compatible with file streams.
             """
             with Toil(self.options) as toil:
-                A = Job.wrapJobFn(_testReadWriteFileStreamTextMode)
+                A = Job.wrapJobFn(self._testReadWriteFileStreamTextMode)
                 toil.start(A)
 
         @staticmethod
@@ -1006,10 +1006,9 @@ class hidden:
                 else:
                     if len(writtenFiles) == 0:
                         continue
-                    else:
-                        fsID, rdelFileSize = random.choice(list(writtenFiles.items()))
-                        rdelRandVal = random.random()
-                        fileWasCached = job.fileStore.fileIsCached(fsID)
+                    fsID, rdelFileSize = random.choice(list(writtenFiles.items()))
+                    rdelRandVal = random.random()
+                    fileWasCached = job.fileStore.fileIsCached(fsID)
                     if randVal < 0.66:  # Read
                         RealtimeLogger.info('Reading a file with size %d and previous cache status %s: %s', rdelFileSize, str(fileWasCached), fsID)
                         if rdelRandVal <= 0.5:  # Read as mutable, uncached
@@ -1329,9 +1328,9 @@ class hidden:
             logger.debug('Got file contents: %s', text)
 
 
-
 class NonCachingFileStoreTestWithFileJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'file'
+
 
 @pytest.mark.timeout(1000)
 class CachingFileStoreTestWithFileJobStore(hidden.AbstractCachingFileStoreTest):
