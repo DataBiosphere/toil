@@ -44,7 +44,7 @@ def parser_with_server_options() -> argparse.ArgumentParser:
                              "For details about CORS and its security risks, see: "
                              "https://w3id.org/ga4gh/product-approval-support/cors. (default: '*')")
     # production only
-    parser.add_argument("--workers", type=int, default=2,
+    parser.add_argument("-w", "--workers", dest='workers', type=int, default=2,
                         help="Ignored if --debug is True. The number of worker processes launched by the "
                              "WSGI server. (recommended: 2-4 workers per core, default: 2).")
 

@@ -80,7 +80,7 @@ class ToilWorkflow:
         """ Clean directory and files related to the run."""
         shutil.rmtree(os.path.join(self.work_dir))
 
-    def get_run_command(self, request: Dict[str, Any], options: List[str]) -> Tuple[List[str], str]:
+    def get_run_command(self, request: Dict[str, Any], options: List[str]) -> List[str]:
         """
         Return a list of commands, and the working directory for the run.
         """
@@ -89,7 +89,7 @@ class ToilWorkflow:
 
         # TODO: default engine options
 
-        return [resolveEntryPoint("_toil_wes_runner"), "--work_dir", self.work_dir], self.work_dir
+        return [resolveEntryPoint("_toil_wes_runner"), "--work_dir", self.work_dir]
 
     def get_output_files(self) -> Any:
         """
@@ -111,7 +111,6 @@ class ToilBackend(WESBackend):
     def __init__(self, work_dir: str, opts: List[str]) -> None:
         super(ToilBackend, self).__init__(opts)
         self.work_dir = work_dir
-        self.processes: Dict[str, int] = {}
         self.supported_versions: Dict[str, List[str]] = {}
 
     def register_wf_type(self, name: str, supported_versions: List[str]) -> None:
@@ -225,13 +224,14 @@ class ToilBackend(WESBackend):
                                "instead.".format(wf_type, str(supported_versions), version))
 
         job.set_state("QUEUED")
-        command, work_dir = job.get_run_command(request=request, options=self.opts.get_options("extra"))
+        command = job.get_run_command(request=request, options=self.opts.get_options("extra"))
 
-        runner_log = os.path.join(work_dir, "runner.log")
-        with open(runner_log, "w") as log:
-            process = subprocess.Popen(command, stdout=log, stderr=log, cwd=work_dir)
+        with open(os.path.join(job.work_dir, "runner.log"), "w") as log:
+            process = subprocess.Popen(command, stdout=log, stderr=log, cwd=job.work_dir)
 
-        self.processes[run_id] = process.pid
+        with open(os.path.join(job.work_dir, "runner.pid"), "w") as f:
+            f.write(str(process.pid))
+
         logger.info(f"Spawned child process ({process.pid}) to run the requested workflow.")
 
         return {
@@ -285,9 +285,8 @@ class ToilBackend(WESBackend):
             raise RuntimeError(f"Workflow is in state: '{state}', which cannot be cancelled.")
         run.set_state("CANCELING")
 
-        pid = self.processes.get(run_id)
-        if not pid:
-            raise RuntimeError("Workflow runner process is not found.")
+        with open(os.path.join(run.work_dir, "runner.pid"), "r") as f:
+            pid = int(f.read())
 
         os.kill(pid, signal.SIGINT)
 

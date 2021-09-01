@@ -23,7 +23,7 @@ from typing import Dict, Any, List, Union
 from toil.server.api.utils import get_iso_time, get_file_class, link_file
 from toil.statsAndLogging import configure_root_logger, set_log_level
 
-"""    
+"""
 Toil WES workflow runner.
 
 Helper script to run a requested WES workflow through subprocess. Responsible
@@ -201,6 +201,9 @@ class WorkflowRunner:
         self.write("pid", str(process.pid))
 
         try:
+            # handle SIGTERM as SIGINT
+            signal.signal(signal.SIGTERM, signal.getsignal(signal.SIGINT))
+
             return process.wait()
         except KeyboardInterrupt:
             # signal an interrupt to kill the process gently
