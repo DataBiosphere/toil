@@ -147,7 +147,7 @@ class Leader(object):
         # Tracking the number service jobs issued,
         # this is used limit the number of services issued to the batch system
         self.serviceJobsIssued = 0
-        self.serviceJobsToBeIssued = [] # A queue of service jobs that await scheduling
+        self.serviceJobsToBeIssued = [] # A queue of IDs of service jobs that await scheduling
         #Equivalents for service jobs to be run on preemptible nodes
         self.preemptableServiceJobsIssued = 0
         self.preemptableServiceJobsToBeIssued = []
@@ -391,7 +391,7 @@ class Leader(object):
         logger.debug("Added job %s as coming after job %s", successor, predecessor)
 
         if successor.predecessorNumber > 1:
-            return self._checkSuccessorReadyToRunMultiplePredecessors(successor, predecessor)
+            return self._checkSuccessorReadyToRunMultiplePredecessors(successor.jobStoreID, predecessor.jobStoreID)
         else:
             return True
 
@@ -798,24 +798,24 @@ class Leader(object):
         for job in jobs:
             self.issueJob(job)
 
-    def issueServiceJob(self, jobNode):
+    def issueServiceJob(self, job: JobDescription) -> None:
         """
         Issue a service job, putting it on a queue if the maximum number of service
         jobs to be scheduled has been reached.
         """
         if jobNode.preemptable:
-            self.preemptableServiceJobsToBeIssued.append(jobNode)
+            self.preemptableServiceJobsToBeIssued.append(job.jobStoreID)
         else:
-            self.serviceJobsToBeIssued.append(jobNode)
+            self.serviceJobsToBeIssued.append(job.jobStoreID)
         self.issueQueingServiceJobs()
 
     def issueQueingServiceJobs(self):
         """Issues any queuing service jobs up to the limit of the maximum allowed."""
         while len(self.serviceJobsToBeIssued) > 0 and self.serviceJobsIssued < self.config.maxServiceJobs:
-            self.issueJob(self.serviceJobsToBeIssued.pop())
+            self.issueJob(self.toilState.get_job(self.serviceJobsToBeIssued.pop()))
             self.serviceJobsIssued += 1
         while len(self.preemptableServiceJobsToBeIssued) > 0 and self.preemptableServiceJobsIssued < self.config.maxPreemptableServiceJobs:
-            self.issueJob(self.preemptableServiceJobsToBeIssued.pop())
+            self.issueJob(self.toilState.get_job(self.preemptableServiceJobsToBeIssued.pop()))
             self.preemptableServiceJobsIssued += 1
 
     def getNumberOfJobsIssued(self, preemptable=None):
