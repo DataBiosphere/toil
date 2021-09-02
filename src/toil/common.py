@@ -1028,7 +1028,7 @@ class Toil:
         full description
         """
         self._assertContextManagerUsed()
-        srcUrl = self.sanity_check_uri_and_format(srcUrl)
+        srcUrl = self.sanity_check_uri_and_format(srcUrl, check_existence=True)
         return self._jobStore.importFile(srcUrl, sharedFileName=sharedFileName, symlink=symlink)
 
     def exportFile(self, jobStoreFileID: Union[FileID, str], dstUrl: str) -> None:
