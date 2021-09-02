@@ -88,7 +88,7 @@ class ServiceManager( object ):
         """
         Schedule the services of a job asynchronously.
         When the job's services are running the JobDescription for the job will
-        be returned by toil.leader.ServiceManager.getJobDescriptionWhoseServicesAreRunning.
+        be returned by toil.leader.ServiceManager.get_ready_client.
 
         :param toil.job.JobDescription jobDesc: description job with services to schedule.
         """
@@ -104,39 +104,37 @@ class ServiceManager( object ):
         # Asynchronously schedule the services
         self.__clients_in.put(job_desc.jobStoreID)
 
-    def getJobDescriptionWhoseServicesAreRunning(self, maxWait: float) -> Optional[ServiceJobDescription]:
+    def get_ready_client(self, maxWait: float) -> Optional[str]:
         """
         :param float maxWait: Time in seconds to wait to get a JobDescription before returning
-        :return: a JobDescription added to scheduleServices whose services are running, or None if
-        no such job is available.
-        :rtype: toil.job.JobDescription
+        :return: the ID of a client whose services are running, or None if no
+                 such job is available.
         """
         try:
             client_id = self.__clients_out.get(timeout=maxWait)
             self.__waiting_clients.remove(client_id)
             assert self.__service_manager_jobs >= 0
             self.__service_manager_jobs -= 1
-            return self.__toil_state.get_job(client_id)
+            return client_id
         except Empty:
             return None
 
-    def getJobDescriptionWhoseServicesFailedToStart(self, maxWait: float) -> Optional[ServiceJobDescription]:
+    def get_unservable_client(self, maxWait: float) -> Optional[str]:
         """
         :param float maxWait: Time in seconds to wait to get a JobDescription before returning
-        :return: a JobDescription added to scheduleServices whose services failed to start, or None if
-        no such job is available.
-        :rtype: toil.job.JobDescription
+        :return: the ID of a client whose services failed to start, or None if
+                 no such job is available.
         """
         try:
             client_id = self.__failed_clients_out.get(timeout=maxWait)
             self.__waiting_clients.remove(client_id)
             assert self.__service_manager_jobs >= 0
             self.__service_manager_jobs -= 1
-            return self.__toil_state.get_job(client_id)
+            return client_id
         except Empty:
             return None
 
-    def getServiceJobToStart(self, maxWait: float) -> Optional[str]:
+    def get_startable_service(self, maxWait: float) -> Optional[str]:
         """
         :param float maxWait: Time in seconds to wait to get a job before returning.
         :return: the ID of a service job that the leader can start, or None if no such job exists.

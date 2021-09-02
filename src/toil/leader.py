@@ -90,7 +90,7 @@ class FailedJobsException(Exception):
             logger.exception('Exception when compiling information about failed jobs')
         self.msg = self.msg.rstrip('\n')
         super().__init__()
-        
+
         # Save fields that catchers can look at
         self.jobStoreLocator = job_store.locator
         self.numberOfFailedJobs = len(failed_jobs)
@@ -338,19 +338,19 @@ class Leader(object):
 
         :returns: True if the successor is ready to run now, and False otherwise.
         """
-        
+
         # See implementation note at the top of this file for discussion of multiple predecessors
-        
+
         # Remember that we have multiple predecessors, if we haven't already
         # TODO: do we ever consult this after building the ToilState?
         self.toilState.jobsToBeScheduledWithMultiplePredecessors.add(successor_id)
-        
+
         # Grab the cached version of the job, where we have the in-memory finished predecessor info.
         successor = self.toilState.get_job(successor_id)
-        
+
         # Grab the predecessor for reporting
         predecessor = self.toilState.get_job(predecessor_id)
-        
+
         logger.debug("Successor job: %s of job: %s has multiple "
                      "predecessors", successor, predecessor)
 
@@ -367,7 +367,7 @@ class Leader(object):
         # If the successor job's predecessors have all not all completed then
         # ignore the successor as is not yet ready to run
         assert len(successor.predecessorsFinished) <= successor.predecessorNumber
-        if len(successor.predecessorsFinished) == successor.predecessorNumber:  
+        if len(successor.predecessorsFinished) == successor.predecessorNumber:
             # All the successor's predecessors are done now.
             # Remove the successor job from the set of waiting multi-predecessor jobs.
             self.toilState.jobsToBeScheduledWithMultiplePredecessors.remove(successor_id)
@@ -546,7 +546,7 @@ class Leader(object):
         """Start any service jobs available from the service manager"""
         self.issueQueingServiceJobs()
         while True:
-            service_id = self.serviceManager.getServiceJobToStart(0)
+            service_id = self.serviceManager.get_startable_service(0)
             # Stop trying to get jobs when function returns None
             if service_id is None:
                 break
@@ -557,30 +557,36 @@ class Leader(object):
     def _processJobsWithRunningServices(self):
         """Get jobs whose services have started"""
         while True:
-            jobDesc = self.serviceManager.getJobDescriptionWhoseServicesAreRunning(0)
-            if jobDesc is None: # Stop trying to get jobs when function returns None
+            client_id = self.serviceManager.get_ready_client(0)
+            if client_id is None: # Stop trying to get jobs when function returns None
                 break
-            logger.debug('Job: %s has established its services.', jobDesc.jobStoreID)
+            logger.debug('Job: %s has established its services.', client_id)
+
+            # Grab the client job description
+            client = self.toilState.get_job(client_id)
 
             # Drop all service relationships
-            jobDesc.filterServiceHosts(lambda ignored: False)
-            if jobDesc.jobStoreID not in self.toilState.updatedJobs:
-                self.toilState.updatedJobs[jobDesc.jobStoreID] = (jobDesc, 0)
+            client.filterServiceHosts(lambda ignored: False)
+            if client_id not in self.toilState.updatedJobs:
+                self.toilState.updatedJobs[client_id] = (client, 0)
 
     def _processJobsWithFailedServices(self):
         """Get jobs whose services have failed to start"""
         while True:
-            jobDesc = self.serviceManager.getJobDescriptionWhoseServicesFailedToStart(0)
-            if jobDesc is None: # Stop trying to get jobs when function returns None
+            client_id = self.serviceManager.get_unservable_client(0)
+            if client_id is None: # Stop trying to get jobs when function returns None
                 break
-            logger.debug('Job: %s has failed to establish its services.', jobDesc.jobStoreID)
+            logger.debug('Job: %s has failed to establish its services.', client_id)
+
+            # Grab the client job description
+            client = self.toilState.get_job(client_id)
 
             # Make sure services still want to run
-            assert next(jobDesc.serviceHostIDsInBatches(), None) is not None
+            assert next(client.serviceHostIDsInBatches(), None) is not None
 
-            if jobDesc.jobStoreID not in self.toilState.updatedJobs:
+            if client_id not in self.toilState.updatedJobs:
                 # Mark the service job updated so we don't stop here.
-                self.toilState.updatedJobs[jobDesc.jobStoreID] = (jobDesc, 1)
+                self.toilState.updatedJobs[client_id] = (client, 1)
 
     def _gatherUpdatedJobs(self, updatedJobTuple):
         """Gather any new, updated JobDescriptions from the batch system"""
@@ -798,15 +804,20 @@ class Leader(object):
         for job in jobs:
             self.issueJob(job)
 
-    def issueServiceJob(self, job_id: str) -> None:
+    def issueServiceJob(self, service_id: str) -> None:
         """
         Issue a service job, putting it on a queue if the maximum number of service
         jobs to be scheduled has been reached.
         """
-        if jobNode.preemptable:
-            self.preemptableServiceJobsToBeIssued.append(job_id)
+
+        # Grab the service job description
+        service = self.toilState.get_job(service_id)
+        assert isinstance(service, ServiceJobDescription)
+
+        if service.preemptable:
+            self.preemptableServiceJobsToBeIssued.append(service_id)
         else:
-            self.serviceJobsToBeIssued.append(job_id)
+            self.serviceJobsToBeIssued.append(service_id)
         self.issueQueingServiceJobs()
 
     def issueQueingServiceJobs(self):
