@@ -138,8 +138,8 @@ class Leader(object):
         assert len(self.batchSystem.getIssuedBatchJobIDs()) == 0  # Batch system must start with no active jobs!
         logger.debug("Checked batch system has no running jobs and no updated jobs")
 
-        # Map of batch system IDs to IssuedJob tuples
-        self.jobBatchSystemIDToIssuedJob = {}
+        # Map of batch system IDs to job store IDs
+        self.issued_jobs_by_batch_system_id: Dict[int, str] = {}
 
         # Number of preemptible jobs currently being run by batch system
         self.preemptableJobsIssued = 0
@@ -590,14 +590,14 @@ class Leader(object):
 
     def _gatherUpdatedJobs(self, updatedJobTuple):
         """Gather any new, updated JobDescriptions from the batch system"""
-        jobID, exitStatus, exitReason, wallTime = (
+        bsID, exitStatus, exitReason, wallTime = (
             updatedJobTuple.jobID, updatedJobTuple.exitStatus, updatedJobTuple.exitReason,
             updatedJobTuple.wallTime)
         # easy, track different state
         try:
-            updatedJob = self.jobBatchSystemIDToIssuedJob[jobID]
+            updatedJob = self.toilState.get_job(self.issued_jobs_by_batch_system_id[bsID])
         except KeyError:
-            logger.warning("A result seems to already have been processed for job %s", jobID)
+            logger.warning("A result seems to already have been processed for job %s", bsID)
         else:
             if exitStatus == 0:
                 logger.debug('Job ended: %s', updatedJob)
@@ -699,8 +699,8 @@ class Leader(object):
 
         # If there are no updated jobs and at least some jobs running
         if totalServicesIssued >= totalRunningJobs and totalRunningJobs > 0:
-            serviceJobs = [x for x in list(self.jobBatchSystemIDToIssuedJob.keys()) if isinstance(self.jobBatchSystemIDToIssuedJob[x], ServiceJobDescription)]
-            runningServiceJobs = set([x for x in serviceJobs if self.serviceManager.is_running(self.jobBatchSystemIDToIssuedJob[x].jobStoreID)])
+            serviceJobs = [x for x in list(self.issued_jobs_by_batch_system_id.keys()) if isinstance(self.toilState.get_job(self.issued_jobs_by_batch_system_id[x]), ServiceJobDescription)]
+            runningServiceJobs = set([x for x in serviceJobs if self.serviceManager.is_running(self.issued_jobs_by_batch_system_id[x])])
             assert len(runningServiceJobs) <= totalRunningJobs
 
             # If all the running jobs are active services then we have a potential deadlock
@@ -756,7 +756,7 @@ class Leader(object):
             self.potentialDeadlockedJobs = set()
             self.potentialDeadlockTime = 0
 
-    def issueJob(self, jobNode):
+    def issueJob(self, jobNode: JobDescription) -> None:
         """Add a job to the queue of jobs."""
 
         workerCommand = [resolveEntryPoint('_toil_worker'),
@@ -782,9 +782,9 @@ class Leader(object):
 
         # jobBatchSystemID is an int that is an incremented counter for each job
         jobBatchSystemID = self.batchSystem.issueBatchJob(jobNode, job_environment=job_environment)
-        self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = jobNode
+        self.issued_jobs_by_batch_system_id[jobBatchSystemID] = jobNode.jobStoreID
         if jobNode.preemptable:
-            # len(jobBatchSystemIDToIssuedJob) should always be greater than or equal to preemptableJobsIssued,
+            # len(issued_jobs_by_batch_system_id) should always be greater than or equal to preemptableJobsIssued,
             # so increment this value after the job is added to the issuedJob dict
             self.preemptableJobsIssued += 1
         cur_logger = logger.debug if jobNode.jobName.startswith(CWL_INTERNAL_JOBS) else logger.info
@@ -839,12 +839,12 @@ class Leader(object):
           just the number of non-preemptable jobs.
         """
         if preemptable is None:
-            return len(self.jobBatchSystemIDToIssuedJob)
+            return len(self.issued_jobs_by_batch_system_id)
         elif preemptable:
             return self.preemptableJobsIssued
         else:
-            assert len(self.jobBatchSystemIDToIssuedJob) >= self.preemptableJobsIssued
-            return len(self.jobBatchSystemIDToIssuedJob) - self.preemptableJobsIssued
+            assert len(self.issued_jobs_by_batch_system_id) >= self.preemptableJobsIssued
+            return len(self.issued_jobs_by_batch_system_id) - self.preemptableJobsIssued
 
     def _getStatusHint(self):
         """
@@ -874,21 +874,20 @@ class Leader(object):
         # bar/status line.
         logger.info(self._getStatusHint())
 
-    def removeJob(self, jobBatchSystemID):
+    def removeJob(self, jobBatchSystemID: int) -> JobDescription:
         """
-        Removes a job from the system.
+        Removes a job from the system bu batch system ID. Returns its JobDescription.
 
         :return: Job description as it was issued.
-        :rtype: toil.job.JobDescription
         """
-        assert jobBatchSystemID in self.jobBatchSystemIDToIssuedJob
-        issuedDesc = self.jobBatchSystemIDToIssuedJob[jobBatchSystemID]
+        assert jobBatchSystemID in self.issued_jobs_by_batch_system_id
+        issuedDesc = self.toilState.get_job(self.issued_jobs_by_batch_system_id[jobBatchSystemID])
         if issuedDesc.preemptable:
-            # len(jobBatchSystemIDToIssuedJob) should always be greater than or equal to preemptableJobsIssued,
+            # len(issued_jobs_by_batch_system_id) should always be greater than or equal to preemptableJobsIssued,
             # so decrement this value before removing the job from the issuedJob map
             assert self.preemptableJobsIssued > 0
             self.preemptableJobsIssued -= 1
-        del self.jobBatchSystemIDToIssuedJob[jobBatchSystemID]
+        del self.issued_jobs_by_batch_system_id[jobBatchSystemID]
         # If service job
         if issuedDesc.jobStoreID in self.toilState.serviceJobStoreIDToPredecessorJob:
             # Decrement the number of services
@@ -902,8 +901,14 @@ class Leader(object):
 
         return issuedDesc
 
-    def getJobs(self, preemptable=None):
-        jobs = self.jobBatchSystemIDToIssuedJob.values()
+    def getJobs(self, preemptable: Optional[bool] = None) -> List[JobDescription]:
+        """
+        Get all issued jobs.
+
+        :param preemptable: If specified, select only preemptable or only non-preemptable jobs.
+        """
+
+        jobs = [self.toilState.get_job(job_store_id) for job_store_id in self.issued_jobs_by_batch_system_id.values()]
         if preemptable is not None:
             jobs = [job for job in jobs if job.preemptable == preemptable]
         return jobs
@@ -948,7 +953,7 @@ class Leader(object):
                 if runningJobs[jobBatchSystemID] > maxJobDuration:
                     logger.warning("The job: %s has been running for: %s seconds, more than the "
                                 "max job duration: %s, we'll kill it",
-                                str(self.jobBatchSystemIDToIssuedJob[jobBatchSystemID].jobStoreID),
+                                self.issued_jobs_by_batch_system_id[jobBatchSystemID],
                                 str(runningJobs[jobBatchSystemID]),
                                 str(maxJobDuration))
                     jobsToKill.append(jobBatchSystemID)
@@ -965,7 +970,7 @@ class Leader(object):
         then we pass the job to processFinishedJob.
         """
         issuedJobs = set(self.batchSystem.getIssuedBatchJobIDs())
-        jobBatchSystemIDsSet = set(list(self.jobBatchSystemIDToIssuedJob.keys()))
+        jobBatchSystemIDsSet = set(list(self.issued_jobs_by_batch_system_id.keys()))
         #Clean up the reissueMissingJobs_missingHash hash, getting rid of jobs that have turned up
         missingJobIDsSet = set(list(self.reissueMissingJobs_missingHash.keys()))
         for jobBatchSystemID in missingJobIDsSet.difference(jobBatchSystemIDsSet):
@@ -975,7 +980,7 @@ class Leader(object):
         #no unexpected jobs running
         jobsToKill = []
         for jobBatchSystemID in set(jobBatchSystemIDsSet.difference(issuedJobs)):
-            jobStoreID = self.jobBatchSystemIDToIssuedJob[jobBatchSystemID].jobStoreID
+            jobStoreID = self.issued_jobs_by_batch_system_id[jobBatchSystemID]
             if jobBatchSystemID in self.reissueMissingJobs_missingHash:
                 self.reissueMissingJobs_missingHash[jobBatchSystemID] += 1
             else:
