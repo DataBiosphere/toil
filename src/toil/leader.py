@@ -23,7 +23,7 @@ import os
 import pickle
 import sys
 import time
-from typing import List, Set
+from typing import Dict, List, Optional, Set
 
 import enlighten
 
@@ -613,7 +613,7 @@ class Leader(object):
                     self.recommended_fail_exit_code = CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
             if self.toilMetrics:
                 self.toilMetrics.logCompletedJob(updatedJob)
-            self.processFinishedJob(jobID, exitStatus, wallTime=wallTime, exitReason=exitReason)
+            self.processFinishedJob(bsID, exitStatus, wallTime=wallTime, exitReason=exitReason)
 
     def _processLostJobs(self):
         """Process jobs that have gone awry"""

@@ -17,7 +17,7 @@ import logging
 import time
 from queue import Empty, Queue
 from threading import Event, Thread
-from typing import Dict, Set, Optional
+from typing import Dict, Iterable, Set, Optional
 
 from toil.job import ServiceJobDescription
 from toil.lib.throttle import LocalThrottle, throttle
