@@ -286,7 +286,7 @@ class Leader(object):
 
             return self.jobStore.getRootJobReturnValue()
 
-    def create_status_sentinel_file(self, fail):
+    def create_status_sentinel_file(self, fail: bool) -> None:
         """Create a file in the jobstore indicating failure or success."""
         logName = 'failed.log' if fail else 'succeeded.log'
         localLog = os.path.join(os.getcwd(), logName)
@@ -296,48 +296,52 @@ class Leader(object):
         if os.path.exists(localLog):  # Bandaid for Jenkins tests failing stochastically and unexplainably.
             os.remove(localLog)
 
-    def _handledFailedSuccessor(self, successor, predecessor):
+    def _handledFailedSuccessor(self, successor_id: str, predecessor_id: str) -> bool:
         """
         Deal with the successor having failed. Return True if there are
         still active successors. Return False if all successors have failed
         and the job is queued to run to handle the failed successors.
 
-        :param toil.job.JobDescription successor: The successor which has failed.
-        :param toil.job.JobDescription predecessor: The job which the successor comes after.
+        :param successor_id: The successor which has failed.
+        :param predecessor_id: The job which the successor comes after.
 
         """
+        
         logger.debug("Successor job: %s of job: %s has failed """
-                     "predecessors", successor, predecessor)
+                     "predecessors", self.toilState.get_job(successor_id), self.toilState.get_job(predecessor_id))
 
         # Add the job to the set having failed successors
-        self.toilState.hasFailedSuccessors.add(predecessor.jobStoreID)
+        self.toilState.hasFailedSuccessors.add(predecessor_id)
 
         # Reduce active successor count and remove the successor as an active successor of the job
-        self.toilState.successorCounts[predecessor.jobStoreID] -= 1
-        assert self.toilState.successorCounts[predecessor.jobStoreID] >= 0
-        self.toilState.successor_to_predecessors[successor.jobStoreID].remove(predecessor.jobStoreID)
-        if len(self.toilState.successor_to_predecessors[successor.jobStoreID]) == 0:
-            self.toilState.successor_to_predecessors.pop(successor.jobStoreID)
+        self.toilState.successorCounts[predecessor_id] -= 1
+        assert self.toilState.successorCounts[predecessor_id] >= 0
+        self.toilState.successor_to_predecessors[successor_id].remove(predecessor_id)
+        if len(self.toilState.successor_to_predecessors[successor_id]) == 0:
+            self.toilState.successor_to_predecessors.pop(successor_id)
 
         # If the job now has no active successors, add to active jobs
         # so it can be processed as a job with failed successors.
-        if self.toilState.successorCounts[predecessor.jobStoreID] == 0:
+        if self.toilState.successorCounts[predecessor_id] == 0:
             logger.debug("Job: %s has no successors to run "
                          "and some are failed, adding to list of jobs "
-                         "with failed successors", predecessor)
-            self.toilState.successorCounts.pop(predecessor.jobStoreID)
-            if predecessor.jobStoreID not in self.toilState.updatedJobs:
-                self.toilState.updatedJobs[predecessor.jobStoreID] = 0
+                         "with failed successors", self.toilState.get_job(predecessor_id))
+            self.toilState.successorCounts.pop(predecessor_id)
+            if predecessor_id not in self.toilState.updatedJobs:
+                self.toilState.updatedJobs[predecessor_id] = 0
+            # Report no successors are running
             return False
-
+        else:
+            # Some successors are still active
+            return True
 
     def _checkSuccessorReadyToRunMultiplePredecessors(self, successor_id: str, predecessor_id: str) -> bool:
         """
         Handle the special cases of checking if a successor job is
         ready to run when there are multiple predecessors.
 
-        :param successor: The successor which has failed.
-        :param predecessor: The job which the successor comes after.
+        :param successor_id: The successor which has failed.
+        :param predecessor_id: The job which the successor comes after.
 
         :returns: True if the successor is ready to run now, and False otherwise.
         """
@@ -363,7 +367,7 @@ class Leader(object):
 
         # If the successor is in the set of successors of failed jobs
         if successor_id in self.toilState.failedSuccessors:
-            if not self._handledFailedSuccessor(successor, predecessor):
+            if not self._handledFailedSuccessor(successor_id, predecessor_id):
                 # The job is not ready to run
                 return False
 
