@@ -132,13 +132,17 @@ class AbstractJobStore(ABC):
     :meth:`toil.job.Job.loadJob` with a JobStore and the relevant JobDescription.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, locator: str) -> None:
         """
         Create an instance of the job store. The instance will not be fully functional until
         either :meth:`.initialize` or :meth:`.resume` is invoked. Note that the :meth:`.destroy`
         method may be invoked on the object with or without prior invocation of either of these two
         methods.
+
+        Takes and stores the locator string for the job store, which will be
+        accessible via self.locator.
         """
+        self.__locator = locator
         self.__config = None
 
     def initialize(self, config: Config) -> None:
@@ -181,10 +185,16 @@ class AbstractJobStore(ABC):
     def config(self) -> Config:
         """
         The Toil configuration associated with this job store.
-
-        :rtype: toil.common.Config
         """
         return self.__config
+
+    @property
+    def locator(self) -> str:
+        """
+        Get the locator that defines the job store, which can be used to
+        connect to it.
+        """
+        return self.__locator
 
     rootJobStoreIDFileName = 'rootJobStoreID'
 
@@ -993,9 +1003,9 @@ class AbstractJobStore(ABC):
         appear in the local file system until the copy has completed.
 
         The file at the given local path may not be modified after this method returns!
-        
+
         Note!  Implementations of readFile need to respect/provide the executable attribute on FileIDs.
-        
+
         :param str jobStoreFileID: ID of the file to be copied
 
         :param str localFilePath: the local path indicating where to place the contents of the
