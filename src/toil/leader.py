@@ -68,31 +68,32 @@ logger = logging.getLogger( __name__ )
 
 
 class FailedJobsException(Exception):
-    def __init__(self, jobStoreLocator: str, failedJobs: List[JobDescription], jobStore: AbstractJobStore, exit_code: int = 1):
+    def __init__(self, job_store: AbstractJobStore, failed_jobs: List[JobDescription], exit_code: int = 1):
         """
         Make an exception to report failed jobs.
 
-        :param jobStoreLocator: The job store locator that says what job store has the failed jobs.
-        :param failedJobs: All the failed jobs
-        :param jobStore: The actual open job store with the failed jobs in it.
+        :param job_store: The job store with the failed jobs in it.
+        :param failed_jobs: All the failed jobs.
         :param exit_code: Recommended process exit code.
 
         """
-        self.msg = "The job store '%s' contains %i failed jobs" % (jobStoreLocator, len(failedJobs))
+        self.msg = "The job store '%s' contains %i failed jobs" % (job_store.locator, len(failed_jobs))
         self.exit_code = exit_code
         try:
-            self.msg += ": %s" % ", ".join((str(failedJob) for failedJob in failedJobs))
-            for jobDesc in failedJobs:
-                if jobDesc.logJobStoreFileID:
-                    with jobDesc.getLogFileHandle(jobStore) as fH:
-                        self.msg += "\n" + StatsAndLogging.formatLogStream(fH, jobDesc)
+            self.msg += ": %s" % ", ".join((str(failedJob) for failedJob in failed_jobs))
+            for job_desc in failed_jobs:
+                if job_desc.logJobStoreFileID:
+                    with job_desc.getLogFileHandle(job_store) as f:
+                        self.msg += "\n" + StatsAndLogging.formatLogStream(f, job_desc)
         # catch failures to prepare more complex details and only return the basics
         except:
             logger.exception('Exception when compiling information about failed jobs')
         self.msg = self.msg.rstrip('\n')
         super().__init__()
-        self.jobStoreLocator = jobStoreLocator
-        self.numberOfFailedJobs = len(failedJobs)
+        
+        # Save fields that catchers can look at
+        self.jobStoreLocator = job_store.locator
+        self.numberOfFailedJobs = len(failed_jobs)
 
     def __str__(self):
         """
@@ -278,8 +279,7 @@ class Leader(object):
                     failed_jobs.append(self.toilState.get_job(job_id))
 
                 logger.info("Failed jobs at end of the run: %s", ' '.join(str(j) for j in failed_jobs))
-                raise FailedJobsException(self.config.jobStore, failed_jobs,
-                                          self.jobStore, exit_code=self.recommended_fail_exit_code)
+                raise FailedJobsException(self.jobStore, failed_jobs, exit_code=self.recommended_fail_exit_code)
 
             return self.jobStore.getRootJobReturnValue()
 
