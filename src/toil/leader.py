@@ -383,22 +383,25 @@ class Leader(object):
             # The job is not ready to run
             return False
 
-    def _makeJobSuccessorReadyToRun(self, successor, predecessor):
+    def _makeJobSuccessorReadyToRun(self, successor_id: str, predecessor_id: str) -> bool:
         """
         Make a successor job ready to run if possible, returning False if it should
         not yet be run or True otherwise.
 
-        :param toil.job.JobDescription successor: The successor which should become ready.
-        :param toil.job.JobDescription predecessor: The job which the successor comes after.
+        :param successor_id: The successor which should become ready.
+        :param predecessor_id: The job which the successor comes after.
         """
+        
         #Build map from successor to predecessors.
-        if successor.jobStoreID not in self.toilState.successor_to_predecessors:
-            self.toilState.successor_to_predecessors[successor.jobStoreID] = set()
-        self.toilState.successor_to_predecessors[successor.jobStoreID].add(predecessor.jobStoreID)
-        logger.debug("Added job %s as coming after job %s", successor, predecessor)
-
+        if successor_id not in self.toilState.successor_to_predecessors:
+            self.toilState.successor_to_predecessors[successor_id] = set()
+        self.toilState.successor_to_predecessors[successor_id].add(predecessor_id)
+        
+        # Grab the successor
+        successor = self.toilState.get_job(successor_id)
+        logger.debug("Added job %s as coming after job %s", successor, self.toilState.get_job(predecessor_id))
         if successor.predecessorNumber > 1:
-            return self._checkSuccessorReadyToRunMultiplePredecessors(successor.jobStoreID, predecessor.jobStoreID)
+            return self._checkSuccessorReadyToRunMultiplePredecessors(successor_id, predecessor_id)
         else:
             return True
 
@@ -421,15 +424,16 @@ class Leader(object):
 
         # For each successor schedule if all predecessors have been completed
         successors = []
-        for successorID in predecessor.stack[-1]:
+        for successor_id in predecessor.stack[-1]:
             try:
-                successor = self.toilState.get_job(successorID)
+                successor = self.toilState.get_job(successor_id)
             except NoSuchJobException:
-                # Job already done and gone
-                logger.warning("Job %s is a successor of %s but is already done and gone.", successorID, predecessor.jobStoreID)
+                # Job already done and gone, but probably shouldn't be. Or maybe isn't visible yet.
+                # TODO: Shouldn't this be an error?
+                logger.warning("Job %s is a successor of %s but is already done and gone.", successor_id, predecessor.jobStoreID)
                 # Don't try and run it
                 continue
-            if self._makeJobSuccessorReadyToRun(successor, predecessor):
+            if self._makeJobSuccessorReadyToRun(successor_id, predecessor.jobStoreID):
                 successors.append(successor)
         self.issueJobs(successors)
 
