@@ -136,18 +136,16 @@ class ServiceManager( object ):
         except Empty:
             return None
 
-    def getServiceJobsToStart(self, maxWait: float) -> ServiceJobDescription:
+    def getServiceJobToStart(self, maxWait: float) -> Optional[str]:
         """
         :param float maxWait: Time in seconds to wait to get a job before returning.
-        :return: a tuple of (serviceJobStoreID, memory, cores, disk, ..) representing
-        a service job to start.
-        :rtype: toil.job.ServiceJobDescription
+        :return: the ID of a service job that the leader can start, or None if no such job exists.
         """
         try:
             service_id = self.__services_out.get(timeout=maxWait)
             assert self.__service_manager_jobs >= 0
             self.__service_manager_jobs -= 1
-            return self.__toil_state.get_job(service_id)
+            return service_id
         except Empty:
             return None
 

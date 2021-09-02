@@ -546,13 +546,13 @@ class Leader(object):
         """Start any service jobs available from the service manager"""
         self.issueQueingServiceJobs()
         while True:
-            serviceJob = self.serviceManager.getServiceJobsToStart(0)
+            service_id = self.serviceManager.getServiceJobToStart(0)
             # Stop trying to get jobs when function returns None
-            if serviceJob is None:
+            if service_id is None:
                 break
 
-            logger.debug('Launching service job: %s', serviceJob)
-            self.issueServiceJob(serviceJob)
+            logger.debug('Launching service job: %s', self.toilState.get_job(service_id))
+            self.issueServiceJob(service_id)
 
     def _processJobsWithRunningServices(self):
         """Get jobs whose services have started"""
@@ -798,15 +798,15 @@ class Leader(object):
         for job in jobs:
             self.issueJob(job)
 
-    def issueServiceJob(self, job: JobDescription) -> None:
+    def issueServiceJob(self, job_id: str) -> None:
         """
         Issue a service job, putting it on a queue if the maximum number of service
         jobs to be scheduled has been reached.
         """
         if jobNode.preemptable:
-            self.preemptableServiceJobsToBeIssued.append(job.jobStoreID)
+            self.preemptableServiceJobsToBeIssued.append(job_id)
         else:
-            self.serviceJobsToBeIssued.append(job.jobStoreID)
+            self.serviceJobsToBeIssued.append(job_id)
         self.issueQueingServiceJobs()
 
     def issueQueingServiceJobs(self):
