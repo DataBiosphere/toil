@@ -150,16 +150,6 @@ class ToilState:
             self.__job_database[job_id] = new_truth
 
 
-    def allJobDescriptions(self) -> Iterator[JobDescription]:
-        """
-        Returns an iterator over all JobDescription objects referenced by the
-        ToilState, with some possibly being visited multiple times.
-        """
-
-        for item in self.__job_database.values():
-            assert isinstance(item, JobDescription)
-            yield item
-
     def _buildToilState(self, jobDesc: JobDescription) -> None:
         """
         Traverses tree of jobs down from the subtree root JobDescription
