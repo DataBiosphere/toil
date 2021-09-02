@@ -71,13 +71,27 @@ class hidden:
 
         def setUp(self):
             super(hidden.AbstractFileStoreTest, self).setUp()
-            testDir = self._createTempDir()
+            self.work_dir = self._createTempDir()
             self.options = Job.Runner.getDefaultOptions(self._getTestJobStore())
             self.options.logLevel = 'DEBUG'
             self.options.realTimeLogging = True
-            self.options.workDir = testDir
+            self.options.workDir = self.work_dir
             self.options.clean = 'always'
-            self.options.logFile = os.path.join(testDir, 'logFile')
+            self.options.logFile = os.path.join(self.work_dir, 'logFile')
+
+            self.tmp_dir = self._createTempDir()
+
+        def create_file(self, content, executable=False):
+            file_path = f'{self.tmp_dir}/{uuid4()}'
+
+            with open(file_path, 'w') as f:
+                f.write(content)
+
+            if executable:
+                # Add file owner execute permissions
+                os.chmod(file_path, os.stat(file_path).st_mode | stat.S_IXUSR)
+
+            return file_path
 
         @staticmethod
         def _uselessFunc(job):
@@ -118,6 +132,7 @@ class hidden:
                     super().__init__()
                     self.match = match
                     self.seen = False
+
                 def emit(self, record):
                     if self.match in record.getMessage():
                         self.seen = True
@@ -140,11 +155,11 @@ class hidden:
 
         @staticmethod
         def _accessAndFail(job):
-            with job.fileStore.writeGlobalFileStream() as (stream, fileID):
-                stream.write('Cats'.encode('utf-8'))
+            with job.fileStore.writeGlobalFileStream() as (writable, file_id):
+                writable.write(b'Cats')
             localPath = os.path.join(job.fileStore.getLocalTempDir(), 'cats.txt')
-            job.fileStore.readGlobalFile(fileID, localPath)
-            with job.fileStore.readGlobalFileStream(fileID) as stream2:
+            job.fileStore.readGlobalFile(file_id, localPath)
+            with job.fileStore.readGlobalFileStream(file_id) as readable:
                 pass
             raise RuntimeError("I do not like this file")
 
@@ -303,29 +318,22 @@ class hidden:
             when they are read by the fileStore.
             """
             with Toil(self.options) as toil:
-                workDir = self._createTempDir()
                 for executable in True, False:
-                    srcFile = os.path.join(workDir, str(uuid4()))
-                    with open(srcFile, 'w') as f:
-                        f.write('Hello')
-                    if executable:
-                        os.chmod(srcFile, os.stat(srcFile).st_mode | stat.S_IXUSR)
-                    initialPermissions = os.stat(srcFile).st_mode & stat.S_IXUSR
-                    jobStoreFileID = toil.importFile('file://' + srcFile)
-                    for mutable in True,False:
+                    file_path = self.create_file(content='Hello', executable=executable)
+                    initial_permissions = os.stat(file_path).st_mode & stat.S_IXUSR
+                    file_id = toil.importFile(f'file://{file_path}')
+                    for mutable in True, False:
                         for symlink in True, False:
                             with self.subTest(f'Now testing readGlobalFileWith: mutable={mutable} symlink={symlink}'):
-                                dstFile = os.path.join(workDir, str(uuid4()))
                                 A = Job.wrapJobFn(self._testImportReadFileCompatibility,
-                                                  fileID=jobStoreFileID,
-                                                  dstFile=dstFile,
-                                                  initialPermissions=initialPermissions,
+                                                  fileID=file_id,
+                                                  initialPermissions=initial_permissions,
                                                   mutable=mutable,
                                                   symlink=symlink)
                                 toil.start(A)
 
         @staticmethod
-        def _testImportReadFileCompatibility(job, fileID, dstFile, initialPermissions, mutable, symlink):
+        def _testImportReadFileCompatibility(job, fileID, initialPermissions, mutable, symlink):
             dstFile = job.fileStore.readGlobalFile(fileID, mutable=mutable, symlink=symlink)
             currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
 
@@ -333,10 +341,10 @@ class hidden:
 
         def testReadWriteFileStreamTextMode(self):
             """
-            Checks if text mode is compatibile with file streams.
+            Checks if text mode is compatible with file streams.
             """
             with Toil(self.options) as toil:
-                A = Job.wrapJobFn(_testReadWriteFileStreamTextMode)
+                A = Job.wrapJobFn(self._testReadWriteFileStreamTextMode)
                 toil.start(A)
 
         @staticmethod

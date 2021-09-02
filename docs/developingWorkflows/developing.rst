@@ -398,9 +398,9 @@ running a workflow when the :class:`toil.common.Toil` context manager is used
 on the leader. The context manager provides methods
 :func:`toil.common.Toil.importFile`, and :func:`toil.common.Toil.exportFile`
 for this purpose. The destination and source locations of such files are
-described with URLs passed to the two methods.  Local files can be imported as
-relative paths, and should be relative to the directory where the toil workflow
-is initially run from.
+described with URLs passed to the two methods.  Local files can be imported and
+exported as relative paths, and should be relative to the directory where the
+toil workflow is initially run from.
 
 Using absolute paths and appropriate schema where possible (prefixing with
 "file://" or "s3:/" for example), make imports and exports less ambiguous

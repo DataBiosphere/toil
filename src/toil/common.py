@@ -20,12 +20,15 @@ import sys
 import tempfile
 import time
 import uuid
+
+from urllib.parse import urlparse
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, _ArgumentGroup
 from typing import Any, Callable, List, Optional, Tuple, Union
 
 import requests
 
 from toil import logProcessContext, lookupEnvVar
+from toil.fileStores import FileID
 from toil.batchSystems.options import (add_all_batchsystem_options,
                                        set_batchsystem_config_defaults,
                                        set_batchsystem_options)
@@ -1014,7 +1017,10 @@ class Toil:
             logger.debug('Injecting user script %s into batch system.', userScriptResource)
             self._batchSystem.setUserScript(userScriptResource)
 
-    def importFile(self, srcUrl, sharedFileName=None, symlink=False):
+    def importFile(self,
+                   srcUrl: str,
+                   sharedFileName: Optional[str] = None,
+                   symlink: bool = False) -> Optional[Union[FileID, str]]:
         """
         Imports the file at the given URL into job store.
 
@@ -1022,9 +1028,10 @@ class Toil:
         full description
         """
         self._assertContextManagerUsed()
+        srcUrl = self.sanity_check_uri_and_format(srcUrl)
         return self._jobStore.importFile(srcUrl, sharedFileName=sharedFileName, symlink=symlink)
 
-    def exportFile(self, jobStoreFileID, dstUrl):
+    def exportFile(self, jobStoreFileID: Union[FileID, str], dstUrl: str) -> None:
         """
         Exports file to destination pointed at by the destination URL.
 
@@ -1032,7 +1039,32 @@ class Toil:
         full description
         """
         self._assertContextManagerUsed()
+        dstUrl = self.sanity_check_uri_and_format(dstUrl)
         self._jobStore.exportFile(jobStoreFileID, dstUrl)
+
+    @staticmethod
+    def sanity_check_uri_and_format(uri: str, check_existence: bool = False) -> str:
+        """
+        Transforms local paths into absolute local paths and ensures the file:// schema is present.
+
+        Ignores URIs with other schema (examples: s3:/, gs:/, ftp://, etc.).
+        """
+        if urlparse(uri).scheme == 'file':
+            uri = urlparse(uri).path  # this should strip off the local file schema; it will be added back
+
+        # account for the schema-less case, which should be coerced to a local absolute path
+        if urlparse(uri).scheme == '':
+            abs_path = os.path.abspath(uri)
+            if not os.path.exists(abs_path) and check_existence:
+                raise FileNotFoundError(
+                    f'Import failed for: "{uri}"\n'
+                    f'No schema (http://, s3://, file://, etc.) for path was included.\n'
+                    f'Attempting to import as an absolute local file path: "{abs_path}"\n'
+                    f'Relative to directory: "{os.getcwd()}".\n'
+                    f'Please try to include the schema, and adjust the path as necessary, '
+                    f'using absolute paths where possible.')
+            return f'file://{abs_path}'
+        return uri
 
     def _setBatchSystemEnvVars(self):
         """
