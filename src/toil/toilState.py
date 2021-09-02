@@ -60,15 +60,15 @@ class ToilState:
         # can't let any non-true copies escape.
         self.__job_database = {}
 
-        # Maps from successor (child or follow-on) jobStoreID to predecessor jobStoreID
-        self.successorJobStoreIDToPredecessorJobs: Dict[str, List[JobDescription]] = {}
+        # Maps from successor (child or follow-on) jobStoreID to predecessor jobStoreIDs
+        self.successor_to_predecessors: Dict[str, Set[str]] = {}
 
         # Hash of jobStoreIDs to counts of numbers of successors issued.
         # There are no entries for jobs without successors in this map.
         self.successorCounts: Dict[str, int] = {}
 
-        # This is a hash of service jobs, referenced by jobStoreID, to their predecessor job
-        self.serviceJobStoreIDToPredecessorJob: Dict[str, JobDescription] = {}
+        # This is a hash of service jobs, referenced by jobStoreID, to their client's ID
+        self.service_to_client: Dict[str, str] = {}
 
         # Holds, for each client job ID, the job IDs of its services that are
         # currently issued.
@@ -160,10 +160,6 @@ class ToilState:
             assert isinstance(item, JobDescription)
             yield item
 
-        for item in self.serviceJobStoreIDToPredecessorJob.values():
-            assert isinstance(item, JobDescription)
-            yield item
-
         for item in (desc for mapping in self.servicesIssued.values() for desc in mapping.values()):
             assert isinstance(item, JobDescription)
             yield item
@@ -224,10 +220,10 @@ class ToilState:
 
                 # If the successor does not yet point back at a
                 # predecessor we have not yet considered it
-                if successorJobStoreID not in self.successorJobStoreIDToPredecessorJobs:
+                if successorJobStoreID not in self.successor_to_predecessors:
 
                     # Add the job as a predecessor
-                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = [jobDesc]
+                    self.successor_to_predecessors[successorJobStoreID] = set([jobDesc])
 
                     # We load the successor job
                     successor = self.get_job(successorJobStoreID)
@@ -251,8 +247,8 @@ class ToilState:
                     # We've already seen the successor
 
                     # Add the job as a predecessor
-                    assert jobDesc not in self.successorJobStoreIDToPredecessorJobs[successorJobStoreID]
-                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobDesc)
+                    assert jobDesc not in self.successor_to_predecessors[successorJobStoreID]
+                    self.successor_to_predecessors[successorJobStoreID].add(jobDesc)
 
                     # If the successor has multiple predecessors
                     if successorJobStoreID in self.jobsToBeScheduledWithMultiplePredecessors:
