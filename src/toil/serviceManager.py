@@ -150,14 +150,14 @@ class ServiceManager( object ):
         except Empty:
             return None
 
-    def kill_services(self, services: Iterable[str], error: bool = False) -> None:
+    def kill_services(self, service_ids: Iterable[str], error: bool = False) -> None:
         """
         Stop all the given service jobs.
-        
+
         :param services: Service jobStoreIDs to kill
         :param error: Whether to signal that the service failed with an error when stopping it.
         """
-        for service_id in services:
+        for service_id in service_ids:
             # Get the job description, which knows about the flag files.
             service = self.__toil_state.get_job(service_id)
             assert isinstance(service, ServiceJobDescription)
@@ -165,23 +165,25 @@ class ServiceManager( object ):
                 self.__job_store.deleteFile(service.errorJobStoreID)
             self.__job_store.deleteFile(service.terminateJobStoreID)
 
-    def isActive(self, service: ServiceJobDescription) -> bool:
+    def is_active(self, service_id: str) -> bool:
         """
         Returns true if the service job has not been told to terminate.
 
-        :param toil.job.JobDescription service: Service to check on
+        :param service_id: Service to check on
         :rtype: boolean
         """
+        service = self.__toil_state.get_job(service_id)
         return self.__job_store.fileExists(service.terminateJobStoreID)
 
-    def isRunning(self, service: ServiceJobDescription) -> bool:
+    def is_running(self, service_id: str) -> bool:
         """
         Returns true if the service job has started and is active
 
-        :param toil.job.JobDescription service: Service to check on
+        :param service: Service to check on
         :rtype: boolean
         """
-        return (not self.__job_store.fileExists(service.startJobStoreID)) and self.isActive(service)
+        service = self.__toil_state.get_job(service_id)
+        return (not self.__job_store.fileExists(service.startJobStoreID)) and self.isActive(service_id)
 
     def check(self) -> None:
         """
