@@ -84,25 +84,28 @@ class ServiceManager( object ):
         """
         self.__service_starter.start()
 
-    def scheduleServices(self, job_desc: ServiceJobDescription) -> None:
+    def put_client(self, client_id: str) -> None:
         """
         Schedule the services of a job asynchronously.
-        When the job's services are running the JobDescription for the job will
+        When the job's services are running the ID for the job will
         be returned by toil.leader.ServiceManager.get_ready_client.
 
-        :param toil.job.JobDescription jobDesc: description job with services to schedule.
+        :param client_id: ID of job with services to schedule.
         """
 
-        logger.debug("Service manager queueing %s as client", job_desc)
+        # Go get the client's description, which includes the services it needs.
+        client = self.__toil_state.get_job(client_id)
+
+        logger.debug("Service manager queueing %s as client", client)
 
         # Add job to set being processed by the service manager
-        self.__waiting_clients.add(job_desc.jobStoreID)
+        self.__waiting_clients.add(client_id)
 
         # Add number of jobs managed by ServiceManager
-        self.__service_manager_jobs += len(job_desc.services) + 1 # The plus one accounts for the root job
+        self.__service_manager_jobs += len(client.services) + 1 # The plus one accounts for the root job
 
         # Asynchronously schedule the services
-        self.__clients_in.put(job_desc.jobStoreID)
+        self.__clients_in.put(client_id)
 
     def get_ready_client(self, maxWait: float) -> Optional[str]:
         """

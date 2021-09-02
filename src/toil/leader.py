@@ -505,7 +505,7 @@ class Leader(object):
 
             logger.debug("Giving job: %s to service manager to schedule its jobs", readyJob)
             # Use the service manager to start the services
-            self.serviceManager.scheduleServices(readyJob)
+            self.serviceManager.put_client(readyJob.jobStoreID)
         elif len(readyJob.stack) > 0:
             # There are exist successors to run
             self._runJobSuccessors(readyJob)
