@@ -150,12 +150,17 @@ class ServiceManager( object ):
         except Empty:
             return None
 
-    def killServices(self, services: Dict[str, ServiceJobDescription], error: bool =False) -> None:
+    def kill_services(self, services: Iterable[str], error: bool = False) -> None:
         """
-        :param dict services: Maps service jobStoreIDs to the communication flags for the service
+        Stop all the given service jobs.
+        
+        :param services: Service jobStoreIDs to kill
+        :param error: Whether to signal that the service failed with an error when stopping it.
         """
         for service_id in services:
-            service = services[service_id]
+            # Get the job description, which knows about the flag files.
+            service = self.__toil_state.get_job(service_id)
+            assert isinstance(service, ServiceJobDescription)
             if error:
                 self.__job_store.deleteFile(service.errorJobStoreID)
             self.__job_store.deleteFile(service.terminateJobStoreID)
@@ -197,7 +202,7 @@ class ServiceManager( object ):
         self.__service_starter.join()
         # Kill any services still running to avoid deadlock
         for services in list(self.__toil_state.servicesIssued.values()):
-            self.killServices(services, error=True)
+            self.kill_services(services, error=True)
         logger.debug('... finished shutting down the service manager. Took %s seconds', time.time() - start_time)
 
     def __start_services(self) -> None:

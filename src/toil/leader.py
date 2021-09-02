@@ -147,10 +147,10 @@ class Leader(object):
         # Tracking the number service jobs issued,
         # this is used limit the number of services issued to the batch system
         self.serviceJobsIssued = 0
-        self.serviceJobsToBeIssued = [] # A queue of IDs of service jobs that await scheduling
+        self.serviceJobsToBeIssued: List[str] = [] # A queue of IDs of service jobs that await scheduling
         #Equivalents for service jobs to be run on preemptible nodes
         self.preemptableServiceJobsIssued = 0
-        self.preemptableServiceJobsToBeIssued = []
+        self.preemptableServiceJobsToBeIssued: List[str] = []
 
         # Timing of the rescuing method
         self.timeSinceJobsLastRescued = None
@@ -436,8 +436,8 @@ class Leader(object):
             # the updatedJobs dict and then scheduled to be removed.
             logger.debug("Telling job %s to terminate its services due to successor failure",
                          predecessor)
-            self.serviceManager.killServices(self.toilState.servicesIssued[predecessor.jobStoreID],
-                                             error=True)
+            self.serviceManager.kill_services(self.toilState.servicesIssued[predecessor.jobStoreID],
+                                              error=True)
         elif predecessor.jobStoreID in self.toilState.successorCounts:
             # The job has non-service jobs running; wait for them to finish.
             # the job will be re-added to the updated jobs when these jobs
@@ -494,14 +494,14 @@ class Leader(object):
             # Build a map from the service jobs to the job and a map
             # of the services created for the job
             assert readyJob.jobStoreID not in self.toilState.servicesIssued
-            self.toilState.servicesIssued[readyJob.jobStoreID] = {}
+            self.toilState.servicesIssued[readyJob.jobStoreID] = set()
             for serviceJobList in readyJob.serviceHostIDsInBatches():
                 for serviceID in serviceJobList:
                     assert serviceID not in self.toilState.serviceJobStoreIDToPredecessorJob
                     self.toilState.reset_job(serviceID)
                     serviceHost = self.toilState.get_job(serviceID)
                     self.toilState.serviceJobStoreIDToPredecessorJob[serviceID] = readyJob
-                    self.toilState.servicesIssued[readyJob.jobStoreID][serviceID] = serviceHost
+                    self.toilState.servicesIssued[readyJob.jobStoreID].add(serviceID)
 
             logger.debug("Giving job: %s to service manager to schedule its jobs", readyJob)
             # Use the service manager to start the services
@@ -513,7 +513,7 @@ class Leader(object):
             logger.debug("Telling job: %s to terminate its services due to the "
                          "successful completion of its successor jobs",
                          readyJob)
-            self.serviceManager.killServices(self.toilState.servicesIssued[readyJob.jobStoreID], error=False)
+            self.serviceManager.kill_services(self.toilState.servicesIssued[readyJob.jobStoreID], error=False)
         else:
             #There are no remaining tasks to schedule within the job, but
             #we schedule it anyway to allow it to be deleted. Remove the job
@@ -1167,7 +1167,7 @@ class Leader(object):
             # properly, and to remember that this service failed with an error
             # and possibly never started.
             if predecesssor.jobStoreID in self.toilState.servicesIssued:
-                self.serviceManager.killServices(self.toilState.servicesIssued[predecesssor.jobStoreID], error=True)
+                self.serviceManager.kill_services(self.toilState.servicesIssued[predecesssor.jobStoreID], error=True)
                 logger.debug("Job: %s is instructing all other services of its parent job to quit", jobDesc)
 
             # This ensures that the job will not attempt to run any of it's
@@ -1242,7 +1242,7 @@ class Leader(object):
         if jobStoreID in self.toilState.serviceJobStoreIDToPredecessorJob:
             # Is a service job
             predecessorJob = self.toilState.serviceJobStoreIDToPredecessorJob.pop(jobStoreID)
-            self.toilState.servicesIssued[predecessorJob.jobStoreID].pop(jobStoreID)
+            self.toilState.servicesIssued[predecessorJob.jobStoreID].remove(jobStoreID)
             if len(self.toilState.servicesIssued[predecessorJob.jobStoreID]) == 0: # Predecessor job has
                 # all its services terminated
                 self.toilState.servicesIssued.pop(predecessorJob.jobStoreID) # The job has no running services

@@ -70,8 +70,9 @@ class ToilState:
         # This is a hash of service jobs, referenced by jobStoreID, to their predecessor job
         self.serviceJobStoreIDToPredecessorJob: Dict[str, JobDescription] = {}
 
-        # Hash of jobStoreIDs mapping to dict from service ID to service host JobDescription for issued services
-        self.servicesIssued: Dict[str, JobDescription] = {}
+        # Holds, for each client job ID, the job IDs of its services that are
+        # currently issued.
+        self.servicesIssued: Dict[str, Set[str]] = {}
 
         # Jobs that are ready to be processed.
         # Stored as a dict from job store ID to a pair of (job, result status),
