@@ -29,8 +29,8 @@ import enlighten
 
 from toil import resolveEntryPoint
 from toil.batchSystems import DeadlockException
-from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
-from toil.common import Toil, ToilMetrics
+from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem, BatchJobExitReason
+from toil.common import Config, Toil, ToilMetrics
 from toil.job import JobDescription, CheckpointJobDescription, ServiceJobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
 from toil.lib.conversions import bytes2human
@@ -109,13 +109,15 @@ class FailedJobsException(Exception):
 class Leader(object):
     """ Class that encapsulates the logic of the leader.
     """
-    def __init__(self, config, batchSystem, provisioner: AbstractProvisioner, jobStore, rootJob, jobCache=None):
+    def __init__(self, config: Config, batchSystem: AbstractBatchSystem,
+                 provisioner: AbstractProvisioner, jobStore: AbstractJobStore,
+                 rootJob: JobDescription, jobCache: Optional[Dict[str, JobDescription]] = None):
         """
-        :param toil.common.Config config:
-        :param toil.batchSystems.abstractBatchSystem.AbstractBatchSystem batchSystem:
-        :param toil.provisioners.abstractProvisioner.AbstractProvisioner provisioner:
-        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore:
-        :param toil.job.JobDescription rootJob:
+        :param config:
+        :param batchSystem:
+        :param provisioner:
+        :param jobStore:
+        :param rootJob: Root job of the workflow that the leader will run
 
         If jobCache is passed, it must be a dict from job ID to pre-existing
         JobDescription objects. Jobs will be loaded from the cache (which can be
@@ -155,9 +157,10 @@ class Leader(object):
         # Timing of the rescuing method
         self.timeSinceJobsLastRescued = None
 
-        # Hash to store number of times a job is lost by the batch system,
-        # used to decide if to reissue an apparently missing job
-        self.reissueMissingJobs_missingHash = {}
+        # For each issued job's batch system ID, how many times did we not see
+        # it when we should have? If this hits a threshold, the job is declared
+        # missing and killed and possibly retried.
+        self.reissueMissingJobs_missingHash: Dict[int, int] = {}
 
         # Class used to create/destroy nodes in the cluster, may be None if
         # using a statically defined cluster
@@ -175,7 +178,7 @@ class Leader(object):
         self.statsAndLogging = StatsAndLogging(self.jobStore, self.config)
 
         # Set used to monitor deadlocked jobs
-        self.potentialDeadlockedJobs = set()
+        self.potentialDeadlockedJobs: Set[str] = set()
         self.potentialDeadlockTime = 0
 
         # A dashboard that runs on the leader node in AWS clusters to track the state
@@ -699,12 +702,17 @@ class Leader(object):
 
         # If there are no updated jobs and at least some jobs running
         if totalServicesIssued >= totalRunningJobs and totalRunningJobs > 0:
-            serviceJobs = [x for x in list(self.issued_jobs_by_batch_system_id.keys()) if isinstance(self.toilState.get_job(self.issued_jobs_by_batch_system_id[x]), ServiceJobDescription)]
-            runningServiceJobs = set([x for x in serviceJobs if self.serviceManager.is_running(self.issued_jobs_by_batch_system_id[x])])
-            assert len(runningServiceJobs) <= totalRunningJobs
+            # Collect all running service job store IDs into a set to compare with the deadlock set
+            running_service_ids: Set[str] = set()
+            for js_id in self.issued_jobs_by_batch_system_id.values():
+                job = self.toilState.get_job(js_id)
+                if isinstance(job, ServiceJobDescription) and self.serviceManager.is_running(js_id):
+                    running_service_ids.add(js_id)
+                    
+            assert len(running_service_ids) <= totalRunningJobs
 
             # If all the running jobs are active services then we have a potential deadlock
-            if len(runningServiceJobs) == totalRunningJobs:
+            if len(running_service_ids) == totalRunningJobs:
                 # There could be trouble; we are 100% services.
                 # See if the batch system has anything to say for itself about its failure to run our jobs.
                 message = self.batchSystem.getSchedulingStatusMessage()
@@ -717,10 +725,10 @@ class Leader(object):
 
 
                 # See if this is a new potential deadlock
-                if self.potentialDeadlockedJobs != runningServiceJobs:
+                if self.potentialDeadlockedJobs != running_service_ids:
                     logger.warning(("Potential deadlock detected! All %s running jobs are service jobs, "
                                     "with no normal jobs to use them! %s"), totalRunningJobs, message)
-                    self.potentialDeadlockedJobs = runningServiceJobs
+                    self.potentialDeadlockedJobs = running_service_ids
                     self.potentialDeadlockTime = time.time()
                 else:
                     # We wait self.config.deadlockWait seconds before declaring the system deadlocked
