@@ -328,32 +328,38 @@ class Leader(object):
             return False
 
 
-    def _checkSuccessorReadyToRunMultiplePredecessors(self, successor, predecessor):
+    def _checkSuccessorReadyToRunMultiplePredecessors(self, successor_id: str, predecessor_id: str) -> bool:
         """
         Handle the special cases of checking if a successor job is
         ready to run when there are multiple predecessors.
 
-        :param toil.job.JobDescription successor: The successor which has failed.
-        :param toil.job.JobDescription predecessor: The job which the successor comes after.
+        :param successor: The successor which has failed.
+        :param predecessor: The job which the successor comes after.
 
+        :returns: True if the successor is ready to run now, and False otherwise.
         """
+        
         # See implementation note at the top of this file for discussion of multiple predecessors
+        
+        # Remember that we have multiple predecessors, if we haven't already
+        # TODO: do we ever consult this after building the ToilState?
+        self.toilState.jobsToBeScheduledWithMultiplePredecessors.add(successor_id)
+        
+        # Grab the cached version of the job, where we have the in-memory finished predecessor info.
+        successor = self.toilState.get_job(successor_id)
+        
+        # Grab the predecessor for reporting
+        predecessor = self.toilState.get_job(predecessor_id)
+        
         logger.debug("Successor job: %s of job: %s has multiple "
                      "predecessors", successor, predecessor)
 
-        # Remember that we have multiple predecessors, if we haven't already
-        # TODO: do we ever consult this after building the ToilState?
-        self.toilState.jobsToBeScheduledWithMultiplePredecessors.add(successor.jobStoreID)
-
-        # Grab the cached version of the job, where we have the in-memory finished predecessor info.
-        # TODO: we're clobbering a JobDescription we're passing around by value.
-        successor = self.toilState.get_job(successor.jobStoreID)
-
         # Add the predecessor as a finished predecessor to the successor
-        successor.predecessorsFinished.add(predecessor.jobStoreID)
+        successor.predecessorsFinished.add(predecessor_id)
+        # TODO: commit back???
 
         # If the successor is in the set of successors of failed jobs
-        if successor.jobStoreID in self.toilState.failedSuccessors:
+        if successor_id in self.toilState.failedSuccessors:
             if not self._handledFailedSuccessor(successor, predecessor):
                 # The job is not ready to run
                 return False
@@ -361,13 +367,14 @@ class Leader(object):
         # If the successor job's predecessors have all not all completed then
         # ignore the successor as is not yet ready to run
         assert len(successor.predecessorsFinished) <= successor.predecessorNumber
-        if len(successor.predecessorsFinished) < successor.predecessorNumber:
+        if len(successor.predecessorsFinished) == successor.predecessorNumber:  
+            # All the successor's predecessors are done now.
+            # Remove the successor job from the set of waiting multi-predecessor jobs.
+            self.toilState.jobsToBeScheduledWithMultiplePredecessors.remove(successor_id)
+            return True
+        else:
             # The job is not ready to run
             return False
-        else:
-            # Remove the successor job from the set of waiting multi-predecessor jobs
-            self.toilState.jobsToBeScheduledWithMultiplePredecessors.remove(successor.jobStoreID)
-            return True
 
     def _makeJobSuccessorReadyToRun(self, successor, predecessor):
         """
