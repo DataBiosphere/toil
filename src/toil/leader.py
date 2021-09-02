@@ -327,7 +327,7 @@ class Leader(object):
                          "with failed successors", predecessor)
             self.toilState.successorCounts.pop(predecessor.jobStoreID)
             if predecessor.jobStoreID not in self.toilState.updatedJobs:
-                self.toilState.updatedJobs[predecessor.jobStoreID] = (predecessor, 0)
+                self.toilState.updatedJobs[predecessor.jobStoreID] = 0
             return False
 
 
@@ -542,8 +542,8 @@ class Leader(object):
         updatedJobs = self.toilState.updatedJobs # The updated jobs to consider below
         self.toilState.updatedJobs = {} # Resetting the collection for the next group of updated jobs
 
-        for updatedJob, resultStatus in updatedJobs.values():
-            self._processReadyJob(updatedJob, resultStatus)
+        for updated_id, result_status in updatedJobs.items():
+            self._processReadyJob(self.toilState.get_job(updated_id), result_status)
 
     def _startServiceJobs(self):
         """Start any service jobs available from the service manager"""
@@ -571,7 +571,7 @@ class Leader(object):
             # Drop all service relationships
             client.filterServiceHosts(lambda ignored: False)
             if client_id not in self.toilState.updatedJobs:
-                self.toilState.updatedJobs[client_id] = (client, 0)
+                self.toilState.updatedJobs[client_id] = 0
 
     def _processJobsWithFailedServices(self):
         """Get jobs whose services have failed to start"""
@@ -589,7 +589,7 @@ class Leader(object):
 
             if client_id not in self.toilState.updatedJobs:
                 # Mark the service job updated so we don't stop here.
-                self.toilState.updatedJobs[client_id] = (client, 1)
+                self.toilState.updatedJobs[client_id] = 1
 
     def _gatherUpdatedJobs(self, updatedJobTuple):
         """Gather any new, updated JobDescriptions from the batch system"""
@@ -1103,7 +1103,7 @@ class Leader(object):
 
             if replacementJob.jobStoreID not in self.toilState.updatedJobs:
                 # Now that we know the job is done we can add it to the list of updated jobs
-                self.toilState.updatedJobs[replacementJob.jobStoreID] = (replacementJob, resultStatus)
+                self.toilState.updatedJobs[replacementJob.jobStoreID] = resultStatus
             logger.debug("Added job: %s to active jobs", replacementJob)
 
             # Return True if it will rerun (still has retries) and false if it
@@ -1232,7 +1232,7 @@ class Leader(object):
                         assert self.toilState.successorCounts[predecessor_id] >= 0
                         if self.toilState.successorCounts[predecessor_id] == 0:
                             if predecessor_id not in self.toilState.updatedJobs:
-                                self.toilState.updatedJobs[predecessor_id] = (predecessor, 0)
+                                self.toilState.updatedJobs[predecessor_id] = 0
 
                             # Remove the predecessor job from the set of jobs with successors.
                             self.toilState.successorCounts.pop(predecessor_id)
@@ -1267,7 +1267,7 @@ class Leader(object):
                 if client_id not in self.toilState.updatedJobs:
                     # Now we know the job is done we can add it to the list of
                     # updated job files
-                    self.toilState.updatedJobs[client_id] = (self.toilState.get_job(client_id), 0)
+                    self.toilState.updatedJobs[client_id] = 0
             else:
                 logger.debug('Job %s is still waiting on %d services',
                              self.toilState.get_job(client_id),
@@ -1306,4 +1306,4 @@ class Leader(object):
 
                     # Now we know the job is done we can add it to the list of updated job files
                     assert predecessor_id not in self.toilState.updatedJobs
-                    self.toilState.updatedJobs[predecessor_id] = (predecessor, 0)
+                    self.toilState.updatedJobs[predecessor_id] = 0

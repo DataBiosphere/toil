@@ -75,10 +75,10 @@ class ToilState:
         self.servicesIssued: Dict[str, Set[str]] = {}
 
         # Jobs that are ready to be processed.
-        # Stored as a dict from job store ID to a pair of (job, result status),
+        # Stored as a dict from job store ID to result status,
         # where a status other than 0 indicates that an error occurred when
         # running the job.
-        self.updatedJobs: Dict[str, Tuple[JobDescription, int]] = {}
+        self.updatedJobs: Dict[str, int] = {}
 
         # The set of totally failed jobs - this needs to be filtered at the
         # end to remove jobs that were removed by checkpoints
@@ -160,18 +160,6 @@ class ToilState:
             assert isinstance(item, JobDescription)
             yield item
 
-        for item in (desc for mapping in self.servicesIssued.values() for desc in mapping.values()):
-            assert isinstance(item, JobDescription)
-            yield item
-
-        for item in (pair[0] for pair in self.updatedJobs.values()):
-            assert isinstance(item, JobDescription)
-            yield item
-
-        for item in self.totalFailedJobs:
-            assert isinstance(item, JobDescription)
-            yield item
-
     def _buildToilState(self, jobDesc: JobDescription) -> None:
         """
         Traverses tree of jobs down from the subtree root JobDescription
@@ -187,7 +175,7 @@ class ToilState:
                          'with  services: %s, with no next successors: %s', jobDesc.jobStoreID,
                          jobDesc.command is not None, isinstance(jobDesc, CheckpointJobDescription) and jobDesc.checkpoint is not None,
                          len(jobDesc.services) > 0, jobDesc.nextSuccessors() is None)
-            self.updatedJobs[jobDesc.jobStoreID] = (jobDesc, 0)
+            self.updatedJobs[jobDesc.jobStoreID] = 0
 
             if isinstance(jobDesc, CheckpointJobDescription) and jobDesc.checkpoint is not None:
                 jobDesc.command = jobDesc.checkpoint
