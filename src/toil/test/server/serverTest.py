@@ -14,7 +14,9 @@
 import json
 import logging
 import os
+import textwrap
 import unittest
+from io import BytesIO
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -22,13 +24,13 @@ if TYPE_CHECKING:
 
 from toil.server.api.utils import DefaultOptions
 from toil.server.app import create_app, parser_with_server_options
-from toil.test import ToilTest
-
+from toil.test import ToilTest, needs_server
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
+@needs_server
 class ToilServerUtilsTest(ToilTest):
     """
     Tests for the utility functions / classes used by the Toil server.
@@ -56,9 +58,11 @@ class ToilServerUtilsTest(ToilTest):
         self.assertEqual(options.get_options("--tag"), ["Name=default", "Owner=shared"])
 
 
+@needs_server
 class ToilWESServerTest(ToilTest):
     """
-    Tests for Toil's Workflow Execution Service API support.
+    Tests for Toil's Workflow Execution Service API support using Flask's
+    builtin test client.
     """
 
     def setUp(self) -> None:
@@ -72,8 +76,8 @@ class ToilWESServerTest(ToilTest):
         self.app: "Flask" = create_app(args).app
         self.app.testing = True
 
-    def tearDown(self):
-        pass
+    def tearDown(self) -> None:
+        super(ToilWESServerTest, self).tearDown()
 
     def test_get_service_info(self) -> None:
         """ Test the GET /service-info endpoint."""
@@ -82,6 +86,10 @@ class ToilWESServerTest(ToilTest):
         self.assertEqual(rv.status_code, 200)
         service_info = json.loads(rv.data)
 
+        # self.assertIn("id", service_info)
+        # self.assertIn("name", service_info)
+        # self.assertIn("type", service_info)
+        # self.assertIn("organization", service_info)
         self.assertIn("version", service_info)
         self.assertIn("workflow_type_versions", service_info)
         self.assertIn("supported_wes_versions", service_info)
@@ -89,38 +97,62 @@ class ToilWESServerTest(ToilTest):
         self.assertIn("workflow_engine_versions", service_info)
         self.assertIn("default_workflow_engine_parameters", service_info)
         self.assertIn("system_state_counts", service_info)
+        # self.assertIn("auth_instructions_url", service_info)
         self.assertIn("tags", service_info)
 
-    def test_run_workflow(self) -> None:
-        """ Test submitting a workflow to the WES server."""
+    def test_run_example_cwl_workflow(self) -> None:
+        """
+        Test submitting the example CWL workflow to the WES server and getting
+        the run status.
+        """
 
-        # relative workflow URL but no attachments
-        with self.app.test_client() as client:
-            rv = client.post("/ga4gh/wes/v1/runs", data={
-                "workflow_url": "example.cwl",
-                "workflow_type": "CWL",
-                "workflow_type_version": "v1.0",
-                "workflow_params": "{}"
-            })
-            self.assertEqual(rv.status_code, 400)
-            self.assertTrue(rv.is_json)
-            self.assertEqual(rv.json.get("msg"), "Relative 'workflow_url' but missing 'workflow_attachment'")
+        with self.subTest('Test run example CWL workflow from relative workflow URL but with no attachments.'):
+            with self.app.test_client() as client:
+                rv = client.post("/ga4gh/wes/v1/runs", data={
+                    "workflow_url": "example.cwl",
+                    "workflow_type": "CWL",
+                    "workflow_type_version": "v1.0",
+                    "workflow_params": "{}"
+                })
+                self.assertEqual(rv.status_code, 400)
+                self.assertTrue(rv.is_json)
+                self.assertEqual(rv.json.get("msg"), "Relative 'workflow_url' but missing 'workflow_attachment'")
 
-        #
-        with self.app.test_client() as client:
-            rv = client.post("/ga4gh/wes/v1/runs", data={
-                "workflow_url": "example.cwl",
-                "workflow_type": "CWL",
-                "workflow_type_version": "v1.0",
-                "workflow_params": json.dumps({"message": "Hello, world!"}),
-                "workflow_attachment": [
-                    # (open("/Users/wlgao/code/GI/toil_server/src/example.cwl", "rb"), "example.cwl"),
-                ],
-            })
-            self.assertEqual(rv.status_code, 200)
-            self.assertTrue(rv.is_json)
-            run_id = rv.json.get("run_id")
-            self.assertIsNotNone(run_id)
+        with self.subTest('Test run example CWL workflow from relative workflow URL.'):
+            example_cwl = textwrap.dedent("""
+            cwlVersion: v1.0
+            class: CommandLineTool
+            baseCommand: echo
+            stdout: output.txt
+            inputs:
+              message:
+                type: string
+                inputBinding:
+                  position: 1
+            outputs:
+              output:
+                type: stdout
+            """)
+            with self.app.test_client() as client:
+                rv = client.post("/ga4gh/wes/v1/runs", data={
+                    "workflow_url": "example.cwl",
+                    "workflow_type": "CWL",
+                    "workflow_type_version": "v1.0",
+                    "workflow_params": json.dumps({"message": "Hello, world!"}),
+                    "workflow_attachment": [
+                        (BytesIO(example_cwl.encode()), "example.cwl"),
+                    ],
+                })
+                # workflow is submitted successfully
+                self.assertEqual(rv.status_code, 200)
+                self.assertTrue(rv.is_json)
+                run_id = rv.json.get("run_id")
+                self.assertIsNotNone(run_id)
+
+                # check outputs
+
+        # Test fetching workflow from the Internet
+        # https://raw.githubusercontent.com/DataBiosphere/toil/releases/5.4.x/src/toil/test/docs/scripts/cwlExampleFiles/hello.cwl
 
 
 if __name__ == "__main__":

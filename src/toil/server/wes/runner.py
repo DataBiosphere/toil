@@ -72,6 +72,7 @@ class ToilWorkflowRunner:
             link_file(src=src_url[7:], dest=dest)
         elif src_url.startswith(("http://", "https://")):
             logger.info(f"Downloading workflow_url from the Internet.")
+            # TODO: Download workflow files from the Internet
             raise NotImplementedError
         else:
             logger.info(f"Using workflow from relative URL.")
@@ -172,10 +173,10 @@ class ToilWorkflowRunner:
 
         self.write("pid", str(process.pid))
 
-        try:
-            # handle SIGTERM as SIGINT
-            signal.signal(signal.SIGTERM, signal.getsignal(signal.SIGINT))
+        # handle SIGTERM as SIGINT to properly shut down Toil
+        signal.signal(signal.SIGTERM, signal.getsignal(signal.SIGINT))
 
+        try:
             return process.wait()
         except KeyboardInterrupt:
             # signal an interrupt to kill the process gently

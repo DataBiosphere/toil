@@ -468,6 +468,22 @@ def needs_cwl(test_item):
         return test_item
 
 
+def needs_server(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if Connexion is installed.
+    """
+    test_item = _mark_test('server_mode', test_item)
+    try:
+        # noinspection PyUnresolvedReferences
+        import connexion
+        print(connexion.__file__)  # keep this import from being removed.
+    except ImportError:
+        return unittest.skip(
+            "Install Toil with the 'server' extra to include this test.")(test_item)
+    else:
+        return test_item
+
+
 def needs_local_appliance(test_item):
     """
     Use as a decorator before test classes or methods to only run them if

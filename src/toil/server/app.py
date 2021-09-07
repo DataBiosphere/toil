@@ -46,7 +46,7 @@ def parser_with_server_options() -> argparse.ArgumentParser:
     # production only
     parser.add_argument("-w", "--workers", dest='workers', type=int, default=2,
                         help="Ignored if --debug is True. The number of worker processes launched by the "
-                             "WSGI server. (recommended: 2-4 workers per core, default: 2).")
+                             "WSGI server. (default: 2).")
 
     parser.add_argument("--work_dir", type=str, default=os.path.join(os.getcwd(), "workflows"),
                         help="The directory where workflows should be stored. This directory should be "

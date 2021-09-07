@@ -11,10 +11,10 @@ More information about the WES API specification can be found here_.
 
 To get started with the Toil WES server, make sure that the ``server`` extra (:ref:`extras`) is installed.
 
-.. _WESRunServer:
+.. _WESStartServer:
 
-Running a WES server
---------------------
+Starting a WES server
+---------------------
 
 To start a WES server on the default port 8080, run the Toil command::
 
@@ -53,6 +53,17 @@ Below is a detailed summary of all available options:
             *TBU*
 
 .. _GA4GH docs on CORS: https://w3id.org/ga4gh/product-approval-support/cors
+
+
+Running on EC2
+--------------
+
+1. Launch cluster
+2. Change security role to allow 0.0.0.0/0 (anyone) to access port 8080 (or the port where the server is listening on)
+3. Run "toil server" on the Toil appliance
+4. Get instance public hostname
+    - Find on EC2 console, or
+    - ``curl http://169.254.169.254/latest/meta-data/public-hostname``
 
 
 .. _WESEndpointsOverview:
