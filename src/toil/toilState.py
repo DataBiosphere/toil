@@ -13,6 +13,7 @@
 # limitations under the License.
 import logging
 
+from toil.bus import MessageBus, JobUpdatedMessage
 from toil.job import CheckpointJobDescription, JobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
 from typing import List, Dict, Set, Tuple, Iterator, Optional
@@ -59,6 +60,9 @@ class ToilState:
         # TODO: Do in-place update instead of assignment when we load so we
         # can't let any non-true copies escape.
         self.__job_database = {}
+        
+        # Scheduling messages should go over this bus.
+        self.bus = MessageBus()
 
         # Maps from successor (child or follow-on) jobStoreID to predecessor jobStoreIDs
         self.successor_to_predecessors: Dict[str, Set[str]] = {}
@@ -73,12 +77,6 @@ class ToilState:
         # Holds, for each client job ID, the job IDs of its services that are
         # currently issued.
         self.servicesIssued: Dict[str, Set[str]] = {}
-
-        # Jobs that are ready to be processed.
-        # Stored as a dict from job store ID to result status,
-        # where a status other than 0 indicates that an error occurred when
-        # running the job.
-        self.updatedJobs: Dict[str, int] = {}
 
         # The set of totally failed jobs - this needs to be filtered at the
         # end to remove jobs that were removed by checkpoints
@@ -159,13 +157,14 @@ class ToilState:
         """
 
         # If the job description has a command, is a checkpoint, has services
-        # or is ready to be deleted it is ready to be processed
+        # or is ready to be deleted it is ready to be processed (i.e. it is updated)
         if jobDesc.command is not None or (isinstance(jobDesc, CheckpointJobDescription) and jobDesc.checkpoint is not None) or len(jobDesc.services) > 0 or jobDesc.nextSuccessors() is None:
             logger.debug('Found job to run: %s, with command: %s, with checkpoint: %s, '
                          'with  services: %s, with no next successors: %s', jobDesc.jobStoreID,
                          jobDesc.command is not None, isinstance(jobDesc, CheckpointJobDescription) and jobDesc.checkpoint is not None,
                          len(jobDesc.services) > 0, jobDesc.nextSuccessors() is None)
-            self.updatedJobs[jobDesc.jobStoreID] = 0
+            # Set the job updated because we should be able to make progress on it.
+            self.bus.put(JobUpdatedMessage(jobDesc.jobStoreID, 0))
 
             if isinstance(jobDesc, CheckpointJobDescription) and jobDesc.checkpoint is not None:
                 jobDesc.command = jobDesc.checkpoint

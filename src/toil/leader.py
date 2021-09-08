@@ -30,6 +30,7 @@ import enlighten
 from toil import resolveEntryPoint
 from toil.batchSystems import DeadlockException
 from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem, BatchJobExitReason
+from toil.bus import JobUpdatedMessage
 from toil.common import Config, Toil, ToilMetrics
 from toil.job import JobDescription, CheckpointJobDescription, ServiceJobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
@@ -133,7 +134,7 @@ class Leader(object):
         # Get a snap shot of the current state of the jobs in the jobStore
         self.toilState = ToilState(jobStore, rootJob, jobCache=jobCache)
         logger.debug("Found %s jobs to start and %i jobs with successors to run",
-                     len(self.toilState.updatedJobs), len(self.toilState.successorCounts))
+                     self.toilState.bus.count(JobUpdatedMessage), len(self.toilState.successorCounts))
 
         # Batch system
         self.batchSystem = batchSystem
@@ -327,8 +328,7 @@ class Leader(object):
                          "and some are failed, adding to list of jobs "
                          "with failed successors", self.toilState.get_job(predecessor_id))
             self.toilState.successorCounts.pop(predecessor_id)
-            if predecessor_id not in self.toilState.updatedJobs:
-                self.toilState.updatedJobs[predecessor_id] = 0
+            self.toilState.bus.put(JobUpdatedMessage(predecessor_id, 0))
             # Report no successors are running
             return False
         else:
@@ -443,8 +443,8 @@ class Leader(object):
 
         if predecessor.jobStoreID in self.toilState.servicesIssued:
             # The job has services running; signal for them to be killed.
-            # Once they are killed, then the job will be re-added to
-            # the updatedJobs dict and then scheduled to be removed.
+            # Once they are killed, then the job will be updated again and then
+            # scheduled to be removed.
             logger.debug("Telling job %s to terminate its services due to successor failure",
                          predecessor)
             self.serviceManager.kill_services(self.toilState.servicesIssued[predecessor.jobStoreID],
@@ -469,9 +469,12 @@ class Leader(object):
             logger.debug("Job %s is being processed as completely failed", predecessor.jobStoreID)
             self.processTotallyFailedJob(predecessor)
 
-    def _processReadyJob(self, readyJob, resultStatus):
+    def _processReadyJob(self, job_id: str, result_status: int):
+        # We operate on the JobDescription mostly.
+        readyJob = self.toilState.get_job(job_id)
+    
         logger.debug('Updating status of job %s with result status: %s',
-                     readyJob, resultStatus)
+                     readyJob, result_status)
 
         if self.serviceManager.services_are_starting(readyJob.jobStoreID):
             # This stops a job with services being issued by the serviceManager from
@@ -482,7 +485,7 @@ class Leader(object):
                          "manager: %s", readyJob.jobStoreID)
         elif readyJob.jobStoreID in self.toilState.hasFailedSuccessors:
             self._processFailedSuccessors(readyJob)
-        elif readyJob.command is not None or resultStatus != 0:
+        elif readyJob.command is not None or result_status != 0:
             # The job has a command it must be run before any successors.
             # Similarly, if the job previously failed we rerun it, even if it doesn't have a
             # command to run, to eliminate any parts of the stack now completed.
@@ -545,13 +548,33 @@ class Leader(object):
     def _processReadyJobs(self):
         """Process jobs that are ready to be scheduled/have successors to schedule"""
         logger.debug('Built the jobs list, currently have %i jobs to update and %i jobs issued',
-                     len(self.toilState.updatedJobs), self.getNumberOfJobsIssued())
+                     self.toilState.bus.count(JobUpdatedMessage), self.getNumberOfJobsIssued())
 
-        updatedJobs = self.toilState.updatedJobs # The updated jobs to consider below
-        self.toilState.updatedJobs = {} # Resetting the collection for the next group of updated jobs
-
-        for updated_id, result_status in updatedJobs.items():
-            self._processReadyJob(self.toilState.get_job(updated_id), result_status)
+        # Now go through and, for each job that has updated this tick, process it.
+        
+        # We are in trouble if the same job is updated with multiple statuses,
+        # and we want to coalesce multiple updates with the same status in the
+        # same tick, so we remember what we've done so far in this dict from
+        # job ID to status.
+        handled_with_status = {}
+        for message in self.toilState.bus.for_each(JobUpdatedMessage):
+            # Handle all the job update messages that came in.
+            
+            if message.job_id in handled_with_status:
+                if handled_with_status[message.job_id] == message.result_status:
+                    # This is a harmless duplicate
+                    logger.debug("Coalescing duplicate update %s", message)
+                    continue
+                else:
+                    # This is a conflicting update. We may have already treated
+                    # a job as succeeding but now we've heard it's failed, or
+                    # visa versa.
+                    logger.error("Job %s already updated this tick with status %s but we've now received %s", message.job_id, handled_with_status[message.job_id], message)
+                    raise RuntimeError(f"Conflicting update status message: {message}")
+            else:
+                # New job for this tick so actually handle that it is updated
+                self._processReadyJob(message.job_id, message.result_status)
+                handled_with_status[message.job_id] = message.result_status
 
     def _startServiceJobs(self):
         """Start any service jobs available from the service manager"""
@@ -578,8 +601,7 @@ class Leader(object):
 
             # Drop all service relationships
             client.filterServiceHosts(lambda ignored: False)
-            if client_id not in self.toilState.updatedJobs:
-                self.toilState.updatedJobs[client_id] = 0
+            self.toilState.bus.put(JobUpdatedMessage(client_id, 0))
 
     def _processJobsWithFailedServices(self):
         """Get jobs whose services have failed to start"""
@@ -595,9 +617,8 @@ class Leader(object):
             # Make sure services still want to run
             assert next(client.serviceHostIDsInBatches(), None) is not None
 
-            if client_id not in self.toilState.updatedJobs:
-                # Mark the service job updated so we don't stop here.
-                self.toilState.updatedJobs[client_id] = 1
+            # Mark the service job updated so we don't stop here.
+            self.toilState.bus.put(JobUpdatedMessage(client_id, 1))
 
     def _gatherUpdatedJobs(self, updatedJobTuple):
         """Gather any new, updated JobDescriptions from the batch system"""
@@ -650,11 +671,11 @@ class Leader(object):
         """
         self.timeSinceJobsLastRescued = time.time()
 
-        while self.toilState.updatedJobs or \
+        while self.toilState.bus.count(JobUpdatedMessage) > 0 or \
               self.getNumberOfJobsIssued() or \
               self.serviceManager.get_job_count():
 
-            if self.toilState.updatedJobs:
+            if self.toilState.bus.count(JobUpdatedMessage) > 0:
                 self._processReadyJobs()
 
             # deal with service-related jobs
@@ -692,7 +713,7 @@ class Leader(object):
         logger.debug("Finished the main loop: no jobs left to run.")
 
         # Consistency check the toil state
-        assert self.toilState.updatedJobs == {}
+        assert self.toilState.bus.empty()
         assert self.toilState.successorCounts == {}
         assert self.toilState.successor_to_predecessors == {}
         assert self.toilState.service_to_client == {}
@@ -1013,13 +1034,13 @@ class Leader(object):
         return len( self.reissueMissingJobs_missingHash ) == 0 #We use this to inform
         #if there are missing jobs
 
-    def processRemovedJob(self, issuedJob, resultStatus):
-        if resultStatus != 0:
+    def processRemovedJob(self, issuedJob, result_status):
+        if result_status != 0:
             logger.warning("Despite the batch system claiming failure the "
                         "job %s seems to have finished and been removed", issuedJob)
         self._updatePredecessorStatus(issuedJob.jobStoreID)
 
-    def processFinishedJob(self, batchSystemID, resultStatus, wallTime=None, exitReason=None):
+    def processFinishedJob(self, batchSystemID, result_status, wallTime=None, exitReason=None):
         """
         Function reads a processed JobDescription file and updates its state.
 
@@ -1045,7 +1066,7 @@ class Leader(object):
                     # This is a temporary work around until https://github.com/BD2KGenomics/toil/issues/1091
                     # is completed
                     logger.warning('Got a stale read from SDB for job %s', issuedJob)
-                    self.processRemovedJob(issuedJob, resultStatus)
+                    self.processRemovedJob(issuedJob, result_status)
                     return
                 else:
                     raise
@@ -1059,7 +1080,7 @@ class Leader(object):
                 if self.config.writeLogs or self.config.writeLogsGzip:
                     with replacementJob.getLogFileHandle(self.jobStore) as logFileStream:
                         StatsAndLogging.writeLogFiles(replacementJob.chainedJobs, logFileStream, self.config, failed=True)
-            if resultStatus != 0:
+            if result_status != 0:
                 # If the batch system returned a non-zero exit code then the worker
                 # is assumed not to have captured the failure of the job, so we
                 # reduce the try count here.
@@ -1109,16 +1130,15 @@ class Leader(object):
                 # If the job has completed okay, we can remove it from the list of jobs with failed successors
                 self.toilState.hasFailedSuccessors.remove(jobStoreID)
 
-            if replacementJob.jobStoreID not in self.toilState.updatedJobs:
-                # Now that we know the job is done we can add it to the list of updated jobs
-                self.toilState.updatedJobs[replacementJob.jobStoreID] = resultStatus
-            logger.debug("Added job: %s to active jobs", replacementJob)
+            # Now that we know the job is done we can add it to the list of updated jobs
+            self.toilState.bus.put(JobUpdatedMessage(replacementJob.jobStoreID, result_status))
+            logger.debug("Added job: %s to updated jobs", replacementJob)
 
             # Return True if it will rerun (still has retries) and false if it
             # is completely failed.
             return replacementJob.remainingTryCount > 0
         else:  #The job is done
-            self.processRemovedJob(issuedJob, resultStatus)
+            self.processRemovedJob(issuedJob, result_status)
             # Being done, it won't run again.
             return False
 
@@ -1236,11 +1256,10 @@ class Leader(object):
                         logger.debug("Marking job: %s as having failed successors (found by "
                                      "reading successors failed job)", predecessor)
 
-                        # If the predecessor has no remaining successors, add to list of active jobs
+                        # If the predecessor has no remaining successors, add to list of updated jobs
                         assert self.toilState.successorCounts[predecessor_id] >= 0
                         if self.toilState.successorCounts[predecessor_id] == 0:
-                            if predecessor_id not in self.toilState.updatedJobs:
-                                self.toilState.updatedJobs[predecessor_id] = 0
+                            self.toilState.bus.put(JobUpdatedMessage(predecessor_id, 0))
 
                             # Remove the predecessor job from the set of jobs with successors.
                             self.toilState.successorCounts.pop(predecessor_id)
@@ -1272,17 +1291,16 @@ class Leader(object):
 
                 logger.debug('Job %s is no longer waiting on services', self.toilState.get_job(client_id))
 
-                if client_id not in self.toilState.updatedJobs:
-                    # Now we know the job is done we can add it to the list of
-                    # updated job files
-                    self.toilState.updatedJobs[client_id] = 0
+                # Now we know the job is done we can add it to the list of
+                # updated job files
+                self.toilState.bus.put(JobUpdatedMessage(client_id, 0))
             else:
                 logger.debug('Job %s is still waiting on %d services',
                              self.toilState.get_job(client_id),
                              len(self.toilState.servicesIssued[client_id]))
         elif jobStoreID not in self.toilState.successor_to_predecessors:
             #We have reach the root job
-            assert len(self.toilState.updatedJobs) == 0
+            assert self.toilState.bus.count(JobUpdatedMessage) == 0, "Root job is done but other jobs are still updated"
             assert len(self.toilState.successor_to_predecessors) == 0, \
                 ("Job {} is finished and had no predecessor, but we have other outstanding jobs "
                  "with predecessors: {}".format(jobStoreID, self.toilState.successor_to_predecessors.keys()))
@@ -1313,5 +1331,4 @@ class Leader(object):
                     self.toilState.successorCounts.pop(predecessor_id)
 
                     # Now we know the job is done we can add it to the list of updated job files
-                    assert predecessor_id not in self.toilState.updatedJobs
-                    self.toilState.updatedJobs[predecessor_id] = 0
+                    self.toilState.bus.put(JobUpdatedMessage(predecessor_id, 0))
