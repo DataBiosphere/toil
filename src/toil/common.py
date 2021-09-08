@@ -993,14 +993,12 @@ class Toil:
                     from toil.batchSystems.singleMachine import \
                         SingleMachineBatchSystem
                     if not isinstance(self._batchSystem, SingleMachineBatchSystem):
-                        logger.warning('Batch system does not support auto-deployment. The user '
-                                    'script %s will have to be present at the same location on '
-                                    'every worker.', userScript)
+                        logger.warning('Batch system does not support auto-deployment. The user script '
+                                       '%s will have to be present at the same location on every worker.', userScript)
                     userScript = None
         else:
             # This branch is hit on restarts
-            if (self._batchSystem.supportsAutoDeployment() and
-                not self.config.disableAutoDeployment):
+            if self._batchSystem.supportsAutoDeployment() and not self.config.disableAutoDeployment:
                 # We could deploy a user script
                 from toil.jobStores.abstractJobStore import NoSuchFileException
                 try:
@@ -1028,7 +1026,7 @@ class Toil:
         full description
         """
         self._assertContextManagerUsed()
-        srcUrl = self.sanity_check_uri_and_format(srcUrl, check_existence=True)
+        srcUrl = self.normalize_uri(srcUrl, check_existence=True)
         return self._jobStore.importFile(srcUrl, sharedFileName=sharedFileName, symlink=symlink)
 
     def exportFile(self, jobStoreFileID: Union[FileID, str], dstUrl: str) -> None:
@@ -1039,30 +1037,27 @@ class Toil:
         full description
         """
         self._assertContextManagerUsed()
-        dstUrl = self.sanity_check_uri_and_format(dstUrl)
+        dstUrl = self.normalize_uri(dstUrl)
         self._jobStore.exportFile(jobStoreFileID, dstUrl)
 
     @staticmethod
-    def sanity_check_uri_and_format(uri: str, check_existence: bool = False) -> str:
+    def normalize_uri(uri: str, check_existence: bool = False) -> str:
         """
-        Transforms local paths into absolute local paths and ensures the file:// schema is present.
+        Given a URI, if it has no scheme, prepend "file:".
 
-        Ignores URIs with other schema (examples: s3:/, gs:/, ftp://, etc.).
+        Will raise an error if a URI points to a local file that does not exist.
         """
         if urlparse(uri).scheme == 'file':
-            uri = urlparse(uri).path  # this should strip off the local file schema; it will be added back
+            uri = urlparse(uri).path  # this should strip off the local file scheme; it will be added back
 
-        # account for the schema-less case, which should be coerced to a local absolute path
+        # account for the scheme-less case, which should be coerced to a local absolute path
         if urlparse(uri).scheme == '':
             abs_path = os.path.abspath(uri)
             if not os.path.exists(abs_path) and check_existence:
                 raise FileNotFoundError(
-                    f'Import failed for: "{uri}"\n'
-                    f'No schema (http://, s3://, file://, etc.) for path was included.\n'
-                    f'Attempting to import as an absolute local file path: "{abs_path}"\n'
-                    f'Relative to directory: "{os.getcwd()}".\n'
-                    f'Please try to include the schema, and adjust the path as necessary, '
-                    f'using absolute paths where possible.')
+                    f'Could not find local file "{abs_path}" when importing "{uri}".\n'
+                    f'Make sure paths are relative to "{os.getcwd()}" or use absolute paths.\n'
+                    f'If this is not a local file, please include the scheme (s3:/, gs:/, ftp://, etc.).')
             return f'file://{abs_path}'
         return uri
 
