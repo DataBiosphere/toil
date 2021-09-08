@@ -23,8 +23,11 @@ from uuid import uuid4
 
 import pytest
 
+import boto.ec2
+
+from toil.lib.aws import zone_to_region
 from toil.provisioners import cluster_factory
-from toil.provisioners.aws import get_current_aws_zone
+from toil.provisioners.aws import get_best_aws_zone
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from toil.test import (ToilTest,
                        integrative,
@@ -84,8 +87,10 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.numWorkers = ['2']
         self.numSamples = 2
         self.spotBid = 0.15
-        self.zone = get_current_aws_zone()
+        self.zone = get_best_aws_zone()
         assert self.zone is not None, "Could not determine AWS availability zone to test in; is TOIL_AWS_ZONE set?"
+        # We need a boto2 connection to EC2 to check on the cluster
+        self.boto2_ec2 = boto.ec2.connect_to_region(zone_to_region(self.zone))
         # We can't dump our user script right in /tmp or /home, because hot
         # deploy refuses to zip up those whole directories. So we make sure to
         # have a subdirectory to upload the script to.
@@ -219,16 +224,13 @@ class AbstractAWSAutoscaleTest(ToilTest):
         args = [] if args is None else args
 
         command = ['toil', 'launch-cluster', '-p=aws', '-z', self.zone, f'--keyPairName={self.keyName}',
-                   '--leaderNodeType=t2.medium', self.clusterName] + args
+                   '--leaderNodeType=t2.medium', '--logDebug', self.clusterName] + args
 
         log.debug('Launching cluster: %s', command)
 
         # Try creating the cluster
         subprocess.check_call(command)
         # If we fail, tearDown will destroy the cluster.
-
-    def getMatchingRoles(self):
-        return list(self.cluster._boto2.local_roles())
 
     def launchCluster(self):
         self.createClusterUtil()
@@ -278,6 +280,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
     def _test(self, preemptableJobs=False):
         """Does the work of the testing.  Many features' tests are thrown in here in no particular order."""
+        # Make a cluster
         self.launchCluster()
         # get the leader so we know the IP address - we don't need to wait since create cluster
         # already insures the leader is running
@@ -286,7 +289,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.sshUtil(['mkdir', '-p', self.scriptDir])
         self.sshUtil(['mkdir', '-p', self.dataDir])
 
-        assert len(self.getMatchingRoles()) == 1
+        assert len(self.cluster._getRoleNames()) == 1
         # --never-download prevents silent upgrades to pip, wheel and setuptools
         venv_command = ['virtualenv', '--system-site-packages', '--python', exactPython, '--never-download', self.venvDir]
         self.sshUtil(venv_command)
@@ -311,7 +314,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         log.info('Run script...')
         self._runScript(toilOptions)
 
-        assert len(self.getMatchingRoles()) == 1
+        assert len(self.cluster._getRoleNames()) == 1
 
         from boto.exception import EC2ResponseError
         volumeID = self.getRootVolID()
@@ -320,7 +323,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
             # https://github.com/BD2KGenomics/toil/issues/1567
             # retry this for up to 1 minute until the volume disappears
             try:
-                self.cluster._boto2.ec2.get_all_volumes(volume_ids=[volumeID])
+                self.boto2_ec2.get_all_volumes(volume_ids=[volumeID])
                 time.sleep(10)
             except EC2ResponseError as e:
                 if e.status == 400 and 'InvalidVolume.NotFound' in e.code:
@@ -330,7 +333,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         else:
             self.fail('Volume with ID %s was not cleaned up properly' % volumeID)
 
-        assert len(self.getMatchingRoles()) == 0
+        assert len(self.cluster._getRoleNames()) == 0
 
 
 @integrative
@@ -374,7 +377,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         :return: volumeID
         """
         volumeID = super(AWSAutoscaleTest, self).getRootVolID()
-        rootVolume = self.cluster._boto2.ec2.get_all_volumes(volume_ids=[volumeID])[0]
+        rootVolume = self.boto2_ec2.get_all_volumes(volume_ids=[volumeID])[0]
         # test that the leader is given adequate storage
         self.assertGreaterEqual(rootVolume.size, self.requestedLeaderStorage)
         return volumeID
@@ -428,10 +431,10 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         # test that workers have expected storage size
         # just use the first worker
         worker = workers[0]
-        worker = next(wait_instances_running(self.cluster._boto2.ec2, [worker]))
+        worker = next(wait_instances_running(self.boto2_ec2, [worker]))
         rootBlockDevice = worker.block_device_mapping["/dev/xvda"]
         self.assertTrue(isinstance(rootBlockDevice, BlockDeviceType))
-        rootVolume = self.cluster._boto2.ec2.get_all_volumes(volume_ids=[rootBlockDevice.volume_id])[0]
+        rootVolume = self.boto2_ec2.get_all_volumes(volume_ids=[rootBlockDevice.volume_id])[0]
         self.assertGreaterEqual(rootVolume.size, self.requestedNodeStorage)
 
     def _runScript(self, toilOptions):

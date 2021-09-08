@@ -476,6 +476,10 @@ class JobDescription(Requirer):
         # increment this.
         self._job_version = 0
 
+        # Human-readable names of jobs that were run as part of this job's
+        # invocation, starting with this job
+        self.chainedJobs = []
+
     def serviceHostIDsInBatches(self):
         """
         Get an iterator over all batches of service host job IDs that can be
@@ -899,10 +903,6 @@ class CheckpointJobDescription(JobDescription):
 
         # Files that can not be deleted until the job and its successors have completed
         self.checkpointFilesToDelete = []
-
-        # Human-readable names of jobs that were run as part of this job's
-        # invocation, starting with this job
-        self.chainedJobs = []
 
     def restartCheckpoint(self, jobStore):
         """
