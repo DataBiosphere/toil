@@ -1045,7 +1045,8 @@ class Toil:
         """
         Given a URI, if it has no scheme, prepend "file:".
 
-        Will raise an error if a URI points to a local file that does not exist.
+        :param check_existence: If set, raise an error if a URI points to
+               a local file that does not exist.
         """
         if urlparse(uri).scheme == 'file':
             uri = urlparse(uri).path  # this should strip off the local file scheme; it will be added back
