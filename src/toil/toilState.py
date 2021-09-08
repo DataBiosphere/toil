@@ -14,7 +14,7 @@
 import logging
 
 from toil.job import CheckpointJobDescription, JobDescription
-from toil.jobStores.abstractJobStore import AbstractJobStore
+from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
 from typing import List, Dict, Set, Tuple, Iterator, Optional
 
 logger = logging.getLogger(__name__)

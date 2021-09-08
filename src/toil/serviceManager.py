@@ -183,7 +183,7 @@ class ServiceManager( object ):
         :rtype: boolean
         """
         service = self.__toil_state.get_job(service_id)
-        return (not self.__job_store.fileExists(service.startJobStoreID)) and self.isActive(service_id)
+        return (not self.__job_store.fileExists(service.startJobStoreID)) and self.is_active(service_id)
 
     def check(self) -> None:
         """
