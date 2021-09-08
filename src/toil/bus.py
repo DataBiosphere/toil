@@ -63,7 +63,7 @@ class MessageBus:
         assert our_frame is not None
         caller_frame = our_frame.f_back
         assert caller_frame is not None
-        logger.debug('%s sent: %s', caller_frame.f_code.co_name)
+        logger.debug('%s sent: %s', caller_frame.f_code.co_name, message)
         
         self.__messages_by_type[type(message)].append(message)
         

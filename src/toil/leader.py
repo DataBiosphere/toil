@@ -395,6 +395,8 @@ class Leader(object):
         #Build map from successor to predecessors.
         if successor_id not in self.toilState.successor_to_predecessors:
             self.toilState.successor_to_predecessors[successor_id] = set()
+        assert isinstance(successor_id, str)
+        assert isinstance(predecessor_id, str)
         self.toilState.successor_to_predecessors[successor_id].add(predecessor_id)
         
         # Grab the successor
@@ -405,22 +407,25 @@ class Leader(object):
         else:
             return True
 
-    def _runJobSuccessors(self, predecessor):
+    def _runJobSuccessors(self, predecessor_id: str):
         """
         Issue the successors of a job.
 
-        :param toil.job.JobDescription predecessor: The job which the successors come after.
+        :param predecessor_id: The ID of the job which the successors come after.
         """
 
         # TODO: rewrite!
+        
+        # Grab the predecessor's JobDescription
+        predecessor = self.toilState.get_job(predecessor_id)
 
         assert len(predecessor.stack[-1]) > 0
         logger.debug("Job: %s has %i successors to schedule",
-                     predecessor.jobStoreID, len(predecessor.stack[-1]))
+                     predecessor_id, len(predecessor.stack[-1]))
         #Record the number of successors that must be completed before
         #the job can be considered again
-        assert predecessor.jobStoreID not in self.toilState.successorCounts, 'Attempted to schedule successors of the same job twice!'
-        self.toilState.successorCounts[predecessor.jobStoreID] = len(predecessor.stack[-1])
+        assert predecessor_id not in self.toilState.successorCounts, 'Attempted to schedule successors of the same job twice!'
+        self.toilState.successorCounts[predecessor_id] = len(predecessor.stack[-1])
 
         # For each successor schedule if all predecessors have been completed
         successors = []
@@ -430,31 +435,34 @@ class Leader(object):
             except NoSuchJobException:
                 # Job already done and gone, but probably shouldn't be. Or maybe isn't visible yet.
                 # TODO: Shouldn't this be an error?
-                logger.warning("Job %s is a successor of %s but is already done and gone.", successor_id, predecessor.jobStoreID)
+                logger.warning("Job %s is a successor of %s but is already done and gone.", successor_id, predecessor_id)
                 # Don't try and run it
                 continue
-            if self._makeJobSuccessorReadyToRun(successor_id, predecessor.jobStoreID):
+            if self._makeJobSuccessorReadyToRun(successor_id, predecessor_id):
                 successors.append(successor)
         self.issueJobs(successors)
 
-    def _processFailedSuccessors(self, predecessor):
+    def _processFailedSuccessors(self, predecessor_id: str):
         """Some of the jobs successors failed then either fail the job
         or restart it if it has retries left and is a checkpoint job"""
 
-        if predecessor.jobStoreID in self.toilState.servicesIssued:
+        # Get the description
+        predecessor = self.toilState.get_job(predecessor_id)
+
+        if predecessor_id in self.toilState.servicesIssued:
             # The job has services running; signal for them to be killed.
             # Once they are killed, then the job will be updated again and then
             # scheduled to be removed.
             logger.debug("Telling job %s to terminate its services due to successor failure",
                          predecessor)
-            self.serviceManager.kill_services(self.toilState.servicesIssued[predecessor.jobStoreID],
+            self.serviceManager.kill_services(self.toilState.servicesIssued[predecessor_id],
                                               error=True)
-        elif predecessor.jobStoreID in self.toilState.successorCounts:
+        elif predecessor_id in self.toilState.successorCounts:
             # The job has non-service jobs running; wait for them to finish.
             # the job will be re-added to the updated jobs when these jobs
             # are done
             logger.debug("Job %s with ID: %s with failed successors still has successor jobs running",
-                         predecessor, predecessor.jobStoreID)
+                         predecessor, predecessor_id)
         elif isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint is not None and predecessor.remainingTryCount > 1:
             # If the job is a checkpoint and has remaining retries then reissue it.
             # The logic behind using > 1 rather than > 0 here: Since this job has
@@ -462,12 +470,12 @@ class Leader(object):
             # itself was successful), and its subtree failed, it shouldn't be retried
             # unless it has more than 1 try.
             logger.warning('Job: %s is being restarted as a checkpoint after the total '
-                        'failure of jobs in its subtree.', predecessor.jobStoreID)
+                        'failure of jobs in its subtree.', predecessor_id)
             self.issueJob(predecessor)
         else:
             # Mark it totally failed
-            logger.debug("Job %s is being processed as completely failed", predecessor.jobStoreID)
-            self.processTotallyFailedJob(predecessor)
+            logger.debug("Job %s is being processed as completely failed", predecessor_id)
+            self.processTotallyFailedJob(predecessor_id)
 
     def _processReadyJob(self, job_id: str, result_status: int):
         # We operate on the JobDescription mostly.
@@ -484,7 +492,7 @@ class Leader(object):
             logger.debug("Got a job to update which is still owned by the service "
                          "manager: %s", readyJob.jobStoreID)
         elif readyJob.jobStoreID in self.toilState.hasFailedSuccessors:
-            self._processFailedSuccessors(readyJob)
+            self._processFailedSuccessors(job_id)
         elif readyJob.command is not None or result_status != 0:
             # The job has a command it must be run before any successors.
             # Similarly, if the job previously failed we rerun it, even if it doesn't have a
@@ -498,7 +506,7 @@ class Leader(object):
             # been indicated, fail the job.
             if (readyJob.remainingTryCount == 0 or
                 (isServiceJob and not self.jobStore.fileExists(readyJob.errorJobStoreID))):
-                self.processTotallyFailedJob(readyJob)
+                self.processTotallyFailedJob(job_id)
                 logger.warning("Job %s is completely failed", readyJob)
             else:
                 # Otherwise try the job again
@@ -519,10 +527,10 @@ class Leader(object):
 
             logger.debug("Giving job: %s to service manager to schedule its jobs", readyJob)
             # Use the service manager to start the services
-            self.serviceManager.put_client(readyJob.jobStoreID)
+            self.serviceManager.put_client(job_id)
         elif len(readyJob.stack) > 0:
             # There are exist successors to run
-            self._runJobSuccessors(readyJob)
+            self._runJobSuccessors(job_id)
         elif readyJob.jobStoreID in self.toilState.servicesIssued:
             logger.debug("Telling job: %s to terminate its services due to the "
                          "successful completion of its successor jobs",
@@ -542,7 +550,7 @@ class Leader(object):
                 self.issueJob(readyJob)
                 logger.debug("Job: %s is empty, we are scheduling to clean it up", readyJob.jobStoreID)
             else:
-                self.processTotallyFailedJob(readyJob)
+                self.processTotallyFailedJob(job_id)
                 logger.warning("Job: %s is empty but completely failed - something is very wrong", readyJob.jobStoreID)
 
     def _processReadyJobs(self):
@@ -1175,23 +1183,26 @@ class Leader(object):
 
         return successors
 
-    def processTotallyFailedJob(self, jobDesc):
+    def processTotallyFailedJob(self, job_id: str):
         """
         Processes a totally failed job.
         """
         # Mark job as a totally failed job
-        self.toilState.totalFailedJobs.add(jobDesc.jobStoreID)
+        self.toilState.totalFailedJobs.add(job_id)
+        
+        job_desc = self.toilState.get_job(job_id)
+        
         if self.toilMetrics:
-            self.toilMetrics.logFailedJob(jobDesc)
+            self.toilMetrics.logFailedJob(job_desc)
 
-        if jobDesc.jobStoreID in self.toilState.service_to_client:
+        if job_id in self.toilState.service_to_client:
             # Is a service job
-            logger.debug("Service job is being processed as a totally failed job: %s", jobDesc)
+            logger.debug("Service job is being processed as a totally failed job: %s", job_desc)
 
-            assert isinstance(jobDesc, ServiceJobDescription)
+            assert isinstance(job_desc, ServiceJobDescription)
 
             # Grab the client, which is the predecessor.
-            client_id = self.toilState.service_to_client[jobDesc.jobStoreID]
+            client_id = self.toilState.service_to_client[job_id]
 
             assert client_id in self.toilState.servicesIssued
 
@@ -1200,7 +1211,7 @@ class Leader(object):
 
             # Poke predecessor job that had the service to kill its services,
             # and drop predecessor relationship from ToilState.
-            self._updatePredecessorStatus(jobDesc.jobStoreID)
+            self._updatePredecessorStatus(job_id)
 
             # Signal to all other services in the group that they should
             # terminate. We do this to prevent other services in the set
@@ -1209,7 +1220,7 @@ class Leader(object):
             # and possibly never started.
             if client_id in self.toilState.servicesIssued:
                 self.serviceManager.kill_services(self.toilState.servicesIssued[client_id], error=True)
-                logger.debug("Job: %s is instructing all other services of its parent job to quit", jobDesc)
+                logger.debug("Job: %s is instructing all other services of its parent job to quit", job_desc)
 
             # This ensures that the job will not attempt to run any of it's
             # successors on the stack
@@ -1221,19 +1232,19 @@ class Leader(object):
             # lets it continue, now that we have issued kill orders for them,
             # to start dependent services, which all need to actually fail
             # before we can finish up with the services' predecessor job.
-            self.jobStore.deleteFile(jobDesc.startJobStoreID)
+            self.jobStore.deleteFile(job_desc.startJobStoreID)
         else:
             # Is a non-service job
-            assert jobDesc.jobStoreID not in self.toilState.servicesIssued
-            assert not isinstance(jobDesc, ServiceJobDescription)
+            assert job_id not in self.toilState.servicesIssued
+            assert not isinstance(job_desc, ServiceJobDescription)
 
             # Traverse failed job's successor graph and get the jobStoreID of new successors.
             # Any successor already in toilState.failedSuccessors will not be traversed
             # All successors traversed will be added to toilState.failedSuccessors and returned
             # as a set (unseenSuccessors).
-            unseenSuccessors = self.getSuccessors(jobDesc.jobStoreID, self.toilState.failedSuccessors)
+            unseenSuccessors = self.getSuccessors(job_id, self.toilState.failedSuccessors)
             logger.debug("Found new failed successors: %s of job: %s", " ".join(
-                         unseenSuccessors), jobDesc)
+                         unseenSuccessors), job_desc)
 
             # For each newly found successor
             for successorJobStoreID in unseenSuccessors:
@@ -1265,17 +1276,17 @@ class Leader(object):
                             self.toilState.successorCounts.pop(predecessor_id)
 
             # If the job has predecessor(s)
-            if jobDesc.jobStoreID in self.toilState.successor_to_predecessors:
+            if job_id in self.toilState.successor_to_predecessors:
 
                 # For each predecessor of the job
-                for predecessor_id in self.toilState.successor_to_predecessors[jobDesc.jobStoreID]:
+                for predecessor_id in self.toilState.successor_to_predecessors[job_id]:
 
                     # Mark the predecessor as failed
                     self.toilState.hasFailedSuccessors.add(predecessor_id)
                     logger.debug("Totally failed job: %s is marking direct predecessor: %s "
-                                 "as having failed jobs", jobDesc, self.toilState.get_job(predecessor_id))
+                                 "as having failed jobs", job_desc, self.toilState.get_job(predecessor_id))
 
-                self._updatePredecessorStatus(jobDesc.jobStoreID)
+                self._updatePredecessorStatus(job_id)
 
     def _updatePredecessorStatus(self, jobStoreID: str):
         """
@@ -1313,7 +1324,7 @@ class Leader(object):
 
             # For each predecessor
             for predecessor_id in self.toilState.successor_to_predecessors.pop(jobStoreID):
-
+                assert isinstance(predecessor_id, str), f"Predecessor ID should be str but is {type(predecessor_id)}"
                 predecessor = self.toilState.get_job(predecessor_id)
 
                 # Tell the predecessor that this job is done (keep only other successor jobs)

@@ -200,7 +200,7 @@ class ToilState:
                 if successorJobStoreID not in self.successor_to_predecessors:
 
                     # Add the job as a predecessor
-                    self.successor_to_predecessors[successorJobStoreID] = set([jobDesc])
+                    self.successor_to_predecessors[successorJobStoreID] = set([jobDesc.jobStoreID])
 
                     # We load the successor job
                     successor = self.get_job(successorJobStoreID)
@@ -225,7 +225,7 @@ class ToilState:
 
                     # Add the job as a predecessor
                     assert jobDesc not in self.successor_to_predecessors[successorJobStoreID]
-                    self.successor_to_predecessors[successorJobStoreID].add(jobDesc)
+                    self.successor_to_predecessors[successorJobStoreID].add(jobDesc.jobStoreID)
 
                     # If the successor has multiple predecessors
                     if successorJobStoreID in self.jobsToBeScheduledWithMultiplePredecessors:
