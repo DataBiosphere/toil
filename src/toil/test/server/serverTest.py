@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from flask import Flask
 
 from toil.server.api.utils import DefaultOptions
-from toil.server.app import create_app, parser_with_server_options
 from toil.test import ToilTest, needs_server
 
 logger = logging.getLogger(__name__)
@@ -70,6 +69,7 @@ class ToilWESServerTest(ToilTest):
         self.temp_dir = self._createTempDir()
         # self.temp_dir = "/Users/wlgao/Desktop"
 
+        from toil.server.app import create_app, parser_with_server_options
         parser = parser_with_server_options()
         args = parser.parse_args(["--work_dir", os.path.join(self.temp_dir, "workflows")])
 

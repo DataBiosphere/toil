@@ -58,12 +58,24 @@ Below is a detailed summary of all available options:
 Running on EC2
 --------------
 
-1. Launch cluster
-2. Change security role to allow 0.0.0.0/0 (anyone) to access port 8080 (or the port where the server is listening on)
-3. Run "toil server" on the Toil appliance
-4. Get instance public hostname
-    - Find on EC2 console, or
-    - ``curl http://169.254.169.254/latest/meta-data/public-hostname``
+To run the server on a Toil leader instance on EC2:
+
+#. Launch a Toil cluster with the ``toil launch-cluster`` command with the AWS provisioner
+
+#. The Toil server requires an additional TCP port to open for HTTP(S) access. To add this inbound rule, open the AWS
+console and go to the ``Security Groups`` section.  For example, on us-west2, this address would accessible at::
+
+    https://us-west-2.console.aws.amazon.com/ec2/v2/home?region=us-west-2#SecurityGroups
+
+#. Next, locate the security group created along with your cluster. It should be the same name as the cluster.
+
+#. Click on "Edit inbound rules". Then, add a rule to allow "0.0.0.0/0" (anyone) to access port 8080 (or the port where the
+server will listen on), and click save.
+
+#. Now, you can SSH into your cluster and run the WES server with ``toil server`` on the Toil appliance.
+
+.. note::
+    To run the server in the background, you can run ``nohup toil server &``.
 
 
 .. _WESEndpointsOverview:
@@ -142,9 +154,11 @@ For more details about these parameters, refer to the `Run Workflow section`_ in
 
 
 Looking at the body of the request, note that the ``workflow_url`` is a relative URL that refers to the
-``"example.cwl"`` file uploaded from the local path ``"./toil_test_files/example.cwl"``. To specify the file name (or
-subdirectory) of the remote destination file, set the ``"filename"`` field in the ``Content-Disposition`` header. You
-could also upload more than one file by set the ``workflow_attachment`` parameter multiple times with different files.
+``"example.cwl"`` file uploaded from the local path ``"./toil_test_files/example.cwl"``.
+
+To specify the file name (or subdirectory) of the remote destination file, set the ``"filename"`` field in the
+``Content-Disposition`` header. You could also upload more than one file by set the ``workflow_attachment`` parameter
+multiple times with different files.
 
 This can be shown by the following example::
 
@@ -223,6 +237,13 @@ To get the detailed information about a workflow run, use the ``GET /runs/{run_i
       "outputs": {}
     }
 
+
 Canceling a run
 ^^^^^^^^^^^^^^^
 
+To cancel a workflow run, use the ``POST /runs/{run_id}/cancel`` endpoint::
+
+    $ curl --location --request POST 'http://localhost:8080/ga4gh/wes/v1/runs/4deb8beb24894e9eb7c74b0f010305d1/cancel'
+    {
+      "run_id": "4deb8beb24894e9eb7c74b0f010305d1"
+    }
