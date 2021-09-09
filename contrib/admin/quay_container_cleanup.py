@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 Script to scan and delete unnecessary (non-Toil Release) quay.io containers/tags.
 
