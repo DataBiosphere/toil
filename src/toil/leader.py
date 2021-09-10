@@ -296,41 +296,6 @@ class Leader(object):
 
         if os.path.exists(localLog):  # Bandaid for Jenkins tests failing stochastically and unexplainably.
             os.remove(localLog)
-       
-    # The next 3 functions provide tracking of how many successor jobs a given job is waiting on, exposing only legit operations.
-    # TODO: turn these into messages?
-    # TODO: Move these over to ToilState?
-    def _successors_pending(self, predecessor_id: str, count: int) -> None:
-        """
-        Remember that the given job has the given number more pending
-        successors, that have not yet succeeded or failed.
-        """
-        if predecessor_id not in self.toilState.successorCounts:
-            self.toilState.successorCounts[predecessor_id] = count
-            
-        else:
-            self.toilState.successorCounts[predecessor_id] += count
-        logger.debug("Successors: %d more for %s, now have %d", count, predecessor_id, self.toilState.successorCounts[predecessor_id])
-    def _remove_successor(self, predecessor_id: str) -> None:
-        """
-        Remember that the given job has one fewer pending successors, because one has succeeded or failed.
-        """
-        if predecessor_id not in self.toilState.successorCounts:
-            raise RuntimeError(f"Tried to remove successor of {predecessor_id} that wasn't added!")
-        else:
-            self.toilState.successorCounts[predecessor_id] -= 1
-            logger.debug("Successors: one fewer for %s, now have %d", predecessor_id, self.toilState.successorCounts[predecessor_id])
-            if self.toilState.successorCounts[predecessor_id] == 0:
-                del self.toilState.successorCounts[predecessor_id]
-    def _count_pending_successors(self, predecessor_id: str) -> int:
-        """
-        Get the number of pending successors of the given job, which have not
-        yet succeeded or failed.
-        """
-        if predecessor_id not in self.toilState.successorCounts:
-            return 0
-        else:
-            return self.toilState.successorCounts[predecessor_id]
 
     def _handledFailedSuccessor(self, successor_id: str, predecessor_id: str) -> bool:
         """
@@ -342,7 +307,7 @@ class Leader(object):
         :param predecessor_id: The job which the successor comes after.
 
         """
-        
+
         logger.debug("Successor job: %s of job: %s has failed """
                      "predecessors", self.toilState.get_job(successor_id), self.toilState.get_job(predecessor_id))
 
@@ -350,14 +315,14 @@ class Leader(object):
         self.toilState.hasFailedSuccessors.add(predecessor_id)
 
         # Reduce active successor count and remove the successor as an active successor of the job
-        self._remove_successor(predecessor_id)
+        self.toilState.successor_returned(predecessor_id)
         self.toilState.successor_to_predecessors[successor_id].remove(predecessor_id)
         if len(self.toilState.successor_to_predecessors[successor_id]) == 0:
             self.toilState.successor_to_predecessors.pop(successor_id)
 
         # If the job now has no active successors, add to active jobs
         # so it can be processed as a job with failed successors.
-        if self._count_pending_successors(predecessor_id) == 0:
+        if self.toilState.count_pending_successors(predecessor_id) == 0:
             logger.debug("Job: %s has no successors to run "
                          "and some are failed, adding to list of jobs "
                          "with failed successors", self.toilState.get_job(predecessor_id))
@@ -424,14 +389,14 @@ class Leader(object):
         :param successor_id: The successor which should become ready.
         :param predecessor_id: The job which the successor comes after.
         """
-        
+
         #Build map from successor to predecessors.
         if successor_id not in self.toilState.successor_to_predecessors:
             self.toilState.successor_to_predecessors[successor_id] = set()
         assert isinstance(successor_id, str)
         assert isinstance(predecessor_id, str)
         self.toilState.successor_to_predecessors[successor_id].add(predecessor_id)
-        
+
         # Grab the successor
         successor = self.toilState.get_job(successor_id)
         logger.debug("Added job %s as coming after job %s", successor, self.toilState.get_job(predecessor_id))
@@ -448,7 +413,7 @@ class Leader(object):
         """
 
         # TODO: rewrite!
-        
+
         # Grab the predecessor's JobDescription
         predecessor = self.toilState.get_job(predecessor_id)
 
@@ -457,8 +422,8 @@ class Leader(object):
                      predecessor_id, len(predecessor.stack[-1]))
         #Record the number of successors that must be completed before
         #the job can be considered again
-        assert self._count_pending_successors(predecessor_id) == 0, 'Attempted to schedule successors of the same job twice!'
-        self._successors_pending(predecessor_id, len(predecessor.stack[-1]))
+        assert self.toilState.count_pending_successors(predecessor_id) == 0, 'Attempted to schedule successors of the same job twice!'
+        self.toilState.successors_pending(predecessor_id, len(predecessor.stack[-1]))
 
         # For each successor schedule if all predecessors have been completed
         successors = []
@@ -490,7 +455,7 @@ class Leader(object):
                          predecessor)
             self.serviceManager.kill_services(self.toilState.servicesIssued[predecessor_id],
                                               error=True)
-        elif self._count_pending_successors(predecessor_id) > 0:
+        elif self.toilState.count_pending_successors(predecessor_id) > 0:
             # The job has non-service jobs running; wait for them to finish.
             # the job will be re-added to the updated jobs when these jobs
             # are done
@@ -513,7 +478,7 @@ class Leader(object):
     def _processReadyJob(self, job_id: str, result_status: int):
         # We operate on the JobDescription mostly.
         readyJob = self.toilState.get_job(job_id)
-    
+
         logger.debug('Updating status of job %s with result status: %s',
                      readyJob, result_status)
 
@@ -592,7 +557,7 @@ class Leader(object):
                      self.toilState.bus.count(JobUpdatedMessage), self.getNumberOfJobsIssued())
 
         # Now go through and, for each job that has updated this tick, process it.
-        
+
         # We are in trouble if the same job is updated with multiple statuses,
         # and we want to coalesce multiple updates with the same status in the
         # same tick, so we remember what we've done so far in this dict from
@@ -600,7 +565,7 @@ class Leader(object):
         handled_with_status = {}
         for message in self.toilState.bus.for_each(JobUpdatedMessage):
             # Handle all the job update messages that came in.
-            
+
             if message.job_id in handled_with_status:
                 if handled_with_status[message.job_id] == message.result_status:
                     # This is a harmless duplicate
@@ -778,7 +743,7 @@ class Leader(object):
                 job = self.toilState.get_job(js_id)
                 if isinstance(job, ServiceJobDescription) and self.serviceManager.is_running(js_id):
                     running_service_ids.add(js_id)
-                    
+
             assert len(running_service_ids) <= totalRunningJobs
 
             # If all the running jobs are active services then we have a potential deadlock
@@ -1222,9 +1187,9 @@ class Leader(object):
         """
         # Mark job as a totally failed job
         self.toilState.totalFailedJobs.add(job_id)
-        
+
         job_desc = self.toilState.get_job(job_id)
-        
+
         if self.toilMetrics:
             self.toilMetrics.logFailedJob(job_desc)
 
@@ -1293,7 +1258,7 @@ class Leader(object):
                         predecessor = self.toilState.get_job(predecessor_id)
 
                         # Reduce the predecessor job's successor count.
-                        self._remove_successor(predecessor_id)
+                        self.toilState.successor_returned(predecessor_id)
 
                         # Indicate that it has failed jobs.
                         self.toilState.hasFailedSuccessors.add(predecessor_id)
@@ -1301,7 +1266,7 @@ class Leader(object):
                                      "reading successors failed job)", predecessor)
 
                         # If the predecessor has no remaining successors, add to list of updated jobs
-                        if self._count_pending_successors(predecessor_id) == 0:
+                        if self.toilState.count_pending_successors(predecessor_id) == 0:
                             self.toilState.bus.put(JobUpdatedMessage(predecessor_id, 0))
 
             # If the job has predecessor(s)
@@ -1344,7 +1309,7 @@ class Leader(object):
             assert len(self.toilState.successor_to_predecessors) == 0, \
                 ("Job {} is finished and had no predecessor, but we have other outstanding jobs "
                  "with predecessors: {}".format(jobStoreID, self.toilState.successor_to_predecessors.keys()))
-            assert len(self.toilState.successorCounts) == 0, f"Root job is done but jobs waiting on successors: {self.toilState.successorCounts}" 
+            assert len(self.toilState.successorCounts) == 0, f"Root job is done but jobs waiting on successors: {self.toilState.successorCounts}"
             logger.debug("Reached root job %s so no predecessors to clean up" % jobStoreID)
 
         else:
@@ -1362,9 +1327,9 @@ class Leader(object):
                 # Reduce the predecessor's number of successors by one, as
                 # tracked by us, to indicate the completion of the jobStoreID
                 # job
-                self._remove_successor(predecessor_id)
+                self.toilState.successor_returned(predecessor_id)
 
                 # If the predecessor job is done and all the successors are complete
-                if self._count_pending_successors(predecessor_id) == 0:
+                if self.toilState.count_pending_successors(predecessor_id) == 0:
                     # Now we know the job is done we can add it to the list of updated job files
                     self.toilState.bus.put(JobUpdatedMessage(predecessor_id, 0))

@@ -147,6 +147,40 @@ class ToilState:
             # Just keep the new one
             self.__job_database[job_id] = new_truth
 
+    # The next 3 functions provide tracking of how many successor jobs a given job is waiting on, exposing only legit operations.
+    # TODO: turn these into messages?
+    def successors_pending(self, predecessor_id: str, count: int) -> None:
+        """
+        Remember that the given job has the given number more pending
+        successors, that have not yet succeeded or failed.
+        """
+        if predecessor_id not in self.successorCounts:
+            self.successorCounts[predecessor_id] = count
+
+        else:
+            self.successorCounts[predecessor_id] += count
+        logger.debug("Successors: %d more for %s, now have %d", count, predecessor_id, self.successorCounts[predecessor_id])
+    def successor_returned(self, predecessor_id: str) -> None:
+        """
+        Remember that the given job has one fewer pending successors, because one has succeeded or failed.
+        """
+        if predecessor_id not in self.successorCounts:
+            raise RuntimeError(f"Tried to remove successor of {predecessor_id} that wasn't added!")
+        else:
+            self.successorCounts[predecessor_id] -= 1
+            logger.debug("Successors: one fewer for %s, now have %d", predecessor_id, self.successorCounts[predecessor_id])
+            if self.successorCounts[predecessor_id] == 0:
+                del self.successorCounts[predecessor_id]
+    def count_pending_successors(self, predecessor_id: str) -> int:
+        """
+        Get the number of pending successors of the given job, which have not
+        yet succeeded or failed.
+        """
+        if predecessor_id not in self.successorCounts:
+            return 0
+        else:
+            return self.successorCounts[predecessor_id]
+
 
     def _buildToilState(self, jobDesc: JobDescription) -> None:
         """
