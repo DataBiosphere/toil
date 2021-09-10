@@ -228,6 +228,8 @@ class ToilWorkflowRunner:
         """
         output_obj = {}
 
+        # TODO: read the STDOUT file if it's a CWL workflow? This will work with all job stores. I think.
+
         if self.job_store.startswith("file:"):
             for file in os.listdir(self.out_dir):
                 if file.startswith("out_tmpdir"):

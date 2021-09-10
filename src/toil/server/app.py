@@ -73,7 +73,7 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
         from flask_cors import CORS  # type: ignore
         CORS(flask_app.app, resources={r"/ga4gh/*": {"origins": args.cors_origins}})
 
-    # workflow execution service (WES) API
+    # add workflow execution service (WES) API endpoints
     backend = ToilBackend(work_dir=args.work_dir, opts=args.opt)
     backend.register_wf_type("py", ["3.6", "3.7", "3.8", ])
     backend.register_wf_type("CWL", ["v1.0", "v1.1", "v1.2"])

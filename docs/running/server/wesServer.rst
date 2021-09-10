@@ -11,7 +11,7 @@ More information about the WES API specification can be found here_.
 
 To get started with the Toil WES server, make sure that the ``server`` extra (:ref:`extras`) is installed.
 
-.. _WESStartServer:
+.. _WESUsageOverview:
 
 Starting a WES server
 ---------------------
@@ -42,13 +42,16 @@ Below is a detailed summary of all available options:
 --port PORT
             The port that the Toil server listens on. (default: 8080).
 --swagger_ui
-            If True, the swagger UI will be enabled and hosted on the ``ga4gh/wes/v1/ui`` endpoint. (default: False).
+            Enable the swagger UI on the ``ga4gh/wes/v1/ui`` endpoint. (default: False).
 --cors
-            Enable Cross Origin Resource Sharing (CORS). This should only be turned on if the server is intended to be used by a website or domain. (default: False).
+            Enable Cross Origin Resource Sharing (CORS). This should only be turned on if the server is intended to be
+            used by a website or domain. (default: False).
 --cors_origins ORIGIN
-            Ignored if ``--cors`` is False. This sets the allowed origins for CORS. For details about CORS and its security risks, see the `GA4GH docs on CORS`_. (default: "*").
+            Ignored if ``--cors`` is False. This sets the allowed origins for CORS. For details about CORS and its
+            security risks, see the `GA4GH docs on CORS`_. (default: "*").
 --workers WORKERS
-            Ignored if debug mode is on. The number of worker processes launched by the production WSGI server. (default: 2).
+            Ignored if debug mode is on. The number of worker processes launched by the production WSGI server.
+            (default: 2).
 --opt ENGINE_OPTION
             *TBU*
 
@@ -63,19 +66,22 @@ To run the server on a Toil leader instance on EC2:
 #. Launch a Toil cluster with the ``toil launch-cluster`` command with the AWS provisioner
 
 #. The Toil server requires an additional TCP port to open for HTTP(S) access. To add this inbound rule, open the AWS
-console and go to the ``Security Groups`` section.  For example, on us-west2, this address would accessible at::
+   console and go to the ``Security Groups`` section.  For example, on us-west2, this address would accessible at: ::
 
     https://us-west-2.console.aws.amazon.com/ec2/v2/home?region=us-west-2#SecurityGroups
 
 #. Next, locate the security group created along with your cluster. It should be the same name as the cluster.
 
-#. Click on "Edit inbound rules". Then, add a rule to allow "0.0.0.0/0" (anyone) to access port 8080 (or the port where the
-server will listen on), and click save.
+#. Click on "Edit inbound rules". Then, add a rule to allow "0.0.0.0/0" (anyone) to access port 8080 (or the port where
+   the server will listen on), and click "Save rules".
+
+    .. image:: wes_ec2_1.png
+    .. image:: wes_ec2_2.png
 
 #. Now, you can SSH into your cluster and run the WES server with ``toil server`` on the Toil appliance.
 
 .. note::
-    To run the server in the background, you can run ``nohup toil server &``.
+    To run the server in the background, you can run "``nohup toil server &``".
 
 
 .. _WESEndpointsOverview:
@@ -247,3 +253,4 @@ To cancel a workflow run, use the ``POST /runs/{run_id}/cancel`` endpoint::
     {
       "run_id": "4deb8beb24894e9eb7c74b0f010305d1"
     }
+
