@@ -20,8 +20,9 @@ import signal
 import uuid
 from typing import Optional, List, Dict, Any, overload, Generator, Tuple
 
-from toil.server.api.backend import WESBackend
-from toil.server.api.utils import handle_errors, WorkflowNotFoundError
+from toil.server.wes.abstract_backend import (WESBackend,
+                                              handle_errors,
+                                              WorkflowNotFoundError)
 from toil.server.wes.runner import ToilWorkflowRunner
 from toil.version import baseVersion
 
@@ -180,9 +181,10 @@ class ToilBackend(WESBackend):
         engine_parameters = []
         for option in self.options:
             if '=' not in option:  # flags like "--logDebug"
-                engine_parameters.append((option, None))
+                k, v = option, None
             else:
-                engine_parameters.append(option.split('=', 1))
+                k, v = option.split('=', 1)
+            engine_parameters.append((k, v))
 
         return {
             "version": baseVersion,

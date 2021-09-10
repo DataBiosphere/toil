@@ -1,13 +1,51 @@
 # Modified from: https://github.com/common-workflow-language/workflow-service
+import functools
 import json
 import os
 import logging
 import tempfile
 from abc import abstractmethod
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any, Tuple, Callable
 
 import connexion  # type: ignore
 from werkzeug.utils import secure_filename
+
+logger = logging.getLogger(__name__)
+
+
+class WorkflowNotFoundError(Exception):
+    """
+    Raised when the user specified run ID is not found.
+    """
+    def __init__(self) -> None:
+        super(WorkflowNotFoundError, self).__init__("The requested workflow run wasn't found.")
+
+
+def handle_errors(func: Callable[..., Any]) -> Callable[..., Any]:
+    """
+    This decorator catches errors from the wrapped function and returns a JSON
+    formatted error message with the appropriate status code defined by the
+    GA4GH WES spec.
+    """
+
+    def error(msg, code: int = 500):  # type: ignore
+        logger.warning(f"Exception raised when calling '{func.__name__}()':", exc_info=True)
+        return {"msg": str(msg), "status_code": code}, code
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):  # type: ignore
+        try:
+            return func(*args, **kwargs)
+        except (TypeError, ValueError) as e:
+            return error(e, code=400)  # the request is malformed
+        except RuntimeError as e:
+            return error(e, code=400)  # most likely due to malformed request
+        except (FileNotFoundError, WorkflowNotFoundError) as e:
+            return error(e, code=404)
+        except Exception as e:
+            return error(e, code=500)
+
+    return wrapper
 
 
 class WESBackend:

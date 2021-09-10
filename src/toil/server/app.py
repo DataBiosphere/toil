@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 def parser_with_server_options() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="The Toil Workflow Execution Service Server.")
+    parser = argparse.ArgumentParser(description="Toil server mode.")
 
     parser.add_argument("--debug", action="store_true", default=False)
     parser.add_argument("--host", type=str, default="0.0.0.0",

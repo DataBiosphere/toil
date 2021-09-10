@@ -19,7 +19,7 @@ import signal
 import subprocess
 from typing import Dict, Any, List, Union
 
-from toil.server.api.utils import get_iso_time, get_file_class, link_file
+from toil.server.utils import get_iso_time, get_file_class, link_file
 
 
 logger = logging.getLogger(__name__)

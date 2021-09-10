@@ -31,7 +31,7 @@ logging.basicConfig(level=logging.INFO)
 @needs_server
 class ToilServerUtilsTest(ToilTest):
     """
-    Tests for the utility functions / classes used by the Toil server.
+    Tests for the utility functions used by the Toil server.
     """
 
 
@@ -45,7 +45,6 @@ class ToilWESServerTest(ToilTest):
     def setUp(self) -> None:
         super(ToilWESServerTest, self).setUp()
         self.temp_dir = self._createTempDir()
-        # self.temp_dir = "/Users/wlgao/Desktop"
 
         from toil.server.app import create_app, parser_with_server_options
         parser = parser_with_server_options()
