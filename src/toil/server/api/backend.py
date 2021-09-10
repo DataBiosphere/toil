@@ -9,8 +9,6 @@ from typing import Optional, List, Dict, Any, Tuple
 import connexion  # type: ignore
 from werkzeug.utils import secure_filename
 
-from toil.server.api.utils import DefaultOptions
-
 
 class WESBackend:
     """
@@ -19,12 +17,15 @@ class WESBackend:
     to handle user requests when they hit different endpoints.
     """
 
-    def __init__(self, opts: List[str]):
+    def __init__(self, options: List[str]):
         """
-        :param opts: A list of default engine options to use when executing
-                     a workflow.
+        :param options: A list of default engine options to use when executing
+                        a workflow.  Example options:
+                        ["--logLevel=CRITICAL","--workDir=/path/to/dir",
+                            "--tag=Name=default", "--tag=Owner=shared", ...]
         """
-        self.opts = DefaultOptions(opts)
+
+        self.options = options
 
     def resolve_operation_id(self, operation_id: str) -> Any:
         """
@@ -111,7 +112,7 @@ class WESBackend:
 
         :param run_id: The run ID for logging.
         :param temp_dir: The directory where uploaded files should be staged.
-                         If None, a temporary directory is generated.
+                         If None, a temporary directory is created.
         """
         if not temp_dir:
             temp_dir = tempfile.mkdtemp()

@@ -151,7 +151,8 @@ Here's what each extra provides:
 |                | `Workflow Description Language`_. This extra has no native |
 |                | dependencies.                                              |
 +----------------+------------------------------------------------------------+
-| ``server``     | Support for the GA4GH `Workflow Execution Service`_ API.   |
+| ``server``     | Provides support for Toil server mode, including support   |
+|                | for the GA4GH `Workflow Execution Service`_ API.           |
 +----------------+------------------------------------------------------------+
 
 .. _AWS: https://aws.amazon.com/

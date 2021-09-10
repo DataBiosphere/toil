@@ -45,7 +45,7 @@ If using Toil for your research, please cite
    running/hpcEnvironments
    running/cwl
    running/wdl
-   running/server/wesServer
+   running/server/wes
 
 .. toctree::
    :caption: Developing Toil Workflows

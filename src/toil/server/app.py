@@ -52,8 +52,9 @@ def parser_with_server_options() -> argparse.ArgumentParser:
                         help="The directory where workflows should be stored. This directory should be "
                              "empty or only contain workflows. (default: './workflows').")
     parser.add_argument("--opt", "-o", type=str, action="append",
-                        help="Example: '--opt runner=cwltoil --opt extra=--logLevel=CRITICAL' "
-                             "or '--opt extra=--workDir=/'.  Accepts multiple values.")
+                        help="Specify the default parameters to be sent to the workflow engine for each "
+                             "run.  Accepts multiple values.\n"
+                             "Example: '--opt=--logLevel=CRITICAL --opt=--workDir=/tmp'.")
     parser.add_argument("--version", action='version', version=version)
     return parser
 
@@ -74,7 +75,7 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
         CORS(flask_app.app, resources={r"/ga4gh/*": {"origins": args.cors_origins}})
 
     # add workflow execution service (WES) API endpoints
-    backend = ToilBackend(work_dir=args.work_dir, opts=args.opt)
+    backend = ToilBackend(work_dir=args.work_dir, options=args.opt)
     backend.register_wf_type("py", ["3.6", "3.7", "3.8", ])
     backend.register_wf_type("CWL", ["v1.0", "v1.1", "v1.2"])
     backend.register_wf_type("WDL", ["draft-2", "1.0"])

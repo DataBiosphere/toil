@@ -15,43 +15,9 @@ import functools
 import logging
 import os
 from datetime import datetime
-from typing import Callable, Any, List, Optional
+from typing import Callable, Any
 
 logger = logging.getLogger(__name__)
-
-
-class DefaultOptions:
-    """
-    A class to store and retrieve options.
-    """
-    def __init__(self, options: List[str]):
-        """
-        :param options: A list of strings in the format of ["KEY=value", ...].
-        """
-        # Parse and store options as a list of tuples.
-        self.pairs = []
-        for opt in options if options else []:
-            k, v = opt.split("=", 1)
-            self.pairs.append((k, v))
-
-    def get_option(self, p: str, default: Optional[str] = None) -> Optional[str]:
-        """
-        Return the first option value stored that matches p or default.
-        """
-        for k, v in self.pairs:
-            if k == p:
-                return v
-        return default
-
-    def get_options(self, p: str) -> List[str]:
-        """
-        Return all option values stored that match p as a list.
-        """
-        opt_list = []
-        for k, v in self.pairs:
-            if k == p:
-                opt_list.append(v)
-        return opt_list
 
 
 class WorkflowNotFoundError(Exception):

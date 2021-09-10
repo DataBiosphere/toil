@@ -22,7 +22,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from flask import Flask
 
-from toil.server.api.utils import DefaultOptions
 from toil.test import ToilTest, needs_server
 
 logger = logging.getLogger(__name__)
@@ -34,27 +33,6 @@ class ToilServerUtilsTest(ToilTest):
     """
     Tests for the utility functions / classes used by the Toil server.
     """
-
-    def test_default_options(self):
-        """ Tests the DefaultOptions object and its methods."""
-        options = DefaultOptions([
-            "--logLevel=CRITICAL",
-            "--workDir=/path/to/directory",
-            "--tag=Name=default",
-            "--tag=Owner=shared",
-        ])
-        print(options.pairs)
-
-        self.assertEqual(options.get_option("--logLevel"), "CRITICAL")
-        self.assertEqual(options.get_option("--logLevel", "INFO"), "CRITICAL")
-        self.assertEqual(options.get_option("jobStore"), None)
-        self.assertEqual(options.get_option("jobStore", "default"), "default")
-
-        # when there are multiple options, get_option() returns the first value
-        self.assertEqual(options.get_option("--tag"), "Name=default")
-
-        # get_options() should return every option that matches the key
-        self.assertEqual(options.get_options("--tag"), ["Name=default", "Owner=shared"])
 
 
 @needs_server

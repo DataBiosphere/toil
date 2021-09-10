@@ -87,11 +87,15 @@ class ToilWorkflowRunner:
         """
         options = []
 
-        # TODO: extend the default engine options
+        # First, we pass the default engine parameters
+        options.extend(self.engine_options)
 
-        user_options = self.request.get("workflow_engine_parameters", {})
-        for key, val in user_options.items():
-            options.append(f"{key}={val}" if val is not None else key)
+        # Then, we pass the user options specific for this workflow run. This should override the default
+        for key, value in self.request.get("workflow_engine_parameters", {}).items():
+            if value is None:  # flags
+                options.append(key)
+            else:
+                options.append(f"{key}={value}")
 
         # determine job store and set a new default if the user did not set one
         cloud = False

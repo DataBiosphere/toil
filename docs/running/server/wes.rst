@@ -53,7 +53,9 @@ Below is a detailed summary of all available options:
             Ignored if debug mode is on. The number of worker processes launched by the production WSGI server.
             (default: 2).
 --opt ENGINE_OPTION
-            *TBU*
+            Specify the default parameters to be sent to the workflow engine for each run.  Accepts multiple values.
+
+            Example: ``toil server --opt=--logLevel=CRITICAL --opt=--workDir=/tmp``.
 
 .. _GA4GH docs on CORS: https://w3id.org/ga4gh/product-approval-support/cors
 
@@ -134,37 +136,51 @@ unique identifier of your requested workflow, which can be used to monitor or ca
 
 There are a few required parameters that have to be set for all workflow submissions, which are the following:
 
-    * workflow_url
-            The URL of the workflow to run. This can refer to a file from ``workflow_attachment``.
-    * workflow_type
-            The type of workflow language. Toil currently supports one of the following: ``"CWL"``, ``"WDL"``, or
-            ``"py"``. To run a Toil script, set the ``workflow_type`` to ``"py"``.
-    * workflow_type_version
-            The version of the workflow language. Supported versions can be found by accessing the ``GET /service-info``
-            endpoint of your WES server.
-    * workflow_params
-            A JSON object that specifies the inputs of the workflow.
++---------------------------+-------------------------------------------------------------+
+| workflow_url              | The URL of the workflow to run. This can refer to a file    |
+|                           | from ``workflow_attachment``.                               |
++---------------------------+-------------------------------------------------------------+
+| workflow_type             | The type of workflow language. Toil currently supports one  |
+|                           | of the following: ``"CWL"``, ``"WDL"``, or ``"py"``. To run |
+|                           | a Toil script, set this to ``"py"``.                        |
++---------------------------+-------------------------------------------------------------+
+| workflow_type_version     | The version of the workflow language. Supported versions    |
+|                           | can be found by accessing the ``GET /service-info``         |
+|                           | endpoint of your WES server.                                |
++---------------------------+-------------------------------------------------------------+
+| workflow_params           | A JSON object that specifies the inputs of the workflow.    |
++---------------------------+-------------------------------------------------------------+
 
 Additionally, the following optional parameters are also available:
 
-    * workflow_attachment
-            A list of files that are needed by the workflow to run.
-    * workflow_engine_parameters
-            *TBU*
-    * tags
-            (not supported by Toil, yet)
++--------------------------------+--------------------------------------------------------+
+| workflow_attachment            | A list of files associated with the workflow run.      |
++--------------------------------+--------------------------------------------------------+
+| workflow_engine_parameters     | A JSON key-value map of workflow engine parameters     |
+|                                | to send to the runner.                                 |
+|                                |                                                        |
+|                                | Example:                                               |
+|                                | ``{"--logLevel": "INFO", "--workDir": "/tmp/"}``       |
++--------------------------------+--------------------------------------------------------+
+| tags                           | A JSON key-value map of metadata associated with the   |
+|                                | workflow.                                              |
++--------------------------------+--------------------------------------------------------+
+
 
 For more details about these parameters, refer to the `Run Workflow section`_ in the WES API spec.
 
 .. _`Run Workflow section`: https://ga4gh.github.io/workflow-execution-service-schemas/docs/#operation/RunWorkflow
 
 
-Looking at the body of the request, note that the ``workflow_url`` is a relative URL that refers to the
-``"example.cwl"`` file uploaded from the local path ``"./toil_test_files/example.cwl"``.
+Upload multiple files
+^^^^^^^^^^^^^^^^^^^^^
 
-To specify the file name (or subdirectory) of the remote destination file, set the ``"filename"`` field in the
-``Content-Disposition`` header. You could also upload more than one file by set the ``workflow_attachment`` parameter
-multiple times with different files.
+Looking at the body of the request of the previous example, note that the ``workflow_url`` is a relative URL that refers
+to the ``example.cwl`` file uploaded from the local path ``./toil_test_files/example.cwl``.
+
+To specify the file name (or subdirectory) of the remote destination file, set the ``filename`` field in the
+``Content-Disposition`` header. You could also upload more than one file by providing the ``workflow_attachment``
+parameter multiple times with different files.
 
 This can be shown by the following example::
 
@@ -206,8 +222,8 @@ The ``GET /runs/{run_id}/status`` endpoint can be used to get a simple result wi
     }
 
 
-The possible states here are: ``"QUEUED"``, ``"INITIALIZING"``, ``"RUNNING"``, ``"COMPLETE"``, ``"EXECUTOR_ERROR"``,
-``"SYSTEM_ERROR"``, ``"CANCELING"``, and ``"CANCELED"``.
+The possible states here are: ``QUEUED``, ``INITIALIZING``, ``RUNNING``, ``COMPLETE``, ``EXECUTOR_ERROR``,
+``SYSTEM_ERROR``, ``CANCELING``, and ``CANCELED``.
 
 Getting the full logs
 ^^^^^^^^^^^^^^^^^^^^^

@@ -114,8 +114,8 @@ class ToilBackend(WESBackend):
     associated with the runs.
     """
 
-    def __init__(self, work_dir: str, opts: List[str]) -> None:
-        super(ToilBackend, self).__init__(opts)
+    def __init__(self, work_dir: str, options: List[str]) -> None:
+        super(ToilBackend, self).__init__(options)
         self.work_dir = work_dir
         self.supported_versions: Dict[str, List[str]] = {}
         self.processes: Dict[str, "multiprocessing.Process"] = {}
@@ -177,6 +177,13 @@ class ToilBackend(WESBackend):
         for _, state in self.get_runs():
             state_counts[state] += 1
 
+        engine_parameters = []
+        for option in self.options:
+            if '=' not in option:  # flags like "--logDebug"
+                engine_parameters.append((option, None))
+            else:
+                engine_parameters.append(option.split('=', 1))
+
         return {
             "version": baseVersion,
             "workflow_type_versions": {
@@ -187,7 +194,13 @@ class ToilBackend(WESBackend):
             "supported_wes_versions": ["1.0.0"],
             "supported_filesystem_protocols": ["file", "http", "https"],
             "workflow_engine_versions": {"toil": baseVersion},
-            "default_workflow_engine_parameters": {},
+            "default_workflow_engine_parameters": [
+                {
+                    "name": key,
+                    "default_value": value
+                }
+                for key, value in engine_parameters
+            ],
             "system_state_counts": state_counts,
             "tags": {},
         }
@@ -239,10 +252,10 @@ class ToilBackend(WESBackend):
         job.set_state("QUEUED")
 
         # TODO: Flask recommends using a task queue (like Celery or rq) to run tasks like these, since this way
-        #  will likely leave behind zombie child processes until we do process.close().
+        #  will likely leave behind zombie child processes until we read the return code of the process.
         # https://flask.palletsprojects.com/en/2.0.x/patterns/celery/
         # https://python-rq.org/
-        p = multiprocessing.Process(target=job.run, args=(job.work_dir, request, self.opts.get_options("extra")))
+        p = multiprocessing.Process(target=job.run, args=(job.work_dir, request, self.options))
         p.start()
 
         with open(os.path.join(job.work_dir, "runner.pid"), "w") as f:
