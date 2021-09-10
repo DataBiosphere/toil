@@ -60,7 +60,7 @@ class ToilState:
         # TODO: Do in-place update instead of assignment when we load so we
         # can't let any non-true copies escape.
         self.__job_database = {}
-        
+
         # Scheduling messages should go over this bus.
         self.bus = MessageBus()
 

@@ -19,6 +19,7 @@ Message types and message bus for leader component coordination.
 import collections
 import inspect
 import logging
+import threading
 from typing import Any, Dict, Iterator, List, NamedTuple, Type, TypeVar
 
 logger = logging.getLogger( __name__ )
@@ -33,7 +34,6 @@ class JobUpdatedMessage(NamedTuple):
     # gone wrong, and 0 otherwise.
     result_status: int
     
-
 class MessageBus:
     """
     Holds messages that should cause jobs to change their scheduling states.
@@ -43,12 +43,15 @@ class MessageBus:
     All messages are NamedTuple objects of various subtypes.
     
     Message order is not necessarily preserved.
+    
+    TODO: Not yet thread safe, but should be made thread safe if we want e.g.
+    the ServiceManager to talk to it. Note that defaultdict itself isn't
+    necessarily thread safe.
     """
     
     def __init__(self) -> None:
         # This holds all the messages on the bus, organized by type.
         self.__messages_by_type: Dict[type, List[NamedTuple]] = collections.defaultdict(list)
-    
     
     # All our messages are NamedTuples, but NamedTuples don't actually inherit
     # from NamedTupe, so MyPy complains if we require that here.
@@ -88,30 +91,40 @@ class MessageBus:
         """
         Loop over all messages currently pending of the given type. Each that
         is handled without raising an exception will be removed.
+        
+        Messages sent while this function is running will not be yielded by the
+        current call.
         """
         
         # Grab the message buffer for this kind of message.
         message_list = self.__messages_by_type[message_type]
+        # Make a new buffer. TODO: Will be hard to be thread-safe because other
+        # threads could have a reference to the old buffer. 
+        self.__messages_by_type[message_type] = []
         
-        while len(message_list) > 0:
-            # We need to handle the case where a new message of this type comes
-            # in while we're looping, from the handler. So we take each off the
-            # list from the end while we handle it, and put it back if
-            # something goes wrong.
-            message = message_list.pop()
-            handled = False
-            try:
-                # Emit the message
-                assert isinstance(message, message_type), f"Unacceptable message type {type(message)} in list for type {message_type}"
-                yield message
-                # If we get here it was handled without error.
-                handled = True
-            finally:
-                if not handled:
-                    # An exception happened. Make sure the message isn't
-                    # dropped, in case someone wants to recover and handle it
-                    # again later.
-                    message_list.append(message)
+        try:
+            while len(message_list) > 0:
+                # We need to handle the case where a new message of this type comes
+                # in while we're looping, from the handler. So we take each off the
+                # list from the end while we handle it, and put it back if
+                # something goes wrong.
+                message = message_list.pop()
+                handled = False
+                try:
+                    # Emit the message
+                    assert isinstance(message, message_type), f"Unacceptable message type {type(message)} in list for type {message_type}"
+                    yield message
+                    # If we get here it was handled without error.
+                    handled = True
+                finally:
+                    if not handled:
+                        # An exception happened. Make sure the message isn't
+                        # dropped, in case someone wants to recover and handle it
+                        # again later.
+                        message_list.append(message)
+        finally:
+            # Dump anything remaining in our buffer back into the main buffer.
+            self.__messages_by_type[message_type] += message_list
             
         
 
