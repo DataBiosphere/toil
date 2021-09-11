@@ -62,8 +62,7 @@ class WESBackend:
                         ["--logLevel=CRITICAL","--workDir=/path/to/dir",
                             "--tag=Name=default", "--tag=Owner=shared", ...]
         """
-
-        self.options = options
+        self.options = options or []
 
     def resolve_operation_id(self, operation_id: str) -> Any:
         """

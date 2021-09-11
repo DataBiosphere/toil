@@ -64,7 +64,7 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
     Create a "connexion.FlaskApp" instance with Toil server configurations.
     """
     flask_app = connexion.FlaskApp(__name__,
-                                   specification_dir='ga4gh_api_spec/',
+                                   specification_dir='api_spec/',
                                    options={"swagger_ui": args.swagger_ui})
 
     flask_app.app.config['JSON_SORT_KEYS'] = False
