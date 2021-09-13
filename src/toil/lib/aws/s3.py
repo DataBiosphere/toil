@@ -394,7 +394,7 @@ def generate_presigned_url(s3_resource, bucket: str, key_name: str, expiration: 
 
 def create_public_url(s3_resource, bucket: str, key: str):
     bucket_obj = Bucket(bucket)
-    bucket_obj.Object(key).Acl().put(ACL='public-read')  # TODO: do we need to generate a presigned url after doing this?
+    bucket_obj.Object(key).Acl().put(ACL='public-read')  # TODO: do we need to generate a signed url after doing this?
     url = generate_presigned_url(s3_resource=s3_resource,
                                  bucket=bucket,
                                  key_name=key,
@@ -406,6 +406,13 @@ def create_public_url(s3_resource, bucket: str, key: str):
     # even if the resource is public, so we need to remove it.
     # TODO: verify that this is still the case
     return modify_url(url, remove=['x-amz-security-token', 'AWSAccessKeyId', 'Signature'])
+
+
+def get_s3_bucket_region(s3_resource, bucket: str):
+    s3_client = s3_resource.meta.client
+    # AWS returns None for the default of 'us-east-1'
+    return s3_client.get_bucket_location(Bucket=bucket).get('LocationConstraint', None) or 'us-east-1'
+
 
 # def update_aws_content_type(s3_client, bucket, key, content_type):
 #     blob = resources.s3.Bucket(bucket).Object(key)

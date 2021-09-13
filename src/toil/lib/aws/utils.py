@@ -13,6 +13,7 @@
 # limitations under the License.
 import logging
 import sys
+import os
 from typing import Optional, Union
 
 from toil.lib import aws
@@ -111,5 +112,11 @@ def create_s3_bucket(
         bucket = s3_session.create_bucket(
             Bucket=bucket_name,
             CreateBucketConfiguration={"LocationConstraint": region},
+        )
+    owner_tag = os.environ.get("TOIL_OWNER_TAG")
+    if owner_tag:
+        bucket_tagging = s3_resource.BucketTagging(bucket_name)
+        bucket_tagging.put(
+            Tagging={"TagSet": [{"Key": "Owner", "Value": owner_tag}]}
         )
     return bucket

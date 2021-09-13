@@ -19,6 +19,7 @@ import socket
 import subprocess
 import sys
 import time
+import json
 from datetime import datetime
 
 import requests
@@ -30,73 +31,6 @@ from toil.lib.retry import retry
 from toil.version import currentCommit
 
 log = logging.getLogger(__name__)
-
-
-def which(cmd, mode=os.F_OK | os.X_OK, path=None):
-    """
-    Copy-pasted in from python3.6's shutil.which().
-
-    Given a command, mode, and a PATH string, return the path which
-    conforms to the given mode on the PATH, or None if there is no such
-    file.
-
-    `mode` defaults to os.F_OK | os.X_OK. `path` defaults to the result
-    of os.environ.get("PATH"), or can be overridden with a custom search
-    path.
-
-    """
-
-    # Check that a given file can be accessed with the correct mode.
-    # Additionally check that `file` is not a directory, as on Windows
-    # directories pass the os.access check.
-    def _access_check(fn, mode):
-        return (os.path.exists(fn) and os.access(fn, mode)
-                and not os.path.isdir(fn))
-
-    # If we're given a path with a directory part, look it up directly rather
-    # than referring to PATH directories. This includes checking relative to the
-    # current directory, e.g. ./script
-    if os.path.dirname(cmd):
-        if _access_check(cmd, mode):
-            return cmd
-        return None
-
-    if path is None:
-        path = os.environ.get("PATH", os.defpath)
-    if not path:
-        return None
-    path = path.split(os.pathsep)
-
-    if sys.platform == "win32":
-        # The current directory takes precedence on Windows.
-        if not os.curdir in path:
-            path.insert(0, os.curdir)
-
-        # PATHEXT is necessary to check on Windows.
-        pathext = os.environ.get("PATHEXT", "").split(os.pathsep)
-        # See if the given file matches any of the expected path extensions.
-        # This will allow us to short circuit when given "python.exe".
-        # If it does match, only test that one, otherwise we have to try
-        # others.
-        if any(cmd.lower().endswith(ext.lower()) for ext in pathext):
-            files = [cmd]
-        else:
-            files = [cmd + ext for ext in pathext]
-    else:
-        # On other platforms you don't have things like PATHEXT to tell you
-        # what file suffixes are executable, so just pass on cmd as-is.
-        files = [cmd]
-
-    seen = set()
-    for dir in path:
-        normdir = os.path.normcase(dir)
-        if not normdir in seen:
-            seen.add(normdir)
-            for thefile in files:
-                name = os.path.join(dir, thefile)
-                if _access_check(name, mode):
-                    return name
-    return None
 
 
 def toilPackageDirPath():
@@ -192,8 +126,8 @@ def applianceSelf(forceDockerAppliance=False):
 
     if forceDockerAppliance:
         return appliance
-    else:
-        return checkDockerImageExists(appliance=appliance)
+
+    return checkDockerImageExists(appliance=appliance)
 
 
 def customDockerInitCmd():
@@ -249,14 +183,9 @@ def lookupEnvVar(name, envName, defaultValue):
     :return: the value of the environment variable or the default value the variable is not set
     :rtype: str
     """
-    try:
-        value = os.environ[envName]
-    except KeyError:
-        log.info('Using default %s of %s as %s is not set.', name, defaultValue, envName)
-        return defaultValue
-    else:
-        log.info('Overriding %s of %s with %s from %s.', name, defaultValue, value, envName)
-        return value
+    value = os.environ.get(envName, defaultValue)
+    log.info(f'Setting {name} to "{value}".  (Set with: "{envName}"; Default: "{defaultValue}")')
+    return value
 
 
 def checkDockerImageExists(appliance):
@@ -423,7 +352,7 @@ def logProcessContext(config):
     # toil.version (module) and Sphinx doesn't like that.
     from toil.version import version
     log.info("Running Toil version %s on host %s.", version, socket.gethostname())
-    log.debug("Configuration: %s", config.__dict__)
+    log.debug("Configuration: %s", json.dumps(config.__dict__, indent=4))
 
 
 try:

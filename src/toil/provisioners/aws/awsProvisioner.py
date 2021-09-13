@@ -229,7 +229,6 @@ class AWSProvisioner(AbstractProvisioner):
             if err.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
                 bucket = create_s3_bucket(self.s3_resource, bucket_name=bucket_name, region=region)
                 bucket.wait_until_exists()
-                bucket.Versioning().enable()
 
                 owner_tag = os.environ.get('TOIL_OWNER_TAG')
                 if owner_tag:

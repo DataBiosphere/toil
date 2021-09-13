@@ -607,21 +607,17 @@ class hidden:
 
                 expectedBytes = valueDict[value] * 1024 * 1024
                 cacheInfoBytes = toCall[value]()
-
-                RealtimeLogger.info('Got %d for %s; expected %d', cacheInfoBytes, value, expectedBytes)
-
-                assert cacheInfoBytes == expectedBytes, 'Testing %s: Expected ' % value + \
-                                                  '%s but got %s.' % (expectedBytes, cacheInfoBytes)
+                assert cacheInfoBytes == expectedBytes, 'Testing %s: Expected %s but got %s.' % (value, expectedBytes, cacheInfoBytes)
 
         @slow
         def testAsyncWriteWithCaching(self):
             """
             Ensure the Async Writing of files happens as expected.  The first Job forcefully
-            modifies the cache size to 1GB. The second asks for 1GB of disk and  writes a 900MB
+            modifies the cache size to 1GB. The second asks for 1GB of disk and writes a 900MB
             file into cache then rewrites it to the job store triggering an async write since the
             two unique jobstore IDs point to the same local file.  Also, the second write is not
             cached since the first was written to cache, and there "isn't enough space" to cache the
-            second.  Imediately assert that the second write isn't cached, and is being
+            second.  Immediately assert that the second write isn't cached, and is being
             asynchronously written to the job store.
 
             Attempting to get the file from the jobstore should not fail.

@@ -210,7 +210,6 @@ class AWSJobStore(AbstractJobStore):
 
         assert isinstance(data, bytes)
         try:
-            logger.critical(f'Putting s3: {bucket} {prefix}{identifier}')
             put_s3_object(s3_resource=self.s3_resource,
                           bucket=bucket,
                           key=f'{prefix}{identifier}',
@@ -430,7 +429,6 @@ class AWSJobStore(AbstractJobStore):
         self.writeFile(localFilePath=localFilePath, file_id=file_id)
 
     def fileExists(self, file_id):
-        logger.critical(f'Checking existence of: {self.bucket_name}{self.content_key_prefix}{file_id}')
         return s3_key_exists(s3_resource=self.s3_resource,
                              bucket=self.bucket_name,
                              key=f'{self.content_key_prefix}{file_id}',
@@ -551,7 +549,6 @@ class AWSJobStore(AbstractJobStore):
             with download_stream(self.s3_resource,
                                  bucket=src_bucket_name,
                                  key=src_key_name) as readable:
-                logger.critical(f'Importing s3: {src_bucket_name} {src_key_name}')
                 self.write_to_bucket(bucket=self.bucket_name,
                                      identifier=file_id,
                                      prefix=prefix,
@@ -682,7 +679,6 @@ class AWSJobStore(AbstractJobStore):
         # Note: we omit ExtraArgs=self.encryption_args here because we encrypt/decrypt logs with nacl
         # this is because of a bug with encryption using copy and copy_object:
         # https://github.com/aws/aws-cli/issues/6012
-        logger.critical(f'uploading: {key_name}')
         self.s3_client.upload_fileobj(Bucket=self.bucket_name,
                                       Key=key_name,
                                       Fileobj=file_obj,
@@ -697,8 +693,6 @@ class AWSJobStore(AbstractJobStore):
                                                 prefix=self.shared_key_prefix).decode('utf-8')
         startafter = None if read_log_marker == '0' or readAll else read_log_marker
         for result in list_s3_items(self.s3_resource, bucket=self.bucket_name, prefix=self.logs_key_prefix, startafter=startafter):
-            logger.critical(f'current: {result["Key"]}')
-            logger.critical(f'read_log_marker: {read_log_marker}')
             if result['Key'] > read_log_marker or readAll:
                 read_log_marker = result['Key']
                 with download_stream(self.s3_resource,
