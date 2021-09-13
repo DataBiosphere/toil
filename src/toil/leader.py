@@ -575,8 +575,15 @@ class Leader(object):
                     # This is a conflicting update. We may have already treated
                     # a job as succeeding but now we've heard it's failed, or
                     # visa versa.
-                    logger.error("Job %s already updated this tick with status %s but we've now received %s", message.job_id, handled_with_status[message.job_id], message)
-                    raise RuntimeError(f"Conflicting update status message: {message}")
+                    # This probably shouldn't happen, but does because the
+                    # scheduler is not correct somehow and hasn't been for a
+                    # long time. Complain about it.
+                    logger.warning("Job %s already updated this tick with status %s but we've now received %s", message.job_id, handled_with_status[message.job_id], message)
+                    # But don't actually handle it because the old dict-based
+                    # update system would have just clobbered one update with
+                    # another. So we shouldn't kick the job more than once or
+                    # we might start multiple copies of things.
+                    continue
             else:
                 # New job for this tick so actually handle that it is updated
                 self._processReadyJob(message.job_id, message.result_status)
