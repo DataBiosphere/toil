@@ -97,9 +97,9 @@ def create_bucket(s3_resource: S3ServiceResource, bucket: str) -> Bucket:
     s3_client = s3_resource.meta.client
     logger.info(f"Creating AWS bucket {bucket} in region {s3_client.meta.region_name}")
     if s3_client.meta.region_name == "us-east-1":  # see https://github.com/boto/boto3/issues/125
-        bucket_obj = s3_client.create_bucket(Bucket=bucket)
+        s3_client.create_bucket(Bucket=bucket)
     else:
-        bucket_obj = s3_client.create_bucket(
+        s3_client.create_bucket(
             Bucket=bucket,
             CreateBucketConfiguration={"LocationConstraint": s3_client.meta.region_name},
         )
@@ -110,7 +110,7 @@ def create_bucket(s3_resource: S3ServiceResource, bucket: str) -> Bucket:
         bucket_tagging = s3_resource.BucketTagging(bucket)
         bucket_tagging.put(Tagging={'TagSet': [{'Key': 'Owner', 'Value': owner_tag}]})
     logger.debug(f"Successfully created new bucket '{bucket}'")
-    return bucket_obj
+    return s3_resource.Bucket(bucket)
 
 
 # # TODO: Determine specific retries
