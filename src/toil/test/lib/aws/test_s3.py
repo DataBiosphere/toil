@@ -1,4 +1,5 @@
 # Copyright (C) 2021 Michael R. Crusoe
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,7 +16,7 @@ import logging
 import uuid
 from typing import Optional
 
-from toil.lib.aws.utils import create_s3_bucket, delete_s3_bucket
+from toil.lib.aws.s3 import create_bucket, delete_bucket
 from toil.lib.ec2 import establish_boto3_session
 from toil.lib.aws.s3 import get_s3_bucket_region
 from toil.test import ToilTest, needs_aws_s3
@@ -45,12 +46,12 @@ class S3Test(ToilTest):
         """Test bucket creation for us-east-1."""
         bucket_name = f"toil-s3test-{uuid.uuid4()}"
         assert self.s3_resource
-        S3Test.bucket = create_s3_bucket(self.s3_resource, bucket_name, "us-east-1")
+        S3Test.bucket = create_bucket(self.s3_resource, bucket_name)
         S3Test.bucket.wait_until_exists()
         self.assertTrue(get_s3_bucket_region(self.s3_resource, bucket_name), "us-east-1")
 
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.bucket:
-            delete_s3_bucket(cls.bucket.name, "us-east-1")
+            delete_bucket(cls.s3_resource, cls.bucket.name)
         super().tearDownClass()

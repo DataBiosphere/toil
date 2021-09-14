@@ -32,6 +32,32 @@ from toil.lib.conversions import modify_url, MB, MIB, TB
 from toil.lib.pipes import WritablePipe, ReadablePipe, HashingPipe
 from toil.lib.retry import retry, ErrorCondition
 
+import logging
+import sys
+import os
+from typing import Optional, Union
+
+from toil.lib import aws
+from toil.lib.misc import printq
+from toil.lib.retry import retry
+from toil.lib.aws.credentials import client, resource
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
+
+try:
+    from boto.exception import BotoServerError
+    from mypy_boto3_s3 import S3ServiceResource
+    from mypy_boto3_s3.literals import BucketLocationConstraintType
+    from mypy_boto3_s3.service_resource import Bucket
+except ImportError:
+    BotoServerError = None  # type: ignore
+    # AWS/boto extra is not installed
+
+logger = logging.getLogger(__name__)
+
 Bucket = resource('s3').Bucket  # only declared for mypy typing
 logger = logging.getLogger(__name__)
 
@@ -75,10 +101,23 @@ class AWSBadEncryptionKeyError(Exception):
 # # TODO: Determine specific retries
 # @retry()
 def create_bucket(s3_resource, bucket: str) -> Bucket:
+    """
+    Create an AWS S3 bucket, using the given Boto3 S3 resource, with the
+    given name, in the S3 resource's region.
+
+    Supports the us-east-1 region, where bucket creation is special.
+
+    *ALL* S3 bucket creation should use this function.
+    """
     s3_client = s3_resource.meta.client
     logger.info(f"Creating AWS bucket {bucket} in region {s3_client.meta.region_name}")
-    bucket_obj = s3_client.create_bucket(Bucket=bucket,
-                                         CreateBucketConfiguration={'LocationConstraint': s3_client.meta.region_name})
+    if s3_client.meta.region_name == "us-east-1":  # see https://github.com/boto/boto3/issues/125
+        bucket_obj = s3_client.create_bucket(Bucket=bucket)
+    else:
+        bucket_obj = s3_client.create_bucket(
+            Bucket=bucket,
+            CreateBucketConfiguration={"LocationConstraint": s3_client.meta.region_name},
+        )
     waiter = s3_client.get_waiter('bucket_exists')
     waiter.wait(Bucket=bucket)
     owner_tag = os.environ.get('TOIL_OWNER_TAG')
@@ -90,7 +129,7 @@ def create_bucket(s3_resource, bucket: str) -> Bucket:
 
 
 # # TODO: Determine specific retries
-# @retry()
+@retry(errors=[BotoServerError])
 def delete_bucket(s3_resource, bucket: str) -> None:
     s3_client = s3_resource.meta.client
     bucket_obj = s3_resource.Bucket(bucket)
@@ -115,7 +154,7 @@ def delete_bucket(s3_resource, bucket: str) -> None:
 
 
 # TODO: Determine specific retries
-@retry()
+@retry(errors=[BotoServerError])
 def bucket_exists(s3_resource, bucket: str) -> Union[bool, Bucket]:
     s3_client = s3_resource.meta.client
     try:
@@ -130,7 +169,7 @@ def bucket_exists(s3_resource, bucket: str) -> Union[bool, Bucket]:
 
 
 # TODO: Determine specific retries
-# @retry()
+@retry(errors=[BotoServerError])
 def copy_s3_to_s3(s3_resource, src_bucket, src_key, dst_bucket, dst_key, extra_args: Optional[dict] = None):
     if not extra_args:
         source = {'Bucket': src_bucket, 'Key': src_key}
@@ -146,7 +185,7 @@ def copy_s3_to_s3(s3_resource, src_bucket, src_key, dst_bucket, dst_key, extra_a
 
 
 # TODO: Determine specific retries
-@retry()
+@retry(errors=[BotoServerError])
 def copy_local_to_s3(s3_resource, local_file_path, dst_bucket, dst_key, extra_args: Optional[dict] = None):
     s3_client = s3_resource.meta.client
     s3_client.upload_file(local_file_path, dst_bucket, dst_key, ExtraArgs=extra_args)

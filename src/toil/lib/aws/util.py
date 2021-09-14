@@ -29,15 +29,12 @@ CLOUD_KEY_REGEX = re.compile(
 AWS_ZONE_REGEX = re.compile(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$')
 
 
-def file_begins_with(path: str, prefix: str) -> bool:
-    with open(path) as f:
-        file_begins_with_prefix = f.read(len(prefix)) == prefix
-    return file_begins_with_prefix
-
-
 def running_on_ec2() -> bool:
     hv_uuid_path = '/sys/hypervisor/uuid'
-    if os.path.exists(hv_uuid_path) and file_begins_with(hv_uuid_path, 'ec2'):
+    if os.path.exists(hv_uuid_path):
+        with open(hv_uuid_path) as f:
+            file_begins_with_ec2 = f.read(len('ec2')) == 'ec2'
+    if file_begins_with_ec2:
         return True
     # Some instances do not have the /sys/hypervisor/uuid file, so check the identity document instead.
     # See https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-identity-documents.html
@@ -46,16 +43,6 @@ def running_on_ec2() -> bool:
         return True
     except (URLError, socket.timeout):
         return False
-
-
-def check_schema(source_url: str) -> None:
-    cloud_key_path = CLOUD_KEY_REGEX.match(source_url)
-    if cloud_key_path and cloud_key_path.group('schema') == "s3":
-        pass
-    elif cloud_key_path and cloud_key_path.group('schema') == "gs":
-        pass
-    else:
-        raise RuntimeError(f"Schema not supported: {source_url}")
 
 
 def zone_to_region(zone: str) -> str:

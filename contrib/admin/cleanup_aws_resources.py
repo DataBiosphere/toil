@@ -21,9 +21,33 @@ pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')) 
 sys.path.insert(0, pkg_root)  # noqa
 
 from src.toil.lib.aws.credentials import client, resource
-from src.toil.lib.aws.utils import delete_iam_role, delete_iam_instance_profile, delete_sdb_domain
+from src.toil.lib.aws.iam import delete_iam_role, delete_iam_instance_profile
 from src.toil.lib.aws.s3 import delete_bucket
 from src.toil.lib.generatedEC2Lists import regionDict
+
+import logging
+import sys
+import os
+from typing import Optional, Union
+
+from toil.lib import aws
+from toil.lib.misc import printq
+from toil.lib.retry import retry
+from toil.lib.aws.credentials import client, resource
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
+
+try:
+    from boto.exception import BotoServerError
+    from mypy_boto3_s3 import S3ServiceResource
+    from mypy_boto3_s3.literals import BucketLocationConstraintType
+    from mypy_boto3_s3.service_resource import Bucket
+except ImportError:
+    BotoServerError = None  # type: ignore
+    # AWS/boto extra is not installed
 
 # put us-west-2 first as our default test region; that way anything with a universal region shows there
 regions = ['us-west-2'] + [region for region in regionDict if region != 'us-west-2']
@@ -38,6 +62,14 @@ absolutely_do_not_delete_these_buckets = ['318423852362-cgcloud',  # not sure wh
                                           'toil-datasets',  # test infra; never delete
                                           'toil-no-location-bucket-dont-delete',  # test infra; never delete
                                           'toil-preserve-file-permissions-tests']  # test infra; never delete
+
+
+# this is only here as a clean up tool; we no longer use sdb and this will eventually be removed
+@retry(errors=[BotoServerError])
+def delete_sdb_domain(sdb_domain_name: str, region: Optional[str] = None, quiet: bool = True) -> None:
+    sdb_client = aws.client("sdb", region_name=region)
+    sdb_client.delete_domain(DomainName=sdb_domain_name)
+    printq(f'SBD Domain: "{sdb_domain_name}" successfully deleted.', quiet)
 
 
 def contains_uuid(string):

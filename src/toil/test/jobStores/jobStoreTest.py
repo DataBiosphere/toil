@@ -44,7 +44,6 @@ from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobExcept
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.lib.memoize import memoize
 from toil.lib.aws.s3 import AWSBadEncryptionKeyError
-from toil.lib.aws.utils import create_s3_bucket
 from toil.statsAndLogging import StatsAndLogging, suppress_exotic_logging
 from toil.test import (ToilTest,
                        make_tests,

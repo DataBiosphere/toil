@@ -40,8 +40,8 @@ from boto.exception import BotoServerError, EC2ResponseError
 from boto.utils import get_instance_metadata
 from boto.ec2.instance import Instance as Boto2Instance
 
-from toil.lib.aws.utils import create_s3_bucket
 from toil.lib.conversions import human2bytes
+from toil.lib.aws.s3 import create_bucket
 from toil.lib.ec2 import (a_short_time,
                           create_auto_scaling_group,
                           create_instances,
@@ -324,7 +324,7 @@ class AWSProvisioner(AbstractProvisioner):
             bucket = s3.Bucket(bucket_name)
         except ClientError as err:
             if err.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
-                bucket = create_s3_bucket(s3, bucket_name=bucket_name, region=self._region)
+                bucket = create_bucket(s3, bucket_name=bucket_name)
                 bucket.wait_until_exists()
                 bucket.Versioning().enable()
 

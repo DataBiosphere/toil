@@ -65,7 +65,7 @@ from toil.lib.aws.s3 import (create_bucket,
                              AWSKeyNotFoundError,
                              AWSKeyAlreadyExistsError)
 from toil.jobStores.exceptions import NoSuchFileException
-from toil.lib.aws.utils import create_s3_bucket
+from toil.lib.aws.s3 import create_bucket
 from toil.lib.compatibility import compat_bytes
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.checksum import compute_checksum_for_file, ChecksumError
