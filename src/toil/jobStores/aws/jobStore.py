@@ -592,23 +592,25 @@ class AWSJobStore(AbstractJobStore):
 
     @classmethod
     def _readFromUrl(cls, url, writable):
-        # TODO
+        # TODO: this should either not be a classmethod, or determine region and boto args from the environment
         url = url.geturl()
         srcObj = cls._getObjectForUrl(url, existing=True)
         srcObj.download_fileobj(writable)
         executable = False
         return srcObj.content_length, executable
 
-    def _writeToUrl(self, readable, url, executable=False):
-        # TODO
+    @classmethod
+    def _writeToUrl(cls, readable, url, executable=False):
+        # TODO: this should either not be a classmethod, or determine region and boto args from the environment
         url = url.geturl()
-        dstObj = self._getObjectForUrl(url)
+        dstObj = cls._getObjectForUrl(url)
         upload_to_s3(readable=readable,
-                     s3_resource=self.s3_resource,
+                     s3_resource=resource('s3'),
                      bucket=dstObj.bucket_name,
                      key=dstObj.key)
 
-    def _getObjectForUrl(self, url: str, existing: Optional[bool] = None):
+    @staticmethod
+    def _getObjectForUrl(url: str, existing: Optional[bool] = None):
         """
         Extracts a key (object) from a given s3:// URL.
 
@@ -617,8 +619,9 @@ class AWSJobStore(AbstractJobStore):
 
         :rtype: S3.Object
         """
+        # TODO: this should either not be static, or determine region and boto args from the environment
         bucket_name, key_name = parse_s3_uri(url)
-        obj = self.s3_resource.Object(bucket_name, key_name)
+        obj = resource('s3').Object(bucket_name, key_name)
 
         try:
             obj.load()
