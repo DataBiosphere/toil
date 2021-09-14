@@ -25,7 +25,7 @@ import pytest
 
 import boto.ec2
 
-from toil.lib.aws import zone_to_region
+from toil.lib.aws.util import zone_to_region
 from toil.provisioners import cluster_factory
 from toil.provisioners.aws import get_best_aws_zone
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
