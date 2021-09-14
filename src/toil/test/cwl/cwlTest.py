@@ -22,6 +22,8 @@ import sys
 import unittest
 import uuid
 import zipfile
+import textwrap
+
 from io import StringIO
 from mock import Mock, call
 from typing import Dict, List, MutableMapping, Optional
@@ -203,10 +205,24 @@ class CWLv10Test(ToilTest):
     def test_mpi(self):
         from toil.cwl import cwltoil
         stdout = StringIO()
+        runner_path = os.path.join(self.rootDir, 'src/toil/test/cwl/mock_mpi/fake_mpi_run.py')
+        fake_mpi_config = textwrap.dedent(f"""
+            runner: {runner_path}
+            nproc_flag: --num
+            extra_flags:
+            - --no-fail
+            env_set:
+              TEST_MPI_FOO: bar
+            env_pass:
+            - USER
+        """)
+        fake_mpi_config_path = os.path.join(self.rootDir, 'src/toil/test/cwl/mock_mpi/fake_mpi.yml')
+        with open(fake_mpi_config_path, 'w') as f:
+            f.write(fake_mpi_config)
         main_args = ['--outdir', self.outDir,
                      '--enable-dev',
                      '--enable-ext',
-                     '--mpi-config-file', os.path.join(self.rootDir, 'src/toil/test/cwl/mock_mpi/fake_mpi.yml'),
+                     '--mpi-config-file', fake_mpi_config_path,
                      os.path.join(self.rootDir, 'src/toil/test/cwl/mpi_simple.cwl')]
         cwltoil.main(main_args, stdout=stdout)
         out = json.loads(stdout.getvalue())

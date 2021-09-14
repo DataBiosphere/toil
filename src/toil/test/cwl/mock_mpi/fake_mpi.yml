@@ -1,4 +1,5 @@
-runner: fake_mpi_run.py
+
+runner: /home/quokka/git/toil/src/toil/test/cwl/mock_mpi/fake_mpi_run.py
 nproc_flag: --num
 extra_flags:
 - --no-fail

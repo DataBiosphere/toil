@@ -163,10 +163,8 @@ def apiDockerCall(job,
     """
 
     # make certain that files have the correct permissions
-    thisUser = os.getuid()
-    thisGroup = os.getgid()
     if user is None:
-        user = str(thisUser) + ":" + str(thisGroup)
+        user = f'{os.getuid()}:{os.getgid()}'
 
     if containerName is None:
         containerName = getContainerName(job)
