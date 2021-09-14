@@ -30,7 +30,6 @@ from toil.lib.conversions import modify_url, MB, MIB, TB
 from toil.lib.pipes import WritablePipe, ReadablePipe, HashingPipe
 from toil.lib.retry import ErrorCondition
 from toil.lib.retry import retry
-from toil.lib.aws.credentials import resource
 
 try:
     from boto.exception import BotoServerError
@@ -41,9 +40,6 @@ except ImportError:
     BotoServerError = None  # type: ignore
     # AWS/boto extra is not installed
 
-logger = logging.getLogger(__name__)
-
-Bucket = resource('s3').Bucket  # only declared for mypy typing
 logger = logging.getLogger(__name__)
 
 # AWS Defined Limits

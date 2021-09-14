@@ -26,7 +26,7 @@ logging.basicConfig(level=logging.DEBUG)
 class AMITest(ToilTest):
     @classmethod
     def setUpClass(cls):
-        cls.ec2_client = client('ec2')
+        cls.ec2_client = client('ec2', region_name='us-west-2')
 
     def test_fetch_flatcar(self):
         with self.subTest('Test flatcar AMI from user is prioritized.'):
