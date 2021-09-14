@@ -11,41 +11,26 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import logging
 import hashlib
 import itertools
 import urllib.parse
 import math
-import os
-from io import BytesIO
-from typing import Optional, Tuple, Union
-from datetime import timedelta
-import os
-
-from contextlib import contextmanager
-from typing import Optional
-from boto3.s3.transfer import TransferConfig
-from botocore.exceptions import ClientError
-
-from toil.lib.aws.credentials import client, resource
-from toil.lib.conversions import modify_url, MB, MIB, TB
-from toil.lib.pipes import WritablePipe, ReadablePipe, HashingPipe
-from toil.lib.retry import retry, ErrorCondition
-
 import logging
 import sys
 import os
-from typing import Optional, Union
 
-from toil.lib import aws
-from toil.lib.misc import printq
+from io import BytesIO
+from typing import Tuple, Optional, Union
+from datetime import timedelta
+from contextlib import contextmanager
+from boto3.s3.transfer import TransferConfig
+from botocore.exceptions import ClientError
+
+from toil.lib.conversions import modify_url, MB, MIB, TB
+from toil.lib.pipes import WritablePipe, ReadablePipe, HashingPipe
+from toil.lib.retry import ErrorCondition
 from toil.lib.retry import retry
-from toil.lib.aws.credentials import client, resource
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from toil.lib.aws.credentials import resource
 
 try:
     from boto.exception import BotoServerError
@@ -100,7 +85,7 @@ class AWSBadEncryptionKeyError(Exception):
 
 # # TODO: Determine specific retries
 # @retry()
-def create_bucket(s3_resource, bucket: str) -> Bucket:
+def create_bucket(s3_resource: S3ServiceResource, bucket: str) -> Bucket:
     """
     Create an AWS S3 bucket, using the given Boto3 S3 resource, with the
     given name, in the S3 resource's region.
@@ -130,7 +115,7 @@ def create_bucket(s3_resource, bucket: str) -> Bucket:
 
 # # TODO: Determine specific retries
 @retry(errors=[BotoServerError])
-def delete_bucket(s3_resource, bucket: str) -> None:
+def delete_bucket(s3_resource: S3ServiceResource, bucket: str) -> None:
     s3_client = s3_resource.meta.client
     bucket_obj = s3_resource.Bucket(bucket)
     try:

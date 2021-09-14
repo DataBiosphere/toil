@@ -11,11 +11,6 @@ from typing import Iterator, Union, List, Optional
 logger = logging.getLogger(__name__)
 
 
-def printq(msg: str, quiet: bool) -> None:
-    if not quiet:
-        print(msg)
-
-
 def truncExpBackoff() -> Iterator[float]:
     # as recommended here https://forums.aws.amazon.com/thread.jspa?messageID=406788#406788
     # and here https://cloud.google.com/storage/docs/xml-api/reference-status

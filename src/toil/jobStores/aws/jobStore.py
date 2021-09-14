@@ -593,6 +593,7 @@ class AWSJobStore(AbstractJobStore):
     @classmethod
     def _readFromUrl(cls, url, writable):
         # TODO
+        url = url.geturl()
         srcObj = cls._getObjectForUrl(url, existing=True)
         srcObj.download_fileobj(writable)
         executable = False
@@ -600,6 +601,7 @@ class AWSJobStore(AbstractJobStore):
 
     def _writeToUrl(self, readable, url, executable=False):
         # TODO
+        url = url.geturl()
         dstObj = self._getObjectForUrl(url)
         upload_to_s3(readable=readable,
                      s3_resource=self.s3_resource,

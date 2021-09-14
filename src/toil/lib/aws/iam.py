@@ -15,7 +15,6 @@ import logging
 
 from typing import Optional
 
-from toil.lib.misc import printq
 from toil.lib.retry import retry
 from toil.lib.aws.credentials import client, resource
 
@@ -29,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 @retry(errors=[BotoServerError])
-def delete_iam_role(role_name: str, region: Optional[str] = None, quiet: bool = True) -> None:
+def delete_iam_role(role_name: str, region: Optional[str] = None) -> None:
     from boto.iam.connection import IAMConnection
     iam_client = client('iam', region_name=region)
     iam_resource = resource('iam', region_name=region)
@@ -37,23 +36,23 @@ def delete_iam_role(role_name: str, region: Optional[str] = None, quiet: bool = 
     role = iam_resource.Role(role_name)
     # normal policies
     for attached_policy in role.attached_policies.all():
-        printq(f'Now dissociating policy: {attached_policy.name} from role {role.name}', quiet)
+        print(f'Now dissociating policy: {attached_policy.name} from role {role.name}')
         role.detach_policy(PolicyName=attached_policy.name)
     # inline policies
     for attached_policy in role.policies.all():
-        printq(f'Deleting inline policy: {attached_policy.name} from role {role.name}', quiet)
+        print(f'Deleting inline policy: {attached_policy.name} from role {role.name}')
         # couldn't find an easy way to remove inline policies with boto3; use boto
         boto_iam_connection.delete_role_policy(role.name, attached_policy.name)
     iam_client.delete_role(RoleName=role_name)
-    printq(f'Role {role_name} successfully deleted.', quiet)
+    print(f'Role {role_name} successfully deleted.')
 
 
 @retry(errors=[BotoServerError])
-def delete_iam_instance_profile(instance_profile_name: str, region: Optional[str] = None, quiet: bool = True) -> None:
+def delete_iam_instance_profile(instance_profile_name: str, region: Optional[str] = None) -> None:
     iam_resource = resource('iam', region_name=region)
     instance_profile = iam_resource.InstanceProfile(instance_profile_name)
     for role in instance_profile.roles:
-        printq(f'Now dissociating role: {role.name} from instance profile {instance_profile_name}', quiet)
+        print(f'Now dissociating role: {role.name} from instance profile {instance_profile_name}')
         instance_profile.remove_role(RoleName=role.name)
     instance_profile.delete()
-    printq(f'Instance profile "{instance_profile_name}" successfully deleted.', quiet)
+    print(f'Instance profile "{instance_profile_name}" successfully deleted.')

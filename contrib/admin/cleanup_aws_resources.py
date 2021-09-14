@@ -17,28 +17,16 @@ import os
 import re
 import sys
 
+from typing import Optional
+
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
-from src.toil.lib.aws.credentials import client, resource
 from src.toil.lib.aws.iam import delete_iam_role, delete_iam_instance_profile
 from src.toil.lib.aws.s3 import delete_bucket
 from src.toil.lib.generatedEC2Lists import regionDict
-
-import logging
-import sys
-import os
-from typing import Optional, Union
-
-from toil.lib import aws
-from toil.lib.misc import printq
-from toil.lib.retry import retry
-from toil.lib.aws.credentials import client, resource
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from src.toil.lib.retry import retry
+from src.toil.lib.aws.credentials import client, resource
 
 try:
     from boto.exception import BotoServerError
@@ -66,10 +54,10 @@ absolutely_do_not_delete_these_buckets = ['318423852362-cgcloud',  # not sure wh
 
 # this is only here as a clean up tool; we no longer use sdb and this will eventually be removed
 @retry(errors=[BotoServerError])
-def delete_sdb_domain(sdb_domain_name: str, region: Optional[str] = None, quiet: bool = True) -> None:
-    sdb_client = aws.client("sdb", region_name=region)
+def delete_sdb_domain(sdb_domain_name: str, region: Optional[str] = None) -> None:
+    sdb_client = client("sdb", region_name=region)
     sdb_client.delete_domain(DomainName=sdb_domain_name)
-    printq(f'SBD Domain: "{sdb_domain_name}" successfully deleted.', quiet)
+    print(f'SBD Domain: "{sdb_domain_name}" successfully deleted.')
 
 
 def contains_uuid(string):
@@ -102,12 +90,7 @@ def contains_toil_test_patterns(string):
 
 def matches(resource_name):
     if resource_name.endswith('--toil'):
-    # if resource_name.endswith('--files') or resource_name.endswith('--jobs') or resource_name.endswith('_toil'):
-    #     if contains_toil_test_patterns(resource_name):
-            return resource_name
-
-    # if resource_name.startswith('import-export-test-'):
-    #     return resource_name
+        return resource_name
 
 
 def find_buckets_to_cleanup(include_all, match):

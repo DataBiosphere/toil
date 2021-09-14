@@ -1,13 +1,8 @@
-import boto3
-import os
-import urllib.request
-import json
 import logging
-import re
 import time
+
 from operator import attrgetter
 from typing import Any, Dict, Iterable, List, Union, Optional
-
 from base64 import b64encode
 from boto.ec2.instance import Instance as Boto2Instance
 from boto.ec2.spotinstancerequest import SpotInstanceRequest
