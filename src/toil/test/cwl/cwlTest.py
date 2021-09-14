@@ -216,7 +216,7 @@ class CWLv10Test(ToilTest):
             env_pass:
             - USER
         """)
-        fake_mpi_config_path = os.path.join(self.outDir, 'src/toil/test/cwl/mock_mpi/fake_mpi.yml')
+        fake_mpi_config_path = os.path.join(self.outDir, 'fake_mpi.yml')
         with open(fake_mpi_config_path, 'w') as f:
             f.write(fake_mpi_config)
         main_args = ['--outdir', self.outDir,
