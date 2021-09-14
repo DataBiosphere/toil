@@ -14,6 +14,8 @@ venv/
 v3nv/
 tmp/
 /src/toil/test/cwl/spec
+/src/toil/test/cwl/spec_v11
+/src/toil/test/cwl/spec_v12
 /cwltool_deps/
 /docs/generated_rst/
 /docker/Dockerfile

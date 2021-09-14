@@ -324,7 +324,7 @@ class AWSProvisioner(AbstractProvisioner):
             bucket = s3.Bucket(bucket_name)
         except ClientError as err:
             if err.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
-                bucket = create_bucket(s3, bucket_name=bucket_name)
+                bucket = create_bucket(s3, bucket=bucket_name)
                 bucket.wait_until_exists()
                 bucket.Versioning().enable()
 

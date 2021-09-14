@@ -30,10 +30,9 @@ class S3Test(ToilTest):
     """Confirm the workarounds for us-east-1."""
 
     from mypy_boto3_s3 import S3ServiceResource
-    from mypy_boto3_s3.service_resource import Bucket
 
     s3_resource: Optional[S3ServiceResource]
-    bucket: Optional[Bucket]
+    bucket: Optional[str]
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -44,14 +43,13 @@ class S3Test(ToilTest):
 
     def test_create_bucket(self) -> None:
         """Test bucket creation for us-east-1."""
-        bucket_name = f"toil-s3test-{uuid.uuid4()}"
+        S3Test.bucket = f"toil-s3test-{uuid.uuid4()}"
         assert self.s3_resource
-        S3Test.bucket = create_bucket(self.s3_resource, bucket_name)
-        S3Test.bucket.wait_until_exists()
-        self.assertTrue(get_s3_bucket_region(self.s3_resource, bucket_name), "us-east-1")
+        create_bucket(self.s3_resource, S3Test.bucket)
+        self.assertTrue(get_s3_bucket_region(self.s3_resource, S3Test.bucket), "us-east-1")
 
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.bucket:
-            delete_bucket(cls.s3_resource, cls.bucket.name)
+            delete_bucket(cls.s3_resource, cls.bucket)
         super().tearDownClass()
