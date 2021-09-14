@@ -13,12 +13,42 @@ from werkzeug.utils import secure_filename
 logger = logging.getLogger(__name__)
 
 
-class WorkflowNotFoundError(Exception):
+class VersionNotImplementedException(Exception):
     """
-    Raised when the user specified run ID is not found.
+    Raised when the requested workflow version is not implemented.
+    """
+    def __init__(self,
+                 wf_type: str, version: Optional[str] = None, supported_versions: Optional[List[str]] = None) -> None:
+        if version:
+            message = ("workflow_type '{}' requires 'workflow_type_version' to be one of '{}'.  "
+                       "Got '{}' instead.".format(wf_type, str(supported_versions), version))
+        else:
+            message = f"workflow_type '{wf_type}' is not supported."
+
+        super(VersionNotImplementedException, self).__init__(message)
+
+
+class WorkflowNotFoundException(Exception):
+    """
+    Raised when the requested run ID is not found.
     """
     def __init__(self) -> None:
-        super(WorkflowNotFoundError, self).__init__("The requested workflow run wasn't found.")
+        super(WorkflowNotFoundException, self).__init__("The requested workflow run wasn't found.")
+
+
+class WorkflowConflictException(Exception):
+    """
+    Raised when the requested workflow is not in the expected state.
+    """
+    def __init__(self, run_id: str):
+        super(WorkflowConflictException, self).__init__(f"Workflow {run_id} exists when it shouldn't.")
+
+
+class WorkflowExecutionException(Exception):
+    """
+    Raised when an internal error occurred during the execution of the workflow.
+    """
+    pass
 
 
 def handle_errors(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -28,7 +58,7 @@ def handle_errors(func: Callable[..., Any]) -> Callable[..., Any]:
     GA4GH WES spec.
     """
 
-    def error(msg, code: int = 500):  # type: ignore
+    def error(msg: Any, code: int = 500) -> Tuple[Dict[str, Any], int]:
         logger.warning(f"Exception raised when calling '{func.__name__}()':", exc_info=True)
         return {"msg": str(msg), "status_code": code}, code
 
@@ -38,10 +68,14 @@ def handle_errors(func: Callable[..., Any]) -> Callable[..., Any]:
             return func(*args, **kwargs)
         except (TypeError, ValueError) as e:
             return error(e, code=400)  # the request is malformed
-        except RuntimeError as e:
-            return error(e, code=400)  # most likely due to malformed request
-        except (FileNotFoundError, WorkflowNotFoundError) as e:
+        except VersionNotImplementedException as e:
+            return error(e, code=400)
+        except (FileNotFoundError, WorkflowNotFoundException) as e:
             return error(e, code=404)
+        except WorkflowConflictException as e:
+            return error(e, code=409)
+        except WorkflowExecutionException as e:
+            return error(e, code=500)
         except Exception as e:
             return error(e, code=500)
 

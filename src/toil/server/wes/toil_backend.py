@@ -15,15 +15,17 @@ import json
 import logging
 import os
 import shutil
-import signal
-import subprocess
 import uuid
 from typing import Optional, List, Dict, Any, overload, Generator, Tuple
 
-from toil import resolveEntryPoint
 from toil.server.wes.abstract_backend import (WESBackend,
                                               handle_errors,
-                                              WorkflowNotFoundError)
+                                              WorkflowNotFoundException,
+                                              WorkflowConflictException,
+                                              VersionNotImplementedException,
+                                              WorkflowExecutionException)
+from toil.server.wes.tasks import run_wes, cancel_run
+
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
@@ -82,15 +84,14 @@ class ToilWorkflow:
         """ Clean directory and files related to the run."""
         shutil.rmtree(os.path.join(self.work_dir))
 
-    def get_run_command(self, request: Dict[str, Any], options: List[str]) -> List[str]:
-        """
-        Return a list of commands, and the working directory for the run.
-        """
+    def queue_run(self, request: Dict[str, Any], options: List[str]) -> None:
+        """This workflow should be ready to run. Hand this to Celery."""
         with open(os.path.join(self.work_dir, "request.json"), "w") as f:
             json.dump(request, f)
 
-        options = [f"--opt={option}" for option in options]
-        return [resolveEntryPoint("_toil_wes_runner"), "--work_dir", self.work_dir, *options]
+        run_wes.apply_async(args=(self.work_dir, request, options),
+                            task_id=self.run_id,  # set the Celery task ID the same as our run ID
+                            ignore_result=True)
 
     def get_output_files(self) -> Any:
         """
@@ -104,16 +105,15 @@ class ToilBackend(WESBackend):
     WES backend implemented for Toil to run CWL, WDL, or Toil workflows. This
     class is responsible for validating and executing submitted workflows.
 
-    Local implementation -
-    Interact with the "workflows/" directory in the filesystem to store and
-    retrieve data associated with the runs.
+    Single machine implementation -
+    Use Celery as the task queue and interact with the "workflows/" directory
+    in the filesystem to store and retrieve data associated with the runs.
     """
 
     def __init__(self, work_dir: str, options: List[str]) -> None:
         super(ToilBackend, self).__init__(options)
         self.work_dir = work_dir
         self.supported_versions: Dict[str, List[str]] = {}
-        self.processes: Dict[str, "subprocess.Popen[bytes]"] = {}
 
     def register_wf_type(self, name: str, supported_versions: List[str]) -> None:
         """
@@ -133,15 +133,9 @@ class ToilBackend(WESBackend):
 
         if should_exists is not None:
             if should_exists and not run.exists():
-                raise WorkflowNotFoundError
+                raise WorkflowNotFoundException
             if should_exists is False and run.exists():
-                raise RuntimeError(f"Workflow {run_id} exists when it shouldn't.")
-
-        # Since we can't schedule tasks with Flask, we do the cleanup here..
-        process = self.processes.get(run_id)
-        if process and process.poll() is not None:
-            process.terminate()
-            self.processes.pop(run_id)
+                raise WorkflowConflictException(run_id)
 
         return run
 
@@ -219,17 +213,17 @@ class ToilBackend(WESBackend):
     def run_workflow(self) -> Dict[str, str]:
         """ Run a workflow."""
         run_id = uuid.uuid4().hex
-        job = self._get_run(run_id, should_exists=False)
+        run = self._get_run(run_id, should_exists=False)
 
         # set up necessary directories for the run
-        job.set_up_run()
+        run.set_up_run()
 
         # stage the uploaded files to the execution directory, so that we can run the workflow file directly
-        temp_dir = job.exec_dir
+        temp_dir = run.exec_dir
         try:
             _, request = self.collect_attachments(run_id, temp_dir=temp_dir)
         except ValueError:
-            job.clean_up()
+            run.clean_up()
             raise
 
         wf_type = request["workflow_type"].lower().strip()
@@ -238,30 +232,16 @@ class ToilBackend(WESBackend):
         # validate workflow request
         supported_versions = self.supported_versions.get(wf_type, None)
         if not supported_versions:
-            job.clean_up()
-            raise RuntimeError(f"workflow_type '{wf_type}' is not supported.")
+            run.clean_up()
+            raise VersionNotImplementedException(wf_type)
         if version not in supported_versions:
-            job.clean_up()
-            raise RuntimeError("workflow_type '{}' requires 'workflow_type_version' to be one of '{}'.  Got '{}'"
-                               "instead.".format(wf_type, str(supported_versions), version))
+            run.clean_up()
+            raise VersionNotImplementedException(wf_type, version, supported_versions)
 
-        job.set_state("QUEUED")
+        run.set_state("QUEUED")
 
-        command = job.get_run_command(request=request, options=self.options)
-
-        # TODO: Flask recommends using a task queue (like Celery or rq) to run tasks like these, since this way
-        #  will likely leave behind zombie child processes until we read the return code of the process.
-        # https://flask.palletsprojects.com/en/2.0.x/patterns/celery/
-        # https://python-rq.org/
-
-        with open(os.path.join(job.work_dir, "runner.log"), "w") as log:
-            process = subprocess.Popen(command, stdout=log, stderr=log, cwd=job.work_dir)
-
-        with open(os.path.join(job.work_dir, "runner.pid"), "w") as f:
-            f.write(str(process.pid))
-
-        self.processes[run_id] = process
-        logger.info(f"Spawned child process ({process.pid}) to run the requested workflow.")
+        logger.info(f"Putting workflow {run_id} into the queue. Waiting to be picked up...")
+        run.queue_run(request, options=self.options)
 
         return {
             "run_id": run_id
@@ -310,13 +290,16 @@ class ToilBackend(WESBackend):
         run = self._get_run(run_id, should_exists=True)
         state = run.get_state()
 
-        if state not in ("QUEUED", "INITIALIZING", "RUNNING"):
-            raise RuntimeError(f"Workflow is in state: '{state}', which cannot be cancelled.")
-        run.set_state("CANCELING")
-
-        with open(os.path.join(run.work_dir, "runner.pid"), "r") as f:
-            pid = int(f.read())
-        os.kill(pid, signal.SIGINT)
+        if state in ("CANCELING", "CANCELED", "COMPLETE"):
+            # We don't need to do anything.
+            logger.warning(f"A user is attempting to cancel a workflow in state: '{state}'.")
+        elif state in ("EXECUTOR_ERROR", "SYSTEM_ERROR"):
+            # Something went wrong. Let the user know.
+            raise WorkflowExecutionException(f"Workflow is in state: '{state}', which cannot be cancelled.")
+        else:
+            # Cancel the workflow in the following states: "QUEUED", "INITIALIZING", "RUNNING".
+            run.set_state("CANCELING")
+            cancel_run(run_id)
 
         return {
             "run_id": run_id

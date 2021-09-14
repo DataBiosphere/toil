@@ -1,0 +1,12 @@
+
+- [X] Use Celery to run requested workflows
+- [ ] Download requested files from the Internet using `requests.get()`
+- [ ] Run CWL conformance tests via WES
+  - [ ] Make a CLI entry to submit workflows for `cwltest`?
+- [ ] Add option to auto start server to `toil launch-cluster`
+- [ ] Should also automate creation of security group rule if this option is set
+- [ ] Add some custom Toil endpoints to fetch files via HTTP
+  - [ ] The stdout/stderr in the log are supposed to be URLs pointing to the real file, not the infinitely long contents
+- [ ] Update docs
+  - [ ] Add details on how to pass toil specific parameters to `POST /runs`
+- [ ] Example uses for the `toil server` CLI

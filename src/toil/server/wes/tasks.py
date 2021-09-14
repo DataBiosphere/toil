@@ -11,51 +11,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import argparse
 import json
 import logging
 import os
 import shutil
-import signal
 import subprocess
 from typing import Dict, Any, List, Union
 
-from toil.server.utils import get_iso_time, get_file_class, link_file
-from toil.statsAndLogging import configure_root_logger, set_log_level
+from toil.server.celery_app import celery
+from toil.server.utils import (get_iso_time,
+                               get_file_class,
+                               link_file)
 
 logger = logging.getLogger(__name__)
-
-
-"""
-Toil WES workflow runner.
-
-Helper script to run a requested WES workflow through subprocess. Responsible
-for parsing the user request into a shell command, executing that command, and
-collecting the outputs of the resulting workflow run.
-This script expects the given `--work_dir` directory to contain an `execution`
-directory where workflow attachments are staged, and a `request.json` JSON file
-containing the body of the request:
-
-.
-├── execution/
-│   └── ...
-└── request.json
-
-During execution, this script may write the following files to the working
-directory:
-
-.
-├── cmd
-├── end_time
-├── exit_code
-├── job_store
-├── outputs.json
-├── pid
-├── start_time
-├── state
-├── stderr
-└── stdout
-"""
 
 
 class ToilWorkflowRunner:
@@ -205,21 +173,18 @@ class ToilWorkflowRunner:
             logger.info(f"Calling: '{' '.join(cmd)}'")
             process = subprocess.Popen(cmd, stdout=stdout, stderr=stderr, close_fds=True, cwd=cwd)
 
-        self.write("pid", str(process.pid))
-
-        # handle SIGTERM as SIGINT to properly shut down Toil
-        signal.signal(signal.SIGTERM, signal.getsignal(signal.SIGINT))
-
         try:
             return process.wait()
-        except KeyboardInterrupt:
-            # signal an interrupt to kill the process gently
-            process.send_signal(signal.SIGINT)
-            process.wait()
+        except (KeyboardInterrupt, SystemExit):
+            process.terminate()
+
+            if process.wait(timeout=5) is None:
+                process.kill()
+
             logger.info("Child process terminated by interruption.")
             return 130
 
-    def run(self) -> str:
+    def run(self) -> None:
         """
         Construct a command to run a the requested workflow with the options,
         run it, and deposit the outputs in the output directory.
@@ -235,7 +200,7 @@ class ToilWorkflowRunner:
 
         if self.get_state() in ("CANCELING", "CANCELED"):
             logger.info("Workflow canceled.")
-            return "CANCELED"
+            return
 
         self.set_state("RUNNING")
         self.write("start_time", get_iso_time())
@@ -254,9 +219,7 @@ class ToilWorkflowRunner:
         else:
             self.set_state("EXECUTOR_ERROR")
 
-        return self.get_state()
-
-    def fetch_output_files(self) -> Dict[str, Any]:
+    def write_output_files(self) -> None:
         """
         Fetch all the files that this workflow generated and output information
         about them to `outputs.json`.
@@ -281,47 +244,36 @@ class ToilWorkflowRunner:
         # TODO: other job stores
 
         self.write("outputs.json", json.dumps(output_obj))
-        return output_obj
 
 
-def main() -> None:
-    configure_root_logger()
-    set_log_level("INFO")
-    logger.info("Preparing requested workflow to run.")
-
-    parser = argparse.ArgumentParser("Execution script for the workflow submitted through the Toil WES servers.")
-    parser.add_argument("--work_dir", type=str, default=os.getcwd(),
-                        help=f"The working directory of the workflow run. (default: {os.getcwd()}).")
-    parser.add_argument("--engine_option", default=[], action="append",
-                        help="A list of default engine parameters that should be passed into the workflow "
-                             "execution engine if they are not overwritten by the user request.")
-    args = parser.parse_args()
-
-    work_dir = args.work_dir
-    engine_options = args.engine_option
-
-    if not os.path.isfile(os.path.join(work_dir, "request.json")):
-        logger.error(f"Cannot process the requested workflow: 'request.json' is not found in '{work_dir}'.")
-        exit(1)
-
-    with open(os.path.join(work_dir, "request.json"), "r") as f:
-        request = json.load(f)
+@celery.task(name="run_wes")
+def run_wes(work_dir: str, request: Dict[str, Any], engine_options: List[str]) -> str:
+    """
+    A celery task to run a requested workflow.
+    """
 
     runner = ToilWorkflowRunner(work_dir, request=request, engine_options=engine_options)
 
     try:
-        state = runner.run()
+        runner.run()
+
+        state = runner.get_state()
         logger.info(f"Workflow run completed with state: '{state}'.")
 
         if state == "COMPLETE":
             logger.info(f"Fetching output files.")
-            runner.fetch_output_files()
-    except KeyboardInterrupt:
+            runner.write_output_files()
+    except (KeyboardInterrupt, SystemExit):
         runner.set_state("CANCELED")
-    except:
+    except Exception as e:
         runner.set_state("EXECUTOR_ERROR")
-        raise
+        raise e
+
+    return runner.get_state()
 
 
-if __name__ == '__main__':
-    main()
+def cancel_run(task_id: str) -> None:
+    """
+    Send a SIGTERM signal to the process that is running task_id.
+    """
+    celery.control.terminate(task_id)

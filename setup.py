@@ -53,6 +53,7 @@ def run_setup():
     connexion = 'connexion<3'
     flask_cors = 'flask-cors==3.0.10'
     gunicorn = 'gunicorn==20.1.0'
+    celery = 'celery==5.1.2'
 
     core_reqs = [
         dill,
@@ -94,7 +95,8 @@ def run_setup():
     server_reqs = [
         connexion,
         flask_cors,
-        gunicorn]
+        gunicorn,
+        celery]
 
     # htcondor is not supported by apple
     # this is tricky to conditionally support in 'all' due
@@ -170,8 +172,7 @@ def run_setup():
                 'toil-cwl-runner = toil.cwl.cwltoil:main [cwl]',
                 'toil-wdl-runner = toil.wdl.toilwdl:main',
                 '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]',
-                '_toil_kubernetes_executor = toil.batchSystems.kubernetes:executor [kubernetes]',
-                '_toil_wes_runner = toil.server.wes.runner:main [server]']})
+                '_toil_kubernetes_executor = toil.batchSystems.kubernetes:executor [kubernetes]']})
 
 
 def import_version():
