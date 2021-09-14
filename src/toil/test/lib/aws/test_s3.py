@@ -12,11 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
-import os
 import uuid
 from typing import Optional
 
-from toil.jobStores.aws.jobStore import AWSJobStore
 from toil.lib.aws.utils import create_s3_bucket, delete_s3_bucket
 from toil.lib.ec2 import establish_boto3_session
 from toil.lib.aws.s3 import get_s3_bucket_region

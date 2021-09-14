@@ -15,7 +15,7 @@ import logging
 import pickle
 import re
 import shutil
-import urllib.parse as urlparse
+from urllib.parse import urlparse, ParseResult
 
 from abc import ABC, ABCMeta, abstractmethod
 from contextlib import closing, contextmanager
@@ -222,11 +222,11 @@ class AbstractJobStore(ABC):
                 jobStoreClasses.append(jobStoreClass)
         return jobStoreClasses
 
-    def _findJobStoreForUrl(self, url: urlparse.ParseResult, export: bool = False) -> 'AbstractJobStore':
+    def _findJobStoreForUrl(self, url: ParseResult, export: bool = False) -> 'AbstractJobStore':
         """
         Returns the AbstractJobStore subclass that supports the given URL.
 
-        :param urlparse.ParseResult url: The given URL
+        :param ParseResult url: The given URL
 
         :param bool export: Determines if the url is supported for exporting
 
@@ -272,11 +272,11 @@ class AbstractJobStore(ABC):
         # destination (which is the current job store in this case). To implement any
         # optimizations that circumvent this, the _importFile method should be overridden by
         # subclasses of AbstractJobStore.
-        parseResult = urlparse.urlparse(srcUrl)
+        parseResult = urlparse(srcUrl)
         otherCls = self._findJobStoreForUrl(parseResult)
         return self._importFile(otherCls, parseResult, sharedFileName=sharedFileName, hardlink=hardlink, symlink=symlink)
 
-    def _importFile(self, otherCls: 'AbstractJobStore', url: urlparse.ParseResult, sharedFileName: Optional[str] = None,
+    def _importFile(self, otherCls: 'AbstractJobStore', url: ParseResult, sharedFileName: Optional[str] = None,
                     hardlink: bool = False, symlink: bool = False) -> Optional[FileID]:
         """
         Import the file at the given URL using the given job store class to retrieve that file.
@@ -287,7 +287,7 @@ class AbstractJobStore(ABC):
         :param AbstractJobStore otherCls: The concrete subclass of AbstractJobStore that supports
                reading from the given URL and getting the file size from the URL.
 
-        :param urlparse.ParseResult url: The location of the file to import.
+        :param ParseResult url: The location of the file to import.
 
         :param str sharedFileName: Optional name to assign to the imported file within the job store
 
@@ -321,11 +321,11 @@ class AbstractJobStore(ABC):
         :param str dstUrl: URL that points to a file or object in the storage mechanism of a
                 supported URL scheme e.g. a blob in an AWS s3 bucket.
         """
-        parseResult = urlparse.urlparse(dstUrl)
+        parseResult = urlparse(dstUrl)
         otherCls = self._findJobStoreForUrl(parseResult, export=True)
         self._exportFile(otherCls, jobStoreFileID, parseResult)
 
-    def _exportFile(self, otherCls: 'AbstractJobStore', jobStoreFileID: FileID, url: urlparse.ParseResult) -> None:
+    def _exportFile(self, otherCls: 'AbstractJobStore', jobStoreFileID: FileID, url: ParseResult) -> None:
         """
         Refer to exportFile docstring for information about this method.
 
@@ -336,11 +336,11 @@ class AbstractJobStore(ABC):
 
         :param str jobStoreFileID: The id of the file that will be exported.
 
-        :param urlparse.ParseResult url: The parsed URL of the file to export to.
+        :param ParseResult url: The parsed URL of the file to export to.
         """
         self._defaultExportFile(otherCls, jobStoreFileID, url)
 
-    def _defaultExportFile(self, otherCls: 'AbstractJobStore', jobStoreFileID: FileID, url: urlparse.ParseResult) -> None:
+    def _defaultExportFile(self, otherCls: 'AbstractJobStore', jobStoreFileID: FileID, url: ParseResult) -> None:
         """
         Refer to exportFile docstring for information about this method.
 
@@ -351,7 +351,7 @@ class AbstractJobStore(ABC):
 
         :param str jobStoreFileID: The id of the file that will be exported.
 
-        :param urlparse.ParseResult url: The parsed URL of the file to export to.
+        :param ParseResult url: The parsed URL of the file to export to.
         """
         executable = False
         with self.readFileStream(jobStoreFileID) as readable:
@@ -361,25 +361,25 @@ class AbstractJobStore(ABC):
 
     @classmethod
     @abstractmethod
-    def getSize(cls, url: urlparse.ParseResult) -> None:
+    def getSize(cls, url: ParseResult) -> None:
         """
         Get the size in bytes of the file at the given URL, or None if it cannot be obtained.
 
-        :param urlparse.ParseResult url: URL that points to a file or object in the storage
+        :param ParseResult url: URL that points to a file or object in the storage
                mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
         """
         raise NotImplementedError
 
     @classmethod
     @abstractmethod
-    def _readFromUrl(cls, url: urlparse.ParseResult, writable: IO[bytes]) -> Tuple[int, bool]:
+    def _readFromUrl(cls, url: ParseResult, writable: IO[bytes]) -> Tuple[int, bool]:
         """
         Reads the contents of the object at the specified location and writes it to the given
         writable stream.
 
         Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
 
-        :param urlparse.ParseResult url: URL that points to a file or object in the storage
+        :param ParseResult url: URL that points to a file or object in the storage
                mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
 
         :param IO[bytes] writable: a writable stream
@@ -391,7 +391,7 @@ class AbstractJobStore(ABC):
 
     @classmethod
     @abstractmethod
-    def _writeToUrl(cls, readable: Union[BytesIO, TextIO], url: urlparse.ParseResult, executable: bool = False) -> None:
+    def _writeToUrl(cls, readable: Union[BytesIO, TextIO], url: ParseResult, executable: bool = False) -> None:
         """
         Reads the contents of the given readable stream and writes it to the object at the
         specified location.
@@ -400,7 +400,7 @@ class AbstractJobStore(ABC):
 
         :param Union[BytesIO, TextIO] readable: a readable stream
 
-        :param urlparse.ParseResult url: URL that points to a file or object in the storage
+        :param ParseResult url: URL that points to a file or object in the storage
                mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
 
         :param bool executable: determines if the file has executable permissions
@@ -409,13 +409,13 @@ class AbstractJobStore(ABC):
 
     @classmethod
     @abstractmethod
-    def _supportsUrl(cls, url: urlparse.ParseResult, export: bool = False) -> bool:
+    def _supportsUrl(cls, url: ParseResult, export: bool = False) -> bool:
         """
         Returns True if the job store supports the URL's scheme.
 
         Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
 
-        :param urlparse.ParseResult url: a parsed URL that may be supported
+        :param ParseResult url: a parsed URL that may be supported
 
         :param bool export: Determines if the url is supported for exported
 
@@ -1162,12 +1162,12 @@ class AbstractJobStore(ABC):
 
 class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     @classmethod
-    def _supportsUrl(cls, url: urlparse.ParseResult, export: bool = False) -> bool:
+    def _supportsUrl(cls, url: ParseResult, export: bool = False) -> bool:
         return url.scheme.lower() in ('http', 'https', 'ftp') and not export
 
     @classmethod
     @retry(errors=[BadStatusLine, ErrorCondition(error=HTTPError, error_codes=[408, 500, 503])])
-    def getSize(cls, url: urlparse.ParseResult) -> Optional[int]:
+    def getSize(cls, url: ParseResult) -> Optional[int]:
         if url.scheme.lower() == 'ftp':
             return None
         with closing(urlopen(url.geturl())) as readable:
@@ -1177,7 +1177,7 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
 
     @classmethod
     @retry(errors=[BadStatusLine, ErrorCondition(error=HTTPError, error_codes=[408, 500, 503])])
-    def _readFromUrl(cls, url: urlparse.ParseResult, writable: Union[BytesIO, TextIO]) -> Tuple[int, bool]:
+    def _readFromUrl(cls, url: ParseResult, writable: Union[BytesIO, TextIO]) -> Tuple[int, bool]:
         # We can only retry on errors that happen as responses to the request.
         # If we start getting file data, and the connection drops, we fail.
         # So we don't have to worry about writing the start of the file twice.
