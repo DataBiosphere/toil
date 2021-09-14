@@ -14,11 +14,10 @@
 # limitations under the License.
 import logging
 import uuid
-from typing import Optional
+from typing import Optional, List
 
-from toil.lib.aws.s3 import create_bucket, delete_bucket
-from toil.lib.ec2 import establish_boto3_session
-from toil.lib.aws.s3 import get_s3_bucket_region
+from toil.lib.aws.s3 import create_bucket, delete_bucket, get_s3_bucket_region, bucket_exists
+from toil.lib.aws.credentials import resource
 from toil.test import ToilTest, needs_aws_s3
 
 logger = logging.getLogger(__name__)
@@ -32,24 +31,31 @@ class S3Test(ToilTest):
     from mypy_boto3_s3 import S3ServiceResource
 
     s3_resource: Optional[S3ServiceResource]
-    bucket: Optional[str]
+    buckets: List[str]
 
     @classmethod
     def setUpClass(cls) -> None:
         super(S3Test, cls).setUpClass()
-        session = establish_boto3_session(region_name="us-east-1")
-        cls.s3_resource = session.resource("s3", region_name="us-east-1")
-        cls.bucket = None
+        cls.s3_resource = None
+        cls.buckets = []
 
-    def test_create_bucket(self) -> None:
-        """Test bucket creation for us-east-1."""
-        S3Test.bucket = f"toil-s3test-{uuid.uuid4()}"
-        assert self.s3_resource
-        create_bucket(self.s3_resource, S3Test.bucket)
-        self.assertTrue(get_s3_bucket_region(self.s3_resource, S3Test.bucket), "us-east-1")
+    def test_create_delete_bucket(self) -> None:
+        """Test bucket creation and deletion for us-west-2 and us-east-1 (which is special)."""
+        for region in ['us-west-2', 'us-east-1']:
+            self.s3_resource = resource("s3", region_name=region)
+            bucket = f"toil-s3test-{uuid.uuid4()}-{region}"
+            self.buckets.append(bucket)
+
+            with self.subTest(f'Test bucket creation in {region}.'):
+                create_bucket(self.s3_resource, bucket)
+                self.assertTrue(get_s3_bucket_region(self.s3_resource, bucket), region)
+
+            with self.subTest(f'Test bucket deletion in {region}.'):
+                delete_bucket(self.s3_resource, bucket)
+                self.assertFalse(bucket_exists(self.s3_resource, bucket))
 
     @classmethod
     def tearDownClass(cls) -> None:
-        if cls.bucket:
-            delete_bucket(cls.s3_resource, cls.bucket)
+        for bucket in cls.buckets:
+            delete_bucket(resource('s3'), bucket)
         super().tearDownClass()
