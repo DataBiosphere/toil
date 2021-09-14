@@ -30,12 +30,11 @@ AWS_ZONE_REGEX = re.compile(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$')
 
 
 def running_on_ec2() -> bool:
-    hv_uuid_path = '/sys/hypervisor/uuid'
-    if os.path.exists(hv_uuid_path):
-        with open(hv_uuid_path) as f:
+    if os.path.exists('/sys/hypervisor/uuid'):
+        with open('/sys/hypervisor/uuid') as f:
             file_begins_with_ec2 = f.read(len('ec2')) == 'ec2'
-    if file_begins_with_ec2:
-        return True
+        if file_begins_with_ec2:
+            return True
     # Some instances do not have the /sys/hypervisor/uuid file, so check the identity document instead.
     # See https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-identity-documents.html
     try:
