@@ -32,13 +32,11 @@ import pickle
 import re
 import stat
 import uuid
-import tempfile
 import datetime
+
 from io import BytesIO
 from contextlib import contextmanager
 from typing import Optional, Tuple, Union
-
-from typing import Optional
 from botocore.exceptions import ClientError
 
 from toil.fileStores import FileID
@@ -65,13 +63,10 @@ from toil.lib.aws.s3 import (create_bucket,
                              AWSKeyNotFoundError,
                              AWSKeyAlreadyExistsError)
 from toil.jobStores.exceptions import NoSuchFileException
-from toil.lib.aws.s3 import create_bucket
-from toil.lib.compatibility import compat_bytes
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.checksum import compute_checksum_for_file, ChecksumError
 from toil.lib.io import AtomicFileCreate
 from toil.version import version
-from toil.lib.encryption import encrypt, decrypt
 
 
 DEFAULT_AWS_PART_SIZE = 52428800

@@ -325,13 +325,6 @@ class AWSProvisioner(AbstractProvisioner):
         except ClientError as err:
             if err.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
                 bucket = create_bucket(s3, bucket=bucket_name)
-                bucket.wait_until_exists()
-                bucket.Versioning().enable()
-
-                owner_tag = os.environ.get('TOIL_OWNER_TAG')
-                if owner_tag:
-                    bucket_tagging = s3.BucketTagging(bucket_name)
-                    bucket_tagging.put(Tagging={'TagSet': [{'Key': 'Owner', 'Value': owner_tag}]})
             else:
                 raise
 

@@ -17,10 +17,11 @@ import pickle
 import stat
 import time
 import uuid
+
 from contextlib import contextmanager
 from functools import wraps
 from io import BytesIO
-from typing import Optional
+from typing import Optional, Union
 
 from google.api_core.exceptions import (GoogleAPICallError,
                                         InternalServerError,
@@ -33,7 +34,6 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
 from toil.lib.pipes import ReadablePipe, WritablePipe
-from toil.lib.compatibility import compat_bytes
 from toil.lib.io import AtomicFileCreate
 from toil.lib.misc import truncExpBackoff
 from toil.lib.retry import old_retry
@@ -49,6 +49,10 @@ MAX_BATCH_SIZE = 1000
 #   - needed to copy client_id and client_secret to the oauth section
 # - Azure uses bz2 compression with pickling. Is this useful here?
 # - better way to assign job ids? - currently 'job'+uuid
+
+
+def compat_bytes(s: Union[bytes, str]) -> str:
+    return s.decode('utf-8') if isinstance(s, bytes) else s
 
 
 def googleRetryPredicate(e):
