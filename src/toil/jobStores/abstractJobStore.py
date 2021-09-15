@@ -120,7 +120,7 @@ class AbstractJobStore(ABC):
                 assert config.workflowID is not None
                 self.__config = config
         except NoSuchFileException:
-            raise RuntimeError('Jobstore cannot be resumed.  No previous config was found.')
+            raise NoSuchJobStoreException('No previous config was found.  This is not a Toil jobstore.')
 
     def configure_encryption(self, sse_key_path: Optional[str] = None):
         """
