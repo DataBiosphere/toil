@@ -611,7 +611,8 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             # Just chmod it for rwx for user. This can't work anyway if it isn't ours.
             try:
                 os.chmod(os.path.dirname(path),  stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
-            except PermissionError:
+            except PermissionError as e:
+                logger.error('Could not set permissions on %s to allow cleanup of %s: %s', os.path.dirname(path), path, e)
                 pass
         shutil.rmtree(localWorkerTempDir, onerror=make_parent_writable)
 
