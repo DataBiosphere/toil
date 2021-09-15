@@ -128,7 +128,6 @@ class AWSJobStore(AbstractJobStore):
         self.region, self.bucket_name = parse_jobstore_identifier(locator)
         self.s3_resource = resource('s3', region_name=self.region)
         self.s3_client = self.s3_resource.meta.client
-        self.check_bucket_region_conflict()
         logger.debug(f"Instantiating {self.__class__} with region: {self.region}")
         self.locator = locator
         self.part_size = DEFAULT_AWS_PART_SIZE  # don't let users set the part size; it will throw off etag values
@@ -705,14 +704,6 @@ class AWSJobStore(AbstractJobStore):
                              prefix=self.shared_key_prefix,
                              data=read_log_marker)
         return itemsProcessed
-
-    def check_bucket_region_conflict(self):
-        # TODO: Does this matter?
-        if bucket_exists(self.s3_resource, self.bucket_name):
-            response = self.s3_client.get_bucket_location(Bucket=self.bucket_name)
-            if response["LocationConstraint"] != self.region:
-                raise ValueError(f'Bucket region conflict.  Bucket already exists in region '
-                                 f'"{response["LocationConstraint"]}" but "{self.region}" was specified.')
 
     def configure_encryption(self, sse_key_path: Optional[str] = None):
         if sse_key_path:
