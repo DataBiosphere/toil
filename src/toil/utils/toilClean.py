@@ -28,11 +28,8 @@ def main() -> None:
     set_logging_from_options(options)
     try:
         jobstore = Toil.getJobStore(options.jobStore)
-        jobstore.resume()
         jobstore.destroy()
         logger.info(f"Successfully deleted the job store: {options.jobStore}")
-    except NoSuchJobStoreException:
-        logger.info(f"Failed to delete the job store: {options.jobStore} is non-existent.")
     except:
         logger.info(f"Failed to delete the job store: {options.jobStore}")
         raise
