@@ -141,7 +141,7 @@ def bucket_exists(s3_resource, bucket: str) -> Union[bool, Bucket]:
     try:
         s3_client.head_bucket(Bucket=bucket)
         return s3_resource.Bucket(bucket)
-    except ClientError as e:
+    except (ClientError, s3_client.exceptions.NoSuchBucket) as e:
         error_code = e.response.get('ResponseMetadata', {}).get('HTTPStatusCode')
         if error_code == 404:
             return False

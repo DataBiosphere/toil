@@ -100,7 +100,7 @@ class MesosTestSupport(object):
                 sought = 'any binary in %s' % str(names)
 
             raise RuntimeError("Cannot find %s. Make sure Mesos is installed "
-                                "and it's 'bin' directory is present on the PATH." % sought)
+                               "and it's 'bin' directory is present on the PATH." % sought)
 
     class MesosMasterThread(MesosThread):
         def mesosCommand(self):

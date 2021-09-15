@@ -79,6 +79,59 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             shutil.rmtree(self.tempDir)
         ToilTest.tearDown(self)
 
+    # def _toilSort(self, jobStoreLocator, batchSystem,
+    #               lines=defaultLines, N=defaultN, testNo=1, lineLen=defaultLineLen,
+    #               retryCount=2, badWorker=0.5, downCheckpoints=False, disableCaching=False):
+    #     """
+    #     Generate a file consisting of the given number of random lines, each line of the given
+    #     length. Sort the file with Toil by splitting the file recursively until each part is less
+    #     than the given number of bytes, sorting each part and merging them back together. Then
+    #     verify the result.
+    #
+    #     :param jobStoreLocator: The location of the job store.
+    #
+    #     :param batchSystem: the name of the batch system
+    #
+    #     :param lines: the number of random lines to generate
+    #
+    #     :param N: the size in bytes of each split
+    #
+    #     :param testNo: the number of repeats of this test
+    #
+    #     :param lineLen: the length of each random line in the file
+    #     """
+    #     for test in range(testNo):
+    #         # Specify options
+    #         options = Job.Runner.getDefaultOptions(jobStoreLocator)
+    #         options.logLevel = logging.getLevelName(root_logger.getEffectiveLevel())
+    #         options.retryCount = retryCount
+    #         options.batchSystem = batchSystem
+    #         options.clean = "never"
+    #         options.badWorker = 0
+    #         options.badWorkerFailInterval = 0
+    #         options.disableCaching = disableCaching
+    #         # This is required because mesosMasterAddress now defaults to the IP of the machine
+    #         # that is starting the workflow while the mesos *tests* run locally.
+    #         if batchSystem == 'mesos':
+    #             options.mesosMasterAddress = 'localhost:5050'
+    #         options.downCheckpoints = downCheckpoints
+    #         options.N = N
+    #         options.outputFile = self.outputFile
+    #         options.fileToSort = self.inputFile
+    #         options.overwriteOutput = True
+    #         options.realTimeLogging = True
+    #
+    #         # Make the file to sort
+    #         makeFileToSort(options.fileToSort, lines=lines, lineLen=lineLen)
+    #
+    #         # First make our own sorted version
+    #         with open(options.fileToSort, 'r') as fileHandle:
+    #             l = fileHandle.readlines()
+    #             l.sort()
+    #
+    #         with runMain(options):
+    #             pass
+
     def _toilSort(self, jobStoreLocator, batchSystem,
                   lines=defaultLines, N=defaultN, testNo=1, lineLen=defaultLineLen,
                   retryCount=2, badWorker=0.5, downCheckpoints=False, disableCaching=False):
