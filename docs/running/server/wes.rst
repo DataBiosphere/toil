@@ -13,6 +13,19 @@ To get started with the Toil WES server, make sure that the ``server`` extra (:r
 
 .. _WESUsageOverview:
 
+Preparing your WES environment
+------------------------------
+
+#. Start RabbitMQ::
+
+    docker run -d --hostname rabbitmq --name wes-rabbit -p 5672:5672 rabbitmq:3.9.5
+
+#. Start Celery workers::
+
+    celery -A toil.server.celery_app worker --loglevel=INFO
+
+TODO: Make this into a script and daemonize celery
+
 Starting a WES server
 ---------------------
 

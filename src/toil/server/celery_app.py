@@ -1,7 +1,6 @@
 from typing import Optional
 from celery import Celery  # type: ignore
 
-
 """
 Contains functions related to Celery.
 
@@ -13,7 +12,17 @@ def create_celery_app(broker: Optional[str] = None) -> Celery:
     """ """
     if not broker:
         broker = "amqp://guest:guest@localhost:5672//"
-    return Celery("runs", broker=broker)
+    app = Celery("toil_wes", broker=broker)
+
+    # Celery configurations
+    app.conf.broker_transport_options = {
+        "max_retries": 5,
+        "interval_start": 0,
+        "interval_step": 0.2,
+        "interval_max": 0.2,
+    }
+
+    return app
 
 
 celery = create_celery_app()

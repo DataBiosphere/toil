@@ -89,9 +89,14 @@ class ToilWorkflow:
         with open(os.path.join(self.work_dir, "request.json"), "w") as f:
             json.dump(request, f)
 
-        run_wes.apply_async(args=(self.work_dir, request, options),
-                            task_id=self.run_id,  # set the Celery task ID the same as our run ID
-                            ignore_result=True)
+        try:
+            run_wes.apply_async(args=(self.work_dir, request, options),
+                                task_id=self.run_id,  # set the Celery task ID the same as our run ID
+                                ignore_result=True)
+        except Exception:
+            # Celery or the broker might be down
+            self.set_state("SYSTEM_ERROR")
+            raise WorkflowExecutionException(f"Failed to queue run: internal server error.")
 
     def get_output_files(self) -> Any:
         """

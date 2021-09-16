@@ -13,6 +13,9 @@
 # limitations under the License.
 import os
 from datetime import datetime
+from typing import Optional
+
+import requests
 
 
 def get_iso_time() -> str:
@@ -32,6 +35,23 @@ def link_file(src: str, dest: str) -> None:
         os.link(src, dest)
     except OSError:
         os.symlink(src, dest)
+
+
+def download_file_from_internet(src: str, dest: str, content_type: Optional[str] = None) -> None:
+    """
+    Download a file from the Internet and write it to dest.
+    """
+    response = requests.get(src)
+
+    if not response.ok:
+        raise RuntimeError("Request failed with a client error or a server error.")
+
+    if content_type and not response.headers.get("Content-Type", "").startswith(content_type):
+        val = response.headers.get("Content-Type")
+        raise RuntimeError(f"Expected content type to be '{content_type}'.  Not {val}.")
+
+    with open(dest, "wb") as f:
+        f.write(response.content)
 
 
 def get_file_class(path: str) -> str:

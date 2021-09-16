@@ -1,12 +1,17 @@
-
-- [X] Use Celery to run requested workflows
-- [ ] Download requested files from the Internet using `requests.get()`
-- [ ] Run CWL conformance tests via WES
-  - [ ] Make a CLI entry to submit workflows for `cwltest`?
-- [ ] Add option to auto start server to `toil launch-cluster`
-- [ ] Should also automate creation of security group rule if this option is set
-- [ ] Add some custom Toil endpoints to fetch files via HTTP
-  - [ ] The stdout/stderr in the log are supposed to be URLs pointing to the real file, not the infinitely long contents
-- [ ] Update docs
+- [X] Use Celery to run workflows
+- [X] Support workflow files from the Internet (using `requests.get()`)
+- [ ] Add custom Toil endpoints to serve static log/output files?
+  - [ ] The stdout/stderr files are supposed to be URLs pointing to the real file, not the infinitely long contents
+- Usability
+  - [ ] Add option to auto start server to `toil launch-cluster`
+  - [ ] Script to prepare celery (start rabbitmq, celery workers, etc.)
+- Improve documentation
   - [ ] Add details on how to pass toil specific parameters to `POST /runs`
+  - [ ] Only recommend users to open the TCP port to the public (until we have SSL/TLS support?)
+- Testing
+  - [ ] Run CWL conformance tests via WES
+    - [ ] Make a CLI entry to submit workflows for `cwltest`?
+  - [ ] More unit tests
+  - [ ] Scalability testing
 - [ ] Example uses for the `toil server` CLI
+- [ ] (basic) Auth? (separate PR)

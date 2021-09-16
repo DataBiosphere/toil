@@ -18,10 +18,12 @@ import shutil
 import subprocess
 from typing import Dict, Any, List, Union
 
+from toil.common import Toil
 from toil.server.celery_app import celery
 from toil.server.utils import (get_iso_time,
-                               get_file_class,
-                               link_file)
+                               link_file,
+                               download_file_from_internet,
+                               get_file_class)
 
 logger = logging.getLogger(__name__)
 
@@ -62,22 +64,25 @@ class ToilWorkflowRunner:
     def write_workflow(self, src_url: str) -> str:
         """
         Fetch the workflow file from its source and write it to a destination
-        file. The destination is returned.
+        file.
         """
         logger.info(f"Processing workflow_url: '{src_url}'...")
-        dest = src_url
+        dest = os.path.join(self.exec_dir, os.path.basename(src_url))
 
         if src_url.startswith("file://"):
-            logger.info(f"Linking workflow from filesystem.")
-            dest = os.path.join(self.exec_dir, os.path.basename(src_url))
+            logger.info("Linking workflow from filesystem.")
             link_file(src=src_url[7:], dest=dest)
+
         elif src_url.startswith(("http://", "https://")):
-            logger.info(f"Downloading workflow_url from the Internet.")
-            # TODO: Download workflow files from the Internet
-            raise NotImplementedError
+            logger.info("Downloading workflow_url from the Internet.")
+            download_file_from_internet(src=src_url, dest=dest, content_type="text/")
         else:
-            logger.info(f"Using workflow from relative URL.")
+            logger.info("Using workflow from relative URL.")
             dest = os.path.join(self.exec_dir, src_url)
+
+        # Make sure that the destination file actually exists
+        if not os.path.isfile(dest):
+            raise RuntimeError(f"Cannot resolve workflow file from: '{src_url}'.")
 
         return dest
 
@@ -106,7 +111,8 @@ class ToilWorkflowRunner:
                 options.remove(option)
             if option.startswith(("--outdir=", "-o=")):
                 options.remove(option)
-        if self.job_store.startswith(("aws", "google", "azure")):
+        job_store_name, _ = Toil.parseLocator(self.job_store)
+        if job_store_name in ("aws", "google", "azure"):
             cloud = True
 
         if self.wf_type.lower() in ("cwl", "wdl"):
