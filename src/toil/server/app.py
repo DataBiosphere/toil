@@ -28,8 +28,8 @@ def parser_with_server_options() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Toil server mode.")
 
     parser.add_argument("--debug", action="store_true", default=False)
-    parser.add_argument("--host", type=str, default="0.0.0.0",
-                        help="The host interface that the Toil server binds on. (default: '0.0.0.0').")
+    parser.add_argument("--host", type=str, default="127.0.0.1",
+                        help="The host interface that the Toil server binds on. (default: '127.0.0.1').")
     parser.add_argument("--port", type=int, default=8080,
                         help="The port that the Toil server listens on. (default: 8080).")
     parser.add_argument("--swagger_ui", action="store_true", default=False,

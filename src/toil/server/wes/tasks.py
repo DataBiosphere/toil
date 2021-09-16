@@ -14,8 +14,8 @@
 import json
 import logging
 import os
-import shutil
 import subprocess
+from tempfile import NamedTemporaryFile
 from typing import Dict, Any, List, Union
 
 from toil.common import Toil
@@ -59,7 +59,10 @@ class ToilWorkflowRunner:
             return f.read()
 
     def set_state(self, state: str) -> None:
-        self.write("state", state)
+        # write state atomically
+        with NamedTemporaryFile(mode='w', dir=self.work_dir, prefix='state.', delete=False) as f:
+            f.write(state)
+        os.rename(f.name, os.path.join(self.work_dir, "state"))
 
     def write_workflow(self, src_url: str) -> str:
         """
@@ -111,11 +114,12 @@ class ToilWorkflowRunner:
                 options.remove(option)
             if option.startswith(("--outdir=", "-o=")):
                 options.remove(option)
-        job_store_name, _ = Toil.parseLocator(self.job_store)
-        if job_store_name in ("aws", "google", "azure"):
+
+        job_store_type, _ = Toil.parseLocator(self.job_store)
+        if job_store_type in ("aws", "google", "azure"):
             cloud = True
 
-        if self.wf_type.lower() in ("cwl", "wdl"):
+        if self.wf_type in ("cwl", "wdl"):
             if not cloud:
                 options.append("--outdir=" + self.out_dir)
             options.append("--jobStore=" + self.job_store)
@@ -231,14 +235,17 @@ class ToilWorkflowRunner:
         about them to `outputs.json`.
         """
         output_obj = {}
+        job_store_type, _ = Toil.parseLocator(self.job_store)
 
-        # TODO: read the STDOUT file if it's a CWL workflow? This will work with all job stores. I think.
+        # For CWL workflows, the stdout should be a JSON object containing the outputs
+        if self.wf_type == "cwl":
+            try:
+                with open(os.path.join(self.work_dir, "stdout")) as f:
+                    output_obj = json.load(f)
+            except Exception as e:
+                logger.warning("Failed to read outputs object from stdout:", exc_info=e)
 
-        if self.job_store.startswith("file:"):
-            for file in os.listdir(self.out_dir):
-                if file.startswith("out_tmpdir"):
-                    shutil.rmtree(os.path.join(self.out_dir, file))
-
+        elif job_store_type == "file":
             for file in os.listdir(self.out_dir):
                 location = os.path.join(self.out_dir, file)
                 output_obj[file] = {
@@ -247,7 +254,7 @@ class ToilWorkflowRunner:
                     "class": get_file_class(location),
                 }
 
-        # TODO: other job stores
+        # TODO: fetch files from other job stores
 
         self.write("outputs.json", json.dumps(output_obj))
 

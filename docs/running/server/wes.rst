@@ -16,15 +16,18 @@ To get started with the Toil WES server, make sure that the ``server`` extra (:r
 Preparing your WES environment
 ------------------------------
 
-#. Start RabbitMQ::
+The WES server requires Celery_ to distribute and execute workflows. To set up Celery:
 
-    docker run -d --hostname rabbitmq --name wes-rabbit -p 5672:5672 rabbitmq:3.9.5
+#. Start RabbitMQ, which is the broker between the WES server and Celery workers::
+
+    docker run -d --name wes-rabbitmq -p 5672:5672 rabbitmq:3.9.5
 
 #. Start Celery workers::
 
-    celery -A toil.server.celery_app worker --loglevel=INFO
+    celery -A toil.server.celery_app worker --detach --loglevel=INFO
 
-TODO: Make this into a script and daemonize celery
+
+.. _Celery: https://docs.celeryproject.org/en/stable/getting-started/introduction.html
 
 Starting a WES server
 ---------------------
@@ -51,7 +54,7 @@ Below is a detailed summary of all available options:
 --debug
             Enable debug mode.
 --host HOST
-            The host interface that the Toil server binds on. (default: "0.0.0.0").
+            The host interface that the Toil server binds on. (default: "127.0.0.1").
 --port PORT
             The port that the Toil server listens on. (default: 8080).
 --swagger_ui

@@ -16,6 +16,8 @@ import logging
 import os
 import shutil
 import uuid
+from collections import Counter
+from tempfile import NamedTemporaryFile
 from typing import Optional, List, Dict, Any, overload, Generator, Tuple
 
 from toil.server.wes.abstract_backend import (WESBackend,
@@ -72,8 +74,10 @@ class ToilWorkflow:
 
     def set_state(self, state: str) -> None:
         """ Set the state for the current run."""
-        with open(os.path.join(self.work_dir, "state"), "w") as f:
+        # write state atomically
+        with NamedTemporaryFile(mode='w', dir=self.work_dir, prefix='state.', delete=False) as f:
             f.write(state)
+        os.rename(f.name, os.path.join(self.work_dir, "state"))
 
     def set_up_run(self) -> None:
         """ Set up necessary directories for the run."""
@@ -165,11 +169,7 @@ class ToilBackend(WESBackend):
     def get_service_info(self) -> Dict[str, Any]:
         """ Get information about the Workflow Execution Service."""
 
-        state_counts = {state: 0 for state in (
-            "QUEUED", "INITIALIZING", "RUNNING", "COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELING", "CANCELED"
-        )}
-        for _, state in self.get_runs():
-            state_counts[state] += 1
+        state_counts = Counter(state for _, state in self.get_runs())
 
         engine_parameters = []
         for option in self.options:
@@ -264,9 +264,14 @@ class ToilBackend(WESBackend):
         start_time = run.fetch("start_time")
         end_time = run.fetch("end_time")
 
-        # TODO: stdout and stderr should be a URL that points to the output file, not the actual contents.
-        stdout = run.fetch("stdout")
-        stderr = run.fetch("stderr")
+        # TODO: define some custom routes to serve these log files through HTTP?
+        stdout = ""
+        stderr = ""
+        if os.path.isfile(os.path.join(run.work_dir, 'stdout')):
+            stdout = f"file://{os.path.join(run.work_dir, 'stdout')}"
+        if os.path.isfile(os.path.join(run.work_dir, 'stderr')):
+            stderr = f"file://{os.path.join(run.work_dir, 'stderr')}"
+
         exit_code = run.fetch("exit_code")
 
         output_obj = {}
@@ -285,7 +290,8 @@ class ToilBackend(WESBackend):
                 "stderr": stderr,
                 "exit_code": int(exit_code) if exit_code is not None else None,
             },
-            "task_logs": [],
+            "task_logs": [
+            ],
             "outputs": output_obj,
         }
 
