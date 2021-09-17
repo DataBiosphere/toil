@@ -127,12 +127,6 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             elif isinstance(stdout, bytes):
                 values = stdout.decode('utf-8').strip().split()
 
-            # If job information is not available an error is issued:
-            # slurm_load_jobs error: Invalid job id specified
-            # There is no job information, so exit.
-            if len(values) > 0 and values[0] == 'slurm_load_jobs':
-                return (None, None)
-
             job = dict()
             for item in values:
                 logger.debug(f"{args[0]} output {item}")
