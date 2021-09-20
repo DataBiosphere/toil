@@ -597,7 +597,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
     if (debugging or config.stats or statsDict.workers.logsToMaster) and not jobAttemptFailed:  # We have stats/logging to report back
         jobStore.writeStatsAndLogging(json.dumps(statsDict, ensure_ascii=True))
 
-    #Remove the temp dir
+    # Remove the temp dir
     cleanUp = config.cleanWorkDir
     if cleanUp == 'always' or (cleanUp == 'onSuccess' and not jobAttemptFailed) or (cleanUp == 'onError' and jobAttemptFailed):
         def make_parent_writable(func: Callable[[str], Any], path: str, _: Any) -> None:
@@ -609,10 +609,14 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             up after itself.
             """
             # Just chmod it for rwx for user. This can't work anyway if it isn't ours.
-            os.chmod(os.path.dirname(path),  stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+            try:
+                os.chmod(os.path.dirname(path),  stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+            except PermissionError as e:
+                logger.error('Could not set permissions on %s to allow cleanup of %s: %s', os.path.dirname(path), path, e)
+                pass
         shutil.rmtree(localWorkerTempDir, onerror=make_parent_writable)
 
-    #This must happen after the log file is done with, else there is no place to put the log
+    # This must happen after the log file is done with, else there is no place to put the log
     if (not jobAttemptFailed) and jobDesc.command == None and next(jobDesc.successorsAndServiceHosts(), None) is None:
         # We can now safely get rid of the JobDescription, and all jobs it chained up
         for otherID in jobDesc.jobsToDelete:
