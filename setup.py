@@ -18,7 +18,7 @@ from tempfile import NamedTemporaryFile
 from setuptools import find_packages, setup
 
 
-cwltool_version = '3.1.20210816212154'
+cwltool_version = '3.1.20210922130607'
 
 
 def run_setup():
