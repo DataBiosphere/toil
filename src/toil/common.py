@@ -20,12 +20,15 @@ import sys
 import tempfile
 import time
 import uuid
+
+from urllib.parse import urlparse
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, _ArgumentGroup
 from typing import Any, Callable, List, Optional, Tuple, Union
 
 import requests
 
 from toil import logProcessContext, lookupEnvVar
+from toil.fileStores import FileID
 from toil.batchSystems.options import (add_all_batchsystem_options,
                                        set_batchsystem_config_defaults,
                                        set_batchsystem_options)
@@ -93,7 +96,7 @@ class Config:
         self.maxServiceJobs: int = sys.maxsize
         self.deadlockWait: Union[float, int] = 60  # Number of seconds we must be stuck with all services before declaring a deadlock
         self.deadlockCheckInterval: Union[float, int] = 30  # Minimum polling delay for deadlocks
-        self.statePollingWait: Union[float, int] = 1  # Number of seconds to wait before querying job state
+        self.statePollingWait: Optional[Union[float, int]] = None  # Number of seconds to wait before querying job state
 
         # Resource requirements
         self.defaultMemory: int = 2147483648
@@ -406,7 +409,7 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
         title="Toil options for specifying the batch system.",
         description="Allows the specification of the batch system."
     )
-    batchsystem_options.add_argument("--statePollingWait", dest="statePollingWait", default=1, type=int,
+    batchsystem_options.add_argument("--statePollingWait", dest="statePollingWait", type=int,
                                      help="Time, in seconds, to wait before doing a scheduler query for job state.  "
                                           "Return cached results if within the waiting period.")
     add_all_batchsystem_options(batchsystem_options)
@@ -990,14 +993,12 @@ class Toil:
                     from toil.batchSystems.singleMachine import \
                         SingleMachineBatchSystem
                     if not isinstance(self._batchSystem, SingleMachineBatchSystem):
-                        logger.warning('Batch system does not support auto-deployment. The user '
-                                    'script %s will have to be present at the same location on '
-                                    'every worker.', userScript)
+                        logger.warning('Batch system does not support auto-deployment. The user script '
+                                       '%s will have to be present at the same location on every worker.', userScript)
                     userScript = None
         else:
             # This branch is hit on restarts
-            if (self._batchSystem.supportsAutoDeployment() and
-                not self.config.disableAutoDeployment):
+            if self._batchSystem.supportsAutoDeployment() and not self.config.disableAutoDeployment:
                 # We could deploy a user script
                 from toil.jobStores.abstractJobStore import NoSuchFileException
                 try:
@@ -1014,7 +1015,10 @@ class Toil:
             logger.debug('Injecting user script %s into batch system.', userScriptResource)
             self._batchSystem.setUserScript(userScriptResource)
 
-    def importFile(self, srcUrl, sharedFileName=None, symlink=False):
+    def importFile(self,
+                   srcUrl: str,
+                   sharedFileName: Optional[str] = None,
+                   symlink: bool = False) -> Optional[Union[FileID, str]]:
         """
         Imports the file at the given URL into job store.
 
@@ -1022,9 +1026,10 @@ class Toil:
         full description
         """
         self._assertContextManagerUsed()
+        srcUrl = self.normalize_uri(srcUrl, check_existence=True)
         return self._jobStore.importFile(srcUrl, sharedFileName=sharedFileName, symlink=symlink)
 
-    def exportFile(self, jobStoreFileID, dstUrl):
+    def exportFile(self, jobStoreFileID: Union[FileID, str], dstUrl: str) -> None:
         """
         Exports file to destination pointed at by the destination URL.
 
@@ -1032,7 +1037,30 @@ class Toil:
         full description
         """
         self._assertContextManagerUsed()
+        dstUrl = self.normalize_uri(dstUrl)
         self._jobStore.exportFile(jobStoreFileID, dstUrl)
+
+    @staticmethod
+    def normalize_uri(uri: str, check_existence: bool = False) -> str:
+        """
+        Given a URI, if it has no scheme, prepend "file:".
+
+        :param check_existence: If set, raise an error if a URI points to
+               a local file that does not exist.
+        """
+        if urlparse(uri).scheme == 'file':
+            uri = urlparse(uri).path  # this should strip off the local file scheme; it will be added back
+
+        # account for the scheme-less case, which should be coerced to a local absolute path
+        if urlparse(uri).scheme == '':
+            abs_path = os.path.abspath(uri)
+            if not os.path.exists(abs_path) and check_existence:
+                raise FileNotFoundError(
+                    f'Could not find local file "{abs_path}" when importing "{uri}".\n'
+                    f'Make sure paths are relative to "{os.getcwd()}" or use absolute paths.\n'
+                    f'If this is not a local file, please include the scheme (s3:/, gs:/, ftp://, etc.).')
+            return f'file://{abs_path}'
+        return uri
 
     def _setBatchSystemEnvVars(self):
         """
