@@ -476,7 +476,7 @@ class FileJobStore(AbstractJobStore):
         # If we get here, symlinking isn't an option.
         # Make sure we are working with the real source path, in case it is a
         # symlinked import.
-        jobStoreFilePath = os.path.realpath(jobStoreFilePath)
+        #jobStoreFilePath = os.path.realpath(jobStoreFilePath)
 
         if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
             # It is possible that we can hard link the file.
