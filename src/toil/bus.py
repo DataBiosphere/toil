@@ -63,9 +63,9 @@ class MessageBus:
         # Log who sent the message, and what it is
         # See: <https://stackoverflow.com/a/57712700>
         our_frame = inspect.currentframe()
-        assert our_frame is not None
+        assert our_frame is not None, "Interpreter for Toil must have Python stack frame support"
         caller_frame = our_frame.f_back
-        assert caller_frame is not None
+        assert caller_frame is not None, "MessageBus.put() cannot determine its caller"
         logger.debug('%s sent: %s', caller_frame.f_code.co_name, message)
 
         self.__messages_by_type[type(message)].append(message)
@@ -118,9 +118,10 @@ class MessageBus:
                     handled = True
                 finally:
                     if not handled:
-                        # An exception happened. Make sure the message isn't
-                        # dropped, in case someone wants to recover and handle it
-                        # again later.
+                        # An exception happened, and we're bailing out of the
+                        # while loop. Make sure the message isn't dropped, in
+                        # case someone wants to recover and handle it again
+                        # later with another for_each call.
                         message_list.append(message)
         finally:
             # Dump anything remaining in our buffer back into the main buffer.

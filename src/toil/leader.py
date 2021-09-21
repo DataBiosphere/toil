@@ -569,8 +569,9 @@ class Leader(object):
             if message.job_id in handled_with_status:
                 if handled_with_status[message.job_id] == message.result_status:
                     # This is a harmless duplicate
-                    logger.debug("Coalescing duplicate update %s", message)
-                    continue
+                    logger.debug("Job %s already updated this tick with status %s and "
+                                 "we've received duplicate message %s", message.job_id,
+                                 handled_with_status[message.job_id], message)
                 else:
                     # This is a conflicting update. We may have already treated
                     # a job as succeeding but now we've heard it's failed, or
@@ -578,12 +579,12 @@ class Leader(object):
                     # This probably shouldn't happen, but does because the
                     # scheduler is not correct somehow and hasn't been for a
                     # long time. Complain about it.
-                    logger.warning("Job %s already updated this tick with status %s but we've now received %s", message.job_id, handled_with_status[message.job_id], message)
-                    # But don't actually handle it because the old dict-based
-                    # update system would have just clobbered one update with
-                    # another. So we shouldn't kick the job more than once or
-                    # we might start multiple copies of things.
-                    continue
+                    logger.warning("Job %s already updated this tick with status %s "
+                                   "but we've now received %s", message.job_id,
+                                   handled_with_status[message.job_id], message)
+                # Either way, we only want to handle one update per tick, like
+                # the old dict-based implementation.
+                continue
             else:
                 # New job for this tick so actually handle that it is updated
                 self._processReadyJob(message.job_id, message.result_status)
@@ -751,7 +752,12 @@ class Leader(object):
                 if isinstance(job, ServiceJobDescription) and self.serviceManager.is_running(js_id):
                     running_service_ids.add(js_id)
 
-            assert len(running_service_ids) <= totalRunningJobs
+            if len(running_service_ids) > totalRunningJobs:
+                # This is too many services.
+                # TODO: couldn't more jobs have started since we polled the
+                # running job count?
+                raise RuntimeError(f"Supposedly running {len(running_service_ids)} services, which is"
+                                   f"more than the {totalRunningJobs} currently running jobs overall.")
 
             # If all the running jobs are active services then we have a potential deadlock
             if len(running_service_ids) == totalRunningJobs:
