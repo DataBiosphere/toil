@@ -76,44 +76,55 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             logger.debug(f"Getting exit code for slurm job: {slurmJobID}")
 
             try:
-                state, rc = self._getJobDetailsFromSacct(slurmJobID)
+                state, rc = self._getJobDetailsFromSacct([slurmJobID])[slurmJobID]
             except CalledProcessErrorStderr:
                 # no accounting system or some other error
-                state, rc = self._getJobDetailsFromScontrol(slurmJobID)
+                state, rc = self._getJobDetailsFromScontrol(slurmJobID)[slurmJobID]
 
-            logger.debug("s job state is %s", state)
+            logger.debug("Job %d is %s", slurmJobID, state)
             # If Job is in a running state, return None to indicate we don't have an update
             if state in ('PENDING', 'RUNNING', 'CONFIGURING', 'COMPLETING', 'RESIZING', 'SUSPENDED'):
                 return None
 
             return rc
 
-        def _getJobDetailsFromSacct(self, slurmJobID):
+        def _getJobDetailsFromSacct(self, batch_job_id_list: list) -> dict:
             # SLURM job exit codes are obtained by running sacct.
+            job_ids = ",".join(str(id) for id in batch_job_id_list)
             args = ['sacct',
                     '-n', # no header
-                    '-j', str(slurmJobID), # job
-                    '--format', 'State,ExitCode', # specify output columns
+                    '-j', job_ids, # job
+                    '--format', 'JobIDRaw,State,ExitCode', # specify output columns
                     '-P', # separate columns with pipes
                     '-S', '1970-01-01'] # override start time limit
-
             stdout = call_command(args)
+
+            # Collect the job statuses in a dict; key is the job-id, value is a tuple containing
+            # job state and exit status. Initialize dict before processing output of `sacct`.
+            job_status = {}
+            for id in batch_job_id_list:
+                job_status[id] = (None, None)
+
             for line in stdout.split('\n'):
                 logger.debug("%s output %s", args[0], line)
                 values = line.strip().split('|')
-                if len(values) < 2:
+                if len(values) < 3:
                     continue
-                state, exitcode = values
-                logger.debug("sacct job state is %s", state)
-                # If Job is in a running state, return None to indicate we don't have an update
+                job_id, state, exitcode = values
+                logger.debug("sacct state of job %s is %s", job_id, state)
+                # JobIDRaw is in the form JobID[.JobStep]; we're not interested in job steps.
+                if len(job_id.split(".")) > 1:
+                    continue
+                job_id = int(job_id)
                 status, signal = [int(n) for n in exitcode.split(':')]
                 if signal > 0:
                     # A non-zero signal may indicate e.g. an out-of-memory killed job
                     status = 128 + signal
-                logger.debug("sacct exit code is %s, returning status %d", exitcode, status)
-                return state, status
-            logger.debug("Did not find exit code for job in sacct output")
-            return None, None
+                logger.debug("sacct exit code of job %d is %s, returning status %d",
+                             job_id, exitcode, status)
+                job_status[job_id] = state, status
+            logger.debug("Returning job statuses: %s", job_status)
+            return job_status
 
         def _getJobDetailsFromScontrol(self, slurmJobID):
             args = ['scontrol',
