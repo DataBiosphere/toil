@@ -134,26 +134,26 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             stdout = call_command(args)
             if isinstance(stdout, str):
-                values = stdout.strip().split()
+                lines = stdout.splitlines()
             elif isinstance(stdout, bytes):
-                values = stdout.decode('utf-8').strip().split()
-
-            # If job information is not available an error is issued:
-            # slurm_load_jobs error: Invalid job id specified
-            # There is no job information, so exit.
-            if len(values) > 0 and values[0] == 'slurm_load_jobs':
-                return (None, None)
+                lines = stdout.decode('utf-8').splitlines()
 
             job = dict()
-            for item in values:
-                logger.debug(f"{args[0]} output {item}")
+            for line in lines:
+                for item in line.split():
+                    logger.debug(f"{args[0]} output {item}")
 
-                # Output is in the form of many key=value pairs, multiple pairs on each line
-                # and multiple lines in the output. Each pair is pulled out of each line and
-                # added to a dictionary
-                for v in values:
-                    bits = v.split('=')
-                    job[bits[0]] = bits[1]
+                    # Output is in the form of many key=value pairs, multiple pairs on each line
+                    # and multiple lines in the output. Each pair is pulled out of each line and
+                    # added to a dictionary.
+                    # Note: In some cases, the value itself may contain white-space. So, if we find
+                    # a key without a value, we consider that key part of the previous value.
+                    bits = item.split('=', 1)
+                    if len(bits) == 1:
+                        job[key] += ' ' + bits[0]
+                    else:
+                        key = bits[0]
+                        job[key] = bits[1]
 
             state = job['JobState']
             try:

@@ -96,7 +96,7 @@ class Config:
         self.maxServiceJobs: int = sys.maxsize
         self.deadlockWait: Union[float, int] = 60  # Number of seconds we must be stuck with all services before declaring a deadlock
         self.deadlockCheckInterval: Union[float, int] = 30  # Minimum polling delay for deadlocks
-        self.statePollingWait: Union[float, int] = 1  # Number of seconds to wait before querying job state
+        self.statePollingWait: Optional[Union[float, int]] = None  # Number of seconds to wait before querying job state
 
         # Resource requirements
         self.defaultMemory: int = 2147483648
@@ -409,7 +409,7 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
         title="Toil options for specifying the batch system.",
         description="Allows the specification of the batch system."
     )
-    batchsystem_options.add_argument("--statePollingWait", dest="statePollingWait", default=1, type=int,
+    batchsystem_options.add_argument("--statePollingWait", dest="statePollingWait", type=int,
                                      help="Time, in seconds, to wait before doing a scheduler query for job state.  "
                                           "Return cached results if within the waiting period.")
     add_all_batchsystem_options(batchsystem_options)
