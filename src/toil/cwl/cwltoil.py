@@ -58,6 +58,7 @@ from urllib import parse as urlparse
 
 import cwltool.builder
 import cwltool.command_line_tool
+import cwltool.context
 import cwltool.errors
 import cwltool.expression
 import cwltool.load_tool
@@ -70,14 +71,13 @@ from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mpi import MpiConfig
 from cwltool.mutation import MutationManager
-from cwltool.pathmapper import MapperEnt, PathMapper, downloadHttpFile
+from cwltool.pathmapper import MapperEnt, PathMapper
 from cwltool.process import (
     Process,
     add_sizes,
     compute_checksums,
     fill_in_defaults,
     shortname,
-    UnsupportedRequirement,
 )
 from cwltool.secrets import SecretStore
 from cwltool.software_requirements import (
@@ -86,17 +86,20 @@ from cwltool.software_requirements import (
 )
 from cwltool.utils import (
     CWLObjectType,
+    CWLOutputType,
     adjustDirObjs,
     adjustFileObjs,
     aslist,
     get_listing,
     normalizeFilesDirs,
     visit_class,
+    downloadHttpFile,
 )
-from ruamel.yaml.comments import CommentedMap
+from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from schema_salad import validate
-from schema_salad.schema import Names
-from schema_salad.sourceline import SourceLine
+from schema_salad.exceptions import ValidationException
+from schema_salad.avro.schema import Names
+from schema_salad.sourceline import SourceLine, cmap
 from threading import Thread
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
@@ -130,7 +133,7 @@ CWL_INTERNAL_JOBS = (
 CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE = 33
 
 # And what error will make the worker exit with that code
-CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION = UnsupportedRequirement
+CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION = cwltool.errors.UnsupportedRequirement
 
 # Find the default temporary directory
 DEFAULT_TMPDIR = tempfile.gettempdir()
@@ -140,7 +143,7 @@ DEFAULT_TMPDIR = tempfile.gettempdir()
 DEFAULT_TMPDIR_PREFIX = os.path.join(DEFAULT_TMPDIR, "tmp")
 
 
-def cwltoil_was_removed():
+def cwltoil_was_removed() -> None:
     """Complain about deprecated entrypoint."""
     raise RuntimeError(
         'Please run with "toil-cwl-runner" instead of "cwltoil" (which has been removed).'
@@ -158,7 +161,7 @@ def cwltoil_was_removed():
 # output object to the correct key of the input object.
 
 
-class UnresolvedDict(dict):
+class UnresolvedDict(Dict[Any, Any]):
     """Tag to indicate a dict contains promises that must be resolved."""
 
 
@@ -222,8 +225,9 @@ class Conditional:
     def __init__(
         self,
         expression: Union[str, None] = None,
-        outputs: Union[dict, None] = None,
+        outputs: Union[Dict[str, CWLOutputType], None] = None,
         requirements: List[CWLObjectType] = [],
+        container_engine: str = "docker",
     ):
         """
         Instantiate a conditional expression.
@@ -238,8 +242,9 @@ class Conditional:
         self.expression = expression
         self.outputs = outputs
         self.requirements = requirements
+        self.container_engine = container_engine
 
-    def is_false(self, job: Union[dict, None]) -> bool:
+    def is_false(self, job: Union[CWLObjectType, None]) -> bool:
         """
         Determine if expression evaluates to False given completed step inputs.
 
@@ -256,6 +261,7 @@ class Conditional:
             None,
             None,
             {},
+            container_engine=self.container_engine,
         )
 
         if isinstance(expr_is_true, bool):
@@ -265,7 +271,7 @@ class Conditional:
             "'%s' evaluated to a non-boolean value" % self.expression
         )
 
-    def skipped_outputs(self) -> dict:
+    def skipped_outputs(self) -> Dict[str, SkipNull]:
         """
         Generate a dict of SkipNull objects corresponding to the output structure of the step.
 
@@ -273,7 +279,7 @@ class Conditional:
         """
         outobj = {}
 
-        def sn(n):
+        def sn(n: Any) -> str:
             if isinstance(n, Mapping):
                 return shortname(n["id"])
             if isinstance(n, str):
@@ -363,7 +369,7 @@ class ResolveSource:
             return result
 
         else:
-            raise validate.ValidationException(
+            raise ValidationException(
                 "Unsupported linkMerge '%s' on %s." % (link_merge_type, self.name)
             )
 
@@ -425,18 +431,22 @@ class StepValueFrom:
     object for the step.
     """
 
-    def __init__(self, expr: str, source: Any, req: List[CWLObjectType]):
+    def __init__(
+        self, expr: str, source: Any, req: List[CWLObjectType], container_engine: str
+    ):
         """
         Instantiate an object to carry all know about this valueFrom expression.
 
         :param expr: str: expression as a string
         :param source: the source promise of this step
         :param req: requirements object that is consumed by CWLtool expression evaluator
+        :param container_engine: which container engine to use to load nodejs, if needed
         """
         self.expr = expr
         self.source = source
         self.context = None
         self.req = req
+        self.container_engine = container_engine
 
     def eval_prep(self, step_inputs: dict, file_store: AbstractFileStore):
         """
@@ -484,7 +494,14 @@ class StepValueFrom:
         :return: object
         """
         return cwltool.expression.do_eval(
-            self.expr, inputs, self.req, None, None, {}, context=self.context
+            self.expr,
+            inputs,
+            self.req,
+            None,
+            None,
+            {},
+            context=self.context,
+            container_engine=self.container_engine,
         )
 
 
@@ -805,7 +822,7 @@ class ToilPathMapper(PathMapper):
                 with SourceLine(
                     obj,
                     "location",
-                    validate.ValidationException,
+                    ValidationException,
                     logger.isEnabledFor(logging.DEBUG),
                 ):
                     # If we have access to the Toil file store, we will have a
@@ -892,7 +909,7 @@ class ToilCommandLineTool(cwltool.command_line_tool.CommandLineTool):
     ) -> cwltool.pathmapper.PathMapper:
         """Create the appropriate PathMapper for the situation."""
 
-        if runtimeContext.bypass_file_store:
+        if getattr(runtimeContext, "bypass_file_store", False):
             # We only need to understand cwltool's supported URIs
             return PathMapper(
                 reffiles, runtimeContext.basedir, stagedir, separateDirs=separateDirs
@@ -904,7 +921,7 @@ class ToilCommandLineTool(cwltool.command_line_tool.CommandLineTool):
                 runtimeContext.basedir,
                 stagedir,
                 separateDirs,
-                getattr(runtimeContext, "toil_get_file", None),  # type: ignore
+                getattr(runtimeContext, "toil_get_file", None),
                 streaming_allowed=runtimeContext.streaming_allowed,
             )
 
@@ -919,7 +936,7 @@ def toil_make_tool(
     """
     Emit custom ToilCommandLineTools.
 
-    This factory funciton is meant to be passed to cwltool.load_tool().
+    This factory function is meant to be passed to cwltool.load_tool().
     """
     if (
         isinstance(toolpath_object, Mapping)
@@ -1804,20 +1821,21 @@ class CWLJob(Job):
                 requirements=self.cwltool.requirements,
                 hints=[],
                 resources={},
-                mutation_manager=None,
-                formatgraph=None,
+                mutation_manager=runtime_context.mutation_manager,
+                formatgraph=tool.formatgraph,
                 make_fs_access=runtime_context.make_fs_access,  # type: ignore
                 fs_access=runtime_context.make_fs_access(""),
-                job_script_provider=None,
+                job_script_provider=runtime_context.job_script_provider,
                 timeout=runtime_context.eval_timeout,
-                debug=False,
-                js_console=False,
+                debug=runtime_context.debug,
+                js_console=runtime_context.js_console,
                 force_docker_pull=False,
                 loadListing=determine_load_listing(tool),
                 outdir="",
                 tmpdir=DEFAULT_TMPDIR,
                 stagedir="/var/lib/cwl",  # TODO: use actual defaults here
                 cwlVersion=cast(str, self.cwltool.metadata["cwlVersion"]),
+                container_engine=get_container_engine(runtime_context),
             )
 
         req = tool.evalResources(self.builder, runtime_context)
@@ -2030,6 +2048,14 @@ class CWLJob(Job):
         return output
 
 
+def get_container_engine(runtime_context: cwltool.context.RuntimeContext) -> str:
+    if runtime_context.podman:
+        return "podman"
+    elif runtime_context.singularity:
+        return "singularity"
+    return "docker"
+
+
 def makeJob(
     tool: Process,
     jobobj: dict,
@@ -2080,7 +2106,7 @@ def makeJob(
                         conditional=conditional,
                     )
                     return job, job
-        job = CWLJob(tool, jobobj, runtime_context, conditional=conditional)  # type: ignore
+        job = CWLJob(tool, jobobj, runtime_context, conditional)  # type: ignore
         return job, job
 
 
@@ -2190,6 +2216,7 @@ class CWLScatter(Job):
                         None,
                         {},
                         context=v,
+                        container_engine=get_container_engine(self.runtime_context),
                     )
                 else:
                     return v
@@ -2216,12 +2243,12 @@ class CWLScatter(Job):
             self.flat_crossproduct_scatter(cwljob, scatter, outputs, postScatterEval)
         else:
             if scatterMethod:
-                raise validate.ValidationException(
+                raise ValidationException(
                     "Unsupported complex scatter type '%s'" % scatterMethod
                 )
             else:
-                raise validate.ValidationException(
-                    "Must provide scatterMethod to scatter over multiple" " inputs."
+                raise ValidationException(
+                    "Must provide scatterMethod to scatter over multiple inputs."
                 )
 
         return outputs
@@ -2412,12 +2439,14 @@ class CWLWorkflow(Job):
                                     inp["valueFrom"],
                                     jobobj.get(key, JustAValue(None)),
                                     self.cwlwf.requirements,
+                                    get_container_engine(self.runtime_context),
                                 )
 
                         conditional = Conditional(
                             expression=step.tool.get("when"),
                             outputs=step.tool["out"],
                             requirements=self.cwlwf.requirements,
+                            container_engine=get_container_engine(self.runtime_context),
                         )
 
                         if "scatter" in step.tool:
@@ -2616,7 +2645,7 @@ def scan_for_unsupported_requirements(
         if req and is_mandatory:
             # The tool actualy uses this one, and it isn't just a hint.
             # Complain and explain.
-            raise UnsupportedRequirement(
+            raise cwltool.errors.UnsupportedRequirement(
                 "Toil cannot support InplaceUpdateRequirement when using the Toil file store. "
                 "If you are running on a single machine, or a cluster with a shared filesystem, "
                 "use the --bypass-file-store option to keep intermediate files on the filesystem. "
@@ -2827,6 +2856,12 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         "with overlayfs support backported.",
     )
     dockergroup.add_argument(
+        "--podman",
+        action="store_true",
+        default=False,
+        help="[experimental] Use Podman runtime for running containers. ",
+    )
+    dockergroup.add_argument(
         "--no-container",
         action="store_true",
         help="Do not execute jobs in a "
@@ -2839,6 +2874,35 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         default=True,
         help="Do not delete Docker container used by jobs after they exit",
         dest="rm_container",
+    )
+    cidgroup = parser.add_argument_group(
+        "Options for recording the Docker container identifier into a file."
+    )
+    cidgroup.add_argument(
+        # Disabled as containerid is now saved by default
+        "--record-container-id",
+        action="store_true",
+        default=False,
+        help=argparse.SUPPRESS,
+        dest="record_container_id",
+    )
+
+    cidgroup.add_argument(
+        "--cidfile-dir",
+        type=str,
+        help="Store the Docker container ID into a file in the specified directory.",
+        default=None,
+        dest="cidfile_dir",
+    )
+
+    cidgroup.add_argument(
+        "--cidfile-prefix",
+        type=str,
+        help="Specify a prefix to the container ID filename. "
+        "Final file name will be followed by a timestamp. "
+        "The default is no prefix.",
+        default=None,
+        dest="cidfile_prefix",
     )
 
     parser.add_argument(
@@ -2854,7 +2918,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     parser.add_argument(
         "--preserve-entire-environment",
         action="store_true",
-        help="Preserve all environment variable when running " "CommandLineTools.",
+        help="Preserve all environment variable when running CommandLineTools.",
         default=False,
         dest="preserve_entire_environment",
     )
@@ -2920,6 +2984,20 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         "used if the workflow fails to specify one.",
     )
     parser.add_argument(
+        "--eval-timeout",
+        help="Time to wait for a Javascript expression to evaluate before giving "
+        "an error, default 20s.",
+        type=float,
+        default=20,
+    )
+    parser.add_argument(
+        "--overrides",
+        type=str,
+        default=None,
+        help="Read process requirement overrides from file.",
+    )
+
+    parser.add_argument(
         "--mpi-config-file",
         type=str,
         default=None,
@@ -2945,7 +3023,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     )
 
     provgroup = parser.add_argument_group(
-        "Options for recording provenance " "information of the execution"
+        "Options for recording provenance information of the execution"
     )
     provgroup.add_argument(
         "--provenance",
@@ -3042,6 +3120,11 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     # Re-parse arguments with the new selected jobstore.
     options = parser.parse_args([chosen_job_store] + args)
+    options.doc_cache = True
+    options.disable_js_validation = False
+    options.do_validate = True
+    options.pack = False
+    options.print_subgraph = False
     if options.tmpdir_prefix != DEFAULT_TMPDIR_PREFIX and options.workDir is None:
         # We need to override workDir because by default Toil will pick
         # somewhere under the system temp directory if unset, ignoring
@@ -3078,6 +3161,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     options.default_container = None
     runtime_context = cwltool.context.RuntimeContext(vars(options))
+    runtime_context.toplevel = True  # enable discovery of secondaryFiles
     runtime_context.find_default_container = functools.partial(
         find_default_container, options
     )
@@ -3093,7 +3177,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         logger.error("Cannot export outputs to a bucket when bypassing the file store")
         return 1
 
-    loading_context = cwltool.context.LoadingContext(vars(options))
+    loading_context = cwltool.main.setup_loadingContext(None, runtime_context, options)
 
     if options.provenance:
         research_obj = cwltool.provenance.ResearchObject(
@@ -3131,7 +3215,6 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 }
             ]
             loading_context.construct_tool_object = toil_make_tool
-            loading_context.resolver = cwltool.resolver.tool_resolver
             loading_context.strict = not options.not_strict
             options.workflow = options.cwltool
             options.job_order = options.cwljob
@@ -3142,7 +3225,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     loading_context.resolver,
                     loading_context.fetcher_constructor,
                 )
-            except schema_salad.exceptions.ValidationException:
+            except ValidationException:
                 print(
                     "\nYou may be getting this error because your arguments are incorrect or out of order."
                     + usage_message,
@@ -3159,6 +3242,12 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 loading_context.overrides_list,
                 tool_file_uri,
             )
+            if options.overrides:
+                loading_context.overrides_list.extend(
+                    cwltool.load_tool.load_overrides(
+                        file_uri(os.path.abspath(options.overrides)), tool_file_uri
+                    )
+                )
 
             loading_context, workflowobj, uri = cwltool.load_tool.fetch_document(
                 uri, loading_context
@@ -3166,16 +3255,12 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             loading_context, uri = cwltool.load_tool.resolve_and_validate_document(
                 loading_context, workflowobj, uri
             )
-            loading_context.overrides_list.extend(
-                cast(
-                    List[CWLObjectType],
-                    loading_context.metadata.get("cwltool:overrides", []),
-                )
-            )
+
+            processobj, metadata = loading_context.loader.resolve_ref(uri)
+            processobj = cast(Union[CommentedMap, CommentedSeq], processobj)
 
             document_loader = loading_context.loader
             metadata = loading_context.metadata
-            processobj = document_loader.idx
 
             if options.provenance and runtime_context.research_obj:
                 runtime_context.research_obj.packed_workflow(
@@ -3187,7 +3272,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 scan_for_unsupported_requirements(
                     tool, bypass_file_store=options.bypass_file_store
                 )
-            except UnsupportedRequirement as err:
+            except cwltool.errors.UnsupportedRequirement as err:
                 logging.error(err)
                 return CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
             runtime_context.secret_store = SecretStore()
@@ -3203,7 +3288,10 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     tool,
                     jobloader,
                     sys.stdout,
+                    make_fs_access=runtime_context.make_fs_access,
+                    input_basedir=options.basedir,
                     secret_store=runtime_context.secret_store,
+                    input_required=True,
                 )
             except SystemExit as e:
                 if e.code == 2:  # raised by argparse's parse_args() function
@@ -3218,38 +3306,13 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             fill_in_defaults(tool.tool["inputs"], initialized_job_order, fs_access)
 
             for inp in tool.tool["inputs"]:
-
-                def set_secondary(fileobj):
-                    if isinstance(fileobj, Mapping) and fileobj.get("class") == "File":
-                        if "secondaryFiles" not in fileobj:
-                            # inits all secondary files with 'file://' schema
-                            # later changed to 'toilfile:' if imported into the jobstore
-                            fileobj["secondaryFiles"] = [
-                                {
-                                    "location": cwltool.builder.substitute(
-                                        fileobj["location"], sf["pattern"]
-                                    ),
-                                    "class": "File",
-                                }
-                                for sf in inp["secondaryFiles"]
-                            ]
-
-                    if isinstance(fileobj, MutableSequence):
-                        for entry in fileobj:
-                            set_secondary(entry)
-
-                if shortname(inp["id"]) in initialized_job_order and inp.get(
-                    "secondaryFiles"
-                ):
-                    set_secondary(initialized_job_order[shortname(inp["id"])])
-
                 if (
                     shortname(inp["id"]) in initialized_job_order
                     and inp["type"] == "File"
                 ):
                     initialized_job_order[shortname(inp["id"])]["streamable"] = inp.get(
                         "streamable", False
-                    )
+                    )  # TODO also for nested types that contain streamable Files
 
             runtime_context.use_container = not options.no_container
             runtime_context.tmp_outdir_prefix = os.path.realpath(tmp_outdir_prefix)
@@ -3329,7 +3392,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     runtime_context=runtime_context,
                     conditional=None,
                 )
-            except UnsupportedRequirement as err:
+            except cwltool.errors.UnsupportedRequirement as err:
                 logging.error(err)
                 return CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
             wf1.cwljob = initialized_job_order
@@ -3397,7 +3460,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             )
 
         visit_class(outobj, ("File",), MutationManager().unset_generation)
-        stdout.write(json.dumps(outobj, indent=4))
+        stdout.write(json.dumps(outobj, indent=4, default=str))
 
     return 0
 
