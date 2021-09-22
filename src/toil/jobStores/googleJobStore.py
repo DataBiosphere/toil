@@ -86,7 +86,7 @@ class GoogleJobStore(AbstractJobStore):
 
     nodeServiceAccountJson = '/root/service_account.json'
     def __init__(self, locator):
-        super(GoogleJobStore, self).__init__()
+        super(GoogleJobStore, self).__init__(locator)
 
         try:
             projectID, namePrefix = locator.split(":", 1)
@@ -95,7 +95,6 @@ class GoogleJobStore(AbstractJobStore):
             namePrefix = locator
             projectID = None
 
-        self.locator = locator
         self.projectID = projectID
         self.bucketName = namePrefix+"--toil"
         log.debug("Instantiating google jobStore with name: %s", self.bucketName)
