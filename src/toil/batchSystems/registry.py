@@ -48,6 +48,9 @@ def slurm_batch_system_factory():
     from toil.batchSystems.slurm import SlurmBatchSystem
     return SlurmBatchSystem
 
+def tes_batch_system_factory():
+    from toil.batchSystems.tes import TESBatchSystem
+    return TESBatchSystem
 
 def torque_batch_system_factory():
     from toil.batchSystems.torque import TorqueBatchSystem
@@ -71,6 +74,7 @@ BATCH_SYSTEM_FACTORY_REGISTRY = {
     'lsf'            : lsf_batch_system_factory,
     'mesos'          : mesos_batch_system_factory,
     'slurm'          : slurm_batch_system_factory,
+    'tes'            : tes_batch_system_factory,
     'torque'         : torque_batch_system_factory,
     'htcondor'       : htcondor_batch_system_factory,
     'kubernetes'     : kubernetes_batch_system_factory

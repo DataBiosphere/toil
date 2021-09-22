@@ -95,6 +95,17 @@ def add_slurm_options(parser: Union[ArgumentParser, _ArgumentGroup]):
     allocate_mem.add_argument("--dont_allocate_mem", action='store_false', dest="allocate_mem", help=allocate_mem_help)
     allocate_mem.add_argument("--allocate_mem", action='store_true', dest="allocate_mem", help=allocate_mem_help)
     allocate_mem.set_defaults(allocate_mem=True)
+    
+def add_tes_options(parser: Union[ArgumentParser, _ArgumentGroup]):
+    parser.add_argument("--tesEndpoint", dest="tes_endpoint", default=f'http://{getPublicIP()}:8000',
+                        help="The http(s) URL of the TES server.  (default: %(default)s)")
+    parser.add_argument("--tesUser", dest="tes_user", default=None,
+                        help="User name to use for basic authentication to TES server.")
+    parser.add_argument("--tesPassword", dest="tes_password", default=None,
+                        help="Password to use for basic authentication to TES server.")
+    parser.add_argument("--tesBearerToken", dest="tes_bearer_token", default=None,
+                        help="Bearer token to use for authentication to TES server.")
+    
 
 def set_batchsystem_options(batch_system: str, set_option: Callable) -> None:
     batch_system_factory = BATCH_SYSTEM_FACTORY_REGISTRY[batch_system]()
@@ -172,6 +183,7 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
     add_single_machine_options(parser)
     add_mesos_options(parser)
     add_slurm_options(parser)
+    add_tes_options(parser)
     add_kubernetes_options(parser)
 
 
@@ -202,6 +214,9 @@ def set_batchsystem_config_defaults(config) -> None:
 
     # SLURM
     config.allocate_mem = True
+    
+    # TES
+    config.tes_endpoint=f'http://{getPublicIP()}:8000'
 
     # Kubernetes
     config.kubernetesHostPath = None

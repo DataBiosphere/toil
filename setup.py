@@ -41,6 +41,7 @@ def run_setup():
     htcondor = 'htcondor>=8.6.0'
     kubernetes = 'kubernetes>=12.0.1, <13'
     idna = 'idna>=2'
+    pytes = 'py-tes==0.4.1'
     pytz = 'pytz>=2012'
     pyyaml = 'pyyaml>=5, <6'
     dill = 'dill>=0.3.2, <0.4'
@@ -58,6 +59,7 @@ def run_setup():
         dateutil,
         psutil,
         addict,
+        pytes,
         pytz,
         pyyaml,
         enlighten,

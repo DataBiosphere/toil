@@ -35,7 +35,6 @@ import uuid
 from typing import Optional, Dict
 
 import kubernetes
-import pytz
 import urllib3
 from kubernetes.client.rest import ApiException
 
@@ -47,6 +46,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.common import Toil
 from toil.job import JobDescription
 from toil.lib.conversions import human2bytes
+from toil.lib.misc import utc_now, slow_down
 from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
 from toil.statsAndLogging import configure_root_logger, set_log_level
@@ -66,28 +66,6 @@ def is_retryable_kubernetes_error(e):
         if isinstance(e, error):
             return True
     return False
-
-
-def slow_down(seconds):
-    """
-    Toil jobs that have completed are not allowed to have taken 0 seconds, but
-    Kubernetes timestamps round things to the nearest second. It is possible in Kubernetes for
-    a pod to have identical start and end timestamps.
-
-    This function takes a possibly 0 job length in seconds and enforces a minimum length to satisfy Toil.
-
-    :param float seconds: Kubernetes timestamp difference
-
-    :return: seconds, or a small positive number if seconds is 0
-    :rtype: float
-    """
-
-    return max(seconds, sys.float_info.epsilon)
-
-
-def utc_now():
-    """Return a datetime in the UTC timezone corresponding to right now."""
-    return datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
 
 
 class KubernetesBatchSystem(BatchSystemCleanupSupport):
@@ -378,6 +356,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Make a job dict to send to the executor.
         # First just wrap the command and the environment to run it in
+        # TODO: send environment via pod spec
         job = {'command': jobDesc.command,
                'environment': environment}
         # TODO: query customDockerInitCmd to respect TOIL_CUSTOM_DOCKER_INIT_COMMAND

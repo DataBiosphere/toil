@@ -1,3 +1,5 @@
+import datetime
+import pytz
 import logging
 import os
 import random
@@ -10,6 +12,27 @@ from typing import Iterator, Union, List, Optional
 
 logger = logging.getLogger(__name__)
 
+
+def utc_now() -> datetime.datetime:
+    """Return a datetime in the UTC timezone corresponding to right now."""
+    return datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
+    
+def slow_down(seconds):
+    """
+    Toil jobs that have completed are not allowed to have taken 0 seconds, but
+    Kubernetes timestamps round things to the nearest second. It is possible in
+    some batch systems for a pod to have identical start and end timestamps.
+
+    This function takes a possibly 0 job length in seconds and enforces a
+    minimum length to satisfy Toil.
+
+    :param float seconds: Timestamp difference
+
+    :return: seconds, or a small positive number if seconds is 0
+    :rtype: float
+    """
+
+    return max(seconds, sys.float_info.epsilon)
 
 def printq(msg: str, quiet: bool) -> None:
     if not quiet:
