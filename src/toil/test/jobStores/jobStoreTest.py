@@ -1185,6 +1185,45 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
             if original_filestore and os.path.exists(original_filestore):
                 shutil.rmtree(original_filestore)
 
+    @travis_test
+    def test_jobstore_does_not_leak_symlinks(self):
+        """Test that if we link imports into the FileJobStore, we can't get hardlinks to symlinks."""
+
+        temp_dir = None
+        download_dir = None
+
+        try:
+            # Grab a temp directory to make files in. Make sure it's on the
+            # same device as everything else.
+            temp_dir = os.path.abspath(self.namePrefix + '-import')
+            os.mkdir(temp_dir)
+            to_import = os.path.join(temp_dir, 'import-me')
+            with open(to_import, 'w') as f:
+                f.write('test')
+
+            # And a temp directory next to the job store to download to
+            download_dir = os.path.abspath(self.namePrefix + '-dl')
+            os.mkdir(download_dir)
+
+            # Import it as a symlink
+            file_id = self.jobstore_initialized.importFile('file://' + to_import, symlink=True)
+
+            # Take it out as a hard link or copy
+            download_to = os.path.join(download_dir, 'downloaded')
+            self.jobstore_initialized.readFile(file_id, download_to)
+
+            # Make sure it isn't a symlink
+            self.assertFalse(os.path.islink(download_to))
+
+        finally:
+            if temp_dir and os.path.exists(temp_dir):
+                # Clean up temp directory
+                shutil.rmtree(temp_dir)
+            if download_dir and os.path.exists(download_dir):
+                # Clean up download directory
+                shutil.rmtree(download_dir)
+
+
 
 @needs_google
 class GoogleJobStoreTest(AbstractJobStoreTest.Test):
