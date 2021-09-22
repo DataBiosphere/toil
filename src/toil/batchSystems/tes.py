@@ -68,15 +68,15 @@ class TESBatchSystem(BatchSystemCleanupSupport):
     def supportsAutoDeployment(cls):
         return True
 
-    def __init__(self, config: Config, max_cores: float, max_memory: int, max_disk: int) -> None:
-        super().__init__(config, max_cores, max_memory, max_disk)
-        
+    def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
+        super().__init__(config, maxCores, maxMemory, maxDisk)
+
         # Connect to TES, using Funnel-compatible environment variables to fill in credentials if not specified.
         self.tes = tes.HTTPClient(config.tes_endpoint,
                                   user=os.environ.get("FUNNEL_SERVER_USER", config.tes_user),
                                   password=os.environ.get("FUNNEL_SERVER_PASSWORD", config.tes_password),
                                   token=config.tes_bearer_token)
-                                  
+
         # Get service info from the TES server and pull out supported storages.
         # We need this so we can tell if the server is likely to be able to
         # mount any of our local files. These are URL bases that the server
@@ -84,15 +84,16 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         server_info = self.tes.get_service_info()
         logger.info("Detected TES server info: %s", server_info)
         self.server_storages = server_info.storage or []
-        
+
         # Define directories to mount for each task, as py-tes Input objects
         self.mounts = []
         
-        # If we have a file job store, we want to mount it at the same path, if we can
-        job_store_type, job_store_path = Toil.parseLocator(config.jobStore)
-        if job_store_type == 'file':
-            self.__mount_local_path_if_possible(job_store_path, job_store_path)
-            
+        if config.jobStore:
+            job_store_type, job_store_path = Toil.parseLocator(config.jobStore)
+            if job_store_type == 'file':
+                # If we have a file job store, we want to mount it at the same path, if we can
+                self.__mount_local_path_if_possible(job_store_path, job_store_path)
+
         # If we have AWS credentials, we want to mount them in our home directory if we can.
         aws_credentials_path = os.path.join(os.environ.get('HOME'), '.aws')
         if os.path.isdir(aws_credentials_path):
@@ -112,40 +113,40 @@ class TESBatchSystem(BatchSystemCleanupSupport):
 
         # Ge the image to deploy from Toil's configuration
         self.docker_image = applianceSelf()
-        
+
         # We need a way to map between our batch system ID numbers, and TES task IDs from the server.
         self.bs_id_to_tes_id = {}
         self.tes_id_to_bs_id = {}
-        
+
     def __server_can_mount(self, url: str) -> bool:
         """
         Return true if the given URL is under a supported storage location for
         the TES server, and false otherwise.
         """
-        
+
         # TODO: build some kind of fast matcher in case there are a lot of
         # storages supported.
-        
+
         for base_url in self.server_storages:
             if url.startswith(base_url):
                 return True
         return False
-        
+
     def __mount_local_path_if_possible(self, local_path: str, container_path: str) -> None:
         """
         If a local path is somewhere the server thinks it can access, mount it
         into all the tasks.
         """
-        
+
         # TODO: We aren't going to work well with linked imports if we're mounting the job store into the container...
-        
+
         path_url = 'file://' + os.path.abspath(local_path)
         if self.__server_can_mount(path_url):
             # We can access this file from the server. Probably.
             self.mounts.append(tes.Input(url=path_url,
                                          path=container_path,
                                          type="DIRECTORY" if os.path.isdir(local_path) else "FILE"))
-        
+
     def setUserScript(self, user_script) -> None:
         logger.info('Setting user script for deployment: {}'.format(user_script))
         self.user_script = user_script
@@ -173,12 +174,12 @@ class TESBatchSystem(BatchSystemCleanupSupport):
             job_name = self.job_prefix + str(bs_id)
 
             # Launch the job on TES
-            
+
             # Determine job environment
             environment = self.environment.copy()
             if job_environment:
                 environment.update(job_environment)
-            
+
             # Make a job dict to send to the executor.
             # TODO: Factor out executor setup from here and Kubernetes
             job = {'command': job_desc.command}
@@ -192,25 +193,25 @@ class TESBatchSystem(BatchSystemCleanupSupport):
             encoded_job = base64.b64encode(pickle.dumps(job, pickle.HIGHEST_PROTOCOL)).decode('utf-8')
             # Make a command to run it in the exacutor
             command_list = ['_toil_kubernetes_executor', encoded_job]
-            
+
             # Make the sequence of TES containers ("executors") to run.
             # We just run one which is the Toil executor to grab the user
-            # script and do the job. 
+            # script and do the job.
             task_executors = [tes.Executor(image=self.docker_image,
                 command=command_list,
                 env=environment
             )]
-            
+
             # Prepare inputs.
             task_inputs = list(self.mounts)
             # If we had any per-job input files they would come in here.
-           
+
             # Package into a TES Task
             task = tes.Task(name=job_name, executors=task_executors, inputs=task_inputs)
-           
+
             # Launch it and get back the TES ID that we can use to poll the task
             tes_id = self.tes.create_task(task)
-            
+
             # Tie it to the numeric ID
             self.bs_id_to_tes_id[bs_id] = tes_id
             self.tes_id_to_bs_id[tes_id] = bs_id
@@ -224,7 +225,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         Get the time that the given job ran/has been running for, in seconds,
         or None if that time is not available. Never returns 0.
         """
-        
+
         start_time = None
         end_time = utc_now()
         for log in task.logs or []:
@@ -244,18 +245,18 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         else:
             # It hasn't been running for a measurable amount of time.
             return None
-            
+
     def __get_exit_code(self, task: tes.Task) -> int:
         """
         Get the exit code of the last executor with a log in the task, or
         EXIT_STATUS_UNAVAILABLE_VALUE if no executor has a log.
         """
-        
+
         for log in reversed(task.logs) or []:
              if isinstance(log.exit_code, int):
                 # Find the last exit code that is a number and return it
                 return log.exit_code
-        
+
         # If we get here we couldn't find an exit code.
         return EXIT_STATUS_UNAVAILABLE_VALUE
 
@@ -269,23 +270,23 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                 # This task is done!
                 # Record runtime
                 runtime = self.__get_runtime(task)
-                
+
                 # Determine if it succeeded
                 exit_reason = STATE_TO_EXIT_REASON[task.state]
-                
+
                 # Get its exit code
                 exit_code = self.__get_exit_code(task)
-                
-                # Compose a result 
+
+                # Compose a result
                 result = UpdatedBatchJobInfo(jobID=bs_id, exitStatus=exit_code, wallTime=runtime, exitReason=exit_reason)
-                
+
                 # Forget about the job
                 del self.tes_id_to_bs_id[tes_id]
                 del self.bs_id_to_tes_id[bs_id]
-                
+
                 # Return the updated job
                 return result
-        
+
         # TODO: implement waiting for a job to finish. For now just return
         # immediately.
         return None
@@ -298,13 +299,13 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         for tes_id in self.tes_id_to_bs_id.keys():
             # Shut down all the TES jobs we issued.
             self.__try_cancel(tes_id)
-                    
+
     def __try_cancel(self, tes_id: str) -> None:
         """
         Try to cancel a TES job. Succeed if it can't be canceled because it has
         stopped, but fail if it can't be canceled fro some other reason.
         """
-        
+
         try:
             # Kill each of our tasks in TES
             self.tes.cancel_task(tes_id)
@@ -322,22 +323,26 @@ class TESBatchSystem(BatchSystemCleanupSupport):
     def getRunningBatchJobIDs(self) -> Dict[int, float]:
         # We need a dict from job_id (integer) to seconds it has been running
         bs_id_to_runtime = {}
-        
+
         for tes_id, bs_id in self.tes_id_to_bs_id.items():
             # Poll every issued task.
             # TODO: use list_tasks filtering by name prefix and running state!
             task = self.tes.get_task(tes_id)
-            if task.state == "RUNNING":
+            logger.info("Observed task: %s", task)
+            if task.state in ["INITIALIZING", "RUNNING"]:
+                # We count INITIALIZING tasks because they may be e.g. pulling
+                # Docker containers, and we don't want to time out on them in
+                # the tests.
                 runtime = self.__get_runtime(task)
                 if runtime:
                     # We can measure a runtime
                     bs_id_to_runtime[bs_id] = runtime
                 # If we can't find a runtime, we can't say it's running
                 # because we can't say how long it has been running for.
-        
+
         # Give back the times all our running jobs have been running for.
         return bs_id_to_runtime
-                    
+
     def killBatchJobs(self, job_ids: List[int]) -> None:
         # Kill all the ones that are local
         self.killLocalJobs(job_ids)

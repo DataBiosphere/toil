@@ -31,6 +31,7 @@ from shutil import which
 from textwrap import dedent
 from unittest.util import strclass
 from urllib.request import urlopen
+from urllib.error import HTTPError
 
 import pytz
 
@@ -328,12 +329,28 @@ def needs_gridengine(test_item):
 
 
 def needs_torque(test_item):
-    """Use as a decorator before test classes or methods to run only ifPBS/Torque is installed."""
+    """Use as a decorator before test classes or methods to run only if PBS/Torque is installed."""
     test_item = _mark_test('torque', test_item)
     if which('pbsnodes'):
         return test_item
     return unittest.skip("Install PBS/Torque to include this test.")(test_item)
 
+def needs_tes(test_item):
+    """Use as a decorator before test classes or methods to run only if TES is available."""
+    test_item = _mark_test('tes', test_item)
+    # TODO: Load this from the same place here as in the config
+    DEFAULT_TES_URL = 'http://localhost:8000'
+    try:
+        urlopen(DEFAULT_TES_URL)
+    except HTTPError:
+        # Should 404 if TES is working
+        # TODO: check for the right code?
+        return test_item
+    except URLError:
+        # Will give connection refused if we can't connect because the server's
+        # not there.
+        pass
+    return unittest.skip(f"Run a TES server on {DEFAULT_TES_URL} to include this test")(test_item)
 
 def needs_kubernetes(test_item):
     """Use as a decorator before test classes or methods to run only if Kubernetes is installed."""

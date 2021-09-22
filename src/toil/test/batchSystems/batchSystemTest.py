@@ -54,6 +54,7 @@ from toil.test import (ToilTest,
                        needs_mesos,
                        needs_parasol,
                        needs_slurm,
+                       needs_tes,
                        needs_torque,
                        slow,
                        travis_test)
@@ -429,6 +430,23 @@ class KubernetesBatchSystemTest(hidden.AbstractBatchSystemTest):
         from toil.batchSystems.kubernetes import KubernetesBatchSystem
         return KubernetesBatchSystem(config=self.config,
                                      maxCores=numCores, maxMemory=1e9, maxDisk=2001)
+
+@needs_tes
+@needs_fetchable_appliance
+class TESBatchSystemTest(hidden.AbstractBatchSystemTest):
+    """
+    Tests against the TES batch system
+    """
+
+    def supportsWallTime(self):
+        return True
+
+    def createBatchSystem(self):
+        # Import the batch system when we know we have it.
+        # Doesn't really matter for TES right now, but someday it might.
+        from toil.batchSystems.tes import TESBatchSystem
+        return TESBatchSystem(config=self.config,
+                              maxCores=numCores, maxMemory=1e9, maxDisk=2001)
 
 
 @slow
