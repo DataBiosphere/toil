@@ -154,6 +154,10 @@ docker: docker/Dockerfile
 	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull sscaling/mtail && break || sleep 60; done
 
 	@set -ex \
+	; cd docker \
+	; docker buildx build --platform linux/amd64,linux/arm64 --tag=$(docker_image):$(TOIL_DOCKER_TAG) --push .
+
+	@set -ex \
 	; cd dashboard/prometheus \
 	; docker build --tag=$(prometheus_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
 
@@ -164,10 +168,6 @@ docker: docker/Dockerfile
 	@set -ex \
 	; cd dashboard/mtail \
 	; docker build --tag=$(mtail_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
-
-	@set -ex \
-	; cd docker \
-	; docker buildx build --platform linux/amd64,linux/arm64 --tag=$(docker_image):$(TOIL_DOCKER_TAG) --push .
 
 docker/$(sdist_name): dist/$(sdist_name)
 	cp $< $@
