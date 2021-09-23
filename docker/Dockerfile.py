@@ -35,7 +35,6 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'wget',
                          'curl',
                          'openssh-server',
-                         'mesos=1.0.1-2.0.94.ubuntu1604',
                          "nodejs",  # CWL support for javascript expressions
                          'rsync',
                          'screen',
@@ -74,6 +73,8 @@ motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 print(heredoc('''
     FROM ubuntu:16.04
 
+    ARG TARGETARCH
+
     RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install apt-transport-https ca-certificates software-properties-common && apt-get clean && rm -rf /var/lib/apt/lists/*
 
     RUN echo "deb http://repos.mesosphere.io/ubuntu/ xenial main" \
@@ -88,12 +89,13 @@ print(heredoc('''
     RUN apt-get -y update --fix-missing && \
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
         DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
+        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos=1.0.1-2.0.94.ubuntu1604 ; fi && \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
-    RUN wget -q https://dl.google.com/go/go1.13.3.linux-amd64.tar.gz && \
-        tar xf go1.13.3.linux-amd64.tar.gz && \
-        rm go1.13.3.linux-amd64.tar.gz && \
+    RUN wget -q https://dl.google.com/go/go1.13.3.linux-$TARGETARCH.tar.gz && \
+        tar xf go1.13.3.linux-$TARGETARCH.tar.gz && \
+        rm go1.13.3.linux-$TARGETARCH.tar.gz && \
         mv go/bin/* /usr/bin/ && \
         mv go /usr/local/
 
@@ -141,9 +143,11 @@ print(heredoc('''
         && ln -s /home/s3am/bin/s3am /usr/local/bin/
 
     # Install statically linked version of docker client
-    RUN curl https://download.docker.com/linux/static/stable/x86_64/docker-18.06.1-ce.tgz \
-         | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ \
-         && chmod u+x /usr/local/bin/docker
+    RUN if [$TARGETARCH = amd64] ; then curl https://download.docker.com/linux/static/stable/x86_64/docker-18.06.1-ce.tgz \
+        | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ ; \
+        else curl https://download.docker.com/linux/static/stable/aarch64/docker-18.06.1-ce.tgz \
+        | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ ; fi && \
+        chmod u+x /usr/local/bin/docker
 
     # Fix for Mesos interface dependency missing on ubuntu
     RUN {pip} install protobuf==3.0.0
