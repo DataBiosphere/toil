@@ -1523,7 +1523,7 @@ class AWSProvisioner(AbstractProvisioner):
         paginator = client.get_paginator(op_name)
 
         for page in paginator.paginate(**kwargs):
-            # Invoke it and go through the pages
+            # Invoke it and go through the pages, yielding from them
             yield from page.get(result_attribute_name, [])
 
     @awsRetry

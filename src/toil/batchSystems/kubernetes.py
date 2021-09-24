@@ -552,7 +552,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             else:
                 results = self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace,
                                                 label_selector=f"toil_run={self.runID}", **kwargs)
-            yield from results.items
+            yield from results.items  # These jobs belong to us
 
             # Remember the continuation token, if any
             token = getattr(results.metadata, 'continue', None)

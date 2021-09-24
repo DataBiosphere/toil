@@ -39,6 +39,12 @@ logger = logging.getLogger(__name__)
 
 class UpdatedBatchJobInfo(NamedTuple):
     jobID: str
+    """
+    The exit status (integer value) of the job. 0 implies successful.
+
+    EXIT_STATUS_UNAVAILABLE_VALUE is used when the exit status is not available (e.g. job is lost).
+    """
+
     exitStatus: int
     exitReason: Union[int, None]
     wallTime: Union[float, int, None]
@@ -47,7 +53,11 @@ class UpdatedBatchJobInfo(NamedTuple):
 # Information required for worker cleanup on shutdown of the batch system.
 class WorkerCleanupInfo(NamedTuple):
     workDir: str
+    """workdir path (where the cache would go)"""
+
     workflowID: int
+    """used to identify files specific to this workflow"""
+
     cleanWorkDir: bool
 
 
