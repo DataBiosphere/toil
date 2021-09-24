@@ -28,6 +28,14 @@ class VersionNotImplementedException(Exception):
         super(VersionNotImplementedException, self).__init__(message)
 
 
+class MalformedRequestException(Exception):
+    """
+    Raised when the request is malformed.
+    """
+    def __init__(self, message):
+        super(MalformedRequestException, self).__init__(message)
+
+
 class WorkflowNotFoundException(Exception):
     """
     Raised when the requested run ID is not found.
@@ -44,11 +52,20 @@ class WorkflowConflictException(Exception):
         super(WorkflowConflictException, self).__init__(f"Workflow {run_id} exists when it shouldn't.")
 
 
+class OperationForbidden(Exception):
+    """
+    Raised when the request is forbidden.
+    """
+    def __init__(self, message):
+        super(OperationForbidden, self).__init__(message)
+
+
 class WorkflowExecutionException(Exception):
     """
     Raised when an internal error occurred during the execution of the workflow.
     """
-    pass
+    def __init__(self, message):
+        super(WorkflowExecutionException, self).__init__(message)
 
 
 def handle_errors(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -66,14 +83,16 @@ def handle_errors(func: Callable[..., Any]) -> Callable[..., Any]:
     def wrapper(*args, **kwargs):  # type: ignore
         try:
             return func(*args, **kwargs)
-        except (TypeError, ValueError) as e:
-            return error(e, code=400)  # the request is malformed
+        except MalformedRequestException as e:
+            return error(e, code=400)
         except VersionNotImplementedException as e:
             return error(e, code=400)
+        except OperationForbidden as e:
+            return error(e, code=403)
         except (FileNotFoundError, WorkflowNotFoundException) as e:
             return error(e, code=404)
         except WorkflowConflictException as e:
-            return error(e, code=409)
+            return error(e, code=400)
         except WorkflowExecutionException as e:
             return error(e, code=500)
         except Exception as e:
@@ -209,7 +228,7 @@ class WESBackend:
                     else:
                         body[key] = value.read().decode()
             except Exception as e:
-                raise ValueError(f"Error reading parameter '{key}': {e}")
+                raise MalformedRequestException(f"Error reading parameter '{key}': {e}")
 
         for key, ls in connexion.request.form.lists():
             try:
@@ -221,17 +240,17 @@ class WESBackend:
                     else:
                         body[key] = value
             except Exception as e:
-                raise ValueError(f"Error reading parameter '{key}': {e}")
+                raise MalformedRequestException(f"Error reading parameter '{key}': {e}")
 
         if "workflow_url" in body:
             if ":" not in body["workflow_url"]:
                 if not has_attachments:
-                    raise ValueError("Relative 'workflow_url' but missing 'workflow_attachment'")
+                    raise MalformedRequestException("Relative 'workflow_url' but missing 'workflow_attachment'")
                 body["workflow_url"] = self.secure_path(body["workflow_url"])  # keep this relative
             self.log_for_run(run_id, "Using workflow_url '%s'" % body.get("workflow_url"))
         else:
-            raise ValueError("Missing 'workflow_url' in submission")
+            raise MalformedRequestException("Missing 'workflow_url' in submission")
         if "workflow_params" not in body:
-            raise ValueError("Missing 'workflow_params' in submission")
+            raise MalformedRequestException("Missing 'workflow_params' in submission")
 
         return temp_dir, body

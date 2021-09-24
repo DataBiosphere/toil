@@ -25,7 +25,8 @@ from toil.server.wes.abstract_backend import (WESBackend,
                                               WorkflowNotFoundException,
                                               WorkflowConflictException,
                                               VersionNotImplementedException,
-                                              WorkflowExecutionException)
+                                              WorkflowExecutionException,
+                                              OperationForbidden)
 from toil.server.wes.tasks import run_wes, cancel_run
 
 from toil.version import baseVersion
@@ -100,7 +101,7 @@ class ToilWorkflow:
         except Exception:
             # Celery or the broker might be down
             self.set_state("SYSTEM_ERROR")
-            raise WorkflowExecutionException(f"Failed to queue run: internal server error.")
+            raise WorkflowExecutionException(f"Failed to run: internal server error.")
 
     def get_output_files(self) -> Any:
         """
@@ -306,7 +307,7 @@ class ToilBackend(WESBackend):
             logger.warning(f"A user is attempting to cancel a workflow in state: '{state}'.")
         elif state in ("EXECUTOR_ERROR", "SYSTEM_ERROR"):
             # Something went wrong. Let the user know.
-            raise WorkflowExecutionException(f"Workflow is in state: '{state}', which cannot be cancelled.")
+            raise OperationForbidden(f"Workflow is in state: '{state}', which cannot be cancelled.")
         else:
             # Cancel the workflow in the following states: "QUEUED", "INITIALIZING", "RUNNING".
             run.set_state("CANCELING")
