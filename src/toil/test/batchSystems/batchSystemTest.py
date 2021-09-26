@@ -42,7 +42,7 @@ from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config, Toil
 from toil.job import Job, JobDescription
-from toil.lib.threading import cpu_count
+from toil.lib.threads import cpu_count
 from toil.lib.retry import retry_flaky_test
 from toil.test import (ToilTest,
                        needs_aws_s3,

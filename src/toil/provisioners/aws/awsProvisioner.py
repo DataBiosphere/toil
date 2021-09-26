@@ -747,9 +747,9 @@ class AWSProvisioner(AbstractProvisioner):
                 try:
                     bucket = s3.Bucket(self.s3_bucket_name)
 
-                    bucket.objects.all().delete()
-                    bucket.object_versions.delete()
-                    bucket.delete()
+                    bucket.objects.all().delete_job()
+                    bucket.object_versions.delete_job()
+                    bucket.delete_job()
                     removed = True
                 except s3.meta.client.exceptions.NoSuchBucket:
                     pass

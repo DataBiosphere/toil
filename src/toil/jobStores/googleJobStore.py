@@ -169,18 +169,18 @@ class GoogleJobStore(AbstractJobStore):
             while count < len(blobs_to_delete):
                 with self.storageClient.batch():
                     for blob in blobs_to_delete[count:count + MAX_BATCH_SIZE]:
-                        blob.delete()
+                        blob.delete_job()
                     count = count + MAX_BATCH_SIZE
             self.bucket.delete()
 
     def _newJobID(self):
         return "job"+str(uuid.uuid4())
 
-    def assignID(self, jobDescription):
+    def assign_job_id(self, job_description):
         jobStoreID = self._newJobID()
         log.debug("Assigning ID to job %s for '%s'",
-                  jobStoreID, '<no command>' if jobDescription.command is None else jobDescription.command)
-        jobDescription.jobStoreID = jobStoreID
+                  jobStoreID, '<no command>' if job_description.command is None else job_description.command)
+        job_description.jobStoreID = jobStoreID
 
     @contextmanager
     def batch(self):
@@ -188,14 +188,14 @@ class GoogleJobStore(AbstractJobStore):
         yield
         
 
-    def create(self, jobDescription):
-        jobDescription.pre_update_hook()
-        self._writeBytes(jobDescription.jobStoreID, pickle.dumps(jobDescription, protocol=pickle.HIGHEST_PROTOCOL))
-        return jobDescription
+    def create_job(self, job_description):
+        job_description.pre_update_hook()
+        self._writeBytes(job_description.jobStoreID, pickle.dumps(job_description, protocol=pickle.HIGHEST_PROTOCOL))
+        return job_description
 
     @googleRetry
-    def exists(self, jobStoreID):
-        return self.bucket.blob(compat_bytes(jobStoreID), encryption_key=self.sseKey).exists()
+    def job_exists(self, job_id):
+        return self.bucket.blob(compat_bytes(job_id), encryption_key=self.sseKey).job_exists()
 
     @googleRetry
     def getPublicUrl(self, fileName):
@@ -207,11 +207,11 @@ class GoogleJobStore(AbstractJobStore):
     def getSharedPublicUrl(self, sharedFileName):
         return self.getPublicUrl(sharedFileName)
 
-    def load(self, jobStoreID):
+    def load_job(self, job_id):
         try:
-            jobString = self._readContents(jobStoreID)
+            jobString = self._readContents(job_id)
         except NoSuchFileException:
-            raise NoSuchJobException(jobStoreID)
+            raise NoSuchJobException(job_id)
         job = pickle.loads(jobString)
         # It is our responsibility to make sure that the JobDescription is
         # connected to the current config on this machine, for filling in
@@ -220,19 +220,19 @@ class GoogleJobStore(AbstractJobStore):
         job.assignConfig(self.config)
         return job
 
-    def update(self, job):
+    def update_job(self, job):
         job.pre_update_hook()
         self._writeBytes(job.jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL), update=True)
 
     @googleRetry
-    def delete(self, jobStoreID):
-        self._delete(jobStoreID)
+    def delete_job(self, job_id):
+        self._delete(job_id)
 
         # best effort delete associated files
-        for blob in self.bucket.list_blobs(prefix=compat_bytes(jobStoreID)):
+        for blob in self.bucket.list_blobs(prefix=compat_bytes(job_id)):
             self._delete(blob.name)
 
-    def getEnv(self):
+    def get_env(self):
         """
         Return a dict of environment variables to send out to the workers
         so they can load the job store.
@@ -252,17 +252,17 @@ class GoogleJobStore(AbstractJobStore):
         for blob in self.bucket.list_blobs(prefix=b'job'):
             jobStoreID = blob.name
             if len(jobStoreID) == 39:  # 'job' + uuid length
-                yield self.load(jobStoreID)
+                yield self.load_job(jobStoreID)
 
-    def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
-        fileID = self._newID(isFile=True, jobStoreID=jobStoreID if cleanup else None)
-        with open(localFilePath, 'rb') as f:
+    def write_file(self, local_path, job_id=None, cleanup=False):
+        fileID = self._newID(isFile=True, jobStoreID=job_id if cleanup else None)
+        with open(local_path, 'rb') as f:
             self._writeFile(fileID, f)
         return fileID
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None, encoding=None, errors=None):
-        fileID = self._newID(isFile=True, jobStoreID=jobStoreID if cleanup else None)
+    def write_file_stream(self, job_id=None, cleanup=False, basename=None, encoding=None, errors=None):
+        fileID = self._newID(isFile=True, jobStoreID=job_id if cleanup else None)
         with self._uploadStream(fileID, update=False, encoding=encoding, errors=errors) as writable:
             yield writable, fileID
 
@@ -272,55 +272,55 @@ class GoogleJobStore(AbstractJobStore):
         return fileID
 
     @googleRetry
-    def readFile(self, jobStoreFileID, localFilePath, symlink=False):
+    def read_file(self, file_id, local_path, symlink=False):
         # used on non-shared files which will be encrypted if available
         # checking for JobStoreID existence
-        if not self.fileExists(jobStoreFileID):
-            raise NoSuchFileException(jobStoreFileID)
-        with AtomicFileCreate(localFilePath) as tmpPath:
+        if not self.file_exists(file_id):
+            raise NoSuchFileException(file_id)
+        with AtomicFileCreate(local_path) as tmpPath:
             with open(tmpPath, 'wb') as writeable:
-                blob = self.bucket.get_blob(compat_bytes(jobStoreFileID), encryption_key=self.sseKey)
+                blob = self.bucket.get_blob(compat_bytes(file_id), encryption_key=self.sseKey)
                 blob.download_to_file(writeable)
-        if getattr(jobStoreFileID, 'executable', False):
-            os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
+        if getattr(file_id, 'executable', False):
+            os.chmod(local_path, os.stat(local_path).st_mode | stat.S_IXUSR)
 
     @contextmanager
-    def readFileStream(self, jobStoreFileID, encoding=None, errors=None):
-        with self.readSharedFileStream(jobStoreFileID, isProtected=True, encoding=encoding,
-                            errors=errors) as readable:
+    def read_file_stream(self, file_id, encoding=None, errors=None):
+        with self.read_shared_file_stream(file_id, isProtected=True, encoding=encoding,
+                                          errors=errors) as readable:
             yield readable
 
-    def deleteFile(self, jobStoreFileID):
-        self._delete(jobStoreFileID)
+    def delete_file(self, file_id):
+        self._delete(file_id)
 
     @googleRetry
-    def fileExists(self, jobStoreFileID):
-        return self.bucket.blob(compat_bytes(jobStoreFileID), encryption_key=self.sseKey).exists()
+    def file_exists(self, file_id):
+        return self.bucket.blob(compat_bytes(file_id), encryption_key=self.sseKey).job_exists()
 
     @googleRetry
-    def getFileSize(self, jobStoreFileID):
-        if not self.fileExists(jobStoreFileID):
+    def get_file_size(self, file_id):
+        if not self.file_exists(file_id):
             return 0
-        return self.bucket.get_blob(compat_bytes(jobStoreFileID), encryption_key=self.sseKey).size
+        return self.bucket.get_blob(compat_bytes(file_id), encryption_key=self.sseKey).size
 
-    def updateFile(self, jobStoreFileID, localFilePath):
-        with open(localFilePath, 'rb') as f:
-            self._writeFile(jobStoreFileID, f, update=True)
+    def update_file(self, file_id, local_path):
+        with open(local_path, 'rb') as f:
+            self._writeFile(file_id, f, update=True)
 
     @contextmanager
-    def updateFileStream(self, jobStoreFileID, encoding=None, errors=None):
-        with self._uploadStream(jobStoreFileID, update=True, encoding=encoding, errors=errors) as writable:
+    def update_file_stream(self, file_id, encoding=None, errors=None):
+        with self._uploadStream(file_id, update=True, encoding=encoding, errors=errors) as writable:
             yield writable
 
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName, isProtected=True, encoding=None, errors=None):
-        with self._uploadStream(sharedFileName, encrypt=isProtected, update=True, encoding=encoding,
-                                    errors=errors) as writable:
+    def write_shared_file_stream(self, shared_file_name, encrypted=True, encoding=None, errors=None):
+        with self._uploadStream(shared_file_name, encrypt=encrypted, update=True, encoding=encoding,
+                                errors=errors) as writable:
             yield writable
 
     @contextmanager
-    def readSharedFileStream(self, sharedFileName, isProtected=True, encoding=None, errors=None):
-        with self._downloadStream(sharedFileName, encrypt=isProtected, encoding=encoding, errors=errors) as readable:
+    def read_shared_file_stream(self, shared_file_name, isProtected=True, encoding=None, errors=None):
+        with self._downloadStream(shared_file_name, encrypt=isProtected, encoding=encoding, errors=errors) as readable:
             yield readable
 
     @classmethod
@@ -358,7 +358,7 @@ class GoogleJobStore(AbstractJobStore):
         return blob
 
     @classmethod
-    def getSize(cls, url):
+    def get_size(cls, url):
         return cls._getBlobFromURL(url, exists=True).size
 
     @classmethod
@@ -376,15 +376,15 @@ class GoogleJobStore(AbstractJobStore):
         blob = cls._getBlobFromURL(url)
         blob.upload_from_file(readable)
 
-    def writeStatsAndLogging(self, statsAndLoggingString: bytes) -> None:
+    def write_logs(self, msg: bytes) -> None:
         statsID = self.statsBaseID + str(uuid.uuid4())
         log.debug("Writing stats file: %s", statsID)
         with self._uploadStream(statsID, encrypt=False, update=False) as f:
-            f.write(statsAndLoggingString)
+            f.write(msg)
 
     @googleRetry
-    def readStatsAndLogging(self, callback, readAll=False):
-        prefix = self.readStatsBaseID if readAll else self.statsBaseID
+    def read_logs(self, callback, read_all=False):
+        prefix = self.readStatsBaseID if read_all else self.statsBaseID
         filesRead = 0
         lastTry = False
 
@@ -393,11 +393,11 @@ class GoogleJobStore(AbstractJobStore):
             # prefix seems broken
             for blob in self.bucket.list_blobs(prefix=compat_bytes(prefix)):
                 try:
-                    with self.readSharedFileStream(blob.name) as readable:
+                    with self.read_shared_file_stream(blob.name) as readable:
                         log.debug("Reading stats file: %s", blob.name)
                         callback(readable)
                         filesReadThisLoop += 1
-                    if not readAll:
+                    if not read_all:
                         # rename this file by copying it and deleting the old version to avoid
                         # rereading it
                         newID = self.readStatsBaseID + blob.name[len(self.statsBaseID):]
@@ -405,7 +405,7 @@ class GoogleJobStore(AbstractJobStore):
                         self.bucket.rename_blob(blob, compat_bytes(newID))
                 except NoSuchFileException:
                     log.debug("Stats file not found: %s", blob.name)
-            if readAll:
+            if read_all:
                 # The readAll parameter is only by the toil stats util after the completion of the
                 # pipeline. Assume that this means the bucket is in a consistent state when readAll
                 # is passed.
@@ -438,8 +438,8 @@ class GoogleJobStore(AbstractJobStore):
 
     @googleRetry
     def _delete(self, jobStoreFileID):
-        if self.fileExists(jobStoreFileID):
-            self.bucket.get_blob(compat_bytes(jobStoreFileID)).delete()
+        if self.file_exists(jobStoreFileID):
+            self.bucket.get_blob(compat_bytes(jobStoreFileID)).delete_job()
         # remember, this is supposed to be idempotent, so we don't do anything
         # if the file doesn't exist
 
@@ -462,9 +462,9 @@ class GoogleJobStore(AbstractJobStore):
         blob = self.bucket.blob(compat_bytes(jobStoreID), encryption_key=self.sseKey if encrypt else None)
         if not update:
             # TODO: should probably raise a special exception and be added to all jobStores
-            assert not blob.exists()
+            assert not blob.job_exists()
         else:
-            if not blob.exists():
+            if not blob.job_exists():
                 raise NoSuchFileException(jobStoreID)
         blob.upload_from_file(fileObj)
 
@@ -503,7 +503,7 @@ class GoogleJobStore(AbstractJobStore):
         class UploadPipe(WritablePipe):
             def readFrom(self, readable):
                 if not update:
-                    assert not blob.exists()
+                    assert not blob.job_exists()
                 blob.upload_from_file(readable)
 
         with UploadPipe(encoding=encoding, errors=errors) as writable:

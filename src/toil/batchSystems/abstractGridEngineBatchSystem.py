@@ -418,7 +418,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             batchIds = self.with_retries(self.worker.getRunningJobIDs)
             self._getRunningBatchJobIDsCache = batchIds
             self._getRunningBatchJobIDsTimestamp = datetime.now()
-        batchIds.update(self.getRunningLocalJobIDs())
+        batchIds.update_job(self.getRunningLocalJobIDs())
         return batchIds
 
     def getUpdatedBatchJob(self, maxWait):

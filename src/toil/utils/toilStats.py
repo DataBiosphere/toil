@@ -451,7 +451,7 @@ def getStats(jobStore: AbstractJobStore) -> Expando:
 
     aggregateObject = Expando()
     callBack = partial(aggregateStats, aggregateObject=aggregateObject)
-    jobStore.readStatsAndLogging(callBack, readAll=True)
+    jobStore.read_logs(callBack, read_all=True)
     return aggregateObject
 
 

@@ -269,11 +269,11 @@ class AWSJobStore(AbstractJobStore):
     def _awsJobFromItem(self, item):
         self._checkItem(item)
         if item.get("overlargeID", None):
-            assert self.fileExists(item["overlargeID"])
+            assert self.file_exists(item["overlargeID"])
             # This is an overlarge job, download the actual attributes
             # from the file store
             logger.debug("Loading overlarge job from S3.")
-            with self.readFileStream(item["overlargeID"]) as fh:
+            with self.read_file_stream(item["overlargeID"]) as fh:
                 binary = fh.read()
         else:
             binary, _ = SDBHelper.attributesToBinary(item)
@@ -287,7 +287,7 @@ class AWSJobStore(AbstractJobStore):
         binary = pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL)
         if len(binary) > SDBHelper.maxBinarySize(extraReservedChunks=1):
             # Store as an overlarge job in S3
-            with self.writeFileStream() as (writable, fileID):
+            with self.write_file_stream() as (writable, fileID):
                 writable.write(binary)
             item = SDBHelper.binaryToAttributes(None)
             item["overlargeID"] = fileID
@@ -314,24 +314,24 @@ class AWSJobStore(AbstractJobStore):
                     assert self.jobsDomain.batch_put_attributes(items)
         self._batchedUpdates = None
 
-    def assignID(self, jobDescription):
+    def assign_job_id(self, job_description):
         jobStoreID = self._newJobID()
         logger.debug("Assigning ID to job %s for '%s'",
-                     jobStoreID, '<no command>' if jobDescription.command is None else jobDescription.command)
-        jobDescription.jobStoreID = jobStoreID
+                     jobStoreID, '<no command>' if job_description.command is None else job_description.command)
+        job_description.jobStoreID = jobStoreID
 
-    def create(self, jobDescription):
+    def create_job(self, job_description):
         if hasattr(self, "_batchedUpdates") and self._batchedUpdates is not None:
-            self._batchedUpdates.append(jobDescription)
+            self._batchedUpdates.append(job_description)
         else:
-            self.update(jobDescription)
-        return jobDescription
+            self.update_job(job_description)
+        return job_description
 
-    def exists(self, jobStoreID):
+    def job_exists(self, job_id):
         for attempt in retry_sdb():
             with attempt:
                 return bool(self.jobsDomain.get_attributes(
-                    item_name=compat_bytes(jobStoreID),
+                    item_name=compat_bytes(job_id),
                     attribute_name=[SDBHelper.presenceIndicator()],
                     consistent_read=True))
 
@@ -346,58 +346,58 @@ class AWSJobStore(AbstractJobStore):
         for jobItem in result:
             yield self._awsJobFromItem(jobItem)
 
-    def load(self, jobStoreID):
+    def load_job(self, job_id):
         item = None
         for attempt in retry_sdb():
             with attempt:
-                item = self.jobsDomain.get_attributes(compat_bytes(jobStoreID), consistent_read=True)
+                item = self.jobsDomain.get_attributes(compat_bytes(job_id), consistent_read=True)
         if not item:
-            raise NoSuchJobException(jobStoreID)
+            raise NoSuchJobException(job_id)
         job = self._awsJobFromItem(item)
         if job is None:
-            raise NoSuchJobException(jobStoreID)
-        logger.debug("Loaded job %s", jobStoreID)
+            raise NoSuchJobException(job_id)
+        logger.debug("Loaded job %s", job_id)
         return job
 
-    def update(self, jobDescription):
-        logger.debug("Updating job %s", jobDescription.jobStoreID)
-        jobDescription.pre_update_hook()
-        item = self._awsJobToItem(jobDescription)
+    def update_job(self, job_description):
+        logger.debug("Updating job %s", job_description.jobStoreID)
+        job_description.pre_update_hook()
+        item = self._awsJobToItem(job_description)
         for attempt in retry_sdb():
             with attempt:
-                assert self.jobsDomain.put_attributes(compat_bytes(jobDescription.jobStoreID), item)
+                assert self.jobsDomain.put_attributes(compat_bytes(job_description.jobStoreID), item)
 
     itemsPerBatchDelete = 25
 
-    def delete(self, jobStoreID):
+    def delete_job(self, job_id):
         # remove job and replace with jobStoreId.
-        logger.debug("Deleting job %s", jobStoreID)
+        logger.debug("Deleting job %s", job_id)
 
         # If the job is overlarge, delete its file from the filestore
         item = None
         for attempt in retry_sdb():
             with attempt:
-                item = self.jobsDomain.get_attributes(compat_bytes(jobStoreID), consistent_read=True)
+                item = self.jobsDomain.get_attributes(compat_bytes(job_id), consistent_read=True)
         # If the overlargeID has fallen off, maybe we partially deleted the
         # attributes of the item? Or raced on it? Or hit SimpleDB being merely
         # eventually consistent? We should still be able to get rid of it.
         self._checkItem(item, enforce = False)
         if item.get("overlargeID", None):
             logger.debug("Deleting job from filestore")
-            self.deleteFile(item["overlargeID"])
+            self.delete_file(item["overlargeID"])
         for attempt in retry_sdb():
             with attempt:
-                self.jobsDomain.delete_attributes(item_name=compat_bytes(jobStoreID))
+                self.jobsDomain.delete_attributes(item_name=compat_bytes(job_id))
         items = None
         for attempt in retry_sdb():
             with attempt:
                 items = list(self.filesDomain.select(
                     consistent_read=True,
                     query="select version from `%s` where ownerID='%s'" % (
-                        self.filesDomain.name, jobStoreID)))
+                        self.filesDomain.name, job_id)))
         assert items is not None
         if items:
-            logger.debug("Deleting %d file(s) associated with job %s", len(items), jobStoreID)
+            logger.debug("Deleting %d file(s) associated with job %s", len(items), job_id)
             n = self.itemsPerBatchDelete
             batches = [items[i:i + n] for i in range(0, len(items), n)]
             for batch in batches:
@@ -418,7 +418,7 @@ class AWSJobStore(AbstractJobStore):
                                                          Key=compat_bytes(item.name))
 
     def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
-        info = self.FileInfo.create(jobStoreID if cleanup else None)
+        info = self.FileInfo.create_job(jobStoreID if cleanup else None)
         with info.uploadStream() as _:
             # Empty
             pass
@@ -431,7 +431,7 @@ class AWSJobStore(AbstractJobStore):
             srcObj = self._getObjectForUrl(url, existing=True)
             size = srcObj.content_length
             if sharedFileName is None:
-                info = self.FileInfo.create(srcObj.key)
+                info = self.FileInfo.create_job(srcObj.key)
             else:
                 self._requireValidSharedFileName(sharedFileName)
                 jobStoreFileID = self._sharedFileID(sharedFileName)
@@ -454,7 +454,7 @@ class AWSJobStore(AbstractJobStore):
             super(AWSJobStore, self)._defaultExportFile(otherCls, jobStoreFileID, url)
 
     @classmethod
-    def getSize(cls, url):
+    def get_size(cls, url):
         return cls._getObjectForUrl(url, existing=True).content_length
 
     @classmethod
@@ -530,95 +530,95 @@ class AWSJobStore(AbstractJobStore):
     def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() == 's3'
 
-    def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
-        info = self.FileInfo.create(jobStoreID if cleanup else None)
-        info.upload(localFilePath, not self.config.disableJobStoreChecksumVerification)
+    def write_file(self, local_path, job_id=None, cleanup=False):
+        info = self.FileInfo.create_job(job_id if cleanup else None)
+        info.upload(local_path, not self.config.disableJobStoreChecksumVerification)
         info.save()
-        logger.debug("Wrote %r of from %r", info, localFilePath)
+        logger.debug("Wrote %r of from %r", info, local_path)
         return info.fileID
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None, encoding=None, errors=None):
-        info = self.FileInfo.create(jobStoreID if cleanup else None)
+    def write_file_stream(self, job_id=None, cleanup=False, basename=None, encoding=None, errors=None):
+        info = self.FileInfo.create_job(job_id if cleanup else None)
         with info.uploadStream(encoding=encoding, errors=errors) as writable:
             yield writable, info.fileID
         info.save()
         logger.debug("Wrote %r.", info)
 
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName, isProtected=None, encoding=None, errors=None):
-        self._requireValidSharedFileName(sharedFileName)
-        info = self.FileInfo.loadOrCreate(jobStoreFileID=self._sharedFileID(sharedFileName),
+    def write_shared_file_stream(self, shared_file_name, encrypted=None, encoding=None, errors=None):
+        self._requireValidSharedFileName(shared_file_name)
+        info = self.FileInfo.loadOrCreate(jobStoreFileID=self._sharedFileID(shared_file_name),
                                           ownerID=str(self.sharedFileOwnerID),
-                                          encrypted=isProtected)
+                                          encrypted=encrypted)
         with info.uploadStream(encoding=encoding, errors=errors) as writable:
             yield writable
         info.save()
-        logger.debug("Wrote %r for shared file %r.", info, sharedFileName)
+        logger.debug("Wrote %r for shared file %r.", info, shared_file_name)
 
-    def updateFile(self, jobStoreFileID, localFilePath):
-        info = self.FileInfo.loadOrFail(jobStoreFileID)
-        info.upload(localFilePath, not self.config.disableJobStoreChecksumVerification)
+    def update_file(self, file_id, local_path):
+        info = self.FileInfo.loadOrFail(file_id)
+        info.upload(local_path, not self.config.disableJobStoreChecksumVerification)
         info.save()
-        logger.debug("Wrote %r from path %r.", info, localFilePath)
+        logger.debug("Wrote %r from path %r.", info, local_path)
 
     @contextmanager
-    def updateFileStream(self, jobStoreFileID, encoding=None, errors=None):
-        info = self.FileInfo.loadOrFail(jobStoreFileID)
+    def update_file_stream(self, file_id, encoding=None, errors=None):
+        info = self.FileInfo.loadOrFail(file_id)
         with info.uploadStream(encoding=encoding, errors=errors) as writable:
             yield writable
         info.save()
         logger.debug("Wrote %r from stream.", info)
 
-    def fileExists(self, jobStoreFileID):
-        return self.FileInfo.exists(jobStoreFileID)
+    def file_exists(self, file_id):
+        return self.FileInfo.job_exists(file_id)
 
-    def getFileSize(self, jobStoreFileID):
-        if not self.fileExists(jobStoreFileID):
+    def get_file_size(self, file_id):
+        if not self.file_exists(file_id):
             return 0
-        info = self.FileInfo.loadOrFail(jobStoreFileID)
-        return info.getSize()
+        info = self.FileInfo.loadOrFail(file_id)
+        return info.get_size()
 
-    def readFile(self, jobStoreFileID, localFilePath, symlink=False):
-        info = self.FileInfo.loadOrFail(jobStoreFileID)
-        logger.debug("Reading %r into %r.", info, localFilePath)
-        info.download(localFilePath, not self.config.disableJobStoreChecksumVerification)
-        if getattr(jobStoreFileID, 'executable', False):
-            os.chmod(localFilePath, os.stat(localFilePath).st_mode | stat.S_IXUSR)
+    def read_file(self, file_id, local_path, symlink=False):
+        info = self.FileInfo.loadOrFail(file_id)
+        logger.debug("Reading %r into %r.", info, local_path)
+        info.download(local_path, not self.config.disableJobStoreChecksumVerification)
+        if getattr(file_id, 'executable', False):
+            os.chmod(local_path, os.stat(local_path).st_mode | stat.S_IXUSR)
 
     @contextmanager
-    def readFileStream(self, jobStoreFileID, encoding=None, errors=None):
-        info = self.FileInfo.loadOrFail(jobStoreFileID)
+    def read_file_stream(self, file_id, encoding=None, errors=None):
+        info = self.FileInfo.loadOrFail(file_id)
         logger.debug("Reading %r into stream.", info)
         with info.downloadStream(encoding=encoding, errors=errors) as readable:
             yield readable
 
     @contextmanager
-    def readSharedFileStream(self, sharedFileName, encoding=None, errors=None):
-        self._requireValidSharedFileName(sharedFileName)
-        jobStoreFileID = self._sharedFileID(sharedFileName)
-        info = self.FileInfo.loadOrFail(jobStoreFileID, customName=sharedFileName)
-        logger.debug("Reading %r for shared file %r into stream.", info, sharedFileName)
+    def read_shared_file_stream(self, shared_file_name, encoding=None, errors=None):
+        self._requireValidSharedFileName(shared_file_name)
+        jobStoreFileID = self._sharedFileID(shared_file_name)
+        info = self.FileInfo.loadOrFail(jobStoreFileID, customName=shared_file_name)
+        logger.debug("Reading %r for shared file %r into stream.", info, shared_file_name)
         with info.downloadStream(encoding=encoding, errors=errors) as readable:
             yield readable
 
-    def deleteFile(self, jobStoreFileID):
-        info = self.FileInfo.load(jobStoreFileID)
+    def delete_file(self, file_id):
+        info = self.FileInfo.load_job(file_id)
         if info is None:
-            logger.debug("File %s does not exist, skipping deletion.", jobStoreFileID)
+            logger.debug("File %s does not exist, skipping deletion.", file_id)
         else:
-            info.delete()
+            info.delete_job()
 
-    def writeStatsAndLogging(self, statsAndLoggingString):
-        info = self.FileInfo.create(str(self.statsFileOwnerID))
+    def write_logs(self, msg):
+        info = self.FileInfo.create_job(str(self.statsFileOwnerID))
         with info.uploadStream(multipart=False) as writeable:
-            if isinstance(statsAndLoggingString, str):
+            if isinstance(msg, str):
                 # This stream is for binary data, so encode any non-encoded things
-                statsAndLoggingString = statsAndLoggingString.encode('utf-8', errors='ignore')
-            writeable.write(statsAndLoggingString)
+                msg = msg.encode('utf-8', errors='ignore')
+            writeable.write(msg)
         info.save()
 
-    def readStatsAndLogging(self, callback, readAll=False):
+    def read_logs(self, callback, read_all=False):
         itemsProcessed = 0
 
         for info in self._readStatsAndLogging(callback, self.statsFileOwnerID):
@@ -626,7 +626,7 @@ class AWSJobStore(AbstractJobStore):
             info.save()
             itemsProcessed += 1
 
-        if readAll:
+        if read_all:
             for _ in self._readStatsAndLogging(callback, self.readStatsFileOwnerID):
                 itemsProcessed += 1
 
@@ -1052,10 +1052,10 @@ class AWSJobStore(AbstractJobStore):
             assert content is None or isinstance(content, bytes)
             attributes = self.binaryToAttributes(content)
             numChunks = attributes['numChunks']
-            attributes.update(dict(ownerID=self.ownerID,
-                                   encrypted=self.encrypted,
-                                   version=self.version or '',
-                                   checksum=self.checksum or ''))
+            attributes.update_job(dict(ownerID=self.ownerID,
+                                       encrypted=self.encrypted,
+                                       version=self.version or '',
+                                       checksum=self.checksum or ''))
             return attributes, numChunks
 
         @classmethod
@@ -1148,7 +1148,7 @@ class AWSJobStore(AbstractJobStore):
             """
             Update a checksum in progress from _start_checksum with new data.
             """
-            checksum_in_progress[1].update(data)
+            checksum_in_progress[1].update_job(data)
 
         def _finish_checksum(self, checksum_in_progress):
             """
@@ -1632,7 +1632,7 @@ class AWSJobStore(AbstractJobStore):
         for attempt in retry_sdb():
             with attempt:
                 try:
-                    domain.delete()
+                    domain.delete_job()
                 except SDBResponseError as e:
                     if not no_such_sdb_domain(e):
                         raise
@@ -1652,9 +1652,9 @@ class AWSJobStore(AbstractJobStore):
                                                                    Key=u["Key"],
                                                                    UploadId=u["UploadId"])
 
-                    bucket.objects.all().delete()
-                    bucket.object_versions.delete()
-                    bucket.delete()
+                    bucket.objects.all().delete_job()
+                    bucket.object_versions.delete_job()
+                    bucket.delete_job()
                 except s3_boto3_client.exceptions.NoSuchBucket:
                     pass
                 except ClientError as e:

@@ -32,7 +32,7 @@ from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.conversions import bytes2human
 from toil.lib.io import atomic_copy, atomic_copyobj, robust_rmtree, make_public_dir
 from toil.lib.retry import ErrorCondition, retry
-from toil.lib.threading import get_process_name, process_name_exists
+from toil.lib.threads import get_process_name, process_name_exists
 from toil.job import Job, JobDescription
 
 logger = logging.getLogger(__name__)
@@ -564,7 +564,7 @@ class CachingFileStore(AbstractFileStore):
             # Read it out to a generated name.
             destDir = tempfile.mkdtemp(dir=self.localCacheDir)
             cachedFile = os.path.join(destDir, 'sniffLinkCount')
-            self.jobStore.readFile(emptyID, cachedFile, symlink=False)
+            self.jobStore.read_file(emptyID, cachedFile, symlink=False)
 
             # Check the link count
             if os.stat(cachedFile).st_nlink == 2:
@@ -577,7 +577,7 @@ class CachingFileStore(AbstractFileStore):
             # Clean up
             os.unlink(cachedFile)
             os.rmdir(destDir)
-            self.jobStore.deleteFile(emptyID)
+            self.jobStore.delete_file(emptyID)
         else:
             # Caching is only ever free with the file job store
             free = 0
@@ -752,7 +752,7 @@ class CachingFileStore(AbstractFileStore):
             # Upload the file
             logger.debug('Actually executing upload for file %s', fileID)
             try:
-                self.jobStore.updateFile(fileID, filePath)
+                self.jobStore.update_file(fileID, filePath)
             except:
                 # We need to set the state back to 'uploadable' in case of any failures to ensure
                 # we can retry properly.
@@ -1080,7 +1080,7 @@ class CachingFileStore(AbstractFileStore):
 
             # Save the file to the job store right now
             logger.debug('Actually executing upload immediately for file %s', fileID)
-            self.jobStore.updateFile(fileID, absLocalFileName)
+            self.jobStore.update_file(fileID, absLocalFileName)
 
         # Ship out the completed FileID object with its real size.
         return FileID.forPath(fileID, absLocalFileName)
@@ -1188,11 +1188,11 @@ class CachingFileStore(AbstractFileStore):
                 # Just read directly
                 if mutable or self.forceNonFreeCaching:
                     # Always copy
-                    with self.jobStore.readFileStream(fileStoreID) as inStream:
+                    with self.jobStore.read_file_stream(fileStoreID) as inStream:
                         atomic_copyobj(inStream, localFilePath)
                 else:
                     # Link or maybe copy
-                    self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
+                    self.jobStore.read_file(fileStoreID, localFilePath, symlink=symlink)
 
         # Now we got the file, somehow.
         return localFilePath
@@ -1213,11 +1213,11 @@ class CachingFileStore(AbstractFileStore):
 
         if self.forceNonFreeCaching:
             # Always copy
-            with self.jobStore.readFileStream(fileStoreID) as inStream:
+            with self.jobStore.read_file_stream(fileStoreID) as inStream:
                 atomic_copyobj(inStream, cachedPath)
         else:
             # Link or maybe copy
-            self.jobStore.readFile(fileStoreID, cachedPath, symlink=False)
+            self.jobStore.read_file(fileStoreID, cachedPath, symlink=False)
 
     def _readGlobalFileMutablyWithCache(self, fileStoreID, localFilePath, readerID):
         """
@@ -1663,7 +1663,7 @@ class CachingFileStore(AbstractFileStore):
             else:
                 # No local update, so we can stream from the job store
                 # TODO: Maybe stream from cache even when not required for consistency?
-                with self.jobStore.readFileStream(fileStoreID, encoding=encoding, errors=errors) as result:
+                with self.jobStore.read_file_stream(fileStoreID, encoding=encoding, errors=errors) as result:
                     yield result
 
     def deleteLocalFile(self, fileStoreID):
@@ -1760,7 +1760,7 @@ class CachingFileStore(AbstractFileStore):
 
         # Then we let the job store export. TODO: let the export come from the
         # cache? How would we write the URL?
-        self.jobStore.exportFile(jobStoreFileID, dstUrl)
+        self.jobStore.export_file(jobStoreFileID, dstUrl)
 
     def waitForCommit(self):
         # We need to block on the upload thread.
@@ -1820,16 +1820,16 @@ class CachingFileStore(AbstractFileStore):
                 # the job wrapper is completed.
                 self.jobDesc.filesToDelete = list(self.filesToDelete)
                 # Complete the job
-                self.jobStore.update(self.jobDesc)
+                self.jobStore.update_job(self.jobDesc)
                 # Delete any remnant jobs
-                list(map(self.jobStore.delete, self.jobsToDelete))
+                list(map(self.jobStore.delete_job, self.jobsToDelete))
                 # Delete any remnant files
-                list(map(self.jobStore.deleteFile, self.filesToDelete))
+                list(map(self.jobStore.delete_file, self.filesToDelete))
                 # Remove the files to delete list, having successfully removed the files
                 if len(self.filesToDelete) > 0:
                     self.jobDesc.filesToDelete = []
                     # Update, removing emptying files to delete
-                    self.jobStore.update(self.jobDesc)
+                    self.jobStore.update_job(self.jobDesc)
         except:
             self._terminateEvent.set()
             raise

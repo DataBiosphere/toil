@@ -23,7 +23,7 @@ from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
 from toil.common import defaultTargetTime
 from toil.job import ServiceJobDescription
 from toil.lib.retry import old_retry
-from toil.lib.threading import ExceptionalThread
+from toil.lib.threads import ExceptionalThread
 from toil.lib.throttle import throttle
 from toil.provisioners.abstractProvisioner import Shape
 

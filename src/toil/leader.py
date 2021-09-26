@@ -285,14 +285,14 @@ class Leader(object):
                 logger.info("Failed jobs at end of the run: %s", ' '.join(str(j) for j in failed_jobs))
                 raise FailedJobsException(self.jobStore, failed_jobs, exit_code=self.recommended_fail_exit_code)
 
-            return self.jobStore.getRootJobReturnValue()
+            return self.jobStore.get_root_job_return_value()
 
     def create_status_sentinel_file(self, fail: bool) -> None:
         """Create a file in the jobstore indicating failure or success."""
         logName = 'failed.log' if fail else 'succeeded.log'
         localLog = os.path.join(os.getcwd(), logName)
         open(localLog, 'w').close()
-        self.jobStore.importFile('file://' + localLog, logName, hardlink=True)
+        self.jobStore.import_file('file://' + localLog, logName, hardlink=True)
 
         if os.path.exists(localLog):  # Bandaid for Jenkins tests failing stochastically and unexplainably.
             os.remove(localLog)
@@ -503,7 +503,7 @@ class Leader(object):
             # If the job has run out of tries or is a service job whose error flag has
             # been indicated, fail the job.
             if (readyJob.remainingTryCount == 0 or
-                (isServiceJob and not self.jobStore.fileExists(readyJob.errorJobStoreID))):
+                (isServiceJob and not self.jobStore.file_exists(readyJob.errorJobStoreID))):
                 self.processTotallyFailedJob(job_id)
                 logger.warning("Job %s is completely failed", readyJob)
             else:
@@ -722,7 +722,7 @@ class Leader(object):
                 self._reportWorkflowStatus()
 
             # Make sure to keep elapsed time and ETA up to date even when no jobs come in
-            self.progress_overall.update(incr=0)
+            self.progress_overall.update_job(incr=0)
 
         logger.debug("Finished the main loop: no jobs left to run.")
 
@@ -853,7 +853,7 @@ class Leader(object):
             self.toilMetrics.logQueueSize(self.getNumberOfJobsIssued())
         # Tell the user there's another job to do
         self.progress_overall.total += 1
-        self.progress_overall.update(incr=0)
+        self.progress_overall.update_job(incr=0)
 
     def issueJobs(self, jobs):
         """Add a list of jobs, each represented as a jobNode object."""
@@ -953,7 +953,7 @@ class Leader(object):
                 self.serviceJobsIssued -= 1
 
         # Tell the user that job is done, for progress purposes.
-        self.progress_overall.update(incr=1)
+        self.progress_overall.update_job(incr=1)
 
         return issuedDesc
 
@@ -1142,8 +1142,8 @@ class Leader(object):
                 self.toilState.commit_job(jobStoreID)
 
                 # Show job as failed in progress (and take it from completed)
-                self.progress_overall.update(incr=-1)
-                self.progress_failed.update(incr=1)
+                self.progress_overall.update_job(incr=-1)
+                self.progress_failed.update_job(incr=1)
 
             elif jobStoreID in self.toilState.hasFailedSuccessors:
                 # If the job has completed okay, we can remove it from the list of jobs with failed successors
@@ -1243,7 +1243,7 @@ class Leader(object):
             # lets it continue, now that we have issued kill orders for them,
             # to start dependent services, which all need to actually fail
             # before we can finish up with the services' predecessor job.
-            self.jobStore.deleteFile(job_desc.startJobStoreID)
+            self.jobStore.delete_file(job_desc.startJobStoreID)
         else:
             # Is a non-service job
             assert job_id not in self.toilState.servicesIssued

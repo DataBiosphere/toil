@@ -108,7 +108,7 @@ class ToilState:
         another process, or if it is still cached.
         """
 
-        return self.__job_store.exists(job_id)
+        return self.__job_store.job_exists(job_id)
 
     def get_job(self, job_id: str) -> JobDescription:
         """
@@ -116,14 +116,14 @@ class ToilState:
         """
         if job_id not in self.__job_database:
             # Go get the job for the first time
-            self.__job_database[job_id] = self.__job_store.load(job_id)
+            self.__job_database[job_id] = self.__job_store.load_job(job_id)
         return self.__job_database[job_id]
 
     def commit_job(self, job_id: str) -> None:
         """
         Save back any modifications made to a JobDescription retrieved from get_job()
         """
-        self.__job_store.update(self.__job_database[job_id])
+        self.__job_store.update_job(self.__job_database[job_id])
 
     def reset_job(self, job_id: str) -> None:
         """
@@ -131,7 +131,7 @@ class ToilState:
         modifications from other hosts visible.
         """
         try:
-            new_truth = self.__job_store.load(job_id)
+            new_truth = self.__job_store.load_job(job_id)
         except NoSuchJobException:
             # The job is gone now.
             if job_id in self.__job_database:
@@ -142,7 +142,7 @@ class ToilState:
         if job_id in self.__job_database:
             # Update the one true copy in place
             old_truth = self.__job_database[job_id]
-            old_truth.__dict__.update(new_truth.__dict__)
+            old_truth.__dict__.update_job(new_truth.__dict__)
         else:
             # Just keep the new one
             self.__job_database[job_id] = new_truth

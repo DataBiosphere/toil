@@ -121,34 +121,34 @@ class FileJobStore(AbstractJobStore):
     # existence of jobs
     ##########################################
 
-    def assignID(self, jobDescription):
+    def assign_job_id(self, job_description):
         # Get the job's name. We want to group jobs with the same name together.
         # This will be e.g. the function name for wrapped-function jobs.
         # Make sure to render it filename-safe
-        usefulFilename = self._makeStringFilenameSafe(jobDescription.jobName)
+        usefulFilename = self._makeStringFilenameSafe(job_description.jobName)
 
         # Make a unique temp directory under a directory for this job name,
         # possibly sprayed across multiple levels of subdirectories.
         absJobDir = tempfile.mkdtemp(prefix=self.JOB_DIR_PREFIX,
                                      dir=self._getArbitraryJobsDirForName(usefulFilename))
 
-        jobDescription.jobStoreID = self._getJobIdFromDir(absJobDir)
+        job_description.jobStoreID = self._getJobIdFromDir(absJobDir)
 
-    def create(self, jobDescription):
+    def create_job(self, job_description):
         if hasattr(self, "_batchedUpdates") and self._batchedUpdates is not None:
             # Save it later
-            self._batchedUpdates.append(jobDescription)
+            self._batchedUpdates.append(job_description)
         else:
             # Save it now
-            self.update(jobDescription)
-        return jobDescription
+            self.update_job(job_description)
+        return job_description
 
     @contextmanager
     def batch(self):
         self._batchedUpdates = []
         yield
         for jobDescription in self._batchedUpdates:
-            self.update(jobDescription)
+            self.update_job(jobDescription)
         self._batchedUpdates = None
 
     def _waitForExists(self, jobStoreID, maxTries=35, sleepTime=1):
@@ -185,8 +185,8 @@ class FileJobStore(AbstractJobStore):
             time.sleep(sleepTime)
         return False
 
-    def exists(self, jobStoreID):
-        return os.path.exists(self._getJobFileName(jobStoreID))
+    def job_exists(self, job_id):
+        return os.path.exists(self._getJobFileName(job_id))
 
     def getPublicUrl(self, jobStoreFileID):
         self._checkJobStoreFileID(jobStoreFileID)
@@ -202,10 +202,10 @@ class FileJobStore(AbstractJobStore):
             raise NoSuchFileException(sharedFileName)
         return 'file:' + jobStorePath
 
-    def load(self, jobStoreID):
-        self._checkJobStoreIdExists(jobStoreID)
+    def load_job(self, job_id):
+        self._checkJobStoreIdExists(job_id)
         # Load a valid version of the job
-        jobFile = self._getJobFileName(jobStoreID)
+        jobFile = self._getJobFileName(job_id)
         with open(jobFile, 'rb') as fileHandle:
             job = pickle.load(fileHandle)
 
@@ -215,12 +215,12 @@ class FileJobStore(AbstractJobStore):
         # The following cleans up any issues resulting from the failure of the
         # job during writing by the batch system.
         if os.path.isfile(jobFile + ".new"):
-            logger.warning("There was a .new file for the job: %s", jobStoreID)
+            logger.warning("There was a .new file for the job: %s", job_id)
             os.remove(jobFile + ".new")
             job.setupJobAfterFailure()
         return job
 
-    def update(self, job):
+    def update_job(self, job):
         assert job.jobStoreID is not None, f"Tried to update job {job} without an ID"
         assert not isinstance(job.jobStoreID, TemporaryID), f"Tried to update job {job} without an assigned ID"
 
@@ -238,15 +238,15 @@ class FileJobStore(AbstractJobStore):
         # This should be atomic for the file system
         os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
 
-    def delete(self, jobStoreID):
+    def delete_job(self, job_id):
         # The jobStoreID is the relative path to the directory containing the job,
         # removing this directory deletes the job.
-        if self.exists(jobStoreID):
+        if self.job_exists(job_id):
             # Remove the job-associated files in need of cleanup, which may or
             # may not live under the job's directory.
-            robust_rmtree(self._getJobFilesCleanupDir(jobStoreID))
+            robust_rmtree(self._getJobFilesCleanupDir(job_id))
             # Remove the job's directory itself.
-            robust_rmtree(self._getJobDirFromId(jobStoreID))
+            robust_rmtree(self._getJobDirFromId(job_id))
 
     def jobs(self):
         # Walk through list of temporary directories searching for jobs.
@@ -259,8 +259,8 @@ class FileJobStore(AbstractJobStore):
                     # This is a job instance directory
                     jobId = self._getJobIdFromDir(os.path.join(tempDir, i))
                     try:
-                        if self.exists(jobId):
-                            yield self.load(jobId)
+                        if self.job_exists(jobId):
+                            yield self.load_job(jobId)
                     except NoSuchJobException:
                         # An orphaned job may leave an empty or incomplete job file which we can safely ignore
                         pass
@@ -326,7 +326,7 @@ class FileJobStore(AbstractJobStore):
             os.chmod(destPath, os.stat(destPath).st_mode | stat.S_IXUSR)
 
     @classmethod
-    def getSize(cls, url):
+    def get_size(cls, url):
         return os.stat(cls._extractPathFromUrl(url)).st_size
 
     @classmethod
@@ -405,17 +405,17 @@ class FileJobStore(AbstractJobStore):
         # Glue it all together, and truncate to length
         return '_'.join(parts)[:maxLength]
 
-    def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
-        absPath = self._getUniqueFilePath(localFilePath, jobStoreID, cleanup)
+    def write_file(self, local_path, job_id=None, cleanup=False):
+        absPath = self._getUniqueFilePath(local_path, job_id, cleanup)
         relPath = self._getFileIdFromPath(absPath)
-        atomic_copy(localFilePath, absPath)
+        atomic_copy(local_path, absPath)
         return relPath
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None, encoding=None, errors=None):
+    def write_file_stream(self, job_id=None, cleanup=False, basename=None, encoding=None, errors=None):
         if not basename:
             basename = 'stream'
-        absPath = self._getUniqueFilePath(basename, jobStoreID, cleanup)
+        absPath = self._getUniqueFilePath(basename, job_id, cleanup)
         relPath = self._getFileIdFromPath(absPath)
 
         with open(absPath, 'wb' if encoding == None else 'wt', encoding=encoding, errors=errors) as f:
@@ -425,30 +425,30 @@ class FileJobStore(AbstractJobStore):
             yield f, relPath
 
     def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
-        with self.writeFileStream(jobStoreID, cleanup, basename) as (fileHandle, jobStoreFileID):
+        with self.write_file_stream(jobStoreID, cleanup, basename) as (fileHandle, jobStoreFileID):
             return jobStoreFileID
 
-    def updateFile(self, jobStoreFileID, localFilePath):
-        self._checkJobStoreFileID(jobStoreFileID)
-        jobStoreFilePath = self._getFilePathFromId(jobStoreFileID)
+    def update_file(self, file_id, local_path):
+        self._checkJobStoreFileID(file_id)
+        jobStoreFilePath = self._getFilePathFromId(file_id)
 
-        if os.path.samefile(jobStoreFilePath, localFilePath):
+        if os.path.samefile(jobStoreFilePath, local_path):
             # The files are already the same file. We can't copy on eover the other.
             return
 
-        atomic_copy(localFilePath, jobStoreFilePath)
+        atomic_copy(local_path, jobStoreFilePath)
 
-    def readFile(self, jobStoreFileID, localFilePath, symlink=False):
-        self._checkJobStoreFileID(jobStoreFileID)
-        jobStoreFilePath = self._getFilePathFromId(jobStoreFileID)
-        localDirPath = os.path.dirname(localFilePath)
-        executable = getattr(jobStoreFileID, 'executable', False)
+    def read_file(self, file_id, local_path, symlink=False):
+        self._checkJobStoreFileID(file_id)
+        jobStoreFilePath = self._getFilePathFromId(file_id)
+        localDirPath = os.path.dirname(local_path)
+        executable = getattr(file_id, 'executable', False)
 
-        if not symlink and os.path.islink(localFilePath):
+        if not symlink and os.path.islink(local_path):
             # We had a symlink and want to clobber it with a hardlink or copy.
-            os.unlink(localFilePath)
+            os.unlink(local_path)
 
-        if os.path.exists(localFilePath) and os.path.samefile(jobStoreFilePath, localFilePath):
+        if os.path.exists(local_path) and os.path.samefile(jobStoreFilePath, local_path):
             # The files are already the same: same name, hardlinked, or
             # symlinked. There is nothing to do, and trying to shutil.copyfile
             # one over the other will fail.
@@ -458,16 +458,16 @@ class FileJobStore(AbstractJobStore):
             # If the reader will accept a symlink, so always give them one.
             # There's less that can go wrong.
             try:
-                os.symlink(jobStoreFilePath, localFilePath)
+                os.symlink(jobStoreFilePath, local_path)
                 # It worked!
                 return
             except OSError as e:
                 if e.errno == errno.EEXIST:
                     # Overwrite existing file, emulating shutil.copyfile().
-                    os.unlink(localFilePath)
+                    os.unlink(local_path)
                     # It would be very unlikely to fail again for same reason but possible
                     # nonetheless in which case we should just give up.
-                    os.symlink(jobStoreFilePath, localFilePath)
+                    os.symlink(jobStoreFilePath, local_path)
                     # Now we succeeded and don't need to copy
                     return
                 else:
@@ -484,16 +484,16 @@ class FileJobStore(AbstractJobStore):
             # to create a "cross-device" link.
 
             try:
-                os.link(jobStoreFilePath, localFilePath)
+                os.link(jobStoreFilePath, local_path)
                 # It worked!
                 return
             except OSError as e:
                 if e.errno == errno.EEXIST:
                     # Overwrite existing file, emulating shutil.copyfile().
-                    os.unlink(localFilePath)
+                    os.unlink(local_path)
                     # It would be very unlikely to fail again for same reason but possible
                     # nonetheless in which case we should just give up.
-                    os.link(jobStoreFilePath, localFilePath)
+                    os.link(jobStoreFilePath, local_path)
                     # Now we succeeded and don't need to copy
                     return
                 elif e.errno == errno.EXDEV:
@@ -503,44 +503,44 @@ class FileJobStore(AbstractJobStore):
                 else:
                     logger.critical('Unexpected OSError when reading file from job store')
                     logger.critical('jobStoreFilePath: ' + jobStoreFilePath + ' ' + str(os.path.exists(jobStoreFilePath)))
-                    logger.critical('localFilePath: ' + localFilePath + ' ' + str(os.path.exists(localFilePath)))
+                    logger.critical('localFilePath: ' + local_path + ' ' + str(os.path.exists(local_path)))
                     raise
 
         # If we get here, neither a symlink nor a hardlink will work.
         # Make a complete copy.
-        atomic_copy(jobStoreFilePath, localFilePath, executable=executable)
+        atomic_copy(jobStoreFilePath, local_path, executable=executable)
 
-    def deleteFile(self, jobStoreFileID):
-        if not self.fileExists(jobStoreFileID):
+    def delete_file(self, file_id):
+        if not self.file_exists(file_id):
             return
-        os.remove(self._getFilePathFromId(jobStoreFileID))
+        os.remove(self._getFilePathFromId(file_id))
 
-    def fileExists(self, jobStoreFileID):
-        absPath = self._getFilePathFromId(jobStoreFileID)
+    def file_exists(self, file_id):
+        absPath = self._getFilePathFromId(file_id)
 
         if (not absPath.startswith(self.jobsDir) and
             not absPath.startswith(self.filesDir) and
             not absPath.startswith(self.jobFilesDir)):
             # Don't even look for it, it is out of bounds.
-            raise NoSuchFileException(jobStoreFileID)
+            raise NoSuchFileException(file_id)
 
         try:
             st = os.stat(absPath)
         except os.error:
             return False
         if not stat.S_ISREG(st.st_mode):
-            raise NoSuchFileException(jobStoreFileID)
+            raise NoSuchFileException(file_id)
         return True
 
-    def getFileSize(self, jobStoreFileID):
+    def get_file_size(self, file_id):
         # Duplicate a bunch of fileExists to save on stat calls
-        absPath = self._getFilePathFromId(jobStoreFileID)
+        absPath = self._getFilePathFromId(file_id)
 
         if (not absPath.startswith(self.jobsDir) and
             not absPath.startswith(self.filesDir) and
             not absPath.startswith(self.jobFilesDir)):
             # Don't even look for it, it is out of bounds.
-            raise NoSuchFileException(jobStoreFileID)
+            raise NoSuchFileException(file_id)
 
         try:
             st = os.stat(absPath)
@@ -549,18 +549,18 @@ class FileJobStore(AbstractJobStore):
         return st.st_size
 
     @contextmanager
-    def updateFileStream(self, jobStoreFileID, encoding=None, errors=None):
-        self._checkJobStoreFileID(jobStoreFileID)
+    def update_file_stream(self, file_id, encoding=None, errors=None):
+        self._checkJobStoreFileID(file_id)
         # File objects are context managers (CM) so we could simply return what open returns.
         # However, it is better to wrap it in another CM so as to prevent users from accessing
         # the file object directly, without a with statement.
-        with open(self._getFilePathFromId(jobStoreFileID), 'wb' if encoding == None else 'wt', encoding=encoding, errors=errors) as f:
+        with open(self._getFilePathFromId(file_id), 'wb' if encoding == None else 'wt', encoding=encoding, errors=errors) as f:
             yield f
 
     @contextmanager
-    def readFileStream(self, jobStoreFileID, encoding=None, errors=None):
-        self._checkJobStoreFileID(jobStoreFileID)
-        with open(self._getFilePathFromId(jobStoreFileID), 'rb' if encoding == None else 'rt', encoding=encoding, errors=errors) as f:
+    def read_file_stream(self, file_id, encoding=None, errors=None):
+        self._checkJobStoreFileID(file_id)
+        with open(self._getFilePathFromId(file_id), 'rb' if encoding == None else 'rt', encoding=encoding, errors=errors) as f:
             yield f
 
     ##########################################
@@ -572,43 +572,43 @@ class FileJobStore(AbstractJobStore):
         return os.path.join(self.sharedFilesDir, sharedFileName)
 
     @contextmanager
-    def writeSharedFileStream(self, sharedFileName, isProtected=None, encoding=None, errors=None):
+    def write_shared_file_stream(self, shared_file_name, encrypted=None, encoding=None, errors=None):
         # the isProtected parameter has no effect on the fileStore
-        self._requireValidSharedFileName(sharedFileName)
-        with AtomicFileCreate(self._getSharedFilePath(sharedFileName)) as tmpSharedFilePath:
+        self._requireValidSharedFileName(shared_file_name)
+        with AtomicFileCreate(self._getSharedFilePath(shared_file_name)) as tmpSharedFilePath:
             with open(tmpSharedFilePath, 'wb' if encoding == None else 'wt', encoding=encoding, errors=None) as f:
                 yield f
 
     @contextmanager
-    def readSharedFileStream(self, sharedFileName, encoding=None, errors=None):
-        self._requireValidSharedFileName(sharedFileName)
+    def read_shared_file_stream(self, shared_file_name, encoding=None, errors=None):
+        self._requireValidSharedFileName(shared_file_name)
         try:
-            with open(self._getSharedFilePath(sharedFileName), 'rb' if encoding == None else 'rt', encoding=encoding, errors=errors) as f:
+            with open(self._getSharedFilePath(shared_file_name), 'rb' if encoding == None else 'rt', encoding=encoding, errors=errors) as f:
                 yield f
 
         except IOError as e:
             if e.errno == errno.ENOENT:
-                raise NoSuchFileException(sharedFileName)
+                raise NoSuchFileException(shared_file_name)
             else:
                 raise
 
-    def writeStatsAndLogging(self, statsAndLoggingString):
+    def write_logs(self, msg):
         # Temporary files are placed in the stats directory tree
         tempStatsFileName = "stats" + str(uuid.uuid4().hex) + ".new"
         tempStatsFile = os.path.join(self._getArbitraryStatsDir(), tempStatsFileName)
-        writeFormat = 'w' if isinstance(statsAndLoggingString, str) else 'wb'
+        writeFormat = 'w' if isinstance(msg, str) else 'wb'
         with open(tempStatsFile, writeFormat) as f:
-            f.write(statsAndLoggingString)
+            f.write(msg)
         os.rename(tempStatsFile, tempStatsFile[:-4])  # This operation is atomic
 
-    def readStatsAndLogging(self, callback, readAll=False):
+    def read_logs(self, callback, read_all=False):
         numberOfFilesProcessed = 0
         for tempDir in self._statsDirectories():
             for tempFile in os.listdir(tempDir):
                 if tempFile.startswith('stats'):
                     absTempFile = os.path.join(tempDir, tempFile)
                     if os.path.isfile(absTempFile):
-                        if readAll or not tempFile.endswith('.new'):
+                        if read_all or not tempFile.endswith('.new'):
                             with open(absTempFile, 'rb') as fH:
                                 callback(fH)
                             numberOfFilesProcessed += 1
@@ -726,7 +726,7 @@ class FileJobStore(AbstractJobStore):
         :raise NoSuchFileException: if the file with ID jobStoreFileID does
                                     not exist or is not a file
         """
-        if not self.fileExists(jobStoreFileID):
+        if not self.file_exists(jobStoreFileID):
             raise NoSuchFileException(jobStoreFileID)
 
     def _getArbitraryJobsDirForName(self, jobNameSlug):

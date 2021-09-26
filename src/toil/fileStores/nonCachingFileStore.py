@@ -27,7 +27,7 @@ from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.conversions import bytes2human
 from toil.lib.io import robust_rmtree, make_public_dir
-from toil.lib.threading import get_process_name, process_name_exists
+from toil.lib.threads import get_process_name, process_name_exists
 from toil.job import Job, JobDescription
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -72,7 +72,7 @@ class NonCachingFileStore(AbstractFileStore):
     def writeGlobalFile(self, localFileName: str, cleanup: bool=False) -> FileID:
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
         creatorID = self.jobDesc.jobStoreID
-        fileStoreID = self.jobStore.writeFile(absLocalFileName, creatorID, cleanup)
+        fileStoreID = self.jobStore.write_file(absLocalFileName, creatorID, cleanup)
         if absLocalFileName.startswith(self.localTempDir):
             # Only files in the appropriate directory should become local files
             # we can delete with deleteLocalFile
@@ -88,19 +88,19 @@ class NonCachingFileStore(AbstractFileStore):
         else:
             localFilePath = self.getLocalTempFileName()
 
-        self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
+        self.jobStore.read_file(fileStoreID, localFilePath, symlink=symlink)
         self.localFileMap[fileStoreID].append(localFilePath)
         self.logAccess(fileStoreID, localFilePath)
         return localFilePath
 
     @contextmanager
     def readGlobalFileStream(self, fileStoreID: str, encoding: Optional[str] = None, errors: Optional[str] = None) -> Iterator[Union[BinaryIO, TextIO]]:
-        with self.jobStore.readFileStream(fileStoreID, encoding=encoding, errors=errors) as f:
+        with self.jobStore.read_file_stream(fileStoreID, encoding=encoding, errors=errors) as f:
             self.logAccess(fileStoreID)
             yield f
 
     def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
-        self.jobStore.exportFile(jobStoreFileID, dstUrl)
+        self.jobStore.export_file(jobStoreFileID, dstUrl)
 
     def deleteLocalFile(self, fileStoreID: str) -> None:
         try:
@@ -140,16 +140,16 @@ class NonCachingFileStore(AbstractFileStore):
             # the job wrapper is completed.
             self.jobDesc.filesToDelete = list(self.filesToDelete)
             # Complete the job
-            self.jobStore.update(self.jobDesc)
+            self.jobStore.update_job(self.jobDesc)
             # Delete any remnant jobs
-            list(map(self.jobStore.delete, self.jobsToDelete))
+            list(map(self.jobStore.delete_job, self.jobsToDelete))
             # Delete any remnant files
-            list(map(self.jobStore.deleteFile, self.filesToDelete))
+            list(map(self.jobStore.delete_file, self.filesToDelete))
             # Remove the files to delete list, having successfully removed the files
             if len(self.filesToDelete) > 0:
                 self.jobDesc.filesToDelete = []
                 # Update, removing emptying files to delete
-                self.jobStore.update(self.jobDesc)
+                self.jobStore.update_job(self.jobDesc)
         except:
             self._terminateEvent.set()
             raise

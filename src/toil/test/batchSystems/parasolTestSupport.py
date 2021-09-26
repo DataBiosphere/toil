@@ -21,7 +21,7 @@ import time
 
 from toil import physicalMemory
 from toil.lib.objects import InnerClass
-from toil.lib.threading import cpu_count
+from toil.lib.threads import cpu_count
 
 log = logging.getLogger(__name__)
 

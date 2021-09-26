@@ -20,7 +20,7 @@ from toil.batchSystems.registry import (
     BATCH_SYSTEMS,
     DEFAULT_BATCH_SYSTEM,
 )
-from toil.lib.threading import cpu_count
+from toil.lib.threads import cpu_count
 
 
 def getPublicIP() -> str:

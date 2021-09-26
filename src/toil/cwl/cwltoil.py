@@ -114,7 +114,7 @@ from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.lib.threading import ExceptionalThread
+from toil.lib.threads import ExceptionalThread
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
@@ -1212,7 +1212,7 @@ def toil_get_file(
         ) -> None:
             try:
                 with open(pipe_name, "wb") as pipe:
-                    with file_store.jobStore.readFileStream(file_store_id) as fi:
+                    with file_store.jobStore.read_file_stream(file_store_id) as fi:
                         file_store.logAccess(file_store_id)
                         chunk_sz = 1024
                         while True:

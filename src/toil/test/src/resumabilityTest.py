@@ -73,9 +73,9 @@ def badChild(job):
     Fails the first time it's run, succeeds the second time.
     """
     try:
-        with job.fileStore.jobStore.readSharedFileStream("alreadyRun") as fileHandle:
+        with job.fileStore.jobStore.read_shared_file_stream("alreadyRun") as fileHandle:
             fileHandle.read()
     except NoSuchFileException as ex:
-        with job.fileStore.jobStore.writeSharedFileStream("alreadyRun", isProtected=False) as fileHandle:
+        with job.fileStore.jobStore.write_shared_file_stream("alreadyRun", encrypted=False) as fileHandle:
             fileHandle.write(b"failed once\n")
         raise RuntimeError("this is an expected error: {}".format(str(ex)))

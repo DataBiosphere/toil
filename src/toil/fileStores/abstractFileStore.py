@@ -246,8 +246,8 @@ class AbstractFileStore(ABC):
                   2) the toil.fileStores.FileID of the resulting file in the job store.
         """
         
-        with self.jobStore.writeFileStream(self.jobDesc.jobStoreID, cleanup, basename,
-                encoding, errors) as (backingStream, fileStoreID):
+        with self.jobStore.write_file_stream(self.jobDesc.jobStoreID, cleanup, basename,
+                                             encoding, errors) as (backingStream, fileStoreID):
           
             # We have a string version of the file ID, and the backing stream.
             # We need to yield a stream the caller can write to, and a FileID
@@ -371,7 +371,7 @@ class AbstractFileStore(ABC):
         if size is None:
             # It fell off
             # Someone is mixing FileStore and JobStore file APIs, or serializing FileIDs as strings.
-            size = self.jobStore.getFileSize(fileStoreID)
+            size = self.jobStore.get_file_size(fileStoreID)
 
         return cast(int, size)
 
@@ -406,7 +406,7 @@ class AbstractFileStore(ABC):
 
     # Functions used to read and write files directly between a source url and the job store.
     def importFile(self, srcUrl: str, sharedFileName: Optional[str] = None) -> Optional[FileID]:
-        return self.jobStore.importFile(srcUrl, sharedFileName=sharedFileName)
+        return self.jobStore.import_file(srcUrl, sharedFileName=sharedFileName)
 
     def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
         raise NotImplementedError()

@@ -33,7 +33,7 @@ from urllib.request import urlopen
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.lib.expando import Expando
-from toil.lib.threading import cpu_count
+from toil.lib.threads import cpu_count
 from toil.resource import Resource
 from toil.statsAndLogging import configure_root_logger, set_log_level
 

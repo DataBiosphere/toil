@@ -771,7 +771,7 @@ class Toil:
             config = jobStore.config
             config.setOptions(self.options)
             config.workflowAttemptNumber += 1
-            jobStore.writeConfig()
+            jobStore.write_config()
         self.config = config
         self._jobStore = jobStore
         self._inContextManager = True
@@ -831,7 +831,7 @@ class Toil:
             # a shared file, where we can find and unpickle it at the end of the workflow.
             # Unpickling the promise will automatically substitute the promise for the actual
             # return value.
-            with self._jobStore.writeSharedFileStream('rootJobReturnValue') as fH:
+            with self._jobStore.write_shared_file_stream('rootJobReturnValue') as fH:
                 rootJob.prepareForPromiseRegistration(self._jobStore)
                 promise = rootJob.rv()
                 pickle.dump(promise, fH, protocol=pickle.HIGHEST_PROTOCOL)
@@ -860,11 +860,11 @@ class Toil:
 
         from toil.job import JobException
         try:
-            self._jobStore.loadRootJob()
+            self._jobStore.load_root_job()
         except JobException:
             logger.warning(
                 'Requested restart but the workflow has already been completed; allowing exports to rerun.')
-            return self._jobStore.getRootJobReturnValue()
+            return self._jobStore.get_root_job_return_value()
 
         self._batchSystem = self.createBatchSystem(self.config)
         self._setupAutoDeployment()
@@ -987,7 +987,7 @@ class Toil:
                         not self.config.disableAutoDeployment):
                     # Note that by saving the ModuleDescriptor, and not the Resource we allow for
                     # redeploying a potentially modified user script on workflow restarts.
-                    with self._jobStore.writeSharedFileStream('userScript') as f:
+                    with self._jobStore.write_shared_file_stream('userScript') as f:
                         pickle.dump(userScript, f, protocol=pickle.HIGHEST_PROTOCOL)
                 else:
                     from toil.batchSystems.singleMachine import \
@@ -1002,7 +1002,7 @@ class Toil:
                 # We could deploy a user script
                 from toil.jobStores.abstractJobStore import NoSuchFileException
                 try:
-                    with self._jobStore.readSharedFileStream('userScript') as f:
+                    with self._jobStore.read_shared_file_stream('userScript') as f:
                         userScript = safeUnpickleFromStream(f)
                 except NoSuchFileException:
                     logger.debug('User script neither set explicitly nor present in the job store.')
@@ -1027,7 +1027,7 @@ class Toil:
         """
         self._assertContextManagerUsed()
         srcUrl = self.normalize_uri(srcUrl, check_existence=True)
-        return self._jobStore.importFile(srcUrl, sharedFileName=sharedFileName, symlink=symlink)
+        return self._jobStore.import_file(srcUrl, sharedFileName=sharedFileName, symlink=symlink)
 
     def exportFile(self, jobStoreFileID: Union[FileID, str], dstUrl: str) -> None:
         """
@@ -1038,7 +1038,7 @@ class Toil:
         """
         self._assertContextManagerUsed()
         dstUrl = self.normalize_uri(dstUrl)
-        self._jobStore.exportFile(jobStoreFileID, dstUrl)
+        self._jobStore.export_file(jobStoreFileID, dstUrl)
 
     @staticmethod
     def normalize_uri(uri: str, check_existence: bool = False) -> str:
@@ -1066,7 +1066,7 @@ class Toil:
         """
         Sets the environment variables required by the job store and those passed on command line.
         """
-        for envDict in (self._jobStore.getEnv(), self.config.environment):
+        for envDict in (self._jobStore.get_env(), self.config.environment):
             for k, v in envDict.items():
                 self._batchSystem.setEnv(k, v)
 
@@ -1075,7 +1075,7 @@ class Toil:
         Puts the environment in a globally accessible pickle file.
         """
         # Dump out the environment of this process in the environment pickle file.
-        with self._jobStore.writeSharedFileStream("environment.pickle") as fileHandle:
+        with self._jobStore.write_shared_file_stream("environment.pickle") as fileHandle:
             pickle.dump(dict(os.environ), fileHandle, pickle.HIGHEST_PROTOCOL)
         logger.debug("Written the environment for the jobs to the environment file")
 
@@ -1183,7 +1183,7 @@ class Toil:
         Other methods will rely on always having the most current pid available.
         So far there is no reason to store any old pids.
         """
-        with self._jobStore.writeSharedFileStream('pid.log') as f:
+        with self._jobStore.write_shared_file_stream('pid.log') as f:
             f.write(str(os.getpid()).encode('utf-8'))
 
 

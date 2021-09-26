@@ -3,7 +3,7 @@ import logging
 import os
 from abc import ABC, abstractmethod
 
-from toil.lib.threading import ExceptionalThread
+from toil.lib.threads import ExceptionalThread
 
 log = logging.getLogger(__name__)
 

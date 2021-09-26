@@ -13,6 +13,8 @@
 # limitations under the License.
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
+# Note: renamed from "threading.py" to "threads.py" to avoid conflicting imports
+# from the built-in "threading" from psutil in python3.9
 import atexit
 import fcntl
 import logging
@@ -24,7 +26,7 @@ import threading
 import traceback
 from contextlib import contextmanager
 
-import psutil # type: ignore
+import psutil  # type: ignore
 
 from toil.lib.exceptions import raise_
 from toil.lib.io import robust_rmtree

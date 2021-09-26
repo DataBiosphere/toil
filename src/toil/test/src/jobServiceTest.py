@@ -289,7 +289,7 @@ class ToyService(Job.Service):
 
                 # Try reading a line from the input file
                 try:
-                    with jobStore.readFileStream(inJobStoreID) as fH:
+                    with jobStore.read_file_stream(inJobStoreID) as fH:
                         fH = codecs.getreader('utf-8')(fH)
                         line = fH.readline()
                 except:
@@ -308,7 +308,7 @@ class ToyService(Job.Service):
                     continue
 
                 # Write out the resulting read integer and the message
-                with jobStore.updateFileStream(outJobStoreID) as fH:
+                with jobStore.update_file_stream(outJobStoreID) as fH:
                     fH.write(("%s %s\n" % (inputInt, messageInt)).encode('utf-8'))
 
                 logger.debug("Service worker did useful work")
@@ -329,7 +329,7 @@ def serviceAccessor(job, communicationFiles, outFile, randInt):
 
     # Write the integer into the file
     logger.debug("Writing key to inJobStoreFileID")
-    with job.fileStore.jobStore.updateFileStream(inJobStoreFileID) as fH:
+    with job.fileStore.jobStore.update_file_stream(inJobStoreFileID) as fH:
         fH.write(("%s\n" % key).encode('utf-8'))
 
     logger.debug("Trying to read key and message from outJobStoreFileID")
@@ -337,7 +337,7 @@ def serviceAccessor(job, communicationFiles, outFile, randInt):
         time.sleep(0.2) #Avoid thrashing
 
         # Try reading an integer from the input file and writing out the message
-        with job.fileStore.jobStore.readFileStream(outJobStoreFileID) as fH:
+        with job.fileStore.jobStore.read_file_stream(outJobStoreFileID) as fH:
             fH = codecs.getreader('utf-8')(fH)
             line = fH.readline()
 
