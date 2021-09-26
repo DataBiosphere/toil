@@ -315,7 +315,7 @@ class AWSJobStore(AbstractJobStore):
         self._batchedUpdates = None
 
     def assign_job_id(self, job_description):
-        jobStoreID = self._newJobID()
+        jobStoreID = self._new_job_id()
         logger.debug("Assigning ID to job %s for '%s'",
                      jobStoreID, '<no command>' if job_description.command is None else job_description.command)
         job_description.jobStoreID = jobStoreID
@@ -417,7 +417,7 @@ class AWSJobStore(AbstractJobStore):
                             self.s3_client.delete_object(Bucket=self.filesBucket.name,
                                                          Key=compat_bytes(item.name))
 
-    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
+    def get_empty_file_store_id(self, jobStoreID=None, cleanup=False, basename=None):
         info = self.FileInfo.create_job(jobStoreID if cleanup else None)
         with info.uploadStream() as _:
             # Empty
@@ -426,15 +426,15 @@ class AWSJobStore(AbstractJobStore):
         logger.debug("Created %r.", info)
         return info.fileID
 
-    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False, symlink=False):
+    def _import_file(self, otherCls, url, sharedFileName=None, hardlink=False, symlink=False):
         if issubclass(otherCls, AWSJobStore):
-            srcObj = self._getObjectForUrl(url, existing=True)
+            srcObj = self._get_object_for_url(url, existing=True)
             size = srcObj.content_length
             if sharedFileName is None:
                 info = self.FileInfo.create_job(srcObj.key)
             else:
                 self._requireValidSharedFileName(sharedFileName)
-                jobStoreFileID = self._sharedFileID(sharedFileName)
+                jobStoreFileID = self._shared_file_id(sharedFileName)
                 info = self.FileInfo.loadOrCreate(jobStoreFileID=jobStoreFileID,
                                                   ownerID=str(self.sharedFileOwnerID),
                                                   encrypted=None)
@@ -445,9 +445,9 @@ class AWSJobStore(AbstractJobStore):
             return super(AWSJobStore, self)._importFile(otherCls, url,
                                                         sharedFileName=sharedFileName)
 
-    def _exportFile(self, otherCls, jobStoreFileID, url):
+    def _export_file(self, otherCls, jobStoreFileID, url):
         if issubclass(otherCls, AWSJobStore):
-            dstObj = self._getObjectForUrl(url)
+            dstObj = self._get_object_for_url(url)
             info = self.FileInfo.loadOrFail(jobStoreFileID)
             info.copyTo(dstObj)
         else:
@@ -455,11 +455,11 @@ class AWSJobStore(AbstractJobStore):
 
     @classmethod
     def get_size(cls, url):
-        return cls._getObjectForUrl(url, existing=True).content_length
+        return cls._get_object_for_url(url, existing=True).content_length
 
     @classmethod
-    def _readFromUrl(cls, url, writable):
-        srcObj = cls._getObjectForUrl(url, existing=True)
+    def _read_from_url(cls, url, writable):
+        srcObj = cls._get_object_for_url(url, existing=True)
         srcObj.download_fileobj(writable)
         return (
             srcObj.content_length,
@@ -467,8 +467,8 @@ class AWSJobStore(AbstractJobStore):
         )
 
     @classmethod
-    def _writeToUrl(cls, readable, url, executable=False):
-        dstObj = cls._getObjectForUrl(url)
+    def _write_to_url(cls, readable, url, executable=False):
+        dstObj = cls._get_object_for_url(url)
 
         logger.debug("Uploading %s", dstObj.key)
         # uploadFile takes care of using multipart upload if the file is larger than partSize (default to 5MB)
@@ -479,7 +479,7 @@ class AWSJobStore(AbstractJobStore):
                    partSize=5 * 1000 * 1000)
 
     @staticmethod
-    def _getObjectForUrl(url, existing: Optional[bool] = None):
+    def _get_object_for_url(url, existing: Optional[bool] = None):
         """
         Extracts a key (object) from a given s3:// URL.
 
@@ -527,7 +527,7 @@ class AWSJobStore(AbstractJobStore):
         return obj
 
     @classmethod
-    def _supportsUrl(cls, url, export=False):
+    def _supports_url(cls, url, export=False):
         return url.scheme.lower() == 's3'
 
     def write_file(self, local_path, job_id=None, cleanup=False):
@@ -548,7 +548,7 @@ class AWSJobStore(AbstractJobStore):
     @contextmanager
     def write_shared_file_stream(self, shared_file_name, encrypted=None, encoding=None, errors=None):
         self._requireValidSharedFileName(shared_file_name)
-        info = self.FileInfo.loadOrCreate(jobStoreFileID=self._sharedFileID(shared_file_name),
+        info = self.FileInfo.loadOrCreate(jobStoreFileID=self._shared_file_id(shared_file_name),
                                           ownerID=str(self.sharedFileOwnerID),
                                           encrypted=encrypted)
         with info.uploadStream(encoding=encoding, errors=errors) as writable:
@@ -596,7 +596,7 @@ class AWSJobStore(AbstractJobStore):
     @contextmanager
     def read_shared_file_stream(self, shared_file_name, encoding=None, errors=None):
         self._requireValidSharedFileName(shared_file_name)
-        jobStoreFileID = self._sharedFileID(shared_file_name)
+        jobStoreFileID = self._shared_file_id(shared_file_name)
         info = self.FileInfo.loadOrFail(jobStoreFileID, customName=shared_file_name)
         logger.debug("Reading %r for shared file %r into stream.", info, shared_file_name)
         with info.downloadStream(encoding=encoding, errors=errors) as readable:
@@ -621,18 +621,18 @@ class AWSJobStore(AbstractJobStore):
     def read_logs(self, callback, read_all=False):
         itemsProcessed = 0
 
-        for info in self._readStatsAndLogging(callback, self.statsFileOwnerID):
+        for info in self._read_logs(callback, self.statsFileOwnerID):
             info._ownerID = self.readStatsFileOwnerID
             info.save()
             itemsProcessed += 1
 
         if read_all:
-            for _ in self._readStatsAndLogging(callback, self.readStatsFileOwnerID):
+            for _ in self._read_logs(callback, self.readStatsFileOwnerID):
                 itemsProcessed += 1
 
         return itemsProcessed
 
-    def _readStatsAndLogging(self, callback, ownerId):
+    def _read_logs(self, callback, ownerId):
         items = None
         for attempt in retry_sdb():
             with attempt:
@@ -650,7 +650,7 @@ class AWSJobStore(AbstractJobStore):
     # TODO: Make this retry more specific?
     #  example: https://github.com/DataBiosphere/toil/issues/3378
     @retry()
-    def getPublicUrl(self, jobStoreFileID):
+    def get_public_url(self, jobStoreFileID):
         info = self.FileInfo.loadOrFail(jobStoreFileID)
         if info.content is not None:
             with info.uploadStream(allowInlining=False) as f:
@@ -680,9 +680,9 @@ class AWSJobStore(AbstractJobStore):
         url = urllib.parse.urlunsplit((scheme, netloc, path, query, fragment))
         return url
 
-    def getSharedPublicUrl(self, sharedFileName):
+    def get_shared_public_url(self, sharedFileName):
         self._requireValidSharedFileName(sharedFileName)
-        return self.getPublicUrl(self._sharedFileID(sharedFileName))
+        return self.get_public_url(self._shared_file_id(sharedFileName))
 
     def _connectSimpleDB(self):
         """
@@ -840,7 +840,7 @@ class AWSJobStore(AbstractJobStore):
                     else:
                         raise
 
-    def _newJobID(self):
+    def _new_job_id(self):
         return str(uuid.uuid4())
 
     # A dummy job ID under which all shared files are stored
@@ -852,7 +852,7 @@ class AWSJobStore(AbstractJobStore):
     # A dummy job ID under which all read stats files are stored
     readStatsFileOwnerID = uuid.UUID('e77fc3aa-d232-4255-ae04-f64ee8eb0bfa')
 
-    def _sharedFileID(self, sharedFileName):
+    def _shared_file_id(self, sharedFileName):
         return str(uuid.uuid5(self.sharedFileOwnerID, sharedFileName))
 
     @InnerClass

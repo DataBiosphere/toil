@@ -436,7 +436,7 @@ class AbstractJobStoreTest(object):
             # First recreate job
             jobstore1.assign_job_id(jobOnJobStore1)
             jobstore1.create_job(jobOnJobStore1)
-            fileOne = jobstore2.getEmptyFileStoreID(jobOnJobStore1.jobStoreID, cleanup=True)
+            fileOne = jobstore2.get_empty_file_store_id(jobOnJobStore1.jobStoreID, cleanup=True)
             # Check file exists
             self.assertTrue(jobstore2.file_exists(fileOne))
             self.assertTrue(jobstore1.file_exists(fileOne))
@@ -804,7 +804,7 @@ class AbstractJobStoreTest(object):
                 job = self.arbitraryJob()
                 self.jobstore_initialized.assign_job_id(job)
                 self.jobstore_initialized.create_job(job)
-                fileIDs = [self.jobstore_initialized.getEmptyFileStoreID(job.jobStoreID, cleanup=True) for _ in
+                fileIDs = [self.jobstore_initialized.get_empty_file_store_id(job.jobStoreID, cleanup=True) for _ in
                            range(0, numFiles)]
                 self.jobstore_initialized.delete_job(job.jobStoreID)
                 for fileID in fileIDs:
@@ -1052,7 +1052,7 @@ class AbstractJobStoreTest(object):
         @travis_test
         def testEmptyFileStoreIDIsReadable(self):
             """Simply creates an empty fileStoreID and attempts to read from it."""
-            id = self.jobstore_initialized.getEmptyFileStoreID()
+            id = self.jobstore_initialized.get_empty_file_store_id()
             fh, path = tempfile.mkstemp()
             try:
                 self.jobstore_initialized.read_file(id, path)

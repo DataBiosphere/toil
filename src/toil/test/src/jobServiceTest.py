@@ -259,8 +259,8 @@ class ToyService(Job.Service):
         self.error = Event()
         # Note that service jobs are special and do not necessarily have job.jobStoreID.
         # So we don't associate these files with this job.
-        inJobStoreID = job.fileStore.jobStore.getEmptyFileStoreID()
-        outJobStoreID = job.fileStore.jobStore.getEmptyFileStoreID()
+        inJobStoreID = job.fileStore.jobStore.get_empty_file_store_id()
+        outJobStoreID = job.fileStore.jobStore.get_empty_file_store_id()
         self.serviceThread = Thread(target=self.serviceWorker,
                                     args=(job.fileStore.jobStore, self.terminate, self.error,
                                           inJobStoreID, outJobStoreID,
