@@ -34,7 +34,7 @@ class WDLRuntimeError(Exception):
     """ WDL-related run-time error."""
 
     def __init__(self, message):
-        super(WDLRuntimeError, self).__init__(message)
+        super().__init__(message)
 
 
 class WDLJSONEncoder(json.JSONEncoder):
@@ -164,7 +164,7 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
 
 def process_single_infile(wdl_file: WDLFile, fileStore: AbstractFileStore) -> WDLFile:
     f = wdl_file.file_path
-    logger.info('Importing {f} into the jobstore.'.format(f=f))
+    logger.info(f'Importing {f} into the jobstore.')
     if f.startswith('http://') or f.startswith('https://') or \
             f.startswith('file://') or f.startswith('wasb://'):
         filepath = fileStore.importFile(f)
@@ -178,7 +178,7 @@ def process_single_infile(wdl_file: WDLFile, fileStore: AbstractFileStore) -> WD
             success = False
             for region in EC2Regions:
                 try:
-                    html_path = 'http://s3.{}.amazonaws.com/'.format(region) + f[5:]
+                    html_path = f'http://s3.{region}.amazonaws.com/' + f[5:]
                     filepath = fileStore.importFile(html_path)
                     preserveThisFilename = os.path.basename(f)
                     success = True
@@ -438,7 +438,7 @@ def parse_memory(memory):
             unit = mem_split[1]
             return int(float(num) * bytes_in_unit(unit))
         else:
-            raise RuntimeError('Memory parsing failed: {}'.format(memory))
+            raise RuntimeError(f'Memory parsing failed: {memory}')
     except:
         return 2147483648  # toil's default
 
@@ -465,7 +465,7 @@ def parse_disk(disk):
             if len(d) > 1:
                 for part in d:
                     if is_number(part):
-                        total_disk += parse_memory('{} GB'.format(part))
+                        total_disk += parse_memory(f'{part} GB')
             else:
                 return parse_memory(d[0]) if parse_memory(d[0]) > 2147483648 else 2147483648
         return total_disk if total_disk > 2147483648 else 2147483648
@@ -596,7 +596,7 @@ def read_lines(path: str) -> List[str]:
     WDL syntax: Array[String] read_lines(String|File)
     """
     # file should already be imported locally via `process_and_read_file`
-    with open(path, "r") as f:
+    with open(path) as f:
         return f.read().rstrip('\n').split('\n')
 
 
@@ -615,7 +615,7 @@ def read_tsv(path: str, delimiter: str = '\t') -> List[List[str]]:
     WDL syntax: Array[Array[String]] read_tsv(String|File)
     """
     tsv_array = []
-    with open(path, 'r') as f:
+    with open(path) as f:
         data_file = csv.reader(f, delimiter=delimiter)
         for line in data_file:
             tsv_array.append(line)
@@ -646,7 +646,7 @@ def read_json(path: str) -> Any:
 
     WDL syntax: mixed read_json(String|File)
     """
-    with open(path, "r") as f:
+    with open(path) as f:
         return json.load(f)
 
 
@@ -659,7 +659,7 @@ def read_map(path: str) -> Dict[str, str]:
     WDL syntax: Map[String, String] read_map(String|File)
     """
     d = dict()
-    with open(path, "r") as f:
+    with open(path) as f:
         for line in f:
             line = line.rstrip()
             if not line:
@@ -680,7 +680,7 @@ def read_int(path: Union[str, WDLFile]) -> int:
     if isinstance(path, WDLFile):
         path = path.file_path
 
-    with open(path, 'r') as f:
+    with open(path) as f:
         return int(f.read().strip())
 
 
@@ -694,7 +694,7 @@ def read_string(path: Union[str, WDLFile]) -> str:
     if isinstance(path, WDLFile):
         path = path.file_path
 
-    with open(path, 'r') as f:
+    with open(path) as f:
         return str(f.read().strip())
 
 
@@ -708,7 +708,7 @@ def read_float(path: Union[str, WDLFile]) -> float:
     if isinstance(path, WDLFile):
         path = path.file_path
 
-    with open(path, 'r') as f:
+    with open(path) as f:
         return float(f.read().strip())
 
 
@@ -723,7 +723,7 @@ def read_boolean(path: Union[str, WDLFile]) -> bool:
     if isinstance(path, WDLFile):
         path = path.file_path
 
-    with open(path, 'r') as f:
+    with open(path) as f:
         return f.read().strip().lower() == 'true'
 
 

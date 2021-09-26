@@ -23,7 +23,7 @@ import unittest
 import uuid
 import zipfile
 from io import StringIO
-from mock import Mock, call
+from unittest.mock import Mock, call
 from typing import Dict, List, MutableMapping, Optional
 from urllib.request import urlretrieve
 
@@ -210,7 +210,7 @@ class CWLv10Test(ToilTest):
                      os.path.join(self.rootDir, 'src/toil/test/cwl/mpi_simple.cwl')]
         cwltoil.main(main_args, stdout=stdout)
         out = json.loads(stdout.getvalue())
-        with open(out.get('pids', {}).get('location')[len('file://'):], 'r') as f:
+        with open(out.get('pids', {}).get('location')[len('file://'):]) as f:
             two_pids = [int(i) for i in f.read().split()]
         self.assertEqual(len(two_pids), 2)
         self.assertTrue(isinstance(two_pids[0], int))
@@ -227,7 +227,7 @@ class CWLv10Test(ToilTest):
         out = json.loads(stdout.getvalue())
         self.assertEqual(out['output']['checksum'], 'sha1$d14dd02e354918b4776b941d154c18ebc15b9b38')
         self.assertEqual(out['output']['size'], 24)
-        with open(out['output']['location'][len('file://'):], 'r') as f:
+        with open(out['output']['location'][len('file://'):]) as f:
             self.assertEqual(f.read().strip(), 'When is s4 coming out?')
 
     def test_run_revsort(self):
@@ -598,7 +598,7 @@ class CWLv12Test(ToilTest):
         out[out_name].pop("nameext", None)
         out[out_name].pop("nameroot", None)
         self.assertEqual(out, self._expected_streaming_output(self.outDir))
-        with open(out[out_name]["location"][len("file://") :], "r") as f:
+        with open(out[out_name]["location"][len("file://") :]) as f:
             self.assertEqual(f.read().strip(), "When is s4 coming out?")
 
 

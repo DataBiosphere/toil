@@ -51,7 +51,7 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
 
     def _check_output(self, path, expected_result, strip=True):
         """ Compare expected_result to content from file."""
-        with open(path, 'r') as f:
+        with open(path) as f:
             result = f.read()
         if strip:
             result = result.strip()
@@ -279,7 +279,7 @@ class WdlWorkflowsTest(ToilTest):
 
     @classmethod
     def setUpClass(cls):
-        super(WdlWorkflowsTest, cls).setUpClass()
+        super().setUpClass()
         cls.program = os.path.abspath("src/toil/wdl/toilwdl.py")
         cls.test_path = os.path.abspath("src/toil/test/wdl")
 
@@ -319,7 +319,7 @@ class WdlWorkflowsTest(ToilTest):
                 elif expected_result is not None:
                     subprocess.check_call([exactPython, self.program, wdl_file, json_file, '-o', output_dir])
                     output = os.path.join(output_dir, 'output.txt')
-                    with open(output, 'r') as f:
+                    with open(output) as f:
                         result = f.read().strip()
                     self.assertEqual(result, expected_result)
 
@@ -338,7 +338,7 @@ class WdlLanguageSpecWorkflowsTest(WdlWorkflowsTest):
 
     @classmethod
     def setUpClass(cls):
-        super(WdlLanguageSpecWorkflowsTest, cls).setUpClass()
+        super().setUpClass()
         cls.test_path = os.path.abspath("src/toil/test/wdl/wdl_specification")
 
     def test_type_pair(self):
@@ -374,7 +374,7 @@ class WdlStandardLibraryWorkflowsTest(WdlWorkflowsTest):
 
     @classmethod
     def setUpClass(cls):
-        super(WdlStandardLibraryWorkflowsTest, cls).setUpClass()
+        super().setUpClass()
         cls.test_path = os.path.abspath("src/toil/test/wdl/standard_library")
 
     def test_sub(self):

@@ -65,7 +65,7 @@ class FileJobStore(AbstractJobStore):
         :param int fanOut: Number of items to have in a directory before making
                            subdirectories
         """
-        super(FileJobStore, self).__init__(path)
+        super().__init__(path)
         self.jobStoreDir = os.path.abspath(path)
         logger.debug("Path to job store directory is '%s'.", self.jobStoreDir)
 
@@ -105,12 +105,12 @@ class FileJobStore(AbstractJobStore):
         os.makedirs(self.sharedFilesDir, exist_ok=True)
         self.linkImports = config.linkImports
         self.moveExports = config.moveExports
-        super(FileJobStore, self).initialize(config)
+        super().initialize(config)
 
     def resume(self):
         if not os.path.isdir(self.jobStoreDir):
             raise NoSuchJobStoreException(self.jobStoreDir)
-        super(FileJobStore, self).resume()
+        super().resume()
 
     def destroy(self):
         if os.path.exists(self.jobStoreDir):
@@ -303,7 +303,7 @@ class FileJobStore(AbstractJobStore):
                     self._copyOrLink(url, path, symlink=symlink)
                 return None
         else:
-            return super(FileJobStore, self)._importFile(otherCls, url,
+            return super()._importFile(otherCls, url,
                                                          sharedFileName=sharedFileName)
 
     def _exportFile(self, otherCls, jobStoreFileID, url):
@@ -316,7 +316,7 @@ class FileJobStore(AbstractJobStore):
             else:
                 atomic_copy(srcPath, destPath, executable=executable)
         else:
-            super(FileJobStore, self)._defaultExportFile(otherCls, jobStoreFileID, url)
+            super()._defaultExportFile(otherCls, jobStoreFileID, url)
 
     def _move_and_linkback(self, srcPath, destPath, executable):
         logger.debug("moveExports option, Moving src=%s to dest=%s ; then symlinking dest to src", srcPath, destPath)
@@ -586,7 +586,7 @@ class FileJobStore(AbstractJobStore):
             with open(self._getSharedFilePath(sharedFileName), 'rb' if encoding == None else 'rt', encoding=encoding, errors=errors) as f:
                 yield f
 
-        except IOError as e:
+        except OSError as e:
             if e.errno == errno.ENOENT:
                 raise NoSuchFileException(sharedFileName)
             else:
@@ -856,8 +856,7 @@ class FileJobStore(AbstractJobStore):
             childPath = os.path.join(root, child)
 
             # Recurse
-            for item in self._walkDynamicSprayDir(childPath):
-                yield item
+            yield from self._walkDynamicSprayDir(childPath)
 
     def _jobDirectories(self):
         """
@@ -886,8 +885,7 @@ class FileJobStore(AbstractJobStore):
                     continue
 
                 # Now we have only the directories that are named after jobs. Look inside them.
-                for inner in self._walkDynamicSprayDir(os.path.join(jobHoldingDir, jobNameDir)):
-                    yield inner
+                yield from self._walkDynamicSprayDir(os.path.join(jobHoldingDir, jobNameDir))
 
 
     def _statsDirectories(self):

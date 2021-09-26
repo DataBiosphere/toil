@@ -26,7 +26,7 @@ from toil.test import ToilTest, slow, travis_test
 
 class ImportExportFileTest(ToilTest):
     def setUp(self):
-        super(ImportExportFileTest, self).setUp()
+        super().setUp()
         self.tmp_dir = self._createTempDir()
         self.output_file_path = f'{self.tmp_dir}/out'
         self.message_portion_1 = 'What do you get when you cross a seal and a polar bear?'
@@ -66,7 +66,7 @@ class ImportExportFileTest(ToilTest):
                 workflow_final_output_file_id = toil.restart()
 
             toil.exportFile(workflow_final_output_file_id, f'file://{self.output_file_path}')
-            with open(self.output_file_path, 'r') as f:
+            with open(self.output_file_path) as f:
                 self.assertEqual(f.read(), f'{self.message_portion_1}{self.message_portion_2}')
 
     def _run_import_export_workflow(self, restart):
@@ -115,7 +115,7 @@ class ImportExportFileTest(ToilTest):
 
                 file_id = toil.importFile(os.path.relpath(file_path))
                 toil.exportFile(file_id, os.path.relpath(self.output_file_path))
-                with open(self.output_file_path, 'r') as f:
+                with open(self.output_file_path) as f:
                     self.assertEqual(f.read(), relative_path_data)
 
             with self.subTest('Test local importFile accepts a shared_file_name.'):

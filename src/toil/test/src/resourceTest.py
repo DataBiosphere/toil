@@ -22,7 +22,7 @@ from io import BytesIO
 from textwrap import dedent
 from zipfile import ZipFile
 
-from mock import MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from toil import inVirtualEnv
 from toil.resource import ModuleDescriptor, Resource, ResourceException

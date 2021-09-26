@@ -62,10 +62,10 @@ class hidden:
             if self.jobStoreType == 'file':
                 return self._getTestJobStorePath()
             elif self.jobStoreType == 'aws':
-                return 'aws:%s:cache-tests-%s' % (self.awsRegion(), str(uuid4()))
+                return 'aws:{}:cache-tests-{}'.format(self.awsRegion(), str(uuid4()))
             elif self.jobStoreType == 'google':
                 projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
-                return 'google:%s:cache-tests-%s' % (projectID, str(uuid4()))
+                return 'google:{}:cache-tests-{}'.format(projectID, str(uuid4()))
             else:
                 raise RuntimeError('Illegal job store type.')
 
@@ -238,7 +238,7 @@ class hidden:
                                         raise
                                     logger.info('Correctly fail to local-delete non-local file: %s', fsID)
                                 else:
-                                    assert False, "Was able to delete non-local file {}".format(fsID)
+                                    assert False, f"Was able to delete non-local file {fsID}"
                             else:
                                 logger.info('Delete local file: %s', fsID)
                                 job.fileStore.deleteLocalFile(fsID)
@@ -619,7 +619,7 @@ class hidden:
                 RealtimeLogger.info('Got %d for %s; expected %d', cacheInfoBytes, value, expectedBytes)
 
                 assert cacheInfoBytes == expectedBytes, 'Testing %s: Expected ' % value + \
-                                                  '%s but got %s.' % (expectedBytes, cacheInfoBytes)
+                                                  f'{expectedBytes} but got {cacheInfoBytes}.'
 
         @slow
         def testAsyncWriteWithCaching(self):
@@ -665,7 +665,7 @@ class hidden:
             job.fileStore.writeGlobalFile(testFile.name)
             job.fileStore.logToMaster('Writing copy 2 and saving ID')
             fsID = job.fileStore.writeGlobalFile(testFile.name)
-            job.fileStore.logToMaster('Copy 2 ID: {}'.format(fsID))
+            job.fileStore.logToMaster(f'Copy 2 ID: {fsID}')
 
             hidden.AbstractCachingFileStoreTest._readFromJobStoreWithoutAssertions(job, fsID)
 
@@ -839,7 +839,7 @@ class hidden:
                 A.addChild(jobs[i])
                 jobs[i].addChild(B)
             Job.Runner.startToil(A, self.options)
-            with open(x.name, 'r') as y:
+            with open(x.name) as y:
                 assert int(y.read()) > 2
 
         @staticmethod
@@ -904,7 +904,7 @@ class hidden:
             if not filecmp.cmp(fileName, outputFile):
                 logger.warning('Source file: %s', str(os.stat(fileName)))
                 logger.warning('Destination file: %s', str(os.stat(outputFile)))
-                raise RuntimeError("File {} did not properly get copied to {}".format(fileName, outputFile))
+                raise RuntimeError(f"File {fileName} did not properly get copied to {outputFile}")
 
         @slow
         def testFileStoreExportFile(self):
@@ -1299,7 +1299,7 @@ class hidden:
             Create and return a FileID for a non-cached file written via a stream.
             """
 
-            messageBytes = 'This is a test file\n'.encode('utf-8')
+            messageBytes = b'This is a test file\n'
 
             with job.fileStore.jobStore.writeFileStream() as (out, idString):
                 # Write directly to the job store so the caching file store doesn't even see it.

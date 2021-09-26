@@ -256,7 +256,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Call base class constructor, which will call createClusterSettings()
         # or readClusterSettings()
-        super(AWSProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
+        super().__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
 
         # After self.clusterName is set, generate a valid name for the S3 bucket associated with this cluster
         suffix = _S3_BUCKET_INTERNAL_SUFFIX
@@ -944,7 +944,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     def _toNameSpace(self) -> str:
         assert isinstance(self.clusterName, (str, bytes))
-        if any((char.isupper() for char in self.clusterName)) or '_' in self.clusterName:
+        if any(char.isupper() for char in self.clusterName) or '_' in self.clusterName:
             raise RuntimeError("The cluster name must be lowercase and cannot contain the '_' "
                                "character.")
         namespace = self.clusterName
@@ -1094,7 +1094,7 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _getBoto2BlockDeviceMapping(cls, type_info: InstanceType, rootVolSize: int = 50) -> Boto2BlockDeviceMapping:
         # determine number of ephemeral drives via cgcloud-lib (actually this is moved into toil's lib
-        bdtKeys = [''] + ['/dev/xvd{}'.format(c) for c in string.ascii_lowercase[1:]]
+        bdtKeys = [''] + [f'/dev/xvd{c}' for c in string.ascii_lowercase[1:]]
         bdm = Boto2BlockDeviceMapping()
         # Change root volume size to allow for bigger Docker instances
         root_vol = Boto2BlockDeviceType(delete_on_termination=True)
@@ -1126,7 +1126,7 @@ class AWSProvisioner(AbstractProvisioner):
         }]
 
         # Get all the virtual drives we might have
-        bdtKeys = ['/dev/xvd{}'.format(c) for c in string.ascii_lowercase]
+        bdtKeys = [f'/dev/xvd{c}' for c in string.ascii_lowercase]
 
         # The first disk is already attached for us so start with 2nd.
         # Disk count is weirdly a float in our instance database, so make it an int here.
@@ -1500,8 +1500,7 @@ class AWSProvisioner(AbstractProvisioner):
         marker = None
         while True:
             result = requestor_callable(marker=marker)
-            for p in getattr(result, result_attribute_name):
-                yield p
+            yield from getattr(result, result_attribute_name)
             if result.is_truncated == 'true':
                 marker = result.marker
             else:
@@ -1525,9 +1524,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         for page in paginator.paginate(**kwargs):
             # Invoke it and go through the pages
-            for item in page.get(result_attribute_name, []):
-                # Yield each returned item
-                yield item
+            yield from page.get(result_attribute_name, [])
 
     @awsRetry
     def _getRoleNames(self) -> List[str]:

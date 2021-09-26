@@ -26,7 +26,7 @@ from toil.toilState import ToilState
 
 logger = logging.getLogger( __name__ )
 
-class ServiceManager( object ):
+class ServiceManager:
     """
     Manages the scheduling of services.
     """

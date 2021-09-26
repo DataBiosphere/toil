@@ -34,8 +34,7 @@ class UserError(RuntimeError):
     def __init__(self, message=None, cause=None):
         if (message is None) == (cause is None):
             raise RuntimeError("Must pass either message or cause.")
-        super(
-            UserError, self).__init__(
+        super().__init__(
             message if cause is None else cause.message)
 
 
@@ -67,7 +66,7 @@ def retry_ec2(t=a_short_time, retry_for=10 * a_short_time, retry_while=not_found
 
 class UnexpectedResourceState(Exception):
     def __init__(self, resource, to_state, state):
-        super(UnexpectedResourceState, self).__init__(
+        super().__init__(
             "Expected state of %s to be '%s' but got '%s'" %
             (resource, to_state, state))
 

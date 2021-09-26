@@ -68,7 +68,7 @@ class JobServiceTest(ToilTest):
                 self.runToil(t)
 
                 # Check output
-                self.assertEqual(int(open(outFile, 'r').readline()), messageInt)
+                self.assertEqual(int(open(outFile).readline()), messageInt)
             finally:
                 os.remove(outFile)
 
@@ -99,7 +99,7 @@ class JobServiceTest(ToilTest):
             # This should pass, as adequate services available
             self.runToil(makeWorkflow(), maxServiceJobs=3)
             # Check we get expected output
-            assert open(outFile, 'r').read() == "woot1 woot2 woot3"
+            assert open(outFile).read() == "woot1 woot2 woot3"
         finally:
             os.remove(outFile)
 
@@ -129,7 +129,7 @@ class JobServiceTest(ToilTest):
                 self.runToil(t)
 
                 # Check output
-                self.assertEqual(list(map(int, open(outFile, 'r').readlines())), messages)
+                self.assertEqual(list(map(int, open(outFile).readlines())), messages)
             finally:
                 os.remove(outFile)
 
@@ -154,7 +154,7 @@ class JobServiceTest(ToilTest):
 
                 # Check output
                 for (messages, outFile) in zip(messageBundles, outFiles):
-                    self.assertEqual(list(map(int, open(outFile, 'r').readlines())), messages)
+                    self.assertEqual(list(map(int, open(outFile).readlines())), messages)
             finally:
                 list(map(os.remove, outFiles))
 
@@ -309,7 +309,7 @@ class ToyService(Job.Service):
 
                 # Write out the resulting read integer and the message
                 with jobStore.updateFileStream(outJobStoreID) as fH:
-                    fH.write(("%s %s\n" % (inputInt, messageInt)).encode('utf-8'))
+                    fH.write((f"{inputInt} {messageInt}\n").encode('utf-8'))
 
                 logger.debug("Service worker did useful work")
         except:
@@ -348,7 +348,7 @@ def serviceAccessor(job, communicationFiles, outFile, randInt):
         key2, message = tokens
 
         if int(key2) == key:
-            logger.debug("Matched key's: %s, writing message: %s with randInt: %s" % (key, int(message) - randInt, randInt))
+            logger.debug("Matched key's: {}, writing message: {} with randInt: {}".format(key, int(message) - randInt, randInt))
             with open(outFile, 'a') as fH:
                 fH.write("%s\n" % (int(message) - randInt))
             return

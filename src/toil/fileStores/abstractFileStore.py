@@ -428,7 +428,7 @@ class AbstractFileStore(ABC):
         else:
             return os.path.join(self.localTempDir, filePath)
 
-    class _StateFile(object):
+    class _StateFile:
         """
         Utility class to read and write dill-ed state dictionaries from/to a file into a namespace.
         """

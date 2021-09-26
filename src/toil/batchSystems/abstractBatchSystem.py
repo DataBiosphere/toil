@@ -37,20 +37,18 @@ EXIT_STATUS_UNAVAILABLE_VALUE = 255
 logger = logging.getLogger(__name__)
 
 
-UpdatedBatchJobInfo = NamedTuple('UpdatedBatchJobInfo',
-    [('jobID', str),
-     # The exit status (integer value) of the job. 0 implies successful.
-     # EXIT_STATUS_UNAVAILABLE_VALUE is used when the exit status is not available (e.g. job is lost).
-     ('exitStatus', int),
-     ('exitReason', Union[int, None]),  # The exit reason, if available. One of BatchJobExitReason enum.
-     ('wallTime', Union[float, int, None])])
+class UpdatedBatchJobInfo(NamedTuple):
+    jobID: str
+    exitStatus: int
+    exitReason: Union[int, None]
+    wallTime: Union[float, int, None]
 
 
 # Information required for worker cleanup on shutdown of the batch system.
-WorkerCleanupInfo = NamedTuple('WorkerCleanupInfo',
-    [('workDir', str),  # workdir path (where the cache would go)
-     ('workflowID', int),  # used to identify files specific to this workflow
-     ('cleanWorkDir', bool)])
+class WorkerCleanupInfo(NamedTuple):
+    workDir: str
+    workflowID: int
+    cleanWorkDir: bool
 
 
 class BatchJobExitReason(enum.Enum):
@@ -270,7 +268,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         :param int maxDisk: the maximum amount of disk space the batch system can
           request for any one job, in bytes
         """
-        super(BatchSystemSupport, self).__init__()
+        super().__init__()
         self.config = config
         self.maxCores = maxCores
         self.maxMemory = maxMemory
@@ -394,7 +392,7 @@ class BatchSystemLocalSupport(BatchSystemSupport):
     """
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        super(BatchSystemLocalSupport, self).__init__(config, maxCores, maxMemory, maxDisk)
+        super().__init__(config, maxCores, maxMemory, maxDisk)
         self.localBatch = BATCH_SYSTEM_FACTORY_REGISTRY[DEFAULT_BATCH_SYSTEM]()(
                 config, config.maxLocalJobs, maxMemory, maxDisk)
 
@@ -463,12 +461,12 @@ class BatchSystemCleanupSupport(BatchSystemLocalSupport):
         context = WorkerCleanupContext(self.workerCleanupInfo)
 
         # Send it along so the worker works inside of it
-        contexts = super(BatchSystemCleanupSupport, self).getWorkerContexts()
+        contexts = super().getWorkerContexts()
         contexts.append(context)
         return contexts
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        super(BatchSystemCleanupSupport, self).__init__(config, maxCores, maxMemory, maxDisk)
+        super().__init__(config, maxCores, maxMemory, maxDisk)
 
 class WorkerCleanupContext:
     """
@@ -505,7 +503,7 @@ class WorkerCleanupContext:
         # We have nothing to say about exceptions
         return False
 
-class NodeInfo(object):
+class NodeInfo:
     """
     The coresUsed attribute  is a floating point value between 0 (all cores idle) and 1 (all cores
     busy), reflecting the CPU load of the node.

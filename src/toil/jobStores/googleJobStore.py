@@ -86,7 +86,7 @@ class GoogleJobStore(AbstractJobStore):
 
     nodeServiceAccountJson = '/root/service_account.json'
     def __init__(self, locator):
-        super(GoogleJobStore, self).__init__(locator)
+        super().__init__(locator)
 
         try:
             projectID, namePrefix = locator.split(":", 1)
@@ -134,7 +134,7 @@ class GoogleJobStore(AbstractJobStore):
             self.bucket = self.storageClient.create_bucket(self.bucketName)
         except exceptions.Conflict:
             raise JobStoreExistsException(self.locator)
-        super(GoogleJobStore, self).initialize(config)
+        super().initialize(config)
 
         # set up sever side encryption after we set up config in super
         if self.config.sseKey is not None:
@@ -148,7 +148,7 @@ class GoogleJobStore(AbstractJobStore):
             self.bucket = self.storageClient.get_bucket(self.bucketName)
         except exceptions.NotFound:
             raise NoSuchJobStoreException(self.locator)
-        super(GoogleJobStore, self).resume()
+        super().resume()
 
     @googleRetry
     def destroy(self):

@@ -17,7 +17,7 @@
 import sys
 
 # TODO: isn't this built in to Python 3 now?
-class panic( object ):
+class panic:
     """
     The Python idiom for reraising a primary exception fails when the except block raises a
     secondary exception, e.g. while trying to cleanup. In that case the original exception is
@@ -38,7 +38,7 @@ class panic( object ):
     """
 
     def __init__( self, log=None ):
-        super( panic, self ).__init__( )
+        super().__init__( )
         self.log = log
         self.exc_info = None
 

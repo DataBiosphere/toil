@@ -674,9 +674,9 @@ def getNodeID() -> str:
     for idSourceFile in ["/var/lib/dbus/machine-id", "/proc/sys/kernel/random/boot_id"]:
         if os.path.exists(idSourceFile):
             try:
-                with open(idSourceFile, "r") as inp:
+                with open(idSourceFile) as inp:
                     nodeID = inp.readline().strip()
-            except EnvironmentError:
+            except OSError:
                 logger.warning(f"Exception when trying to read ID file {idSourceFile}.  "
                                f"Will try next method to get node ID.", exc_info=True)
             else:
@@ -730,7 +730,7 @@ class Toil:
 
         :param argparse.Namespace options: command line options specified by the user
         """
-        super(Toil, self).__init__()
+        super().__init__()
         self.options = options
         self.config = None
         """
@@ -1189,12 +1189,12 @@ class Toil:
 
 class ToilRestartException(Exception):
     def __init__(self, message):
-        super(ToilRestartException, self).__init__(message)
+        super().__init__(message)
 
 
 class ToilContextManagerException(Exception):
     def __init__(self):
-        super(ToilContextManagerException, self).__init__(
+        super().__init__(
             'This method cannot be called outside the "with Toil(...)" context manager.')
 
 
@@ -1215,9 +1215,9 @@ class ToilMetrics:
                                 envName='TOIL_DOCKER_REGISTRY',
                                 defaultValue=dockerRegistry)
 
-        self.mtailImage = "%s/toil-mtail:%s" % (registry, dockerTag)
-        self.grafanaImage = "%s/toil-grafana:%s" % (registry, dockerTag)
-        self.prometheusImage = "%s/toil-prometheus:%s" % (registry, dockerTag)
+        self.mtailImage = f"{registry}/toil-mtail:{dockerTag}"
+        self.grafanaImage = f"{registry}/toil-grafana:{dockerTag}"
+        self.prometheusImage = f"{registry}/toil-prometheus:{dockerTag}"
 
         self.startDashboard(clusterName=clusterName, zone=region)
 
