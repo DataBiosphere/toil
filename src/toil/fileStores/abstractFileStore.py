@@ -406,7 +406,7 @@ class AbstractFileStore(ABC):
 
     # Functions used to read and write files directly between a source url and the job store.
     def importFile(self, srcUrl: str, sharedFileName: Optional[str] = None) -> Optional[FileID]:
-        return self.jobStore.import_file(srcUrl, sharedFileName=sharedFileName)
+        return self.jobStore.import_file(srcUrl, shared_filename=sharedFileName)
 
     def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
         raise NotImplementedError()

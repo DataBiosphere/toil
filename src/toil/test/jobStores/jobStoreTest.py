@@ -381,8 +381,8 @@ class AbstractJobStoreTest(object):
 
             with jobstore1.write_shared_file_stream('nonEncrypted', encrypted=False) as f:
                 f.write(bar)
-            self.assertUrl(jobstore1.getSharedPublicUrl('nonEncrypted'))
-            self.assertRaises(NoSuchFileException, jobstore1.getSharedPublicUrl, 'missing')
+            self.assertUrl(jobstore1.get_shared_public_url('nonEncrypted'))
+            self.assertRaises(NoSuchFileException, jobstore1.get_shared_public_url, 'missing')
 
         def testReadWriteSharedFilesTextMode(self):
             """Checks if text mode is compatible for shared file streams."""

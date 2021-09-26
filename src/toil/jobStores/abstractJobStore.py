@@ -38,7 +38,7 @@ from toil.lib.io import WriteWatchingStream
 from toil.lib.retry import ErrorCondition, retry
 from toil.lib.compatibility import deprecated
 from typing import (cast, IO, List, TextIO, Tuple, Dict, Iterator, Callable,
-                    ValuesView, Set, Union, Optional, Any)
+                    ValuesView, Set, Union, Optional, Any, ContextManager)
 
 logger = logging.getLogger(__name__)
 
@@ -311,7 +311,7 @@ class AbstractJobStore(ABC):
         :rtype: toil.jobStore.AbstractJobStore
         """
         for jobStoreCls in self._jobStoreClasses:
-            if jobStoreCls._supportsUrl(url, export):
+            if jobStoreCls._supports_url(url, export):
                 return cast('AbstractJobStore', jobStoreCls)
         raise RuntimeError("No job store implementation supports %sporting for URL '%s'" %
                            ('ex' if export else 'im', url.geturl()))
@@ -324,7 +324,6 @@ class AbstractJobStore(ABC):
                     symlink: bool = False) -> Optional[FileID]:
         return self.import_file(srcUrl, sharedFileName, hardlink, symlink)
 
-    @abstractmethod
     def import_file(self,
                     src_uri: str,
                     shared_filename: Optional[str] = None,
@@ -381,31 +380,30 @@ class AbstractJobStore(ABC):
 
         :param str sharedFileName: Optional name to assign to the imported file within the job store
 
-        :return The jobStoreFileID of imported file or None if sharedFileName was given
+        :return The FileID of imported file or None if sharedFileName was given
         :rtype: toil.fileStores.FileID or None
         """
         if sharedFileName is None:
             with self.write_file_stream() as (writable, jobStoreFileID):
-                size, executable = otherCls._readFromUrl(url, writable)
+                size, executable = otherCls._read_from_url(url, writable)
                 return FileID(jobStoreFileID, size, executable)
         else:
             self._requireValidSharedFileName(sharedFileName)
             with self.write_shared_file_stream(sharedFileName) as writable:
-                otherCls._readFromUrl(url, writable)
+                otherCls._read_from_url(url, writable)
                 return None
 
     @deprecated(new_function_name='export_file')
     def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
         return self.export_file(jobStoreFileID, dstUrl)
 
-    @abstractmethod
     def export_file(self, file_id: FileID, dst_uri: str) -> None:
         """
         Exports file to destination pointed at by the destination URL. The exported file will be
         executable if and only if it was originally uploaded from an executable file on the
         local filesystem.
 
-        Refer to :meth:`.AbstractJobStore.importFile` documentation for currently supported URL schemes.
+        Refer to :meth:`.AbstractJobStore.import_file` documentation for currently supported URL schemes.
 
         Note that the helper method _exportFile is used to read from the source and write to
         destination. To implement any optimizations that circumvent this, the _exportFile method
@@ -418,9 +416,9 @@ class AbstractJobStore(ABC):
         """
         parseResult = urlparse(dst_uri)
         otherCls = self._findJobStoreForUrl(parseResult, export=True)
-        self._exportFile(otherCls, file_id, parseResult)
+        self._export_file(otherCls, file_id, parseResult)
 
-    def _exportFile(self, otherCls: 'AbstractJobStore', jobStoreFileID: FileID, url: ParseResult) -> None:
+    def _export_file(self, otherCls: 'AbstractJobStore', jobStoreFileID: FileID, url: ParseResult) -> None:
         """
         Refer to exportFile docstring for information about this method.
 
@@ -433,9 +431,9 @@ class AbstractJobStore(ABC):
 
         :param ParseResult url: The parsed URL of the file to export to.
         """
-        self._defaultExportFile(otherCls, jobStoreFileID, url)
+        self._default_export_file(otherCls, jobStoreFileID, url)
 
-    def _defaultExportFile(self, otherCls: 'AbstractJobStore', jobStoreFileID: FileID, url: ParseResult) -> None:
+    def _default_export_file(self, otherCls: 'AbstractJobStore', jobStoreFileID: FileID, url: ParseResult) -> None:
         """
         Refer to exportFile docstring for information about this method.
 
@@ -452,7 +450,7 @@ class AbstractJobStore(ABC):
         with self.read_file_stream(jobStoreFileID) as readable:
             if getattr(jobStoreFileID, 'executable', False):
                 executable = jobStoreFileID.executable
-            otherCls._writeToUrl(readable, url, executable)
+            otherCls._write_to_url(readable, url, executable)
 
     @classmethod
     @deprecated(new_function_name='get_size')
@@ -472,7 +470,7 @@ class AbstractJobStore(ABC):
 
     @classmethod
     @abstractmethod
-    def _readFromUrl(cls, url: ParseResult, writable: IO[bytes]) -> Tuple[int, bool]:
+    def _read_from_url(cls, url: ParseResult, writable: IO[bytes]) -> Tuple[int, bool]:
         """
         Reads the contents of the object at the specified location and writes it to the given
         writable stream.
@@ -491,7 +489,7 @@ class AbstractJobStore(ABC):
 
     @classmethod
     @abstractmethod
-    def _writeToUrl(cls, readable: Union[BytesIO, TextIO], url: ParseResult, executable: bool = False) -> None:
+    def _write_to_url(cls, readable: Union[BytesIO, TextIO], url: ParseResult, executable: bool = False) -> None:
         """
         Reads the contents of the given readable stream and writes it to the object at the
         specified location.
@@ -509,7 +507,7 @@ class AbstractJobStore(ABC):
 
     @classmethod
     @abstractmethod
-    def _supportsUrl(cls, url: ParseResult, export: bool = False) -> bool:
+    def _supports_url(cls, url: ParseResult, export: bool = False) -> bool:
         """
         Returns True if the job store supports the URL's scheme.
 
@@ -552,7 +550,6 @@ class AbstractJobStore(ABC):
         return {}
 
     # Cleanup functions
-    @abstractmethod
     def clean(self, jobCache: Optional[Dict[str, JobDescription]] = None) -> JobDescription:
         """
         Function to cleanup the state of a job store after a restart.
@@ -858,14 +855,18 @@ class AbstractJobStore(ABC):
     # One year should be sufficient to finish any pipeline ;-)
     publicUrlExpiration = timedelta(days=365)
 
-    @abstractmethod
+    @deprecated('get_public_url')
     def getPublicUrl(self, fileName: str) -> str:
+        return self.get_public_url(fileName)
+
+    @abstractmethod
+    def get_public_url(self, file_name: str) -> str:
         """
         Returns a publicly accessible URL to the given file in the job store. The returned URL may
         expire as early as 1h after its been returned. Throw an exception if the file does not
         exist.
 
-        :param str fileName: the jobStoreFileID of the file to generate a URL for
+        :param str file_name: the jobStoreFileID of the file to generate a URL for
 
         :raise NoSuchFileException: if the specified file does not exist in this job store
 
@@ -873,8 +874,12 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError()
 
-    @abstractmethod
+    @deprecated('get_shared_public_url')
     def getSharedPublicUrl(self, sharedFileName: str) -> str:
+        return self.get_shared_public_url(sharedFileName)
+
+    @abstractmethod
+    def get_shared_public_url(self, shared_file_name: str) -> str:
         """
         Differs from :meth:`getPublicUrl` in that this method is for generating URLs for shared
         files written by :meth:`writeSharedFileStream`.
@@ -883,7 +888,7 @@ class AbstractJobStore(ABC):
         starts with 'http:',  'https:' or 'file:'. The returned URL may expire as early as 1h
         after its been returned. Throw an exception if the file does not exist.
 
-        :param str sharedFileName: The name of the shared file to generate a publically accessible url for.
+        :param str shared_file_name: The name of the shared file to generate a publically accessible url for.
 
         :raise NoSuchFileException: raised if the specified file does not exist in the store
 
@@ -1003,7 +1008,7 @@ class AbstractJobStore(ABC):
 
     @deprecated(new_function_name='write_file_stream')
     def writeFileStream(self, jobStoreID: Optional[str] = None, cleanup: bool = False, basename: Optional[str] = None,
-                        encoding: Optional[str] = None, errors: Optional[str] = None) -> Iterator[Tuple[IO[bytes], str]]:
+                        encoding: Optional[str] = None, errors: Optional[str] = None) -> ContextManager[Tuple[IO[bytes], str]]:
         return self.write_file_stream(jobStoreID, cleanup, basename, encoding, errors)
 
     @abstractmethod
@@ -1108,7 +1113,7 @@ class AbstractJobStore(ABC):
     def readFileStream(self,
                        jobStoreFileID: str,
                        encoding: Optional[str] = None,
-                       errors: Optional[str] = None) -> Iterator[Union[BytesIO, TextIO]]:
+                       errors: Optional[str] = None) -> ContextManager[Union[BytesIO, TextIO]]:
         return self.read_file_stream(jobStoreFileID, encoding, errors)
 
     @abstractmethod
@@ -1207,7 +1212,7 @@ class AbstractJobStore(ABC):
     def updateFileStream(self,
                          jobStoreFileID: str,
                          encoding: Optional[str] = None,
-                         errors: Optional[str] = None) -> Iterator[IO[Any]]:
+                         errors: Optional[str] = None) -> ContextManager[IO[Any]]:
         return self.update_file_stream(jobStoreFileID, encoding, errors)
 
     @abstractmethod
@@ -1245,7 +1250,7 @@ class AbstractJobStore(ABC):
 
     @deprecated('write_shared_file_stream')
     def writeSharedFileStream(self, sharedFileName: str, isProtected: Optional[bool] = None, encoding: Optional[str] = None,
-                                errors: Optional[str] = None) -> Iterator[IO[bytes]]:
+                                errors: Optional[str] = None) -> ContextManager[IO[bytes]]:
         return self.write_shared_file_stream(sharedFileName, isProtected, encoding, errors)
 
     @abstractmethod
@@ -1283,7 +1288,7 @@ class AbstractJobStore(ABC):
     def readSharedFileStream(self,
                              sharedFileName: str,
                              encoding: Optional[str] = None,
-                             errors: Optional[str] = None) -> Iterator[BytesIO]:
+                             errors: Optional[str] = None) -> ContextManager[BytesIO]:
         return self.read_shared_file_stream(sharedFileName, encoding, errors)
 
     @abstractmethod
@@ -1369,7 +1374,7 @@ class AbstractJobStore(ABC):
 
 class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     @classmethod
-    def _supportsUrl(cls, url: ParseResult, export: bool = False) -> bool:
+    def _supports_url(cls, url: ParseResult, export: bool = False) -> bool:
         return url.scheme.lower() in ('http', 'https', 'ftp') and not export
 
     @classmethod
@@ -1394,7 +1399,7 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
                              error_codes=[408, 500, 503]
                          )
                      ])
-    def _readFromUrl(cls, url: ParseResult, writable: Union[BytesIO, TextIO]) -> Tuple[int, bool]:
+    def _read_from_url(cls, url: ParseResult, writable: Union[BytesIO, TextIO]) -> Tuple[int, bool]:
         # We can only retry on errors that happen as responses to the request.
         # If we start getting file data, and the connection drops, we fail.
         # So we don't have to worry about writing the start of the file twice.

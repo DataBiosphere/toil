@@ -89,7 +89,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
     def refresh(self, jobStore):
         return type(self)(name=self.name,
                           pathHash=self.pathHash,
-                          url=jobStore.getSharedPublicUrl(sharedFileName=self.pathHash),
+                          url=jobStore.get_shared_public_url(shared_file_name=self.pathHash),
                           contentHash=self.contentHash)
 
     @classmethod
