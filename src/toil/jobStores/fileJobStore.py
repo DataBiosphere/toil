@@ -65,7 +65,7 @@ class FileJobStore(AbstractJobStore):
         :param int fanOut: Number of items to have in a directory before making
                            subdirectories
         """
-        super(FileJobStore, self).__init__()
+        super(FileJobStore, self).__init__(path)
         self.jobStoreDir = os.path.abspath(path)
         logger.debug("Path to job store directory is '%s'.", self.jobStoreDir)
 
@@ -474,6 +474,10 @@ class FileJobStore(AbstractJobStore):
                     raise
 
         # If we get here, symlinking isn't an option.
+        # Make sure we are working with the real source path, in case it is a
+        # symlinked import.
+        jobStoreFilePath = os.path.realpath(jobStoreFilePath)
+
         if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
             # It is possible that we can hard link the file.
             # Note that even if the device numbers match, we can end up trying
