@@ -1,5 +1,6 @@
 import functools
 import logging
+import warnings
 
 from typing import Union, Callable, Any
 
@@ -10,7 +11,8 @@ def deprecated(new_function_name: str) -> Callable[..., Any]:
     def decorate(func: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(func)
         def call(*args: Any, **kwargs: Any) -> Any:
-            logger.warning(f'WARNING: "{func.__name__}()" is deprecated.  Please use "{new_function_name}()" instead.')
+            warnings.warn(f'WARNING: "{func.__name__}()" is deprecated.  Please use "{new_function_name}()" instead.',
+                          DeprecationWarning)
             return func(*args, **kwargs)
         return call
     return decorate
