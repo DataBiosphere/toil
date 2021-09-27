@@ -418,7 +418,7 @@ class AWSJobStore(AbstractJobStore):
                                                          Key=compat_bytes(item.name))
 
     def get_empty_file_store_id(self, jobStoreID=None, cleanup=False, basename=None):
-        info = self.FileInfo.create_job(jobStoreID if cleanup else None)
+        info = self.FileInfo.create(jobStoreID if cleanup else None)
         with info.uploadStream() as _:
             # Empty
             pass
@@ -431,7 +431,7 @@ class AWSJobStore(AbstractJobStore):
             srcObj = self._get_object_for_url(uri, existing=True)
             size = srcObj.content_length
             if shared_file_name is None:
-                info = self.FileInfo.create_job(srcObj.key)
+                info = self.FileInfo.create(srcObj.key)
             else:
                 self._requireValidSharedFileName(shared_file_name)
                 jobStoreFileID = self._shared_file_id(shared_file_name)
@@ -442,7 +442,7 @@ class AWSJobStore(AbstractJobStore):
             info.save()
             return FileID(info.fileID, size) if shared_file_name is None else None
         else:
-            return super(AWSJobStore, self)._importFile(otherCls, uri,
+            return super(AWSJobStore, self)._import_file(otherCls, uri,
                                                         sharedFileName=shared_file_name)
 
     def _export_file(self, otherCls, file_id, uri):
@@ -531,7 +531,7 @@ class AWSJobStore(AbstractJobStore):
         return url.scheme.lower() == 's3'
 
     def write_file(self, local_path, job_id=None, cleanup=False):
-        info = self.FileInfo.create_job(job_id if cleanup else None)
+        info = self.FileInfo.create(job_id if cleanup else None)
         info.upload(local_path, not self.config.disableJobStoreChecksumVerification)
         info.save()
         logger.debug("Wrote %r of from %r", info, local_path)
@@ -539,7 +539,7 @@ class AWSJobStore(AbstractJobStore):
 
     @contextmanager
     def write_file_stream(self, job_id=None, cleanup=False, basename=None, encoding=None, errors=None):
-        info = self.FileInfo.create_job(job_id if cleanup else None)
+        info = self.FileInfo.create(job_id if cleanup else None)
         with info.uploadStream(encoding=encoding, errors=errors) as writable:
             yield writable, info.fileID
         info.save()
@@ -603,14 +603,14 @@ class AWSJobStore(AbstractJobStore):
             yield readable
 
     def delete_file(self, file_id):
-        info = self.FileInfo.load_job(file_id)
+        info = self.FileInfo.load(file_id)
         if info is None:
             logger.debug("File %s does not exist, skipping deletion.", file_id)
         else:
-            info.delete_job()
+            info.delete()
 
     def write_logs(self, msg):
-        info = self.FileInfo.create_job(str(self.statsFileOwnerID))
+        info = self.FileInfo.create(str(self.statsFileOwnerID))
         with info.uploadStream(multipart=False) as writeable:
             if isinstance(msg, str):
                 # This stream is for binary data, so encode any non-encoded things
@@ -1052,10 +1052,10 @@ class AWSJobStore(AbstractJobStore):
             assert content is None or isinstance(content, bytes)
             attributes = self.binaryToAttributes(content)
             numChunks = attributes['numChunks']
-            attributes.update_job(dict(ownerID=self.ownerID,
-                                       encrypted=self.encrypted,
-                                       version=self.version or '',
-                                       checksum=self.checksum or ''))
+            attributes.update(dict(ownerID=self.ownerID,
+                                   encrypted=self.encrypted,
+                                   version=self.version or '',
+                                   checksum=self.checksum or ''))
             return attributes, numChunks
 
         @classmethod
@@ -1148,7 +1148,7 @@ class AWSJobStore(AbstractJobStore):
             """
             Update a checksum in progress from _start_checksum with new data.
             """
-            checksum_in_progress[1].update_job(data)
+            checksum_in_progress[1].update(data)
 
         def _finish_checksum(self, checksum_in_progress):
             """
@@ -1632,7 +1632,7 @@ class AWSJobStore(AbstractJobStore):
         for attempt in retry_sdb():
             with attempt:
                 try:
-                    domain.delete_job()
+                    domain.delete()
                 except SDBResponseError as e:
                     if not no_such_sdb_domain(e):
                         raise
@@ -1652,9 +1652,9 @@ class AWSJobStore(AbstractJobStore):
                                                                    Key=u["Key"],
                                                                    UploadId=u["UploadId"])
 
-                    bucket.objects.all().delete_job()
-                    bucket.object_versions.delete_job()
-                    bucket.delete_job()
+                    bucket.objects.all().delete()
+                    bucket.object_versions.delete()
+                    bucket.delete()
                 except s3_boto3_client.exceptions.NoSuchBucket:
                     pass
                 except ClientError as e:
