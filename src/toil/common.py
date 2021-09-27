@@ -35,6 +35,7 @@ from toil.batchSystems.options import (add_all_batchsystem_options,
 from toil.lib.aws import zone_to_region
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.retry import retry
+from toil.lib.compatibility import deprecated
 from toil.provisioners import add_provisioner_options, cluster_factory, parse_node_types
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import (
@@ -1015,10 +1016,17 @@ class Toil:
             logger.debug('Injecting user script %s into batch system.', userScriptResource)
             self._batchSystem.setUserScript(userScriptResource)
 
+    @deprecated('import_file')
     def importFile(self,
                    srcUrl: str,
                    sharedFileName: Optional[str] = None,
                    symlink: bool = False) -> Optional[Union[FileID, str]]:
+        return self.import_file(srcUrl, sharedFileName, symlink)
+
+    def import_file(self,
+                    src_uri: str,
+                    shared_file_name: Optional[str] = None,
+                    symlink: bool = False) -> Optional[Union[FileID, str]]:
         """
         Imports the file at the given URL into job store.
 
@@ -1026,10 +1034,14 @@ class Toil:
         full description
         """
         self._assertContextManagerUsed()
-        srcUrl = self.normalize_uri(srcUrl, check_existence=True)
-        return self._jobStore.import_file(srcUrl, shared_filename=sharedFileName, symlink=symlink)
+        src_uri = self.normalize_uri(src_uri, check_existence=True)
+        return self._jobStore.import_file(src_uri, shared_file_name=shared_file_name, symlink=symlink)
 
+    @deprecated('export_file')
     def exportFile(self, jobStoreFileID: Union[FileID, str], dstUrl: str) -> None:
+        return self.export_file(jobStoreFileID, dstUrl)
+
+    def export_file(self, file_id: Union[FileID, str], dst_uri: str) -> None:
         """
         Exports file to destination pointed at by the destination URL.
 
@@ -1037,8 +1049,8 @@ class Toil:
         full description
         """
         self._assertContextManagerUsed()
-        dstUrl = self.normalize_uri(dstUrl)
-        self._jobStore.export_file(jobStoreFileID, dstUrl)
+        dst_uri = self.normalize_uri(dst_uri)
+        self._jobStore.export_file(file_id, dst_uri)
 
     @staticmethod
     def normalize_uri(uri: str, check_existence: bool = False) -> str:

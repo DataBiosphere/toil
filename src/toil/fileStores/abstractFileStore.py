@@ -26,11 +26,14 @@ from toil.fileStores import FileID
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.io import WriteWatchingStream
 from toil.job import Job, JobDescription
+from toil.lib.compatibility import deprecated
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from toil.fileStores.nonCachingFileStore import NonCachingFileStore
     from toil.fileStores.cachingFileStore import CachingFileStore
+
 
 class AbstractFileStore(ABC):
     """
@@ -405,10 +408,18 @@ class AbstractFileStore(ABC):
         raise NotImplementedError()
 
     # Functions used to read and write files directly between a source url and the job store.
+    @deprecated('import_file')
     def importFile(self, srcUrl: str, sharedFileName: Optional[str] = None) -> Optional[FileID]:
-        return self.jobStore.import_file(srcUrl, shared_filename=sharedFileName)
+        return self.import_file(srcUrl, sharedFileName)
 
+    def import_file(self, src_uri: str, shared_file_name: Optional[str] = None) -> Optional[FileID]:
+        return self.jobStore.import_file(src_uri, shared_file_name=shared_file_name)
+
+    @deprecated('export_file')
     def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
+        raise self.export_file(jobStoreFileID, dstUrl)
+
+    def export_file(self, file_id: FileID, dst_uri: str) -> None:
         raise NotImplementedError()
 
     # A utility method for accessing filenames

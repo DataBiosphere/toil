@@ -737,7 +737,7 @@ class AbstractJobStoreTest(object):
 
                 srcUrl, srcMd5 = other._prepareTestFile(store, 42)
                 # Import into job store under test
-                self.assertIsNone(self.jobstore_initialized.import_file(srcUrl, sharedFileName='foo'))
+                self.assertIsNone(self.jobstore_initialized.import_file(srcUrl, shared_file_name='foo'))
                 with self.jobstore_initialized.read_shared_file_stream('foo') as f:
                     fileMD5 = hashlib.md5(f.read()).hexdigest()
                 self.assertEqual(fileMD5, srcMd5)

@@ -29,6 +29,7 @@ from toil.lib.conversions import bytes2human
 from toil.lib.io import robust_rmtree, make_public_dir
 from toil.lib.threads import get_process_name, process_name_exists
 from toil.job import Job, JobDescription
+from toil.lib.compatibility import deprecated
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -99,8 +100,12 @@ class NonCachingFileStore(AbstractFileStore):
             self.logAccess(fileStoreID)
             yield f
 
+    @deprecated('export_file')
     def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
-        self.jobStore.export_file(jobStoreFileID, dstUrl)
+        raise self.export_file(jobStoreFileID, dstUrl)
+
+    def export_file(self, file_id: FileID, dst_uri: str) -> None:
+        self.jobStore.export_file(file_id, dst_uri)
 
     def deleteLocalFile(self, fileStoreID: str) -> None:
         try:

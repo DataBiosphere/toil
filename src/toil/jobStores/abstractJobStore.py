@@ -45,8 +45,9 @@ logger = logging.getLogger(__name__)
 try:
     from botocore.exceptions import ProxyConnectionError
 except ImportError:
-    class ProxyConnectionError(BaseException): # type: ignore
+    class ProxyConnectionError(BaseException):  # type: ignore
         pass
+
 
 class InvalidImportExportUrlException(Exception):
     def __init__(self, url: ParseResult):
@@ -326,7 +327,7 @@ class AbstractJobStore(ABC):
 
     def import_file(self,
                     src_uri: str,
-                    shared_filename: Optional[str] = None,
+                    shared_file_name: Optional[str] = None,
                     hardlink: bool = False,
                     symlink: bool = False) -> Optional[FileID]:
         """
@@ -352,7 +353,7 @@ class AbstractJobStore(ABC):
         :param str src_uri: URL that points to a file or object in the storage mechanism of a
                 supported URL scheme e.g. a blob in an AWS s3 bucket.
 
-        :param str shared_filename: Optional name to assign to the imported file within the job store
+        :param str shared_file_name: Optional name to assign to the imported file within the job store
 
         :return: The jobStoreFileID of the imported file or None if sharedFileName was given
         :rtype: toil.fileStores.FileID or None
@@ -363,10 +364,18 @@ class AbstractJobStore(ABC):
         # subclasses of AbstractJobStore.
         parseResult = urlparse(src_uri)
         otherCls = self._findJobStoreForUrl(parseResult)
-        return self._importFile(otherCls, parseResult, sharedFileName=shared_filename, hardlink=hardlink, symlink=symlink)
+        return self._import_file(otherCls,
+                                 parseResult,
+                                 shared_file_name=shared_file_name,
+                                 hardlink=hardlink,
+                                 symlink=symlink)
 
-    def _importFile(self, otherCls: 'AbstractJobStore', url: ParseResult, sharedFileName: Optional[str] = None,
-                    hardlink: bool = False, symlink: bool = False) -> Optional[FileID]:
+    def _import_file(self,
+                     otherCls: 'AbstractJobStore',
+                     url: ParseResult,
+                     shared_file_name: Optional[str] = None,
+                     hardlink: bool = False,
+                     symlink: bool = False) -> Optional[FileID]:
         """
         Import the file at the given URL using the given job store class to retrieve that file.
         See also :meth:`.importFile`. This method applies a generic approach to importing: it
@@ -378,18 +387,18 @@ class AbstractJobStore(ABC):
 
         :param ParseResult url: The location of the file to import.
 
-        :param str sharedFileName: Optional name to assign to the imported file within the job store
+        :param str shared_file_name: Optional name to assign to the imported file within the job store
 
         :return The FileID of imported file or None if sharedFileName was given
         :rtype: toil.fileStores.FileID or None
         """
-        if sharedFileName is None:
+        if shared_file_name is None:
             with self.write_file_stream() as (writable, jobStoreFileID):
                 size, executable = otherCls._read_from_url(url, writable)
                 return FileID(jobStoreFileID, size, executable)
         else:
-            self._requireValidSharedFileName(sharedFileName)
-            with self.write_shared_file_stream(sharedFileName) as writable:
+            self._requireValidSharedFileName(shared_file_name)
+            with self.write_shared_file_stream(shared_file_name) as writable:
                 otherCls._read_from_url(url, writable)
                 return None
 

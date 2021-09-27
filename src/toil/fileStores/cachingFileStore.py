@@ -34,6 +34,7 @@ from toil.lib.io import atomic_copy, atomic_copyobj, robust_rmtree, make_public_
 from toil.lib.retry import ErrorCondition, retry
 from toil.lib.threads import get_process_name, process_name_exists
 from toil.job import Job, JobDescription
+from toil.lib.compatibility import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -1747,7 +1748,11 @@ class CachingFileStore(AbstractFileStore):
         self.logToMaster('Added file with ID \'%s\' to the list of files to be' % fileStoreID +
                          ' globally deleted.', level=logging.DEBUG)
 
-    def exportFile(self, jobStoreFileID, dstUrl):
+    @deprecated('export_file')
+    def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
+        raise self.export_file(jobStoreFileID, dstUrl)
+
+    def export_file(self, file_id: FileID, dst_uri: str) -> None:
         # First we need to make sure the file is actually in the job store if
         # we have it cached and need to upload it.
 
@@ -1760,7 +1765,7 @@ class CachingFileStore(AbstractFileStore):
 
         # Then we let the job store export. TODO: let the export come from the
         # cache? How would we write the URL?
-        self.jobStore.export_file(jobStoreFileID, dstUrl)
+        self.jobStore.export_file(file_id, dst_uri)
 
     def waitForCommit(self):
         # We need to block on the upload thread.
