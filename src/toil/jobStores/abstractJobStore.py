@@ -372,7 +372,7 @@ class AbstractJobStore(ABC):
 
     def _import_file(self,
                      otherCls: 'AbstractJobStore',
-                     url: ParseResult,
+                     uri: ParseResult,
                      shared_file_name: Optional[str] = None,
                      hardlink: bool = False,
                      symlink: bool = False) -> Optional[FileID]:
@@ -385,7 +385,7 @@ class AbstractJobStore(ABC):
         :param AbstractJobStore otherCls: The concrete subclass of AbstractJobStore that supports
                reading from the given URL and getting the file size from the URL.
 
-        :param ParseResult url: The location of the file to import.
+        :param ParseResult uri: The location of the file to import.
 
         :param str shared_file_name: Optional name to assign to the imported file within the job store
 
@@ -394,12 +394,12 @@ class AbstractJobStore(ABC):
         """
         if shared_file_name is None:
             with self.write_file_stream() as (writable, jobStoreFileID):
-                size, executable = otherCls._read_from_url(url, writable)
+                size, executable = otherCls._read_from_url(uri, writable)
                 return FileID(jobStoreFileID, size, executable)
         else:
             self._requireValidSharedFileName(shared_file_name)
             with self.write_shared_file_stream(shared_file_name) as writable:
-                otherCls._read_from_url(url, writable)
+                otherCls._read_from_url(uri, writable)
                 return None
 
     @deprecated(new_function_name='export_file')

@@ -426,32 +426,32 @@ class AWSJobStore(AbstractJobStore):
         logger.debug("Created %r.", info)
         return info.fileID
 
-    def _import_file(self, otherCls, url, sharedFileName=None, hardlink=False, symlink=False):
+    def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=False):
         if issubclass(otherCls, AWSJobStore):
-            srcObj = self._get_object_for_url(url, existing=True)
+            srcObj = self._get_object_for_url(uri, existing=True)
             size = srcObj.content_length
-            if sharedFileName is None:
+            if shared_file_name is None:
                 info = self.FileInfo.create_job(srcObj.key)
             else:
-                self._requireValidSharedFileName(sharedFileName)
-                jobStoreFileID = self._shared_file_id(sharedFileName)
+                self._requireValidSharedFileName(shared_file_name)
+                jobStoreFileID = self._shared_file_id(shared_file_name)
                 info = self.FileInfo.loadOrCreate(jobStoreFileID=jobStoreFileID,
                                                   ownerID=str(self.sharedFileOwnerID),
                                                   encrypted=None)
             info.copyFrom(srcObj)
             info.save()
-            return FileID(info.fileID, size) if sharedFileName is None else None
+            return FileID(info.fileID, size) if shared_file_name is None else None
         else:
-            return super(AWSJobStore, self)._importFile(otherCls, url,
-                                                        sharedFileName=sharedFileName)
+            return super(AWSJobStore, self)._importFile(otherCls, uri,
+                                                        sharedFileName=shared_file_name)
 
-    def _export_file(self, otherCls, jobStoreFileID, url):
+    def _export_file(self, otherCls, file_id, uri):
         if issubclass(otherCls, AWSJobStore):
-            dstObj = self._get_object_for_url(url)
-            info = self.FileInfo.loadOrFail(jobStoreFileID)
+            dstObj = self._get_object_for_url(uri)
+            info = self.FileInfo.loadOrFail(file_id)
             info.copyTo(dstObj)
         else:
-            super(AWSJobStore, self)._defaultExportFile(otherCls, jobStoreFileID, url)
+            super(AWSJobStore, self)._defaultExportFile(otherCls, file_id, uri)
 
     @classmethod
     def get_size(cls, url):
