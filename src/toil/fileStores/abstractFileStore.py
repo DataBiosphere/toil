@@ -417,7 +417,7 @@ class AbstractFileStore(ABC):
 
     @deprecated('export_file')
     def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
-        raise self.export_file(jobStoreFileID, dstUrl)
+        return self.export_file(jobStoreFileID, dstUrl)
 
     def export_file(self, file_id: FileID, dst_uri: str) -> None:
         raise NotImplementedError()
