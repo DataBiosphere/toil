@@ -722,7 +722,7 @@ class Leader(object):
                 self._reportWorkflowStatus()
 
             # Make sure to keep elapsed time and ETA up to date even when no jobs come in
-            self.progress_overall.update_job(incr=0)
+            self.progress_overall.update(incr=0)
 
         logger.debug("Finished the main loop: no jobs left to run.")
 
@@ -853,7 +853,7 @@ class Leader(object):
             self.toilMetrics.logQueueSize(self.getNumberOfJobsIssued())
         # Tell the user there's another job to do
         self.progress_overall.total += 1
-        self.progress_overall.update_job(incr=0)
+        self.progress_overall.update(incr=0)
 
     def issueJobs(self, jobs):
         """Add a list of jobs, each represented as a jobNode object."""
@@ -953,7 +953,7 @@ class Leader(object):
                 self.serviceJobsIssued -= 1
 
         # Tell the user that job is done, for progress purposes.
-        self.progress_overall.update_job(incr=1)
+        self.progress_overall.update(incr=1)
 
         return issuedDesc
 
@@ -1142,8 +1142,8 @@ class Leader(object):
                 self.toilState.commit_job(jobStoreID)
 
                 # Show job as failed in progress (and take it from completed)
-                self.progress_overall.update_job(incr=-1)
-                self.progress_failed.update_job(incr=1)
+                self.progress_overall.update(incr=-1)
+                self.progress_failed.update(incr=1)
 
             elif jobStoreID in self.toilState.hasFailedSuccessors:
                 # If the job has completed okay, we can remove it from the list of jobs with failed successors

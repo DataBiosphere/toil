@@ -1027,7 +1027,7 @@ class Toil:
         """
         self._assertContextManagerUsed()
         srcUrl = self.normalize_uri(srcUrl, check_existence=True)
-        return self._jobStore.import_file(srcUrl, sharedFileName=sharedFileName, symlink=symlink)
+        return self._jobStore.import_file(srcUrl, shared_filename=sharedFileName, symlink=symlink)
 
     def exportFile(self, jobStoreFileID: Union[FileID, str], dstUrl: str) -> None:
         """

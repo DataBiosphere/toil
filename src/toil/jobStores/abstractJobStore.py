@@ -718,7 +718,7 @@ class AbstractJobStore(ABC):
                     return jobStoreFileID
 
                 # Make a new flag
-                newFlag = self.getEmptyFileStoreID(jobStoreID, cleanup=False)
+                newFlag = self.get_empty_file_store_id(jobStoreID, cleanup=False)
 
                 # Load the jobDescription for the service and initialise the link
                 serviceJobDescription = getJobDescription(jobStoreID)
@@ -1057,13 +1057,23 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError()
 
+    @deprecated('get_empty_file_store_id')
+    def getEmptyFileStoreID(self,
+                            jobStoreID: Optional[str] = None,
+                            cleanup: bool = False,
+                            basename: Optional[str] = None) -> str:
+        return self.get_empty_file_store_id(jobStoreID, cleanup, basename)
+
     @abstractmethod
-    def getEmptyFileStoreID(self, jobStoreID: Optional[str] = None, cleanup: bool = False, basename: Optional[str] = None) -> str:
+    def get_empty_file_store_id(self,
+                                job_id: Optional[str] = None,
+                                cleanup: bool = False,
+                                basename: Optional[str] = None) -> str:
         """
         Creates an empty file in the job store and returns its ID.
         Call to fileExists(getEmptyFileStoreID(jobStoreID)) will return True.
 
-        :param str jobStoreID: the id of a job, or None. If specified, the may be associated
+        :param str job_id: the id of a job, or None. If specified, the may be associated
                with that job in a job-store-specific way. This may influence the returned ID.
 
         :param bool cleanup: Whether to attempt to delete the file when the job
