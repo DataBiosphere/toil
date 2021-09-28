@@ -155,6 +155,7 @@ docker: docker/Dockerfile
 
 	@set -ex \
 	; cd docker \
+	; docker buildx create --name toilbuilder --use
 	; docker buildx build --platform linux/amd64,linux/arm64 --tag=$(docker_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
 
 	@set -ex \
