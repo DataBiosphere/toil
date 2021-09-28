@@ -451,7 +451,7 @@ class AWSJobStore(AbstractJobStore):
             info = self.FileInfo.loadOrFail(file_id)
             info.copyTo(dstObj)
         else:
-            super(AWSJobStore, self)._defaultExportFile(otherCls, file_id, uri)
+            super(AWSJobStore, self)._default_export_file(otherCls, file_id, uri)
 
     @classmethod
     def get_size(cls, url):
