@@ -443,7 +443,7 @@ class AWSJobStore(AbstractJobStore):
             return FileID(info.fileID, size) if shared_file_name is None else None
         else:
             return super(AWSJobStore, self)._import_file(otherCls, uri,
-                                                        sharedFileName=shared_file_name)
+                                                        shared_file_name=shared_file_name)
 
     def _export_file(self, otherCls, file_id, uri):
         if issubclass(otherCls, AWSJobStore):
@@ -571,7 +571,7 @@ class AWSJobStore(AbstractJobStore):
         logger.debug("Wrote %r from stream.", info)
 
     def file_exists(self, file_id):
-        return self.FileInfo.job_exists(file_id)
+        return self.FileInfo.exists(file_id)
 
     def get_file_size(self, file_id):
         if not self.file_exists(file_id):
@@ -680,9 +680,9 @@ class AWSJobStore(AbstractJobStore):
         url = urllib.parse.urlunsplit((scheme, netloc, path, query, fragment))
         return url
 
-    def get_shared_public_url(self, sharedFileName):
-        self._requireValidSharedFileName(sharedFileName)
-        return self.get_public_url(self._shared_file_id(sharedFileName))
+    def get_shared_public_url(self, shared_file_name):
+        self._requireValidSharedFileName(shared_file_name)
+        return self.get_public_url(self._shared_file_id(shared_file_name))
 
     def _connectSimpleDB(self):
         """
@@ -852,8 +852,8 @@ class AWSJobStore(AbstractJobStore):
     # A dummy job ID under which all read stats files are stored
     readStatsFileOwnerID = uuid.UUID('e77fc3aa-d232-4255-ae04-f64ee8eb0bfa')
 
-    def _shared_file_id(self, sharedFileName):
-        return str(uuid.uuid5(self.sharedFileOwnerID, sharedFileName))
+    def _shared_file_id(self, shared_file_name):
+        return str(uuid.uuid5(self.sharedFileOwnerID, shared_file_name))
 
     @InnerClass
     class FileInfo(SDBHelper):
