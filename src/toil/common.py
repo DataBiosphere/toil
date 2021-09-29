@@ -23,7 +23,7 @@ import uuid
 
 from urllib.parse import urlparse
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Tuple, TypeVar, Union
 
 import requests
 
@@ -140,9 +140,9 @@ class Config:
         # CWL
         self.cwl: bool = False
 
-    T = TypeVar('T')
     def setOptions(self, options) -> None:
         """Creates a config object from the options object."""
+        T = TypeVar('T')
         def set_option(option_name: str,
                        parsing_function: Optional[Callable[[str], T]] = None,
                        check_function: Optional[Callable[[T], None]] = None,
