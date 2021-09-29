@@ -1145,7 +1145,7 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
             return url, hashlib.md5(content).hexdigest()
 
     def _hashTestFile(self, url):
-        localFilePath = FileJobStore._extractPathFromUrl(urlparse.urlparse(url))
+        localFilePath = FileJobStore._extract_path_from_url(urlparse.urlparse(url))
         with open(localFilePath, 'rb') as f:
             return hashlib.md5(f.read()).hexdigest()
 
