@@ -981,7 +981,7 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
         return "single_machine"
 
     @slow
-    @retry_flaky_test(prepare=[tearDown, setUp])
+    @retry_flaky_test(prepare=[hidden.AbstractBatchSystemJobTest.tearDown, hidden.AbstractBatchSystemJobTest.setUp])
     def testConcurrencyWithDisk(self):
         """
         Tests that the batch system is allocating disk resources properly
