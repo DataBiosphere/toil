@@ -87,7 +87,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
 
         # Define directories to mount for each task, as py-tes Input objects
         self.mounts: List[tes.Input] = []
-        
+
         if config.jobStore:
             job_store_type, job_store_path = Toil.parseLocator(config.jobStore)
             if job_store_type == 'file':
@@ -257,48 +257,77 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                  if isinstance(executor_log.exit_code, int):
                     # Find the last executor exit code that is a number and return it
                     return executor_log.exit_code
+                    
+        if task.state == 'COMPLETE':
+            # If the task completes without error but has no code logged, the
+            # code must be 0.
+            return 0
 
         # If we get here we couldn't find an exit code.
         return EXIT_STATUS_UNAVAILABLE_VALUE
 
-    def getUpdatedBatchJob(self, maxWait: Optional[float]) -> Optional[UpdatedBatchJobInfo]:
-        for tes_id, bs_id in self.tes_id_to_bs_id.items():
-            # Immediately poll all the jobs we issued.
-            # TODO: There's no way to acknowledge a finished job, so there's no
-            # faster way to find the newly finished jobs than polling
-            task = self.tes.get_task(tes_id)
-            logger.info("Found stopped task: %s", task)
-            if task.state in ["COMPLETE", "CANCELED", "EXECUTOR_ERROR", "SYSTEM_ERROR"]:
-                # This task is done!
-                
-                # Forget about the job
+    def getUpdatedBatchJob(self, maxWait: int) -> Optional[UpdatedBatchJobInfo]:
+        # Remember when we started, for respecting the timeout
+        entry = datetime.datetime.now()
+        # This is the updated job we have found, if any
+        result = None
+        while result is None and ((datetime.datetime.now() - entry).total_seconds() < maxWait or not maxWait):
+            result = self.getUpdatedLocalJob(0)
+            
+            if result:
+                return result
+
+            # Collect together the list of TES and batch system IDs for tasks we
+            # are acknowledging and don't care about anymore.
+            acknowledged = []
+            
+            for tes_id, bs_id in self.tes_id_to_bs_id.items():
+                # Immediately poll all the jobs we issued.
+                # TODO: There's no way to acknowledge a finished job, so there's no
+                # faster way to find the newly finished jobs than polling
+                task = self.tes.get_task(tes_id)
+                if task.state in ["COMPLETE", "CANCELED", "EXECUTOR_ERROR", "SYSTEM_ERROR"]:
+                    # This task is done!
+                    logger.info("Found stopped task: %s", task)
+
+                    # Acknowledge it
+                    acknowledged.append((tes_id, bs_id))
+
+                    if task.state == "CANCELED":
+                        # Killed jobs aren't allowed to appear as updated.
+                        continue
+
+                    # Otherwise, it stopped running and it wasn't our fault.
+
+                    # Record runtime
+                    runtime = self.__get_runtime(task)
+
+                    # Determine if it succeeded
+                    exit_reason = STATE_TO_EXIT_REASON[task.state]
+
+                    # Get its exit code
+                    exit_code = self.__get_exit_code(task)
+
+                    # Compose a result
+                    result = UpdatedBatchJobInfo(jobID=bs_id, exitStatus=exit_code, wallTime=runtime, exitReason=exit_reason)
+
+                    # No more iteration needed, we found a result.
+                    break
+
+            # After the iteration, drop all the records for tasks we acknowledged
+            for (tes_id, bs_id) in acknowledged:
                 del self.tes_id_to_bs_id[tes_id]
                 del self.bs_id_to_tes_id[bs_id]
                 
-                if task.state == "CANCELED":
-                    # Killed jobs aren't allowed to appear as updated.
-                    continue
-                    
-                # Otherwise, it stopped running and it wasn't our fault.
-                
-                # Record runtime
-                runtime = self.__get_runtime(task)
+            if not maxWait:
+                # Don't wait at all
+                break
+            elif result is None:
+                # Wait a bit and poll again
+                time.sleep(min(maxWait/2, 1.0))
 
-                # Determine if it succeeded
-                exit_reason = STATE_TO_EXIT_REASON[task.state]
-
-                # Get its exit code
-                exit_code = self.__get_exit_code(task)
-
-                # Compose a result
-                result = UpdatedBatchJobInfo(jobID=bs_id, exitStatus=exit_code, wallTime=runtime, exitReason=exit_reason)
-
-                # Return the updated job
-                return result
-
-        # TODO: implement waiting for a job to finish. For now just return
-        # immediately.
-        return None
+        # When we get here we have all the result we can get
+        return result
 
     def shutdown(self) -> None:
 
@@ -336,7 +365,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
     def getRunningBatchJobIDs(self) -> Dict[int, float]:
         # We need a dict from job_id (integer) to seconds it has been running
         bs_id_to_runtime = {}
-        
+
         for tes_id, bs_id in self.tes_id_to_bs_id.items():
             # Poll every issued task.
             # TODO: use list_tasks filtering by name prefix and running state!
@@ -345,7 +374,8 @@ class TESBatchSystem(BatchSystemCleanupSupport):
             if task.state in ["INITIALIZING", "RUNNING"]:
                 # We count INITIALIZING tasks because they may be e.g. pulling
                 # Docker containers, and we don't want to time out on them in
-                # the tests.
+                # the tests. But they may not have any runtimes, so it might
+                # not really help.
                 runtime = self.__get_runtime(task)
                 if runtime:
                     # We can measure a runtime

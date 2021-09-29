@@ -105,7 +105,7 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
                 local_path = job.fileStore.getLocalTempFileName() if random.random() > 0.5 else None
                 cache = random.random() > 0.5
 
-                tempFile = job.fileStore.readGlobalFile(fileStoreID, 
+                tempFile = job.fileStore.readGlobalFile(fileStoreID,
                                                         local_path,
                                                         cache=cache)
                 with open(tempFile, 'r') as fH:

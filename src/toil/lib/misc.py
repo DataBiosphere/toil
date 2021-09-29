@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 def utc_now() -> datetime.datetime:
     """Return a datetime in the UTC timezone corresponding to right now."""
     return datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
-    
+
 def slow_down(seconds: float) -> float:
     """
     Toil jobs that have completed are not allowed to have taken 0 seconds, but
