@@ -228,13 +228,13 @@ class TESBatchSystem(BatchSystemCleanupSupport):
 
         start_time = None
         end_time = utc_now()
-        for log in task.logs or []:
+        for log in (task.logs or []):
             if log.start_time:
                 # Find the first start time that is set
                 start_time = log.start_time
                 break
-        for log in reversed(task.logs) or []:
-             if log.start_time:
+        for log in reversed(task.logs or []):
+             if log.end_time:
                 # Find the last end time that is set, and override now
                 end_time = log.end_time
                 break
@@ -252,10 +252,11 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         EXIT_STATUS_UNAVAILABLE_VALUE if no executor has a log.
         """
 
-        for log in reversed(task.logs) or []:
-             if isinstance(log.exit_code, int):
-                # Find the last exit code that is a number and return it
-                return log.exit_code
+        for task_log in reversed(task.logs or []):
+             for executor_log in reversed(task_log.logs or []):
+                 if isinstance(executor_log.exit_code, int):
+                    # Find the last executor exit code that is a number and return it
+                    return executor_log.exit_code
 
         # If we get here we couldn't find an exit code.
         return EXIT_STATUS_UNAVAILABLE_VALUE
@@ -266,8 +267,20 @@ class TESBatchSystem(BatchSystemCleanupSupport):
             # TODO: There's no way to acknowledge a finished job, so there's no
             # faster way to find the newly finished jobs than polling
             task = self.tes.get_task(tes_id)
+            logger.info("Found stopped task: %s", task)
             if task.state in ["COMPLETE", "CANCELED", "EXECUTOR_ERROR", "SYSTEM_ERROR"]:
                 # This task is done!
+                
+                # Forget about the job
+                del self.tes_id_to_bs_id[tes_id]
+                del self.bs_id_to_tes_id[bs_id]
+                
+                if task.state == "CANCELED":
+                    # Killed jobs aren't allowed to appear as updated.
+                    continue
+                    
+                # Otherwise, it stopped running and it wasn't our fault.
+                
                 # Record runtime
                 runtime = self.__get_runtime(task)
 
@@ -279,10 +292,6 @@ class TESBatchSystem(BatchSystemCleanupSupport):
 
                 # Compose a result
                 result = UpdatedBatchJobInfo(jobID=bs_id, exitStatus=exit_code, wallTime=runtime, exitReason=exit_reason)
-
-                # Forget about the job
-                del self.tes_id_to_bs_id[tes_id]
-                del self.bs_id_to_tes_id[bs_id]
 
                 # Return the updated job
                 return result
@@ -327,7 +336,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
     def getRunningBatchJobIDs(self) -> Dict[int, float]:
         # We need a dict from job_id (integer) to seconds it has been running
         bs_id_to_runtime = {}
-
+        
         for tes_id, bs_id in self.tes_id_to_bs_id.items():
             # Poll every issued task.
             # TODO: use list_tasks filtering by name prefix and running state!
