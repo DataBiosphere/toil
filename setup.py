@@ -47,7 +47,10 @@ def run_setup():
     dill = 'dill>=0.3.2, <0.4'
     requests = 'requests>=2, <3'
     docker = 'docker==4.3.1'
-    dateutil = 'python-dateutil'
+    # We need this exact version or py-tes will abort our entrypoints due to
+    # having too new of a python-dateutil. See
+    # <https://github.com/ohsu-comp-bio/py-tes/issues/34>
+    dateutil = 'python-dateutil==2.6.1'
     addict = 'addict>=2.2.1, <2.3'
     enlighten = 'enlighten>=1.5.2, <2'
     wdlparse = 'wdlparse==0.1.0'

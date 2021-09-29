@@ -310,9 +310,12 @@ class TESBatchSystem(BatchSystemCleanupSupport):
             # Kill each of our tasks in TES
             self.tes.cancel_task(tes_id)
         except HTTPError as e:
-            if e.response.status_code == 500:
+            if e.response and e.response.status_code in [409, 500]:
                 # TODO: This is what we probably get when trying to cancel
                 # something that is actually done. But can we rely on that?
+                pass
+            elif '500' in str(e) or '409' in str(e):
+                # py-tes might be hiding the actual code and just putting it in a string
                 pass
             else:
                 raise
