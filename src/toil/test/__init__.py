@@ -31,7 +31,7 @@ from shutil import which
 from textwrap import dedent
 from unittest.util import strclass
 from urllib.request import urlopen
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 
 import pytz
 
@@ -348,7 +348,9 @@ def needs_tes(test_item):
         return test_item
     except URLError:
         # Will give connection refused if we can't connect because the server's
-        # not there.
+        # not there. We can also get a "cannot assign requested address" if
+        # we're on Kubernetes dialing localhost and !!creative things!! have
+        # been done to the network stack.
         pass
     return unittest.skip(f"Run a TES server on {DEFAULT_TES_URL} to include this test")(test_item)
 
