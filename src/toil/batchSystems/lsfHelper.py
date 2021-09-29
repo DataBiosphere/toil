@@ -195,20 +195,9 @@ def check_lsf_json_output_supported():
     return False
 
 
-def parse_memory_resource(mem: float) -> str:
-    """Parse memory parameter for -R."""
-    return parse_memory(mem, True)
-
-
-def parse_memory_limit(mem: float) -> str:
-    """Parse memory parameter for -M."""
-    return parse_memory(mem, False)
-
-
-def parse_memory(mem: float, resource: bool) -> str:
+def parse_memory(mem: float) -> str:
     """Parse memory parameter."""
-    lsf_unit = get_lsf_units(resource=resource)
-    megabytes_of_mem = convert_units(float(mem), src_unit=lsf_unit, dst_unit='MB')
+    megabytes_of_mem = convert_units(float(mem), src_unit='B', dst_unit='MB')
     if megabytes_of_mem < 1:
         megabytes_of_mem = 1.0
     # round as a string here to avoid returning something like 1.231e+12
