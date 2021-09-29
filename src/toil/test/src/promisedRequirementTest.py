@@ -54,7 +54,7 @@ class hidden(object):
                 self.assertEqual(maxValue, self.cpuCount // coresPerJob)
 
         @slow
-        @retry_flaky_test()
+        @retry_flaky_test(prepare=[tearDown, setUp])
         def testConcurrencyStatic(self):
             """
             Asserts that promised core resources are allocated properly using a static DAG

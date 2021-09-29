@@ -20,7 +20,6 @@ import random
 from toil.common import Toil
 from toil.fileStores import FileID
 from toil.job import Job
-from toil.lib.retry import retry_flaky_test
 from toil.test import ToilTest, slow, travis_test
 
 logger = logging.getLogger(__name__)

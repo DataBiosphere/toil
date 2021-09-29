@@ -202,7 +202,8 @@ class ErrorCondition:
 def retry(intervals: Optional[List] = None,
           infinite_retries: bool = False,
           errors: Optional[List[Union[ErrorCondition, Exception, Any]]] = None,
-          log_message: Optional[Tuple[Callable, str]] = None):
+          log_message: Optional[Tuple[Callable, str]] = None,
+          prepare: Optional[List[Callable]] = None):
     """
     Retry a function if it fails with any Exception defined in "errors", every x seconds,
     where x is defined by a list of numbers (ints or floats) in "intervals".  Also accepts ErrorCondition events
@@ -221,6 +222,7 @@ def retry(intervals: Optional[List] = None,
             - A bool that can be set to False to always error on this condition.
         If not specified, this will default to a generic Exception.
     :param log_message: Optional tuple of ("log/print function()", "message string") that will precede each attempt.
+    :param prepare: Optional list of functions to call, with the function's arguments, between retries, to reset state.
     :return: The result of the wrapped function or raise.
     """
     # set mutable defaults
@@ -267,8 +269,11 @@ def retry(intervals: Optional[List] = None,
                             raise
 
                     interval = intervals_remaining.pop(0)
-                    logger.debug(f"Error in {func}: {e}. Retrying after {interval} s...")
+                    logger.warning(f"Error in {func}: {e}. Retrying after {interval} s...")
                     time.sleep(interval)
+                    for prep_function in prepare:
+                        # Reset state for next attempt
+                        prep_function(*args, **kwargs)
         return call
     return decorate
 
@@ -546,5 +551,7 @@ def old_retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: Fals
 
         yield single_attempt( )
 
-
+# Decorator to retry tests that fail. Needs to be called with
+# prepare=[tearDown, setUp] if the test class has tear down and set up that
+# needs to happen between tests.
 retry_flaky_test = functools.partial(retry, intervals=[1, 1, 1])

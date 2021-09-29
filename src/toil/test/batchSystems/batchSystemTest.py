@@ -152,7 +152,7 @@ class hidden(object):
         def test_available_cores(self):
             self.assertTrue(cpu_count() >= numCores)
 
-        @retry_flaky_test()
+        @retry_flaky_test(prepare=[tearDown, setUp])
         def test_run_jobs(self):
             jobDesc1 = self._mockJobDescription(command='sleep 1000', jobName='test1', unitName=None,
                                                 jobStoreID='1', requirements=defaultRequirements)
@@ -703,7 +703,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
     def scriptCommand(self) -> str:
         return ' '.join([sys.executable, self.scriptPath, self.counterPath])
 
-    @retry_flaky_test()
+    @retry_flaky_test(prepare=[tearDown, setUp])
     def test(self):
         # We'll use fractions to avoid rounding errors. Remember that not every fraction can be
         # represented as a floating point number.
@@ -981,7 +981,7 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
         return "single_machine"
 
     @slow
-    @retry_flaky_test()
+    @retry_flaky_test(prepare=[tearDown, setUp])
     def testConcurrencyWithDisk(self):
         """
         Tests that the batch system is allocating disk resources properly
