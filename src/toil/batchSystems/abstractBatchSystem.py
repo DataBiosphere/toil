@@ -17,41 +17,29 @@ import os
 import shutil
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from typing import Any, Optional, Tuple, Union, Dict, NamedTuple
+from typing import (Any,
+                    Callable,
+                    ContextManager,
+                    Dict,
+                    Iterator,
+                    List,
+                    Optional,
+                    Tuple,
+                    Type,
+                    TypeVar,
+                    Union,
+                    NamedTuple)
 
-from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
-                                        DEFAULT_BATCH_SYSTEM)
 from toil.common import Toil, cacheDirName, Config
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.lib.threading import LastProcessStandingArena
+from toil.job import JobDescription
+from toil.resource import Resource
 
-try:
-    from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
-except ImportError:
-    # CWL extra not installed
-    CWL_INTERNAL_JOBS = ()
+logger = logging.getLogger(__name__)
 
 # Value to use as exitStatus in UpdatedBatchJobInfo.exitStatus when status is not available.
 EXIT_STATUS_UNAVAILABLE_VALUE = 255
-logger = logging.getLogger(__name__)
-
-
-UpdatedBatchJobInfo = NamedTuple('UpdatedBatchJobInfo',
-    [('jobID', str),
-     # The exit status (integer value) of the job. 0 implies successful.
-     # EXIT_STATUS_UNAVAILABLE_VALUE is used when the exit status is not available (e.g. job is lost).
-     ('exitStatus', int),
-     ('exitReason', Union[int, None]),  # The exit reason, if available. One of BatchJobExitReason enum.
-     ('wallTime', Union[float, int, None])])
-
-
-# Information required for worker cleanup on shutdown of the batch system.
-WorkerCleanupInfo = NamedTuple('WorkerCleanupInfo',
-    [('workDir', str),  # workdir path (where the cache would go)
-     ('workflowID', int),  # used to identify files specific to this workflow
-     ('cleanWorkDir', bool)])
-
 
 class BatchJobExitReason(enum.Enum):
     FINISHED: int = 1  # Successfully finished.
@@ -61,6 +49,19 @@ class BatchJobExitReason(enum.Enum):
     ERROR: int = 5  # Internal error.
     MEMLIMIT: int = 6  # Job hit batch system imposed memory limit
 
+UpdatedBatchJobInfo = NamedTuple('UpdatedBatchJobInfo',
+    [('jobID', int),
+     # The exit status (integer value) of the job. 0 implies successful.
+     # EXIT_STATUS_UNAVAILABLE_VALUE is used when the exit status is not available (e.g. job is lost).
+     ('exitStatus', int),
+     ('exitReason', Optional[BatchJobExitReason]),  # The exit reason, if available. One of BatchJobExitReason enum.
+     ('wallTime', Union[float, int, None])])
+
+# Information required for worker cleanup on shutdown of the batch system.
+WorkerCleanupInfo = NamedTuple('WorkerCleanupInfo',
+    [('workDir', str),  # workdir path (where the cache would go)
+     ('workflowID', str),  # used to identify files specific to this workflow
+     ('cleanWorkDir', str)])
 
 class AbstractBatchSystem(ABC):
     """
@@ -69,21 +70,19 @@ class AbstractBatchSystem(ABC):
     """
     @classmethod
     @abstractmethod
-    def supportsAutoDeployment(cls):
+    def supportsAutoDeployment(cls) -> bool:
         """
         Whether this batch system supports auto-deployment of the user script itself. If it does,
         the :meth:`.setUserScript` can be invoked to set the resource object representing the user
         script.
 
         Note to implementors: If your implementation returns True here, it should also override
-
-        :rtype: bool
         """
         raise NotImplementedError()
 
     @classmethod
     @abstractmethod
-    def supportsWorkerCleanup(cls):
+    def supportsWorkerCleanup(cls) -> bool:
         """
         Indicates whether this batch system invokes
         :meth:`BatchSystemSupport.workerCleanup` after the last job for a
@@ -93,24 +92,22 @@ class AbstractBatchSystem(ABC):
         worker process may exist on a worker node, for the same workflow. The
         batch system is said to *shut down* after the last worker process
         terminates.
-
-        :rtype: bool
         """
         raise NotImplementedError()
 
-    def setUserScript(self, userScript):
+    def setUserScript(self, userScript: Resource) -> None:
         """
         Set the user script for this workflow. This method must be called before the first job is
         issued to this batch system, and only if :meth:`.supportsAutoDeployment` returns True,
         otherwise it will raise an exception.
 
-        :param toil.resource.Resource userScript: the resource object representing the user script
+        :param userScript: the resource object representing the user script
                or module and the modules it depends on.
         """
         raise NotImplementedError()
 
     @abstractmethod
-    def issueBatchJob(self, jobDesc, job_environment: Optional[Dict[str, str]] = None):
+    def issueBatchJob(self, jobDesc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
         """
         Issues a job with the specified command to the batch system and returns a unique jobID.
 
@@ -119,50 +116,46 @@ class AbstractBatchSystem(ABC):
                                 to be set on the worker.
 
         :return: a unique jobID that can be used to reference the newly issued job
-        :rtype: int
         """
         raise NotImplementedError()
 
     @abstractmethod
-    def killBatchJobs(self, jobIDs):
+    def killBatchJobs(self, jobIDs: List[int]) -> None:
         """
         Kills the given job IDs. After returning, the killed jobs will not
         appear in the results of getRunningBatchJobIDs. The killed job will not
         be returned from getUpdatedBatchJob.
 
         :param jobIDs: list of IDs of jobs to kill
-        :type jobIDs: list[int]
         """
         raise NotImplementedError()
 
     # FIXME: Return value should be a set (then also fix the tests)
 
     @abstractmethod
-    def getIssuedBatchJobIDs(self):
+    def getIssuedBatchJobIDs(self) -> List[int]:
         """
         Gets all currently issued jobs
 
         :return: A list of jobs (as jobIDs) currently issued (may be running, or may be
                  waiting to be run). Despite the result being a list, the ordering should not
                  be depended upon.
-        :rtype: list[str]
         """
         raise NotImplementedError()
 
     @abstractmethod
-    def getRunningBatchJobIDs(self):
+    def getRunningBatchJobIDs(self) -> Dict[int, float]:
         """
         Gets a map of jobs as jobIDs that are currently running (not just waiting)
         and how long they have been running, in seconds.
 
         :return: dictionary with currently running jobID keys and how many seconds they have
                  been running as the value
-        :rtype: dict[int,float]
         """
         raise NotImplementedError()
 
     @abstractmethod
-    def getUpdatedBatchJob(self, maxWait):
+    def getUpdatedBatchJob(self, maxWait: int) -> Optional[UpdatedBatchJobInfo]:
         """
         Returns information about job that has updated its status (i.e. ceased
         running, either successfully or with an error). Each such job will be
@@ -171,9 +164,8 @@ class AbstractBatchSystem(ABC):
         Does not return info for jobs killed by killBatchJobs, although they
         may cause None to be returned earlier than maxWait.
 
-        :param float maxWait: the number of seconds to block, waiting for a result
+        :param maxWait: the number of seconds to block, waiting for a result
 
-        :rtype: UpdatedBatchJobInfo or None
         :return: If a result is available, returns UpdatedBatchJobInfo.
                  Otherwise it returns None. wallTime is the number of seconds (a strictly
                  positive float) in wall-clock time the job ran for, or None if this
@@ -181,7 +173,7 @@ class AbstractBatchSystem(ABC):
         """
         raise NotImplementedError()
 
-    def getSchedulingStatusMessage(self):
+    def getSchedulingStatusMessage(self) -> Optional[str]:
         """
         Get a log message fragment for the user about anything that might be
         going wrong in the batch system, if available.
@@ -193,7 +185,6 @@ class AbstractBatchSystem(ABC):
         stuck, the message can be displayed to the user to help them diagnose
         why it might be stuck.
 
-        :rtype: str or None
         :return: User-directed message about scheduling state.
         """
 
@@ -202,14 +193,14 @@ class AbstractBatchSystem(ABC):
         return None
 
     @abstractmethod
-    def shutdown(self):
+    def shutdown(self) -> None:
         """
         Called at the completion of a toil invocation.
         Should cleanly terminate all worker threads.
         """
         raise NotImplementedError()
 
-    def setEnv(self, name, value=None):
+    def setEnv(self, name: str, value: Optional[str] = None) -> None:
         """
         Set an environment variable for the worker process before it is launched. The worker
         process will typically inherit the environment of the machine it is running on but this
@@ -223,17 +214,19 @@ class AbstractBatchSystem(ABC):
         """
         raise NotImplementedError()
 
+    T = TypeVar('T')
     @classmethod
-    def setOptions(cls, setOption):
+    def setOptions(cls, setOption: Callable[[str, Optional[Callable[[str], T]], Optional[Callable[[T], None]], Optional[T]], None]) -> None:
         """
         Process command line or configuration options relevant to this batch system.
         The
 
-        :param setOption: A function with signature setOption(varName, parsingFn=None, checkFn=None, default=None)
-           used to update run configuration
+        :param setOption: A function with signature
+            setOption(varName, parsingFn=None, checkFn=None, default=None)
+            returning nothing, used to update run configuration as a side effect.
         """
 
-    def getWorkerContexts(self):
+    def getWorkerContexts(self) -> List[ContextManager[Any]]:
         """
         Get a list of picklable context manager objects to wrap worker work in,
         in order.
@@ -242,8 +235,6 @@ class AbstractBatchSystem(ABC):
         configuring environment variables, hot-deploying user scripts, or
         cleaning up a node) that would otherwise require a wrapping "executor"
         process.
-
-        :rtype: list
         """
         return []
 
@@ -253,7 +244,7 @@ class BatchSystemSupport(AbstractBatchSystem):
     Partial implementation of AbstractBatchSystem, support methods.
     """
 
-    def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int):
+    def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
         """
         Initializes initial state of the object
 
@@ -280,7 +271,7 @@ class BatchSystemSupport(AbstractBatchSystem):
                                                    workflowID=self.config.workflowID,
                                                    cleanWorkDir=self.config.cleanWorkDir)
 
-    def checkResourceRequest(self, memory: int, cores: float, disk: int, job_name: str = '', detail: str = ''):
+    def checkResourceRequest(self, memory: int, cores: float, disk: int, job_name: str = '', detail: str = '') -> None:
         """
         Check resource request is not greater than that available or allowed.
 
@@ -320,7 +311,7 @@ class BatchSystemSupport(AbstractBatchSystem):
 
                 raise InsufficientSystemResources(msg)
 
-    def setEnv(self, name, value=None):
+    def setEnv(self, name: str, value: Optional[str] = None) -> None:
         """
         Set an environment variable for the worker process before it is launched. The worker
         process will typically inherit the environment of the machine it is running on but this
@@ -387,124 +378,6 @@ class BatchSystemSupport(AbstractBatchSystem):
             and workflowDirContents in ([], [cacheDirName(info.workflowID)])):
             shutil.rmtree(workflowDir, ignore_errors=True)
 
-
-class BatchSystemLocalSupport(BatchSystemSupport):
-    """
-    Adds a local queue for helper jobs, useful for CWL & others
-    """
-
-    def __init__(self, config, maxCores, maxMemory, maxDisk):
-        super(BatchSystemLocalSupport, self).__init__(config, maxCores, maxMemory, maxDisk)
-        self.localBatch = BATCH_SYSTEM_FACTORY_REGISTRY[DEFAULT_BATCH_SYSTEM]()(
-                config, config.maxLocalJobs, maxMemory, maxDisk)
-
-    def handleLocalJob(self, jobDesc):  # type: (Any) -> Optional[int]
-        """
-        To be called by issueBatchJobs.
-
-        Returns the jobID if the jobDesc has been submitted to the local queue,
-        otherwise returns None
-        """
-        if (not self.config.runCwlInternalJobsOnWorkers
-                and jobDesc.jobName.startswith(CWL_INTERNAL_JOBS)):
-            return self.localBatch.issueBatchJob(jobDesc)
-        else:
-            return None
-
-    def killLocalJobs(self, jobIDs):
-        """
-        To be called by killBatchJobs. Will kill all local jobs that match the
-        provided jobIDs.
-        """
-        self.localBatch.killBatchJobs(jobIDs)
-
-    def getIssuedLocalJobIDs(self):
-        """To be called by getIssuedBatchJobIDs"""
-        return self.localBatch.getIssuedBatchJobIDs()
-
-    def getRunningLocalJobIDs(self):
-        """To be called by getRunningBatchJobIDs()."""
-        return self.localBatch.getRunningBatchJobIDs()
-
-    def getUpdatedLocalJob(self, maxWait):
-        # type: (int) -> Optional[Tuple[int, int, int]]
-        """To be called by getUpdatedBatchJob()"""
-        return self.localBatch.getUpdatedBatchJob(maxWait)
-
-    def getNextJobID(self):  # type: () -> int
-        """
-        Must be used to get job IDs so that the local and batch jobs do not
-        conflict.
-        """
-        with self.localBatch.jobIndexLock:
-            jobID = self.localBatch.jobIndex
-            self.localBatch.jobIndex += 1
-        return jobID
-
-    def shutdownLocal(self):  # type: () -> None
-        """To be called from shutdown()"""
-        self.localBatch.shutdown()
-
-
-class BatchSystemCleanupSupport(BatchSystemLocalSupport):
-    """
-    Adds cleanup support when the last running job leaves a node, for batch
-    systems that can't provide it using the backing scheduler.
-    """
-
-    @classmethod
-    def supportsWorkerCleanup(cls):
-        return True
-
-    def getWorkerContexts(self):
-        # Tell worker to register for and invoke cleanup
-
-        # Create a context manager that has a copy of our cleanup info
-        context = WorkerCleanupContext(self.workerCleanupInfo)
-
-        # Send it along so the worker works inside of it
-        contexts = super(BatchSystemCleanupSupport, self).getWorkerContexts()
-        contexts.append(context)
-        return contexts
-
-    def __init__(self, config, maxCores, maxMemory, maxDisk):
-        super(BatchSystemCleanupSupport, self).__init__(config, maxCores, maxMemory, maxDisk)
-
-class WorkerCleanupContext:
-    """
-    Context manager used by :class:`BatchSystemCleanupSupport` to implement
-    cleanup on a node after the last worker is done working.
-
-    Gets wrapped around the worker's work.
-    """
-
-    def __init__(self, workerCleanupInfo):
-        """
-        Wrap the given workerCleanupInfo in a context manager.
-
-        :param WorkerCleanupInfo workerCleanupInfo: Info to use to clean up the worker if we are
-                                                    the last to exit the context manager.
-        """
-
-
-        self.workerCleanupInfo = workerCleanupInfo
-        self.arena = None
-
-    def __enter__(self):
-        # Set up an arena so we know who is the last worker to leave
-        self.arena = LastProcessStandingArena(Toil.getToilWorkDir(self.workerCleanupInfo.workDir),
-                                              self.workerCleanupInfo.workflowID + '-cleanup')
-        self.arena.enter()
-
-    def __exit__(self, type, value, traceback):
-        for _ in self.arena.leave():
-            # We are the last concurrent worker to finish.
-            # Do batch system cleanup.
-            logger.debug('Cleaning up worker')
-            BatchSystemSupport.workerCleanup(self.workerCleanupInfo)
-        # We have nothing to say about exceptions
-        return False
-
 class NodeInfo(object):
     """
     The coresUsed attribute  is a floating point value between 0 (all cores idle) and 1 (all cores
@@ -521,8 +394,10 @@ class NodeInfo(object):
     The workers attribute is an integer reflecting the number of workers currently active workers
     on the node.
     """
-    def __init__(self, coresUsed, memoryUsed, coresTotal, memoryTotal,
-                 requestedCores, requestedMemory, workers):
+    def __init__(self, coresUsed: float, memoryUsed: float,
+                 coresTotal: float, memoryTotal: int,
+                 requestedCores: float, requestedMemory: int,
+                 workers: int) -> None:
         self.coresUsed = coresUsed
         self.memoryUsed = memoryUsed
 
@@ -543,34 +418,32 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
     """
 
     @abstractmethod
-    def getNodes(self, preemptable=None):
+    def getNodes(self, preemptable: Optional[bool] = None) -> Dict[str, NodeInfo]:
         """
         Returns a dictionary mapping node identifiers of preemptable or non-preemptable nodes to
         NodeInfo objects, one for each node.
 
-        :param bool preemptable: If True (False) only (non-)preemptable nodes will be returned.
+        :param preemptable: If True (False) only (non-)preemptable nodes will be returned.
                If None, all nodes will be returned.
-
-        :rtype: dict[str,NodeInfo]
         """
         raise NotImplementedError()
 
     @abstractmethod
-    def nodeInUse(self, nodeIP):
+    def nodeInUse(self, nodeIP: str) -> bool:
         """
         Can be used to determine if a worker node is running any tasks. If the node is doesn't
         exist, this function should simply return False.
 
-        :param str nodeIP: The worker nodes private IP address
+        :param nodeIP: The worker nodes private IP address
 
         :return: True if the worker node has been issued any tasks, else False
-        :rtype: bool
         """
         raise NotImplementedError()
 
+    # TODO: May be unused!
     @abstractmethod
     @contextmanager
-    def nodeFiltering(self, filter):
+    def nodeFiltering(self, filter: Optional[Callable[[NodeInfo], bool]]) -> Iterator[None]:
         """
         Used to prevent races in autoscaling where
         1) nodes have reported to the autoscaler as having no jobs
@@ -583,25 +456,23 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
 
         :param method: This will be used as a filter on nodes considered when assigning new jobs.
             After this context manager exits the filter should be removed
-        :rtype: None
         """
         raise NotImplementedError()
 
     @abstractmethod
-    def ignoreNode(self, nodeAddress):
+    def ignoreNode(self, nodeAddress: str) -> None:
         """
         Stop sending jobs to this node. Used in autoscaling
         when the autoscaler is ready to terminate a node, but
         jobs are still running. This allows the node to be terminated
         after the current jobs have finished.
 
-        :param str: IP address of node to ignore.
-        :rtype: None
+        :param nodeAddress: IP address of node to ignore.
         """
         raise NotImplementedError()
 
     @abstractmethod
-    def unignoreNode(self, nodeAddress):
+    def unignoreNode(self, nodeAddress: str) -> None:
         """
         Stop ignoring this address, presumably after
         a node with this address has been terminated. This allows for the

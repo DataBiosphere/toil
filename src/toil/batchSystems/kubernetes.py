@@ -41,8 +41,8 @@ from kubernetes.client.rest import ApiException
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchJobExitReason,
-                                                   BatchSystemCleanupSupport,
                                                    UpdatedBatchJobInfo)
+from toil.batchSystems.cleanupSupport import BatchSystemCleanupSupport
 from toil.common import Toil
 from toil.job import JobDescription
 from toil.lib.conversions import human2bytes

@@ -20,8 +20,8 @@ from threading import Lock, Thread
 from typing import Any, List, Dict, Union, Optional
 
 from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
-                                                   BatchSystemCleanupSupport,
                                                    UpdatedBatchJobInfo)
+from toil.batchSystems.cleanupSupport import BatchSystemCleanupSupport
 from toil.lib.misc import CalledProcessErrorStderr
 
 logger = logging.getLogger(__name__)

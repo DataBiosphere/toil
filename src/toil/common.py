@@ -140,12 +140,13 @@ class Config:
         # CWL
         self.cwl: bool = False
 
+    T = TypeVar('T')
     def setOptions(self, options) -> None:
         """Creates a config object from the options object."""
         def set_option(option_name: str,
-                       parsing_function: Optional[Callable] = None,
-                       check_function: Optional[Callable] = None,
-                       default: Any = None) -> None:
+                       parsing_function: Optional[Callable[[str], T]] = None,
+                       check_function: Optional[Callable[[T], None]] = None,
+                       default: Optional[T] = None) -> None:
             option_value = getattr(options, option_name, default)
 
             if option_value is not None:

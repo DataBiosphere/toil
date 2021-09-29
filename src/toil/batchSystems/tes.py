@@ -37,8 +37,8 @@ from typing import Optional, Dict, List
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchJobExitReason,
-                                                   BatchSystemCleanupSupport,
                                                    UpdatedBatchJobInfo)
+from toil.batchSystems.cleanupSupport import BatchSystemCleanupSupport
 from toil.common import Toil, Config
 from toil.job import JobDescription
 from toil.lib.conversions import human2bytes
@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 
 # Map from TES terminal states to Toil batch job exit reasons
-STATE_TO_EXIT_REASON = {
+STATE_TO_EXIT_REASON: Dict[str, BatchJobExitReason] = {
     'COMPLETE': BatchJobExitReason.FINISHED,
     'CANCELED': BatchJobExitReason.KILLED,
     'EXECUTOR_ERROR': BatchJobExitReason.FAILED,
@@ -65,7 +65,7 @@ STATE_TO_EXIT_REASON = {
 
 class TESBatchSystem(BatchSystemCleanupSupport):
     @classmethod
-    def supportsAutoDeployment(cls):
+    def supportsAutoDeployment(cls) -> bool:
         return True
 
     def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
@@ -86,7 +86,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         self.server_storages = server_info.storage or []
 
         # Define directories to mount for each task, as py-tes Input objects
-        self.mounts = []
+        self.mounts: List[tes.Input] = []
         
         if config.jobStore:
             job_store_type, job_store_path = Toil.parseLocator(config.jobStore)
@@ -95,7 +95,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                 self.__mount_local_path_if_possible(job_store_path, job_store_path)
 
         # If we have AWS credentials, we want to mount them in our home directory if we can.
-        aws_credentials_path = os.path.join(os.environ.get('HOME'), '.aws')
+        aws_credentials_path = os.path.join(os.path.expanduser("~"), '.aws')
         if os.path.isdir(aws_credentials_path):
             self.__mount_local_path_if_possible(aws_credentials_path, '/root/.aws')
 
@@ -109,14 +109,14 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         # is managed by the BatchSystemLocalSupport.
 
         # Here is where we will store the user script resource object if we get one.
-        self.user_script = None
+        self.user_script: Optional[Resource] = None
 
         # Ge the image to deploy from Toil's configuration
         self.docker_image = applianceSelf()
 
         # We need a way to map between our batch system ID numbers, and TES task IDs from the server.
-        self.bs_id_to_tes_id = {}
-        self.tes_id_to_bs_id = {}
+        self.bs_id_to_tes_id: Dict[int, str] = {}
+        self.tes_id_to_bs_id: Dict[str, int] = {}
 
     def __server_can_mount(self, url: str) -> bool:
         """
@@ -147,7 +147,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                                          path=container_path,
                                          type="DIRECTORY" if os.path.isdir(local_path) else "FILE"))
 
-    def setUserScript(self, user_script) -> None:
+    def setUserScript(self, user_script: Resource) -> None:
         logger.info('Setting user script for deployment: {}'.format(user_script))
         self.user_script = user_script
 
