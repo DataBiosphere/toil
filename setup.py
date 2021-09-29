@@ -41,16 +41,13 @@ def run_setup():
     htcondor = 'htcondor>=8.6.0'
     kubernetes = 'kubernetes>=12.0.1, <13'
     idna = 'idna>=2'
-    pytes = 'py-tes@https://github.com/ohsu-comp-bio/py-tes/archive/b6f8b0fd4428729d4ccd0cddf8924f50a73ac41e.zip#sha256=3e7b9c261d703c6a94657f5a511e790ccde01ba8bea55eb35d43f3c6980bae48'
+    pytes = 'py-tes@https://github.com/ohsu-comp-bio/py-tes/archive/a8b1fa71a13fe207ae7e58e3c0bad136a1638d6b.zip#sha256=5fbf2a8388f6b16c0a50d49e41cf0526c98138e7c7a774954d49933524a47b63'
     pytz = 'pytz>=2012'
     pyyaml = 'pyyaml>=5, <6'
     dill = 'dill>=0.3.2, <0.4'
     requests = 'requests>=2, <3'
     docker = 'docker==4.3.1'
-    # We need this exact version or py-tes will abort our entrypoints due to
-    # having too new of a python-dateutil. See
-    # <https://github.com/ohsu-comp-bio/py-tes/issues/34>
-    dateutil = 'python-dateutil==2.6.1'
+    dateutil = 'python-dateutil<3'
     addict = 'addict>=2.2.1, <2.3'
     enlighten = 'enlighten>=1.5.2, <2'
     wdlparse = 'wdlparse==0.1.0'
