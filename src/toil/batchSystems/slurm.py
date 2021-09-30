@@ -72,31 +72,55 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 logger.error("sbatch command failed")
                 raise e
 
+        def coalesce_job_exit_codes(self, batch_job_id_list: list) -> list:
+            logger.debug(f"Getting exit codes for slurm jobs: {batch_job_id_list}")
+            exit_codes = []
+            status_dict = self._get_job_details(batch_job_id_list)
+            for job_id, status in status_dict.items():
+                exit_codes.append(self._get_job_return_code(status))
+            return exit_codes
+
         def getJobExitCode(self, slurmJobID):
             logger.debug(f"Getting exit code for slurm job: {slurmJobID}")
+            status_dict = self._get_job_details([slurmJobID])
+            status = status_dict[slurmJobID]
+            return self._get_job_return_code(status)
 
+        def _get_job_details(self, batch_job_id_list: list) -> dict:
+            """
+            Helper function for `getJobExitCode` and `coalesce_job_exit_codes`.
+            Fetch job details from Slurm accounting system, or job control system.
+            Return a dict of job statuses. Key is the job-id, value is a tuple containing the
+            job's state and exit code.
+            """
             try:
-                state, rc = self._getJobDetailsFromSacct([slurmJobID])[slurmJobID]
+                status_dict = self._getJobDetailsFromSacct(batch_job_id_list)
             except CalledProcessErrorStderr:
-                # no accounting system or some other error
-                state, rc = self._getJobDetailsFromScontrol(slurmJobID)[slurmJobID]
+                status_dict = self._getJobDetailsFromScontrol(batch_job_id_list)
+            return status_dict
 
-            logger.debug("Job %d is %s", slurmJobID, state)
-            # If Job is in a running state, return None to indicate we don't have an update
+        def _get_job_return_code(self, status: tuple) -> list:
+            """
+            Helper function for `getJobExitCode` and `coalesce_job_exit_codes`.
+            The tuple `status` contains the job's state and it's return code.
+            Return the job's return code if it's completed, otherwise return None.
+            """
+            state, rc = status
+            # If job is in a running state, set return code to None to indicate we don't have
+            # an update.
             if state in ('PENDING', 'RUNNING', 'CONFIGURING', 'COMPLETING', 'RESIZING', 'SUSPENDED'):
-                return None
-
+                rc = None
             return rc
 
         def _getJobDetailsFromSacct(self, batch_job_id_list: list) -> dict:
             # SLURM job exit codes are obtained by running sacct.
             job_ids = ",".join(str(id) for id in batch_job_id_list)
             args = ['sacct',
-                    '-n', # no header
-                    '-j', job_ids, # job
-                    '--format', 'JobIDRaw,State,ExitCode', # specify output columns
-                    '-P', # separate columns with pipes
-                    '-S', '1970-01-01'] # override start time limit
+                    '-n',  # no header
+                    '-j', job_ids,  # job
+                    '--format', 'JobIDRaw,State,ExitCode',  # specify output columns
+                    '-P',  # separate columns with pipes
+                    '-S', '1970-01-01']  # override start time limit
             stdout = call_command(args)
 
             # Collect the job statuses in a dict; key is the job-id, value is a tuple containing
@@ -105,13 +129,13 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             for id in batch_job_id_list:
                 job_status[id] = (None, None)
 
-            for line in stdout.split('\n'):
-                logger.debug("%s output %s", args[0], line)
+            for line in stdout.splitlines():
+                logger.debug(f"{args[0]} output {line}")
                 values = line.strip().split('|')
                 if len(values) < 3:
                     continue
                 job_id, state, exitcode = values
-                logger.debug("sacct state of job %s is %s", job_id, state)
+                logger.debug(f"{args[0]} state of job {job_id} is {state}")
                 # JobIDRaw is in the form JobID[.JobStep]; we're not interested in job steps.
                 if len(job_id.split(".")) > 1:
                     continue
@@ -120,57 +144,82 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 if signal > 0:
                     # A non-zero signal may indicate e.g. an out-of-memory killed job
                     status = 128 + signal
-                logger.debug("sacct exit code of job %d is %s, returning status %d",
-                             job_id, exitcode, status)
+                logger.debug(f"{args[0]} exit code of job {job_id} is {exitcode}, "
+                             f"return status {status}")
                 job_status[job_id] = state, status
-            logger.debug("Returning job statuses: %s", job_status)
+            logger.debug(f"Returning job statuses: {job_status}")
             return job_status
 
-        def _getJobDetailsFromScontrol(self, slurmJobID):
+        def _getJobDetailsFromScontrol(self, batch_job_id_list: list) -> dict:
+            # `scontrol` can only return information about a single job,
+            # or all the jobs it knows about.
             args = ['scontrol',
                     'show',
-                    'job',
-                    str(slurmJobID)]
+                    'job']
+            if len(batch_job_id_list) == 1:
+                args.append(str(batch_job_id_list[0]))
 
             stdout = call_command(args)
+
+            # Job records are separated by a blank line.
             if isinstance(stdout, str):
-                lines = stdout.splitlines()
+                job_records = stdout.strip().split('\n\n')
             elif isinstance(stdout, bytes):
-                lines = stdout.decode('utf-8').splitlines()
+                job_records = stdout.decode('utf-8').strip().split('\n\n')
 
-            job = dict()
-            for line in lines:
-                for item in line.split():
-                    logger.debug(f"{args[0]} output {item}")
+            # Collect the job statuses in a dict; key is the job-id, value is a tuple containing
+            # job state and exit status. Initialize dict before processing output of `scontrol`.
+            job_status = {}
+            for id in batch_job_id_list:
+                job_status[id] = (None, None)
 
-                    # Output is in the form of many key=value pairs, multiple pairs on each line
-                    # and multiple lines in the output. Each pair is pulled out of each line and
-                    # added to a dictionary.
-                    # Note: In some cases, the value itself may contain white-space. So, if we find
-                    # a key without a value, we consider that key part of the previous value.
-                    bits = item.split('=', 1)
-                    if len(bits) == 1:
-                        job[key] += ' ' + bits[0]
+            # `scontrol` will report "No jobs in the system", if there are no jobs in the system,
+            # and if no job-id was passed as argument to `scontrol`.
+            if len(job_records) > 0 and job_records[0] == "No jobs in the system":
+                return job_status
+
+            for record in job_records:
+                job = dict()
+                for line in record.splitlines():
+                    for item in line.split():
+                        logger.debug(f"{args[0]} output {item}")
+                        # Output is in the form of many key=value pairs, multiple pairs on each line
+                        # and multiple lines in the output. Each pair is pulled out of each line and
+                        # added to a dictionary.
+                        # Note: In some cases, the value itself may contain white-space. So, if we find
+                        # a key without a value, we consider that key part of the previous value.
+                        bits = item.split('=', 1)
+                        if len(bits) == 1:
+                            job[key] += ' ' + bits[0]
+                        else:
+                            key = bits[0]
+                            job[key] = bits[1]
+                    # The first line of the record contains the JobId. Stop processing the remainder
+                    # of this record, if we're not interested in this job.
+                    job_id = int(job['JobId'])
+                    if job_id not in batch_job_id_list:
+                        logger.debug(f"{args[0]} job {job_id} is not in the list")
+                        break
+                if job_id not in batch_job_id_list:
+                    continue
+                state = job['JobState']
+                try:
+                    exitcode = job['ExitCode']
+                    if exitcode is not None:
+                        status, signal = [int(n) for n in exitcode.split(':')]
+                        if signal > 0:
+                            # A non-zero signal may indicate e.g. an out-of-memory killed job
+                            status = 128 + signal
+                        logger.debug(f"{args[0]} exit code of job {job_id} is {exitcode}, "
+                                     f"return status {status}")
+                        rc = status
                     else:
-                        key = bits[0]
-                        job[key] = bits[1]
-
-            state = job['JobState']
-            try:
-                exitcode = job['ExitCode']
-                if exitcode is not None:
-                    status, signal = [int(n) for n in exitcode.split(':')]
-                    if signal > 0:
-                        # A non-zero signal may indicate e.g. an out-of-memory killed job
-                        status = 128 + signal
-                    logger.debug("scontrol exit code is %s, returning status %d", exitcode, status)
-                    rc = status
-                else:
+                        rc = None
+                except KeyError:
                     rc = None
-            except KeyError:
-                rc = None
-
-            return state, rc
+                job_status[job_id] = (state, rc)
+            logger.debug(f"{args[0]} returning job statuses: {job_status}")
+            return job_status
 
         """
         Implementation-specific helper methods
