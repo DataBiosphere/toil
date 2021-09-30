@@ -93,6 +93,8 @@ py36_appliance_build:
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && pip install pycparser && make develop extras=[all] packages='htcondor awscli'
+    - mkdir -p ~/.docker/cli-plugins/ ; curl -L https://github.com/docker/buildx/releases/download/v0.6.3/buildx-v0.6.3.linux-amd64 >  ~/.docker/cli-plugins/docker-buildx ; chmod u+x ~/.docker/cli-plugins/docker-buildx
+    - docker buildx create --name toilbuilder --use
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
     - python setup_gitlab_docker.py
     - make push_docker
