@@ -89,7 +89,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         def _get_job_details(self, batch_job_id_list: list) -> dict:
             """
             Helper function for `getJobExitCode` and `coalesce_job_exit_codes`.
-            Fetch job details from Slurm accounting system, or job control system.
+            Fetch job details from Slurm's accounting system or job control system.
             Return a dict of job statuses. Key is the job-id, value is a tuple containing the
             job's state and exit code.
             """
@@ -136,10 +136,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     continue
                 job_id, state, exitcode = values
                 logger.debug(f"{args[0]} state of job {job_id} is {state}")
-                # JobIDRaw is in the form JobID[.JobStep]; we're not interested in job steps.
-                if len(job_id.split(".")) > 1:
-                    continue
-                job_id = int(job_id)
+                # JobIDRaw is in the form JobID[.JobStep]
+                job_id = int(job_id.split(".")[0])
                 status, signal = [int(n) for n in exitcode.split(':')]
                 if signal > 0:
                     # A non-zero signal may indicate e.g. an out-of-memory killed job
@@ -147,7 +145,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 logger.debug(f"{args[0]} exit code of job {job_id} is {exitcode}, "
                              f"return status {status}")
                 job_status[job_id] = state, status
-            logger.debug(f"Returning job statuses: {job_status}")
+            logger.debug(f"{args[0]} returning job statuses: {job_status}")
             return job_status
 
         def _getJobDetailsFromScontrol(self, batch_job_id_list: list) -> dict:
