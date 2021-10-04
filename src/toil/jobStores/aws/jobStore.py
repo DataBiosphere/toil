@@ -112,7 +112,7 @@ class AWSJobStore(AbstractJobStore):
                upload and copy, must be >= 5 MiB but large enough to not exceed 10k parts for the
                whole file
         """
-        super(AWSJobStore, self).__init__()
+        super(AWSJobStore, self).__init__(locator)
         region, namePrefix = locator.split(':')
         regions = EC2Regions.keys()
         if region not in regions:
@@ -130,7 +130,6 @@ class AWSJobStore(AbstractJobStore):
                              "%s." % (namePrefix, self.nameSeparator))
         logger.debug("Instantiating %s for region %s and name prefix '%s'",
                      self.__class__, region, namePrefix)
-        self.locator = locator
         self.region = region
         self.namePrefix = namePrefix
         self.partSize = partSize
