@@ -90,7 +90,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         # mount any of our local files. These are URL bases that the server
         # supports.
         server_info = self.tes.get_service_info()
-        logger.info("Detected TES server info: %s", server_info)
+        logger.debug("Detected TES server info: %s", server_info)
         self.server_storages = server_info.storage or []
 
         # Define directories to mount for each task, as py-tes Input objects
@@ -156,7 +156,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                                          type="DIRECTORY" if os.path.isdir(local_path) else "FILE"))
 
     def setUserScript(self, user_script: Resource) -> None:
-        logger.info('Setting user script for deployment: {}'.format(user_script))
+        logger.debug('Setting user script for deployment: {}'.format(user_script))
         self.user_script = user_script
 
     # setEnv is provided by BatchSystemSupport, updates self.environment
@@ -296,7 +296,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                 task = self.tes.get_task(tes_id)
                 if task.state in ["COMPLETE", "CANCELED", "EXECUTOR_ERROR", "SYSTEM_ERROR"]:
                     # This task is done!
-                    logger.info("Found stopped task: %s", task)
+                    logger.debug("Found stopped task: %s", task)
 
                     # Acknowledge it
                     acknowledged.append((tes_id, bs_id))
@@ -378,7 +378,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
             # Poll every issued task.
             # TODO: use list_tasks filtering by name prefix and running state!
             task = self.tes.get_task(tes_id)
-            logger.info("Observed task: %s", task)
+            logger.debug("Observed task: %s", task)
             if task.state in ["INITIALIZING", "RUNNING"]:
                 # We count INITIALIZING tasks because they may be e.g. pulling
                 # Docker containers, and we don't want to time out on them in
