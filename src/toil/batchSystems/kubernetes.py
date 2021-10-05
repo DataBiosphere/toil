@@ -32,7 +32,8 @@ import sys
 import tempfile
 import time
 import uuid
-from typing import Optional, Dict
+from argparse import ArgumentParser, _ArgumentGroup
+from typing import Callable, Optional, Dict, TypeVar, Union
 
 import kubernetes
 import urllib3
@@ -93,20 +94,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Decide if we are going to mount a Kubernetes host path as /tmp in the workers.
         # If we do this and the work dir is the default of the temp dir, caches will be shared.
-        self.host_path = config.kubernetesHostPath
-        if self.host_path is None and os.environ.get("TOIL_KUBERNETES_HOST_PATH", None) is not None:
-            # We can also take it from an environment variable
-            self.host_path = os.environ.get("TOIL_KUBERNETES_HOST_PATH")
+        self.host_path = config.kubernetes_host_path
 
-        # Make a Kubernetes-acceptable version of our username: not too long,
-        # and all lowercase letters, numbers, or - or .
-        acceptableChars = set(string.ascii_lowercase + string.digits + '-.')
-
-        # Use TOIL_KUBERNETES_OWNER if present in env var
-        if os.environ.get("TOIL_KUBERNETES_OWNER", None) is not None:
-            username = os.environ.get("TOIL_KUBERNETES_OWNER")
-        else:
-            username = ''.join([c for c in getpass.getuser().lower() if c in acceptableChars])[:100]
+        # Get the username to mark jobs with
+        username = config.kubernetes_owner
 
         self.uniqueID = uuid.uuid4()
 
@@ -1142,6 +1133,34 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
             # Block until it doesn't exist
             self._waitForJobDeath(jobName)
+
+    @classmethod
+    def get_default_kubernetes_owner(cls) -> str:
+        """
+        Get the default Kubernetes-acceptable username string to tack onto jobs.
+        """
+
+        # Make a Kubernetes-acceptable version of our username: not too long,
+        # and all lowercase letters, numbers, or - or .
+        acceptable_chars = set(string.ascii_lowercase + string.digits + '-.')
+
+        return ''.join([c for c in getpass.getuser().lower() if c in acceptable_chars])[:100]
+
+    @classmethod
+    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+        parser.add_argument("--kubernetesHostPath", dest="kubernetes_host_path", default=None,
+                            help="Path on Kubernetes hosts to use as shared inter-pod temp directory.  "
+                                 "(default: %(default)s)")
+        parser.add_argument("--kubernetesOwner", dest="kubernetes_owner", default=cls.get_default_kubernetes_owner(),
+                            help="Username to mark Kubernetes jobs with.  "
+                                 "(default: %(default)s)")
+
+    T = TypeVar('T')
+    @classmethod
+    def setOptions(cls, setOption: Callable[[str, Optional[Callable[[str], T]], Optional[Callable[[T], None]], Optional[T], Optional[List[str]]], None]) -> None:
+        setOption("kubernetes_host_path", default=None, env=['TOIL_KUBERNETES_HOST_PATH'])
+        setOption("kubernetes_owner", default=cls.get_default_kubernetes_owner(), env=['TOIL_KUBERNETES_OWNER'])
+
 
 def executor():
     """

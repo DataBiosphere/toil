@@ -16,6 +16,7 @@ import logging
 import os
 import shutil
 from abc import ABC, abstractmethod
+from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
 from typing import (Any,
                     Callable,
@@ -68,6 +69,7 @@ class AbstractBatchSystem(ABC):
     An abstract (as far as Python currently allows) base class to represent the interface the batch
     system must provide to Toil.
     """
+
     @classmethod
     @abstractmethod
     def supportsAutoDeployment(cls) -> bool:
@@ -214,17 +216,26 @@ class AbstractBatchSystem(ABC):
         """
         raise NotImplementedError()
 
+    @classmethod
+    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+        """
+        If this batch system provides any command line options, add them to the given parser.
+        """
+        pass
+
     T = TypeVar('T')
     @classmethod
-    def setOptions(cls, setOption: Callable[[str, Optional[Callable[[str], T]], Optional[Callable[[T], None]], Optional[T]], None]) -> None:
+    def setOptions(cls, setOption: Callable[[str, Optional[Callable[[str], T]], Optional[Callable[[T], None]], Optional[T], Optional[List[str]]], None]) -> None:
         """
         Process command line or configuration options relevant to this batch system.
-        The
 
         :param setOption: A function with signature
-            setOption(varName, parsingFn=None, checkFn=None, default=None)
+            setOption(varName, parsingFn=None, checkFn=None, default=None, env=None)
             returning nothing, used to update run configuration as a side effect.
         """
+        # TODO: change type to a Protocol to express kwarg names, or else use a
+        # different interface (generator?)
+        pass
 
     def getWorkerContexts(self) -> List[ContextManager[Any]]:
         """

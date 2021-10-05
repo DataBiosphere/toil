@@ -19,10 +19,11 @@ import subprocess
 import sys
 import time
 import traceback
+from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
 from queue import Empty, Queue
 from threading import Condition, Event, Lock, Thread
-from typing import Dict, List, Optional, Sequence
+from typing import Callable, Dict, List, Optional, Sequence, TypeVar, Union
 
 import toil
 from toil.job import JobDescription
@@ -706,8 +707,35 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         return item
 
     @classmethod
+    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+        parser.add_argument("--scale", dest="scale", default=1,
+                            help="A scaling factor to change the value of all submitted tasks's submitted cores.  "
+                                 "Used in the single_machine batch system.  (default: %(default)s).")
+
+        link_imports = parser.add_mutually_exclusive_group()
+        link_imports_help = ("When using a filesystem based job store, CWL input files are by default symlinked in.  "
+                             "Specifying this option instead copies the files into the job store, which may protect "
+                             "them from being modified externally.  When not specified and as long as caching is enabled, "
+                             "Toil will protect the file automatically by changing the permissions to read-only.")
+        link_imports.add_argument("--linkImports", dest="linkImports", action='store_true', help=link_imports_help)
+        link_imports.add_argument("--noLinkImports", dest="linkImports", action='store_false', help=link_imports_help)
+        link_imports.set_defaults(linkImports=True)
+
+        move_exports = parser.add_mutually_exclusive_group()
+        move_exports_help = ('When using a filesystem based job store, output files are by default moved to the '
+                             'output directory, and a symlink to the moved exported file is created at the initial '
+                             'location.  Specifying this option instead copies the files into the output directory.  '
+                             'Applies to filesystem-based job stores only.')
+        move_exports.add_argument("--moveExports", dest="moveExports", action='store_true', help=move_exports_help)
+        move_exports.add_argument("--noMoveExports", dest="moveExports", action='store_false', help=move_exports_help)
+        move_exports.set_defaults(moveExports=False)
+
+
+    @classmethod
     def setOptions(cls, setOption):
         setOption("scale", default=1)
+        setOption("linkImports", bool, default=True)
+        setOption("moveExports", bool, default=False)
 
 
 class Info:

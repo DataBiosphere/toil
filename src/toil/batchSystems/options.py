@@ -10,10 +10,8 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-import socket
 from argparse import ArgumentParser, _ArgumentGroup
-from contextlib import closing
-from typing import Callable, Union
+from typing import Any, Callable, Optional, Union
 
 from toil.batchSystems.registry import (
     BATCH_SYSTEM_FACTORY_REGISTRY,
@@ -22,98 +20,15 @@ from toil.batchSystems.registry import (
 )
 from toil.lib.threading import cpu_count
 
-
-def getPublicIP() -> str:
-    """Get the IP that this machine uses to contact the internet.
-
-    If behind a NAT, this will still be this computer's IP, and not the router's."""
-    try:
-        # Try to get the internet-facing IP by attempting a connection
-        # to a non-existent server and reading what IP was used.
-        with closing(socket.socket(socket.AF_INET, socket.SOCK_DGRAM)) as sock:
-            # 203.0.113.0/24 is reserved as TEST-NET-3 by RFC 5737, so
-            # there is guaranteed to be no one listening on the other
-            # end (and we won't accidentally DOS anyone).
-            sock.connect(('203.0.113.1', 1))
-            ip = sock.getsockname()[0]
-        return ip
-    except:
-        # Something went terribly wrong. Just give loopback rather
-        # than killing everything, because this is often called just
-        # to provide a default argument
-        return '127.0.0.1'
-
-
-def add_parasol_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-    parser.add_argument("--parasolCommand", dest="parasolCommand", default='parasol',
-                        help="The name or path of the parasol program. Will be looked up on PATH "
-                             "unless it starts with a slash.  (default: %(default)s).")
-    parser.add_argument("--parasolMaxBatches", dest="parasolMaxBatches", default=1000,
-                        help="Maximum number of job batches the Parasol batch is allowed to create. One batch is "
-                             "created for jobs with a a unique set of resource requirements.  (default: %(default)s).")
-
-
-def add_single_machine_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-    parser.add_argument("--scale", dest="scale", default=1,
-                        help="A scaling factor to change the value of all submitted tasks's submitted cores.  "
-                             "Used in the single_machine batch system.  (default: %(default)s).")
-
-    link_imports = parser.add_mutually_exclusive_group()
-    link_imports_help = ("When using a filesystem based job store, CWL input files are by default symlinked in.  "
-                         "Specifying this option instead copies the files into the job store, which may protect "
-                         "them from being modified externally.  When not specified and as long as caching is enabled, "
-                         "Toil will protect the file automatically by changing the permissions to read-only.")
-    link_imports.add_argument("--linkImports", dest="linkImports", action='store_true', help=link_imports_help)
-    link_imports.add_argument("--noLinkImports", dest="linkImports", action='store_false', help=link_imports_help)
-    link_imports.set_defaults(linkImports=True)
-
-    move_exports = parser.add_mutually_exclusive_group()
-    move_exports_help = ('When using a filesystem based job store, output files are by default moved to the '
-                         'output directory, and a symlink to the moved exported file is created at the initial '
-                         'location.  Specifying this option instead copies the files into the output directory.  '
-                         'Applies to filesystem-based job stores only.')
-    move_exports.add_argument("--moveExports", dest="moveExports", action='store_true', help=move_exports_help)
-    move_exports.add_argument("--noMoveExports", dest="moveExports", action='store_false', help=move_exports_help)
-    move_exports.set_defaults(moveExports=False)
-
-
-def add_mesos_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-    parser.add_argument("--mesosMaster", dest="mesosMasterAddress", default=f'{getPublicIP()}:5050',
-                        help="The host and port of the Mesos master separated by colon.  (default: %(default)s)")
-
-
-def add_kubernetes_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-    parser.add_argument("--kubernetesHostPath", dest="kubernetesHostPath", default=None,
-                        help="Path on Kubernetes hosts to use as shared inter-pod temp directory.  "
-                             "(default: %(default)s)")
-
-def add_slurm_options(parser: Union[ArgumentParser, _ArgumentGroup]):
-    allocate_mem = parser.add_mutually_exclusive_group()
-    allocate_mem_help = ("A flag that can block allocating memory with '--mem' for job submissions "
-                         "on SLURM since some system servers may reject any job request that "
-                         "explicitly specifies the memory allocation.  The default is to always allocate memory.")
-    allocate_mem.add_argument("--dont_allocate_mem", action='store_false', dest="allocate_mem", help=allocate_mem_help)
-    allocate_mem.add_argument("--allocate_mem", action='store_true', dest="allocate_mem", help=allocate_mem_help)
-    allocate_mem.set_defaults(allocate_mem=True)
-
-def add_tes_options(parser: Union[ArgumentParser, _ArgumentGroup]):
-    parser.add_argument("--tesEndpoint", dest="tes_endpoint", default=f'http://{getPublicIP()}:8000',
-                        help="The http(s) URL of the TES server.  (default: %(default)s)")
-    parser.add_argument("--tesUser", dest="tes_user", default=None,
-                        help="User name to use for basic authentication to TES server.")
-    parser.add_argument("--tesPassword", dest="tes_password", default=None,
-                        help="Password to use for basic authentication to TES server.")
-    parser.add_argument("--tesBearerToken", dest="tes_bearer_token", default=None,
-                        help="Bearer token to use for authentication to TES server.")
-
-
 def set_batchsystem_options(batch_system: str, set_option: Callable) -> None:
+    """
+    Call set_option for all the options for the given named batch system.
+    """
     batch_system_factory = BATCH_SYSTEM_FACTORY_REGISTRY[batch_system]()
     batch_system_factory.setOptions(set_option)
 
-
 def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-    # TODO: Only add options for the system the user is specifying?
+    # Do the global cross-batch-system arguments
     parser.add_argument(
         "--batchSystem",
         dest="batchSystem",
@@ -179,19 +94,24 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         ),
     )
 
-    add_parasol_options(parser)
-    add_single_machine_options(parser)
-    add_mesos_options(parser)
-    add_slurm_options(parser)
-    add_tes_options(parser)
-    add_kubernetes_options(parser)
-
+    for factory in BATCH_SYSTEM_FACTORY_REGISTRY.values():
+        # All the batch systems are responsible for adding their own options
+        # with the add_options class method.
+        try:
+            batch_system_type = factory()
+        except ImportError:
+            # Skip anything we can't import
+            continue
+        # Ask the batch system to create its options in the parser
+        batch_system_type.add_options(parser)
 
 def set_batchsystem_config_defaults(config) -> None:
     """
     Set default options for builtin batch systems. This is required if a Config
     object is not constructed from an Options object.
     """
+
+    # Do the global options across batch systems
     config.batchSystem = "single_machine"
     config.disableAutoDeployment = False
     config.environment = {}
@@ -200,26 +120,24 @@ def set_batchsystem_config_defaults(config) -> None:
     config.manualMemArgs = False
     config.coalesceStatusCalls = False
 
-    # parasol
-    config.parasolCommand = 'parasol'
-    config.parasolMaxBatches = 10000
+    def set_option_to_default(varName: str,
+                              parsingFn: Optional[Any] = None,
+                              checkFn: Optional[Any] = None,
+                              default: Optional[Any] = None,
+                              *args,
+                              **kwargs) -> None:
+        """
+        Function to set a batch-system-defined option to its default value.
+        """
+        setattr(config, varName, default)
 
-    # single machine
-    config.scale = 1
-    config.linkImports = False
-    config.moveExports = False
-
-    # mesos
-    config.mesosMasterAddress = f'{getPublicIP()}:5050'
-
-    # SLURM
-    config.allocate_mem = True
-
-    # TES
-    config.tes_endpoint=f'http://{getPublicIP()}:8000'
-    config.tes_user = None
-    config.tes_password = None
-    config.tes_bearer_token = None
-
-    # Kubernetes
-    config.kubernetesHostPath = None
+    for factory in BATCH_SYSTEM_FACTORY_REGISTRY.values():
+        # All the batch systems are responsible for setting their own defaults
+        # with their setOptions() class methods.
+        try:
+            batch_system_type = factory()
+        except ImportError:
+            # Skip anything we can't import
+            continue
+        # Ask the batch system to tell us all its options and default values.
+        batch_system_type.setOptions(set_option_to_default)

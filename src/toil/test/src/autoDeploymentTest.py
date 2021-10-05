@@ -75,7 +75,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
             pythonArgs = ['venv/bin/python', '-m', 'foo.bar']
             toilArgs = ['--logDebug',
                         '--batchSystem=mesos',
-                        '--mesosMaster=localhost:5050',
+                        '--mesosEndpoint=localhost:5050',
                         '--defaultMemory=10M',
                         '/data/jobstore']
             command = concat(pythonArgs, toilArgs)
@@ -146,7 +146,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
                                   '-m', 'toil_script.bar',
                                   '--logDebug',
                                   '--batchSystem=mesos',
-                                  '--mesosMaster=localhost:5050',
+                                  '--mesosEndpoint=localhost:5050',
                                   '--defaultMemory=10M',
                                   '/data/jobstore')
             # Assert that out output file is there
@@ -196,7 +196,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
             leader.runOnAppliance('venv/bin/python', '-m', 'foo.bar',
                                   '--logDebug',
                                   '--batchSystem=mesos',
-                                  '--mesosMaster=localhost:5050',
+                                  '--mesosEndpoint=localhost:5050',
                                   '--defaultMemory=10M',
                                   '--defaultDisk=10M',
                                   '/data/jobstore')
@@ -301,7 +301,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
             leader.runOnAppliance('venv/bin/python', '-m', 'foo.bar',
                                   '--logDebug',
                                   '--batchSystem=mesos',
-                                  '--mesosMaster=localhost:5050',
+                                  '--mesosEndpoint=localhost:5050',
                                   '--retryCount=0',
                                   '--defaultMemory=10M',
                                   '--defaultDisk=10M',
@@ -477,7 +477,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
             leader.runOnAppliance('venv/bin/python', '-m', 'foo.bar',
                                   '--logDebug',
                                   '--batchSystem=mesos',
-                                  '--mesosMaster=localhost:5050',
+                                  '--mesosEndpoint=localhost:5050',
                                   '--retryCount=0',
                                   '--defaultMemory=10M',
                                   '--defaultDisk=10M',

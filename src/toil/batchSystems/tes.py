@@ -32,7 +32,8 @@ import sys
 import tempfile
 import time
 import uuid
-from typing import Optional, Dict, List
+from argparse import ArgumentParser, _ArgumentGroup
+from typing import Callable, Optional, Dict, List, TypeVar, Union
 
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
@@ -42,7 +43,7 @@ from toil.batchSystems.cleanupSupport import BatchSystemCleanupSupport
 from toil.common import Toil, Config
 from toil.job import JobDescription
 from toil.lib.conversions import human2bytes
-from toil.lib.misc import utc_now, slow_down
+from toil.lib.misc import utc_now, slow_down, get_public_ip
 from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
 from toil.statsAndLogging import configure_root_logger, set_log_level
@@ -68,13 +69,21 @@ class TESBatchSystem(BatchSystemCleanupSupport):
     def supportsAutoDeployment(cls) -> bool:
         return True
 
+    @classmethod
+    def get_default_tes_endpoint(cls) -> str:
+        """
+        Get the default TES endpoint URL to use, unless overridden by an option
+        or environment variable.
+        """
+        return f'http://{get_public_ip()}:8000'
+
     def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
 
         # Connect to TES, using Funnel-compatible environment variables to fill in credentials if not specified.
         self.tes = tes.HTTPClient(config.tes_endpoint,
-                                  user=os.environ.get("FUNNEL_SERVER_USER", config.tes_user),
-                                  password=os.environ.get("FUNNEL_SERVER_PASSWORD", config.tes_password),
+                                  user=config.tes_user,
+                                  password=config.tes_password,
                                   token=config.tes_bearer_token)
 
         # Get service info from the TES server and pull out supported storages.
@@ -257,7 +266,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                  if isinstance(executor_log.exit_code, int):
                     # Find the last executor exit code that is a number and return it
                     return executor_log.exit_code
-                    
+
         if task.state == 'COMPLETE':
             # If the task completes without error but has no code logged, the
             # code must be 0.
@@ -273,14 +282,14 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         result = None
         while result is None and ((datetime.datetime.now() - entry).total_seconds() < maxWait or not maxWait):
             result = self.getUpdatedLocalJob(0)
-            
+
             if result:
                 return result
 
             # Collect together the list of TES and batch system IDs for tasks we
             # are acknowledging and don't care about anymore.
             acknowledged = []
-            
+
             for tes_id, bs_id in self.tes_id_to_bs_id.items():
                 # Immediately poll all the jobs we issued.
                 # TODO: There's no way to acknowledge a finished job, so there's no
@@ -318,7 +327,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
             for (tes_id, bs_id) in acknowledged:
                 del self.tes_id_to_bs_id[tes_id]
                 del self.bs_id_to_tes_id[bs_id]
-                
+
             if not maxWait:
                 # Don't wait at all
                 break
@@ -397,5 +406,25 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                 self.__try_cancel(self.bs_id_to_tes_id[bs_id])
                 # But don't forget the mapping until we actually get the finish
                 # notification for the job.
+
+    @classmethod
+    def add_tes_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+        parser.add_argument("--tesEndpoint", dest="tes_endpoint", default=cls.get_default_tes_endpoint(),
+                            help="The http(s) URL of the TES server.  (default: %(default)s)")
+        parser.add_argument("--tesUser", dest="tes_user", default=None,
+                            help="User name to use for basic authentication to TES server.")
+        parser.add_argument("--tesPassword", dest="tes_password", default=None,
+                            help="Password to use for basic authentication to TES server.")
+        parser.add_argument("--tesBearerToken", dest="tes_bearer_token", default=None,
+                            help="Bearer token to use for authentication to TES server.")
+
+    T = TypeVar('T')
+    @classmethod
+    def setOptions(cls, setOption: Callable[..., None]) -> None:
+        # When actually parsing options, remember to check the environment variable,
+        setOption("tes_endpoint", default=cls.get_default_tes_endpoint(), env=["TOIL_TES_ENDPOINT"])
+        setOption("tes_user", default=None, env=["TOIL_TES_USER", "FUNNEL_SERVER_USER"])
+        setOption("tes_password", default=None, env=["TOIL_TES_PASSWORD", "FUNNEL_SERVER_PASSWORD"])
+        setOption("tes_bearer_token", default=None, env=["TOIL_TES_BEARER_TOKEN"])
 
 # TODO: factor out the Kubernetes executor, and use it for anything we can't/don't translate into idiomatic TES.

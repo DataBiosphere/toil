@@ -338,10 +338,15 @@ def needs_torque(test_item):
 def needs_tes(test_item):
     """Use as a decorator before test classes or methods to run only if TES is available."""
     test_item = _mark_test('tes', test_item)
-    # TODO: Load this from the same place here as in the config
-    DEFAULT_TES_URL = 'http://localhost:8000'
+
     try:
-        urlopen(DEFAULT_TES_URL)
+        from toil.batchSystems.tes import TESBatchSystem
+    except ImportError:
+        return unittest.skip(f"Install py-tes to include this test")(test_item)
+
+    tes_url = os.environ.get('TOIL_TES_ENDPOINT', TESBatchSystem.get_default_tes_endpoint())
+    try:
+        urlopen(tes_url)
     except HTTPError:
         # Should 404 if TES is working
         # TODO: check for the right code?
@@ -352,7 +357,7 @@ def needs_tes(test_item):
         # we're on Kubernetes dialing localhost and !!creative things!! have
         # been done to the network stack.
         pass
-    return unittest.skip(f"Run a TES server on {DEFAULT_TES_URL} to include this test")(test_item)
+    return unittest.skip(f"Run a TES server on {tes_url} to include this test")(test_item)
 
 def needs_kubernetes(test_item):
     """Use as a decorator before test classes or methods to run only if Kubernetes is installed."""

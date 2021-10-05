@@ -229,7 +229,7 @@ class MesosPromisedRequirementsTest(hidden.AbstractPromisedRequirementsTest, Mes
 
     def getOptions(self, tempDir, caching=True):
         options = super(MesosPromisedRequirementsTest, self).getOptions(tempDir, caching=caching)
-        options.mesosMasterAddress = 'localhost:5050'
+        options.mesos_endpoint = 'localhost:5050'
         return options
 
     def getBatchSystemName(self):

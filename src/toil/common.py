@@ -146,11 +146,40 @@ class Config:
         def set_option(option_name: str,
                        parsing_function: Optional[Callable[[str], T]] = None,
                        check_function: Optional[Callable[[T], None]] = None,
-                       default: Optional[T] = None) -> None:
+                       default: Optional[T] = None,
+                       env: Optional[List[str]] = None,
+                       old_names: Optional[List[str]] = None) -> None:
+            """
+            Determine the correct value for the given option.
+            
+            Priority order is:
+            
+            1. options object under option_name
+            2. options object under old_names
+            3. environment variables in env
+            4. provided default value
+            
+            Selected option value is run through parsing_funtion if it is set
+            and the value is a string. Then the parsed value is run through
+            check_function to check it for acceptability, which should raise
+            AssertionError if the value is unacceptable.
+            
+            If the option gets a non-None value, sets it as an attribute in
+            this Config.
+            """
+            
             option_value = getattr(options, option_name, default)
+            
+            if old_names is not None:
+                for old_name in old_names:
+                    # Try all the old names in case user code is setting them
+                    # in an options object.
+                    if option_value != default:
+                        break
+                    option_value = getattr(options, old_name, default)
 
             if option_value is not None:
-                if parsing_function is not None:
+                if parsing_function is not None and isinstance(option_value, str):
                     option_value = parsing_function(option_value)
                 if check_function is not None:
                     try:
@@ -218,7 +247,7 @@ class Config:
         set_option("linkImports")
         set_option("moveExports")
         set_option("allocate_mem")
-        set_option("mesosMasterAddress")
+        set_option("mesos_endpoint", old_names=["mesosMasterAddress"])
         set_option("kubernetesHostPath")
         set_option("environment", parseSetEnv)
 
@@ -630,7 +659,7 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
                                    "necessarily setting the log level to 'debug'. Ensure that either --writeLogs "
                                    "or --writeLogsGzip is set if enabling this option.")
     misc_options.add_argument("--realTimeLogging", dest="realTimeLogging", action="store_true", default=False,
-                              help="Enable real-time logging from workers to masters")
+                              help="Enable real-time logging from workers to leader")
     misc_options.add_argument("--sseKey", dest="sseKey", default=None,
                               help="Path to file containing 32 character key to be used for server-side encryption on "
                                    "awsJobStore or googleJobStore. SSE will not be used if this flag is not passed.")

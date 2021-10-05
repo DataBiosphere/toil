@@ -4,14 +4,37 @@ import logging
 import os
 import random
 import shutil
+import socket
 import subprocess
 import sys
 import typing
 
+from contextlib import closing
 from typing import Iterator, Union, List, Optional
 
 logger = logging.getLogger(__name__)
 
+
+def get_public_ip() -> str:
+    """Get the IP that this machine uses to contact the internet.
+
+    If behind a NAT, this will still be this computer's IP, and not the router's."""
+    try:
+        # Try to get the internet-facing IP by attempting a connection
+        # to a non-existent server and reading what IP was used.
+        ip = '127.0.0.1'
+        with closing(socket.socket(socket.AF_INET, socket.SOCK_DGRAM)) as sock:
+            # 203.0.113.0/24 is reserved as TEST-NET-3 by RFC 5737, so
+            # there is guaranteed to be no one listening on the other
+            # end (and we won't accidentally DOS anyone).
+            sock.connect(('203.0.113.1', 1))
+            ip = sock.getsockname()[0]
+        return ip
+    except:
+        # Something went terribly wrong. Just give loopback rather
+        # than killing everything, because this is often called just
+        # to provide a default argument
+        return '127.0.0.1'
 
 def utc_now() -> datetime.datetime:
     """Return a datetime in the UTC timezone corresponding to right now."""
