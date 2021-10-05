@@ -239,7 +239,7 @@ def retry(intervals: Optional[List] = None,
     # if a generic error exists (with no restrictions), delete more specific error_condition instances of it
     for error_condition in error_conditions:
         if error_condition.retry_on_this_condition and error_condition.error in retriable_errors:
-            del error_conditions[error_condition]
+            error_conditions.remove(error_condition)
 
     # if a more specific error exists that isn't in the general set,
     # add it to the total errors that will be try/except-ed upon
