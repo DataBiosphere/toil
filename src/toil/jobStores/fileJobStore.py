@@ -65,7 +65,7 @@ class FileJobStore(AbstractJobStore):
         :param int fanOut: Number of items to have in a directory before making
                            subdirectories
         """
-        super(FileJobStore, self).__init__()
+        super(FileJobStore, self).__init__(path)
         self.jobStoreDir = os.path.abspath(path)
         logger.debug("Path to job store directory is '%s'.", self.jobStoreDir)
 

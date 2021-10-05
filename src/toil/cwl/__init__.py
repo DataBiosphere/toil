@@ -27,9 +27,11 @@ def check_cwltool_version() -> None:
         installed_version = get_distribution("cwltool").version
 
         if installed_version != cwltool_version:
-            logger.warning(f"You are using cwltool version {installed_version}, which might not be compatible with "
-                           f"version {cwltool_version} used by Toil. You should consider running 'pip install cwltool=="
-                           f"{cwltool_version}' to match Toil's cwltool version.")
+            logger.warning(
+                f"You are using cwltool version {installed_version}, which might not be compatible with "
+                f"version {cwltool_version} used by Toil. You should consider running 'pip install cwltool=="
+                f"{cwltool_version}' to match Toil's cwltool version."
+            )
     except DistributionNotFound:
         logger.warning("cwltool is not installed.")
 

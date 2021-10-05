@@ -183,6 +183,14 @@ class JobServiceTest(ToilTest):
                 totalTrys += 1
                 options.restart = True
 
+class PerfectServiceTest(JobServiceTest):
+    def runToil(self, rootJob, retryCount=1, badWorker=0, badWorkedFailInterval=1000, maxServiceJobs=sys.maxsize, deadlockWait=60):
+        """
+        Let us run all the tests in the other service test class, but without worker failures.
+        """
+        super().runToil(rootJob, retryCount, badWorker, badWorkedFailInterval, maxServiceJobs, deadlockWait)
+
+
 def serviceTest(job, outFile, messageInt):
     """
     Creates one service and one accessing job, which communicate with two files to establish
