@@ -33,7 +33,7 @@ import tempfile
 import time
 import uuid
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Callable, Optional, Dict, TypeVar, Union
+from typing import Callable, Optional, Dict, List, TypeVar, Union
 
 import kubernetes
 import urllib3

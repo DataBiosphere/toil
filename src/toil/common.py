@@ -151,25 +151,25 @@ class Config:
                        old_names: Optional[List[str]] = None) -> None:
             """
             Determine the correct value for the given option.
-            
+
             Priority order is:
-            
+
             1. options object under option_name
             2. options object under old_names
             3. environment variables in env
             4. provided default value
-            
+
             Selected option value is run through parsing_funtion if it is set
             and the value is a string. Then the parsed value is run through
             check_function to check it for acceptability, which should raise
             AssertionError if the value is unacceptable.
-            
+
             If the option gets a non-None value, sets it as an attribute in
             this Config.
             """
-            
+
             option_value = getattr(options, option_name, default)
-            
+
             if old_names is not None:
                 for old_name in old_names:
                     # Try all the old names in case user code is setting them
@@ -177,6 +177,13 @@ class Config:
                     if option_value != default:
                         break
                     option_value = getattr(options, old_name, default)
+
+            if env is not None:
+                for env_var in env:
+                    # Try all the environment variables
+                    if option_value != default:
+                        break
+                    option_value = os.envrion.get(env_var, default)
 
             if option_value is not None:
                 if parsing_function is not None and isinstance(option_value, str):
@@ -186,7 +193,8 @@ class Config:
                         check_function(option_value)
                     except AssertionError:
                         raise RuntimeError(f"The {option_name} option has an invalid value: {option_value}")
-                setattr(self, option_name, option_value)
+
+            setattr(self, option_name, option_value)
 
         # Function to parse integer from string expressed in different formats
         h2b = lambda x: human2bytes(str(x))

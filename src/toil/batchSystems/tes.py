@@ -79,7 +79,6 @@ class TESBatchSystem(BatchSystemCleanupSupport):
 
     def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
-
         # Connect to TES, using Funnel-compatible environment variables to fill in credentials if not specified.
         self.tes = tes.HTTPClient(config.tes_endpoint,
                                   user=config.tes_user,
@@ -421,7 +420,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
     T = TypeVar('T')
     @classmethod
     def setOptions(cls, setOption: Callable[..., None]) -> None:
-        # When actually parsing options, remember to check the environment variable,
+        # When actually parsing options, remember to check the environment variables
         setOption("tes_endpoint", default=cls.get_default_tes_endpoint(), env=["TOIL_TES_ENDPOINT"])
         setOption("tes_user", default=None, env=["TOIL_TES_USER", "FUNNEL_SERVER_USER"])
         setOption("tes_password", default=None, env=["TOIL_TES_PASSWORD", "FUNNEL_SERVER_PASSWORD"])

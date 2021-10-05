@@ -10,8 +10,11 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
+
+import os
+
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, List, Optional, Union, TypeVar
 
 from toil.batchSystems.registry import (
     BATCH_SYSTEM_FACTORY_REGISTRY,
@@ -107,8 +110,8 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
 
 def set_batchsystem_config_defaults(config) -> None:
     """
-    Set default options for builtin batch systems. This is required if a Config
-    object is not constructed from an Options object.
+    Set default and environment-based options for builtin batch systems. This
+    is required if a Config object is not constructed from an Options object.
     """
 
     # Do the global options across batch systems
@@ -120,16 +123,37 @@ def set_batchsystem_config_defaults(config) -> None:
     config.manualMemArgs = False
     config.coalesceStatusCalls = False
 
-    def set_option_to_default(varName: str,
-                              parsingFn: Optional[Any] = None,
-                              checkFn: Optional[Any] = None,
-                              default: Optional[Any] = None,
-                              *args,
-                              **kwargs) -> None:
+    T = TypeVar('T')
+    def set_option(option_name: str,
+                   parsing_function: Optional[Callable[[str], T]] = None,
+                   check_function: Optional[Callable[[T], None]] = None,
+                   default: Optional[T] = None,
+                   env: Optional[List[str]] = None) -> None:
         """
         Function to set a batch-system-defined option to its default value.
         """
-        setattr(config, varName, default)
+
+        # TODO: deduplicate with Config
+
+        option_value = default
+
+        if env is not None:
+            for env_var in env:
+                # Try all the environment variables
+                if option_value != default:
+                    break
+                option_value = os.environ.get(env_var, default)
+
+        if option_value is not None:
+            if parsing_function is not None and isinstance(option_value, str):
+                option_value = parsing_function(option_value)
+            if check_function is not None:
+                try:
+                    check_function(option_value)
+                except AssertionError:
+                    raise RuntimeError(f"The {option_name} option has an invalid value: {option_value}")
+
+        setattr(config, option_name, option_value)
 
     for factory in BATCH_SYSTEM_FACTORY_REGISTRY.values():
         # All the batch systems are responsible for setting their own defaults
@@ -139,5 +163,5 @@ def set_batchsystem_config_defaults(config) -> None:
         except ImportError:
             # Skip anything we can't import
             continue
-        # Ask the batch system to tell us all its options and default values.
-        batch_system_type.setOptions(set_option_to_default)
+        # Ask the batch system to tell us all its options.
+        batch_system_type.setOptions(set_option)
