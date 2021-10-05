@@ -42,8 +42,6 @@ def run_setup():
     kubernetes = 'kubernetes>=12.0.1, <13'
     idna = 'idna>=2'
     pytes = 'py-tes>=0.4.2,<1'
-    # TODO: Drop this when py-tes 0.4.2 is on PyPI
-    pytes = 'py-tes@https://github.com/ohsu-comp-bio/py-tes/archive/refs/tags/0.4.2.zip#sha256=77cde4dee4e3b0fd6f5a4ef5ddfc521619b91673fb76ca4efd44d7b985e2c90b'
     pytz = 'pytz>=2012'
     pyyaml = 'pyyaml>=5, <6'
     dill = 'dill>=0.3.2, <0.4'
