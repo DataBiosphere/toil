@@ -421,7 +421,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             mounts.append(secret_volume_mount)
 
         # Make a container definition
-        container = kubernetes.client.V1Container(command=['_toil_kubernetes_executor', encodedJob],
+        container = kubernetes.client.V1Container(command=['_toil_contained_executor', encodedJob],
                                                   image=self.dockerImage,
                                                   name="runner-container",
                                                   resources=resources,
@@ -1164,7 +1164,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
 def executor():
     """
-    Main function of the _toil_kubernetes_executor entrypoint.
+    Main function of the _toil_contained_executor entrypoint.
 
     Runs inside the Toil container.
 

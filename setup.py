@@ -169,7 +169,7 @@ def run_setup():
                 'toil-cwl-runner = toil.cwl.cwltoil:main [cwl]',
                 'toil-wdl-runner = toil.wdl.toilwdl:main',
                 '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]',
-                '_toil_kubernetes_executor = toil.batchSystems.kubernetes:executor [kubernetes]']})
+                '_toil_contained_executor = toil.batchSystems.containedExecutor:executor']})
 
 
 def import_version():

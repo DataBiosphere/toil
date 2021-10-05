@@ -200,7 +200,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
             # via JSON.
             encoded_job = base64.b64encode(pickle.dumps(job, pickle.HIGHEST_PROTOCOL)).decode('utf-8')
             # Make a command to run it in the exacutor
-            command_list = ['_toil_kubernetes_executor', encoded_job]
+            command_list = ['_toil_contained_executor', encoded_job]
 
             # Make the sequence of TES containers ("executors") to run.
             # We just run one which is the Toil executor to grab the user
