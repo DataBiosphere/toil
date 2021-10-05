@@ -271,9 +271,10 @@ def retry(intervals: Optional[List] = None,
                     interval = intervals_remaining.pop(0)
                     logger.warning(f"Error in {func}: {e}. Retrying after {interval} s...")
                     time.sleep(interval)
-                    for prep_function in prepare:
-                        # Reset state for next attempt
-                        prep_function(*args, **kwargs)
+                    if prepare is not None:
+                        for prep_function in prepare:
+                            # Reset state for next attempt
+                            prep_function(*args, **kwargs)
         return call
     return decorate
 
