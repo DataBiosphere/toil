@@ -357,6 +357,9 @@ class ApplianceImageNotFound(ImageNotFound):
                "" % (origAppliance, url, str(statusCode)))
         super(ApplianceImageNotFound, self).__init__(msg)
 
+# Cache images we know exist so we don't have to ask the registry about them
+# all the time.
+KNOWN_EXTANT_IMAGES = set()
 
 def requestCheckRegularDocker(origAppliance, registryName, imageName, tag):
     """
@@ -379,12 +382,18 @@ def requestCheckRegularDocker(origAppliance, registryName, imageName, tag):
     :param str tag: The tag used at that docker image's registry.  e.g. "latest"
     :return: Return True if match found.  Raise otherwise.
     """
+
+    if origAppliance in KNOWN_EXTANT_IMAGES:
+        # Check the cache first
+        return origAppliance
+
     ioURL = 'https://{webhost}/v2/{pathName}/manifests/{tag}' \
             ''.format(webhost=registryName, pathName=imageName, tag=tag)
     response = requests.head(ioURL)
     if not response.ok:
         raise ApplianceImageNotFound(origAppliance, ioURL, response.status_code)
     else:
+        KNOWN_EXTANT_IMAGES.add(origAppliance)
         return origAppliance
 
 
@@ -400,6 +409,11 @@ def requestCheckDockerIo(origAppliance, imageName, tag):
     :param str tag: The tag used at that docker image's registry.  e.g. "latest"
     :return: Return True if match found.  Raise otherwise.
     """
+
+    if origAppliance in KNOWN_EXTANT_IMAGES:
+        # Check the cache first
+        return origAppliance
+
     # only official images like 'busybox' or 'ubuntu'
     if '/' not in imageName:
         imageName = 'library/' + imageName
@@ -415,6 +429,7 @@ def requestCheckDockerIo(origAppliance, imageName, tag):
     if not response.ok:
         raise ApplianceImageNotFound(origAppliance, requests_url, response.status_code)
     else:
+        KNOWN_EXTANT_IMAGES.add(origAppliance)
         return origAppliance
 
 
