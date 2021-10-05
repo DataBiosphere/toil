@@ -32,7 +32,7 @@ class MalformedRequestException(Exception):
     """
     Raised when the request is malformed.
     """
-    def __init__(self, message):
+    def __init__(self, message: str) -> None:
         super(MalformedRequestException, self).__init__(message)
 
 
@@ -56,7 +56,7 @@ class OperationForbidden(Exception):
     """
     Raised when the request is forbidden.
     """
-    def __init__(self, message):
+    def __init__(self, message: str) -> None:
         super(OperationForbidden, self).__init__(message)
 
 
@@ -64,7 +64,7 @@ class WorkflowExecutionException(Exception):
     """
     Raised when an internal error occurred during the execution of the workflow.
     """
-    def __init__(self, message):
+    def __init__(self, message: str) -> None:
         super(WorkflowExecutionException, self).__init__(message)
 
 

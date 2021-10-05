@@ -1,8 +1,8 @@
 - [X] Use Celery to run workflows
 - [X] Support workflow files from the Internet (using `requests.get()`)
 - [X] The stdout/stderr files are supposed to be URLs, not the infinitely long contents
-  - [ ] Add custom Toil endpoints to serve static log/output files?
-- [ ] Make sure we're returning the correct error codes according to spec
+  - [X] Add custom Toil endpoints to serve static log/output files
+- [X] Make sure we're returning the correct error codes according to spec
 - Usability
   - [ ] Add option to auto start server to `toil launch-cluster`
   - [ ] Script to prepare celery (start rabbitmq, celery workers, etc.)

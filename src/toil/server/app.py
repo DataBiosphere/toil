@@ -17,6 +17,7 @@ import os
 
 import connexion  # type: ignore
 
+from toil.batchSystems.options import getPublicIP
 from toil.server.wes.toil_backend import ToilBackend
 from toil.server.wsgi_app import run_app
 from toil.version import version
@@ -75,13 +76,18 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
         CORS(flask_app.app, resources={r"/ga4gh/*": {"origins": args.cors_origins}})
 
     # add workflow execution service (WES) API endpoints
-    backend = ToilBackend(work_dir=args.work_dir, options=args.opt)
-    backend.register_wf_type("py", ["3.6", "3.7", "3.8", ])
-    backend.register_wf_type("CWL", ["v1.0", "v1.1", "v1.2"])
-    backend.register_wf_type("WDL", ["draft-2", "1.0"])
+    backend = ToilBackend(work_dir=args.work_dir,
+                          options=args.opt,
+                          base_url=f"http://{getPublicIP()}:{args.port}")
 
     flask_app.add_api('workflow_execution_service.swagger.yaml',
-                resolver=connexion.Resolver(backend.resolve_operation_id))  # noqa
+                      resolver=connexion.Resolver(backend.resolve_operation_id))  # noqa
+
+    # add custom endpoints
+    if isinstance(backend, ToilBackend):
+        base_url = "/toil/wes/v1"
+        flask_app.app.add_url_rule(f"{base_url}/logs/<run_id>/stdout", view_func=backend.get_stdout)
+        flask_app.app.add_url_rule(f"{base_url}/logs/<run_id>/stderr", view_func=backend.get_stderr)
 
     return flask_app
 

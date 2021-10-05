@@ -20,6 +20,8 @@ from collections import Counter
 from tempfile import NamedTemporaryFile
 from typing import Optional, List, Dict, Any, overload, Generator, Tuple
 
+from flask import send_from_directory
+
 from toil.server.wes.abstract_backend import (WESBackend,
                                               handle_errors,
                                               WorkflowNotFoundException,
@@ -120,16 +122,16 @@ class ToilBackend(WESBackend):
     in the filesystem to store and retrieve data associated with the runs.
     """
 
-    def __init__(self, work_dir: str, options: List[str]) -> None:
+    def __init__(self, work_dir: str, options: List[str], base_url: str) -> None:
         super(ToilBackend, self).__init__(options)
         self.work_dir = work_dir
-        self.supported_versions: Dict[str, List[str]] = {}
+        self.base_url = base_url
 
-    def register_wf_type(self, name: str, supported_versions: List[str]) -> None:
-        """
-        Register a workflow type that this backend should support.
-        """
-        self.supported_versions[name.lower()] = supported_versions
+        self.supported_versions = {
+            "py": ["3.6", "3.7", "3.8", "3.9"],
+            "CWL": ["v1.0", "v1.1", "v1.2"],
+            "WDL": ["draft-2", "1.0"]
+        }
 
     def _get_run(self, run_id: str, should_exists: Optional[bool] = None) -> ToilWorkflow:
         """
@@ -265,13 +267,11 @@ class ToilBackend(WESBackend):
         start_time = run.fetch("start_time")
         end_time = run.fetch("end_time")
 
-        # TODO: define some custom routes to serve these log files through HTTP?
         stdout = ""
         stderr = ""
         if os.path.isfile(os.path.join(run.work_dir, 'stdout')):
-            stdout = f"file://{os.path.join(run.work_dir, 'stdout')}"
-        if os.path.isfile(os.path.join(run.work_dir, 'stderr')):
-            stderr = f"file://{os.path.join(run.work_dir, 'stderr')}"
+            stdout = f"{self.base_url}/toil/wes/v1/logs/{run_id}/stdout"
+            stderr = f"{self.base_url}/toil/wes/v1/logs/{run_id}/stderr"
 
         exit_code = run.fetch("exit_code")
 
@@ -328,3 +328,21 @@ class ToilBackend(WESBackend):
             "run_id": run_id,
             "state": self.get_state(run_id)
         }
+
+    # Toil custom endpoints that are not part of the GA4GH WES spec
+
+    @handle_errors
+    def get_stdout(self, run_id) -> Any:
+        """
+        Get the stdout of a workflow run as a static file.
+        """
+        self._get_run(run_id, should_exists=True)
+        return send_from_directory(self.work_dir, os.path.join(run_id, "stdout"), mimetype="text/plain")
+
+    @handle_errors
+    def get_stderr(self, run_id) -> Any:
+        """
+        Get the stderr of a workflow run as a static file.
+        """
+        self._get_run(run_id, should_exists=True)
+        return send_from_directory(self.work_dir, os.path.join(run_id, "stderr"), mimetype="text/plain")
