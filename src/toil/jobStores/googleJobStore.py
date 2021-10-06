@@ -461,9 +461,9 @@ class GoogleJobStore(AbstractJobStore):
         blob = self.bucket.blob(compat_bytes(jobStoreID), encryption_key=self.sseKey if encrypt else None)
         if not update:
             # TODO: should probably raise a special exception and be added to all jobStores
-            assert not blob.job_exists()
+            assert not blob.exists()
         else:
-            if not blob.job_exists():
+            if not blob.exists():
                 raise NoSuchFileException(jobStoreID)
         blob.upload_from_file(fileObj)
 
@@ -502,7 +502,7 @@ class GoogleJobStore(AbstractJobStore):
         class UploadPipe(WritablePipe):
             def readFrom(self, readable):
                 if not update:
-                    assert not blob.job_exists()
+                    assert not blob.exists()
                 blob.upload_from_file(readable)
 
         with UploadPipe(encoding=encoding, errors=errors) as writable:
