@@ -88,9 +88,10 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 exit_codes.append(self._get_job_return_code(status))
             return exit_codes
 
-        def getJobExitCode(self, batchJobID):
+        def getJobExitCode(self, batchJobID: str) -> int:
             """
             Get job exit code for given batch job ID.
+            :param batchJobID: string of the form "<job>[.<task>]".
             :return: integer job exit code.
             """
             logger.debug("Getting exit code for slurm job: %s", batchJobID)
