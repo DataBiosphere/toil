@@ -144,7 +144,7 @@ def set_batchsystem_config_defaults(config) -> None:
                     break
                 option_value = os.environ.get(env_var, default)
 
-        if option_value is not None:
+        if option_value is not None or not hasattr(config, option_name):
             if parsing_function is not None and isinstance(option_value, str):
                 option_value = parsing_function(option_value)
             if check_function is not None:
@@ -152,8 +152,7 @@ def set_batchsystem_config_defaults(config) -> None:
                     check_function(option_value)
                 except AssertionError:
                     raise RuntimeError(f"The {option_name} option has an invalid value: {option_value}")
-
-        setattr(config, option_name, option_value)
+            setattr(config, option_name, option_value)
 
     for factory in BATCH_SYSTEM_FACTORY_REGISTRY.values():
         # All the batch systems are responsible for setting their own defaults

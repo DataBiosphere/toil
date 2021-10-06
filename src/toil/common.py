@@ -185,7 +185,7 @@ class Config:
                         break
                     option_value = os.envrion.get(env_var, default)
 
-            if option_value is not None:
+            if option_value is not None or not hasattr(self, option_name):
                 if parsing_function is not None and isinstance(option_value, str):
                     option_value = parsing_function(option_value)
                 if check_function is not None:
@@ -193,8 +193,7 @@ class Config:
                         check_function(option_value)
                     except AssertionError:
                         raise RuntimeError(f"The {option_name} option has an invalid value: {option_value}")
-
-            setattr(self, option_name, option_value)
+                setattr(self, option_name, option_value)
 
         # Function to parse integer from string expressed in different formats
         h2b = lambda x: human2bytes(str(x))
