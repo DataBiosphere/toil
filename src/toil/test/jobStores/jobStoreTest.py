@@ -700,7 +700,7 @@ class AbstractJobStoreTest(object):
 
                 if otherCls.__name__ == 'FileJobStoreTest':
                     if isinstance(self.jobstore_initialized, FileJobStore):
-                        jobStorePath = self.jobstore_initialized._getFilePathFromId(jobStoreFileID)
+                        jobStorePath = self.jobstore_initialized._get_file_path_from_id(jobStoreFileID)
                         jobStoreHasLink = os.path.islink(jobStorePath)
                         if self.jobstore_initialized.moveExports:
                             # Ensure the export performed a move / link
@@ -1247,12 +1247,12 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
             return url
         with open('/dev/urandom', 'rb') as readable:
             contents = str(readable.read(size))
-        GoogleJobStore._writeToUrl(BytesIO(bytes(contents, 'utf-8')), urlparse.urlparse(url))
+        GoogleJobStore._write_to_url(BytesIO(bytes(contents, 'utf-8')), urlparse.urlparse(url))
         return url, hashlib.md5(contents.encode()).hexdigest()
 
     def _hashTestFile(self, url):
         from toil.jobStores.googleJobStore import GoogleJobStore
-        contents = GoogleJobStore._getBlobFromURL(urlparse.urlparse(url)).download_as_string()
+        contents = GoogleJobStore._get_blob_from_url(urlparse.urlparse(url)).download_as_string()
         return hashlib.md5(contents).hexdigest()
 
     @googleRetry
@@ -1266,11 +1266,11 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     def _cleanUpExternalStore(self, bucket):
         # this is copied from googleJobStore.destroy
         try:
-            bucket.delete_job(force=True)
+            bucket.delete(force=True)
             # throws ValueError if bucket has more than 256 objects. Then we must delete manually
         except ValueError:
             bucket.delete_blobs(bucket.list_blobs)
-            bucket.delete_job()
+            bucket.delete()
 
 
 @needs_aws_s3
@@ -1441,7 +1441,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def _hashTestFile(self, url: str) -> str:
         from toil.jobStores.aws.jobStore import AWSJobStore
-        key = AWSJobStore._getObjectForUrl(urlparse.urlparse(url), existing=True)
+        key = AWSJobStore._get_object_for_url(urlparse.urlparse(url), existing=True)
         contents = key.get().get('Body').read()
         return hashlib.md5(contents).hexdigest()
 
@@ -1463,8 +1463,8 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                 return bucket
 
     def _cleanUpExternalStore(self, bucket):
-        bucket.objects.all().delete_job()
-        bucket.delete_job()
+        bucket.objects.all().delete()
+        bucket.delete()
 
     def _largeLogEntrySize(self):
         from toil.jobStores.aws.jobStore import AWSJobStore

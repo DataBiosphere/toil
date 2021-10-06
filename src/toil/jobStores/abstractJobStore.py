@@ -358,9 +358,9 @@ class AbstractJobStore(ABC):
         :return: The jobStoreFileID of the imported file or None if sharedFileName was given
         :rtype: toil.fileStores.FileID or None
         """
-        # Note that the helper method _importFile is used to read from the source and write to
+        # Note that the helper method _import_file is used to read from the source and write to
         # destination (which is the current job store in this case). To implement any
-        # optimizations that circumvent this, the _importFile method should be overridden by
+        # optimizations that circumvent this, the _import_file method should be overridden by
         # subclasses of AbstractJobStore.
         parseResult = urlparse(src_uri)
         otherCls = self._findJobStoreForUrl(parseResult)

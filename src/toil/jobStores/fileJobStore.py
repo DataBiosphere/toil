@@ -303,8 +303,8 @@ class FileJobStore(AbstractJobStore):
                     self._copy_or_link(uri, path, symlink=symlink)
                 return None
         else:
-            return super(FileJobStore, self)._importFile(otherCls, uri,
-                                                         sharedFileName=shared_file_name)
+            return super(FileJobStore, self)._import_file(otherCls, uri,
+                                                          shared_file_name=shared_file_name)
 
     def _export_file(self, otherCls, file_id, uri):
         if issubclass(otherCls, FileJobStore):
@@ -316,7 +316,7 @@ class FileJobStore(AbstractJobStore):
             else:
                 atomic_copy(srcPath, destPath, executable=executable)
         else:
-            super(FileJobStore, self)._defaultExportFile(otherCls, file_id, uri)
+            super(FileJobStore, self)._default_export_file(otherCls, file_id, uri)
 
     def _move_and_linkback(self, srcPath, destPath, executable):
         logger.debug("moveExports option, Moving src=%s to dest=%s ; then symlinking dest to src", srcPath, destPath)

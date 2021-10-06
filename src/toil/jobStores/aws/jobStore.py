@@ -577,7 +577,7 @@ class AWSJobStore(AbstractJobStore):
         if not self.file_exists(file_id):
             return 0
         info = self.FileInfo.loadOrFail(file_id)
-        return info.get_size()
+        return info.getSize()
 
     def read_file(self, file_id, local_path, symlink=False):
         info = self.FileInfo.loadOrFail(file_id)

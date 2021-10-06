@@ -164,7 +164,7 @@ class GoogleJobStore(AbstractJobStore):
             # throws ValueError if bucket has more than 256 objects. Then we must delete manually
         except ValueError:
             # use google batching to delete. Improved efficiency compared to deleting sequentially 
-            blobs_to_delete = self.buckets.list_blobs()
+            blobs_to_delete = self.bucket.list_blobs()
             count = 0
             while count < len(blobs_to_delete):
                 with self.storageClient.batch():
