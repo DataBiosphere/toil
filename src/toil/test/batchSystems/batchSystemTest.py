@@ -37,7 +37,9 @@ from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
                                         BATCH_SYSTEMS,
                                         single_machine_batch_system_factory,
-                                        addBatchSystemFactory)
+                                        addBatchSystemFactory,
+                                        save_batch_system_plugin_state,
+                                        restore_batch_system_plugin_state)
 from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config, Toil
@@ -70,6 +72,32 @@ preemptable = False
 
 defaultRequirements = dict(memory=int(100e6), cores=1, disk=1000, preemptable=preemptable)
 
+class BatchSystemPluginTest(ToilTest):
+    """
+    Class for testing batch system plugin functionality.
+    """
+
+    def setUp(self):
+        # Save plugin state so our plugin doesn't stick around after the test
+        # (and create duplicate options)
+        self.__state = save_batch_system_plugin_state()
+        super().setUp()
+
+    def tearDown(self):
+        # Restore plugin state
+        restore_batch_system_plugin_state(self.__state)
+        super().tearDown()
+
+    def testAddBatchSystemFactory(self):
+        def test_batch_system_factory():
+            # TODO: Adding the same batch system under multiple names means we
+            # can't actually create Toil options, because each version tries to
+            # add its arguments.
+            return SingleMachineBatchSystem
+
+        addBatchSystemFactory('testBatchSystem', test_batch_system_factory)
+        assert ('testBatchSystem', test_batch_system_factory) in BATCH_SYSTEM_FACTORY_REGISTRY.items()
+        assert 'testBatchSystem' in BATCH_SYSTEMS
 
 class hidden(object):
     """
@@ -311,14 +339,6 @@ class hidden(object):
                     break
                 time.sleep(1)
             return runningIDs
-
-        def testAddBatchSystemFactory(self):
-            def test_batch_system_factory():
-                return SingleMachineBatchSystem
-
-            addBatchSystemFactory('testBatchSystem', test_batch_system_factory)
-            assert ('testBatchSystem', test_batch_system_factory) in BATCH_SYSTEM_FACTORY_REGISTRY.items()
-            assert 'testBatchSystem' in BATCH_SYSTEMS
 
     class AbstractBatchSystemJobTest(ToilTest, metaclass=ABCMeta):
         """

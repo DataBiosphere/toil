@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 
 import os
+import logging
 
 from argparse import ArgumentParser, _ArgumentGroup
 from typing import Any, Callable, List, Optional, Union, TypeVar
@@ -22,6 +23,8 @@ from toil.batchSystems.registry import (
     DEFAULT_BATCH_SYSTEM,
 )
 from toil.lib.threading import cpu_count
+
+logger = logging.getLogger(__name__)
 
 def set_batchsystem_options(batch_system: str, set_option: Callable) -> None:
     """
@@ -106,6 +109,7 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
             # Skip anything we can't import
             continue
         # Ask the batch system to create its options in the parser
+        logger.debug('Add options for %s', batch_system_type)
         batch_system_type.add_options(parser)
 
 def set_batchsystem_config_defaults(config) -> None:
