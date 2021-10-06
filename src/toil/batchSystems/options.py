@@ -130,7 +130,8 @@ def set_batchsystem_config_defaults(config) -> None:
                    default: Optional[T] = None,
                    env: Optional[List[str]] = None) -> None:
         """
-        Function to set a batch-system-defined option to its default value.
+        Function to set a batch-system-defined option to its default value, or
+        one from the environment.
         """
 
         # TODO: deduplicate with Config
