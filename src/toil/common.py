@@ -144,7 +144,7 @@ class Config:
         """Creates a config object from the options object."""
         T = TypeVar('T')
         def set_option(option_name: str,
-                       parsing_function: Optional[Callable[[str], T]] = None,
+                       parsing_function: Optional[Callable[[Any], T]] = None,
                        check_function: Optional[Callable[[T], None]] = None,
                        default: Optional[T] = None,
                        env: Optional[List[str]] = None,
@@ -159,10 +159,10 @@ class Config:
             3. environment variables in env
             4. provided default value
 
-            Selected option value is run through parsing_funtion if it is set
-            and the value is a string. Then the parsed value is run through
-            check_function to check it for acceptability, which should raise
-            AssertionError if the value is unacceptable.
+            Selected option value is run through parsing_funtion if it is set.
+            Then the parsed value is run through check_function to check it for
+            acceptability, which should raise AssertionError if the value is
+            unacceptable.
 
             If the option gets a non-None value, sets it as an attribute in
             this Config.
@@ -186,7 +186,8 @@ class Config:
                     option_value = os.envrion.get(env_var, default)
 
             if option_value is not None or not hasattr(self, option_name):
-                if parsing_function is not None and isinstance(option_value, str):
+                if parsing_function is not None:
+                    # Parse whatever it is (string, argparse-made list, etc.)
                     option_value = parsing_function(option_value)
                 if check_function is not None:
                     try:

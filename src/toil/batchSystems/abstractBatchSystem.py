@@ -225,12 +225,12 @@ class AbstractBatchSystem(ABC):
 
     T = TypeVar('T')
     @classmethod
-    def setOptions(cls, setOption: Callable[[str, Optional[Callable[[str], T]], Optional[Callable[[T], None]], Optional[T], Optional[List[str]]], None]) -> None:
+    def setOptions(cls, setOption: Callable[[str, Optional[Callable[[Any], T]], Optional[Callable[[T], None]], Optional[T], Optional[List[str]]], None]) -> None:
         """
         Process command line or configuration options relevant to this batch system.
 
         :param setOption: A function with signature
-            setOption(varName, parsingFn=None, checkFn=None, default=None, env=None)
+            setOption(option_name, parsing_function=None, check_function=None, default=None, env=None)
             returning nothing, used to update run configuration as a side effect.
         """
         # TODO: change type to a Protocol to express kwarg names, or else use a

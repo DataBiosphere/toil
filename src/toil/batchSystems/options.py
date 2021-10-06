@@ -125,7 +125,7 @@ def set_batchsystem_config_defaults(config) -> None:
 
     T = TypeVar('T')
     def set_option(option_name: str,
-                   parsing_function: Optional[Callable[[str], T]] = None,
+                   parsing_function: Optional[Callable[[Any], T]] = None,
                    check_function: Optional[Callable[[T], None]] = None,
                    default: Optional[T] = None,
                    env: Optional[List[str]] = None) -> None:
@@ -145,7 +145,8 @@ def set_batchsystem_config_defaults(config) -> None:
                 option_value = os.environ.get(env_var, default)
 
         if option_value is not None or not hasattr(config, option_name):
-            if parsing_function is not None and isinstance(option_value, str):
+            if parsing_function is not None:
+                # Parse whatever it is (string, argparse-made list, etc.)
                 option_value = parsing_function(option_value)
             if check_function is not None:
                 try:
