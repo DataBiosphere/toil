@@ -529,7 +529,7 @@ class AbstractJobStoreTest(object):
             jobstore2.write_logs(one)
             self.assertEqual(1, jobstore1.read_logs(callback))
             self.assertEqual({one}, stats)
-            self.assertEqual(0, jobstore1.read_logs(callback))  # readStatsAndLogging purges saved stats etc
+            self.assertEqual(0, jobstore1.read_logs(callback))  # read_logs purges saved stats etc
 
             jobstore2.write_logs(one)
             jobstore2.write_logs(two)
