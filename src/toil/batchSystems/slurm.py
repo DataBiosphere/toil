@@ -79,23 +79,23 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             "<job>[.<task>]".
             :return: list of job exit codes, associated with the list of job IDs.
             """
-            logger.debug(f"Getting exit codes for slurm jobs: {batch_job_id_list}")
+            logger.debug("Getting exit codes for slurm jobs: %s", batch_job_id_list)
             # Convert batch_job_id_list to list of integer job IDs.
             job_id_list = [int(id.split('.')[0]) for id in batch_job_id_list]
             status_dict = self._get_job_details(job_id_list)
             exit_codes = []
-            for job_id, status in status_dict.items():
+            for _, status in status_dict.items():
                 exit_codes.append(self._get_job_return_code(status))
             return exit_codes
 
-        def getJobExitCode(self, slurmJobID):
+        def getJobExitCode(self, batchJobID):
             """
             Get job exit code for given batch job ID.
             :return: integer job exit code.
             """
-            logger.debug(f"Getting exit code for slurm job: {slurmJobID}")
-            # Convert slurmJobID to an integer job ID.
-            job_id = int(slurmJobID.split('.')[0])
+            logger.debug("Getting exit code for slurm job: %s", batchJobID)
+            # Convert batchJobID to an integer job ID.
+            job_id = int(batchJobID.split('.')[0])
             status_dict = self._get_job_details([job_id])
             status = status_dict[job_id]
             return self._get_job_return_code(status)
@@ -145,28 +145,28 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             # Collect the job statuses in a dict; key is the job-id, value is a tuple containing
             # job state and exit status. Initialize dict before processing output of `sacct`.
-            job_status = {}
-            for id in job_id_list:
-                job_status[id] = (None, None)
+            job_statuses = {}
+            for job_id in job_id_list:
+                job_statuses[job_id] = (None, None)
 
             for line in stdout.splitlines():
-                logger.debug(f"{args[0]} output {line}")
+                #logger.debug("%s output %s", args[0], line)
                 values = line.strip().split('|')
                 if len(values) < 3:
                     continue
                 job_id, state, exitcode = values
-                logger.debug(f"{args[0]} state of job {job_id} is {state}")
+                logger.debug("%s state of job %s is %s", args[0], job_id, state)
                 # JobIDRaw is in the form JobID[.JobStep]
                 job_id = int(job_id.split(".")[0])
                 status, signal = [int(n) for n in exitcode.split(':')]
                 if signal > 0:
                     # A non-zero signal may indicate e.g. an out-of-memory killed job
                     status = 128 + signal
-                logger.debug(f"{args[0]} exit code of job {job_id} is {exitcode}, "
-                             f"return status {status}")
-                job_status[job_id] = state, status
-            logger.debug(f"{args[0]} returning job statuses: {job_status}")
-            return job_status
+                logger.debug("%s exit code of job %d is %s, return status %d",
+                             args[0], job_id, exitcode, status)
+                job_statuses[job_id] = state, status
+            logger.debug("%s returning job statuses: %s", args[0], job_statuses)
+            return job_statuses
 
         def _getJobDetailsFromScontrol(self, job_id_list: list) -> dict:
             """
@@ -193,20 +193,20 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             # Collect the job statuses in a dict; key is the job-id, value is a tuple containing
             # job state and exit status. Initialize dict before processing output of `scontrol`.
-            job_status = {}
-            for id in job_id_list:
-                job_status[id] = (None, None)
+            job_statuses = {}
+            for job_id in job_id_list:
+                job_statuses[job_id] = (None, None)
 
             # `scontrol` will report "No jobs in the system", if there are no jobs in the system,
             # and if no job-id was passed as argument to `scontrol`.
             if len(job_records) > 0 and job_records[0] == "No jobs in the system":
-                return job_status
+                return job_statuses
 
             for record in job_records:
-                job = dict()
+                job = {}
                 for line in record.splitlines():
                     for item in line.split():
-                        logger.debug(f"{args[0]} output {item}")
+                        #logger.debug("%s output %s", args[0], item)
                         # Output is in the form of many key=value pairs, multiple pairs on each line
                         # and multiple lines in the output. Each pair is pulled out of each line and
                         # added to a dictionary.
@@ -222,11 +222,12 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     # of this record, if we're not interested in this job.
                     job_id = int(job['JobId'])
                     if job_id not in job_id_list:
-                        logger.debug(f"{args[0]} job {job_id} is not in the list")
+                        logger.debug("%s job %d is not in the list", args[0], job_id)
                         break
                 if job_id not in job_id_list:
                     continue
                 state = job['JobState']
+                logger.debug("%s state of job %s is %s", args[0], job_id, state)
                 try:
                     exitcode = job['ExitCode']
                     if exitcode is not None:
@@ -234,20 +235,20 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                         if signal > 0:
                             # A non-zero signal may indicate e.g. an out-of-memory killed job
                             status = 128 + signal
-                        logger.debug(f"{args[0]} exit code of job {job_id} is {exitcode}, "
-                                     f"return status {status}")
+                        logger.debug("%s exit code of job %d is %s, return status %d",
+                                     args[0], job_id, exitcode, status)
                         rc = status
                     else:
                         rc = None
                 except KeyError:
                     rc = None
-                job_status[job_id] = (state, rc)
-            logger.debug(f"{args[0]} returning job statuses: {job_status}")
-            return job_status
+                job_statuses[job_id] = (state, rc)
+            logger.debug("%s returning job statuses: %s", args[0], job_statuses)
+            return job_statuses
 
-        """
-        Implementation-specific helper methods
-        """
+        ###
+        ### Implementation-specific helper methods
+        ###
 
         def prepareSbatch(self,
                           cpu: int,
@@ -286,7 +287,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # "Native extensions" for SLURM (see DRMAA or SAGA)
             nativeConfig = os.getenv('TOIL_SLURM_ARGS')
             if nativeConfig is not None:
-                logger.debug("Native SLURM options appended to sbatch from TOIL_SLURM_ARGS env. variable: {}".format(nativeConfig))
+                logger.debug("Native SLURM options appended to sbatch from TOIL_SLURM_ARGS env. variable: %s", nativeConfig)
                 if ("--mem" in nativeConfig) or ("--cpus-per-task" in nativeConfig):
                     raise ValueError("Some resource arguments are incompatible: {}".format(nativeConfig))
 
@@ -311,14 +312,13 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 pass  # slurm may return INVALID instead of a time
             return total_seconds
 
-    """
-    The interface for SLURM
-    """
+    ###
+    ### The interface for SLURM
+    ###
 
     @classmethod
     def getWaitDuration(cls):
         # Extract the slurm batchsystem config for the appropriate value
-        wait_duration_seconds = 1
         lines = call_command(['scontrol', 'show', 'config']).split('\n')
         time_value_list = []
         for line in lines:
