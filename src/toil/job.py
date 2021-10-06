@@ -724,7 +724,7 @@ class JobDescription(Requirer):
         :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: The job store we are being placed into
         """
 
-    def setupJobAfterFailure(self, exitReason=None):
+    def setupJobAfterFailure(self, exitStatus=None):
         """
         Reduce the remainingTryCount if greater than zero and set the memory
         to be at least as big as the default memory (in case of exhaustion of memory,
@@ -740,11 +740,11 @@ class JobDescription(Requirer):
         from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 
         # Old version of this function used to take a config. Make sure that isn't happening.
-        assert not isinstance(exitReason, Config), "Passing a Config as an exit reason"
+        assert not isinstance(exitStatus, Config), "Passing a Config as an exit reason"
         # Make sure we have an assigned config.
         assert self._config is not None
 
-        if self._config.enableUnlimitedPreemptableRetries and exitReason == BatchJobExitReason.LOST:
+        if self._config.enableUnlimitedPreemptableRetries and exitStatus == BatchJobExitReason.LOST:
             logger.info("*Not* reducing try count (%s) of job %s with ID %s",
                         self.remainingTryCount, self, self.jobStoreID)
         else:
@@ -754,7 +754,7 @@ class JobDescription(Requirer):
         # Set the default memory to be at least as large as the default, in
         # case this was a malloc failure (we do this because of the combined
         # batch system)
-        if exitReason == BatchJobExitReason.MEMLIMIT and self._config.doubleMem:
+        if exitStatus == BatchJobExitReason.MEMLIMIT and self._config.doubleMem:
             self.memory = self.memory * 2
             logger.warning("We have doubled the memory of the failed job %s to %s bytes due to doubleMem flag",
                            self, self.memory)
