@@ -80,7 +80,7 @@ class Config:
         
         # File store options
         self.disableCaching: bool = False
-        self.linkImports: bool = True
+        self.linkImports: bool = False
         self.moveExports: bool = False
 
         # Autoscaling options
@@ -252,7 +252,7 @@ class Config:
         set_batchsystem_options(self.batchSystem, set_option)
 
         # File store options
-        set_option("linkImports", bool, default=True)
+        set_option("linkImports", bool, default=False)
         set_option("moveExports", bool, default=False)
         set_option("disableCaching", bool, default=False)
 
