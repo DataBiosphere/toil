@@ -1,6 +1,6 @@
 mock==4.0.3
 pytest==6.2.1
-pytest-cov==2.11.1
+pytest-cov==2.12.1
 pytest-timeout==1.4.2
 stubserver==1.1
 setuptools==51.3.3
