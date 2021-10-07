@@ -77,6 +77,11 @@ class Config:
 
         # Batch system options
         set_batchsystem_config_defaults(self)
+        
+        # File store options
+        self.disableCaching: bool = False
+        self.linkImports: bool = True
+        self.moveExports: bool = False
 
         # Autoscaling options
         self.provisioner = None
@@ -96,7 +101,6 @@ class Config:
         self.maxServiceJobs: int = sys.maxsize
         self.deadlockWait: Union[float, int] = 60  # Number of seconds we must be stuck with all services before declaring a deadlock
         self.deadlockCheckInterval: Union[float, int] = 30  # Minimum polling delay for deadlocks
-        self.statePollingWait: Optional[Union[float, int]] = None  # Number of seconds to wait before querying job state
 
         # Resource requirements
         self.defaultMemory: int = 2147483648
@@ -116,7 +120,7 @@ class Config:
         self.rescueJobsFrequency: int = 3600
 
         # Misc
-        self.disableCaching: bool = False
+        self.environment = {}
         self.disableChaining: bool = False
         self.disableJobStoreChecksumVerification: bool = False
         self.maxLogFileSize: int = 64000
@@ -127,7 +131,6 @@ class Config:
         self.servicePollingInterval: int = 60
         self.useAsync: bool = True
         self.forceDockerAppliance: bool = False
-        self.runCwlInternalJobsOnWorkers: bool = False
         self.statusWait: int = 3600
         self.disableProgress: bool = False
 
@@ -247,17 +250,11 @@ class Config:
         # Batch system options
         set_option("batchSystem")
         set_batchsystem_options(self.batchSystem, set_option)
-        set_option("disableAutoDeployment")
-        set_option("coalesceStatusCalls")
-        set_option("scale", float, fC(0.0))
-        set_option("parasolCommand")
-        set_option("parasolMaxBatches", int, iC(1))
-        set_option("linkImports")
-        set_option("moveExports")
-        set_option("allocate_mem")
-        set_option("mesos_endpoint", old_names=["mesosMasterAddress"])
-        set_option("kubernetesHostPath")
-        set_option("environment", parseSetEnv)
+
+        # File store options
+        set_option("linkImports", bool, default=True)
+        set_option("moveExports", bool, default=False)
+        set_option("disableCaching", bool, default=False)
 
         # Autoscaling options
         set_option("provisioner")
@@ -293,7 +290,6 @@ class Config:
         set_option("maxPreemptableServiceJobs", int)
         set_option("deadlockWait", int)
         set_option("deadlockCheckInterval", int)
-        set_option("statePollingWait", int)
 
         # Resource requirements
         set_option("defaultMemory", h2b, iC(1))
@@ -313,8 +309,7 @@ class Config:
         set_option("rescueJobsFrequency", int, iC(1))
 
         # Misc
-        set_option("maxLocalJobs", int)
-        set_option("disableCaching")
+        set_option("environment", parseSetEnv)
         set_option("disableChaining")
         set_option("disableJobStoreChecksumVerification")
         set_option("maxLogFileSize", h2b, iC(1))
@@ -447,10 +442,34 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
         title="Toil options for specifying the batch system.",
         description="Allows the specification of the batch system."
     )
-    batchsystem_options.add_argument("--statePollingWait", dest="statePollingWait", type=int,
-                                     help="Time, in seconds, to wait before doing a scheduler query for job state.  "
-                                          "Return cached results if within the waiting period.")
     add_all_batchsystem_options(batchsystem_options)
+    
+    # File store options
+    file_store_options = parser.add_argument_group(
+        title="Toil options for configuring storage.",
+        description="Allows configuring Toil's data storage."
+    )
+    link_imports = file_store_options.add_mutually_exclusive_group()
+    link_imports_help = ("When using a filesystem based job store, CWL input files are by default symlinked in.  "
+                         "Specifying this option instead copies the files into the job store, which may protect "
+                         "them from being modified externally.  When not specified and as long as caching is enabled, "
+                         "Toil will protect the file automatically by changing the permissions to read-only.")
+    link_imports.add_argument("--linkImports", dest="linkImports", action='store_true', help=link_imports_help)
+    link_imports.add_argument("--noLinkImports", dest="linkImports", action='store_false', help=link_imports_help)
+    link_imports.set_defaults(linkImports=True)
+
+    move_exports = file_store_options.add_mutually_exclusive_group()
+    move_exports_help = ('When using a filesystem based job store, output files are by default moved to the '
+                         'output directory, and a symlink to the moved exported file is created at the initial '
+                         'location.  Specifying this option instead copies the files into the output directory.  '
+                         'Applies to filesystem-based job stores only.')
+    move_exports.add_argument("--moveExports", dest="moveExports", action='store_true', help=move_exports_help)
+    move_exports.add_argument("--noMoveExports", dest="moveExports", action='store_false', help=move_exports_help)
+    move_exports.set_defaults(moveExports=False)
+    file_store_options.add_argument('--disableCaching', dest='disableCaching', type='bool', nargs='?', const=True,
+                                    default=False,
+                                    help='Disables caching in the file store. This flag must be set to use '
+                                         'a batch system that does not support cleanup, such as Parasol.')
 
     # Auto scaling options
     autoscaling_options = parser.add_argument_group(
@@ -632,10 +651,6 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
         title="Toil miscellaneous options.",
         description="Everything else."
     )
-    misc_options.add_argument('--disableCaching', dest='disableCaching', type='bool', nargs='?', const=True,
-                              default=False,
-                              help='Disables caching in the file store. This flag must be set to use '
-                                   'a batch system that does not support cleanup, such as Parasol.')
     misc_options.add_argument('--disableChaining', dest='disableChaining', action='store_true', default=False,
                               help="Disables chaining of jobs (chaining uses one job's resource allocation "
                                    "for its successor job if possible).")

@@ -26,12 +26,34 @@ from toil.lib.threading import cpu_count
 
 logger = logging.getLogger(__name__)
 
-def set_batchsystem_options(batch_system: str, set_option: Callable) -> None:
+def set_batchsystem_options(batch_system: Optional[str], set_option: Callable) -> None:
     """
-    Call set_option for all the options for the given named batch system.
+    Call set_option for all the options for the given named batch system, or
+    all batch systems if no name is provided.
     """
-    batch_system_factory = BATCH_SYSTEM_FACTORY_REGISTRY[batch_system]()
-    batch_system_factory.setOptions(set_option)
+    if batch_system is not None:
+        # Use this batch system
+        batch_system_type = BATCH_SYSTEM_FACTORY_REGISTRY[batch_system]()
+        batch_system_type.setOptions(set_option)
+    else:
+        for factory in BATCH_SYSTEM_FACTORY_REGISTRY.values():
+            # All the batch systems are responsible for setting their own options
+            # with their setOptions() class methods.
+            try:
+                batch_system_type = factory()
+            except ImportError:
+                # Skip anything we can't import
+                continue
+            # Ask the batch system to tell us all its options.
+            batch_system_type.setOptions(set_option)
+    # Options shared between multiple batch systems
+    set_option("disableAutoDeployment", bool, default=False)
+    set_option("coalesceStatusCalls")
+    set_option("maxLocalJobs", int)
+    set_option("manualMemArgs")
+    set_option("runCwlInternalJobsOnWorkers", bool, default=False)
+    set_option("statePollingWait")
+    
 
 def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
     # Do the global cross-batch-system arguments
@@ -99,6 +121,14 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
             "default=false"
         ),
     )
+    parser.add_argument(
+        "--statePollingWait",
+        dest="statePollingWait",
+        type=int,
+        default=None,
+        help="Time, in seconds, to wait before doing a scheduler query for job state.  "
+             "Return cached results if within the waiting period."
+    )
 
     for factory in BATCH_SYSTEM_FACTORY_REGISTRY.values():
         # All the batch systems are responsible for adding their own options
@@ -121,11 +151,10 @@ def set_batchsystem_config_defaults(config) -> None:
     # Do the global options across batch systems
     config.batchSystem = "single_machine"
     config.disableAutoDeployment = False
-    config.environment = {}
-    config.statePollingWait = None
     config.maxLocalJobs = cpu_count()
     config.manualMemArgs = False
     config.coalesceStatusCalls = False
+    config.statePollingWait: Optional[Union[float, int]] = None  # Number of seconds to wait before querying job state
 
     T = TypeVar('T')
     def set_option(option_name: str,
@@ -160,13 +189,7 @@ def set_batchsystem_config_defaults(config) -> None:
                     raise RuntimeError(f"The {option_name} option has an invalid value: {option_value}")
             setattr(config, option_name, option_value)
 
-    for factory in BATCH_SYSTEM_FACTORY_REGISTRY.values():
-        # All the batch systems are responsible for setting their own defaults
-        # with their setOptions() class methods.
-        try:
-            batch_system_type = factory()
-        except ImportError:
-            # Skip anything we can't import
-            continue
-        # Ask the batch system to tell us all its options.
-        batch_system_type.setOptions(set_option)
+    # Set up defaults from all the batch systems
+    set_batchsystem_options(None, set_option)
+
+    

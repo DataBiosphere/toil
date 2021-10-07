@@ -844,7 +844,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
     @classmethod
     def setOptions(cls, setOption):
-        setOption("mesos_endpoint", None, None, cls.get_default_mesos_endpoint())
+        setOption("mesos_endpoint", None, None, cls.get_default_mesos_endpoint(), old_names=["mesosMasterAddress"])
 
 
 def toMiB(n):
