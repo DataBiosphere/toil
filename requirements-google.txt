@@ -1,0 +1,3 @@
+gcs_oauth2_boto_plugin==1.14
+apache-libcloud==2.2.1
+google-cloud-storage==1.6.0
