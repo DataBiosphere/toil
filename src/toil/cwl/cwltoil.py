@@ -3245,7 +3245,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             if options.overrides:
                 loading_context.overrides_list.extend(
                     cwltool.load_tool.load_overrides(
-                        file_uri(os.path.abspath(options.overrides)), tool_file_uri
+                        schema_salad.ref_resolver.file_uri(os.path.abspath(options.overrides)),
+                        tool_file_uri
                     )
                 )
 

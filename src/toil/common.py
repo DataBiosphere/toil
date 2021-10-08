@@ -186,7 +186,7 @@ class Config:
                     # Try all the environment variables
                     if option_value != default:
                         break
-                    option_value = os.envrion.get(env_var, default)
+                    option_value = os.environ.get(env_var, default)
 
             if option_value is not None or not hasattr(self, option_name):
                 if parsing_function is not None:
