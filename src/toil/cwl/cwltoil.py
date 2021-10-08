@@ -3401,7 +3401,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             except Exception as err:
                 # TODO: We can't import FailedJobsException due to a circular
                 # import but that's what we'd expect here.
-                if getattr(err, "exit_code") == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
+                if getattr(err, "exit_code", None) == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
                     # We figured out that we can't support this workflow.
                     logging.error(err)
                     logging.error(
