@@ -126,7 +126,7 @@ batch_systems:
     - export TOIL_TES_ENDPOINT="http://127.0.0.1:8000"
     - make test tests=src/toil/test/batchSystems/batchSystemTest.py
     - make test tests=src/toil/test/mesos/MesosDataStructuresTest.py
-    - killall funnel
+    - kill $(jobs -p) || true
 
 cwl_v1.0:
   stage: main_tests
