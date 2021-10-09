@@ -212,7 +212,7 @@ class DeferredFunctionManager(object):
         del cleaner
 
         try:
-            robust_rmtree(stateDirBase)
+            robust_rmtree(os.path.join(stateDirBase, cls.STATE_DIR_STEM))
         except OSError as err:
             logger.exception(err)
             # we tried, lets move on
