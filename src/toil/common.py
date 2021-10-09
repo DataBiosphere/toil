@@ -46,6 +46,9 @@ from toil.version import dockerRegistry, dockerTag, version
 
 # aim to pack autoscaling jobs within a 30 minute block before provisioning a new node
 defaultTargetTime = 1800
+SYS_MAX_SIZE = 9223372036854775807
+# sys.max_size on 64 bit systems is 9223372036854775807, so that 32-bit systems
+# use the same number
 UUID_LENGTH = 32
 logger = logging.getLogger(__name__)
 
@@ -104,9 +107,9 @@ class Config:
         self.defaultDisk: int = 2147483648
         self.readGlobalFileMutableByDefault: bool = False
         self.defaultPreemptable: bool = False
-        self.maxCores: int = sys.maxsize
-        self.maxMemory: int = sys.maxsize
-        self.maxDisk: int = sys.maxsize
+        self.maxCores: int = SYS_MAX_SIZE
+        self.maxMemory: int = SYS_MAX_SIZE
+        self.maxDisk: int = SYS_MAX_SIZE
 
         # Retrying/rescuing jobs
         self.retryCount: int = 1
@@ -1393,7 +1396,7 @@ def parseSetEnv(l):
     return d
 
 
-def iC(minValue, maxValue=sys.maxsize):
+def iC(minValue, maxValue=SYS_MAX_SIZE):
     # Returns function that checks if a given int is in the given half-open interval
     assert isinstance(minValue, int) and isinstance(maxValue, int)
     return lambda x: minValue <= x < maxValue
