@@ -11,11 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import fcntl
 import os
 from datetime import datetime
 from typing import Optional
 
 import requests
+
+from toil import retry
 
 
 def get_iso_time() -> str:
@@ -65,3 +68,46 @@ def get_file_class(path: str) -> str:
     elif os.path.isdir(path):
         return "Directory"
     return "Unknown"
+
+
+@retry(errors=[OSError, BlockingIOError])
+def safe_read_file(file: str) -> Optional[str]:
+    """
+    Safely read a file by acquiring a shared lock to prevent other processes
+    from writing to it while reading.
+    """
+    try:
+        file_obj = open(file, "r")
+    except FileNotFoundError:
+        return None
+
+    try:
+        # acquire a shared lock on the state file, which is blocking until we can lock it
+        fcntl.lockf(file_obj.fileno(), fcntl.LOCK_SH)
+
+        try:
+            return file_obj.read()
+        finally:
+            fcntl.flock(file_obj.fileno(), fcntl.LOCK_UN)
+    finally:
+        file_obj.close()
+
+
+@retry(errors=[OSError, BlockingIOError])
+def safe_write_file(file: str, s: str) -> None:
+    """
+    Safely write to a file by acquiring an exclusive lock to prevent other
+    processes from reading and writing to it while writing.
+    """
+    file_obj = open(file, "w")
+
+    try:
+        # acquire an exclusive lock
+        fcntl.flock(file_obj.fileno(), fcntl.LOCK_EX)
+
+        try:
+            file_obj.write(s)
+        finally:
+            fcntl.flock(file_obj.fileno(), fcntl.LOCK_UN)
+    finally:
+        file_obj.close()

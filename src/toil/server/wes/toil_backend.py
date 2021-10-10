@@ -17,11 +17,12 @@ import os
 import shutil
 import uuid
 from collections import Counter
-from tempfile import NamedTemporaryFile
 from typing import Optional, List, Dict, Any, overload, Generator, Tuple
 
 from flask import send_from_directory
 
+from toil.lib.retry import retry
+from toil.server.utils import safe_read_file, safe_write_file
 from toil.server.wes.abstract_backend import (WESBackend,
                                               handle_errors,
                                               WorkflowNotFoundException,
@@ -73,14 +74,12 @@ class ToilWorkflow:
 
     def get_state(self) -> str:
         """ Return the state of the current run."""
-        return self.fetch("state", "UNKNOWN")
+        return safe_read_file(os.path.join(self.work_dir, "state")) or "UNKNOWN"
 
+    @retry(errors=[OSError])
     def set_state(self, state: str) -> None:
         """ Set the state for the current run."""
-        # write state atomically
-        with NamedTemporaryFile(mode='w', dir=self.work_dir, prefix='state.', delete=False) as f:
-            f.write(state)
-        os.rename(f.name, os.path.join(self.work_dir, "state"))
+        safe_write_file(os.path.join(self.work_dir, "state"), state)
 
     def set_up_run(self) -> None:
         """ Set up necessary directories for the run."""
@@ -332,7 +331,7 @@ class ToilBackend(WESBackend):
     # Toil custom endpoints that are not part of the GA4GH WES spec
 
     @handle_errors
-    def get_stdout(self, run_id) -> Any:
+    def get_stdout(self, run_id: str) -> Any:
         """
         Get the stdout of a workflow run as a static file.
         """
@@ -340,7 +339,7 @@ class ToilBackend(WESBackend):
         return send_from_directory(self.work_dir, os.path.join(run_id, "stdout"), mimetype="text/plain")
 
     @handle_errors
-    def get_stderr(self, run_id) -> Any:
+    def get_stderr(self, run_id: str) -> Any:
         """
         Get the stderr of a workflow run as a static file.
         """

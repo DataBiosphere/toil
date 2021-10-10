@@ -11,7 +11,7 @@ More information about the WES API specification can be found here_.
 
 To get started with the Toil WES server, make sure that the ``server`` extra (:ref:`extras`) is installed.
 
-.. _WESUsageOverview:
+.. _WESPrepareEnvironment:
 
 Preparing your WES environment
 ------------------------------
@@ -83,23 +83,14 @@ To run the server on a Toil leader instance on EC2:
 
 #. Launch a Toil cluster with the ``toil launch-cluster`` command with the AWS provisioner
 
-#. The Toil server requires an additional TCP port to open for HTTP(S) access. To add this inbound rule, open the AWS
-   console and go to the ``Security Groups`` section.  For example, on us-west2, this address would accessible at: ::
+#. SSH into your cluster with the ``--sshOption=-L8080:localhost:8080`` option to forward port ``8080``
 
-    https://us-west-2.console.aws.amazon.com/ec2/v2/home?region=us-west-2#SecurityGroups
+#. Set up Celery workers required to run WES workflows (:ref:`WESPrepareEnvironment`)
 
-#. Next, locate the security group created along with your cluster. It should be the same name as the cluster.
-
-#. Click on "Edit inbound rules". Then, add a rule to allow "0.0.0.0/0" (anyone) to access port 8080 (or the port where
-   the server will listen on), and click "Save rules".
-
-    .. image:: wes_ec2_1.png
-    .. image:: wes_ec2_2.png
-
-#. Now, you can SSH into your cluster and run the WES server with ``toil server`` on the Toil appliance.
+#. Now, you can run the WES server with ``toil server`` on the Toil appliance.
 
 .. note::
-    To run the server in the background, you can run "``nohup toil server &``".
+    To run the server in the background, run "``nohup toil server &``".
 
 
 .. _WESEndpointsOverview:

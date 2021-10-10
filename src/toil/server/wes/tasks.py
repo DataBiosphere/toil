@@ -11,19 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import fcntl
 import json
 import logging
 import os
 import subprocess
-from tempfile import NamedTemporaryFile
 from typing import Dict, Any, List, Union
 
+from celery.exceptions import SoftTimeLimitExceeded
 from toil.common import Toil
 from toil.server.celery_app import celery
 from toil.server.utils import (get_iso_time,
                                link_file,
                                download_file_from_internet,
-                               get_file_class)
+                               get_file_class,
+                               safe_read_file,
+                               safe_write_file)
 
 logger = logging.getLogger(__name__)
 
@@ -55,14 +58,10 @@ class ToilWorkflowRunner:
             f.write(contents)
 
     def get_state(self) -> str:
-        with open(os.path.join(self.work_dir, "state"), "r") as f:
-            return f.read()
+        return safe_read_file(os.path.join(self.work_dir, "state")) or "UNKNOWN"
 
     def set_state(self, state: str) -> None:
-        # write state atomically
-        with NamedTemporaryFile(mode='w', dir=self.work_dir, prefix='state.', delete=False) as f:
-            f.write(state)
-        os.rename(f.name, os.path.join(self.work_dir, "state"))
+        safe_write_file(os.path.join(self.work_dir, "state"), state)
 
     def write_workflow(self, src_url: str) -> str:
         """
@@ -169,12 +168,10 @@ class ToilWorkflowRunner:
 
         return command_args
 
-    def call_cmd(self, cmd: Union[List[str], str], cwd: str) -> int:
+    def call_cmd(self, cmd: Union[List[str], str], cwd: str) -> "subprocess.Popen[bytes]":
         """
         Calls a command with Popen. Writes stdout, stderr, and the command to
-        separate files. This is a blocking call.
-
-        :returns: The exit code of the command.
+        separate files.
         """
         stdout_f = os.path.join(self.work_dir, "stdout")
         stderr_f = os.path.join(self.work_dir, "stderr")
@@ -183,16 +180,7 @@ class ToilWorkflowRunner:
             logger.info(f"Calling: '{' '.join(cmd)}'")
             process = subprocess.Popen(cmd, stdout=stdout, stderr=stderr, close_fds=True, cwd=cwd)
 
-        try:
-            return process.wait()
-        except (KeyboardInterrupt, SystemExit):
-            process.terminate()
-
-            if process.wait(timeout=5) is None:
-                process.kill()
-
-            logger.info("Child process terminated by interruption.")
-            return 130
+        return process
 
     def run(self) -> None:
         """
@@ -208,15 +196,40 @@ class ToilWorkflowRunner:
         with open(os.path.join(self.work_dir, "job_store"), "w") as f:
             f.write(self.job_store)
 
-        if self.get_state() in ("CANCELING", "CANCELED"):
+        # lock the state file until we start the subprocess
+        file_obj = open(os.path.join(self.work_dir, "state"), "r+")
+        fcntl.flock(file_obj.fileno(), fcntl.LOCK_EX)
+
+        state = file_obj.read()
+        if state in ("CANCELING", "CANCELED"):
             logger.info("Workflow canceled.")
             return
 
-        self.set_state("RUNNING")
+        # https://stackoverflow.com/a/15976014
+        file_obj.seek(0)
+        file_obj.write("RUNNING")
+        file_obj.truncate()
+
+        process = self.call_cmd(cmd=commands, cwd=self.exec_dir)
+
+        # Now the command is running, we can allow state changes again
+        fcntl.flock(file_obj.fileno(), fcntl.LOCK_UN)
+        file_obj.close()
+
         self.write("start_time", get_iso_time())
         self.write("cmd", " ".join(commands))
 
-        exit_code = self.call_cmd(cmd=commands, cwd=self.exec_dir)
+        try:
+            exit_code = process.wait()
+        except (KeyboardInterrupt, SystemExit, SoftTimeLimitExceeded) as e:
+            logger.warning(str(e))
+            process.terminate()
+
+            if process.wait(timeout=5) is None:
+                process.kill()
+
+            logger.info("Child process terminated by interruption.")
+            exit_code = 130
 
         self.write("end_time", get_iso_time())
         self.write("exit_code", str(exit_code))
@@ -264,7 +277,6 @@ def run_wes(work_dir: str, request: Dict[str, Any], engine_options: List[str]) -
     """
     A celery task to run a requested workflow.
     """
-
     runner = ToilWorkflowRunner(work_dir, request=request, engine_options=engine_options)
 
     try:
@@ -276,7 +288,7 @@ def run_wes(work_dir: str, request: Dict[str, Any], engine_options: List[str]) -
         if state == "COMPLETE":
             logger.info(f"Fetching output files.")
             runner.write_output_files()
-    except (KeyboardInterrupt, SystemExit):
+    except (KeyboardInterrupt, SystemExit, SoftTimeLimitExceeded):
         runner.set_state("CANCELED")
     except Exception as e:
         runner.set_state("EXECUTOR_ERROR")
@@ -289,4 +301,4 @@ def cancel_run(task_id: str) -> None:
     """
     Send a SIGTERM signal to the process that is running task_id.
     """
-    celery.control.terminate(task_id)
+    celery.control.terminate(task_id, signal='SIGUSR1')
