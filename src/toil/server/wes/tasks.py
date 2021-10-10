@@ -18,7 +18,7 @@ import os
 import subprocess
 from typing import Dict, Any, List, Union
 
-from celery.exceptions import SoftTimeLimitExceeded
+from celery.exceptions import SoftTimeLimitExceeded  # type: ignore
 from toil.common import Toil
 from toil.server.celery_app import celery
 from toil.server.utils import (get_iso_time,
