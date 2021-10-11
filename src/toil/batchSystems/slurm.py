@@ -155,10 +155,13 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 values = line.strip().split('|')
                 if len(values) < 3:
                     continue
-                job_id, state, exitcode = values
-                logger.debug("%s state of job %s is %s", args[0], job_id, state)
-                # JobIDRaw is in the form JobID[.JobStep]
-                job_id = int(job_id.split(".")[0])
+                job_id_raw, state, exitcode = values
+                logger.debug("%s state of job %s is %s", args[0], job_id_raw, state)
+                # JobIDRaw is in the form JobID[.JobStep]; we're not interested in job steps.
+                job_id_parts = job_id_raw.split(".")
+                if len(job_id_parts) > 1:
+                    continue
+                job_id = int(job_id_parts[0])
                 status, signal = [int(n) for n in exitcode.split(':')]
                 if signal > 0:
                     # A non-zero signal may indicate e.g. an out-of-memory killed job
