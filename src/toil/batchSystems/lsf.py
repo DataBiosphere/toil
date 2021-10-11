@@ -37,8 +37,7 @@ from toil.batchSystems.abstractGridEngineBatchSystem import (
 from toil.batchSystems.lsfHelper import (
     check_lsf_json_output_supported,
     parse_mem_and_cmd_from_output,
-    parse_memory_limit,
-    parse_memory_resource,
+    parse_memory,
     per_core_reservation,
 )
 from toil.lib.misc import call_command
@@ -307,15 +306,14 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             """
             bsubMem = []
             if mem:
-                mem = float(mem) / 1024 ** 3
+                mem = float(mem)
                 if per_core_reservation() and cpu:
                     mem = mem / math.ceil(cpu)
-                mem_resource = parse_memory_resource(mem)
-                mem_limit = parse_memory_limit(mem)
+                mem = parse_memory(mem)
                 bsubMem = ['-R',
-                           f'select[mem>{mem_resource}] '
-                           f'rusage[mem={mem_resource}]',
-                           '-M', mem_limit]
+                           f'select[mem>{mem}] '
+                           f'rusage[mem={mem}]',
+                           '-M', mem]
             bsubCpu = [] if cpu is None else ['-n', str(math.ceil(cpu))]
             bsubline = ["bsub", "-cwd", ".", "-J", f"toil_job_{jobID}"]
             bsubline.extend(bsubMem)
