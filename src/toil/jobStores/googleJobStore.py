@@ -169,12 +169,12 @@ class GoogleJobStore(AbstractJobStore):
             while count < len(blobs_to_delete):
                 with self.storageClient.batch():
                     for blob in blobs_to_delete[count:count + MAX_BATCH_SIZE]:
-                        blob.delete_job()
+                        blob.delete()
                     count = count + MAX_BATCH_SIZE
             self.bucket.delete()
 
     def _new_job_id(self):
-        return "job"+str(uuid.uuid4())
+        return f'job-{uuid.uuid4()}'
 
     def assign_job_id(self, job_description):
         jobStoreID = self._new_job_id()
@@ -194,7 +194,7 @@ class GoogleJobStore(AbstractJobStore):
 
     @google_retry
     def job_exists(self, job_id):
-        return self.bucket.blob(compat_bytes(job_id), encryption_key=self.sseKey).job_exists()
+        return self.bucket.blob(compat_bytes(job_id), encryption_key=self.sseKey).exists()
 
     @google_retry
     def get_public_url(self, fileName):
@@ -294,7 +294,7 @@ class GoogleJobStore(AbstractJobStore):
 
     @google_retry
     def file_exists(self, file_id):
-        return self.bucket.blob(compat_bytes(file_id), encryption_key=self.sseKey).job_exists()
+        return self.bucket.blob(compat_bytes(file_id), encryption_key=self.sseKey).exists()
 
     @google_retry
     def get_file_size(self, file_id):
@@ -433,12 +433,12 @@ class GoogleJobStore(AbstractJobStore):
         elif isFile:  # nonassociated file
             return str(uuid.uuid4())
         else:  # job id
-            return "job"+str(uuid.uuid4())
+            return f'job-{uuid.uuid4()}'
 
     @google_retry
     def _delete(self, jobStoreFileID):
         if self.file_exists(jobStoreFileID):
-            self.bucket.get_blob(compat_bytes(jobStoreFileID)).delete_job()
+            self.bucket.get_blob(compat_bytes(jobStoreFileID)).delete()
         # remember, this is supposed to be idempotent, so we don't do anything
         # if the file doesn't exist
 
