@@ -1618,7 +1618,7 @@ class ResolveIndirect(Job):
 
     def __init__(self, cwljob: dict):
         """Store the dictionary of promises for later resolution."""
-        super(ResolveIndirect, self).__init__(cores=1, memory=1024 ^ 2, disk=0)
+        super(ResolveIndirect, self).__init__(cores=1, memory="1GiB", disk="1MiB")
         self.cwljob = cwljob
 
     def run(self, file_store: AbstractFileStore) -> dict:
@@ -1770,7 +1770,7 @@ class CWLJobWrapper(Job):
         conditional: Union[Conditional, None] = None,
     ):
         """Store our context for later evaluation."""
-        super(CWLJobWrapper, self).__init__(cores=1, memory=1024 * 1024, disk=8 * 1024)
+        super(CWLJobWrapper, self).__init__(cores=1, memory="1GiB", disk="1MiB")
         self.cwltool = remove_pickle_problems(tool)
         self.cwljob = cwljob
         self.runtime_context = runtime_context
@@ -2125,7 +2125,7 @@ class CWLScatter(Job):
         conditional: Union[Conditional, None],
     ):
         """Store our context for later execution."""
-        super(CWLScatter, self).__init__(cores=1, memory=100 * 1024 ^ 2, disk=0)
+        super(CWLScatter, self).__init__(cores=1, memory="1GiB", disk="1MiB")
         self.step = step
         self.cwljob = cwljob
         self.runtime_context = runtime_context
@@ -2268,7 +2268,7 @@ class CWLGather(Job):
         outputs: Union[Mapping, MutableSequence],
     ):
         """Collect our context for later gathering."""
-        super(CWLGather, self).__init__(cores=1, memory=10 * 1024 ^ 2, disk=0)
+        super(CWLGather, self).__init__(cores=1, memory="1GiB", disk="1MiB")
         self.step = step
         self.outputs = outputs
 
@@ -2310,7 +2310,7 @@ class SelfJob(Job):
 
     def __init__(self, j: "CWLWorkflow", v: dict):
         """Record the workflow and dictionary."""
-        super(SelfJob, self).__init__(cores=1, memory=1024 ^ 2, disk=0)
+        super(SelfJob, self).__init__(cores=1, memory="1GiB", disk="1MiB")
         self.j = j
         self.v = v
 
@@ -2364,7 +2364,7 @@ class CWLWorkflow(Job):
         conditional: Union[Conditional, None] = None,
     ):
         """Gather our context for later execution."""
-        super(CWLWorkflow, self).__init__(cores=1, memory=100 * 1024 ^ 2, disk=0)
+        super(CWLWorkflow, self).__init__(cores=1, memory="1GiB", disk="1MiB")
         self.cwlwf = cwlwf
         self.cwljob = cwljob
         self.runtime_context = runtime_context
@@ -3401,7 +3401,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             except Exception as err:
                 # TODO: We can't import FailedJobsException due to a circular
                 # import but that's what we'd expect here.
-                if getattr(err, "exit_code") == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
+                if getattr(err, "exit_code", None) == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
                     # We figured out that we can't support this workflow.
                     logging.error(err)
                     logging.error(
