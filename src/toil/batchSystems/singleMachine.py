@@ -31,7 +31,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
                                                    BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
 from toil.common import Toil
-from toil.lib.threads import cpu_count
+from toil.lib.threading import cpu_count
 
 log = logging.getLogger(__name__)
 

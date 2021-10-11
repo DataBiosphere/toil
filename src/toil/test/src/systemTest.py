@@ -4,7 +4,7 @@ import os
 import tempfile
 from functools import partial
 
-from toil.lib.threads import cpu_count
+from toil.lib.threading import cpu_count
 from toil.test import ToilTest, travis_test
 
 

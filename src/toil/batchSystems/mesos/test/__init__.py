@@ -9,7 +9,7 @@ from shutil import which
 from urllib.request import urlopen
 
 from toil.lib.retry import retry
-from toil.lib.threads import ExceptionalThread, cpu_count
+from toil.lib.threading import ExceptionalThread, cpu_count
 
 log = logging.getLogger(__name__)
 

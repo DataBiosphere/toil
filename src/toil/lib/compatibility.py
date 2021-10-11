@@ -1,10 +1,7 @@
 import functools
-import logging
 import warnings
 
 from typing import Union, Callable, Any
-
-logger = logging.getLogger(__name__)
 
 
 def deprecated(new_function_name: str) -> Callable[..., Any]:

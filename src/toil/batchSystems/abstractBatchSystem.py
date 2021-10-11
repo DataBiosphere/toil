@@ -24,7 +24,7 @@ from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
 from toil.common import Toil, cacheDirName, Config
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.lib.threads import LastProcessStandingArena
+from toil.lib.threading import LastProcessStandingArena
 
 try:
     from toil.cwl.cwltoil import CWL_INTERNAL_JOBS

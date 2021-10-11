@@ -13,7 +13,7 @@
 # limitations under the License.
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
-# Note: renamed from "threading.py" to "threads.py" to avoid conflicting imports
+# Note: renamed from "threading.py" to "threading.py" to avoid conflicting imports
 # from the built-in "threading" from psutil in python3.9
 import atexit
 import fcntl

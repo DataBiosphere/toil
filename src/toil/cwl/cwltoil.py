@@ -114,7 +114,7 @@ from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.lib.threads import ExceptionalThread
+from toil.lib.threading import ExceptionalThread
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)

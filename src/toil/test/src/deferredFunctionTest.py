@@ -20,7 +20,7 @@ from uuid import uuid4
 
 from toil.job import Job
 from toil.leader import FailedJobsException
-from toil.lib.threads import cpu_count
+from toil.lib.threading import cpu_count
 from toil.test import ToilTest, slow, travis_test
 
 

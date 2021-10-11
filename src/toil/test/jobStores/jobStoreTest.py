@@ -1392,7 +1392,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         """ Tests that importFile is thread-safe."""
 
         from concurrent.futures.thread import ThreadPoolExecutor
-        from toil.lib.threads import cpu_count
+        from toil.lib.threading import cpu_count
 
         threads: Tuple[int, ...] = (2, cpu_count()) if cpu_count() > 2 else (2, )
         num_of_files: int = 5
