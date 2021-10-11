@@ -2,8 +2,10 @@ import os
 import urllib.request
 import json
 import logging
-from typing import Optional
+
 from botocore.client import BaseClient
+
+from typing import Optional, Dict
 
 from toil.lib.retry import retry
 
@@ -45,7 +47,7 @@ def official_flatcar_ami_release(ec2_client: BaseClient) -> Optional[str]:
     # Rather than hardcode a list of AMIs by region that will die, we use
     # their JSON feed of the current ones.
     JSON_FEED_URL = 'https://stable.release.flatcar-linux.net/amd64-usr/current/flatcar_production_ami_all.json'
-    region = ec2_client._client_config.region_name
+    region = ec2_client._client_config.region_name  # type: ignore
     feed = json.loads(urllib.request.urlopen(JSON_FEED_URL).read())
 
     try:
@@ -55,9 +57,9 @@ def official_flatcar_ami_release(ec2_client: BaseClient) -> Optional[str]:
                 # When we find ours, return the AMI ID
                 ami = ami_record['hvm']
                 # verify it exists on AWS
-                response = ec2_client.describe_images(Filters=[{'Name': 'image-id', 'Values': [ami]}])
+                response = ec2_client.describe_images(Filters=[{'Name': 'image-id', 'Values': [ami]}])  # type: ignore
                 if len(response['Images']) == 1 and response['Images'][0]['State'] == 'available':
-                    return ami
+                    return ami  # type: ignore
         # We didn't find it
         logger.warning(f'Flatcar image feed at {JSON_FEED_URL} does not have an image for region {region}')
     except KeyError:
@@ -68,9 +70,9 @@ def official_flatcar_ami_release(ec2_client: BaseClient) -> Optional[str]:
 @retry()  # TODO: What errors do we get for timeout, JSON parse failure, etc?
 def aws_marketplace_flatcar_ami_search(ec2_client: BaseClient) -> Optional[str]:
     """Query AWS for all AMI names matching 'Flatcar-stable-*' and return the most recent one."""
-    response: dict = ec2_client.describe_images(Owners=['aws-marketplace'],
+    response: dict = ec2_client.describe_images(Owners=['aws-marketplace'],  # type: ignore
                                                 Filters=[{'Name': 'name', 'Values': ['Flatcar-stable-*']}])
-    latest: dict = {'CreationDate': '0lder than atoms.'}
+    latest: Dict[str, str] = {'CreationDate': '0lder than atoms.'}
     for image in response['Images']:
         if image["Architecture"] == "x86_64" and image["State"] == "available":
             if image['CreationDate'] > latest['CreationDate']:
