@@ -54,14 +54,13 @@ from toil.test import (ToilTest,
 # noinspection PyPackageRequirements
 # (installed by `make prepare`)
 
-
-# Need googleRetry decorator even if google is not available, so make one up.
+# Need google_retry decorator even if google is not available, so make one up.
 # Unconventional use of decorator to determine if google is enabled by seeing if
 # it returns the parameter passed in.
 if needs_google(needs_google) is needs_google:
-    from toil.jobStores.googleJobStore import googleRetry
+    from toil.jobStores.googleJobStore import google_retry
 else:
-    def googleRetry(x):
+    def google_retry(x):
         return x
 
 
@@ -1255,14 +1254,14 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
         contents = GoogleJobStore._get_blob_from_url(urlparse.urlparse(url)).download_as_string()
         return hashlib.md5(contents).hexdigest()
 
-    @googleRetry
+    @google_retry
     def _createExternalStore(self):
         from google.cloud import storage
         bucketName = ("import-export-test-" + str(uuid.uuid4()))
         storageClient = storage.Client()
         return storageClient.create_bucket(bucketName)
 
-    @googleRetry
+    @google_retry
     def _cleanUpExternalStore(self, bucket):
         # this is copied from googleJobStore.destroy
         try:

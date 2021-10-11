@@ -106,7 +106,7 @@ def wait_transition(resource, from_states, to_state,
         time.sleep(a_short_time)
         for attempt in retry_ec2():
             with attempt:
-                resource.update_job(validate=True)
+                resource.update(validate=True)
         state = state_getter(resource)
     if state != to_state:
         raise UnexpectedResourceState(resource, to_state, state)
