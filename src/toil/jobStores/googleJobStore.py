@@ -250,6 +250,7 @@ class GoogleJobStore(AbstractJobStore):
     def jobs(self):
         for blob in self.bucket.list_blobs(prefix=b'job-'):
             jobStoreID = blob.name
+            # TODO: do this better
             if len(jobStoreID) == 40 and jobStoreID.startswith('job-'):  # 'job-' + uuid length
                 yield self.load_job(jobStoreID)
 
