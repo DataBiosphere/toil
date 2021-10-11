@@ -248,9 +248,9 @@ class GoogleJobStore(AbstractJobStore):
 
     @google_retry
     def jobs(self):
-        for blob in self.bucket.list_blobs(prefix=b'job'):
+        for blob in self.bucket.list_blobs(prefix=b'job-'):
             jobStoreID = blob.name
-            if len(jobStoreID) == 39:  # 'job' + uuid length
+            if len(jobStoreID) == 40 and jobStoreID.startswith('job-'):  # 'job-' + uuid length
                 yield self.load_job(jobStoreID)
 
     def write_file(self, local_path, job_id=None, cleanup=False):
@@ -375,6 +375,7 @@ class GoogleJobStore(AbstractJobStore):
         blob = cls._get_blob_from_url(url)
         blob.upload_from_file(readable)
 
+    @google_retry
     def write_logs(self, msg: bytes) -> None:
         statsID = self.statsBaseID + str(uuid.uuid4())
         log.debug("Writing stats file: %s", statsID)
