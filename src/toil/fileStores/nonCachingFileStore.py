@@ -100,7 +100,7 @@ class NonCachingFileStore(AbstractFileStore):
             self.logAccess(fileStoreID)
             yield f
 
-    @deprecated('export_file')
+    @deprecated(new_function_name='export_file')
     def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
         return self.export_file(jobStoreFileID, dstUrl)
 

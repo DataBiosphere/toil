@@ -408,14 +408,14 @@ class AbstractFileStore(ABC):
         raise NotImplementedError()
 
     # Functions used to read and write files directly between a source url and the job store.
-    @deprecated('import_file')
+    @deprecated(new_function_name='import_file')
     def importFile(self, srcUrl: str, sharedFileName: Optional[str] = None) -> Optional[FileID]:
         return self.import_file(srcUrl, sharedFileName)
 
     def import_file(self, src_uri: str, shared_file_name: Optional[str] = None) -> Optional[FileID]:
         return self.jobStore.import_file(src_uri, shared_file_name=shared_file_name)
 
-    @deprecated('export_file')
+    @deprecated(new_function_name='export_file')
     def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
         return self.export_file(jobStoreFileID, dstUrl)
 

@@ -242,7 +242,7 @@ class AbstractJobStore(ABC):
         return self.load_job(rootJobStoreID)
 
     # FIXME: This is only used in tests, why do we have it?
-    @deprecated('create_root_job')
+    @deprecated(new_function_name='create_root_job')
     def createRootJob(self, desc: JobDescription) -> JobDescription:
         return self.create_root_job(desc)
 
@@ -259,7 +259,7 @@ class AbstractJobStore(ABC):
         self.set_root_job(job_description.jobStoreID)
         return job_description
 
-    @deprecated('get_root_job_return_value')
+    @deprecated(new_function_name='get_root_job_return_value')
     def getRootJobReturnValue(self) -> Any:
         return self.get_root_job_return_value()
 
@@ -864,7 +864,7 @@ class AbstractJobStore(ABC):
     # One year should be sufficient to finish any pipeline ;-)
     publicUrlExpiration = timedelta(days=365)
 
-    @deprecated('get_public_url')
+    @deprecated(new_function_name='get_public_url')
     def getPublicUrl(self, fileName: str) -> str:
         return self.get_public_url(fileName)
 
@@ -883,7 +883,7 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError()
 
-    @deprecated('get_shared_public_url')
+    @deprecated(new_function_name='get_shared_public_url')
     def getSharedPublicUrl(self, sharedFileName: str) -> str:
         return self.get_shared_public_url(sharedFileName)
 
@@ -1066,7 +1066,7 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError()
 
-    @deprecated('get_empty_file_store_id')
+    @deprecated(new_function_name='get_empty_file_store_id')
     def getEmptyFileStoreID(self,
                             jobStoreID: Optional[str] = None,
                             cleanup: bool = False,
@@ -1227,7 +1227,7 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError()
 
-    @deprecated('update_file_stream')
+    @deprecated(new_function_name='update_file_stream')
     def updateFileStream(self,
                          jobStoreFileID: str,
                          encoding: Optional[str] = None,
@@ -1267,7 +1267,7 @@ class AbstractJobStore(ABC):
 
     sharedFileNameRegex = re.compile(r'^[a-zA-Z0-9._-]+$')
 
-    @deprecated('write_shared_file_stream')
+    @deprecated(new_function_name='write_shared_file_stream')
     def writeSharedFileStream(self, sharedFileName: str, isProtected: Optional[bool] = None, encoding: Optional[str] = None,
                                 errors: Optional[str] = None) -> ContextManager[IO[bytes]]:
         return self.write_shared_file_stream(sharedFileName, isProtected, encoding, errors)
@@ -1303,7 +1303,7 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError()
 
-    @deprecated('read_shared_file_stream')
+    @deprecated(new_function_name='read_shared_file_stream')
     def readSharedFileStream(self,
                              sharedFileName: str,
                              encoding: Optional[str] = None,
@@ -1334,7 +1334,7 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError()
 
-    @deprecated('write_logs')
+    @deprecated(new_function_name='write_logs')
     def writeStatsAndLogging(self, statsAndLoggingString: str) -> None:
         return self.write_logs(statsAndLoggingString)
 
@@ -1350,7 +1350,7 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError()
 
-    @deprecated('read_logs')
+    @deprecated(new_function_name='read_logs')
     def readStatsAndLogging(self, callback: Callable[..., Any], readAll: bool = False) -> int:
         return self.read_logs(callback, readAll)
 

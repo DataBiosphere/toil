@@ -1016,7 +1016,7 @@ class Toil:
             logger.debug('Injecting user script %s into batch system.', userScriptResource)
             self._batchSystem.setUserScript(userScriptResource)
 
-    @deprecated('import_file')
+    @deprecated(new_function_name='import_file')
     def importFile(self,
                    srcUrl: str,
                    sharedFileName: Optional[str] = None,
@@ -1037,7 +1037,7 @@ class Toil:
         src_uri = self.normalize_uri(src_uri, check_existence=True)
         return self._jobStore.import_file(src_uri, shared_file_name=shared_file_name, symlink=symlink)
 
-    @deprecated('export_file')
+    @deprecated(new_function_name='export_file')
     def exportFile(self, jobStoreFileID: Union[FileID, str], dstUrl: str) -> None:
         return self.export_file(jobStoreFileID, dstUrl)
 
