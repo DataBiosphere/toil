@@ -38,7 +38,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
                                                    BatchJobExitReason,
                                                    NodeInfo,
                                                    UpdatedBatchJobInfo)
-from toil.batchSystems.localSupport import BatchSystemLocalSupport
+from toil.batchSystems.local_support import BatchSystemLocalSupport
 from toil.batchSystems.mesos import JobQueue, MesosShape, TaskData, ToilJob
 from toil.job import JobDescription
 from toil.lib.memoize import strict_bool

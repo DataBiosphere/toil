@@ -30,7 +30,7 @@ from typing import (Any,
 from types import TracebackType
 
 from toil.batchSystems.abstractBatchSystem import WorkerCleanupInfo, BatchSystemSupport
-from toil.batchSystems.localSupport import BatchSystemLocalSupport
+from toil.batchSystems.local_support import BatchSystemLocalSupport
 from toil.common import Toil, Config
 from toil.lib.threading import LastProcessStandingArena
 

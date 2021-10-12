@@ -21,7 +21,7 @@ from typing import Any, List, Dict, Union, Optional
 
 from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
                                                    UpdatedBatchJobInfo)
-from toil.batchSystems.cleanupSupport import BatchSystemCleanupSupport
+from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.lib.misc import CalledProcessErrorStderr
 
 logger = logging.getLogger(__name__)

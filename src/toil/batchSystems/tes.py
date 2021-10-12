@@ -39,7 +39,7 @@ from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchJobExitReason,
                                                    UpdatedBatchJobInfo)
-from toil.batchSystems.cleanupSupport import BatchSystemCleanupSupport
+from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.common import Toil, Config
 from toil.job import JobDescription
 from toil.lib.conversions import human2bytes
