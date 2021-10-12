@@ -27,7 +27,7 @@ from typing import Optional, Union, Dict
 
 from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
-from toil.common import Toil
+from toil.common import SYS_MAX_SIZE, Toil
 from toil.test import get_temp_file
 from toil.lib.iterables import concat
 
@@ -49,7 +49,7 @@ class ParasolBatchSystem(BatchSystemSupport):
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(ParasolBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
-        if maxMemory != sys.maxsize:
+        if maxMemory != SYS_MAX_SIZE:
             logger.warning('The Parasol batch system does not support maxMemory.')
         # Keep the name of the results file for the pstat2 command..
         command = config.parasolCommand

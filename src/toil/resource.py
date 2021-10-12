@@ -77,7 +77,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         contentHash = hashlib.md5()
         # noinspection PyProtectedMember
         with cls._load(leaderPath) as src:
-            with jobStore.writeSharedFileStream(sharedFileName=pathHash, isProtected=False) as dst:
+            with jobStore.write_shared_file_stream(shared_file_name=pathHash, encrypted=False) as dst:
                 userScript = src.read()
                 contentHash.update(userScript)
                 dst.write(userScript)
@@ -89,7 +89,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
     def refresh(self, jobStore):
         return type(self)(name=self.name,
                           pathHash=self.pathHash,
-                          url=jobStore.getSharedPublicUrl(sharedFileName=self.pathHash),
+                          url=jobStore.get_shared_public_url(shared_file_name=self.pathHash),
                           contentHash=self.contentHash)
 
     @classmethod

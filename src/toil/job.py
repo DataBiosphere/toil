@@ -775,7 +775,7 @@ class JobDescription(Requirer):
 
         Assumes logJobStoreFileID is set.
         """
-        return jobStore.readFileStream(self.logJobStoreFileID)
+        return jobStore.read_file_stream(self.logJobStoreFileID)
 
     @property
     def remainingTryCount(self):
@@ -923,7 +923,7 @@ class CheckpointJobDescription(JobDescription):
             else:
                 self.command = self.checkpoint
 
-            jobStore.update(self) # Update immediately to ensure that checkpoint
+            jobStore.update_job(self) # Update immediately to ensure that checkpoint
             # is made before deleting any remaining successors
 
             if self.childIDs or self.followOnIDs or self.serviceTree:
@@ -935,14 +935,14 @@ class CheckpointJobDescription(JobDescription):
                 def recursiveDelete(jobDesc):
                     # Recursive walk the stack to delete all remaining jobs
                     for otherJobID in jobDesc.successorsAndServiceHosts():
-                        if jobStore.exists(otherJobID):
-                            recursiveDelete(jobStore.load(otherJobID))
+                        if jobStore.job_exists(otherJobID):
+                            recursiveDelete(jobStore.load_job(otherJobID))
                         else:
                             logger.debug("Job %s has already been deleted", otherJobID)
                     if jobDesc.jobStoreID != self.jobStoreID:
                         # Delete everything under us except us.
                         logger.debug("Checkpoint is deleting old successor job: %s", jobDesc.jobStoreID)
-                        jobStore.delete(jobDesc.jobStoreID)
+                        jobStore.delete_job(jobDesc.jobStoreID)
                         successorsDeleted.append(jobDesc.jobStoreID)
                 recursiveDelete(self)
 
@@ -950,7 +950,7 @@ class CheckpointJobDescription(JobDescription):
                 self.clearSuccessorsAndServiceHosts()
 
                 # Update again to commit the removal of successors.
-                jobStore.update(self)
+                jobStore.update_job(self)
         return successorsDeleted
 
 class Job:
@@ -1465,7 +1465,7 @@ class Job:
             # we must not have been hit yet in job topological order.
             raise JobPromiseConstraintError(self)
         # TODO: can we guarantee self.jobStoreID is populated and so pass that here?
-        with self._promiseJobStore.writeFileStream() as (fileHandle, jobStoreFileID):
+        with self._promiseJobStore.write_file_stream() as (fileHandle, jobStoreFileID):
             promise = UnfulfilledPromiseSentinel(str(self.description), jobStoreFileID, False)
             logger.debug('Issuing promise %s for result of %s', jobStoreFileID, self.description)
             pickle.dump(promise, fileHandle, pickle.HIGHEST_PROTOCOL)
@@ -1906,9 +1906,9 @@ class Job:
             for promiseFileStoreID in promiseFileStoreIDs:
                 # File may be gone if the job is a service being re-run and the accessing job is
                 # already complete.
-                if jobStore.fileExists(promiseFileStoreID):
+                if jobStore.file_exists(promiseFileStoreID):
                     logger.debug("Resolve promise %s from %s with a %s", promiseFileStoreID, self, type(promisedValue))
-                    with jobStore.updateFileStream(promiseFileStoreID) as fileHandle:
+                    with jobStore.update_file_stream(promiseFileStoreID) as fileHandle:
                         pickle.dump(promisedValue, fileHandle, pickle.HIGHEST_PROTOCOL)
                 else:
                     logger.debug("Do not resolve promise %s from %s because it is no longer needed", promiseFileStoreID, self)
@@ -2007,7 +2007,7 @@ class Job:
             fake = self.jobStoreID
 
             # Replace it with a real ID
-            jobStore.assignID(self.description)
+            jobStore.assign_job_id(self.description)
 
             # Make sure the JobDescription can do its JobStore-related setup.
             self.description.onRegistration(jobStore)
@@ -2073,7 +2073,7 @@ class Job:
                 self._directPredecessors = set()
 
                 # Save the body of the job
-                with jobStore.writeFileStream(description.jobStoreID, cleanup=True) as (fileHandle, fileStoreID):
+                with jobStore.write_file_stream(description.jobStoreID, cleanup=True) as (fileHandle, fileStoreID):
                     pickle.dump(self, fileHandle, pickle.HIGHEST_PROTOCOL)
             finally:
                 # Restore important fields (before handling errors)
@@ -2187,9 +2187,9 @@ class Job:
                 for serviceBatch in job.description.serviceHostIDsInBatches():
                     for serviceID in serviceBatch:
                         if serviceID in self._registry:
-                            jobStore.create(self._registry[serviceID].description)
+                            jobStore.create_job(self._registry[serviceID].description)
                 if job != self or saveSelf:
-                    jobStore.create(job.description)
+                    jobStore.create_job(job.description)
 
     def saveAsRootJob(self, jobStore):
         """
@@ -2210,7 +2210,7 @@ class Job:
 
         # Store the name of the first job in a file in case of restart. Up to this point the
         # root job is not recoverable. FIXME: "root job" or "first job", which one is it?
-        jobStore.setRootJob(self.jobStoreID)
+        jobStore.set_root_job(self.jobStoreID)
 
         # Assign the config from the JobStore as if we were loaded.
         # TODO: Find a better way to make this the JobStore's responsibility
@@ -2241,9 +2241,9 @@ class Job:
 
         #Loads context manager using file stream 
         if pickleFile == "firstJob":
-            manager = jobStore.readSharedFileStream(pickleFile)
+            manager = jobStore.read_shared_file_stream(pickleFile)
         else:
-            manager = jobStore.readFileStream(pickleFile)
+            manager = jobStore.read_file_stream(pickleFile)
         
         #Open and unpickle
         with manager as fileHandle:
@@ -2763,18 +2763,18 @@ class ServiceHostJob(Job):
             #Now flag that the service is running jobs can connect to it
             logger.debug("Removing the start jobStoreID to indicate that establishment of the service")
             assert self.description.startJobStoreID != None
-            if fileStore.jobStore.fileExists(self.description.startJobStoreID):
-                fileStore.jobStore.deleteFile(self.description.startJobStoreID)
-            assert not fileStore.jobStore.fileExists(self.description.startJobStoreID)
+            if fileStore.jobStore.file_exists(self.description.startJobStoreID):
+                fileStore.jobStore.delete_file(self.description.startJobStoreID)
+            assert not fileStore.jobStore.file_exists(self.description.startJobStoreID)
 
             #Now block until we are told to stop, which is indicated by the removal
             #of a file
             assert self.description.terminateJobStoreID != None
             while True:
                 # Check for the terminate signal
-                if not fileStore.jobStore.fileExists(self.description.terminateJobStoreID):
+                if not fileStore.jobStore.file_exists(self.description.terminateJobStoreID):
                     logger.debug("Detected that the terminate jobStoreID has been removed so exiting")
-                    if not fileStore.jobStore.fileExists(self.description.errorJobStoreID):
+                    if not fileStore.jobStore.file_exists(self.description.errorJobStoreID):
                         raise RuntimeError("Detected the error jobStoreID has been removed so exiting with an error")
                     break
 
@@ -2863,7 +2863,7 @@ class Promise:
         if cls._jobstore is None or cls._jobstore.config.jobStore != jobStoreLocator:
             cls._jobstore = Toil.resumeJobStore(jobStoreLocator)
         cls.filesToDelete.add(jobStoreFileID)
-        with cls._jobstore.readFileStream(jobStoreFileID) as fileHandle:
+        with cls._jobstore.read_file_stream(jobStoreFileID) as fileHandle:
             # If this doesn't work then the file containing the promise may not exist or be
             # corrupted
             value = safeUnpickleFromStream(fileHandle)

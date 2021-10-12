@@ -55,7 +55,7 @@ from toil.lib.ec2 import (a_short_time,
 from toil.lib.aws import zone_to_region
 from toil.lib.ec2nodes import InstanceType
 from toil.lib.generatedEC2Lists import E2Instances
-from toil.lib.ec2 import get_flatcar_ami
+from toil.lib.aws.ami import get_flatcar_ami
 from toil.lib.memoize import memoize
 from toil.lib.misc import truncExpBackoff
 from toil.lib.retry import (get_error_body,

@@ -122,7 +122,7 @@ def writeABC(job, A_dict, B_dict, C_dict, filepath):
     # get the output file and return it as a tuple of location + name
     output_filename = os.path.join(tempDir, 'ABC.txt')
     output_file = job.fileStore.writeGlobalFile(output_filename)
-    job.fileStore.exportFile(output_file, "file://" + filepath)
+    job.fileStore.export_file(output_file, "file://" + filepath)
 
 
 def finalize_jobs(job, num):
