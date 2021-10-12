@@ -20,6 +20,7 @@ import sys
 import tempfile
 import time
 import uuid
+import warnings
 
 from urllib.parse import urlparse
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, _ArgumentGroup
@@ -183,7 +184,11 @@ class Config:
                     # in an options object.
                     if option_value != default:
                         break
-                    option_value = getattr(options, old_name, default)
+                    if hasattr(options, old_name):
+                        warnings.warn(f'Using deprecated option field {old_name} to '
+                                      f'provide value for config field {option_name}',
+                                      DeprecationWarning)
+                        option_value = getattr(options, old_name)
 
             if env is not None:
                 for env_var in env:
