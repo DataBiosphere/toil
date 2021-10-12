@@ -306,7 +306,7 @@ py37_appliance_build:
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
     - python setup_gitlab_docker.py
     - make push_docker
-    
+
 # Python3.8
 py38_main:
   stage: basic_tests
