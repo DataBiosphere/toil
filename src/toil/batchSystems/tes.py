@@ -241,18 +241,19 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                 # Find the first start time that is set
                 start_time = log.start_time
                 break
+
+        if not start_time:
+            # It hasn't been running for a measurable amount of time.
+            return None
+
         for log in reversed(task.logs or []):
              if log.end_time:
                 # Find the last end time that is set, and override now
                 end_time = log.end_time
                 break
-        if start_time:
-            # We have a set start time, so it is/was running. Return the time
-            # it has been running for.
-            return slow_down((end_time - start_time).total_seconds())
-        else:
-            # It hasn't been running for a measurable amount of time.
-            return None
+        # We have a set start time, so it is/was running. Return the time
+        # it has been running for.
+        return slow_down((end_time - start_time).total_seconds())
 
     def __get_exit_code(self, task: tes.Task) -> int:
         """
