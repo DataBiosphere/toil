@@ -277,7 +277,9 @@ the logging module:
   --statePollingWait STATEPOLLINGWAIT
                         Time, in seconds, to wait before doing a scheduler
                         query for job state. Return cached results if within
-                        the waiting period.
+                        the waiting period. Only works for grid engine batch
+                        systems such as gridengine, htcondor, torque, slurm,
+                        and lsf.
 
   **Miscellaneous Options**
 
