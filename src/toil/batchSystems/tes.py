@@ -149,7 +149,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         # TODO: We aren't going to work well with linked imports if we're mounting the job store into the container...
 
         path_url = 'file://' + os.path.abspath(local_path)
-        if self.__server_can_mount(path_url):
+        if os.path.exists(local_path) and self.__server_can_mount(path_url):
             # We can access this file from the server. Probably.
             self.mounts.append(tes.Input(url=path_url,
                                          path=container_path,
