@@ -632,7 +632,7 @@ class CWLSmallTests(ToilTest):
         option_1 = '--strict-memory-limit'
         option_2 = '--force-docker-pull'
         option_3 = '--clean=always'
-        cwl = os.path.join(self._projectRootPath(), 'src/toil/test/cwl/echo_string.cwl')
+        cwl = os.path.join(os.path.dirname(__file__), 'echo_string.cwl')
         cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
         log.debug(f'Now running: {" ".join(cmd)}')
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

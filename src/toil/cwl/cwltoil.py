@@ -1212,7 +1212,7 @@ def toil_get_file(
         ) -> None:
             try:
                 with open(pipe_name, "wb") as pipe:
-                    with file_store.jobStore.readFileStream(file_store_id) as fi:
+                    with file_store.jobStore.read_file_stream(file_store_id) as fi:
                         file_store.logAccess(file_store_id)
                         chunk_sz = 1024
                         while True:
