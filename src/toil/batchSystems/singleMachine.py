@@ -710,7 +710,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
         parser.add_argument("--scale", dest="scale", default=1,
                             help="A scaling factor to change the value of all submitted tasks's submitted cores.  "
-                                 "Used in the single_machine batch system.  (default: %(default)s).")
+                                 "Used in the single_machine batch system. Useful for running workflows on "
+                                 "smaller machines than they were designed for. (default: %(default)s).")
 
     @classmethod
     def setOptions(cls, setOption):
