@@ -350,7 +350,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
     def __try_cancel(self, tes_id: str) -> None:
         """
         Try to cancel a TES job. Succeed if it can't be canceled because it has
-        stopped, but fail if it can't be canceled fro some other reason.
+        stopped, but fail if it can't be canceled for some other reason.
         """
 
         try:
