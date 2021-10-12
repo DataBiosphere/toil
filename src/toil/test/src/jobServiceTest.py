@@ -308,7 +308,7 @@ class ToyService(Job.Service):
                     continue
 
                 # Write out the resulting read integer and the message
-                with jobStore.update_file_streamoutJobStoreID) as f:
+                with jobStore.update_file_stream(outJobStoreID) as f:
                     f.write((f"{inputInt} {messageInt}\n").encode('utf-8'))
         except:
             logger.debug("Error in service worker: %s", traceback.format_exc())
