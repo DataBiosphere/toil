@@ -127,7 +127,8 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         type=int,
         default=None,
         help="Time, in seconds, to wait before doing a scheduler query for job state.  "
-             "Return cached results if within the waiting period."
+             "Return cached results if within the waiting period. Only works for grid "
+             "engine batch systems such as gridengine, htcondor, torque, slurm, and lsf."
     )
 
     for factory in BATCH_SYSTEM_FACTORY_REGISTRY.values():
