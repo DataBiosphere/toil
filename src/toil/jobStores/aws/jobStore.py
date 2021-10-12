@@ -441,7 +441,7 @@ class AWSJobStore(AbstractJobStore):
             info.save()
             return FileID(info.fileID, size) if shared_file_name is None else None
         else:
-            return super()._importFile(otherCls, url, shared_file_name=shared_file_name)
+            return super()._import_file(otherCls, uri, shared_file_name=shared_file_name)
 
     def _export_file(self, otherCls, file_id, uri):
         if issubclass(otherCls, AWSJobStore):
