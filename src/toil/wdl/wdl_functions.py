@@ -283,7 +283,7 @@ def process_single_outfile(wdl_file: WDLFile, fileStore, workDir, outDir) -> WDL
                            '{}\n'.format(f, os.getcwd(), tmp, exe))
     output_file = fileStore.writeGlobalFile(output_f_path)
     preserveThisFilename = os.path.basename(output_f_path)
-    fileStore.exportFile(output_file, "file://" + os.path.join(os.path.abspath(outDir), preserveThisFilename))
+    fileStore.export_file(output_file, "file://" + os.path.join(os.path.abspath(outDir), preserveThisFilename))
     return WDLFile(file_path=output_file, file_name=preserveThisFilename, imported=True)
 
 

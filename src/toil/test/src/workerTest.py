@@ -45,10 +45,10 @@ class WorkerTests(ToilTest):
             jobDesc = descClass(requirements={'memory': memory, 'cores': cores, 'disk': disk, 'preemptable': preemptable}, jobName=name)
 
             # Assign an ID
-            self.jobStore.assignID(jobDesc)
+            self.jobStore.assign_job_id(jobDesc)
 
             # Save and return the JobDescription
-            return self.jobStore.create(jobDesc)
+            return self.jobStore.create_job(jobDesc)
 
         for successorType in ['addChild', 'addFollowOn']:
             # Try with the branch point at both child and follow-on stages

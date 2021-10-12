@@ -162,8 +162,8 @@ class ServiceManager:
             service = self.__toil_state.get_job(service_id)
             assert isinstance(service, ServiceJobDescription)
             if error:
-                self.__job_store.deleteFile(service.errorJobStoreID)
-            self.__job_store.deleteFile(service.terminateJobStoreID)
+                self.__job_store.delete_file(service.errorJobStoreID)
+            self.__job_store.delete_file(service.terminateJobStoreID)
 
     def is_active(self, service_id: str) -> bool:
         """
@@ -173,7 +173,7 @@ class ServiceManager:
         :rtype: boolean
         """
         service = self.__toil_state.get_job(service_id)
-        return self.__job_store.fileExists(service.terminateJobStoreID)
+        return self.__job_store.file_exists(service.terminateJobStoreID)
 
     def is_running(self, service_id: str) -> bool:
         """
@@ -183,7 +183,7 @@ class ServiceManager:
         :rtype: boolean
         """
         service = self.__toil_state.get_job(service_id)
-        return (not self.__job_store.fileExists(service.startJobStoreID)) and self.is_active(service_id)
+        return (not self.__job_store.file_exists(service.startJobStoreID)) and self.is_active(service_id)
 
     def check(self) -> None:
         """
@@ -260,7 +260,7 @@ class ServiceManager:
 
                 for service_id in list(starting_services):
                     service_job_desc = self.__toil_state.get_job(service_id)
-                    if not self.__job_store.fileExists(service_job_desc.startJobStoreID):
+                    if not self.__job_store.file_exists(service_job_desc.startJobStoreID):
                         # Service has started (or failed)
                         logger.debug('Service %s has removed %s and is therefore started', service_job_desc, service_job_desc.startJobStoreID)
                         starting_services.remove(service_id)
@@ -268,7 +268,7 @@ class ServiceManager:
                         remaining_services_by_client[client_id] -= 1
                         assert remaining_services_by_client[client_id] >= 0
                         del service_to_client[service_id]
-                        if not self.__job_store.fileExists(service_job_desc.errorJobStoreID):
+                        if not self.__job_store.file_exists(service_job_desc.errorJobStoreID):
                             logger.error('Service %s has immediately failed before it could be used', service_job_desc)
                             # It probably hasn't fileld in the promise that the job that uses the service needs.
                             clients_with_failed_services.add(client_id)
@@ -305,7 +305,7 @@ class ServiceManager:
                 # Find the service object.
                 service_job_desc = self.__toil_state.get_job(service_id)
                 logger.debug("Service manager is starting service job: %s, start ID: %s", service_job_desc, service_job_desc.startJobStoreID)
-                assert self.__job_store.fileExists(service_job_desc.startJobStoreID)
+                assert self.__job_store.file_exists(service_job_desc.startJobStoreID)
                 # At this point the terminateJobStoreID and errorJobStoreID could have been deleted!
                 self.__services_out.put(service_id)
                 # Save for the waiting loop
@@ -315,7 +315,7 @@ class ServiceManager:
             for service_id in service_job_list:
                 # Find the service object.
                 service_job_desc = self.__toil_state.get_job(service_id)
-                while self.__job_store.fileExists(service_job_desc.startJobStoreID):
+                while self.__job_store.file_exists(service_job_desc.startJobStoreID):
                     # Sleep to avoid thrashing
                     time.sleep(1.0)
 

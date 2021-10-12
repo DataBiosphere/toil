@@ -16,7 +16,6 @@ import math
 import os
 import signal
 import subprocess
-import sys
 import time
 import traceback
 from contextlib import contextmanager
@@ -30,7 +29,7 @@ from toil import worker as toil_worker
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
-from toil.common import Toil
+from toil.common import SYS_MAX_SIZE, Toil
 from toil.lib.threading import cpu_count
 
 log = logging.getLogger(__name__)
@@ -80,12 +79,12 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # If we don't have up to the limit of the resource (and the resource
         # isn't the inlimited sentinel), warn.
         if maxCores > self.numCores:
-            if maxCores != sys.maxsize:
+            if maxCores != SYS_MAX_SIZE:
                 # We have an actually specified limit and not the default
                 log.warning('Not enough cores! User limited to %i but we only have %i.', maxCores, self.numCores)
             maxCores = self.numCores
         if maxMemory > self.physicalMemory:
-            if maxMemory != sys.maxsize:
+            if maxMemory != SYS_MAX_SIZE:
                 # We have an actually specified limit and not the default
                 log.warning('Not enough memory! User limited to %i bytes but we only have %i bytes.', maxMemory, self.physicalMemory)
             maxMemory = self.physicalMemory
@@ -93,7 +92,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         workdir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)  # config.workDir may be None; this sets a real directory
         self.physicalDisk = toil.physicalDisk(workdir)
         if maxDisk > self.physicalDisk:
-            if maxDisk != sys.maxsize:
+            if maxDisk != SYS_MAX_SIZE:
                 # We have an actually specified limit and not the default
                 log.warning('Not enough disk space! User limited to %i bytes but we only have %i bytes.', maxDisk, self.physicalDisk)
             maxDisk = self.physicalDisk

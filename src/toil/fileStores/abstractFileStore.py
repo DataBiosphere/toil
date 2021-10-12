@@ -26,11 +26,14 @@ from toil.fileStores import FileID
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.io import WriteWatchingStream
 from toil.job import Job, JobDescription
+from toil.lib.compatibility import deprecated
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from toil.fileStores.nonCachingFileStore import NonCachingFileStore
     from toil.fileStores.cachingFileStore import CachingFileStore
+
 
 class AbstractFileStore(ABC):
     """
@@ -246,8 +249,8 @@ class AbstractFileStore(ABC):
                   2) the toil.fileStores.FileID of the resulting file in the job store.
         """
         
-        with self.jobStore.writeFileStream(self.jobDesc.jobStoreID, cleanup, basename,
-                encoding, errors) as (backingStream, fileStoreID):
+        with self.jobStore.write_file_stream(self.jobDesc.jobStoreID, cleanup, basename,
+                                             encoding, errors) as (backingStream, fileStoreID):
           
             # We have a string version of the file ID, and the backing stream.
             # We need to yield a stream the caller can write to, and a FileID
@@ -371,7 +374,7 @@ class AbstractFileStore(ABC):
         if size is None:
             # It fell off
             # Someone is mixing FileStore and JobStore file APIs, or serializing FileIDs as strings.
-            size = self.jobStore.getFileSize(fileStoreID)
+            size = self.jobStore.get_file_size(fileStoreID)
 
         return cast(int, size)
 
@@ -405,10 +408,18 @@ class AbstractFileStore(ABC):
         raise NotImplementedError()
 
     # Functions used to read and write files directly between a source url and the job store.
+    @deprecated(new_function_name='import_file')
     def importFile(self, srcUrl: str, sharedFileName: Optional[str] = None) -> Optional[FileID]:
-        return self.jobStore.importFile(srcUrl, sharedFileName=sharedFileName)
+        return self.import_file(srcUrl, sharedFileName)
 
+    def import_file(self, src_uri: str, shared_file_name: Optional[str] = None) -> Optional[FileID]:
+        return self.jobStore.import_file(src_uri, shared_file_name=shared_file_name)
+
+    @deprecated(new_function_name='export_file')
     def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
+        return self.export_file(jobStoreFileID, dstUrl)
+
+    def export_file(self, file_id: FileID, dst_uri: str) -> None:
         raise NotImplementedError()
 
     # A utility method for accessing filenames

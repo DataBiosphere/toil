@@ -900,7 +900,7 @@ class hidden:
             with open(fileName, 'wb') as f:
                 f.write(os.urandom(1024 * 30000)) # 30 Mb
             outputFile = os.path.join(job.fileStore.getLocalTempDir(), 'exportedFile')
-            job.fileStore.exportFile(job.fileStore.writeGlobalFile(fileName), 'File://' + outputFile)
+            job.fileStore.export_file(job.fileStore.writeGlobalFile(fileName), 'File://' + outputFile)
             if not filecmp.cmp(fileName, outputFile):
                 logger.warning('Source file: %s', str(os.stat(fileName)))
                 logger.warning('Destination file: %s', str(os.stat(outputFile)))
@@ -1301,7 +1301,7 @@ class hidden:
 
             messageBytes = b'This is a test file\n'
 
-            with job.fileStore.jobStore.writeFileStream() as (out, idString):
+            with job.fileStore.jobStore.write_file_stream() as (out, idString):
                 # Write directly to the job store so the caching file store doesn't even see it.
                 # TODO: If we ever change how the caching file store does its IDs we will have to change this.
                 out.write(messageBytes)

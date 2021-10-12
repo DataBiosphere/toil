@@ -14,10 +14,10 @@
 import logging
 import os
 
-from toil.lib.ec2 import (get_flatcar_ami,
-                          official_flatcar_ami_release,
-                          aws_marketplace_flatcar_ami_search,
-                          establish_boto3_session)
+from toil.lib.aws.ami import (get_flatcar_ami,
+                              official_flatcar_ami_release,
+                              aws_marketplace_flatcar_ami_search)
+from toil.lib.ec2 import establish_boto3_session
 from toil.test import ToilTest, needs_aws_ec2
 
 logger = logging.getLogger(__name__)

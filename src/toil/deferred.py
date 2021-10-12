@@ -21,6 +21,7 @@ from contextlib import contextmanager
 
 import dill
 
+from toil.lib.io import robust_rmtree
 from toil.realtimeLogger import RealtimeLogger
 from toil.resource import ModuleDescriptor
 
@@ -210,11 +211,11 @@ class DeferredFunctionManager:
         # Close all the files in there.
         del cleaner
 
-        # Clean up the directory we have been using.
-        # It might not be empty if .tmp files escaped: nobody can tell they
-        # aren't just waiting to be locked.
-        shutil.rmtree(os.path.join(stateDirBase, cls.STATE_DIR_STEM))
-
+        try:
+            robust_rmtree(os.path.join(stateDirBase, cls.STATE_DIR_STEM))
+        except OSError as err:
+            logger.exception(err)
+            # we tried, lets move on
 
 
     def _runDeferredFunction(self, deferredFunction):

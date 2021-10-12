@@ -60,7 +60,7 @@ class ImportExportFileTest(ToilTest):
             else:
                 # TODO: We're hackily updating this file without using the
                 #  correct FileStore interface. User code should not do this!
-                with toil._jobStore.updateFileStream(self.trigger_file_id) as f:
+                with toil._jobStore.update_file_stream(self.trigger_file_id) as f:
                     f.write(('Time to freak out!' if fail else 'Keep calm and carry on.').encode('utf-8'))
 
                 workflow_final_output_file_id = toil.restart()
@@ -124,7 +124,7 @@ class ImportExportFileTest(ToilTest):
                 file_path = self.create_file(content='why')
                 shared_file_name = 'users_should_probably_not_be_allowed_to_make_shared_files.bad'
                 toil.importFile(f'file://{file_path}', sharedFileName=shared_file_name)
-                with toil._jobStore.readSharedFileStream(shared_file_name, encoding='utf-8') as f:
+                with toil._jobStore.read_shared_file_stream(shared_file_name, encoding='utf-8') as f:
                     self.assertEqual(f.read(), 'why')
 
 
