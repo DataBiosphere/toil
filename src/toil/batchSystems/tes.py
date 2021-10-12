@@ -422,8 +422,8 @@ class TESBatchSystem(BatchSystemCleanupSupport):
     def setOptions(cls, setOption: Callable[..., None]) -> None:
         # When actually parsing options, remember to check the environment variables
         setOption("tes_endpoint", default=cls.get_default_tes_endpoint(), env=["TOIL_TES_ENDPOINT"])
-        setOption("tes_user", default=None, env=["TOIL_TES_USER", "FUNNEL_SERVER_USER"])
-        setOption("tes_password", default=None, env=["TOIL_TES_PASSWORD", "FUNNEL_SERVER_PASSWORD"])
+        setOption("tes_user", default=None, env=["TOIL_TES_USER"])
+        setOption("tes_password", default=None, env=["TOIL_TES_PASSWORD"])
         setOption("tes_bearer_token", default=None, env=["TOIL_TES_BEARER_TOKEN"])
 
 # TODO: factor out the Kubernetes executor, and use it for anything we can't/don't translate into idiomatic TES.

@@ -124,6 +124,8 @@ batch_systems:
     - ./funnel server run -c funnel.conf &
     - ./funnel node run -c funnel.conf &
     - export TOIL_TES_ENDPOINT="http://127.0.0.1:8000"
+    - export TOIL_TES_USER="${FUNNEL_SERVER_USER}"
+    - export TOIL_TES_PASSWORD="${FUNNEL_SERVER_PASSWORD}"
     - make test tests=src/toil/test/batchSystems/batchSystemTest.py
     - make test tests=src/toil/test/mesos/MesosDataStructuresTest.py
     - kill $(jobs -p) || true
