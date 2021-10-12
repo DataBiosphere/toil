@@ -162,7 +162,7 @@ class ToilStatus:
             return 'QUEUED'
 
         try:
-            with jobstore.readSharedFileStream('pid.log') as pidFile:
+            with jobstore.read_shared_file_stream('pid.log') as pidFile:
                 pid = int(pidFile.read())
                 try:
                     os.kill(pid, 0)  # Does not kill process when 0 is passed.
@@ -196,12 +196,12 @@ class ToilStatus:
             return 'QUEUED'
 
         try:
-            with jobstore.readSharedFileStream('succeeded.log') as successful:
+            with jobstore.read_shared_file_stream('succeeded.log') as successful:
                 pass
             return 'COMPLETED'
         except NoSuchFileException:
             try:
-                with jobstore.readSharedFileStream('failed.log') as failed:
+                with jobstore.read_shared_file_stream('failed.log') as failed:
                     pass
                 return 'ERROR'
             except NoSuchFileException:
@@ -220,7 +220,7 @@ class ToilStatus:
         :raises JobException: if the root job does not exist.
         """
         try:
-            return self.jobStore.loadRootJob()
+            return self.jobStore.load_root_job()
         except JobException:
             print('Root job is absent. The workflow has may have completed successfully.', file=sys.stderr)
             raise
@@ -236,7 +236,7 @@ class ToilStatus:
         jobsToReport = []
         for jobID in jobs:
             try:
-                jobsToReport.append(self.jobStore.load(jobID))
+                jobsToReport.append(self.jobStore.load_job(jobID))
             except JobException:
                 print('The job %s could not be found.' % jobID, file=sys.stderr)
                 raise
@@ -266,17 +266,17 @@ class ToilStatus:
         # Traverse jobs in stack
         for jobs in rootJob.stack:
             for successorJobStoreID in jobs:
-                if successorJobStoreID not in foundJobStoreIDs and self.jobStore.exists(successorJobStoreID):
-                    self.traverseJobGraph(self.jobStore.load(successorJobStoreID), jobsToReport, foundJobStoreIDs)
+                if successorJobStoreID not in foundJobStoreIDs and self.jobStore.job_exists(successorJobStoreID):
+                    self.traverseJobGraph(self.jobStore.load_job(successorJobStoreID), jobsToReport, foundJobStoreIDs)
 
         # Traverse service jobs
         for jobs in rootJob.services:
             for serviceJobStoreID in jobs:
-                if self.jobStore.exists(serviceJobStoreID):
+                if self.jobStore.job_exists(serviceJobStoreID):
                     if serviceJobStoreID in foundJobStoreIDs:
                         raise RuntimeError('Service job was unexpectedly found while traversing ')
                     foundJobStoreIDs.add(serviceJobStoreID)
-                    jobsToReport.append(self.jobStore.load(serviceJobStoreID))
+                    jobsToReport.append(self.jobStore.load_job(serviceJobStoreID))
 
         return jobsToReport
 
