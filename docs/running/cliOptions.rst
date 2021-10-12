@@ -147,7 +147,8 @@ the logging module:
   --scale SCALE         A scaling factor to change the value of all submitted
                         tasks' submitted cores. Used in singleMachine batch
                         system. Useful for running workflows on smaller
-                        machines than they were designed for. (default: 1)
+                        machines than they were designed for, by setting a
+                        value less than 1. (default: 1)
   --linkImports         When using Toil's importFile function for staging,
                         input files are copied to the job store. Specifying
                         this option saves space by sym-linking imported files.
