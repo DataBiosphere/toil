@@ -125,7 +125,7 @@ class Config:
         self.rescueJobsFrequency: int = 3600
 
         # Misc
-        self.environment = {}
+        self.environment: Dict[str, str] = {}
         self.disableChaining: bool = False
         self.disableJobStoreChecksumVerification: bool = False
         self.maxLogFileSize: int = 64000
