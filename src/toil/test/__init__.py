@@ -348,16 +348,16 @@ def needs_tes(test_item):
     try:
         urlopen(tes_url)
     except HTTPError:
-        # Should 404 if TES is working
-        # TODO: check for the right code?
-        return test_item
+        # Funnel happens to 404 if TES is working. But any HTTPError means we
+        # dialed somebody who picked up.
+        pass
     except URLError:
         # Will give connection refused if we can't connect because the server's
         # not there. We can also get a "cannot assign requested address" if
         # we're on Kubernetes dialing localhost and !!creative things!! have
         # been done to the network stack.
-        pass
-    return unittest.skip(f"Run a TES server on {tes_url} to include this test")(test_item)
+        return unittest.skip(f"Run a TES server on {tes_url} to include this test")(test_item)
+    return test_item
 
 def needs_kubernetes(test_item):
     """Use as a decorator before test classes or methods to run only if Kubernetes is installed."""
