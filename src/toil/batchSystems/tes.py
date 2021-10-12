@@ -111,7 +111,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         self.unique_id = uuid.uuid4()
 
         # Create a prefix for jobs
-        self.job_prefix = 'toil-{}-'.format(self.unique_id)
+        self.job_prefix = '{}-'.format(self.unique_id)
 
         # We assign job names based on a numerical job ID. This functionality
         # is managed by the BatchSystemLocalSupport.
@@ -425,5 +425,3 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         setOption("tes_user", default=None, env=["TOIL_TES_USER"])
         setOption("tes_password", default=None, env=["TOIL_TES_PASSWORD"])
         setOption("tes_bearer_token", default=None, env=["TOIL_TES_BEARER_TOKEN"])
-
-# TODO: factor out the Kubernetes executor, and use it for anything we can't/don't translate into idiomatic TES.
