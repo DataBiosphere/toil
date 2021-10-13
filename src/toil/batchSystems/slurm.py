@@ -31,7 +31,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # Should return a dictionary of Job IDs and number of seconds
             times = {}
             with self.runningJobsLock:
-                currentjobs = dict((str(self.batchJobIDs[x][0]), x) for x in self.runningJobs)
+                currentjobs = {str(self.batchJobIDs[x][0]): x for x in self.runningJobs}
             # currentjobs is a dictionary that maps a slurm job id (string) to our own internal job id
             # squeue arguments:
             # -h for no header
@@ -59,7 +59,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                               command: str,
                               jobName: str,
                               job_environment: Optional[Dict[str, str]] = None) -> List[str]:
-            return self.prepareSbatch(cpu, memory, jobID, jobName, job_environment) + ['--wrap={}'.format(command)]
+            return self.prepareSbatch(cpu, memory, jobID, jobName, job_environment) + [f'--wrap={command}']
 
         def submitJob(self, subLine):
             try:
@@ -262,7 +262,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                           job_environment: Optional[Dict[str, str]]) -> List[str]:
 
             #  Returns the sbatch command line before the script to run
-            sbatch_line = ['sbatch', '-J', 'toil_job_{}_{}'.format(jobID, jobName)]
+            sbatch_line = ['sbatch', '-J', f'toil_job_{jobID}_{jobName}']
 
             environment = {}
             environment.update(self.boss.environment)
@@ -274,7 +274,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
                 for k, v in environment.items():
                     quoted_value = quote(os.environ[k] if v is None else v)
-                    argList.append('{}={}'.format(k, quoted_value))
+                    argList.append(f'{k}={quoted_value}')
 
                 sbatch_line.append('--export=' + ','.join(argList))
 
@@ -293,7 +293,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if nativeConfig is not None:
                 logger.debug("Native SLURM options appended to sbatch from TOIL_SLURM_ARGS env. variable: %s", nativeConfig)
                 if ("--mem" in nativeConfig) or ("--cpus-per-task" in nativeConfig):
-                    raise ValueError("Some resource arguments are incompatible: {}".format(nativeConfig))
+                    raise ValueError(f"Some resource arguments are incompatible: {nativeConfig}")
 
                 sbatch_line.extend(nativeConfig.split())
 
