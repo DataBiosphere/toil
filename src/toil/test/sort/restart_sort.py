@@ -120,7 +120,7 @@ def up(job, inputFileID1, inputFileID2, path, options, memory=sortMemory):
 
 def sort(file):
     """Sorts the given file."""
-    with open(file, 'r') as f:
+    with open(file) as f:
         lines = f.readlines()
 
     lines.sort()
@@ -152,7 +152,7 @@ def copySubRangeOfFile(inputFile, fileStart, fileEnd):
     Copies the range (in bytes) between fileStart and fileEnd to the given
     output file handle.
     """
-    with open(inputFile, 'r') as fileHandle:
+    with open(inputFile) as fileHandle:
         fileHandle.seek(fileStart)
         data = fileHandle.read(fileEnd - fileStart)
         assert len(data) == fileEnd - fileStart
@@ -164,7 +164,7 @@ def getMidPoint(file, fileStart, fileEnd):
     Finds the point in the file to split.
     Returns an int i such that fileStart <= i < fileEnd
     """
-    with open(file, 'r') as f:
+    with open(file) as f:
         midPoint = (fileStart + fileEnd) // 2
         assert midPoint >= fileStart
         f.seek(midPoint)

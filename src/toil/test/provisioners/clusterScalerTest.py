@@ -24,7 +24,7 @@ from queue import Empty, Queue
 from threading import Event, Thread
 from typing import Set, List, Optional, Tuple
 
-from mock import MagicMock
+from unittest.mock import MagicMock
 
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    AbstractScalableBatchSystem,
@@ -268,7 +268,7 @@ class BinPackingTest(ToilTest):
 
 class ClusterScalerTest(ToilTest):
     def setUp(self):
-        super(ClusterScalerTest, self).setUp()
+        super().setUp()
         self.config = Config()
         self.config.targetTime = 1800
         self.config.nodeTypes = [r3_8xlarge, c4_8xlarge_preemptable]
@@ -650,7 +650,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     Mimics a job batcher, provisioner and scalable batch system
     """
     def __init__(self, config, secondsPerJob):
-        super(MockBatchSystemAndProvisioner, self).__init__(clusterName='clusterName', clusterType='mesos')
+        super().__init__(clusterName='clusterName', clusterType='mesos')
         # To mimic parallel preemptable and non-preemptable queues
         # for jobs we create two parallel instances of the following class
         self.config = config
@@ -746,7 +746,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
                                                                                "cores": jobShape.cores,
                                                                                "disk": jobShape.disk,
                                                                                "preemptable": preemptable},
-                                                                 jobName='job{}'.format(self.totalJobs))
+                                                                 jobName=f'job{self.totalJobs}')
         self.jobQueue.put(jobID)
 
     # JobBatcher functionality
@@ -811,7 +811,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     def _addNodes(self, numNodes, nodeType: str, preemptable=False):
         nodeShape = self.getNodeShape(nodeType=nodeType, preemptable=preemptable)
 
-        class Worker(object):
+        class Worker:
             def __init__(self, jobQueue, updatedJobsQueue, secondsPerJob):
                 self.busyEvent = Event()
                 self.stopEvent = Event()

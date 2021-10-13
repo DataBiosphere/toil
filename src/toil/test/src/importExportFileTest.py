@@ -26,114 +26,123 @@ from toil.test import ToilTest, slow, travis_test
 
 class ImportExportFileTest(ToilTest):
     def setUp(self):
-        super(ImportExportFileTest, self).setUp()
-        self._tempDir = self._createTempDir()
-        self.dstFile = '%s/%s' % (self._tempDir, 'out')
+        super().setUp()
+        self.tmp_dir = self._createTempDir()
+        self.output_file_path = f'{self.tmp_dir}/out'
+        self.message_portion_1 = 'What do you get when you cross a seal and a polar bear?'
+        self.message_portion_2 = '  A polar bear.'
 
-    def _importExportFile(self, options, fail):
+    def create_file(self, content, executable=False):
+        file_path = f'{self.tmp_dir}/{uuid.uuid4()}'
+
+        with open(file_path, 'w') as f:
+            f.write(content)
+
+        if executable:
+            # Add file owner execute permissions
+            os.chmod(file_path, os.stat(file_path).st_mode | stat.S_IXUSR)
+
+        return file_path
+
+    def _import_export_workflow(self, options, fail):
         with Toil(options) as toil:
             if not options.restart:
+                msg_portion_file_path = self.create_file(content=self.message_portion_1)
+                msg_portion_file_id = toil.importFile(f'file://{msg_portion_file_path}')
+                self.assertIsInstance(msg_portion_file_id, FileID)
+                self.assertEqual(os.stat(msg_portion_file_path).st_size, msg_portion_file_id.size)
 
-                srcFile = '%s/%s%s' % (self._tempDir, 'in', str(uuid.uuid4()))
-                with open(srcFile, 'w') as f:
-                    f.write('Hello')
-                inputFileID = toil.importFile('file://' + srcFile)
-                # Make sure that importFile returns the fileID wrapper
-                self.assertIsInstance(inputFileID, FileID)
-                self.assertEqual(os.stat(srcFile).st_size, inputFileID.size)
-
-                # Write a boolean that determines whether the job fails.
-                failFilePath = '%s/%s%s' % (self._tempDir, 'failfile', str(uuid.uuid4()))
-                with open(failFilePath, 'wb') as f:
-                    f.write(str(fail).encode('utf-8'))
-                self.failFileID = toil.importFile('file://' + failFilePath)
-
-                outputFileID = toil.start(RestartingJob(inputFileID, self.failFileID))
+                file_that_can_trigger_failure_when_job_starts = self.create_file(
+                    content='Time to freak out!' if fail else 'Keep calm and carry on.')
+                self.trigger_file_id = toil.importFile(f'file://{file_that_can_trigger_failure_when_job_starts}')
+                workflow_final_output_file_id = toil.start(
+                    RestartingJob(msg_portion_file_id, self.trigger_file_id, self.message_portion_2))
             else:
-                # Set up job for failure
                 # TODO: We're hackily updating this file without using the
-                # correct FileStore interface. User code should not do this!
-                with toil._jobStore.updateFileStream(self.failFileID) as f:
-                    f.write('False'.encode('utf-8'))
+                #  correct FileStore interface. User code should not do this!
+                with toil._jobStore.update_file_stream(self.trigger_file_id) as f:
+                    f.write(('Time to freak out!' if fail else 'Keep calm and carry on.').encode('utf-8'))
 
-                outputFileID = toil.restart()
+                workflow_final_output_file_id = toil.restart()
 
-            toil.exportFile(outputFileID, 'file://' + self.dstFile)
-            with open(self.dstFile, 'r') as f:
-                assert f.read() == "HelloWorld!"
+            toil.exportFile(workflow_final_output_file_id, f'file://{self.output_file_path}')
+            with open(self.output_file_path) as f:
+                self.assertEqual(f.read(), f'{self.message_portion_1}{self.message_portion_2}')
 
-    def _importExport(self, restart):
+    def _run_import_export_workflow(self, restart):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = "INFO"
 
         if restart:
             try:
-                self._importExportFile(options, fail=True)
+                self._import_export_workflow(options, fail=True)
             except FailedJobsException:
                 options.restart = True
 
-        self._importExportFile(options, fail=False)
+        self._import_export_workflow(options, fail=False)
 
     @slow
-    def testImportExportRestartTrue(self):
-        self._importExport(restart=True)
+    def test_import_export_restart_true(self):
+        self._run_import_export_workflow(restart=True)
 
-    @travis_test
-    def testImportExportRestartFalse(self):
-        self._importExport(restart=False)
+    def test_import_export_restart_false(self):
+        self._run_import_export_workflow(restart=False)
 
-    @travis_test
-    def testImportSharedFileName(self):
-        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.logLevel = "DEBUG"
-
-        sharedFileName = 'someSharedFile'
-        with Toil(options) as toil:
-            srcFile = '%s/%s%s' % (self._tempDir, 'in', uuid.uuid4())
-            with open(srcFile, 'w') as f:
-                f.write('some data')
-            toil.importFile('file://' + srcFile, sharedFileName=sharedFileName)
-            with toil._jobStore.readSharedFileStream(sharedFileName) as f:
-                self.assertEqual(f.read().decode('utf-8'), 'some data')
-
-    def testImportExportFilePermissions(self):
+    def test_basic_import_export(self):
         """
         Ensures that uploaded files preserve their file permissions when they
         are downloaded again. This function checks that an imported executable file
         maintains its executability after being exported.
         """
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options.logLevel = "INFO"
+
         with Toil(options) as toil:
-            for executable in True,False:
-                srcFile = '%s/%s%s' % (self._tempDir, 'in', str(uuid.uuid4()))
-                with open(srcFile, 'w') as f:
-                    f.write('Hello')
+            # TODO: test this with non-local (AWS, Google)
+            #  Note: this is somewhat done in src/toil/test/src/fileStoreTest.py
+            with self.subTest('Testing permissions are preserved for local importFile/exportFile'):
+                for executable in True, False:
+                    file_path = self.create_file(content='Hello', executable=executable)
+                    initial_permissions = os.stat(file_path).st_mode & stat.S_IXUSR
+                    file_id = toil.importFile(f'file://{file_path}')
+                    toil.exportFile(file_id, f'file://{self.output_file_path}')
+                    current_permissions = os.stat(self.output_file_path).st_mode & stat.S_IXUSR
+                    assert initial_permissions == current_permissions
 
-                if executable:
-                    # Add file owner execute permissions
-                    os.chmod(srcFile, os.stat(srcFile).st_mode | stat.S_IXUSR)
+            with self.subTest('Testing relative paths without the file:// schema.'):
+                relative_path_data = 'Everything is relative.'
+                file_path = self.create_file(content=relative_path_data)
 
-                # Current file owner execute permissions
-                initialPermissions = os.stat(srcFile).st_mode & stat.S_IXUSR
-                fileID = toil.importFile('file://' + srcFile)
-                toil.exportFile(fileID, 'file://' + self.dstFile)
-                currentPermissions = os.stat(self.dstFile).st_mode & stat.S_IXUSR
+                file_id = toil.importFile(os.path.relpath(file_path))
+                toil.exportFile(file_id, os.path.relpath(self.output_file_path))
+                with open(self.output_file_path) as f:
+                    self.assertEqual(f.read(), relative_path_data)
 
-                assert initialPermissions == currentPermissions
+            with self.subTest('Test local importFile accepts a shared_file_name.'):
+                # TODO: whyyyy do we allow this?  shared file names are not unique and can overwrite each other
+                #  ...not only that... we can't use exportFile on them afterwards!?
+                file_path = self.create_file(content='why')
+                shared_file_name = 'users_should_probably_not_be_allowed_to_make_shared_files.bad'
+                toil.importFile(f'file://{file_path}', sharedFileName=shared_file_name)
+                with toil._jobStore.read_shared_file_stream(shared_file_name, encoding='utf-8') as f:
+                    self.assertEqual(f.read(), 'why')
 
 
 class RestartingJob(Job):
-    def __init__(self, inputFileID, failFileID):
+    def __init__(self, msg_portion_file_id, trigger_file_id, message_portion_2):
         Job.__init__(self,  memory=100000, cores=1, disk="1M")
-        self.inputFileID = inputFileID
-        self.failFileID = failFileID
+        self.msg_portion_file_id = msg_portion_file_id
+        self.trigger_file_id = trigger_file_id
+        self.message_portion_2 = message_portion_2
 
-    def run(self, fileStore):
-        with fileStore.readGlobalFileStream(self.failFileID) as failValue:
-            if failValue.read().decode('utf-8') == 'True':
-                raise RuntimeError('planned exception')
-            else:
-                with fileStore.readGlobalFileStream(self.inputFileID) as fi:
-                    with fileStore.writeGlobalFileStream() as (fo, outputFileID):
-                        fo.write((fi.read().decode('utf-8') + 'World!').encode('utf-8'))
-                        return outputFileID
+    def run(self, file_store):
+        with file_store.readGlobalFileStream(self.trigger_file_id) as readable:
+            if readable.read() == b'Time to freak out!':
+                raise RuntimeError('D:')
+
+        with file_store.writeGlobalFileStream() as (writable, output_file_id):
+            with file_store.readGlobalFileStream(self.msg_portion_file_id, encoding='utf-8') as readable:
+                # combine readable.read() (the original message 1) with message 2
+                # this will be the final output of the workflow
+                writable.write(f'{readable.read()}{self.message_portion_2}'.encode('utf-8'))
+                return output_file_id

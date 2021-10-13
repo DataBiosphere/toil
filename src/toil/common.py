@@ -21,18 +21,22 @@ import sys
 import tempfile
 import time
 import uuid
+
+from urllib.parse import urlparse
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, _ArgumentGroup
 from typing import Any, Callable, List, Optional, Tuple, Union
 
 import requests
 
 from toil import logProcessContext, lookupEnvVar
+from toil.fileStores import FileID
 from toil.batchSystems.options import (add_all_batchsystem_options,
                                        set_batchsystem_config_defaults,
                                        set_batchsystem_options)
 from toil.lib.aws import zone_to_region
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.retry import retry
+from toil.lib.compatibility import deprecated
 from toil.provisioners import add_provisioner_options, cluster_factory, parse_node_types
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import (
@@ -44,6 +48,9 @@ from toil.version import dockerRegistry, dockerTag, version
 
 # aim to pack autoscaling jobs within a 30 minute block before provisioning a new node
 defaultTargetTime = 1800
+SYS_MAX_SIZE = 9223372036854775807
+# sys.max_size on 64 bit systems is 9223372036854775807, so that 32-bit systems
+# use the same number
 UUID_LENGTH = 32
 logger = logging.getLogger(__name__)
 
@@ -94,7 +101,7 @@ class Config:
         self.maxServiceJobs: int = sys.maxsize
         self.deadlockWait: Union[float, int] = 60  # Number of seconds we must be stuck with all services before declaring a deadlock
         self.deadlockCheckInterval: Union[float, int] = 30  # Minimum polling delay for deadlocks
-        self.statePollingWait: Union[float, int] = 1  # Number of seconds to wait before querying job state
+        self.statePollingWait: Optional[Union[float, int]] = None  # Number of seconds to wait before querying job state
 
         # Resource requirements
         self.defaultMemory: int = 2147483648
@@ -102,9 +109,9 @@ class Config:
         self.defaultDisk: int = 2147483648
         self.readGlobalFileMutableByDefault: bool = False
         self.defaultPreemptable: bool = False
-        self.maxCores: int = sys.maxsize
-        self.maxMemory: int = sys.maxsize
-        self.maxDisk: int = sys.maxsize
+        self.maxCores: int = SYS_MAX_SIZE
+        self.maxMemory: int = SYS_MAX_SIZE
+        self.maxDisk: int = SYS_MAX_SIZE
 
         # Retrying/rescuing jobs
         self.retryCount: int = 1
@@ -407,7 +414,7 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
         title="Toil options for specifying the batch system.",
         description="Allows the specification of the batch system."
     )
-    batchsystem_options.add_argument("--statePollingWait", dest="statePollingWait", default=1, type=int,
+    batchsystem_options.add_argument("--statePollingWait", dest="statePollingWait", type=int,
                                      help="Time, in seconds, to wait before doing a scheduler query for job state.  "
                                           "Return cached results if within the waiting period.")
     add_all_batchsystem_options(batchsystem_options)
@@ -672,9 +679,9 @@ def getNodeID() -> str:
     for idSourceFile in ["/var/lib/dbus/machine-id", "/proc/sys/kernel/random/boot_id"]:
         if os.path.exists(idSourceFile):
             try:
-                with open(idSourceFile, "r") as inp:
+                with open(idSourceFile) as inp:
                     nodeID = inp.readline().strip()
-            except EnvironmentError:
+            except OSError:
                 logger.warning(f"Exception when trying to read ID file {idSourceFile}.  "
                                f"Will try next method to get node ID.", exc_info=True)
             else:
@@ -728,7 +735,7 @@ class Toil:
 
         :param argparse.Namespace options: command line options specified by the user
         """
-        super(Toil, self).__init__()
+        super().__init__()
         self.options = options
         self.config = None
         """
@@ -769,7 +776,7 @@ class Toil:
             config = jobStore.config
             config.setOptions(self.options)
             config.workflowAttemptNumber += 1
-            jobStore.writeConfig()
+            jobStore.write_config()
         self.config = config
         self._jobStore = jobStore
         self._inContextManager = True
@@ -833,7 +840,7 @@ class Toil:
             # a shared file, where we can find and unpickle it at the end of the workflow.
             # Unpickling the promise will automatically substitute the promise for the actual
             # return value.
-            with self._jobStore.writeSharedFileStream('rootJobReturnValue') as fH:
+            with self._jobStore.write_shared_file_stream('rootJobReturnValue') as fH:
                 rootJob.prepareForPromiseRegistration(self._jobStore)
                 promise = rootJob.rv()
                 pickle.dump(promise, fH, protocol=pickle.HIGHEST_PROTOCOL)
@@ -862,11 +869,11 @@ class Toil:
 
         from toil.job import JobException
         try:
-            self._jobStore.loadRootJob()
+            self._jobStore.load_root_job()
         except JobException:
             logger.warning(
                 'Requested restart but the workflow has already been completed; allowing exports to rerun.')
-            return self._jobStore.getRootJobReturnValue()
+            return self._jobStore.get_root_job_return_value()
 
         self._batchSystem = self.createBatchSystem(self.config)
         self._setupAutoDeployment()
@@ -989,24 +996,22 @@ class Toil:
                         not self.config.disableAutoDeployment):
                     # Note that by saving the ModuleDescriptor, and not the Resource we allow for
                     # redeploying a potentially modified user script on workflow restarts.
-                    with self._jobStore.writeSharedFileStream('userScript') as f:
+                    with self._jobStore.write_shared_file_stream('userScript') as f:
                         pickle.dump(userScript, f, protocol=pickle.HIGHEST_PROTOCOL)
                 else:
                     from toil.batchSystems.singleMachine import \
                         SingleMachineBatchSystem
                     if not isinstance(self._batchSystem, SingleMachineBatchSystem):
-                        logger.warning('Batch system does not support auto-deployment. The user '
-                                    'script %s will have to be present at the same location on '
-                                    'every worker.', userScript)
+                        logger.warning('Batch system does not support auto-deployment. The user script '
+                                       '%s will have to be present at the same location on every worker.', userScript)
                     userScript = None
         else:
             # This branch is hit on restarts
-            if (self._batchSystem.supportsAutoDeployment() and
-                not self.config.disableAutoDeployment):
+            if self._batchSystem.supportsAutoDeployment() and not self.config.disableAutoDeployment:
                 # We could deploy a user script
                 from toil.jobStores.abstractJobStore import NoSuchFileException
                 try:
-                    with self._jobStore.readSharedFileStream('userScript') as f:
+                    with self._jobStore.read_shared_file_stream('userScript') as f:
                         userScript = safeUnpickleFromStream(f)
                 except NoSuchFileException:
                     logger.debug('User script neither set explicitly nor present in the job store.')
@@ -1019,7 +1024,17 @@ class Toil:
             logger.debug('Injecting user script %s into batch system.', userScriptResource)
             self._batchSystem.setUserScript(userScriptResource)
 
-    def importFile(self, srcUrl, sharedFileName=None, symlink=False):
+    @deprecated(new_function_name='import_file')
+    def importFile(self,
+                   srcUrl: str,
+                   sharedFileName: Optional[str] = None,
+                   symlink: bool = False) -> Optional[Union[FileID, str]]:
+        return self.import_file(srcUrl, sharedFileName, symlink)
+
+    def import_file(self,
+                    src_uri: str,
+                    shared_file_name: Optional[str] = None,
+                    symlink: bool = False) -> Optional[Union[FileID, str]]:
         """
         Imports the file at the given URL into job store.
 
@@ -1027,9 +1042,14 @@ class Toil:
         full description
         """
         self._assertContextManagerUsed()
-        return self._jobStore.importFile(srcUrl, sharedFileName=sharedFileName, symlink=symlink)
+        src_uri = self.normalize_uri(src_uri, check_existence=True)
+        return self._jobStore.import_file(src_uri, shared_file_name=shared_file_name, symlink=symlink)
 
-    def exportFile(self, jobStoreFileID, dstUrl):
+    @deprecated(new_function_name='export_file')
+    def exportFile(self, jobStoreFileID: Union[FileID, str], dstUrl: str) -> None:
+        return self.export_file(jobStoreFileID, dstUrl)
+
+    def export_file(self, file_id: Union[FileID, str], dst_uri: str) -> None:
         """
         Exports file to destination pointed at by the destination URL.
 
@@ -1037,13 +1057,36 @@ class Toil:
         full description
         """
         self._assertContextManagerUsed()
-        self._jobStore.exportFile(jobStoreFileID, dstUrl)
+        dst_uri = self.normalize_uri(dst_uri)
+        self._jobStore.export_file(file_id, dst_uri)
+
+    @staticmethod
+    def normalize_uri(uri: str, check_existence: bool = False) -> str:
+        """
+        Given a URI, if it has no scheme, prepend "file:".
+
+        :param check_existence: If set, raise an error if a URI points to
+               a local file that does not exist.
+        """
+        if urlparse(uri).scheme == 'file':
+            uri = urlparse(uri).path  # this should strip off the local file scheme; it will be added back
+
+        # account for the scheme-less case, which should be coerced to a local absolute path
+        if urlparse(uri).scheme == '':
+            abs_path = os.path.abspath(uri)
+            if not os.path.exists(abs_path) and check_existence:
+                raise FileNotFoundError(
+                    f'Could not find local file "{abs_path}" when importing "{uri}".\n'
+                    f'Make sure paths are relative to "{os.getcwd()}" or use absolute paths.\n'
+                    f'If this is not a local file, please include the scheme (s3:/, gs:/, ftp://, etc.).')
+            return f'file://{abs_path}'
+        return uri
 
     def _setBatchSystemEnvVars(self):
         """
         Sets the environment variables required by the job store and those passed on command line.
         """
-        for envDict in (self._jobStore.getEnv(), self.config.environment):
+        for envDict in (self._jobStore.get_env(), self.config.environment):
             for k, v in envDict.items():
                 self._batchSystem.setEnv(k, v)
 
@@ -1052,7 +1095,7 @@ class Toil:
         Puts the environment in a globally accessible pickle file.
         """
         # Dump out the environment of this process in the environment pickle file.
-        with self._jobStore.writeSharedFileStream("environment.pickle") as fileHandle:
+        with self._jobStore.write_shared_file_stream("environment.pickle") as fileHandle:
             pickle.dump(dict(os.environ), fileHandle, pickle.HIGHEST_PROTOCOL)
         logger.debug("Written the environment for the jobs to the environment file")
 
@@ -1160,18 +1203,18 @@ class Toil:
         Other methods will rely on always having the most current pid available.
         So far there is no reason to store any old pids.
         """
-        with self._jobStore.writeSharedFileStream('pid.log') as f:
+        with self._jobStore.write_shared_file_stream('pid.log') as f:
             f.write(str(os.getpid()).encode('utf-8'))
 
 
 class ToilRestartException(Exception):
     def __init__(self, message):
-        super(ToilRestartException, self).__init__(message)
+        super().__init__(message)
 
 
 class ToilContextManagerException(Exception):
     def __init__(self):
-        super(ToilContextManagerException, self).__init__(
+        super().__init__(
             'This method cannot be called outside the "with Toil(...)" context manager.')
 
 
@@ -1192,9 +1235,9 @@ class ToilMetrics:
                                 envName='TOIL_DOCKER_REGISTRY',
                                 defaultValue=dockerRegistry)
 
-        self.mtailImage = "%s/toil-mtail:%s" % (registry, dockerTag)
-        self.grafanaImage = "%s/toil-grafana:%s" % (registry, dockerTag)
-        self.prometheusImage = "%s/toil-prometheus:%s" % (registry, dockerTag)
+        self.mtailImage = f"{registry}/toil-mtail:{dockerTag}"
+        self.grafanaImage = f"{registry}/toil-grafana:{dockerTag}"
+        self.prometheusImage = f"{registry}/toil-prometheus:{dockerTag}"
 
         self.startDashboard(clusterName=clusterName, zone=region)
 
@@ -1370,7 +1413,7 @@ def parseSetEnv(l):
     return d
 
 
-def iC(minValue, maxValue=sys.maxsize):
+def iC(minValue, maxValue=SYS_MAX_SIZE):
     # Returns function that checks if a given int is in the given half-open interval
     assert isinstance(minValue, int) and isinstance(maxValue, int)
     return lambda x: minValue <= x < maxValue

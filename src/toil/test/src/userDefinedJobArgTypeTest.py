@@ -28,7 +28,7 @@ class UserDefinedJobArgTypeTest(ToilTest):
     """
 
     def setUp(self):
-        super(UserDefinedJobArgTypeTest, self).setUp()
+        super().setUp()
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = "INFO"
         options.foo = Foo()
@@ -79,9 +79,9 @@ def jobFunction(job, level, foo):
         job.addChild(JobClass(level + 1, Foo()))
 
 
-class Foo(object):
+class Foo:
     def __init__(self):
-        super(Foo, self).__init__()
+        super().__init__()
         self.original_id = id(self)
 
     def assertIsCopy(self):

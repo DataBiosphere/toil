@@ -62,22 +62,36 @@ class hidden:
             if self.jobStoreType == 'file':
                 return self._getTestJobStorePath()
             elif self.jobStoreType == 'aws':
-                return 'aws:%s:cache-tests-%s' % (self.awsRegion(), str(uuid4()))
+                return 'aws:{}:cache-tests-{}'.format(self.awsRegion(), str(uuid4()))
             elif self.jobStoreType == 'google':
                 projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
-                return 'google:%s:cache-tests-%s' % (projectID, str(uuid4()))
+                return 'google:{}:cache-tests-{}'.format(projectID, str(uuid4()))
             else:
                 raise RuntimeError('Illegal job store type.')
 
         def setUp(self):
             super(hidden.AbstractFileStoreTest, self).setUp()
-            testDir = self._createTempDir()
+            self.work_dir = self._createTempDir()
             self.options = Job.Runner.getDefaultOptions(self._getTestJobStore())
             self.options.logLevel = 'DEBUG'
             self.options.realTimeLogging = True
-            self.options.workDir = testDir
+            self.options.workDir = self.work_dir
             self.options.clean = 'always'
-            self.options.logFile = os.path.join(testDir, 'logFile')
+            self.options.logFile = os.path.join(self.work_dir, 'logFile')
+
+            self.tmp_dir = self._createTempDir()
+
+        def create_file(self, content, executable=False):
+            file_path = f'{self.tmp_dir}/{uuid4()}'
+
+            with open(file_path, 'w') as f:
+                f.write(content)
+
+            if executable:
+                # Add file owner execute permissions
+                os.chmod(file_path, os.stat(file_path).st_mode | stat.S_IXUSR)
+
+            return file_path
 
         @staticmethod
         def _uselessFunc(job):
@@ -118,6 +132,7 @@ class hidden:
                     super().__init__()
                     self.match = match
                     self.seen = False
+
                 def emit(self, record):
                     if self.match in record.getMessage():
                         self.seen = True
@@ -140,11 +155,11 @@ class hidden:
 
         @staticmethod
         def _accessAndFail(job):
-            with job.fileStore.writeGlobalFileStream() as (stream, fileID):
-                stream.write('Cats'.encode('utf-8'))
+            with job.fileStore.writeGlobalFileStream() as (writable, file_id):
+                writable.write(b'Cats')
             localPath = os.path.join(job.fileStore.getLocalTempDir(), 'cats.txt')
-            job.fileStore.readGlobalFile(fileID, localPath)
-            with job.fileStore.readGlobalFileStream(fileID) as stream2:
+            job.fileStore.readGlobalFile(file_id, localPath)
+            with job.fileStore.readGlobalFileStream(file_id) as readable:
                 pass
             raise RuntimeError("I do not like this file")
 
@@ -223,7 +238,7 @@ class hidden:
                                         raise
                                     logger.info('Correctly fail to local-delete non-local file: %s', fsID)
                                 else:
-                                    assert False, "Was able to delete non-local file {}".format(fsID)
+                                    assert False, f"Was able to delete non-local file {fsID}"
                             else:
                                 logger.info('Delete local file: %s', fsID)
                                 job.fileStore.deleteLocalFile(fsID)
@@ -303,29 +318,22 @@ class hidden:
             when they are read by the fileStore.
             """
             with Toil(self.options) as toil:
-                workDir = self._createTempDir()
                 for executable in True, False:
-                    srcFile = os.path.join(workDir, str(uuid4()))
-                    with open(srcFile, 'w') as f:
-                        f.write('Hello')
-                    if executable:
-                        os.chmod(srcFile, os.stat(srcFile).st_mode | stat.S_IXUSR)
-                    initialPermissions = os.stat(srcFile).st_mode & stat.S_IXUSR
-                    jobStoreFileID = toil.importFile('file://' + srcFile)
-                    for mutable in True,False:
+                    file_path = self.create_file(content='Hello', executable=executable)
+                    initial_permissions = os.stat(file_path).st_mode & stat.S_IXUSR
+                    file_id = toil.importFile(f'file://{file_path}')
+                    for mutable in True, False:
                         for symlink in True, False:
                             with self.subTest(f'Now testing readGlobalFileWith: mutable={mutable} symlink={symlink}'):
-                                dstFile = os.path.join(workDir, str(uuid4()))
                                 A = Job.wrapJobFn(self._testImportReadFileCompatibility,
-                                                  fileID=jobStoreFileID,
-                                                  dstFile=dstFile,
-                                                  initialPermissions=initialPermissions,
+                                                  fileID=file_id,
+                                                  initialPermissions=initial_permissions,
                                                   mutable=mutable,
                                                   symlink=symlink)
                                 toil.start(A)
 
         @staticmethod
-        def _testImportReadFileCompatibility(job, fileID, dstFile, initialPermissions, mutable, symlink):
+        def _testImportReadFileCompatibility(job, fileID, initialPermissions, mutable, symlink):
             dstFile = job.fileStore.readGlobalFile(fileID, mutable=mutable, symlink=symlink)
             currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
 
@@ -333,10 +341,10 @@ class hidden:
 
         def testReadWriteFileStreamTextMode(self):
             """
-            Checks if text mode is compatibile with file streams.
+            Checks if text mode is compatible with file streams.
             """
             with Toil(self.options) as toil:
-                A = Job.wrapJobFn(_testReadWriteFileStreamTextMode)
+                A = Job.wrapJobFn(self._testReadWriteFileStreamTextMode)
                 toil.start(A)
 
         @staticmethod
@@ -611,7 +619,7 @@ class hidden:
                 RealtimeLogger.info('Got %d for %s; expected %d', cacheInfoBytes, value, expectedBytes)
 
                 assert cacheInfoBytes == expectedBytes, 'Testing %s: Expected ' % value + \
-                                                  '%s but got %s.' % (expectedBytes, cacheInfoBytes)
+                                                  f'{expectedBytes} but got {cacheInfoBytes}.'
 
         @slow
         def testAsyncWriteWithCaching(self):
@@ -657,7 +665,7 @@ class hidden:
             job.fileStore.writeGlobalFile(testFile.name)
             job.fileStore.logToMaster('Writing copy 2 and saving ID')
             fsID = job.fileStore.writeGlobalFile(testFile.name)
-            job.fileStore.logToMaster('Copy 2 ID: {}'.format(fsID))
+            job.fileStore.logToMaster(f'Copy 2 ID: {fsID}')
 
             hidden.AbstractCachingFileStoreTest._readFromJobStoreWithoutAssertions(job, fsID)
 
@@ -831,7 +839,7 @@ class hidden:
                 A.addChild(jobs[i])
                 jobs[i].addChild(B)
             Job.Runner.startToil(A, self.options)
-            with open(x.name, 'r') as y:
+            with open(x.name) as y:
                 assert int(y.read()) > 2
 
         @staticmethod
@@ -892,11 +900,11 @@ class hidden:
             with open(fileName, 'wb') as f:
                 f.write(os.urandom(1024 * 30000)) # 30 Mb
             outputFile = os.path.join(job.fileStore.getLocalTempDir(), 'exportedFile')
-            job.fileStore.exportFile(job.fileStore.writeGlobalFile(fileName), 'File://' + outputFile)
+            job.fileStore.export_file(job.fileStore.writeGlobalFile(fileName), 'File://' + outputFile)
             if not filecmp.cmp(fileName, outputFile):
                 logger.warning('Source file: %s', str(os.stat(fileName)))
                 logger.warning('Destination file: %s', str(os.stat(outputFile)))
-                raise RuntimeError("File {} did not properly get copied to {}".format(fileName, outputFile))
+                raise RuntimeError(f"File {fileName} did not properly get copied to {outputFile}")
 
         @slow
         def testFileStoreExportFile(self):
@@ -1291,9 +1299,9 @@ class hidden:
             Create and return a FileID for a non-cached file written via a stream.
             """
 
-            messageBytes = 'This is a test file\n'.encode('utf-8')
+            messageBytes = b'This is a test file\n'
 
-            with job.fileStore.jobStore.writeFileStream() as (out, idString):
+            with job.fileStore.jobStore.write_file_stream() as (out, idString):
                 # Write directly to the job store so the caching file store doesn't even see it.
                 # TODO: If we ever change how the caching file store does its IDs we will have to change this.
                 out.write(messageBytes)

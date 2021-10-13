@@ -48,7 +48,7 @@ class MessageDetector(logging.StreamHandler):
     def __init__(self):
         self.detected = False  # Have we seen the message we want?
         self.overLogged = False  # Have we seen the message we don't want?
-        super(MessageDetector, self).__init__()
+        super().__init__()
 
     def emit(self, record):
         if record.msg == 'This should be logged at info level':

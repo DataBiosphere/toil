@@ -31,7 +31,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # Should return a dictionary of Job IDs and number of seconds
             times = {}
             with self.runningJobsLock:
-                currentjobs = dict((str(self.batchJobIDs[x][0]), x) for x in self.runningJobs)
+                currentjobs = {str(self.batchJobIDs[x][0]): x for x in self.runningJobs}
             # currentjobs is a dictionary that maps a slurm job id (string) to our own internal job id
             # squeue arguments:
             # -h for no header
@@ -59,7 +59,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                               command: str,
                               jobName: str,
                               job_environment: Optional[Dict[str, str]] = None) -> List[str]:
-            return self.prepareSbatch(cpu, memory, jobID, jobName, job_environment) + ['--wrap={}'.format(command)]
+            return self.prepareSbatch(cpu, memory, jobID, jobName, job_environment) + [f'--wrap={command}']
 
         def submitJob(self, subLine):
             try:
@@ -123,26 +123,26 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             stdout = call_command(args)
             if isinstance(stdout, str):
-                values = stdout.strip().split()
+                lines = stdout.splitlines()
             elif isinstance(stdout, bytes):
-                values = stdout.decode('utf-8').strip().split()
-
-            # If job information is not available an error is issued:
-            # slurm_load_jobs error: Invalid job id specified
-            # There is no job information, so exit.
-            if len(values) > 0 and values[0] == 'slurm_load_jobs':
-                return (None, None)
+                lines = stdout.decode('utf-8').splitlines()
 
             job = dict()
-            for item in values:
-                logger.debug(f"{args[0]} output {item}")
+            for line in lines:
+                for item in line.split():
+                    logger.debug(f"{args[0]} output {item}")
 
-                # Output is in the form of many key=value pairs, multiple pairs on each line
-                # and multiple lines in the output. Each pair is pulled out of each line and
-                # added to a dictionary
-                for v in values:
-                    bits = v.split('=')
-                    job[bits[0]] = bits[1]
+                    # Output is in the form of many key=value pairs, multiple pairs on each line
+                    # and multiple lines in the output. Each pair is pulled out of each line and
+                    # added to a dictionary.
+                    # Note: In some cases, the value itself may contain white-space. So, if we find
+                    # a key without a value, we consider that key part of the previous value.
+                    bits = item.split('=', 1)
+                    if len(bits) == 1:
+                        job[key] += ' ' + bits[0]
+                    else:
+                        key = bits[0]
+                        job[key] = bits[1]
 
             state = job['JobState']
             try:
@@ -173,7 +173,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                           job_environment: Optional[Dict[str, str]]) -> List[str]:
 
             #  Returns the sbatch command line before the script to run
-            sbatch_line = ['sbatch', '-J', 'toil_job_{}_{}'.format(jobID, jobName)]
+            sbatch_line = ['sbatch', '-J', f'toil_job_{jobID}_{jobName}']
 
             environment = {}
             environment.update(self.boss.environment)
@@ -185,7 +185,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
                 for k, v in environment.items():
                     quoted_value = quote(os.environ[k] if v is None else v)
-                    argList.append('{}={}'.format(k, quoted_value))
+                    argList.append(f'{k}={quoted_value}')
 
                 sbatch_line.append('--export=' + ','.join(argList))
 
@@ -202,9 +202,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # "Native extensions" for SLURM (see DRMAA or SAGA)
             nativeConfig = os.getenv('TOIL_SLURM_ARGS')
             if nativeConfig is not None:
-                logger.debug("Native SLURM options appended to sbatch from TOIL_SLURM_ARGS env. variable: {}".format(nativeConfig))
+                logger.debug(f"Native SLURM options appended to sbatch from TOIL_SLURM_ARGS env. variable: {nativeConfig}")
                 if ("--mem" in nativeConfig) or ("--cpus-per-task" in nativeConfig):
-                    raise ValueError("Some resource arguments are incompatible: {}".format(nativeConfig))
+                    raise ValueError(f"Some resource arguments are incompatible: {nativeConfig}")
 
                 sbatch_line.extend(nativeConfig.split())
 

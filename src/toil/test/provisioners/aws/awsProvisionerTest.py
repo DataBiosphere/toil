@@ -23,8 +23,11 @@ from uuid import uuid4
 
 import pytest
 
+import boto.ec2
+
+from toil.lib.aws import zone_to_region
 from toil.provisioners import cluster_factory
-from toil.provisioners.aws import get_current_aws_zone
+from toil.provisioners.aws import get_best_aws_zone
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from toil.test import (ToilTest,
                        integrative,
@@ -59,7 +62,7 @@ class AWSProvisionerBenchTest(ToilTest):
         """
         provisioner = AWSProvisioner(f'aws-provisioner-test-{uuid4()}', 'mesos', 'us-west-2a', 50, None, None)
         key = 'config/test.txt'
-        contents = "Hello, this is a test.".encode('utf-8')
+        contents = b"Hello, this is a test."
 
         try:
             url = provisioner._write_file_to_cloud(key, contents=contents)
@@ -77,15 +80,17 @@ class AWSProvisionerBenchTest(ToilTest):
 @integrative
 class AbstractAWSAutoscaleTest(ToilTest):
     def __init__(self, methodName):
-        super(AbstractAWSAutoscaleTest, self).__init__(methodName=methodName)
+        super().__init__(methodName=methodName)
         self.keyName = os.environ.get('TOIL_AWS_KEYNAME', 'id_rsa')
         self.instanceTypes = ["m5a.large"]
         self.clusterName = 'aws-provisioner-test-' + str(uuid4())
         self.numWorkers = ['2']
         self.numSamples = 2
         self.spotBid = 0.15
-        self.zone = get_current_aws_zone()
+        self.zone = get_best_aws_zone()
         assert self.zone is not None, "Could not determine AWS availability zone to test in; is TOIL_AWS_ZONE set?"
+        # We need a boto2 connection to EC2 to check on the cluster
+        self.boto2_ec2 = boto.ec2.connect_to_region(zone_to_region(self.zone))
         # We can't dump our user script right in /tmp or /home, because hot
         # deploy refuses to zip up those whole directories. So we make sure to
         # have a subdirectory to upload the script to.
@@ -137,14 +142,14 @@ class AbstractAWSAutoscaleTest(ToilTest):
         Set up for the test.
         Must be overridden to call this method and set self.jobStore.
         """
-        super(AbstractAWSAutoscaleTest, self).setUp()
+        super().setUp()
         # Make sure that destroy works before we create any clusters.
         # If this fails, no tests will run.
         self.destroyCluster()
 
     def tearDown(self):
         # Note that teardown will run even if the test crashes.
-        super(AbstractAWSAutoscaleTest, self).tearDown()
+        super().tearDown()
         self.destroyCluster()
         subprocess.check_call(['toil', 'clean', self.jobStore])
 
@@ -219,16 +224,13 @@ class AbstractAWSAutoscaleTest(ToilTest):
         args = [] if args is None else args
 
         command = ['toil', 'launch-cluster', '-p=aws', '-z', self.zone, f'--keyPairName={self.keyName}',
-                   '--leaderNodeType=t2.medium', self.clusterName] + args
+                   '--leaderNodeType=t2.medium', '--logDebug', self.clusterName] + args
 
         log.debug('Launching cluster: %s', command)
 
         # Try creating the cluster
         subprocess.check_call(command)
         # If we fail, tearDown will destroy the cluster.
-
-    def getMatchingRoles(self):
-        return list(self.cluster._boto2.local_roles())
 
     def launchCluster(self):
         self.createClusterUtil()
@@ -278,6 +280,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
     def _test(self, preemptableJobs=False):
         """Does the work of the testing.  Many features' tests are thrown in here in no particular order."""
+        # Make a cluster
         self.launchCluster()
         # get the leader so we know the IP address - we don't need to wait since create cluster
         # already insures the leader is running
@@ -286,7 +289,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.sshUtil(['mkdir', '-p', self.scriptDir])
         self.sshUtil(['mkdir', '-p', self.dataDir])
 
-        assert len(self.getMatchingRoles()) == 1
+        assert len(self.cluster._getRoleNames()) == 1
         # --never-download prevents silent upgrades to pip, wheel and setuptools
         venv_command = ['virtualenv', '--system-site-packages', '--python', exactPython, '--never-download', self.venvDir]
         self.sshUtil(venv_command)
@@ -311,7 +314,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         log.info('Run script...')
         self._runScript(toilOptions)
 
-        assert len(self.getMatchingRoles()) == 1
+        assert len(self.cluster._getRoleNames()) == 1
 
         from boto.exception import EC2ResponseError
         volumeID = self.getRootVolID()
@@ -320,7 +323,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
             # https://github.com/BD2KGenomics/toil/issues/1567
             # retry this for up to 1 minute until the volume disappears
             try:
-                self.cluster._boto2.ec2.get_all_volumes(volume_ids=[volumeID])
+                self.boto2_ec2.get_all_volumes(volume_ids=[volumeID])
                 time.sleep(10)
             except EC2ResponseError as e:
                 if e.status == 400 and 'InvalidVolume.NotFound' in e.code:
@@ -330,21 +333,21 @@ class AbstractAWSAutoscaleTest(ToilTest):
         else:
             self.fail('Volume with ID %s was not cleaned up properly' % volumeID)
 
-        assert len(self.getMatchingRoles()) == 0
+        assert len(self.cluster._getRoleNames()) == 0
 
 
 @integrative
 @pytest.mark.timeout(1800)
 class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def __init__(self, name):
-        super(AWSAutoscaleTest, self).__init__(name)
+        super().__init__(name)
         self.clusterName = 'provisioner-test-' + str(uuid4())
         self.requestedLeaderStorage = 80
         self.scriptName = 'sort.py'
 
     def setUp(self):
-        super(AWSAutoscaleTest, self).setUp()
-        self.jobStore = 'aws:%s:autoscale-%s' % (self.awsRegion(), uuid4())
+        super().setUp()
+        self.jobStore = f'aws:{self.awsRegion()}:autoscale-{uuid4()}'
 
     def _getScript(self):
         fileToSort = os.path.join(os.getcwd(), str(uuid4()))
@@ -373,8 +376,8 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         Otherwise is functionally equivalent to parent.
         :return: volumeID
         """
-        volumeID = super(AWSAutoscaleTest, self).getRootVolID()
-        rootVolume = self.cluster._boto2.ec2.get_all_volumes(volume_ids=[volumeID])[0]
+        volumeID = super().getRootVolID()
+        rootVolume = self.boto2_ec2.get_all_volumes(volume_ids=[volumeID])[0]
         # test that the leader is given adequate storage
         self.assertGreaterEqual(rootVolume.size, self.requestedLeaderStorage)
         return volumeID
@@ -406,7 +409,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
 class AWSStaticAutoscaleTest(AWSAutoscaleTest):
     """Runs the tests on a statically provisioned cluster with autoscaling enabled."""
     def __init__(self, name):
-        super(AWSStaticAutoscaleTest, self).__init__(name)
+        super().__init__(name)
         self.requestedNodeStorage = 20
 
     def launchCluster(self):
@@ -428,10 +431,10 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         # test that workers have expected storage size
         # just use the first worker
         worker = workers[0]
-        worker = next(wait_instances_running(self.cluster._boto2.ec2, [worker]))
+        worker = next(wait_instances_running(self.boto2_ec2, [worker]))
         rootBlockDevice = worker.block_device_mapping["/dev/xvda"]
         self.assertTrue(isinstance(rootBlockDevice, BlockDeviceType))
-        rootVolume = self.cluster._boto2.ec2.get_all_volumes(volume_ids=[rootBlockDevice.volume_id])[0]
+        rootVolume = self.boto2_ec2.get_all_volumes(volume_ids=[rootBlockDevice.volume_id])[0]
         self.assertGreaterEqual(rootVolume.size, self.requestedNodeStorage)
 
     def _runScript(self, toilOptions):
@@ -476,12 +479,12 @@ class AWSManagedAutoscaleTest(AWSAutoscaleTest):
 @pytest.mark.timeout(1200)
 class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
     def __init__(self, name):
-        super(AWSAutoscaleTestMultipleNodeTypes, self).__init__(name)
+        super().__init__(name)
         self.clusterName = 'provisioner-test-' + str(uuid4())
 
     def setUp(self):
-        super(AWSAutoscaleTestMultipleNodeTypes, self).setUp()
-        self.jobStore = 'aws:%s:autoscale-%s' % (self.awsRegion(), uuid4())
+        super().setUp()
+        self.jobStore = f'aws:{self.awsRegion()}:autoscale-{uuid4()}'
 
     def _getScript(self):
         sseKeyFile = os.path.join(os.getcwd(), 'keyFile')
@@ -516,15 +519,15 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
 class AWSRestartTest(AbstractAWSAutoscaleTest):
     """This test insures autoscaling works on a restarted Toil run."""
     def __init__(self, name):
-        super(AWSRestartTest, self).__init__(name)
+        super().__init__(name)
         self.clusterName = 'restart-test-' + str(uuid4())
         self.scriptName = 'restartScript.py'
 
     def setUp(self):
-        super(AWSRestartTest, self).setUp()
+        super().setUp()
         self.instanceTypes = ['t2.small']
         self.numWorkers = ['1']
-        self.jobStore = 'aws:%s:restart-%s' % (self.awsRegion(), uuid4())
+        self.jobStore = f'aws:{self.awsRegion()}:restart-{uuid4()}'
 
     def _getScript(self):
         def restartScript():
@@ -577,15 +580,15 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
 @pytest.mark.timeout(1200)
 class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
     def __init__(self, name):
-        super(PreemptableDeficitCompensationTest, self).__init__(name)
+        super().__init__(name)
         self.clusterName = 'deficit-test-' + str(uuid4())
         self.scriptName = 'userScript.py'
 
     def setUp(self):
-        super(PreemptableDeficitCompensationTest, self).setUp()
+        super().setUp()
         self.instanceTypes = ['m5a.large:0.01', "m5a.large"]  # instance needs to be available on the spot market
         self.numWorkers = ['1', '1']
-        self.jobStore = 'aws:%s:deficit-%s' % (self.awsRegion(), uuid4())
+        self.jobStore = f'aws:{self.awsRegion()}:deficit-{uuid4()}'
 
     def test(self):
         self._test(preemptableJobs=True)

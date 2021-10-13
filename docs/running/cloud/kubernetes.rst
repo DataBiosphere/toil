@@ -248,7 +248,7 @@ Here's an example YAML file to run a test workflow: ::
             name: aws-credentials-vol
           resources:
             # Make sure to set these resource limits to values large enough
-            # to accomodate the work your workflow does in the leader
+            # to accommodate the work your workflow does in the leader
             # process, but small enough to fit on your cluster.
             #
             # Since no request values are specified, the limits are also used

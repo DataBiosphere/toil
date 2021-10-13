@@ -59,7 +59,7 @@ def writeB(job, mkFile, B_file):
     B_file_fs = job.fileStore.readGlobalFile(B_file[0], userPath=os.path.join(tempDir, B_file[1]))
 
     # make a file (B.txt) and write the contents of 'B_file.txt' into it using 'mkFile.py'
-    with open(B_file_fs, "r") as f:
+    with open(B_file_fs) as f:
         file_contents = ''
         for line in f:
             file_contents = file_contents + line
@@ -104,15 +104,15 @@ def writeABC(job, A_dict, B_dict, C_dict, filepath):
     C_fs = job.fileStore.readGlobalFile(C_dict['C1'][0], userPath=os.path.join(tempDir, C_dict['C1'][1]))
 
     file_contents = ''
-    with open(A_fs, "r") as f:
+    with open(A_fs) as f:
         for line in f:
             file_contents = file_contents + line
 
-    with open(B_fs, "r") as f:
+    with open(B_fs) as f:
         for line in f:
             file_contents = file_contents + line
 
-    with open(C_fs, "r") as f:
+    with open(C_fs) as f:
         for line in f:
             file_contents = file_contents + line
 
@@ -122,7 +122,7 @@ def writeABC(job, A_dict, B_dict, C_dict, filepath):
     # get the output file and return it as a tuple of location + name
     output_filename = os.path.join(tempDir, 'ABC.txt')
     output_file = job.fileStore.writeGlobalFile(output_filename)
-    job.fileStore.exportFile(output_file, "file://" + filepath)
+    job.fileStore.export_file(output_file, "file://" + filepath)
 
 
 def finalize_jobs(job, num):

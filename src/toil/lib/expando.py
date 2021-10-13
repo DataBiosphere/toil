@@ -102,7 +102,7 @@ class Expando(dict):
     """
 
     def __init__( self, *args, **kwargs ):
-        super( Expando, self ).__init__( *args, **kwargs )
+        super().__init__( *args, **kwargs )
         self.__slots__ = None
         self.__dict__ = self
 

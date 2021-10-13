@@ -96,7 +96,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         return True
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        super(KubernetesBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
+        super().__init__(config, maxCores, maxMemory, maxDisk)
 
         # Turn down log level for Kubernetes modules and dependencies.
         # Otherwise if we are at debug log level, we dump every
@@ -133,7 +133,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.uniqueID = uuid.uuid4()
 
         # Create a prefix for jobs, starting with our username
-        self.jobPrefix = '{}-toil-{}-'.format(username, self.uniqueID)
+        self.jobPrefix = f'{username}-toil-{self.uniqueID}-'
 
         # Instead of letting Kubernetes assign unique job names, we assign our
         # own based on a numerical job ID. This functionality is managed by the
@@ -165,7 +165,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # TODO: Make this an environment variable?
         self.enableWatching = os.environ.get("KUBE_WATCH_ENABLED", False)
 
-        self.runID = 'toil-{}'.format(self.uniqueID)
+        self.runID = f'toil-{self.uniqueID}'
 
         self.jobIds = set()
 
@@ -222,7 +222,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # We just need the namespace string
             if config_source == 'in_cluster':
                 # Our namespace comes from a particular file.
-                with open("/var/run/secrets/kubernetes.io/serviceaccount/namespace", 'r') as fh:
+                with open("/var/run/secrets/kubernetes.io/serviceaccount/namespace") as fh:
                     return fh.read().strip()
             else:
                 # Find all contexts and the active context.
@@ -239,7 +239,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             try:
                 return self._apis[kind]
             except KeyError:
-                raise RuntimeError("Unknown Kubernetes API type: {}".format(kind))
+                raise RuntimeError(f"Unknown Kubernetes API type: {kind}")
 
     @retry(errors=retryable_kubernetes_errors)
     def _try_kubernetes(self, method, *args, **kwargs):
@@ -316,7 +316,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
 
     def setUserScript(self, userScript):
-        logger.info('Setting user script for deployment: {}'.format(userScript))
+        logger.info(f'Setting user script for deployment: {userScript}')
         self.userScript = userScript
 
     # setEnv is provided by BatchSystemSupport, updates self.environment
@@ -548,13 +548,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
             if onlySucceeded:
                 results =  self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace,
-                                                label_selector="toil_run={}".format(self.runID), field_selector="status.successful==1", **kwargs)
+                                                label_selector=f"toil_run={self.runID}", field_selector="status.successful==1", **kwargs)
             else:
                 results = self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace,
-                                                label_selector="toil_run={}".format(self.runID), **kwargs)
-            for job in results.items:
-                # This job belongs to us
-                yield job
+                                                label_selector=f"toil_run={self.runID}", **kwargs)
+            yield from results.items  # These jobs belong to us
 
             # Remember the continuation token, if any
             token = getattr(results.metadata, 'continue', None)
@@ -581,10 +579,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             if token is not None:
                 kwargs['_continue'] = token
 
-            results = self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, label_selector="toil_run={}".format(self.runID), **kwargs)
+            results = self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, label_selector=f"toil_run={self.runID}", **kwargs)
 
-            for pod in results.items:
-                yield pod
+            yield from results.items
             # Remember the continuation token, if any
             token = getattr(results.metadata, 'continue', None)
 
@@ -610,7 +607,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Work out what the return code was (which we need to get from the
         # pods) We get the associated pods by querying on the label selector
         # `job-name=JOBNAME`
-        query = 'job-name={}'.format(jobObject.metadata.name)
+        query = f'job-name={jobObject.metadata.name}'
 
         while True:
             # We can't just pass e.g. a None continue token when there isn't
@@ -758,7 +755,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Otherwise we need to maybe wait.
         if self.enableWatching:
             for event in self._try_kubernetes_stream(self._api('batch').list_namespaced_job, self.namespace,
-                                                        label_selector="toil_run={}".format(self.runID),
+                                                        label_selector=f"toil_run={self.runID}",
                                                         timeout_seconds=maxWait):
                 # Grab the metadata data, ID, the list of conditions of the current job, and the total pods
                 jobObject = event['object']
@@ -804,7 +801,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     continue
                 else:
                     # Job is not running/updating ; no active, successful, or failed pods yet
-                    logger.debug("Job %s -> %s" % (jobObject.metadata.name, jobObjectListConditions[0].reason))
+                    logger.debug("Job {} -> {}".format(jobObject.metadata.name, jobObjectListConditions[0].reason))
                     # Pod could be pending; don't say it's lost.
                     continue
         else:
@@ -1059,7 +1056,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         try:
             self._try_kubernetes_expecting_gone(self._api('batch').delete_collection_namespaced_job,
                                                             self.namespace,
-                                                            label_selector="toil_run={}".format(self.runID),
+                                                            label_selector=f"toil_run={self.runID}",
                                                             propagation_policy='Background')
             logger.debug('Killed jobs with delete_collection_namespaced_job; cleaned up')
         except ApiException as e:

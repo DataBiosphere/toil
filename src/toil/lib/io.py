@@ -77,7 +77,7 @@ def atomic_tmp_file(final_path: str) -> str:
         return final_path
     final_basename = os.path.basename(final_path)
     final_ext = os.path.splitext(final_path)[1]
-    base_name = "{}.{}.tmp{}".format(final_basename, uuid.uuid4(), final_ext)
+    base_name = f"{final_basename}.{uuid.uuid4()}.tmp{final_ext}"
     return os.path.join(final_dir, base_name)
 
 
