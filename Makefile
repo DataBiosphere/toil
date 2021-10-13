@@ -129,7 +129,7 @@ test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
 	TRAVIS=true \
-	    python -m pytest -vv --timeout=530 --log-level DEBUG --log-cli-level INFO $(cov) $(tests)
+	    python -m pytest -vv --timeout=600 --log-level DEBUG --log-cli-level INFO $(cov) $(tests)
 
 ifdef TOIL_DOCKER_REGISTRY
 
