@@ -44,6 +44,7 @@ def run_setup():
         "kubernetes",
         "mesos",
         "wdl",
+        "server"
     ]
     for extra in non_htcondor_extras:
         with open(f"requirements-{extra}.txt") as fp:
