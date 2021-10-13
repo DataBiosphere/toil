@@ -112,7 +112,7 @@ class AWSJobStore(AbstractJobStore):
                upload and copy, must be >= 5 MiB but large enough to not exceed 10k parts for the
                whole file
         """
-        super(AWSJobStore, self).__init__(locator)
+        super().__init__(locator)
         region, namePrefix = locator.split(':')
         regions = EC2Regions.keys()
         if region not in regions:
@@ -151,7 +151,7 @@ class AWSJobStore(AbstractJobStore):
             with panic(logger):
                 self.destroy()
         else:
-            super(AWSJobStore, self).initialize(config)
+            super().initialize(config)
             # Only register after job store has been full initialized
             self._registered = True
 
@@ -163,7 +163,7 @@ class AWSJobStore(AbstractJobStore):
         if not self._registered:
             raise NoSuchJobStoreException(self.locator)
         self._bind(create=False)
-        super(AWSJobStore, self).resume()
+        super().resume()
 
     def _bind(self, create=False, block=True, check_versioning_consistency=True):
         def qualify(name):
@@ -393,8 +393,7 @@ class AWSJobStore(AbstractJobStore):
             with attempt:
                 items = list(self.filesDomain.select(
                     consistent_read=True,
-                    query="select version from `%s` where ownerID='%s'" % (
-                        self.filesDomain.name, job_id)))
+                    query="select version from `{}` where ownerID='{}'".format(self.filesDomain.name, job_id)))
         assert items is not None
         if items:
             logger.debug("Deleting %d file(s) associated with job %s", len(items), job_id)
@@ -442,8 +441,7 @@ class AWSJobStore(AbstractJobStore):
             info.save()
             return FileID(info.fileID, size) if shared_file_name is None else None
         else:
-            return super(AWSJobStore, self)._import_file(otherCls, uri,
-                                                        shared_file_name=shared_file_name)
+            return super()._import_file(otherCls, uri, shared_file_name=shared_file_name)
 
     def _export_file(self, otherCls, file_id, uri):
         if issubclass(otherCls, AWSJobStore):
@@ -451,7 +449,7 @@ class AWSJobStore(AbstractJobStore):
             info = self.FileInfo.loadOrFail(file_id)
             info.copyTo(dstObj)
         else:
-            super(AWSJobStore, self)._default_export_file(otherCls, file_id, uri)
+            super()._default_export_file(otherCls, file_id, uri)
 
     @classmethod
     def get_size(cls, url):
@@ -520,7 +518,7 @@ class AWSJobStore(AbstractJobStore):
         if existing is True and not objExists:
             raise RuntimeError(f"Key '{keyName}' does not exist in bucket '{bucketName}'.")
         elif existing is False and objExists:
-            raise RuntimeError("Key '{keyName}' exists in bucket '{bucketName}'.")
+            raise RuntimeError(f"Key '{keyName}' exists in bucket '{bucketName}'.")
 
         if not objExists:
             obj.put()  # write an empty file
@@ -638,7 +636,7 @@ class AWSJobStore(AbstractJobStore):
             with attempt:
                 items = list(self.filesDomain.select(
                     consistent_read=True,
-                    query="select * from `%s` where ownerID='%s'" % (
+                    query="select * from `{}` where ownerID='{}'".format(
                         self.filesDomain.name, str(ownerId))))
         assert items is not None
         for item in items:
@@ -1371,7 +1369,7 @@ class AWSJobStore(AbstractJobStore):
                 yield writable
 
             if not pipe.reader_done:
-                logger.debug('Version: {} Content: {}'.format(self.version, self.content))
+                logger.debug(f'Version: {self.version} Content: {self.content}')
                 raise RuntimeError('Escaped context manager without written data being read!')
 
             # We check our work to make sure we have exactly one of embedded
@@ -1379,11 +1377,11 @@ class AWSJobStore(AbstractJobStore):
 
             if self.content is None:
                 if not bool(self.version):
-                    logger.debug('Version: {} Content: {}'.format(self.version, self.content))
+                    logger.debug(f'Version: {self.version} Content: {self.content}')
                     raise RuntimeError('No content added and no version created')
             else:
                 if bool(self.version):
-                    logger.debug('Version: {} Content: {}'.format(self.version, self.content))
+                    logger.debug(f'Version: {self.version} Content: {self.content}')
                     raise RuntimeError('Content added and version created')
 
         def copyFrom(self, srcObj):
@@ -1577,7 +1575,7 @@ class AWSJobStore(AbstractJobStore):
                  ('checksum', r(self.checksum)),
                  ('_numContentChunks', r(self._numContentChunks)))
             return "{}({})".format(type(self).__name__,
-                                   ', '.join('%s=%s' % (k, v) for k, v in d))
+                                   ', '.join(f'{k}={v}' for k, v in d))
 
     versionings = dict(Enabled=True, Disabled=False, Suspended=None)
 
@@ -1669,6 +1667,6 @@ custom_repr = aRepr.repr
 
 class BucketLocationConflictException(Exception):
     def __init__(self, bucketRegion):
-        super(BucketLocationConflictException, self).__init__(
+        super().__init__(
             'A bucket with the same name as the jobstore was found in another region (%s). '
             'Cannot proceed as the unique bucket name is already in use.' % bucketRegion)

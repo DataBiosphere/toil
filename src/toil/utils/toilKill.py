@@ -42,7 +42,7 @@ def main() -> None:
     # otherwise, kill the pid recorded in the jobstore
     else:
         pid_log = os.path.join(os.path.abspath(config.jobStore), 'pid.log')
-        with open(pid_log, 'r') as f:
+        with open(pid_log) as f:
             pid2kill = f.read().strip()
         try:
             os.kill(int(pid2kill), signal.SIGKILL)

@@ -355,7 +355,7 @@ class ApplianceImageNotFound(ImageNotFound):
                "'quay.io/ucsc_cgl/toil:latest', 'ubuntu:latest', or "
                "'broadinstitute/genomes-in-the-cloud:2.0.0'."
                "" % (origAppliance, url, str(statusCode)))
-        super(ApplianceImageNotFound, self).__init__(msg)
+        super().__init__(msg)
 
 
 def requestCheckRegularDocker(origAppliance, registryName, imageName, tag):
@@ -406,12 +406,12 @@ def requestCheckDockerIo(origAppliance, imageName, tag):
 
     token_url = 'https://auth.docker.io/token?service=registry.docker.io&scope=repository:{repo}:pull'.format(
         repo=imageName)
-    requests_url = 'https://registry-1.docker.io/v2/{repo}/manifests/{tag}'.format(repo=imageName, tag=tag)
+    requests_url = f'https://registry-1.docker.io/v2/{imageName}/manifests/{tag}'
 
     token = requests.get(token_url)
     jsonToken = token.json()
     bearer = jsonToken["token"]
-    response = requests.head(requests_url, headers={'Authorization': 'Bearer {}'.format(bearer)})
+    response = requests.head(requests_url, headers={'Authorization': f'Bearer {bearer}'})
     if not response.ok:
         raise ApplianceImageNotFound(origAppliance, requests_url, response.status_code)
     else:
@@ -503,7 +503,7 @@ try:
                 self._boto3_resolver = None
 
             # Pass along all the arguments
-            super(BotoCredentialAdapter, self).__init__(name, access_key=access_key,
+            super().__init__(name, access_key=access_key,
                                                         secret_key=secret_key, security_token=security_token,
                                                         profile_name=profile_name, **kwargs)
 
@@ -521,7 +521,7 @@ try:
             else:
                 # We're not on AWS, or they passed a key, or we're anonymous.
                 # Use the normal route; our credentials shouldn't expire.
-                super(BotoCredentialAdapter, self).get_credentials(access_key=access_key,
+                super().get_credentials(access_key=access_key,
                                                                    secret_key=secret_key, security_token=security_token,
                                                                    profile_name=profile_name)
 
@@ -598,7 +598,7 @@ try:
             while True:
                 log.debug('Attempting to read cached credentials from %s.', path)
                 try:
-                    with open(path, 'r') as f:
+                    with open(path) as f:
                         content = f.read()
                         if content:
                             record = content.split('\n')
@@ -611,7 +611,7 @@ try:
                             log.debug('%s is empty. Credentials are not temporary.', path)
                             self._obtain_credentials_from_boto3()
                             return
-                except IOError as e:
+                except OSError as e:
                     if e.errno == errno.ENOENT:
                         log.debug('Cached credentials are missing.')
                         dir_path = os.path.dirname(path)

@@ -22,11 +22,10 @@ def flatten( iterables ):
         if isinstance(it, str):
             yield it
         else:
-            for element in it:
-                yield element
+            yield from it
 
 # noinspection PyPep8Naming
-class concat(object):
+class concat:
     """
     A literal iterable that lets you combine sequence literals (lists, set) with generators or list
     comprehensions. Instead of
@@ -87,7 +86,7 @@ class concat(object):
     """
 
     def __init__( self, *args ):
-        super( concat, self ).__init__( )
+        super().__init__( )
         self.args = args
 
     def __iter__( self ):

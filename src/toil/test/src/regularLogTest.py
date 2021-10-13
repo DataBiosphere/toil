@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 class RegularLogTest(ToilTest):
 
     def setUp(self):
-        super(RegularLogTest, self).setUp()
+        super().setUp()
         self.tempDir = self._createTempDir(purpose='tempDir')
 
     def _getFiles(self, dir):

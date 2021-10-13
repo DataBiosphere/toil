@@ -109,7 +109,7 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
                 tempFile = job.fileStore.readGlobalFile(fileStoreID, 
                                                         local_path,
                                                         cache=cache)
-                with open(tempFile, 'r') as fH:
+                with open(tempFile) as fH:
                     string = fH.readline()
                 logging.info("Downloaded %s to local path %s with cache %s and got %s with %d letters",
                               fileStoreID, local_path, cache, tempFile, len(string))
@@ -187,7 +187,7 @@ def fileStoreChild(job, testID1, testID2):
 
     localFilePath = os.path.join(job.fileStore.getLocalTempDir(), "childTemp.txt")
     job.fileStore.readGlobalFile(testID2, localFilePath)
-    with open(localFilePath, 'r') as f:
+    with open(localFilePath) as f:
         assert(f.read() == streamingFileStoreString)
 
     job.fileStore.deleteLocalFile(testID2)

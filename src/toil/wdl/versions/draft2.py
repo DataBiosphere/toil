@@ -40,7 +40,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         :return: Returns nothing.
         """
         # parse the wdl AST into 2 dictionaries
-        with open(self.wdl_file, 'r') as wdl:
+        with open(self.wdl_file) as wdl:
             wdl_string = wdl.read()
             ast = wdl_parser.parse(wdl_string).ast()
             self.create_tasks_dict(ast)
@@ -53,7 +53,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         if out_dir is None:
             out_dir = os.getcwd()
         with open(os.path.join(out_dir, 'AST.out'), 'w') as f:
-            with open(self.wdl_file, 'r') as wdl:
+            with open(self.wdl_file) as wdl:
                 wdl_string = wdl.read()
                 ast = wdl_parser.parse(wdl_string).ast()
                 f.write(ast.dumps(indent=2))
@@ -573,10 +573,10 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
                                         ''.format(expressionAST.source_string))
                 elif expressionAST.str == 'string':
                     parsed_string = self.translate_wdl_string_to_python_string(expressionAST.source_string)
-                    return '{string}'.format(string=parsed_string)
+                    return f'{parsed_string}'
                 else:
                     # integers, floats, and variables
-                    return '{string}'.format(string=expressionAST.source_string)
+                    return f'{expressionAST.source_string}'
             elif isinstance(expressionAST, wdl_parser.Ast):
                 if expressionAST.name == 'Add':
                     es = es + self.parse_declaration_expressn_operator(expressionAST.attr('lhs'),
@@ -672,7 +672,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         elif isinstance(rhsAST, wdl_parser.AstList):
             raise NotImplementedError
 
-        return es + '[{index}]'.format(index=indexnum)
+        return es + f'[{indexnum}]'
 
     def parse_declaration_expressn_memberaccess(self, lhsAST, rhsAST, es):
         """
@@ -769,9 +769,9 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         """
         if isinstance(lhsAST, wdl_parser.Terminal):
             if lhsAST.str == 'string':
-                es = es + '"{string}"'.format(string=lhsAST.source_string)
+                es = es + f'"{lhsAST.source_string}"'
             else:
-                es = es + '{string}'.format(string=lhsAST.source_string)
+                es = es + f'{lhsAST.source_string}'
         elif isinstance(lhsAST, wdl_parser.Ast):
             es = es + self.parse_declaration_expressn(lhsAST, es='')
         elif isinstance(lhsAST, wdl_parser.AstList):
@@ -781,9 +781,9 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
 
         if isinstance(rhsAST, wdl_parser.Terminal):
             if rhsAST.str == 'string':
-                es = es + '"{string}"'.format(string=rhsAST.source_string)
+                es = es + f'"{rhsAST.source_string}"'
             else:
-                es = es + '{string}'.format(string=rhsAST.source_string)
+                es = es + f'{rhsAST.source_string}'
         elif isinstance(rhsAST, wdl_parser.Ast):
             es = es + self.parse_declaration_expressn(rhsAST, es='')
         elif isinstance(rhsAST, wdl_parser.AstList):

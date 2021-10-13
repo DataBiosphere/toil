@@ -23,7 +23,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
 
     def setUp(self):
         logging.basicConfig(level=logging.INFO)
-        super(AutoDeploymentTest, self).setUp()
+        super().setUp()
 
     @contextmanager
     def _venvApplianceCluster(self):
@@ -43,7 +43,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
 
     # TODO: Are we sure the python in the appliance we are testing is the same
     # as the one we are testing from? If not, how can we get the version it is?
-    sitePackages = 'venv/lib/{}/site-packages'.format(exactPython)
+    sitePackages = f'venv/lib/{exactPython}/site-packages'
 
     def testRestart(self):
         """
@@ -166,7 +166,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
                 from toil.job import Job
 
                 # A user-defined type, i.e. a type defined in the user script
-                class X(object):
+                class X:
                     pass
 
                 # noinspection PyUnusedLocal

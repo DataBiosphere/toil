@@ -47,7 +47,7 @@ class MesosExecutor(Executor):
     """
 
     def __init__(self):
-        super(MesosExecutor, self).__init__()
+        super().__init__()
         self.popenLock = threading.Lock()
         self.runningTasks = {}
         self.workerCleanupInfo = None
@@ -228,7 +228,7 @@ class MesosExecutor(Executor):
         """
         Invoked when a framework message has arrived for this executor.
         """
-        log.debug("Received message from framework: {}".format(message))
+        log.debug(f"Received message from framework: {message}")
 
 
 def main():

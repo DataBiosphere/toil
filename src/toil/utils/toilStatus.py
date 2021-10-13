@@ -51,7 +51,7 @@ class ToilStatus:
 
         # Print the nodes
         for job in set(self.jobsToReport):
-            print('%s [label="%s %s"];' % (
+            print('{} [label="{} {}"];'.format(
                 jobsToNodeNames[job.jobStoreID], job.jobName, job.jobStoreID))
 
         # Print the edges
@@ -88,7 +88,7 @@ class ToilStatus:
     def printAggregateJobStats(self, properties: List[str], childNumber: int) -> None:
         """Prints a job's ID, log file, remaining tries, and other properties."""
         for job in self.jobsToReport:
-            lf = lambda x: "%s:%s" % (x, str(x in properties))
+            lf = lambda x: "{}:{}".format(x, str(x in properties))
             print("\t".join(("JOB:%s" % job,
                              "LOG_FILE:%s" % job.logJobStoreFileID,
                              "TRYS_REMAINING:%i" % job.remainingTryCount,
