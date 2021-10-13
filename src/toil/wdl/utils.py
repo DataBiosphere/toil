@@ -43,7 +43,7 @@ def get_analyzer(wdl_file: str) -> AnalyzeWDL:
 
     :param wdl_file: The path to the WDL file.
     """
-    with open(wdl_file, 'r') as f:
+    with open(wdl_file) as f:
         version = get_version(f)
 
     if version == 'draft-2':
@@ -89,7 +89,7 @@ def write_mappings(parser: AnalyzeWDL, filename: str = 'mappings.out') -> None:
     """
     from collections import OrderedDict
 
-    class Formatter(object):
+    class Formatter:
         def __init__(self):
             self.types = {}
             self.htchar = '\t'

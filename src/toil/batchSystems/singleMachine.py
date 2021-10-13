@@ -99,7 +99,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 log.warning('Not enough disk space! User limited to %i bytes but we only have %i bytes.', maxDisk, self.physicalDisk)
             maxDisk = self.physicalDisk
 
-        super(SingleMachineBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
+        super().__init__(config, maxCores, maxMemory, maxDisk)
         assert self.maxCores >= self.minCores
         assert self.maxMemory >= 1
 
@@ -641,7 +641,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         self._checkOnDaddy()
 
-        log.debug('Killing jobs: {}'.format(jobIDs))
+        log.debug(f'Killing jobs: {jobIDs}')
 
         # Collect the popen handles for the jobs we have to stop
         popens: List[subprocess.Popen] = []
@@ -745,7 +745,7 @@ class ResourcePool:
     acquired.
     """
     def __init__(self, initial_value, resourceType, timeout=5):
-        super(ResourcePool, self).__init__()
+        super().__init__()
         # We use this condition to signal everyone whenever some resource is released.
         # We use its associated lock to guard value.
         self.condition = Condition()

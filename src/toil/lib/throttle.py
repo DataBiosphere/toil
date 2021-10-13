@@ -17,7 +17,7 @@ import threading
 import time
 
 
-class LocalThrottle(object):
+class LocalThrottle:
     """
     A thread-safe rate limiter that throttles each thread independently. Can be used as a
     function or method decorator or as a simple object, via its .throttle() method.
@@ -67,7 +67,7 @@ class LocalThrottle(object):
         return wrapper
 
 
-class throttle(object):
+class throttle:
     """
     A context manager for ensuring that the execution of its body takes at least a given amount
     of time, sleeping if necessary. It is a simpler version of LocalThrottle if used as a

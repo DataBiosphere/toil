@@ -82,7 +82,7 @@ class MessageBus:
         Return True if no messages are pending, and false otherwise.
         """
 
-        return all((len(v) == 0 for v in self.__messages_by_type.values()))
+        return all(len(v) == 0 for v in self.__messages_by_type.values())
 
     # This next function returns things of the type that was passed in as a
     # runtime argument, which we can explain to MyPy using a TypeVar and Type[]

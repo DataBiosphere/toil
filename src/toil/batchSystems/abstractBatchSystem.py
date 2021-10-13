@@ -50,6 +50,7 @@ class BatchJobExitReason(enum.Enum):
     ERROR: int = 5  # Internal error.
     MEMLIMIT: int = 6  # Job hit batch system imposed memory limit
 
+<<<<<<< HEAD
 UpdatedBatchJobInfo = NamedTuple('UpdatedBatchJobInfo',
     [('jobID', int),
      # The exit status (integer value) of the job. 0 implies successful.
@@ -57,12 +58,46 @@ UpdatedBatchJobInfo = NamedTuple('UpdatedBatchJobInfo',
      ('exitStatus', int),
      ('exitReason', Optional[BatchJobExitReason]),  # The exit reason, if available. One of BatchJobExitReason enum.
      ('wallTime', Union[float, int, None])])
+=======
+class UpdatedBatchJobInfo(NamedTuple):
+    jobID: str
+    """
+    The exit status (integer value) of the job. 0 implies successful.
+
+    EXIT_STATUS_UNAVAILABLE_VALUE is used when the exit status is not available (e.g. job is lost).
+    """
+
+    exitStatus: int
+    exitReason: Union[int, None]
+    wallTime: Union[float, int, None]
+>>>>>>> upstream/master
 
 # Information required for worker cleanup on shutdown of the batch system.
+<<<<<<< HEAD
 WorkerCleanupInfo = NamedTuple('WorkerCleanupInfo',
     [('workDir', str),  # workdir path (where the cache would go)
      ('workflowID', str),  # used to identify files specific to this workflow
      ('cleanWorkDir', str)])
+=======
+class WorkerCleanupInfo(NamedTuple):
+    workDir: str
+    """workdir path (where the cache would go)"""
+
+    workflowID: int
+    """used to identify files specific to this workflow"""
+
+    cleanWorkDir: bool
+
+
+class BatchJobExitReason(enum.Enum):
+    FINISHED: int = 1  # Successfully finished.
+    FAILED: int = 2  # Job finished, but failed.
+    LOST: int = 3  # Preemptable failure (job's executing host went away).
+    KILLED: int = 4  # Job killed before finishing.
+    ERROR: int = 5  # Internal error.
+    MEMLIMIT: int = 6  # Job hit batch system imposed memory limit
+
+>>>>>>> upstream/master
 
 class AbstractBatchSystem(ABC):
     """
@@ -272,7 +307,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         :param int maxDisk: the maximum amount of disk space the batch system can
           request for any one job, in bytes
         """
-        super(BatchSystemSupport, self).__init__()
+        super().__init__()
         self.config = config
         self.maxCores = maxCores
         self.maxMemory = maxMemory
@@ -389,7 +424,129 @@ class BatchSystemSupport(AbstractBatchSystem):
             and workflowDirContents in ([], [cacheDirName(info.workflowID)])):
             shutil.rmtree(workflowDir, ignore_errors=True)
 
+<<<<<<< HEAD
 class NodeInfo(object):
+=======
+
+class BatchSystemLocalSupport(BatchSystemSupport):
+    """
+    Adds a local queue for helper jobs, useful for CWL & others
+    """
+
+    def __init__(self, config, maxCores, maxMemory, maxDisk):
+        super().__init__(config, maxCores, maxMemory, maxDisk)
+        self.localBatch = BATCH_SYSTEM_FACTORY_REGISTRY[DEFAULT_BATCH_SYSTEM]()(
+                config, config.maxLocalJobs, maxMemory, maxDisk)
+
+    def handleLocalJob(self, jobDesc):  # type: (Any) -> Optional[int]
+        """
+        To be called by issueBatchJobs.
+
+        Returns the jobID if the jobDesc has been submitted to the local queue,
+        otherwise returns None
+        """
+        if (not self.config.runCwlInternalJobsOnWorkers
+                and jobDesc.jobName.startswith(CWL_INTERNAL_JOBS)):
+            return self.localBatch.issueBatchJob(jobDesc)
+        else:
+            return None
+
+    def killLocalJobs(self, jobIDs):
+        """
+        To be called by killBatchJobs. Will kill all local jobs that match the
+        provided jobIDs.
+        """
+        self.localBatch.killBatchJobs(jobIDs)
+
+    def getIssuedLocalJobIDs(self):
+        """To be called by getIssuedBatchJobIDs"""
+        return self.localBatch.getIssuedBatchJobIDs()
+
+    def getRunningLocalJobIDs(self):
+        """To be called by getRunningBatchJobIDs()."""
+        return self.localBatch.getRunningBatchJobIDs()
+
+    def getUpdatedLocalJob(self, maxWait):
+        # type: (int) -> Optional[Tuple[int, int, int]]
+        """To be called by getUpdatedBatchJob()"""
+        return self.localBatch.getUpdatedBatchJob(maxWait)
+
+    def getNextJobID(self):  # type: () -> int
+        """
+        Must be used to get job IDs so that the local and batch jobs do not
+        conflict.
+        """
+        with self.localBatch.jobIndexLock:
+            jobID = self.localBatch.jobIndex
+            self.localBatch.jobIndex += 1
+        return jobID
+
+    def shutdownLocal(self):  # type: () -> None
+        """To be called from shutdown()"""
+        self.localBatch.shutdown()
+
+
+class BatchSystemCleanupSupport(BatchSystemLocalSupport):
+    """
+    Adds cleanup support when the last running job leaves a node, for batch
+    systems that can't provide it using the backing scheduler.
+    """
+
+    @classmethod
+    def supportsWorkerCleanup(cls):
+        return True
+
+    def getWorkerContexts(self):
+        # Tell worker to register for and invoke cleanup
+
+        # Create a context manager that has a copy of our cleanup info
+        context = WorkerCleanupContext(self.workerCleanupInfo)
+
+        # Send it along so the worker works inside of it
+        contexts = super().getWorkerContexts()
+        contexts.append(context)
+        return contexts
+
+    def __init__(self, config, maxCores, maxMemory, maxDisk):
+        super().__init__(config, maxCores, maxMemory, maxDisk)
+
+class WorkerCleanupContext:
+    """
+    Context manager used by :class:`BatchSystemCleanupSupport` to implement
+    cleanup on a node after the last worker is done working.
+
+    Gets wrapped around the worker's work.
+    """
+
+    def __init__(self, workerCleanupInfo):
+        """
+        Wrap the given workerCleanupInfo in a context manager.
+
+        :param WorkerCleanupInfo workerCleanupInfo: Info to use to clean up the worker if we are
+                                                    the last to exit the context manager.
+        """
+
+
+        self.workerCleanupInfo = workerCleanupInfo
+        self.arena = None
+
+    def __enter__(self):
+        # Set up an arena so we know who is the last worker to leave
+        self.arena = LastProcessStandingArena(Toil.getToilWorkDir(self.workerCleanupInfo.workDir),
+                                              self.workerCleanupInfo.workflowID + '-cleanup')
+        self.arena.enter()
+
+    def __exit__(self, type, value, traceback):
+        for _ in self.arena.leave():
+            # We are the last concurrent worker to finish.
+            # Do batch system cleanup.
+            logger.debug('Cleaning up worker')
+            BatchSystemSupport.workerCleanup(self.workerCleanupInfo)
+        # We have nothing to say about exceptions
+        return False
+
+class NodeInfo:
+>>>>>>> upstream/master
     """
     The coresUsed attribute  is a floating point value between 0 (all cores idle) and 1 (all cores
     busy), reflecting the CPU load of the node.

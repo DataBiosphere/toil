@@ -62,7 +62,7 @@ class AWSProvisionerBenchTest(ToilTest):
         """
         provisioner = AWSProvisioner(f'aws-provisioner-test-{uuid4()}', 'mesos', 'us-west-2a', 50, None, None)
         key = 'config/test.txt'
-        contents = "Hello, this is a test.".encode('utf-8')
+        contents = b"Hello, this is a test."
 
         try:
             url = provisioner._write_file_to_cloud(key, contents=contents)
@@ -80,7 +80,7 @@ class AWSProvisionerBenchTest(ToilTest):
 @integrative
 class AbstractAWSAutoscaleTest(ToilTest):
     def __init__(self, methodName):
-        super(AbstractAWSAutoscaleTest, self).__init__(methodName=methodName)
+        super().__init__(methodName=methodName)
         self.keyName = os.environ.get('TOIL_AWS_KEYNAME', 'id_rsa')
         self.instanceTypes = ["m5a.large"]
         self.clusterName = 'aws-provisioner-test-' + str(uuid4())
@@ -142,14 +142,14 @@ class AbstractAWSAutoscaleTest(ToilTest):
         Set up for the test.
         Must be overridden to call this method and set self.jobStore.
         """
-        super(AbstractAWSAutoscaleTest, self).setUp()
+        super().setUp()
         # Make sure that destroy works before we create any clusters.
         # If this fails, no tests will run.
         self.destroyCluster()
 
     def tearDown(self):
         # Note that teardown will run even if the test crashes.
-        super(AbstractAWSAutoscaleTest, self).tearDown()
+        super().tearDown()
         self.destroyCluster()
         subprocess.check_call(['toil', 'clean', self.jobStore])
 
@@ -340,14 +340,14 @@ class AbstractAWSAutoscaleTest(ToilTest):
 @pytest.mark.timeout(1800)
 class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def __init__(self, name):
-        super(AWSAutoscaleTest, self).__init__(name)
+        super().__init__(name)
         self.clusterName = 'provisioner-test-' + str(uuid4())
         self.requestedLeaderStorage = 80
         self.scriptName = 'sort.py'
 
     def setUp(self):
-        super(AWSAutoscaleTest, self).setUp()
-        self.jobStore = 'aws:%s:autoscale-%s' % (self.awsRegion(), uuid4())
+        super().setUp()
+        self.jobStore = f'aws:{self.awsRegion()}:autoscale-{uuid4()}'
 
     def _getScript(self):
         fileToSort = os.path.join(os.getcwd(), str(uuid4()))
@@ -376,7 +376,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         Otherwise is functionally equivalent to parent.
         :return: volumeID
         """
-        volumeID = super(AWSAutoscaleTest, self).getRootVolID()
+        volumeID = super().getRootVolID()
         rootVolume = self.boto2_ec2.get_all_volumes(volume_ids=[volumeID])[0]
         # test that the leader is given adequate storage
         self.assertGreaterEqual(rootVolume.size, self.requestedLeaderStorage)
@@ -409,7 +409,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
 class AWSStaticAutoscaleTest(AWSAutoscaleTest):
     """Runs the tests on a statically provisioned cluster with autoscaling enabled."""
     def __init__(self, name):
-        super(AWSStaticAutoscaleTest, self).__init__(name)
+        super().__init__(name)
         self.requestedNodeStorage = 20
 
     def launchCluster(self):
@@ -479,12 +479,12 @@ class AWSManagedAutoscaleTest(AWSAutoscaleTest):
 @pytest.mark.timeout(1200)
 class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
     def __init__(self, name):
-        super(AWSAutoscaleTestMultipleNodeTypes, self).__init__(name)
+        super().__init__(name)
         self.clusterName = 'provisioner-test-' + str(uuid4())
 
     def setUp(self):
-        super(AWSAutoscaleTestMultipleNodeTypes, self).setUp()
-        self.jobStore = 'aws:%s:autoscale-%s' % (self.awsRegion(), uuid4())
+        super().setUp()
+        self.jobStore = f'aws:{self.awsRegion()}:autoscale-{uuid4()}'
 
     def _getScript(self):
         sseKeyFile = os.path.join(os.getcwd(), 'keyFile')
@@ -519,15 +519,15 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
 class AWSRestartTest(AbstractAWSAutoscaleTest):
     """This test insures autoscaling works on a restarted Toil run."""
     def __init__(self, name):
-        super(AWSRestartTest, self).__init__(name)
+        super().__init__(name)
         self.clusterName = 'restart-test-' + str(uuid4())
         self.scriptName = 'restartScript.py'
 
     def setUp(self):
-        super(AWSRestartTest, self).setUp()
+        super().setUp()
         self.instanceTypes = ['t2.small']
         self.numWorkers = ['1']
-        self.jobStore = 'aws:%s:restart-%s' % (self.awsRegion(), uuid4())
+        self.jobStore = f'aws:{self.awsRegion()}:restart-{uuid4()}'
 
     def _getScript(self):
         def restartScript():
@@ -580,15 +580,15 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
 @pytest.mark.timeout(1200)
 class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
     def __init__(self, name):
-        super(PreemptableDeficitCompensationTest, self).__init__(name)
+        super().__init__(name)
         self.clusterName = 'deficit-test-' + str(uuid4())
         self.scriptName = 'userScript.py'
 
     def setUp(self):
-        super(PreemptableDeficitCompensationTest, self).setUp()
+        super().setUp()
         self.instanceTypes = ['m5a.large:0.01', "m5a.large"]  # instance needs to be available on the spot market
         self.numWorkers = ['1', '1']
-        self.jobStore = 'aws:%s:deficit-%s' % (self.awsRegion(), uuid4())
+        self.jobStore = f'aws:{self.awsRegion()}:deficit-{uuid4()}'
 
     def test(self):
         self._test(preemptableJobs=True)

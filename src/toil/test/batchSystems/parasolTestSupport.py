@@ -26,7 +26,7 @@ from toil.lib.threading import cpu_count
 log = logging.getLogger(__name__)
 
 
-class ParasolTestSupport(object):
+class ParasolTestSupport:
     """
     For test cases that need a running Parasol leader and worker on the local host
     """

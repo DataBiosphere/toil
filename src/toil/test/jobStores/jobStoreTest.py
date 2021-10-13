@@ -71,7 +71,7 @@ def tearDownModule():
     AbstractJobStoreTest.Test.cleanUpExternalStores()
 
 
-class AbstractJobStoreTest(object):
+class AbstractJobStoreTest:
     """
     Hide abstract base class from unittest's test case loader
 
@@ -339,7 +339,7 @@ class AbstractJobStoreTest(object):
             # jobs that show up are a subset of all existing jobs. If we had deleted jobs before
             # this we would have to worry about ghost jobs appearing and this assertion would not
             # be valid
-            self.assertTrue(set((j.jobStoreID for j in (childJobs + [job]))) >= set((j.jobStoreID for j in jobstore.jobs())))
+            self.assertTrue({j.jobStoreID for j in (childJobs + [job])} >= {j.jobStoreID for j in jobstore.jobs()})
 
             # Test job deletions
             # First delete parent, this should have no effect on the children
@@ -561,7 +561,7 @@ class AbstractJobStoreTest(object):
             StatsAndLogging.writeLogFiles(jobNames, jobLogList, config)
             jobLogFile = os.path.join(config.writeLogs, jobNames[0] + '000.log')
             self.assertTrue(os.path.isfile(jobLogFile))
-            with open(jobLogFile, 'r') as f:
+            with open(jobLogFile) as f:
                 self.assertEqual(f.read(), 'string\nbytes\n\nnewline\n')
             os.remove(jobLogFile)
 
@@ -1075,7 +1075,7 @@ class AbstractJobStoreTest(object):
             return 5 * 1024 * 1024
 
 
-class AbstractEncryptedJobStoreTest(object):
+class AbstractEncryptedJobStoreTest:
     # noinspection PyAbstractClass
     class Test(AbstractJobStoreTest.Test, metaclass=ABCMeta):
         """
@@ -1105,7 +1105,7 @@ class AbstractEncryptedJobStoreTest(object):
             Create an encrypted file. Read it in encrypted mode then try with encryption off
             to ensure that it fails.
             """
-            phrase = 'This file is encrypted.'.encode('utf-8')
+            phrase = b'This file is encrypted.'
             fileName = 'foo'
             with self.jobstore_initialized.write_shared_file_stream(fileName, encrypted=True) as f:
                 f.write(phrase)
@@ -1244,7 +1244,7 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     def _prepareTestFile(self, bucket, size=None):
         from toil.jobStores.googleJobStore import GoogleJobStore
         fileName = 'testfile_%s' % uuid.uuid4()
-        url = 'gs://%s/%s' % (bucket.name, fileName)
+        url = f'gs://{bucket.name}/{fileName}'
         if size is None:
             return url
         with open('/dev/urandom', 'rb') as readable:
@@ -1432,7 +1432,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         from toil.jobStores.aws.utils import retry_s3
 
         file_name = 'testfile_%s' % uuid.uuid4()
-        url = 's3://%s/%s' % (bucket.name, file_name)
+        url = f's3://{bucket.name}/{file_name}'
         if size is None:
             return url
         with open('/dev/urandom', 'rb') as readable:

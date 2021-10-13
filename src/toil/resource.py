@@ -290,12 +290,12 @@ class DirectoryResource(Resource):
                         try:
                             fullPath = os.path.join(dirName, fileName)
                             zipFile.write(fullPath, os.path.relpath(fullPath, rootDir))
-                        except IOError:
+                        except OSError:
                             logger.critical('Cannot access and read the file at path: %s' % fullPath)
                             sys.exit(1)
         else:
-            logger.critical("Couldn't package the directory at %s for hot deployment. Would recommend to create a \
-                subdirectory (ie %s/MYDIR_HERE/)" % (path, path))
+            logger.critical("Couldn't package the directory at {} for hot deployment. Would recommend to create a \
+                subdirectory (ie {}/MYDIR_HERE/)".format(path, path))
             sys.exit(1)
         bytesIO.seek(0)
         return bytesIO
@@ -421,7 +421,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         inVenv = inVirtualEnv()
         logger.debug("Module dir is %s, our prefix is %s, virtualenv: %s", dirPath, absPrefix, inVenv)
         if not os.path.isdir(dirPath):
-            raise Exception('Bad directory path %s for module %s. Note that hot-deployment does not support .egg-link files yet, or scripts located in the root directory.' % (dirPath, name))
+            raise Exception(f'Bad directory path {dirPath} for module {name}. Note that hot-deployment does not support .egg-link files yet, or scripts located in the root directory.')
         fromVirtualEnv = inVenv and dirPath.startswith(absPrefix)
         return cls(dirPath=dirPath, name=name, fromVirtualEnv=fromVirtualEnv)
 
@@ -442,7 +442,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
                 pass
             else:
                 raise ResourceException(
-                    "The user module '%s' collides with module '%s from '%s'." % (
+                    "The user module '{}' collides with module '{} from '{}'.".format(
                         name, colliding_module.__name__, colliding_module.__file__))
         finally:
             sys.path = old_sys_path
@@ -532,7 +532,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             with open(os.path.join(self.dirPath, '.stash')) as f:
                 fromVirtualEnv = [False, True][int(f.read(1))]
                 dirPath = f.read()
-        except IOError as e:
+        except OSError as e:
             if e.errno == errno.ENOENT:
                 return self
             else:

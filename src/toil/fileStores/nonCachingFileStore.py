@@ -225,7 +225,7 @@ class NonCachingFileStore(AbstractFileStore):
         # We require that the job state files aren't in any of those directories.
         for root, dirs, files in os.walk(workflowDir.encode('utf-8')):
             for filename in files:
-                if filename == '.jobState'.encode('utf-8'):
+                if filename == b'.jobState':
                     jobStateFiles.append(os.path.join(root, filename).decode('utf-8'))
         for fname in jobStateFiles:
             try:

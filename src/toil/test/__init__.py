@@ -69,7 +69,7 @@ class ToilTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        super(ToilTest, cls).setUpClass()
+        super().setUpClass()
         cls._tempDirs = []
         tempBaseDir = os.environ.get('TOIL_TEST_TEMP', None)
         if tempBaseDir is not None and not os.path.isabs(tempBaseDir):
@@ -86,14 +86,14 @@ class ToilTest(unittest.TestCase):
                     shutil.rmtree(tempDir)
         else:
             cls._tempDirs = []
-        super(ToilTest, cls).tearDownClass()
+        super().tearDownClass()
 
     def setUp(self):
         logger.info("Setting up %s ...", self.id())
-        super(ToilTest, self).setUp()
+        super().setUp()
 
     def tearDown(self):
-        super(ToilTest, self).tearDown()
+        super().tearDown()
         logger.info("Tore down %s", self.id())
 
     @classmethod
@@ -185,7 +185,7 @@ class ToilTest(unittest.TestCase):
         assert all(path.startswith('src') for path in dirty)
         dirty = set(dirty)
         dirty.difference_update(excluded)
-        assert not dirty, "Run 'make clean_sdist sdist'. Files newer than %s: %r" % (sdistPath, list(dirty))
+        assert not dirty, "Run 'make clean_sdist sdist'. Files newer than {}: {!r}".format(sdistPath, list(dirty))
         return sdistPath
 
     @classmethod
@@ -416,7 +416,7 @@ def needs_htcondor(test_item):
         htcondor.Collector(os.getenv('TOIL_HTCONDOR_COLLECTOR')).query(constraint='False')
     except ImportError:
         return unittest.skip("Install the HTCondor Python bindings to include this test.")(test_item)
-    except IOError:
+    except OSError:
         return unittest.skip("HTCondor must be running to include this test.")(test_item)
     except RuntimeError:
         return unittest.skip("HTCondor must be installed and configured to include this test.")(test_item)
@@ -681,7 +681,7 @@ def make_tests(generalMethod, targetClass, **kwargs):
         """
         for prmValName, lDict in list(left.items()):
             for rValName, rVal in list(right.items()):
-                nextPrmVal = ('__%s_%s' % (rParamName, rValName.lower()))
+                nextPrmVal = (f'__{rParamName}_{rValName.lower()}')
                 if methodNamePartRegex.match(nextPrmVal) is None:
                     raise RuntimeError("The name '%s' cannot be used in a method name" % pvName)
                 aggDict = dict(lDict)
@@ -698,7 +698,7 @@ def make_tests(generalMethod, targetClass, **kwargs):
             else:
                 return generalMethod(self)
 
-        methodName = 'test_%s%s' % (generalMethod.__name__, prmNames)
+        methodName = f'test_{generalMethod.__name__}{prmNames}'
 
         setattr(targetClass, methodName, fx)
 
@@ -711,7 +711,7 @@ def make_tests(generalMethod, targetClass, **kwargs):
         left = {}
         prmName, vals = sortedKwargs.pop()
         for valName, val in list(vals.items()):
-            pvName = '__%s_%s' % (prmName, valName.lower())
+            pvName = f'__{prmName}_{valName.lower()}'
             if methodNamePartRegex.match(pvName) is None:
                 raise RuntimeError("The name '%s' cannot be used in a method name" % pvName)
             left[pvName] = {prmName: val}

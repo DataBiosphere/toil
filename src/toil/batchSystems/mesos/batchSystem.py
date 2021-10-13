@@ -69,7 +69,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
     def supportsWorkerCleanup(cls):
         return True
 
-    class ExecutorInfo(object):
+    class ExecutorInfo:
         def __init__(self, nodeAddress, agentId, nodeInfo, lastSeen):
             super(MesosBatchSystem.ExecutorInfo, self).__init__()
             self.nodeAddress = nodeAddress
@@ -78,7 +78,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             self.lastSeen = lastSeen
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        super(MesosBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
+        super().__init__(config, maxCores, maxMemory, maxDisk)
 
         # The auto-deployed resource representing the user script. Will be passed along in every
         # Mesos task. Also see setUserScript().

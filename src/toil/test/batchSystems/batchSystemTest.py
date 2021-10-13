@@ -99,7 +99,7 @@ class BatchSystemPluginTest(ToilTest):
         assert ('testBatchSystem', test_batch_system_factory) in BATCH_SYSTEM_FACTORY_REGISTRY.items()
         assert 'testBatchSystem' in BATCH_SYSTEMS
 
-class hidden(object):
+class hidden:
     """
     Hide abstract base class from unittest's test case loader
 
@@ -222,7 +222,7 @@ class hidden(object):
 
             jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             jobID, exitStatus, wallTime = jobUpdateInfo.jobID, jobUpdateInfo.exitStatus, jobUpdateInfo.wallTime
-            logger.info('Third job completed: {} {} {}'.format(jobID, exitStatus, wallTime))
+            logger.info(f'Third job completed: {jobID} {exitStatus} {wallTime}')
 
             # Since the first two jobs were killed, the only job in the updated jobs queue should
             # be job 3. If the first two jobs were (incorrectly) added to the queue, this will
@@ -333,7 +333,7 @@ class hidden(object):
             # prevent an endless loop, give it a few tries
             for it in range(tries):
                 running = self.batchSystem.getRunningBatchJobIDs()
-                logger.info('Running jobs now: {}'.format(running))
+                logger.info(f'Running jobs now: {running}')
                 runningIDs = list(running.keys())
                 if len(runningIDs) == numJobs:
                     break
@@ -482,8 +482,13 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
         needs to set mesos_endpoint to localhost for testing since the default is now the
         private IP address
         """
+<<<<<<< HEAD
         config = super(MesosBatchSystemTest, cls).createConfig()
         config.mesos_endpoint = 'localhost:5050'
+=======
+        config = super().createConfig()
+        config.mesosMasterAddress = 'localhost:5050'
+>>>>>>> upstream/master
         return config
 
     def supportsWallTime(self):
@@ -498,7 +503,7 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
 
     def tearDown(self):
         self._stopMesos()
-        super(MesosBatchSystemTest, self).tearDown()
+        super().tearDown()
 
     def testIgnoreNode(self):
         self.batchSystem.ignoreNode('localhost')
@@ -665,11 +670,11 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
 
     @classmethod
     def setUpClass(cls) -> None:
-        super(MaxCoresSingleMachineBatchSystemTest, cls).setUpClass()
+        super().setUpClass()
         logging.basicConfig(level=logging.DEBUG)
 
     def setUp(self) -> None:
-        super(MaxCoresSingleMachineBatchSystemTest, self).setUp()
+        super().setUp()
 
         temp_dir = self._createTempDir()
 
@@ -692,12 +697,12 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                     fcntl.flock(fd, fcntl.LOCK_EX)
                     try:
                         s = os.read(fd, 10).decode('utf-8')
-                        value, maxValue = list(map(int, s.split(u',')))
+                        value, maxValue = list(map(int, s.split(',')))
                         value += delta
                         if value > maxValue: maxValue = value
                         os.lseek(fd, 0, 0)
                         os.ftruncate(fd, 0)
-                        os.write(fd, '{},{}'.format(value, maxValue).encode('utf-8'))
+                        os.write(fd, f'{value},{maxValue}'.encode('utf-8'))
                     finally:
                         fcntl.flock(fd, fcntl.LOCK_UN)
                 finally:
@@ -810,7 +815,7 @@ def greatGrandChild(cmd):
 
 class Service(Job.Service):
     def __init__(self, cmd):
-        super(Service, self).__init__()
+        super().__init__()
         self.cmd = cmd
 
     def start(self, fileStore):
@@ -834,7 +839,7 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         return True
 
     def _createConfig(self):
-        config = super(ParasolBatchSystemTest, self)._createConfig()
+        config = super()._createConfig()
         # can't use _getTestJobStorePath since that method removes the directory
         config.jobStore = self._createTempDir('jobStore')
         return config
@@ -849,7 +854,7 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
                                   maxDisk=1001)
 
     def tearDown(self):
-        super(ParasolBatchSystemTest, self).tearDown()
+        super().tearDown()
         self._stopParasol()
 
     def testBatchResourceLimits(self):
@@ -910,7 +915,7 @@ class GridEngineBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
                                      maxDisk=1e9)
 
     def tearDown(self):
-        super(GridEngineBatchSystemTest, self).tearDown()
+        super().tearDown()
         # Cleanup GridEngine output log file from qsub
         from glob import glob
         for f in glob('toil_job*.o*'):
@@ -930,7 +935,7 @@ class SlurmBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
                                 maxDisk=1e9)
 
     def tearDown(self):
-        super(SlurmBatchSystemTest, self).tearDown()
+        super().tearDown()
         # Cleanup 'slurm-%j.out' produced by sbatch
         from glob import glob
         for f in glob('slurm-*.out'):
@@ -957,7 +962,7 @@ class TorqueBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     """
 
     def _createDummyConfig(self):
-        config = super(TorqueBatchSystemTest, self)._createDummyConfig()
+        config = super()._createDummyConfig()
         # can't use _getTestJobStorePath since that method removes the directory
         config.jobStore = self._createTempDir('jobStore')
         return config
@@ -968,7 +973,7 @@ class TorqueBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
                                      maxDisk=1e9)
 
     def tearDown(self):
-        super(TorqueBatchSystemTest, self).tearDown()
+        super().tearDown()
         # Cleanup 'toil_job-%j.out' produced by sbatch
         from glob import glob
         for f in glob('toil_job_*.[oe]*'):
@@ -988,7 +993,7 @@ class HTCondorBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
                                    maxDisk=1e9)
 
     def tearDown(self):
-        super(HTCondorBatchSystemTest, self).tearDown()
+        super().tearDown()
 
 
 @travis_test
@@ -1135,8 +1140,13 @@ class MesosBatchSystemJobTest(hidden.AbstractBatchSystemJobTest, MesosTestSuppor
     Tests Toil workflow against the Mesos batch system
     """
     def getOptions(self, tempDir):
+<<<<<<< HEAD
         options = super(MesosBatchSystemJobTest, self).getOptions(tempDir)
         options.mesos_endpoint = 'localhost:5050'
+=======
+        options = super().getOptions(tempDir)
+        options.mesosMasterAddress = 'localhost:5050'
+>>>>>>> upstream/master
         return options
 
     def getBatchSystemName(self):

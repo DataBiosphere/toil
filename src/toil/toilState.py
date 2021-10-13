@@ -204,7 +204,7 @@ class ToilState:
                 jobDesc.command = jobDesc.checkpoint
 
         else: # There exist successors
-            logger.debug("Adding job: %s to the state with %s successors" % (jobDesc.jobStoreID, len(jobDesc.nextSuccessors())))
+            logger.debug("Adding job: {} to the state with {} successors".format(jobDesc.jobStoreID, len(jobDesc.nextSuccessors())))
 
             # Record the number of successors
             self.successorCounts[jobDesc.jobStoreID] = len(jobDesc.nextSuccessors())
@@ -234,7 +234,7 @@ class ToilState:
                 if successorJobStoreID not in self.successor_to_predecessors:
 
                     # Add the job as a predecessor
-                    self.successor_to_predecessors[successorJobStoreID] = set([jobDesc.jobStoreID])
+                    self.successor_to_predecessors[successorJobStoreID] = {jobDesc.jobStoreID}
 
                     # We load the successor job
                     successor = self.get_job(successorJobStoreID)

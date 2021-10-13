@@ -81,7 +81,7 @@ class FailedJobsException(Exception):
         self.msg = "The job store '%s' contains %i failed jobs" % (job_store.locator, len(failed_jobs))
         self.exit_code = exit_code
         try:
-            self.msg += ": %s" % ", ".join((str(failedJob) for failedJob in failed_jobs))
+            self.msg += ": %s" % ", ".join(str(failedJob) for failedJob in failed_jobs)
             for job_desc in failed_jobs:
                 if job_desc.logJobStoreFileID:
                     with job_desc.getLogFileHandle(job_store) as f:
@@ -107,7 +107,7 @@ class FailedJobsException(Exception):
 ##Following class represents the leader
 ####################################################
 
-class Leader(object):
+class Leader:
     """ Class that encapsulates the logic of the leader.
     """
     def __init__(self, config: Config, batchSystem: AbstractBatchSystem,
@@ -268,8 +268,8 @@ class Leader(object):
 
             try:
                 self.create_status_sentinel_file(self.toilState.totalFailedJobs)
-            except IOError as e:
-                logger.debug('Error from importFile with hardlink=True: {}'.format(e))
+            except OSError as e:
+                logger.debug(f'Error from importFile with hardlink=True: {e}')
 
             logger.info("Finished toil run %s" %
                          ("successfully." if not self.toilState.totalFailedJobs \
@@ -766,7 +766,7 @@ class Leader(object):
                 message = self.batchSystem.getSchedulingStatusMessage()
                 if message is not None:
                     # Prepend something explaining the message
-                    message = "The batch system reports: {}".format(message)
+                    message = f"The batch system reports: {message}"
                 else:
                     # Use a generic message if none is available
                     message = "Cluster may be too small."
@@ -1138,7 +1138,7 @@ class Leader(object):
                             else:
                                 logger.warning('The batch system left an empty file %s' % batchSystemFile)
 
-                replacementJob.setupJobAfterFailure(exitReason=exitReason)
+                replacementJob.setupJobAfterFailure(exitStatus=result_status)
                 self.toilState.commit_job(jobStoreID)
 
                 # Show job as failed in progress (and take it from completed)

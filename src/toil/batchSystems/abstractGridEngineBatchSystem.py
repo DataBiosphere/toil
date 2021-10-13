@@ -335,7 +335,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             raise NotImplementedError()
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        super(AbstractGridEngineBatchSystem, self).__init__(
+        super().__init__(
             config, maxCores, maxMemory, maxDisk)
         self.config = config
 
@@ -448,7 +448,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     def setEnv(self, name, value=None):
         if value and ',' in value:
             raise ValueError(type(self).__name__ + " does not support commata in environment variable values")
-        return super(AbstractGridEngineBatchSystem, self).setEnv(name, value)
+        return super().setEnv(name, value)
 
     @classmethod
     def getWaitDuration(self):

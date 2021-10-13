@@ -724,7 +724,7 @@ class JobDescription(Requirer):
         :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: The job store we are being placed into
         """
 
-    def setupJobAfterFailure(self, exitReason=None):
+    def setupJobAfterFailure(self, exitStatus=None):
         """
         Reduce the remainingTryCount if greater than zero and set the memory
         to be at least as big as the default memory (in case of exhaustion of memory,
@@ -740,11 +740,11 @@ class JobDescription(Requirer):
         from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 
         # Old version of this function used to take a config. Make sure that isn't happening.
-        assert not isinstance(exitReason, Config), "Passing a Config as an exit reason"
+        assert not isinstance(exitStatus, Config), "Passing a Config as an exit reason"
         # Make sure we have an assigned config.
         assert self._config is not None
 
-        if self._config.enableUnlimitedPreemptableRetries and exitReason == BatchJobExitReason.LOST:
+        if self._config.enableUnlimitedPreemptableRetries and exitStatus == BatchJobExitReason.LOST:
             logger.info("*Not* reducing try count (%s) of job %s with ID %s",
                         self.remainingTryCount, self, self.jobStoreID)
         else:
@@ -754,7 +754,7 @@ class JobDescription(Requirer):
         # Set the default memory to be at least as large as the default, in
         # case this was a malloc failure (we do this because of the combined
         # batch system)
-        if exitReason == BatchJobExitReason.MEMLIMIT and self._config.doubleMem:
+        if exitStatus == BatchJobExitReason.MEMLIMIT and self._config.doubleMem:
             self.memory = self.memory * 2
             logger.warning("We have doubled the memory of the failed job %s to %s bytes due to doubleMem flag",
                            self, self.memory)
@@ -833,7 +833,7 @@ class JobDescription(Requirer):
     # a time, keyed by jobStoreID.
 
     def __repr__(self):
-        return '%s( **%r )' % (self.__class__.__name__, self.__dict__)
+        return f'{self.__class__.__name__}( **{self.__dict__!r} )'
 
     def pre_update_hook(self) -> None:
         """
@@ -1613,7 +1613,7 @@ class Job:
         ##For each follow-on edge calculate the extra implied edges
         #Adjacency list of implied edges, i.e. map of jobs to lists of jobs
         #connected by an implied edge
-        extraEdges = dict([(n, []) for n in nodes])
+        extraEdges = {n: [] for n in nodes}
         for job in nodes:
             for depth in range(1, len(job.description.stack)):
                 # Add edges from all jobs in the earlier/upper subtrees to all
@@ -1875,7 +1875,7 @@ class Job:
 
         runnable = unpickler.load()
         if requireInstanceOf is not None:
-            assert isinstance(runnable, requireInstanceOf), "Did not find a {} when expected".format(requireInstanceOf)
+            assert isinstance(runnable, requireInstanceOf), f"Did not find a {requireInstanceOf} when expected"
 
         return runnable
 
@@ -2047,7 +2047,7 @@ class Job:
 
         # We can't save the job in the right place for cleanup unless the
         # description has a real ID.
-        assert not isinstance(self.jobStoreID, TemporaryID), "Tried to save job {} without ID assigned!".format(self)
+        assert not isinstance(self.jobStoreID, TemporaryID), f"Tried to save job {self} without ID assigned!"
 
         # Note that we can't accept any more requests for our return value
         self._disablePromiseRegistration()

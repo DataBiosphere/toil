@@ -33,7 +33,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
         def getRunningJobIDs(self):
             times = {}
             with self.runningJobsLock:
-                currentjobs = dict((str(self.batchJobIDs[x][0]), x) for x in self.runningJobs)
+                currentjobs = {str(self.batchJobIDs[x][0]): x for x in self.runningJobs}
             stdout = call_command(["qstat"])
 
             for currline in stdout.split('\n'):

@@ -163,7 +163,7 @@ def check_valid_node_types(provisioner, node_types: List[Tuple[Set[str], Optiona
 class NoSuchClusterException(Exception):
     """Indicates that the specified cluster does not exist."""
     def __init__(self, cluster_name):
-        super(NoSuchClusterException, self).__init__(f"The cluster '{cluster_name}' could not be found")
+        super().__init__(f"The cluster '{cluster_name}' could not be found")
 
 
 class ClusterTypeNotSupportedException(Exception):
