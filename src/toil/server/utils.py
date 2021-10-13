@@ -99,14 +99,17 @@ def safe_write_file(file: str, s: str) -> None:
     Safely write to a file by acquiring an exclusive lock to prevent other
     processes from reading and writing to it while writing.
     """
-    file_obj = open(file, "w")
+    # Open in read and update mode, so we don't modify the file before we acquire a lock
+    file_obj = open(file, "r+")
 
     try:
         # acquire an exclusive lock
         fcntl.flock(file_obj.fileno(), fcntl.LOCK_EX)
 
         try:
+            file_obj.seek(0)
             file_obj.write(s)
+            file_obj.truncate()
         finally:
             fcntl.flock(file_obj.fileno(), fcntl.LOCK_UN)
     finally:

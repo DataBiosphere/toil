@@ -17,11 +17,11 @@ import os
 import shutil
 import uuid
 from collections import Counter
+from tempfile import NamedTemporaryFile
 from typing import Optional, List, Dict, Any, overload, Generator, Tuple
 
 from flask import send_from_directory
 
-from toil.lib.retry import retry
 from toil.server.utils import safe_read_file, safe_write_file
 from toil.server.wes.abstract_backend import (WESBackend,
                                               handle_errors,
@@ -76,7 +76,6 @@ class ToilWorkflow:
         """ Return the state of the current run."""
         return safe_read_file(os.path.join(self.work_dir, "state")) or "UNKNOWN"
 
-    @retry(errors=[OSError])
     def set_state(self, state: str) -> None:
         """ Set the state for the current run."""
         safe_write_file(os.path.join(self.work_dir, "state"), state)
@@ -85,6 +84,11 @@ class ToilWorkflow:
         """ Set up necessary directories for the run."""
         if not os.path.exists(self.exec_dir):
             os.makedirs(self.exec_dir)
+
+        # create the state file atomically
+        with NamedTemporaryFile(mode='w', dir=self.work_dir, prefix='state.', delete=False) as f:
+            f.write("QUEUED")
+        os.rename(f.name, os.path.join(self.work_dir, "state"))
 
     def clean_up(self) -> None:
         """ Clean directory and files related to the run."""
@@ -244,8 +248,6 @@ class ToilBackend(WESBackend):
         if version not in supported_versions:
             run.clean_up()
             raise VersionNotImplementedException(wf_type, version, supported_versions)
-
-        run.set_state("QUEUED")
 
         logger.info(f"Putting workflow {run_id} into the queue. Waiting to be picked up...")
         run.queue_run(request, options=self.options)
