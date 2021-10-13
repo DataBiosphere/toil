@@ -43,7 +43,7 @@ def hello_world_child(job, hw):
     job.fileStore.logToMaster(childMessage)
     # NOTE: path and the udpated file are stored to /tmp
     # If we want to SAVE our changes to this tmp file, we must write it out.
-    with open(path, 'r') as r:
+    with open(path) as r:
         with open('bar_bam.txt', 'w') as handle:
             for line in r.readlines():
                 handle.write(line)

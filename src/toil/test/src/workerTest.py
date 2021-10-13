@@ -22,7 +22,7 @@ from toil.worker import nextChainable
 class WorkerTests(ToilTest):
     """Test miscellaneous units of the worker."""
     def setUp(self):
-        super(WorkerTests, self).setUp()
+        super().setUp()
         path = self._getTestJobStorePath()
         self.jobStore = FileJobStore(path)
         self.config = Config()

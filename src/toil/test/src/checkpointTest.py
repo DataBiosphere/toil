@@ -68,7 +68,7 @@ class CheckpointTest(ToilTest):
 class CheckRetryCount(Job):
     """Fail N times, succeed on the next try."""
     def __init__(self, numFailuresBeforeSuccess):
-        super(CheckRetryCount, self).__init__(checkpoint=True)
+        super().__init__(checkpoint=True)
         self.numFailuresBeforeSuccess = numFailuresBeforeSuccess
 
     def getNumRetries(self, fileStore):
@@ -94,7 +94,7 @@ class AlwaysFail(Job):
 
 class CheckpointFailsFirstTime(Job):
     def __init__(self):
-        super(CheckpointFailsFirstTime, self).__init__(checkpoint=True)
+        super().__init__(checkpoint=True)
 
     def run(self, fileStore):
         self.addChild(FailOnce())

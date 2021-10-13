@@ -49,7 +49,7 @@ class CacheError(Exception):
     """
 
     def __init__(self, message):
-        super(CacheError, self).__init__(message)
+        super().__init__(message)
 
 
 class CacheUnbalancedError(CacheError):
@@ -61,7 +61,7 @@ class CacheUnbalancedError(CacheError):
               'more information leading up to this error through cache usage logs.'
 
     def __init__(self):
-        super(CacheUnbalancedError, self).__init__(self.message)
+        super().__init__(self.message)
 
 
 class IllegalDeletionCacheError(CacheError):
@@ -80,7 +80,7 @@ class IllegalDeletionCacheError(CacheError):
         message = 'Cache tracked file (%s) has been deleted or moved by user ' \
                   ' without updating cache database. Use deleteLocalFile to ' \
                   'delete such files.' % deletedFile
-        super(IllegalDeletionCacheError, self).__init__(message)
+        super().__init__(message)
 
 
 class InvalidSourceCacheError(CacheError):
@@ -89,7 +89,7 @@ class InvalidSourceCacheError(CacheError):
     """
 
     def __init__(self, message):
-        super(InvalidSourceCacheError, self).__init__(message)
+        super().__init__(message)
 
 
 class CachingFileStore(AbstractFileStore):
@@ -173,7 +173,7 @@ class CachingFileStore(AbstractFileStore):
     """
 
     def __init__(self, jobStore: AbstractJobStore, jobDesc: JobDescription, localTempDir: str, waitForPreviousCommit: Callable[[],None]) -> None:
-        super(CachingFileStore, self).__init__(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
+        super().__init__(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
 
         # For testing, we have the ability to force caching to be non-free, by never linking from the file store
         self.forceNonFreeCaching = False
@@ -1090,7 +1090,7 @@ class CachingFileStore(AbstractFileStore):
 
         if str(fileStoreID) in self.filesToDelete:
             # File has already been deleted
-            raise FileNotFoundError('Attempted to read deleted file: {}'.format(fileStoreID))
+            raise FileNotFoundError(f'Attempted to read deleted file: {fileStoreID}')
 
         if userPath is not None:
             # Validate the destination we got
@@ -1636,7 +1636,7 @@ class CachingFileStore(AbstractFileStore):
     def readGlobalFileStream(self, fileStoreID, encoding=None, errors=None):
         if str(fileStoreID) in self.filesToDelete:
             # File has already been deleted
-            raise FileNotFoundError('Attempted to read deleted file: {}'.format(fileStoreID))
+            raise FileNotFoundError(f'Attempted to read deleted file: {fileStoreID}')
 
         self.logAccess(fileStoreID)
 
@@ -1655,7 +1655,7 @@ class CachingFileStore(AbstractFileStore):
                 if cached_path is None:
                     raise RuntimeError('File %s went away while we had a reference to it!' % fileStoreID)
 
-                with open(cached_path, 'r', encoding=encoding, errors=errors) as result:
+                with open(cached_path, encoding=encoding, errors=errors) as result:
                     # Pass along the results of the open context manager on the
                     # file in the cache.
                     yield result
@@ -1698,7 +1698,7 @@ class CachingFileStore(AbstractFileStore):
         if len(deleted) == 0 and not missingFile:
             # We have to tell the user if they tried to delete 0 local copies.
             # But if we found a missing local copy, go on to report that instead.
-            raise OSError(errno.ENOENT, "Attempting to delete local copies of a file with none: {}".format(fileStoreID))
+            raise OSError(errno.ENOENT, f"Attempting to delete local copies of a file with none: {fileStoreID}")
 
         for path in deleted:
             # Drop the references
@@ -1732,7 +1732,7 @@ class CachingFileStore(AbstractFileStore):
 
         # Make sure nobody else has references to it
         for row in self.cur.execute('SELECT job_id FROM refs WHERE file_id = ? AND state != ?', (fileStoreID, 'mutable')):
-            raise RuntimeError('Deleted file ID %s which is still in use by job %s' % (fileStoreID, row[0]))
+            raise RuntimeError('Deleted file ID {} which is still in use by job {}'.format(fileStoreID, row[0]))
         # TODO: should we just let other jobs and the cache keep the file until
         # it gets evicted, and only delete at the back end?
 

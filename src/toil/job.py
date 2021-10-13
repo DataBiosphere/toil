@@ -833,7 +833,7 @@ class JobDescription(Requirer):
     # a time, keyed by jobStoreID.
 
     def __repr__(self):
-        return '%s( **%r )' % (self.__class__.__name__, self.__dict__)
+        return f'{self.__class__.__name__}( **{self.__dict__!r} )'
 
     def pre_update_hook(self) -> None:
         """
@@ -1613,7 +1613,7 @@ class Job:
         ##For each follow-on edge calculate the extra implied edges
         #Adjacency list of implied edges, i.e. map of jobs to lists of jobs
         #connected by an implied edge
-        extraEdges = dict([(n, []) for n in nodes])
+        extraEdges = {n: [] for n in nodes}
         for job in nodes:
             for depth in range(1, len(job.description.stack)):
                 # Add edges from all jobs in the earlier/upper subtrees to all
@@ -1875,7 +1875,7 @@ class Job:
 
         runnable = unpickler.load()
         if requireInstanceOf is not None:
-            assert isinstance(runnable, requireInstanceOf), "Did not find a {} when expected".format(requireInstanceOf)
+            assert isinstance(runnable, requireInstanceOf), f"Did not find a {requireInstanceOf} when expected"
 
         return runnable
 
@@ -2047,7 +2047,7 @@ class Job:
 
         # We can't save the job in the right place for cleanup unless the
         # description has a real ID.
-        assert not isinstance(self.jobStoreID, TemporaryID), "Tried to save job {} without ID assigned!".format(self)
+        assert not isinstance(self.jobStoreID, TemporaryID), f"Tried to save job {self} without ID assigned!"
 
         # Note that we can't accept any more requests for our return value
         self._disablePromiseRegistration()

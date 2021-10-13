@@ -37,7 +37,7 @@ class S3Test(ToilTest):
 
     @classmethod
     def setUpClass(cls) -> None:
-        super(S3Test, cls).setUpClass()
+        super().setUpClass()
         session = establish_boto3_session(region_name="us-east-1")
         cls.s3_resource = session.resource("s3", region_name="us-east-1")
         cls.bucket = None

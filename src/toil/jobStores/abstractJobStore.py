@@ -90,11 +90,11 @@ class NoSuchFileException(Exception):
         if customName is None:
             message = "File '%s' does not exist." % jobStoreFileID
         else:
-            message = "File '%s' (%s) does not exist." % (customName, jobStoreFileID)
+            message = f"File '{customName}' ({jobStoreFileID}) does not exist."
 
         if extra:
             # Append extra data.
-            message += " Extra info: " + " ".join((str(x) for x in extra))
+            message += " Extra info: " + " ".join(str(x) for x in extra)
 
         super().__init__(message)
 
@@ -586,7 +586,7 @@ class AbstractJobStore(ABC):
                 return self.load_job(jobId)
 
         def haveJob(jobId: str) -> bool:
-            assert len(jobId) > 1, "Job ID {} too short; is a string being used as a list?".format(jobId)
+            assert len(jobId) > 1, f"Job ID {jobId} too short; is a string being used as a list?"
             if jobCache is not None:
                 if jobId in jobCache:
                     return True

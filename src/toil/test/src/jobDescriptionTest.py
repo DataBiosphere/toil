@@ -63,7 +63,7 @@ class JobDescriptionTest(ToilTest):
         self.assertEqual(list(j.serviceHostIDsInBatches()), [])
         self.assertEqual(list(j.services), [])
         self.assertEqual(list(j.nextSuccessors()), [])
-        self.assertEqual(sum((len(level) for level in j.stack)), 0)
+        self.assertEqual(sum(len(level) for level in j.stack), 0)
         self.assertEqual(j.predecessorsFinished, set())
         self.assertEqual(j.logJobStoreFileID, None)
 

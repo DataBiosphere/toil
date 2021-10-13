@@ -47,11 +47,11 @@ class ColumnWidths:
 
     def getWidth(self, category: str, field: str ) -> int:
         category = category.lower()
-        return self.data["%s_%s" % (category, field)]
+        return self.data[f"{category}_{field}"]
 
     def setWidth(self, category: str, field: str, width: int) -> None:
         category = category.lower()
-        self.data["%s_%s" % (category, field)] = width
+        self.data[f"{category}_{field}"] = width
 
     def report(self) -> None:
         for c in self.categories:
@@ -163,7 +163,7 @@ def sprintTag(key: str, tag: Expando, options: Namespace, columnWidths: Optional
     tag_str = f"  {reportNumber(n=tag.total_number, field=7)}"
     out_str = ""
     if key == "job":
-        out_str += " %-12s | %7s%7s%7s%7s\n" % ("Worker Jobs", "min",
+        out_str += " {:<12} | {:>7}{:>7}{:>7}{:>7}\n".format("Worker Jobs", "min",
                                            "med", "ave", "max")
         worker_str = "%s| " % (" " * 14)
         for t in [tag.min_number_per_worker, tag.median_number_per_worker,
@@ -310,7 +310,7 @@ def reportPrettyData(root: Expando, worker: List[Job], job: List[Job], job_types
         reportMemory(get(root, "default_memory"), options, isBytes=True),
         reportNumber(n=get(root, "max_cores")),
         ))
-    out_str += ("Total Clock: %s  Total Runtime: %s\n" % (
+    out_str += ("Total Clock: {}  Total Runtime: {}\n".format(
         reportTime(get(root, "total_clock"), options),
         reportTime(get(root, "total_run_time"), options),
         ))
@@ -348,7 +348,7 @@ def updateColumnWidths(tag: Expando, cw: ColumnWidths, options: Expando) -> None
     for category in ["time", "clock", "wait", "memory"]:
         if category in options.categories:
             for field in ["min", "med", "ave", "max", "total"]:
-                t = getattr(tag, "%s_%s" % (longforms[field], category))
+                t = getattr(tag, "{}_{}".format(longforms[field], category))
                 if category in ["time", "clock", "wait"]:
                     s = reportTime(t, options,
                                    field=cw.getWidth(category, field)).strip()
