@@ -46,7 +46,7 @@ class ManagedNodesNotSupportedException(RuntimeError):
 
 
 @total_ordering
-class Shape(object):
+class Shape:
     """
     Represents a job or a node's "shape", in terms of the dimensions of memory, cores, disk and
     wall-time allocation.

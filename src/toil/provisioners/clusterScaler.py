@@ -30,7 +30,7 @@ from toil.provisioners.abstractProvisioner import Shape
 logger = logging.getLogger(__name__)
 
 
-class BinPackedFit(object):
+class BinPackedFit:
     """
     If jobShapes is a set of tasks with run requirements (mem/disk/cpu), and nodeShapes is a sorted
     list of available computers to run these jobs on, this function attempts to return a dictionary
@@ -109,7 +109,7 @@ class BinPackedFit(object):
         """
         return {nodeShape:len(self.nodeReservations[nodeShape]) for nodeShape in self.nodeShapes}
 
-class NodeReservation(object):
+class NodeReservation:
     """
     Represents a node "reservation": the amount of resources that we
     expect to be available on a given node at each point in time. To
@@ -272,7 +272,7 @@ def binPacking(nodeShapes, jobShapes, goalTime):
     bpf.binPack(jobShapes)
     return bpf.getRequiredNodes()
 
-class ClusterScaler(object):
+class ClusterScaler:
     def __init__(self, provisioner, leader, config):
         """
         Class manages automatically scaling the number of worker nodes.
@@ -388,7 +388,7 @@ class ClusterScaler(object):
             return rounded + 1 * sign
         else:
             # If we get here, something has gone wrong.
-            raise RuntimeError("Could not round {}".format(number))
+            raise RuntimeError(f"Could not round {number}")
 
     def getAverageRuntime(self, jobName, service=False):
         if service:
@@ -683,7 +683,7 @@ class ClusterScaler(object):
         #Remove any nodes that have already been terminated from the list
         # of ignored nodes
         allNodeIPs = [node.privateIP for node in nodeToNodeInfo]
-        terminatedIPs = set([ip for ip in self.ignoredNodes if ip not in allNodeIPs])
+        terminatedIPs = {ip for ip in self.ignoredNodes if ip not in allNodeIPs}
         for ip in terminatedIPs:
             self.ignoredNodes.remove(ip)
             self.leader.batchSystem.unignoreNode(ip)
@@ -815,7 +815,7 @@ class ScalerThread(ExceptionalThread):
         """
         :param ClusterScaler scaler: the parent class
         """
-        super(ScalerThread, self).__init__(name='scaler')
+        super().__init__(name='scaler')
         self.scaler = ClusterScaler(provisioner, leader, config)
 
         # Indicates that the scaling thread should shutdown
@@ -883,7 +883,7 @@ class ScalerThread(ExceptionalThread):
                                      "attempt to keep going, but things may go wrong from now on.")
         self.scaler.shutDown()
 
-class ClusterStats(object):
+class ClusterStats:
     def __init__(self, path, batchSystem, clusterName):
         logger.debug("Initializing cluster statistics")
         self.stats = {}

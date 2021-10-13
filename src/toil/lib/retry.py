@@ -227,8 +227,8 @@ def retry(intervals: Optional[List] = None,
     intervals = intervals if intervals else [1, 1, 2, 4, 8, 16]
     errors = errors if errors else [Exception]
 
-    error_conditions = set([error for error in errors if isinstance(error, ErrorCondition)])
-    retriable_errors = set([error for error in errors if not isinstance(error, ErrorCondition)])
+    error_conditions = {error for error in errors if isinstance(error, ErrorCondition)}
+    retriable_errors = {error for error in errors if not isinstance(error, ErrorCondition)}
 
     if log_message:
         post_message_function = log_message[0]

@@ -48,7 +48,7 @@ class GCEProvisioner(AbstractProvisioner):
 
         # Call base class constructor, which will call createClusterSettings()
         # or readClusterSettings()
-        super(GCEProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
+        super().__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
 
     def supportedClusterTypes(self):
         return {'mesos'}
@@ -314,7 +314,7 @@ class GCEProvisioner(AbstractProvisioner):
                     self._instanceGroup.add_instances([instance])
                     workersCreated += 1
                 except Exception as e:
-                    logger.error("Failed to configure worker %s. Error message: %s" % (node.name, e))
+                    logger.error(f"Failed to configure worker {node.name}. Error message: {e}")
                     failedWorkers.append(instance)
             if failedWorkers:
                 logger.error("Terminating %d failed workers" % len(failedWorkers))

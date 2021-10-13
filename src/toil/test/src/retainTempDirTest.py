@@ -24,11 +24,11 @@ class CleanWorkDirTest(ToilTest):
     Tests testing :class:toil.fileStores.abstractFileStore.AbstractFileStore
     """
     def setUp(self):
-        super(CleanWorkDirTest, self).setUp()
+        super().setUp()
         self.testDir = self._createTempDir()
 
     def tearDown(self):
-        super(CleanWorkDirTest, self).tearDown()
+        super().tearDown()
         shutil.rmtree(self.testDir)
 
     @travis_test

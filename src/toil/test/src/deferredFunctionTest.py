@@ -35,15 +35,15 @@ class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
         if self.jobStoreType == 'file':
             return self._getTestJobStorePath()
         elif self.jobStoreType == 'aws':
-            return 'aws:%s:cache-tests-%s' % (self.awsRegion(), uuid4())
+            return f'aws:{self.awsRegion()}:cache-tests-{uuid4()}'
         elif self.jobStoreType == 'google':
             projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
-            return 'google:%s:cache-tests-%s' % (projectID, str(uuid4()))
+            return 'google:{}:cache-tests-{}'.format(projectID, str(uuid4()))
         else:
             raise RuntimeError('Illegal job store type.')
 
     def setUp(self):
-        super(DeferredFunctionTest, self).setUp()
+        super().setUp()
         testDir = self._createTempDir()
         self.options = Job.Runner.getDefaultOptions(self._getTestJobStore())
         self.options.logLevel = 'INFO'
@@ -289,7 +289,7 @@ def _testNewJobsCanHandleOtherJobDeaths_B(job, files):
     while os.path.exists(files[0]):
         time.sleep(0.5)
     # Get the pid of _testNewJobsCanHandleOtherJobDeaths_A and wait for it to truly be dead.
-    with open(files[1], 'r') as fileHandle:
+    with open(files[1]) as fileHandle:
         pid = int(fileHandle.read())
     assert pid > 0
     while psutil.pid_exists(pid):
@@ -310,7 +310,7 @@ def _testNewJobsCanHandleOtherJobDeaths_C(job, files, expectedResult):
         assert os.path.exists(testFile) is expectedResult
 
 
-class _deleteMethods(object):
+class _deleteMethods:
     @staticmethod
     def _deleteFileMethod(nonLocalFile, nlf=None):
         """

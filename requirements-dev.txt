@@ -17,3 +17,4 @@ isort
 diff_cover
 lxml
 docutils==0.16
+pyupgrade

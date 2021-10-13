@@ -35,7 +35,7 @@ class MiscTests(ToilTest):
     file, and that don't logically fit in with any of the other test suites.
     """
     def setUp(self):
-        super(MiscTests, self).setUp()
+        super().setUp()
         self.testDir = self._createTempDir()
 
     @travis_test

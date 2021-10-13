@@ -367,13 +367,13 @@ class ToilWdlIntegrationTest(ToilTest):
     # estimated run time <1 sec
     def testJSON(self):
         default_json_dict_output = {
-            u'helloHaplotypeCaller.haplotypeCaller.RefIndex': u'"src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.fasta.fai"',
-            u'helloHaplotypeCaller.haplotypeCaller.sampleName': u'"WDL_tut1_output"',
-            u'helloHaplotypeCaller.haplotypeCaller.inputBAM': u'"src/toil/test/wdl/GATK_data/inputs/NA12878_wgs_20.bam"',
-            u'helloHaplotypeCaller.haplotypeCaller.bamIndex': u'"src/toil/test/wdl/GATK_data/inputs/NA12878_wgs_20.bai"',
-            u'helloHaplotypeCaller.haplotypeCaller.GATK': u'"src/toil/test/wdl/GATK_data/gatk-package-4.1.9.0-local.jar"',
-            u'helloHaplotypeCaller.haplotypeCaller.RefDict': u'"src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.dict"',
-            u'helloHaplotypeCaller.haplotypeCaller.RefFasta': u'"src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.fasta"'}
+            'helloHaplotypeCaller.haplotypeCaller.RefIndex': '"src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.fasta.fai"',
+            'helloHaplotypeCaller.haplotypeCaller.sampleName': '"WDL_tut1_output"',
+            'helloHaplotypeCaller.haplotypeCaller.inputBAM': '"src/toil/test/wdl/GATK_data/inputs/NA12878_wgs_20.bam"',
+            'helloHaplotypeCaller.haplotypeCaller.bamIndex': '"src/toil/test/wdl/GATK_data/inputs/NA12878_wgs_20.bai"',
+            'helloHaplotypeCaller.haplotypeCaller.GATK': '"src/toil/test/wdl/GATK_data/gatk-package-4.1.9.0-local.jar"',
+            'helloHaplotypeCaller.haplotypeCaller.RefDict': '"src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.dict"',
+            'helloHaplotypeCaller.haplotypeCaller.RefFasta': '"src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.fasta"'}
 
         from toil.wdl.utils import dict_from_JSON
         json_dict = dict_from_JSON("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
@@ -411,7 +411,7 @@ def compare_runs(output_dir, ref_dir):
         if file not in ('outputs.txt', '__pycache__'):
             test_output_files = os.listdir(output_dir)
             filepath = os.path.join(ref_dir, file)
-            with open(filepath, 'r') as default_file:
+            with open(filepath) as default_file:
                 good_data = []
                 for line in default_file:
                     if not line.startswith('#'):
@@ -423,7 +423,7 @@ def compare_runs(output_dir, ref_dir):
                             compare_vcf_files(filepath1=filepath,
                                               filepath2=test_filepath)
                         else:
-                            with open(test_filepath, 'r') as test_file:
+                            with open(test_filepath) as test_file:
                                 test_data = []
                                 for line in test_file:
                                     if not line.startswith('#'):
@@ -453,14 +453,14 @@ def compare_vcf_files(filepath1, filepath2):
     :param filepath1: First .vcf file to compare.
     :param filepath2: Second .vcf file to compare.
     """
-    with open(filepath1, 'r') as default_file:
+    with open(filepath1) as default_file:
         good_data = []
         for line in default_file:
             line = line.strip()
             if not line.startswith('#'):
                 good_data.append(line.split('\t'))
 
-    with open(filepath2, 'r') as test_file:
+    with open(filepath2) as test_file:
         test_data = []
         for line in test_file:
             line = line.strip()
