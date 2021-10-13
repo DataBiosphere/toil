@@ -1138,7 +1138,7 @@ class Leader(object):
                             else:
                                 logger.warning('The batch system left an empty file %s' % batchSystemFile)
 
-                replacementJob.setupJobAfterFailure(exitReason=exitReason)
+                replacementJob.setupJobAfterFailure(exitStatus=result_status)
                 self.toilState.commit_job(jobStoreID)
 
                 # Show job as failed in progress (and take it from completed)
