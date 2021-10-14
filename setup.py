@@ -55,7 +55,7 @@ def run_setup():
     ]
     for extra in non_htcondor_extras:
         extras_require[extra] = get_requirements(extra)
-        all_reqs += "\n" + extras_require[extra]
+        all_reqs += "\n" + "\n".join(extras_require[extra])
     # We exclude htcondor from "all" because it can't be on Mac
     extras_require['htcondor:sys_platform!="darwin"'] = get_requirements("htcondor")
     extras_require["all"] = all_reqs
