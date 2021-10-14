@@ -39,7 +39,7 @@ from toil.lib.retry import (
 logger = logging.getLogger(__name__)
 
 
-class SDBHelper(object):
+class SDBHelper:
     """
     A mixin with methods for storing limited amounts of binary data in an SDB item
 
@@ -117,7 +117,7 @@ class SDBHelper(object):
         """
         Turn a bytestring, or None, into SimpleDB attributes.
         """
-        if binary is None: return {u'numChunks': 0}
+        if binary is None: return {'numChunks': 0}
         assert isinstance(binary, bytes)
         assert len(binary) <= cls.maxBinarySize()
         # The use of compression is just an optimization. We can't include it in the maxValueSize
@@ -132,7 +132,7 @@ class SDBHelper(object):
         n = cls.maxValueSize
         chunks = (encoded[i:i + n] for i in range(0, len(encoded), n))
         attributes = {cls._chunkName(i): chunk for i, chunk in enumerate(chunks)}
-        attributes.update({u'numChunks': len(attributes)})
+        attributes.update({'numChunks': len(attributes)})
         return attributes
 
     @classmethod
@@ -150,7 +150,7 @@ class SDBHelper(object):
         Assuming that binaryToAttributes() is used with SDB's PutAttributes, the return value of
         this method could be used to detect the presence/absence of an item in SDB.
         """
-        return u'numChunks'
+        return 'numChunks'
 
     @classmethod
     def attributesToBinary(cls, attributes):
@@ -160,7 +160,7 @@ class SDBHelper(object):
         """
         chunks = [(int(k), v) for k, v in attributes.items() if cls._isValidChunkName(k)]
         chunks.sort()
-        numChunks = int(attributes[u'numChunks'])
+        numChunks = int(attributes['numChunks'])
         if numChunks:
             serializedJob = b''.join(v.encode() for k, v in chunks)
             compressed = base64.b64decode(serializedJob)

@@ -44,7 +44,7 @@ EC2Regions = {'us-west-1': 'US West (N. California)',
               'sa-east-1': 'South America (Sao Paulo)'}
 
 
-class InstanceType(object):
+class InstanceType:
     __slots__ = ('name', 'cores', 'memory', 'disks', 'disk_capacity')
 
     def __init__(self, name: str, cores: int, memory: float, disks: float, disk_capacity: float):
@@ -203,7 +203,7 @@ def fetchEC2InstanceDict(awsBillingJson: Dict[str, Any], region: str) -> Dict[st
                                        'Duplicate instance {} found.'.format(instance))
                 ec2InstanceList.append(instance)
     print('Finished for ' + str(region) + '.  ' + str(len(ec2InstanceList)) + ' added.')
-    return dict((_.name, _) for _ in ec2InstanceList)
+    return {_.name: _ for _ in ec2InstanceList}
 
 
 def updateStaticEC2Instances() -> None:
@@ -234,7 +234,7 @@ def updateStaticEC2Instances() -> None:
     else:
         print('Reusing previously downloaded json @: ' + awsJsonIndex)
 
-    with open(awsJsonIndex, 'r') as f:
+    with open(awsJsonIndex) as f:
         awsProductDict = json.loads(f.read())
 
     currentEC2List = []
@@ -282,9 +282,9 @@ def updateStaticEC2Instances() -> None:
 
     genString = genString + 'regionDict = {\n'
     for regionName, instanceList in instancesByRegion.items():
-        genString = genString + "              '{regionName}': [".format(regionName=regionName)
+        genString = genString + f"              '{regionName}': ["
         for instance in sorted(instanceList):
-            genString = genString + "'{instance}', ".format(instance=instance)
+            genString = genString + f"'{instance}', "
         if genString.endswith(', '):
             genString = genString[:-2]
         genString = genString + '],\n'

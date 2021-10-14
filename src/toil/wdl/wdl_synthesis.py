@@ -262,7 +262,7 @@ class SynthesizeWDL:
 
         # import filepath into jobstore
         if self.needs_file_import(var_type) and var_expr:
-            main_section += '        {} = process_infile({}, fileStore)\n'.format(var_name, var_name)
+            main_section += f'        {var_name} = process_infile({var_name}, fileStore)\n'
 
         return main_section
 
@@ -488,10 +488,10 @@ class SynthesizeWDL:
         """
         scatter_inputs = self.fetch_scatter_inputs(scattername)
 
-        fn_section = '\n\nclass {jobname}Cls(Job):\n'.format(jobname=scattername)
+        fn_section = f'\n\nclass {scattername}Cls(Job):\n'
         fn_section += '    def __init__(self, '
         for input in scatter_inputs:
-            fn_section += '{input}=None, '.format(input=input)
+            fn_section += f'{input}=None, '
         fn_section += '*args, **kwargs):\n'
         fn_section += '        Job.__init__(self)\n\n'
 
@@ -548,7 +548,7 @@ class SynthesizeWDL:
         collection = job['collection']
         item = job['item']
 
-        fn_section = '        for {item} in {collection}:\n'.format(item=item, collection=collection)
+        fn_section = f'        for {item} in {collection}:\n'
 
         previous_dependency = 'self'
         for statement in job['body']:
@@ -639,18 +639,18 @@ class SynthesizeWDL:
         :param job_declaration_array: A list of all inputs that job requires.
         :return: A string representing this.
         """
-        fn_section = '\n\nclass {jobname}Cls(Job):\n'.format(jobname=job)
+        fn_section = f'\n\nclass {job}Cls(Job):\n'
         fn_section += '    def __init__(self, '
         if 'inputs' in self.tasks_dictionary[job]:
             for i in self.tasks_dictionary[job]['inputs']:
                 var = i[0]
                 vartype = i[1]
                 if vartype == 'String':
-                    fn_section += '{input}="", '.format(input=var)
+                    fn_section += f'{var}="", '
                 else:
-                    fn_section += '{input}=None, '.format(input=var)
+                    fn_section += f'{var}=None, '
         fn_section += '*args, **kwargs):\n'
-        fn_section += '        super({jobname}Cls, self).__init__(*args, **kwargs)\n'.format(jobname=job)
+        fn_section += f'        super({job}Cls, self).__init__(*args, **kwargs)\n'
 
         # TODO: Resolve inherent problems resolving resource requirements
         # In WDL, "local-disk " + 500 + " HDD" cannot be directly converted to python.
@@ -660,15 +660,15 @@ class SynthesizeWDL:
             if 'memory' in self.tasks_dictionary[job]['runtime']:
                 runtime_resources.append('memory=memory')
                 memory = self.tasks_dictionary[job]['runtime']['memory']
-                fn_section += '        memory=parse_memory({})\n'.format(memory)
+                fn_section += f'        memory=parse_memory({memory})\n'
             if 'cpu' in self.tasks_dictionary[job]['runtime']:
                 runtime_resources.append('cores=cores')
                 cores = self.tasks_dictionary[job]['runtime']['cpu']
-                fn_section += '        cores=parse_cores({})\n'.format(cores)
+                fn_section += f'        cores=parse_cores({cores})\n'
             if 'disks' in self.tasks_dictionary[job]['runtime']:
                 runtime_resources.append('disk=disk')
                 disk = self.tasks_dictionary[job]['runtime']['disks']
-                fn_section += '        disk=parse_disk({})\n'.format(disk)
+                fn_section += f'        disk=parse_disk({disk})\n'
             runtime_resources = ['self'] + runtime_resources
             fn_section += '        Job.__init__({})\n\n'.format(', '.join(runtime_resources))
 
@@ -686,7 +686,7 @@ class SynthesizeWDL:
 
                 if var_expressn is None:
                     # declarations from workflow
-                    fn_section += '        self.id_{} = {}\n'.format(var, var)
+                    fn_section += f'        self.id_{var} = {var}\n'
                 else:
                     # declarations from a WDL or JSON file
                     fn_section += '        self.id_{} = {}.create(\n                {})\n'\
@@ -722,9 +722,9 @@ class SynthesizeWDL:
                             'fileStore',
                             f'docker={docker_bool}'
                         ])
-                    fn_section += '        {} = process_and_read_file({})\n'.format(var, args)
+                    fn_section += f'        {var} = process_and_read_file({args})\n'
                 else:
-                    fn_section += '        {} = self.id_{}\n'.format(var, var)
+                    fn_section += f'        {var} = self.id_{var}\n'
 
         return fn_section
 
@@ -744,11 +744,11 @@ class SynthesizeWDL:
         for identifier in self.json_dict:
             # check task declarations
             if task:
-                if identifier == '{}.{}.{}'.format(wf, task, var):
+                if identifier == f'{wf}.{task}.{var}':
                     return self.json_dict[identifier]
             # else check workflow declarations
             else:
-                if identifier == '{}.{}'.format(wf, var):
+                if identifier == f'{wf}.{var}':
                     return self.json_dict[identifier]
 
         return None
@@ -880,7 +880,7 @@ class SynthesizeWDL:
         if cmd_array:
             fn_section += '\n        cmd = '
             for command in cmd_array:
-                fn_section += '{command} + '.format(command=command)
+                fn_section += f'{command} + '
             if fn_section.endswith(' + '):
                 fn_section = fn_section[:-3]
             fn_section += '\n        cmd = textwrap.dedent(cmd.strip("{nl}"))\n'.format(nl=r"\n")
@@ -950,7 +950,7 @@ class SynthesizeWDL:
                     fn_section += nonglob_template
                     return_values.append(output_name)
                 else:
-                    fn_section += '        {} = {}\n'.format(output_name, output_value)
+                    fn_section += f'        {output_name} = {output_value}\n'
                     return_values.append(output_name)
 
             if return_values:

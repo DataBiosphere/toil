@@ -28,7 +28,7 @@ import the expand_ function and invoke it directly with either no or exactly one
 #  - don't import even standard modules at global scope without renaming them
 #    to have leading/trailing underscores
 
-baseVersion = '5.5.0a1'
+baseVersion = '5.6.0a1'
 cgcloudVersion = '1.6.0a1.dev393'
 
 
@@ -94,7 +94,7 @@ def currentCommit():
     from subprocess import check_output
     try:
         git_root_dir = os.path.dirname(os.path.abspath(__file__))
-        output = check_output('git log --pretty=oneline -n 1 -- {}'.format(git_root_dir),
+        output = check_output(f'git log --pretty=oneline -n 1 -- {git_root_dir}',
                               shell=True,
                               cwd=git_root_dir).decode('utf-8').split()[0]
     except:
@@ -149,7 +149,7 @@ def expand_(name=None, others=None):
         return v
 
     if name is None:
-        return ''.join("%s = %s\n" % (k, repr(resolve(k))) for k, v in variables.items())
+        return ''.join("{} = {}\n".format(k, repr(resolve(k))) for k, v in variables.items())
     else:
         return resolve(name)
 

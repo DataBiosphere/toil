@@ -42,10 +42,10 @@ def fetchJobStoreFiles(jobStore: AbstractJobStore, options: Expando) -> None:
                             glob_pattern=jobStoreFile)
         for jobStoreFileID in jobStoreHits:
             logger.debug(f"Copying job store file: {jobStoreFileID} to {options.localFilePath[0]}")
-            jobStore.readFile(jobStoreFileID,
-                              os.path.join(options.localFilePath[0],
+            jobStore.read_file(jobStoreFileID,
+                               os.path.join(options.localFilePath[0],
                                            os.path.basename(jobStoreFileID)),
-                              symlink=options.useSymlinks)
+                               symlink=options.useSymlinks)
 
 
 def printContentsOfJobStore(jobStorePath: str, nameOfJob: Optional[str] = None) -> None:

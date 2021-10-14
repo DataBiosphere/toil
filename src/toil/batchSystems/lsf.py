@@ -37,8 +37,7 @@ from toil.batchSystems.abstractGridEngineBatchSystem import (
 from toil.batchSystems.lsfHelper import (
     check_lsf_json_output_supported,
     parse_mem_and_cmd_from_output,
-    parse_memory_limit,
-    parse_memory_resource,
+    parse_memory,
     per_core_reservation,
 )
 from toil.lib.misc import call_command
@@ -54,8 +53,8 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         def getRunningJobIDs(self):
             times = {}
             with self.runningJobsLock:
-                currentjobs = dict((str(self.batchJobIDs[x][0]), x) for x in
-                                   self.runningJobs)
+                currentjobs = {str(self.batchJobIDs[x][0]): x for x in
+                                   self.runningJobs}
 
             if check_lsf_json_output_supported:
                 stdout = call_command(["bjobs","-json","-o", "jobid stat start_time"])
@@ -109,12 +108,12 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
             if result_search:
                 result = int(result_search.group(1))
-                logger.debug("Got the job id: {}".format(result))
+                logger.debug(f"Got the job id: {result}")
             else:
-                logger.error("Could not submit job\nReason: {}".format(stdout))
+                logger.error(f"Could not submit job\nReason: {stdout}")
                 temp_id = randint(10000000, 99999999)
                 # Flag this job to be handled by getJobExitCode
-                result = "NOT_SUBMITTED_{}".format(temp_id)
+                result = f"NOT_SUBMITTED_{temp_id}"
             return result
 
         def coalesce_job_exit_codes(self, batch_job_id_list: list) -> list:
@@ -205,7 +204,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                             pending_info = "\n" + bjobs_record["PEND_REASON"]
                     logger.debug(
                         "bjobs detected job pending with: %s\nfor job: %s",
-                        (pending_info, job),
+                        pending_info, job
                     )
                     return None
                 if process_status == "EXIT":
@@ -219,12 +218,12 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                         exit_reason = bjobs_record["EXIT_REASON"]
                     exit_info = ""
                     if exit_code:
-                        exit_info = "\nexit code: {}".format(exit_code)
+                        exit_info = f"\nexit code: {exit_code}"
                     if exit_reason:
-                        exit_info += "\nexit reason: {}".format(exit_reason)
+                        exit_info += f"\nexit reason: {exit_reason}"
                     logger.error(
                         "bjobs detected job failed with: %s\nfor job: %s",
-                        (exit_info, job),
+                        exit_info, job
                     )
                     if "TERM_MEMLIMIT" in exit_reason:
                         return BatchJobExitReason.MEMLIMIT
@@ -307,15 +306,14 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             """
             bsubMem = []
             if mem:
-                mem = float(mem) / 1024 ** 3
+                mem = float(mem)
                 if per_core_reservation() and cpu:
                     mem = mem / math.ceil(cpu)
-                mem_resource = parse_memory_resource(mem)
-                mem_limit = parse_memory_limit(mem)
+                mem = parse_memory(mem)
                 bsubMem = ['-R',
-                           f'select[mem>{mem_resource}] '
-                           f'rusage[mem={mem_resource}]',
-                           '-M', mem_limit]
+                           f'select[mem>{mem}] '
+                           f'rusage[mem={mem}]',
+                           '-M', mem]
             bsubCpu = [] if cpu is None else ['-n', str(math.ceil(cpu))]
             bsubline = ["bsub", "-cwd", ".", "-J", f"toil_job_{jobID}"]
             bsubline.extend(bsubMem)
@@ -344,11 +342,11 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 try:
                     bjobs_dict = json.loads(bjobs_output)
                 except json.decoder.JSONDecodeError:
-                    logger.error("Could not parse bjobs output: {}".format(bjobs_output_str))
+                    logger.error(f"Could not parse bjobs output: {bjobs_output_str}")
                 if 'RECORDS' in bjobs_dict:
                     bjobs_records = bjobs_dict['RECORDS']
             if bjobs_records is None:
-                logger.error("Could not find bjobs output json in: {}".format(bjobs_output_str))
+                logger.error(f"Could not find bjobs output json in: {bjobs_output_str}")
 
             return bjobs_records
 

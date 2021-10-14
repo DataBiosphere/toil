@@ -85,7 +85,7 @@ def parse_iso_utc(s: str) -> datetime.datetime:
     ...
     ValueError: Not a valid ISO datetime in UTC: 2016-04-27T00:28:04X
     """
-    rfc3339_datetime = re.compile('^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$')
+    rfc3339_datetime = re.compile(r'^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$')
     m = rfc3339_datetime.match(s)
     if not m:
         raise ValueError(f'Not a valid ISO datetime in UTC: {s}')

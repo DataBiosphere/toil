@@ -99,7 +99,7 @@ class WritablePipe(ABC):
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
         """
-        super(WritablePipe, self).__init__()
+        super().__init__()
         self.encoding = encoding
         self.errors = errors
         self.readable_fh = None
@@ -216,7 +216,7 @@ class ReadablePipe(ABC):
         try:
             with os.fdopen(self.writable_fh, 'wb') as writable:
                 self.writeTo(writable)
-        except IOError as e:
+        except OSError as e:
             # The other side of the pipe may have been closed by the
             # reading thread, which is OK.
             if e.errno != errno.EPIPE:
@@ -232,7 +232,7 @@ class ReadablePipe(ABC):
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
         """
-        super(ReadablePipe, self).__init__()
+        super().__init__()
         self.encoding = encoding
         self.errors = errors
         self.writable_fh = None
@@ -302,7 +302,7 @@ class ReadableTransformingPipe(ReadablePipe):
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
         """
-        super(ReadableTransformingPipe, self).__init__(encoding=encoding, errors=errors)
+        super().__init__(encoding=encoding, errors=errors)
         self.source = source
 
     @abstractmethod
