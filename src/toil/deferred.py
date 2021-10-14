@@ -21,6 +21,7 @@ from contextlib import contextmanager
 
 import dill
 
+from toil.lib.io import robust_rmtree
 from toil.realtimeLogger import RealtimeLogger
 from toil.resource import ModuleDescriptor
 
@@ -64,12 +65,12 @@ class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name
         return function(*args, **kwargs)
 
     def __str__(self):
-        return '%s(%s, ...)' % (self.__class__.__name__, self.name)
+        return f'{self.__class__.__name__}({self.name}, ...)'
 
     __repr__ = __str__
 
 
-class DeferredFunctionManager(object):
+class DeferredFunctionManager:
     """
     Implements a deferred function system. Each Toil worker will have an
     instance of this class. When a job is executed, it will happen inside a
@@ -129,9 +130,9 @@ class DeferredFunctionManager(object):
         # Lock the state file. The lock will automatically go away if our process does.
         try:
             fcntl.lockf(self.stateFD, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except IOError as e:
+        except OSError as e:
             # Someone else might have locked it even though they should not have.
-            raise RuntimeError("Could not lock deferred function state file %s: %s" % (self.stateFileName, str(e)))
+            raise RuntimeError("Could not lock deferred function state file {}: {}".format(self.stateFileName, str(e)))
 
         # Rename it to remove the suffix
         os.rename(self.stateFileName, self.stateFileName[:-len(self.WIP_SUFFIX)])
@@ -210,11 +211,11 @@ class DeferredFunctionManager(object):
         # Close all the files in there.
         del cleaner
 
-        # Clean up the directory we have been using.
-        # It might not be empty if .tmp files escaped: nobody can tell they
-        # aren't just waiting to be locked.
-        shutil.rmtree(os.path.join(stateDirBase, cls.STATE_DIR_STEM))
-
+        try:
+            robust_rmtree(os.path.join(stateDirBase, cls.STATE_DIR_STEM))
+        except OSError as err:
+            logger.exception(err)
+            # we tried, lets move on
 
 
     def _runDeferredFunction(self, deferredFunction):
@@ -314,7 +315,7 @@ class DeferredFunctionManager(object):
 
                 try:
                     fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                except IOError:
+                except OSError:
                     # File is still locked by someone else.
                     # Look at the next file instead
                     continue

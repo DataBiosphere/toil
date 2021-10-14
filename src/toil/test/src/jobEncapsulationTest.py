@@ -47,7 +47,7 @@ class JobEncapsulationTest(ToilTest):
             # Run the workflow, the return value being the number of failed jobs
             Job.Runner.startToil(a, options)
             # Check output
-            self.assertEqual(open(outFile, 'r').readline(), "ABCDE")
+            self.assertEqual(open(outFile).readline(), "ABCDE")
         finally:
             os.remove(outFile)
 

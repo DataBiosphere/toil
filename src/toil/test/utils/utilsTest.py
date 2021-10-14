@@ -21,7 +21,7 @@ import time
 import uuid
 
 import pytest
-from mock import patch
+from unittest.mock import patch
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
@@ -55,7 +55,7 @@ class UtilsTest(ToilTest):
     """
 
     def setUp(self):
-        super(UtilsTest, self).setUp()
+        super().setUp()
         self.tempDir = self._createTempDir()
         self.tempFile = get_temp_file(rootDir=self.tempDir)
         self.outputFile = 'someSortedStuff.txt'
@@ -66,7 +66,7 @@ class UtilsTest(ToilTest):
         self.N = 1000
         makeFileToSort(self.tempFile, self.lines, self.lineLen)
         # First make our own sorted version
-        with open(self.tempFile, 'r') as fileHandle:
+        with open(self.tempFile) as fileHandle:
             self.correctSort = fileHandle.readlines()
             self.correctSort.sort()
 
@@ -219,7 +219,7 @@ class UtilsTest(ToilTest):
         system(self.statsCommand)
 
         # Check the file is properly sorted
-        with open(self.outputFile, 'r') as fileHandle:
+        with open(self.outputFile) as fileHandle:
             l2 = fileHandle.readlines()
             self.assertEqual(self.correctSort, l2)
 
@@ -255,7 +255,7 @@ class UtilsTest(ToilTest):
         system(self.statsCommand)
 
         # Check the file is properly sorted
-        with open(self.outputFile, 'r') as fileHandle:
+        with open(self.outputFile) as fileHandle:
             l2 = fileHandle.readlines()
             self.assertEqual(self.correctSort, l2)
 

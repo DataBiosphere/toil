@@ -18,7 +18,7 @@ from tempfile import NamedTemporaryFile
 from setuptools import find_packages, setup
 
 
-cwltool_version = '3.1.20210816212154'
+cwltool_version = "3.1.20211004060744"
 
 
 def run_setup():
@@ -26,82 +26,33 @@ def run_setup():
     Calls setup(). This function exists so the setup() invocation preceded more internal
     functionality. The `version` module is imported dynamically by import_version() below.
     """
-    boto = 'boto>=2.48.0, <3'
-    boto3 = 'boto3>=1.17, <2'
-    futures = 'futures>=3.1.1, <4'
-    pycryptodome = 'pycryptodome==3.5.1'
-    pymesos = 'pymesos==0.3.15'
-    psutil = 'psutil >= 3.0.1, <6'
-    pynacl = 'pynacl==1.3.0'
-    gcs = 'google-cloud-storage==1.6.0'
-    gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
-    apacheLibcloud = 'apache-libcloud==2.2.1'
-    cwltool = f'cwltool=={cwltool_version}'
-    galaxyToolUtil = 'galaxy-tool-util'
-    htcondor = 'htcondor>=8.6.0'
-    kubernetes = 'kubernetes>=12.0.1, <13'
-    idna = 'idna>=2'
-    pytz = 'pytz>=2012'
-    pyyaml = 'pyyaml>=5, <6'
-    dill = 'dill>=0.3.2, <0.4'
-    requests = 'requests>=2, <3'
-    docker = 'docker==4.3.1'
-    dateutil = 'python-dateutil'
-    addict = 'addict>=2.2.1, <2.3'
-    enlighten = 'enlighten>=1.5.2, <2'
-    wdlparse = 'wdlparse==0.1.0'
 
-    core_reqs = [
-        dill,
-        requests,
-        docker,
-        dateutil,
-        psutil,
-        addict,
-        pytz,
-        pyyaml,
-        enlighten,
-        "typing-extensions ; python_version < '3.8'"
-        ]
-    aws_reqs = [
-        boto,
-        boto3,
-        "boto3-stubs[s3]>=1.17, <2",
-        futures,
-        pycryptodome]
-    cwl_reqs = [
-        cwltool,
-        galaxyToolUtil]
-    encryption_reqs = [
-        pynacl]
-    google_reqs = [
-        gcs_oauth2_boto_plugin,  # is this being used??
-        apacheLibcloud,
-        gcs]
-    htcondor_reqs = [
-        htcondor]
-    kubernetes_reqs = [
-        kubernetes,
-        idna]  # Kubernetes's urllib3 can mange to use idna without really depending on it.
-    mesos_reqs = [
-        pymesos,
-        psutil]
-    wdl_reqs = [
-        wdlparse
-    ]
+    with open("requirements.txt") as fp:
+        install_requires = fp.read()
 
+    extras_require = {}
     # htcondor is not supported by apple
     # this is tricky to conditionally support in 'all' due
     # to how wheels work, so it is not included in all and
     # must be explicitly installed as an extra
-    all_reqs = \
-        aws_reqs + \
-        cwl_reqs + \
-        encryption_reqs + \
-        google_reqs + \
-        kubernetes_reqs + \
-        mesos_reqs + \
-        wdl_reqs
+    all_reqs = ""
+    non_htcondor_extras = [
+        "aws",
+        "cwl",
+        "encryption",
+        "google",
+        "kubernetes",
+        "mesos",
+        "wdl",
+    ]
+    for extra in non_htcondor_extras:
+        with open(f"requirements-{extra}.txt") as fp:
+            extras_require[extra] = fp.read()
+            all_reqs += "\n" + extras_require[extra]
+    with open("requirements-htcondor.txt") as htcondor_fp:
+        extras_require['htcondor:sys_platform!="darwin"'] = htcondor_fp.read()
+    extras_require["all"] = all_reqs
+
 
     setup(
         name='toil',
@@ -132,17 +83,8 @@ def run_setup():
           'Topic :: Utilities'],
         license="Apache License v2.0",
         python_requires=">=3.6",
-        install_requires=core_reqs,
-        extras_require={
-            'aws': aws_reqs,
-            'cwl': cwl_reqs,
-            'encryption': encryption_reqs,
-            'google': google_reqs,
-            'htcondor:sys_platform!="darwin"': htcondor_reqs,
-            'kubernetes': kubernetes_reqs,
-            'mesos': mesos_reqs,
-            'wdl': wdl_reqs,
-            'all': all_reqs},
+        install_requires=install_requires,
+        extras_require=extras_require,
         package_dir={'': 'src'},
         packages=find_packages(where='src',
                                # Note that we intentionally include the top-level `test` package for

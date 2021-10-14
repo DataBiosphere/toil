@@ -38,10 +38,9 @@ logger = logging.getLogger(__name__)
 
 # Customized CWL utilities
 
+
 def visit_top_cwl_class(
-    rec: Any,
-    classes: Iterable[str],
-    op: Callable[[Any], Any]
+    rec: Any, classes: Iterable[str], op: Callable[[Any], Any]
 ) -> None:
     """
     Apply the given operation to all top-level CWL objects with the given named CWL class.
@@ -61,13 +60,16 @@ def visit_top_cwl_class(
         for key in rec:
             visit_top_cwl_class(key, classes, op)
 
-DownReturnType = TypeVar('DownReturnType')
-UpReturnType = TypeVar('UpReturnType')
+
+DownReturnType = TypeVar("DownReturnType")
+UpReturnType = TypeVar("UpReturnType")
+
+
 def visit_cwl_class_and_reduce(
     rec: Any,
     classes: Iterable[str],
     op_down: Callable[[Any], DownReturnType],
-    op_up: Callable[[Any, DownReturnType, List[UpReturnType]], UpReturnType]
+    op_up: Callable[[Any, DownReturnType, List[UpReturnType]], UpReturnType],
 ) -> List[UpReturnType]:
     """
     Apply the given operations to all CWL objects with the given named CWL class.
@@ -104,17 +106,20 @@ def visit_cwl_class_and_reduce(
                 results.append(result)
     return results
 
+
 # Define a recursive type to represent a directory structure.
 # The only problem is that MyPy can't yet type check recursive types like this.
 # See: https://github.com/python/mypy/issues/731
 # So we have to tell MyPy to ignore it.
-DirectoryStructure = Dict[str, Union[str, 'DirectoryStructure']] # type: ignore
+DirectoryStructure = Dict[str, Union[str, "DirectoryStructure"]]  # type: ignore
+
+
 def download_structure(
     file_store: AbstractFileStore,
     index: Dict[str, str],
     existing: Dict[str, str],
     dir_dict: DirectoryStructure,
-    into_dir: str
+    into_dir: str,
 ) -> None:
     """
     Download a whole nested dictionary of files and directories from the
@@ -136,7 +141,7 @@ def download_structure(
     logger.debug("Downloading directory with %s items", len(dir_dict))
 
     for name, value in dir_dict.items():
-        if name == '.':
+        if name == ".":
             # Skip this key that isn't a real child file.
             continue
         if isinstance(value, dict):
@@ -153,7 +158,9 @@ def download_structure(
             logger.debug("Downloading contained file %s", name)
             dest_path = os.path.join(into_dir, name)
             # So download the file into place
-            file_store.readGlobalFile(FileID.unpack(value[len("toilfile:"):]), dest_path, symlink=True)
+            file_store.readGlobalFile(
+                FileID.unpack(value[len("toilfile:") :]), dest_path, symlink=True
+            )
             # Update the index dicts
             # TODO: why?
             index[dest_path] = value

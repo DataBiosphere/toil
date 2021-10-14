@@ -26,7 +26,7 @@ from typing import Optional, Dict
 
 from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
-from toil.common import Toil
+from toil.common import SYS_MAX_SIZE, Toil
 from toil.test import get_temp_file
 from toil.lib.iterables import concat
 
@@ -47,8 +47,8 @@ class ParasolBatchSystem(BatchSystemSupport):
         return False
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        super(ParasolBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
-        if maxMemory != sys.maxsize:
+        super().__init__(config, maxCores, maxMemory, maxDisk)
+        if maxMemory != SYS_MAX_SIZE:
             logger.warning('The Parasol batch system does not support maxMemory.')
         # Keep the name of the results file for the pstat2 command..
         command = config.parasolCommand
@@ -180,13 +180,13 @@ class ParasolBatchSystem(BatchSystemSupport):
                 jobID = int(match.group(1))
                 self.jobIDsToCpu[jobID] = jobDesc.cores
                 self.runningJobs.add(jobID)
-                logger.debug("Got the parasol job id: %s from line: %s" % (jobID, line))
+                logger.debug(f"Got the parasol job id: {jobID} from line: {line}")
                 return jobID
 
     def setEnv(self, name, value=None):
         if value and ' ' in value:
             raise ValueError('Parasol does not support spaces in environment variable values.')
-        return super(ParasolBatchSystem, self).setEnv(name, value)
+        return super().setEnv(name, value)
 
     def __environment(self, job_environment: Optional[Dict[str, str]] = None):
         environment = self.environment.copy()
@@ -305,7 +305,7 @@ class ParasolBatchSystem(BatchSystemSupport):
                 newResultsFiles = set(os.listdir(self.parasolResultsDir)).difference(resultsFiles)
                 for newFile in newResultsFiles:
                     newFilePath = os.path.join(self.parasolResultsDir, newFile)
-                    resultsFileHandles.append(open(newFilePath, 'r'))
+                    resultsFileHandles.append(open(newFilePath))
                     resultsFiles.add(newFile)
                 for fileHandle in resultsFileHandles:
                     while self.running:

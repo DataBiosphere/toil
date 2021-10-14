@@ -68,17 +68,17 @@ class CheckpointTest(ToilTest):
 class CheckRetryCount(Job):
     """Fail N times, succeed on the next try."""
     def __init__(self, numFailuresBeforeSuccess):
-        super(CheckRetryCount, self).__init__(checkpoint=True)
+        super().__init__(checkpoint=True)
         self.numFailuresBeforeSuccess = numFailuresBeforeSuccess
 
     def getNumRetries(self, fileStore):
         """Mark a retry in the fileStore, and return the number of retries so far."""
         try:
-            with fileStore.jobStore.readSharedFileStream("checkpointRun") as f:
+            with fileStore.jobStore.read_shared_file_stream("checkpointRun") as f:
                 timesRun = int(f.read().decode('utf-8'))
         except NoSuchFileException:
             timesRun = 0
-        with fileStore.jobStore.writeSharedFileStream("checkpointRun") as f:
+        with fileStore.jobStore.write_shared_file_stream("checkpointRun") as f:
             f.write(str(timesRun + 1).encode('utf-8'))
         return timesRun
 
@@ -94,7 +94,7 @@ class AlwaysFail(Job):
 
 class CheckpointFailsFirstTime(Job):
     def __init__(self):
-        super(CheckpointFailsFirstTime, self).__init__(checkpoint=True)
+        super().__init__(checkpoint=True)
 
     def run(self, fileStore):
         self.addChild(FailOnce())

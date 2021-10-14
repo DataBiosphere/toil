@@ -13,6 +13,8 @@
 # limitations under the License.
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
+# Note: renamed from "threading.py" to "threading.py" to avoid conflicting imports
+# from the built-in "threading" from psutil in python3.9
 import atexit
 import fcntl
 import logging
@@ -24,7 +26,7 @@ import threading
 import traceback
 from contextlib import contextmanager
 
-import psutil # type: ignore
+import psutil  # type: ignore
 
 from toil.lib.exceptions import raise_
 from toil.lib.io import robust_rmtree
@@ -72,10 +74,10 @@ class ExceptionalThread(threading.Thread):
             raise
 
     def tryRun(self) -> None:
-        super(ExceptionalThread, self).run()
+        super().run()
 
     def join(self, *args: Optional[float], **kwargs: Optional[float]) -> None:
-        super(ExceptionalThread, self).join(*args, **kwargs)
+        super().join(*args, **kwargs)
         if not self.is_alive() and self.exc_info is not None:
             exc_type, exc_value, traceback = self.exc_info
             self.exc_info = None
@@ -111,7 +113,7 @@ def cpu_count() -> Any:
     logger.debug('Total machine size: %d cores', total_machine_size)
 
     try:
-        with open('/sys/fs/cgroup/cpu/cpu.cfs_quota_us', 'r') as stream:
+        with open('/sys/fs/cgroup/cpu/cpu.cfs_quota_us') as stream:
             # Read the quota
             quota = int(stream.read())
 
@@ -121,7 +123,7 @@ def cpu_count() -> Any:
             # Assume we can use the whole machine
             return total_machine_size
 
-        with open('/sys/fs/cgroup/cpu/cpu.cfs_period_us', 'r') as stream:
+        with open('/sys/fs/cgroup/cpu/cpu.cfs_period_us') as stream:
             # Read the period in which we are allowed to burn the quota
             period = int(stream.read())
 
@@ -233,9 +235,9 @@ def get_process_name(workDir: str) -> str:
         # Lock the file. The lock will automatically go away if our process does.
         try:
             fcntl.lockf(nameFD, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except IOError as e:
+        except OSError as e:
             # Someone else might have locked it even though they should not have.
-            raise RuntimeError("Could not lock process name file %s: %s" % (nameFileName, str(e)))
+            raise RuntimeError("Could not lock process name file {}: {}".format(nameFileName, str(e)))
 
         # Save the basename
         current_process_name_for[workDir] = os.path.basename(nameFileName)
@@ -281,7 +283,7 @@ def process_name_exists(workDir: str, name: str) -> bool:
         nameFD = os.open(nameFileName, os.O_RDONLY)
         try:
             fcntl.lockf(nameFD, fcntl.LOCK_SH | fcntl.LOCK_NB)
-        except IOError as e:
+        except OSError as e:
             # Could not lock. Process is alive.
             return True
         else:
@@ -491,7 +493,7 @@ class LastProcessStandingArena:
                 fd = os.open(full_path, os.O_RDONLY)
                 try:
                     fcntl.lockf(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
-                except IOError as e:
+                except OSError as e:
                     # Could not lock. It's alive!
                     break
                 else:
