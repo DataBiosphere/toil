@@ -1,1 +1,1 @@
-htcondor>=8.6.0,<9
+htcondor>=8.6.0,<10
