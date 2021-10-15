@@ -204,7 +204,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                             pending_info = "\n" + bjobs_record["PEND_REASON"]
                     logger.debug(
                         "bjobs detected job pending with: %s\nfor job: %s",
-                        (pending_info, job),
+                        pending_info, job
                     )
                     return None
                 if process_status == "EXIT":
@@ -223,7 +223,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                         exit_info += f"\nexit reason: {exit_reason}"
                     logger.error(
                         "bjobs detected job failed with: %s\nfor job: %s",
-                        (exit_info, job),
+                        exit_info, job
                     )
                     if "TERM_MEMLIMIT" in exit_reason:
                         return BatchJobExitReason.MEMLIMIT

@@ -19,7 +19,7 @@ class SystemTest(ToilTest):
             parent = self._createTempDir(purpose='parent')
             child = os.path.join(parent, 'child')
             # Use processes (as opposed to threads) to prevent GIL from ordering things artificially
-            pool = multiprocessing.Pool()
+            pool = multiprocessing.Pool(processes=cpu_count())
             try:
                 numTasks = cpu_count() * 10
                 grandChildIds = pool.map_async(
