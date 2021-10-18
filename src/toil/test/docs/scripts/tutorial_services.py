@@ -1,6 +1,7 @@
 from toil.common import Toil
 from toil.job import Job
 
+
 class DemoService(Job.Service):
 
     def start(self, fileStore):

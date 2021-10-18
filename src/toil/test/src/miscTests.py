@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,20 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import, print_function
-from future.utils import raise_
-from builtins import range
-from uuid import uuid4
+import inspect
+import logging
 import os
 import random
-import tempfile
-import logging
-import inspect
 import sys
+import tempfile
+from uuid import uuid4
 
-from toil.lib.exceptions import panic
 from toil.common import getNodeID
-from toil.lib.misc import atomic_tmp_file, atomic_install, AtomicFileCreate
+from toil.lib.exceptions import panic, raise_
+from toil.lib.io import AtomicFileCreate, atomic_install, atomic_tmp_file
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 from toil.test import ToilTest, slow, travis_test
 
@@ -38,7 +35,7 @@ class MiscTests(ToilTest):
     file, and that don't logically fit in with any of the other test suites.
     """
     def setUp(self):
-        super(MiscTests, self).setUp()
+        super().setUp()
         self.testDir = self._createTempDir()
 
     @travis_test
@@ -60,6 +57,7 @@ class MiscTests(ToilTest):
         files to test this using getDirSizeRecursively.
         '''
         from toil.common import getDirSizeRecursively
+
         # a list of the directories used in the test
         directories = [self.testDir]
         # A dict of {FILENAME: FILESIZE} for all files used in the test
@@ -68,7 +66,7 @@ class MiscTests(ToilTest):
         for i in range(0,10):
             directories.append(tempfile.mkdtemp(dir=random.choice(directories), prefix='test'))
         # Create 50 random file entries in different locations in the directories. 75% of the time
-        # these are fresh files of sixe [1, 10] MB and 25% of the time they are hard links to old
+        # these are fresh files of size [1, 10] MB and 25% of the time they are hard links to old
         # files.
         while len(files) <= 50:
             fileName = os.path.join(random.choice(directories), self._getRandomName())
@@ -178,12 +176,12 @@ class TestPanic(ToilTest):
             self.line_of_primary_exc = inspect.currentframe().f_lineno + 1
             raise ValueError("primary")
         except Exception:
-            exc_type, exc_value, exc_traceback = sys.exc_info()
+            exc_type, exc_value, traceback = sys.exc_info()
             try:
                 raise RuntimeError("secondary")
             except Exception:
                 pass
-            raise_(exc_type, exc_value, exc_traceback)
+            raise_(exc_type, exc_value, traceback)
 
     def try_and_panic(self):
         try:

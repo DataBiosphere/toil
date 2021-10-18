@@ -1,13 +1,15 @@
-import subprocess
 import os
+import subprocess
+
 from toil.common import Toil
 from toil.job import Job
+
 
 class discoverFiles(Job):
     """Views files at a specified path using ls."""
     def __init__(self, path, *args, **kwargs):
         self.path = path
-        super(discoverFiles, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def run(self, fileStore):
         if os.path.exists(self.path):

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """This script is a template for src/toil/version.py. Running it without arguments echoes all
 globals, i.e. module attributes. Constant assignments will be echoed verbatim while callables
 will be invoked and their result echoed as an assignment using the function name as the left-hand
@@ -29,7 +28,7 @@ import the expand_ function and invoke it directly with either no or exactly one
 #  - don't import even standard modules at global scope without renaming them
 #    to have leading/trailing underscores
 
-baseVersion = '4.1.0a1'
+baseVersion = '5.6.0a1'
 cgcloudVersion = '1.6.0a1.dev393'
 
 
@@ -89,13 +88,13 @@ def dockerTag():
     """The primary tag of the Docker image for the appliance. This uniquely identifies the appliance image."""
     return version() + _pythonVersionSuffix()
 
-  
+
 def currentCommit():
     import os
     from subprocess import check_output
     try:
         git_root_dir = os.path.dirname(os.path.abspath(__file__))
-        output = check_output('git log --pretty=oneline -n 1 -- {}'.format(git_root_dir),
+        output = check_output(f'git log --pretty=oneline -n 1 -- {git_root_dir}',
                               shell=True,
                               cwd=git_root_dir).decode('utf-8').split()[0]
     except:
@@ -128,18 +127,29 @@ def dirty():
         return False  # In case the git call fails.
 
 
-def expand_(name=None):
+def expand_(name=None, others=None):
+    """
+    Returns a string of all the globals and additional variables passed as the
+    others keyword argument.
+
+    :param str name: If set, only the value of the given symbol is returned.
+    :param dict others: A dictionary of additional variables to be included in
+                        the return value.
+    """
     variables = {k: v for k, v in globals().items()
                  if not k.startswith('_') and not k.endswith('_')}
 
+    if others is not None:
+        variables.update(others)
+
     def resolve(k):
-        v = variables[k]
+        v = variables.get(k, None)
         if callable(v):
             v = v()
         return v
 
     if name is None:
-        return ''.join("%s = %s\n" % (k, repr(resolve(k))) for k, v in variables.items())
+        return ''.join("{} = {}\n".format(k, repr(resolve(k))) for k, v in variables.items())
     else:
         return resolve(name)
 

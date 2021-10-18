@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,39 +11,31 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-from future import standard_library
-standard_library.install_aliases()
-from builtins import str
+import json
+import logging
 import os
 import os.path
+import pickle
 import random
-import socket
+import resource
 import signal
+import socket
+import subprocess
 import sys
 import threading
-import logging
-import psutil
-import traceback
 import time
-import json
-import resource
-import subprocess
-
-try:
-    from urllib2 import urlopen
-except ImportError:
-    from urllib.request import urlopen
-
+import traceback
 import addict
-from pymesos import MesosExecutorDriver, Executor, decode_data, encode_data
+import psutil
 
-from toil import pickle
+from pymesos import Executor, MesosExecutorDriver, decode_data, encode_data
+from urllib.request import urlopen
+
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.lib.expando import Expando
 from toil.lib.threading import cpu_count
-from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.resource import Resource
+from toil.statsAndLogging import configure_root_logger, set_log_level
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +47,7 @@ class MesosExecutor(Executor):
     """
 
     def __init__(self):
-        super(MesosExecutor, self).__init__()
+        super().__init__()
         self.popenLock = threading.Lock()
         self.runningTasks = {}
         self.workerCleanupInfo = None
@@ -67,15 +59,15 @@ class MesosExecutor(Executor):
         # the mesos sandbox if the user hasn't specified --workDir on the command line.
         if not os.getenv('TOIL_WORKDIR'):
             os.environ['TOIL_WORKDIR'] = os.getcwd()
-            
+
     def registered(self, driver, executorInfo, frameworkInfo, agentInfo):
         """
         Invoked once the executor driver has been able to successfully connect with Mesos.
         """
-        
+
         # Get the ID we have been assigned, if we have it
         self.id = executorInfo.executor_id.get('value', None)
-        
+
         log.debug("Registered executor %s with framework", self.id)
         self.address = socket.gethostbyname(agentInfo.hostname)
         nodeInfoThread = threading.Thread(target=self._sendFrameworkMessage, args=[driver], daemon=True)
@@ -145,9 +137,9 @@ class MesosExecutor(Executor):
         """
         Invoked by SchedulerDriver when a Mesos task should be launched by this executor
         """
-        
+
         log.debug("Asked to launch task %s", repr(task))
-        
+
         def runTask():
 
             log.debug("Running task %s", task.task_id.value)
@@ -236,12 +228,12 @@ class MesosExecutor(Executor):
         """
         Invoked when a framework message has arrived for this executor.
         """
-        log.debug("Received message from framework: {}".format(message))
+        log.debug(f"Received message from framework: {message}")
 
 
 def main():
-    logging.basicConfig(level=logging.DEBUG)
-    log.debug("Starting executor")
+    configure_root_logger()
+    set_log_level("INFO")
 
     if not os.environ.get("MESOS_AGENT_ENDPOINT"):
         # Some Mesos setups in our tests somehow lack this variable. Provide a
@@ -255,18 +247,18 @@ def main():
         try:
             urlopen("http://%s/logging/toggle?level=1&duration=15mins" % os.environ["MESOS_AGENT_ENDPOINT"]).read()
             log.debug("Toggled agent log level")
-        except Exception as e:
+        except Exception:
             log.debug("Failed to toggle agent log level")
-        
+
     # Parse the agent state
     agent_state = json.loads(urlopen("http://%s/state" % os.environ["MESOS_AGENT_ENDPOINT"]).read())
     if 'completed_frameworks' in agent_state:
         # Drop the completed frameworks which grow over time
         del agent_state['completed_frameworks']
     log.debug("Agent state: %s", str(agent_state))
-    
+
     log.debug("Virtual memory info in executor: %s" % repr(psutil.virtual_memory()))
-    
+
     if os.path.exists('/sys/fs/cgroup/memory'):
         # Mesos can limit memory with a cgroup, so we should report on that.
         for (dirpath, dirnames, filenames) in os.walk('/sys/fs/cgroup/memory', followlinks=True):
@@ -277,40 +269,39 @@ def main():
                 try:
                     for line in open(os.path.join(dirpath, filename)):
                         log.debug(line.rstrip())
-                except Exception as e:
+                except Exception:
                     log.debug("Failed to read file")
-                    
+
     # Mesos can also impose rlimit limits, including on things that really
     # ought to not be limited, like virtual address space size.
     log.debug('DATA rlimit: %s', str(resource.getrlimit(resource.RLIMIT_DATA)))
     log.debug('STACK rlimit: %s', str(resource.getrlimit(resource.RLIMIT_STACK)))
     log.debug('RSS rlimit: %s', str(resource.getrlimit(resource.RLIMIT_RSS)))
     log.debug('AS rlimit: %s', str(resource.getrlimit(resource.RLIMIT_AS)))
-    
-                    
+
+
     executor = MesosExecutor()
     log.debug('Made executor')
     driver = MesosExecutorDriver(executor, use_addict=True)
-    
+
     old_on_event = driver.on_event
-    
+
     def patched_on_event(event):
         """
         Intercept and log all pymesos events.
         """
         log.debug("Event: %s", repr(event))
         old_on_event(event)
-        
+
     driver.on_event = patched_on_event
-    
+
     log.debug('Made driver')
     driver.start()
     log.debug('Started driver')
     driver_result = driver.join()
     log.debug('Joined driver')
-    
+
     # Tolerate a None in addition to the code the docs suggest we should receive from join()
     exit_value = 0 if (driver_result is None or driver_result == 'DRIVER_STOPPED') else 1
     assert len(executor.runningTasks) == 0
     sys.exit(exit_value)
-

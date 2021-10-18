@@ -1,8 +1,9 @@
 from toil.common import Toil
 from toil.job import Job
 
+
 def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
-    job.log("Hello world, I have a message: {}".format(message))
+    job.log(f"Hello world, I have a message: {message}")
 
 if __name__=="__main__":
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")

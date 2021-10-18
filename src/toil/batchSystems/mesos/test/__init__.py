@@ -1,34 +1,28 @@
-from __future__ import absolute_import
-from future import standard_library
-standard_library.install_aliases()
-
-from builtins import next
-from builtins import object
-from abc import ABCMeta, abstractmethod
 import logging
 import shutil
-import threading
 import subprocess
-import multiprocessing
-from past.builtins import basestring
-from six.moves.urllib.request import urlopen
-from contextlib import closing
+import threading
 import time
+from abc import ABCMeta, abstractmethod
+from contextlib import closing
+from shutil import which
+from urllib.request import urlopen
 
 from toil.lib.retry import retry
-from shutil import which
-from toil.lib.threading import ExceptionalThread
-from toil import which  # replace with shutil.which() directly; python3 only
 from toil.lib.threading import ExceptionalThread, cpu_count
-from future.utils import with_metaclass
 
 log = logging.getLogger(__name__)
 
 
-class MesosTestSupport(object):
+class MesosTestSupport:
     """
     A mixin for test cases that need a running Mesos master and agent on the local host
     """
+    @retry(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
+           log_message=(log.info, 'Checking if Mesos is ready...'))
+    def wait_for_master(self):
+        with closing(urlopen('http://127.0.0.1:5050/version')) as content:
+            content.read()
 
     def _startMesos(self, numCores=None):
         if numCores is None:
@@ -38,22 +32,17 @@ class MesosTestSupport(object):
         self.master.start()
         self.agent = self.MesosAgentThread(numCores)
         self.agent.start()
-        
-        # Wait for the master to come up.
+
         # Bad Things will happen if the master is not yet ready when Toil tries to use it.
-        for attempt in retry(predicate=lambda e: True):
-            with attempt:
-                log.info('Checking if Mesos is ready...')
-                with closing(urlopen('http://127.0.0.1:5050/version')) as content:
-                    content.read()
-        
+        self.wait_for_master()
+
         log.info('Mesos is ready! Running test.')
 
     def _stopProcess(self, process, timeout=10):
         """
         Gracefully stop a process on a timeout, given the Popen object for the process.
         """
-        
+
         process.terminate()
         waited = 0
         while waited < timeout and process.poll() is None:
@@ -70,7 +59,7 @@ class MesosTestSupport(object):
         self._stopProcess(self.master.popen)
         self.master.join()
 
-    class MesosThread(with_metaclass(ABCMeta, ExceptionalThread)):
+    class MesosThread(ExceptionalThread, metaclass=ABCMeta):
         lock = threading.Lock()
 
         def __init__(self, numCores):
@@ -88,10 +77,10 @@ class MesosTestSupport(object):
             log.info('Exiting %s', self.__class__.__name__)
 
         def findMesosBinary(self, names):
-            if isinstance(names, basestring):
+            if isinstance(names, str):
                 # Handle a single string
                 names = [names]
-        
+
             for name in names:
                 try:
                     return which(name)
@@ -103,13 +92,13 @@ class MesosTestSupport(object):
                         return which(name, path='/usr/local/sbin')
                     except StopIteration:
                         pass
-            
+
             # If we get here, nothing we can use is present. We need to complain.
             if len(names) == 1:
                 sought = "binary '%s'" % names[0]
             else:
                 sought = 'any binary in %s' % str(names)
-            
+
             raise RuntimeError("Cannot find %s. Make sure Mesos is installed "
                                 "and it's 'bin' directory is present on the PATH." % sought)
 
@@ -128,7 +117,7 @@ class MesosTestSupport(object):
             # We also make sure to point it explicitly at the right temp work directory, and
             # to disable systemd support because we have to be root to make systemd make us
             # things and we probably aren't when testing.
-            return [self.findMesosBinary(['mesos-agent', 'mesos-slave']),
+            return [self.findMesosBinary(['mesos-agent']),
                     '--ip=127.0.0.1',
                     '--master=127.0.0.1:5050',
                     '--attributes=preemptable:False',

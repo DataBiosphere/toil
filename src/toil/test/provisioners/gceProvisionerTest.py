@@ -1,4 +1,4 @@
-# Copyright (C) 2015 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,23 +13,26 @@
 # limitations under the License.
 import logging
 import os
-
 import subprocess
-from toil.version import exactPython
 from abc import abstractmethod
-
-import pytest
 from uuid import uuid4
 
+import pytest
 
-from toil.test import needs_google, integrative, ToilTest, needs_appliance, timeLimit, slow
+from toil.test import (ToilTest,
+                       integrative,
+                       needs_fetchable_appliance,
+                       needs_google,
+                       slow,
+                       timeLimit)
+from toil.version import exactPython
 
 log = logging.getLogger(__name__)
 
 
 @needs_google
 @integrative
-@needs_appliance
+@needs_fetchable_appliance
 @slow
 class AbstractGCEAutoscaleTest(ToilTest):
     projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
@@ -64,7 +67,7 @@ class AbstractGCEAutoscaleTest(ToilTest):
         subprocess.check_call(callCommand)
 
     def __init__(self, methodName):
-        super(AbstractGCEAutoscaleTest, self).__init__(methodName=methodName)
+        super().__init__(methodName=methodName)
         # TODO: add TOIL_GOOGLE_KEYNAME to needs_google or ssh with SA account
         self.keyName = os.getenv('TOIL_GOOGLE_KEYNAME')
         # TODO: remove this when switching to google jobstore
@@ -80,10 +83,10 @@ class AbstractGCEAutoscaleTest(ToilTest):
         self.spotBid = 0.15
 
     def setUp(self):
-        super(AbstractGCEAutoscaleTest, self).setUp()
+        super().setUp()
 
     def tearDown(self):
-        super(AbstractGCEAutoscaleTest, self).tearDown()
+        super().tearDown()
         self.destroyClusterUtil()
         self.cleanJobStoreUtil()
 
@@ -176,13 +179,13 @@ class AbstractGCEAutoscaleTest(ToilTest):
 class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
 
     def __init__(self, name):
-        super(GCEAutoscaleTest, self).__init__(name)
+        super().__init__(name)
         self.clusterName = 'provisioner-test-' + str(uuid4())
         self.requestedLeaderStorage = 80
 
     def setUp(self):
-        super(GCEAutoscaleTest, self).setUp()
-        self.jobStore = 'google:%s:autoscale-%s' % (self.projectID, uuid4())
+        super().setUp()
+        self.jobStore = f'google:{self.projectID}:autoscale-{uuid4()}'
 
     def _getScript(self):
         # TODO: Isn't this the key file?
@@ -229,7 +232,7 @@ class GCEStaticAutoscaleTest(GCEAutoscaleTest):
     Runs the tests on a statically provisioned cluster with autoscaling enabled.
     """
     def __init__(self, name):
-        super(GCEStaticAutoscaleTest, self).__init__(name)
+        super().__init__(name)
         self.requestedNodeStorage = 20
 
     def launchCluster(self):
@@ -264,12 +267,12 @@ class GCEStaticAutoscaleTest(GCEAutoscaleTest):
 class GCEAutoscaleTestMultipleNodeTypes(AbstractGCEAutoscaleTest):
 
     def __init__(self, name):
-        super(GCEAutoscaleTestMultipleNodeTypes, self).__init__(name)
+        super().__init__(name)
         self.clusterName = 'provisioner-test-' + str(uuid4())
 
     def setUp(self):
-        super(GCEAutoscaleTestMultipleNodeTypes, self).setUp()
-        self.jobStore = 'google:%s:multinode-%s' % (self.projectID, uuid4())
+        super().setUp()
+        self.jobStore = f'google:{self.projectID}:multinode-{uuid4()}'
 
     def _getScript(self):
         sseKeyFile = os.path.join(os.getcwd(), 'keyFile')
@@ -303,17 +306,17 @@ class GCERestartTest(AbstractGCEAutoscaleTest):
     """
 
     def __init__(self, name):
-        super(GCERestartTest, self).__init__(name)
+        super().__init__(name)
         self.clusterName = 'restart-test-' + str(uuid4())
 
     def setUp(self):
-        super(GCERestartTest, self).setUp()
+        super().setUp()
         self.instanceTypes = ['n1-standard-1']
         self.numWorkers = ['1']
         self.scriptName = "/home/restartScript.py"
         # TODO: replace this with a google job store
         zone = 'us-west-2'
-        self.jobStore = 'google:%s:restart-%s' % (self.projectID, uuid4())
+        self.jobStore = f'google:{self.projectID}:restart-{uuid4()}'
 
     def _getScript(self):
         self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/provisioners/restartScript.py'),
@@ -341,4 +344,3 @@ class GCERestartTest(AbstractGCEAutoscaleTest):
     @integrative
     def testAutoScaledCluster(self):
         self._test()
-

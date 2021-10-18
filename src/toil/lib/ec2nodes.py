@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,14 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-from six import iteritems
-import requests
-import os
-import json
 import datetime
+import json
 import logging
+import os
 import textwrap
+
+import requests
+
+from typing import Dict, List, Union, Tuple, Any
 
 logger = logging.getLogger(__name__)
 dirname = os.path.dirname(__file__)
@@ -43,17 +44,17 @@ EC2Regions = {'us-west-1': 'US West (N. California)',
               'sa-east-1': 'South America (Sao Paulo)'}
 
 
-class InstanceType(object):
+class InstanceType:
     __slots__ = ('name', 'cores', 'memory', 'disks', 'disk_capacity')
 
-    def __init__(self, name, cores, memory, disks, disk_capacity):
+    def __init__(self, name: str, cores: int, memory: float, disks: float, disk_capacity: float):
         self.name = name  # the API name of the instance type
         self.cores = cores  # the number of cores
         self.memory = memory  # RAM in GiB
         self.disks = disks  # the number of ephemeral (aka 'instance store') volumes
         self.disk_capacity = disk_capacity  # the capacity of each ephemeral volume in GiB
 
-    def __str__(self):
+    def __str__(self) -> str:
         return ("Type: {}\n"
                 "Cores: {}\n"
                 "Disks: {}\n"
@@ -66,7 +67,9 @@ class InstanceType(object):
                 self.memory,
                 self.disk_capacity))
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, InstanceType):
+            return NotImplemented
         if (self.name == other.name and
             self.cores == other.cores and
             self.memory == other.memory and
@@ -76,7 +79,7 @@ class InstanceType(object):
         return False
 
 
-def isNumber(s):
+def isNumber(s: str) -> bool:
     """
     Determines if a unicode string (that may include commas) is a number.
 
@@ -98,7 +101,7 @@ def isNumber(s):
     return False
 
 
-def parseStorage(storageData):
+def parseStorage(storageData: str) -> Union[List[int], Tuple[Union[int, float], float]]:
     """
     Parses EC2 JSON storage param string into a number.
 
@@ -125,7 +128,7 @@ def parseStorage(storageData):
             raise RuntimeError('EC2 JSON format has likely changed.  Error parsing disk specs.')
 
 
-def parseMemory(memAttribute):
+def parseMemory(memAttribute: str) -> float:
     """
     Returns EC2 'memory' string as a float.
 
@@ -143,7 +146,7 @@ def parseMemory(memAttribute):
         raise RuntimeError('EC2 JSON format has likely changed.  Error parsing memory.')
 
 
-def fetchEC2Index(filename):
+def fetchEC2Index(filename: str) -> None:
     """Downloads and writes the AWS Billing JSON to a file using the AWS pricing API.
 
     See: https://aws.amazon.com/blogs/aws/new-aws-price-list-api/
@@ -163,7 +166,7 @@ def fetchEC2Index(filename):
         raise RuntimeError('Error: ' + str(response) + ' :: ' + str(response.text))
 
 
-def fetchEC2InstanceDict(awsBillingJson, region):
+def fetchEC2InstanceDict(awsBillingJson: Dict[str, Any], region: str) -> Dict[str, InstanceType]:
     """
     Takes a JSON and returns a list of InstanceType objects representing EC2 instance params.
 
@@ -171,7 +174,7 @@ def fetchEC2InstanceDict(awsBillingJson, region):
     :return:
     """
     ec2InstanceList = []
-    for k, v in iteritems(awsBillingJson['products']):
+    for k, v in awsBillingJson['products'].items():
         i = v['attributes']
         # NOTES:
         #
@@ -200,10 +203,10 @@ def fetchEC2InstanceDict(awsBillingJson, region):
                                        'Duplicate instance {} found.'.format(instance))
                 ec2InstanceList.append(instance)
     print('Finished for ' + str(region) + '.  ' + str(len(ec2InstanceList)) + ' added.')
-    return dict((_.name, _) for _ in ec2InstanceList)
+    return {_.name: _ for _ in ec2InstanceList}
 
 
-def updateStaticEC2Instances():
+def updateStaticEC2Instances() -> None:
     """
     Generates a new python file of fetchable EC2 Instances by region with current prices and specs.
 
@@ -231,14 +234,14 @@ def updateStaticEC2Instances():
     else:
         print('Reusing previously downloaded json @: ' + awsJsonIndex)
 
-    with open(awsJsonIndex, 'r') as f:
+    with open(awsJsonIndex) as f:
         awsProductDict = json.loads(f.read())
 
     currentEC2List = []
-    instancesByRegion = {}
+    instancesByRegion: Dict[str, List[str]] = {}
     for regionNickname in EC2Regions:
         currentEC2Dict = fetchEC2InstanceDict(awsProductDict, region=EC2Regions[regionNickname])
-        for instanceName, instanceTypeObj in iteritems(currentEC2Dict):
+        for instanceName, instanceTypeObj in currentEC2Dict.items():
             if instanceTypeObj not in currentEC2List:
                 currentEC2List.append(instanceTypeObj)
             instancesByRegion.setdefault(regionNickname, []).append(instanceName)
@@ -262,7 +265,6 @@ def updateStaticEC2Instances():
         # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
         # See the License for the specific language governing permissions and
         # limitations under the License.
-        from six import iteritems
         from toil.lib.ec2nodes import InstanceType\n\n\n''').format(year=datetime.date.today().strftime("%Y"))[1:])
 
     # write header of total EC2 instance type list
@@ -279,10 +281,10 @@ def updateStaticEC2Instances():
     genString = genString + '}\n\n'
 
     genString = genString + 'regionDict = {\n'
-    for regionName, instanceList in iteritems(instancesByRegion):
-        genString = genString + "              '{regionName}': [".format(regionName=regionName)
+    for regionName, instanceList in instancesByRegion.items():
+        genString = genString + f"              '{regionName}': ["
         for instance in sorted(instanceList):
-            genString = genString + "'{instance}', ".format(instance=instance)
+            genString = genString + f"'{instance}', "
         if genString.endswith(', '):
             genString = genString[:-2]
         genString = genString + '],\n'
@@ -293,7 +295,7 @@ def updateStaticEC2Instances():
         f.write(genString)
 
     # append key for fetching at the end
-    regionKey = '\nec2InstancesByRegion = dict((region, [E2Instances[i] for i in instances]) for region, instances in iteritems(regionDict))\n'
+    regionKey = '\nec2InstancesByRegion = dict((region, [E2Instances[i] for i in instances]) for region, instances in regionDict.items())\n'
 
     with open(genFile, 'a+') as f:
         f.write(regionKey)

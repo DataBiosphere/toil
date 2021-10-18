@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,25 +11,44 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-
 import importlib
 import os
+import subprocess
 import sys
+import tempfile
+from contextlib import contextmanager
 from inspect import getsource
 from io import BytesIO
 from textwrap import dedent
 from zipfile import ZipFile
 
-from toil.test import mkdir_p
-from mock import MagicMock, patch
+from unittest.mock import MagicMock, patch
 
-import subprocess
 from toil import inVirtualEnv
 from toil.resource import ModuleDescriptor, Resource, ResourceException
-from toil.test import ToilTest, tempFileContaining, travis_test
+from toil.test import ToilTest, travis_test
 from toil.version import exactPython
+
+
+@contextmanager
+def tempFileContaining(content, suffix=''):
+    """
+    Write a file with the given contents, and keep it on disk as long as the context is active.
+    :param str content: The contents of the file.
+    :param str suffix: The extension to use for the temporary file.
+    """
+    fd, path = tempfile.mkstemp(suffix=suffix)
+    try:
+        encoded = content.encode('utf-8')
+        assert os.write(fd, encoded) == len(encoded)
+    except:
+        os.close(fd)
+        raise
+    else:
+        os.close(fd)
+        yield path
+    finally:
+        os.unlink(path)
 
 
 class ResourceTest(ToilTest):
@@ -84,7 +103,7 @@ class ResourceTest(ToilTest):
         try:
             for relPath in pyFiles:
                 path = os.path.join(dirPath, relPath)
-                mkdir_p(os.path.dirname(path))
+                os.makedirs(os.path.dirname(path), exist_ok=True)
                 with open(path, 'w') as f:
                     f.write('pass\n')
             sys.path.append(dirPath)
@@ -136,15 +155,15 @@ class ResourceTest(ToilTest):
         resource = module.saveAsResourceTo(jobStore)
         # Ensure that the URL generation method is actually called, ...
         jobStore.getSharedPublicUrl.assert_called_once_with(sharedFileName=resource.pathHash)
-        # ... and that ensure that writeSharedFileStream is called.
-        jobStore.writeSharedFileStream.assert_called_once_with(sharedFileName=resource.pathHash,
-                                                               isProtected=False)
+        # ... and that ensure that write_shared_file_stream is called.
+        jobStore.write_shared_file_stream.assert_called_once_with(shared_file_name=resource.pathHash,
+                                                                  encrypted=False)
         # Now it gets a bit complicated: Ensure that the context manager returned by the
-        # jobStore's writeSharedFileStream() method is entered and that the file handle yielded
+        # jobStore's write_shared_file_stream() method is entered and that the file handle yielded
         # by the context manager is written to once with the zipped source tree from which
         # 'toil.resource' was orginally imported. Keep the zipped tree around such that we can
         # mock the download later.
-        file_handle = jobStore.writeSharedFileStream.return_value.__enter__.return_value
+        file_handle = jobStore.write_shared_file_stream.return_value.__enter__.return_value
         # The first 0 index selects the first call of write(), the second 0 selects positional
         # instead of keyword arguments, and the third 0 selects the first positional, i.e. the
         # contents. This is a bit brittle since it assumes that all the data is written in a
@@ -202,8 +221,9 @@ class ResourceTest(ToilTest):
 
         def script():
             import argparse
-            from toil.job import Job
+
             from toil.common import Toil
+            from toil.job import Job
 
             def fn():
                 pass

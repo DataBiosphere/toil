@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,12 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-
-from future import standard_library
-standard_library.install_aliases()
-from builtins import map
 import errno
 import hashlib
 import importlib
@@ -31,20 +25,16 @@ from io import BytesIO
 from pydoc import locate
 from tempfile import mkdtemp
 from urllib.error import HTTPError
+from urllib.request import urlopen
 from zipfile import ZipFile
 
-# Python 3 compatibility imports
-from toil.lib.retry import retry
-from six.moves.urllib.request import urlopen
-
-from toil.lib.memoize import strict_bool
+from toil import inVirtualEnv
 from toil.lib.iterables import concat
-
+from toil.lib.memoize import strict_bool
+from toil.lib.retry import ErrorCondition, retry
 from toil.version import exactPython
 
-from toil import inVirtualEnv
-
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash'))):
@@ -87,7 +77,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         contentHash = hashlib.md5()
         # noinspection PyProtectedMember
         with cls._load(leaderPath) as src:
-            with jobStore.writeSharedFileStream(sharedFileName=pathHash, isProtected=False) as dst:
+            with jobStore.write_shared_file_stream(shared_file_name=pathHash, encrypted=False) as dst:
                 userScript = src.read()
                 contentHash.update(userScript)
                 dst.write(userScript)
@@ -99,7 +89,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
     def refresh(self, jobStore):
         return type(self)(name=self.name,
                           pathHash=self.pathHash,
-                          url=jobStore.getSharedPublicUrl(sharedFileName=self.pathHash),
+                          url=jobStore.get_shared_public_url(shared_file_name=self.pathHash),
                           contentHash=self.contentHash)
 
     @classmethod
@@ -234,16 +224,19 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         """
         raise NotImplementedError()
 
+    @retry(errors=[
+        ErrorCondition(
+             error=HTTPError,
+             error_codes=[400])
+    ])
     def _download(self, dstFile):
         """
         Download this resource from its URL to the given file object.
 
         :type dstFile: io.BytesIO|io.FileIO
         """
-        for attempt in retry(predicate=lambda e: isinstance(e, HTTPError) and e.code == 400):
-            with attempt:
-                with closing(urlopen(self.url)) as content:
-                    buf = content.read()
+        with closing(urlopen(self.url)) as content:
+            buf = content.read()
         contentHash = hashlib.md5(buf)
         assert contentHash.hexdigest() == self.contentHash
         dstFile.write(buf)
@@ -297,12 +290,12 @@ class DirectoryResource(Resource):
                         try:
                             fullPath = os.path.join(dirName, fileName)
                             zipFile.write(fullPath, os.path.relpath(fullPath, rootDir))
-                        except IOError:
-                            log.critical('Cannot access and read the file at path: %s' % fullPath)
+                        except OSError:
+                            logger.critical('Cannot access and read the file at path: %s' % fullPath)
                             sys.exit(1)
         else:
-            log.critical("Couldn't package the directory at %s for hot deployment. Would recommend to create a \
-                subdirectory (ie %s/MYDIR_HERE/)" % (path, path))
+            logger.critical("Couldn't package the directory at {} for hot deployment. Would recommend to create a \
+                subdirectory (ie {}/MYDIR_HERE/)".format(path, path))
             sys.exit(1)
         bytesIO.seek(0)
         return bytesIO
@@ -358,7 +351,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
     >>> import subprocess, tempfile, os
     >>> dirPath = tempfile.mkdtemp()
     >>> path = os.path.join( dirPath, 'foo.py' )
-    >>> with open(path,'w') as f: 
+    >>> with open(path,'w') as f:
     ...     _ = f.write('from toil.resource import ModuleDescriptor\\n'
     ...                 'print(ModuleDescriptor.forModule(__name__))')
     >>> subprocess.check_output([ sys.executable, path ]) # doctest: +ELLIPSIS +ALLOW_BYTES
@@ -397,11 +390,11 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         if not extension in ('.py', '.pyc'):
             raise Exception('The name of a user script/module must end in .py or .pyc.')
         if name == '__main__':
-            log.debug("Discovering real name of module")
+            logger.debug("Discovering real name of module")
             # User script/module was invoked as the main program
             if module.__package__:
                 # Invoked as a module via python -m foo.bar
-                log.debug("Script was invoked as a module")
+                logger.debug("Script was invoked as a module")
                 name = [filePath.pop()]
                 for package in reversed(module.__package__.split('.')):
                     dirPathTail = filePath.pop()
@@ -426,9 +419,9 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             dirPath = os.path.abspath(os.path.sep.join(filePath))
         absPrefix = os.path.abspath(sys.prefix)
         inVenv = inVirtualEnv()
-        log.debug("Module dir is %s, our prefix is %s, virtualenv: %s", dirPath, absPrefix, inVenv)
+        logger.debug("Module dir is %s, our prefix is %s, virtualenv: %s", dirPath, absPrefix, inVenv)
         if not os.path.isdir(dirPath):
-            raise Exception('Bad directory path %s for module %s. Note that hot-deployment does not support .egg-link files yet, or scripts located in the root directory.' % (dirPath, name))
+            raise Exception(f'Bad directory path {dirPath} for module {name}. Note that hot-deployment does not support .egg-link files yet, or scripts located in the root directory.')
         fromVirtualEnv = inVenv and dirPath.startswith(absPrefix)
         return cls(dirPath=dirPath, name=name, fromVirtualEnv=fromVirtualEnv)
 
@@ -449,7 +442,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
                 pass
             else:
                 raise ResourceException(
-                    "The user module '%s' collides with module '%s from '%s'." % (
+                    "The user module '{}' collides with module '{} from '{}'.".format(
                         name, colliding_module.__name__, colliding_module.__file__))
         finally:
             sys.path = old_sys_path
@@ -497,7 +490,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         :rtype: toil.resource.Resource
         """
         if not self._runningOnWorker():
-            log.warning('The localize() method should only be invoked on a worker.')
+            logger.warning('The localize() method should only be invoked on a worker.')
         resource = Resource.lookup(self._resourcePath)
         if resource is None:
             return self
@@ -517,7 +510,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         try:
             mainModule = sys.modules['__main__']
         except KeyError:
-            log.warning('Cannot determine main program module.')
+            logger.warning('Cannot determine main program module.')
             return False
         else:
             # If __file__ is not a valid attribute, it's because
@@ -529,8 +522,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             except AttributeError:
                 return False
 
-            workerModuleFiles = concat(('worker' + ext for ext in self.moduleExtensions),
-                                       '_toil_worker')  # the setuptools entry point
+            workerModuleFiles = ['worker.py', 'worker.pyc', 'worker.pyo', '_toil_worker']  # setuptools entry point
             return mainModuleFile in workerModuleFiles
 
     def globalize(self):
@@ -541,10 +533,8 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             with open(os.path.join(self.dirPath, '.stash')) as f:
                 fromVirtualEnv = [False, True][int(f.read(1))]
                 dirPath = f.read()
-        except IOError as e:
+        except OSError as e:
             if e.errno == errno.ENOENT:
-                if self._runningOnWorker():
-                    log.warning("Can't globalize module %r.", self)
                 return self
             else:
                 raise
@@ -573,12 +563,9 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
                     tuple(concat(initName, self.dirPath, exactPython, os.path.split(self.dirPath), self.name)))
             return self.dirPath
 
-    moduleExtensions = ('.py', '.pyc', '.pyo')
-
     @classmethod
     def _initModuleName(cls, dirPath):
-        for extension in cls.moduleExtensions:
-            name = '__init__' + extension
+        for name in ('__init__.py', '__init__.pyc', '__init__.pyo'):
             if os.path.exists(os.path.join(dirPath, name)):
                 return name
         return None
@@ -610,7 +597,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         try:
             return importlib.import_module(module.name)
         except ImportError:
-            log.error('Failed to import user module %r from sys.path (%r).', module, sys.path)
+            logger.error('Failed to import user module %r from sys.path (%r).', module, sys.path)
             raise
 
 

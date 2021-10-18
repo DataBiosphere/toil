@@ -1,27 +1,19 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
-from past.builtins import str as oldstr
+import functools
+import warnings
 
-import sys
-
-USING_PYTHON2 = True if sys.version_info < (3, 0) else False
+from typing import Union, Callable, Any
 
 
-def compat_oldstr(s):
-    if USING_PYTHON2:
-        return oldstr(s)
-    else:
-        return s.decode('utf-8') if isinstance(s, bytes) else s
+def deprecated(new_function_name: str) -> Callable[..., Any]:
+    def decorate(func: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(func)
+        def call(*args: Any, **kwargs: Any) -> Any:
+            warnings.warn(f'WARNING: "{func.__name__}()" is deprecated.  Please use "{new_function_name}()" instead.',
+                          DeprecationWarning)
+            return func(*args, **kwargs)
+        return call
+    return decorate
 
 
-def compat_bytes(s):
-    if USING_PYTHON2:
-        return bytes(s)
-    else:
-        return s.decode('utf-8') if isinstance(s, bytes) else s
-
-
-def compat_plain(s):
-    if USING_PYTHON2:
-        return s
-    else:
-        return s.decode('utf-8') if isinstance(s, bytes) else s
+def compat_bytes(s: Union[bytes, str]) -> str:
+    return s.decode('utf-8') if isinstance(s, bytes) else s

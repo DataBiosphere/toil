@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,24 +11,24 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
 import logging
+import os
 import signal
 import time
-import os
-import sys
 import uuid
-import docker
 from threading import Thread
-from docker.errors import ContainerError
 
-from toil.test import mkdir_p
+from docker.errors import ContainerError
+from toil.common import Toil
 from toil.job import Job
 from toil.leader import FailedJobsException
-from toil.test import ToilTest, slow, needs_docker
-from toil.lib.docker import apiDockerCall, containerIsRunning, dockerKill
-from toil.lib.docker import FORGO, STOP, RM
-
+from toil.lib.docker import (FORGO,
+                             RM,
+                             STOP,
+                             apiDockerCall,
+                             containerIsRunning,
+                             dockerKill)
+from toil.test import ToilTest, needs_docker, slow
 
 logger = logging.getLogger(__name__)
 
@@ -70,21 +70,22 @@ class DockerTest(ToilTest):
         # not running.
         #              None     FORGO     STOP    RM
         #    rm        X         R         X      X
-        # detached     R         R         E      X
-        #  Neither     R         R         E      X
+        # detached     X         R         E      X
+        #  Neither     X         R         E      X
 
         data_dir = os.path.join(self.tempDir, 'data')
         working_dir = os.path.join(self.tempDir, 'working')
         test_file = os.path.join(working_dir, 'test.txt')
 
-        mkdir_p(data_dir)
-        mkdir_p(working_dir)
+        os.makedirs(data_dir, exist_ok=True)
+        os.makedirs(working_dir, exist_ok=True)
 
         options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir,
                                                             'jobstore'))
         options.logLevel = self.dockerTestLogLevel
         options.workDir = working_dir
         options.clean = 'always'
+        options.retryCount = 0  # we're expecting the job to fail so don't retry!
         options.disableCaching = disableCaching
 
         # No base64 logic since it might create a name starting with a `-`.
@@ -96,7 +97,8 @@ class DockerTest(ToilTest):
                           deferParam,
                           container_name)
         try:
-            Job.Runner.startToil(A, options)
+            with Toil(options) as toil:
+                toil.start(A)
         except FailedJobsException:
             # The file created by spooky_container would remain in the directory
             # and since it was created inside the container, it would have had
@@ -106,7 +108,7 @@ class DockerTest(ToilTest):
             assert file_stats.st_gid != 0
             assert file_stats.st_uid != 0
 
-            if (rm and (deferParam != FORGO)) or deferParam == RM:
+            if (rm and (deferParam != FORGO)) or deferParam == RM or deferParam is None:
                 # These containers should not exist
                 assert containerIsRunning(container_name) is None, \
                     'Container was not removed.'
@@ -120,12 +122,13 @@ class DockerTest(ToilTest):
                 # These containers will be running
                 assert containerIsRunning(container_name) == True, \
                     'Container was not running.'
-        client = docker.from_env(version='auto')
-        dockerKill(container_name, client)
-        try:
-            os.remove(test_file)
-        except:
-            pass
+        finally:
+            # Clean up
+            try:
+                dockerKill(container_name, remove=True)
+                os.remove(test_file)
+            except:
+                pass
 
     def testDockerClean_CRx_FORGO(self):
         self.testDockerClean(disableCaching=True, detached=False, rm=True,
@@ -260,8 +263,7 @@ class DockerTest(ToilTest):
         A = Job.wrapJobFn(_testDockerPipeChainFn)
         rv = Job.Runner.startToil(A, options)
         logger.info('Container pipeline result: %s', repr(rv))
-        if sys.version_info >= (3, 0):
-            rv = rv.decode('utf-8')
+        rv = rv.decode('utf-8')
         assert rv.strip() == '2'
 
     def testDockerPipeChainErrorDetection(self, disableCaching=True):
@@ -271,21 +273,55 @@ class DockerTest(ToilTest):
         silently missed.  This tests to make sure that the piping API for
         dockerCall() throws an exception if non-last commands in the chain fail.
         """
-        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir,
-                                                            'jobstore'))
+        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, 'jobstore'))
         options.logLevel = self.dockerTestLogLevel
         options.workDir = self.tempDir
         options.clean = 'always'
         options.caching = disableCaching
         A = Job.wrapJobFn(_testDockerPipeChainErrorFn)
         rv = Job.Runner.startToil(A, options)
-        assert rv == True
+        assert rv is True
 
     def testNonCachingDockerChain(self):
         self.testDockerPipeChain(disableCaching=False)
 
     def testNonCachingDockerChainErrorDetection(self):
         self.testDockerPipeChainErrorDetection(disableCaching=False)
+
+    def testDockerLogs(self, stream=False, demux=False):
+        """Test for the different log outputs when deatch=False."""
+
+        working_dir = os.path.join(self.tempDir, 'working')
+        script_file = os.path.join(working_dir, 'script.sh')
+        os.makedirs(working_dir, exist_ok=True)
+
+        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, 'jobstore'))
+        options.logLevel = self.dockerTestLogLevel
+        options.workDir = working_dir
+        options.clean = 'always'
+        A = Job.wrapJobFn(_testDockerLogsFn,
+                          working_dir=working_dir,
+                          script_file=script_file,
+                          stream=stream,
+                          demux=demux)
+
+        try:
+            rv = Job.Runner.startToil(A, options)
+            assert rv is True
+        finally:
+            try:
+                os.remove(script_file)
+            except:
+                pass
+
+    def testDockerLogs_Stream(self):
+        self.testDockerLogs(stream=True, demux=False)
+
+    def testDockerLogs_Demux(self):
+        self.testDockerLogs(stream=False, demux=True)
+
+    def testDockerLogs_Demux_Stream(self):
+        self.testDockerLogs(stream=True, demux=True)
 
 
 def _testDockerCleanFn(job,
@@ -332,14 +368,14 @@ def _testDockerPipeChainFn(job):
     """Return the result of a simple pipe chain.  Should be 2."""
     parameters = [['printf', 'x\n y\n'], ['wc', '-l']]
     return apiDockerCall(job,
-                         image='ubuntu:latest',
+                         image='quay.io/ucsc_cgl/ubuntu:20.04',
                          parameters=parameters,
                          privileged=True)
 
 
 def _testDockerPipeChainErrorFn(job):
     """Return True if the command exit 1 | wc -l raises a ContainerError."""
-    parameters = [ ['exit', '1'], ['wc', '-l'] ]
+    parameters = [['exit', '1'], ['wc', '-l']]
     try:
         apiDockerCall(job,
                       image='quay.io/ucsc_cgl/spooky_test',
@@ -347,3 +383,72 @@ def _testDockerPipeChainErrorFn(job):
     except ContainerError:
         return True
     return False
+
+
+def _testDockerLogsFn(job,
+                      working_dir,
+                      script_file,
+                      stream=False,
+                      demux=False):
+    """Return True if the test succeeds. Otherwise Exception is raised."""
+
+    # we write a script file because the redirection operator, '>&2', is wrapped
+    # in quotes when passed as parameters.
+    import textwrap
+    bash_script = textwrap.dedent('''
+    #!/bin/bash
+    echo hello stdout ;
+    echo hello stderr >&2 ;
+    echo hello stdout ;
+    echo hello stderr >&2 ;
+    echo hello stdout ;
+    echo hello stdout ;
+    ''')
+
+    with open(script_file, 'w') as file:
+        file.write(bash_script)
+
+    out = apiDockerCall(job,
+                        image='quay.io/ucsc_cgl/ubuntu:20.04',
+                        working_dir=working_dir,
+                        parameters=[script_file],
+                        volumes={working_dir: {'bind': working_dir, 'mode': 'rw'}},
+                        entrypoint="/bin/bash",
+                        stdout=True,
+                        stderr=True,
+                        stream=stream,
+                        demux=demux)
+
+    # we check the output length because order is not guaranteed.
+    if stream:
+        if demux:
+            # a generator with tuples of (stdout, stderr)
+            assert hasattr(out, '__iter__')
+            for _ in range(6):
+                stdout, stderr = next(out)
+                if stdout:
+                    # len('hello stdout\n') == 13
+                    assert len(stdout) == 13
+                elif stderr:
+                    assert len(stderr) == 13
+                else:
+                    assert False
+        else:
+            # a generator with bytes
+            assert hasattr(out, '__iter__')
+            for _ in range(6):
+                assert len(next(out)) == 13
+    else:
+        if demux:
+            # a tuple of (stdout, stderr)
+            stdout, stderr = out
+            # len('hello stdout\n' * 4) == 52
+            assert len(stdout) == 52
+            # len('hello stderr\n' * 2) == 26
+            assert len(stderr) == 26
+        else:
+            # a bytes object
+            # len('hello stdout\n' * 4 + 'hello stderr\n' * 2) == 78
+            assert len(out) == 78
+
+    return True

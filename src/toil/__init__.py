@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,39 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-
 import errno
 import logging
 import os
-import requests
+import re
+import socket
+import subprocess
 import sys
 import time
 from datetime import datetime
+
+import requests
 from pytz import timezone
+
 from docker.errors import ImageNotFound
 from toil.lib.memoize import memoize
-from toil.lib.misc import mkdir_p
 from toil.lib.retry import retry
 from toil.version import currentCommit
-
-# subprocess32 is a backport of python3's subprocess module for use on Python2,
-# and includes many reliability bug fixes relevant on POSIX platforms.
-if os.name == 'posix' and sys.version_info[0] < 3:
-    import subprocess32 as subprocess
-else:
-    import subprocess
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-try:
-    from urllib import urlretrieve
-except ImportError:
-    from urllib.request import urlretrieve
 
 log = logging.getLogger(__name__)
 
@@ -158,7 +142,7 @@ def resolveEntryPoint(entryPoint):
 
 
 @memoize
-def physicalMemory():
+def physicalMemory() -> int:
     """
     >>> n = physicalMemory()
     >>> n > 0
@@ -172,11 +156,8 @@ def physicalMemory():
         return int(subprocess.check_output(['sysctl', '-n', 'hw.memsize']).decode('utf-8').strip())
 
 
-def physicalDisk(config, toilWorkflowDir=None):
-    if toilWorkflowDir is None:
-        from toil.common import Toil
-        toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
-    diskStats = os.statvfs(toilWorkflowDir)
+def physicalDisk(directory: str) -> int:
+    diskStats = os.statvfs(directory)
     return diskStats.f_frsize * diskStats.f_bavail
 
 
@@ -220,15 +201,41 @@ def customDockerInitCmd():
     Returns the custom command (if any) provided through the ``TOIL_CUSTOM_DOCKER_INIT_COMMAND``
     environment variable to run prior to running the workers and/or the primary node's services.
     This can be useful for doing any custom initialization on instances (e.g. authenticating to
-    private docker registries). An empty string is returned if the environment variable is not
-    set.
+    private docker registries). Any single quotes are escaped and the command cannot contain a
+    set of blacklisted chars (newline or tab). An empty string is returned if the environment
+    variable is not set.
 
     :rtype: str
     """
     command = lookupEnvVar(name='user-defined custom docker init command',
                            envName='TOIL_CUSTOM_DOCKER_INIT_COMMAND',
                            defaultValue='')
+    _check_custom_bash_cmd(command)
     return command.replace("'", "'\\''")  # Ensure any single quotes are escaped.
+
+
+def customInitCmd():
+    """
+    Returns the custom command (if any) provided through the ``TOIL_CUSTOM_INIT_COMMAND``
+    environment variable to run prior to running Toil appliance itself in workers and/or the
+    primary node (i.e. this is run one stage before ``TOIL_CUSTOM_DOCKER_INIT_COMMAND``).
+    This can be useful for doing any custom initialization on instances (e.g. authenticating to
+    private docker registries). Any single quotes are escaped and the command cannot contain a
+    set of blacklisted chars (newline or tab). An empty string is returned if the environment
+    variable is not set.
+
+    :rtype: str
+    """
+    command = lookupEnvVar(name='user-defined custom init command',
+                           envName='TOIL_CUSTOM_INIT_COMMAND',
+                           defaultValue='')
+    _check_custom_bash_cmd(command)
+    return command.replace("'", "'\\''")  # Ensure any single quotes are escaped.
+
+
+def _check_custom_bash_cmd(cmd_str):
+    """Ensures that the bash command doesn't contain blacklisted characters."""
+    assert not re.search(r'[\n\r\t]', cmd_str), f'"{cmd_str}" contains invalid characters (newline and/or tab).'
 
 
 def lookupEnvVar(name, envName, defaultValue):
@@ -348,7 +355,7 @@ class ApplianceImageNotFound(ImageNotFound):
                "'quay.io/ucsc_cgl/toil:latest', 'ubuntu:latest', or "
                "'broadinstitute/genomes-in-the-cloud:2.0.0'."
                "" % (origAppliance, url, str(statusCode)))
-        super(ApplianceImageNotFound, self).__init__(msg)
+        super().__init__(msg)
 
 
 def requestCheckRegularDocker(origAppliance, registryName, imageName, tag):
@@ -399,12 +406,12 @@ def requestCheckDockerIo(origAppliance, imageName, tag):
 
     token_url = 'https://auth.docker.io/token?service=registry.docker.io&scope=repository:{repo}:pull'.format(
         repo=imageName)
-    requests_url = 'https://registry-1.docker.io/v2/{repo}/manifests/{tag}'.format(repo=imageName, tag=tag)
+    requests_url = f'https://registry-1.docker.io/v2/{imageName}/manifests/{tag}'
 
     token = requests.get(token_url)
     jsonToken = token.json()
     bearer = jsonToken["token"]
-    response = requests.head(requests_url, headers={'Authorization': 'Bearer {}'.format(bearer)})
+    response = requests.head(requests_url, headers={'Authorization': f'Bearer {bearer}'})
     if not response.ok:
         raise ApplianceImageNotFound(origAppliance, requests_url, response.status_code)
     else:
@@ -415,14 +422,16 @@ def logProcessContext(config):
     # toil.version.version (string) cannot be imported at top level because it conflicts with
     # toil.version (module) and Sphinx doesn't like that.
     from toil.version import version
-    log.info("Running Toil version %s.", version)
+    log.info("Running Toil version %s on host %s.", version, socket.gethostname())
     log.debug("Configuration: %s", config.__dict__)
 
 
 try:
     from boto import provider
+    from botocore.credentials import (JSONFileCache,
+                                      RefreshableCredentials,
+                                      create_credential_resolver)
     from botocore.session import Session
-    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache
 
     cache_path = '~/.cache/aws/cached_temporary_credentials'
     datetime_format = "%Y-%m-%dT%H:%M:%SZ"  # incidentally the same as the format used by AWS
@@ -486,14 +495,15 @@ try:
                 # We are on AWS and we don't have credentials passed along and we aren't anonymous.
                 # We will backend into a boto3 resolver for getting credentials.
                 # Make sure to enable boto3's own caching, so we can share that
-                # cash with pure boto3 code elsewhere in Toil.
+                # cache with pure boto3 code elsewhere in Toil.
+                # Keep synced with toil.lib.ec2.establish_boto3_session
                 self._boto3_resolver = create_credential_resolver(Session(profile=profile_name), cache=JSONFileCache())
             else:
                 # We will use the normal flow
                 self._boto3_resolver = None
 
             # Pass along all the arguments
-            super(BotoCredentialAdapter, self).__init__(name, access_key=access_key,
+            super().__init__(name, access_key=access_key,
                                                         secret_key=secret_key, security_token=security_token,
                                                         profile_name=profile_name, **kwargs)
 
@@ -511,7 +521,7 @@ try:
             else:
                 # We're not on AWS, or they passed a key, or we're anonymous.
                 # Use the normal route; our credentials shouldn't expire.
-                super(BotoCredentialAdapter, self).get_credentials(access_key=access_key,
+                super().get_credentials(access_key=access_key,
                                                                    secret_key=secret_key, security_token=security_token,
                                                                    profile_name=profile_name)
 
@@ -536,6 +546,7 @@ try:
 
             self._obtain_credentials_from_cache_or_boto3()
 
+        @retry()
         def _obtain_credentials_from_boto3(self):
             """
             We know the current cached credentials are not good, and that we
@@ -543,21 +554,17 @@ try:
             (_access_key, _secret_key, _security_token,
             _credential_expiry_time) from Boto 3.
             """
-
             # We get a Credentials object
             # <https://github.com/boto/botocore/blob/8d3ea0e61473fba43774eb3c74e1b22995ee7370/botocore/credentials.py#L227>
             # or a RefreshableCredentials, or None on failure.
-            creds = None
-            for attempt in retry(timeout=10, predicate=lambda _: True):
-                with attempt:
-                    creds = self._boto3_resolver.load_credentials()
+            creds = self._boto3_resolver.load_credentials()
 
-                    if creds is None:
-                        try:
-                            resolvers = str(self._boto3_resolver.providers)
-                        except:
-                            resolvers = "(Resolvers unavailable)"
-                        raise RuntimeError("Could not obtain AWS credentials from Boto3. Resolvers tried: " + resolvers)
+            if creds is None:
+                try:
+                    resolvers = str(self._boto3_resolver.providers)
+                except:
+                    resolvers = "(Resolvers unavailable)"
+                raise RuntimeError("Could not obtain AWS credentials from Boto3. Resolvers tried: " + resolvers)
 
             # Make sure the credentials actually has some credentials if it is lazy
             creds.get_frozen_credentials()
@@ -591,7 +598,7 @@ try:
             while True:
                 log.debug('Attempting to read cached credentials from %s.', path)
                 try:
-                    with open(path, 'r') as f:
+                    with open(path) as f:
                         content = f.read()
                         if content:
                             record = content.split('\n')
@@ -604,14 +611,14 @@ try:
                             log.debug('%s is empty. Credentials are not temporary.', path)
                             self._obtain_credentials_from_boto3()
                             return
-                except IOError as e:
+                except OSError as e:
                     if e.errno == errno.ENOENT:
                         log.debug('Cached credentials are missing.')
                         dir_path = os.path.dirname(path)
                         if not os.path.exists(dir_path):
                             log.debug('Creating parent directory %s', dir_path)
                             # A race would be ok at this point
-                            mkdir_p(dir_path)
+                            os.makedirs(dir_path, exist_ok=True)
                     else:
                         raise
                 else:
@@ -676,4 +683,3 @@ try:
 
 except ImportError:
     pass
-

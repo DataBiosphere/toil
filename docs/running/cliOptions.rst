@@ -117,9 +117,9 @@ the logging module:
 
   --batchSystem BATCHSYSTEM
                         The type of batch system to run the job(s) with,
-                        currently can be one of LSF, Mesos, Slurm, Torque,
-                        HTCondor, singleMachine, parasol, gridEngine'.
-                        (default: singleMachine)
+                        currently can be one of lsf, Mesos, slurm, torque,
+                        htcondor, single_machine, parasol, grid_engine', kubernetes.
+                        (default: single_machine)
   --parasolCommand PARASOLCOMMAND
                         The name or path of the parasol program. Will be
                         looked up on PATH unless it starts with a
@@ -141,6 +141,9 @@ the logging module:
                         The host and port of the Mesos master separated by a
                         colon. (default: 169.233.147.202:5050)
 
+  --coalesceStatusCalls Coalese status calls to prevent the batch system from
+                        being overloaded. Currently only supported for LSF.
+
 **Autoscaling Options**
 
   --provisioner CLOUDPROVIDER
@@ -148,23 +151,21 @@ the logging module:
                         currently supported choices are 'aws' or 'gce'. The
                         default is None.
   --nodeTypes NODETYPES
-                        List of node types separated by commas. The syntax for
-                        each node type depends on the provisioner used. For
-                        the cgcloud and AWS provisioners this is the name of
-                        an EC2 instance type, optionally followed by a colon
-                        and the price in dollars to bid for a spot instance of
-                        that type, for example 'c3.8xlarge:0.42'. If no spot
-                        bid is specified, nodes of this type will be non-preemptable.
-                        It is acceptable to specify an instance as
-                        both preemptable and non-preemptable, including it
-                        twice in the list. In that case, preemptable nodes of
-                        that type will be preferred when creating new nodes
-                        once the maximum number of preemptable-nodes
-                        have been reached.
-  --nodeOptions NODEOPTIONS
-                        Options for provisioning the nodes. The syntax depends
-                        on the provisioner used. Neither the CGCloud nor the
-                        AWS provisioner support any node options.
+                        Specifies a list of comma-separated node types, each of which is 
+                        composed of slash-separated instance types, and an optional spot 
+                        bid set off by a colon, making the node type preemptable. Instance 
+                        types may appear in multiple node types, and the same node type 
+                        may appear as both preemptable and non-preemptable.
+                        Valid argument specifying two node types:
+                            c5.4xlarge/c5a.4xlarge:0.42,t2.large
+                        Node types:
+                            c5.4xlarge/c5a.4xlarge:0.42 and t2.large
+                        Instance types:
+                            c5.4xlarge, c5a.4xlarge, and t2.large
+                        Semantics:
+                            Bid $0.42/hour for either c5.4xlarge or c5a.4xlarge instances,
+                            treated interchangeably, while they are available at that price,
+                            and buy t2.large instances at full price
   --minNodes MINNODES   Minimum number of nodes of each type in the cluster,
                         if using auto-scaling. This should be provided as a
                         comma-separated list of the same length as the list of
@@ -189,6 +190,11 @@ the logging module:
                         when they are launched in gigabytes. You may want to
                         set this if your jobs require a lot of disk space. The
                         default value is 50.
+  --nodeStorageOverrides NODESTORAGEOVERRIDES
+                        Comma-separated list of nodeType:nodeStorage that are used
+                        to override the default value from --nodeStorage for the
+                        specified nodeType(s). This is useful for heterogeneous jobs
+                        where some tasks require much more disk than others.
   --metrics             Enable the prometheus/grafana dashboard for monitoring
                         CPU/RAM usage, queue size, and issued jobs.
   --defaultMemory INT   The default amount of memory to request for a job.
@@ -207,6 +213,9 @@ the logging module:
                         explicit value for this requirement. Standard suffixes
                         like K, Ki, M, Mi, G or Gi are supported. Default is
                         2.0G
+  --defaultPreemptable BOOL
+                        Set if jobs that do not specifically prohibit it should
+                        able to run on preemptable (spot) nodes.
   --maxCores INT        The maximum number of CPU cores to request from the
                         batch system at any one time. Standard suffixes like
                         K, Ki, M, Mi, G or Gi are supported.
@@ -219,6 +228,11 @@ the logging module:
   --retryCount RETRYCOUNT
                         Number of times to retry a failing job before giving
                         up and labeling job failed. default=1
+  --doubleMem           If set, batch jobs which die due to reaching memory
+                        limit on batch schedulers will have their memory
+			doubled and they will be retried. The remaining
+			retry count will be reduced by 1. Currently only
+			supported by LSF. default=False.
   --maxJobDuration MAXJOBDURATION
                         Maximum runtime of a job (in seconds) before we kill
                         it (this is a lower bound, and the actual time before
@@ -257,7 +271,7 @@ the logging module:
 
   --disableCaching      Disables caching in the file store. This flag must be
                         set to use a batch system that does not support
-                        caching such as Grid Engine, Parasol, LSF, or Slurm.
+                        cleanup, such as Parasol.
   --disableChaining     Disables chaining of jobs (chaining uses one job's
                         resource allocation for its successor job if
                         possible).
@@ -303,7 +317,7 @@ the logging module:
                         are not redirected to the log. (default=False)
   --disableProgress     Disables the progress bar shown when standard error is
                         a terminal.
-     
+
 
 Restart Option
 --------------

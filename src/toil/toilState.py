@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,160 +11,261 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-
-from builtins import object
 import logging
+
+from toil.bus import MessageBus, JobUpdatedMessage
+from toil.job import CheckpointJobDescription, JobDescription
+from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
+from typing import List, Dict, Set, Tuple, Iterator, Optional
 
 logger = logging.getLogger(__name__)
 
 
-class ToilState(object):
+class ToilState:
     """
-    Represents a snapshot of the jobs in the jobStore. Used by the leader to manage the batch.
+    Holds the leader's scheduling information that does not need to be
+    persisted back to the JobStore (such as information on completed and
+    outstanding predecessors).
+
+    Holds the true single copies of all JobDescription objects that the Leader
+    and ServiceManager will use. The leader and service manager shouldn't do
+    their own load() and update() calls on the JobStore; they should go through
+    this class.
+
+    Everything in the leader should reference JobDescriptions by ID.
+
+    Only holds JobDescription objects, not Job objects, and those
+    JobDescription objects only exist in single copies.
     """
-    def __init__(self, jobStore, rootJob, jobCache=None):
+    def __init__(self, jobStore: AbstractJobStore, rootJob: JobDescription, jobCache: Optional[Dict[str, JobDescription]] = None):
         """
-        Loads the state from the jobStore, using the rootJob 
-        as the source of the job graph.
+        Loads the state from the jobStore, using the rootJob
+        as the root of the job DAG.
 
-        The jobCache is a map from jobStoreIDs to jobGraphs or None. Is used to
-        speed up the building of the state.
+        The jobCache is a map from jobStoreID to JobDescription or None. Is
+        used to speed up the building of the state when loading initially from
+        the JobStore, and is not preserved.
 
-        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore 
-        :param toil.jobWrapper.JobGraph rootJob
+        :param jobStore: The job store to use.
+
+        :param rootJob: The description for the root job of the workflow being run.
+
+        :param jobCache: A dict to cache downloaded job descriptions in, keyed by ID.
         """
-        # This is a hash of jobs, referenced by jobStoreID, to their predecessor jobs.
-        self.successorJobStoreIDToPredecessorJobs = {}
-        
+
+        # We need to keep the job store so we can load and save jobs.
+        self.__job_store = jobStore
+
+        # This holds the one true copy of every JobDescription in the leader.
+        # TODO: Do in-place update instead of assignment when we load so we
+        # can't let any non-true copies escape.
+        self.__job_database = {}
+
+        # Scheduling messages should go over this bus.
+        self.bus = MessageBus()
+
+        # Maps from successor (child or follow-on) jobStoreID to predecessor jobStoreIDs
+        self.successor_to_predecessors: Dict[str, Set[str]] = {}
+
         # Hash of jobStoreIDs to counts of numbers of successors issued.
         # There are no entries for jobs without successors in this map.
-        self.successorCounts = {}
+        self.successorCounts: Dict[str, int] = {}
 
-        # This is a hash of service jobs, referenced by jobStoreID, to their predecessor job
-        self.serviceJobStoreIDToPredecessorJob = {}
+        # This is a hash of service jobs, referenced by jobStoreID, to their client's ID
+        self.service_to_client: Dict[str, str] = {}
 
-        # Hash of jobStoreIDs mapping to services issued for the job
-        self.servicesIssued = {}
-        
-        # Jobs that are ready to be processed
-        self.updatedJobs = set()
-        
+        # Holds, for each client job ID, the job IDs of its services that are
+        # currently issued.
+        self.servicesIssued: Dict[str, Set[str]] = {}
+
         # The set of totally failed jobs - this needs to be filtered at the
         # end to remove jobs that were removed by checkpoints
-        self.totalFailedJobs = set()
-        
+        self.totalFailedJobs: Set[str] = set()
+
         # Jobs (as jobStoreIDs) with successors that have totally failed
-        self.hasFailedSuccessors = set()
-        
+        self.hasFailedSuccessors: Set[str] = set()
+
         # The set of successors of failed jobs as a set of jobStoreIds
-        self.failedSuccessors = set()
-        
+        self.failedSuccessors: Set[str] = set()
+
         # Set of jobs that have multiple predecessors that have one or more predecessors
-        # finished, but not all of them. This acts as a cache for these jobs.
-        # Stored as hash from jobStoreIDs to job graphs
-        self.jobsToBeScheduledWithMultiplePredecessors = {}
-        
-        ##Algorithm to build this information
-        self._buildToilState(rootJob, jobStore, jobCache)
+        # finished, but not all of them.
+        self.jobsToBeScheduledWithMultiplePredecessors: Set[str] = set()
 
-    def _buildToilState(self, jobGraph, jobStore, jobCache=None):
+        if jobCache is not None:
+            # Load any pre-cached JobDescriptions we were given
+            self.__job_database.update(jobCache)
+
+        # Build the state from the jobs
+        self._buildToilState(rootJob)
+
+    def job_exists(self, job_id: str) -> bool:
         """
-        Traverses tree of jobs from the root jobGraph (rootJob) building the
-        ToilState class.
+        Returns True if the given job exists right now, and false if it hasn't
+        been created or it has been deleted elsewhere.
 
-        If jobCache is passed, it must be a dict from job ID to JobGraph
-        object. Jobs will be loaded from the cache (which can be downloaded from
-        the jobStore in a batch) instead of piecemeal when recursed into.
-
-        :param jobGraph: Object representing a job.
-        :param jobStore: Object inheriting toil.jobStores.abstractJobStore.AbstractJobStore.
-        :param jobCache:
-        :return:
+        Doesn't guarantee that the job will or will not be gettable, if racing
+        another process, or if it is still cached.
         """
 
-        def getJob(jobId):
-            if jobCache is not None:
-                if jobId in jobCache:
-                    return jobCache[jobId]
-            return jobStore.load(jobId)
+        return self.__job_store.job_exists(job_id)
 
-        # If the jobGraph has a command, is a checkpoint, has services or is ready to be
-        # deleted it is ready to be processed
-        if jobGraph.command is not None or jobGraph.checkpoint is not None or jobGraph.services or not jobGraph.stack:
+    def get_job(self, job_id: str) -> JobDescription:
+        """
+        Get the one true copy of the JobDescription with the given ID.
+        """
+        if job_id not in self.__job_database:
+            # Go get the job for the first time
+            self.__job_database[job_id] = self.__job_store.load_job(job_id)
+        return self.__job_database[job_id]
+
+    def commit_job(self, job_id: str) -> None:
+        """
+        Save back any modifications made to a JobDescription retrieved from get_job()
+        """
+        self.__job_store.update_job(self.__job_database[job_id])
+
+    def reset_job(self, job_id: str) -> None:
+        """
+        Discard any local modifications to a JobDescription and make
+        modifications from other hosts visible.
+        """
+        try:
+            new_truth = self.__job_store.load_job(job_id)
+        except NoSuchJobException:
+            # The job is gone now.
+            if job_id in self.__job_database:
+                # So forget about it
+                del self.__job_database[job_id]
+                # TODO: Other collections may still reference it.
+            return
+        if job_id in self.__job_database:
+            # Update the one true copy in place
+            old_truth = self.__job_database[job_id]
+            old_truth.__dict__.update(new_truth.__dict__)
+        else:
+            # Just keep the new one
+            self.__job_database[job_id] = new_truth
+
+    # The next 3 functions provide tracking of how many successor jobs a given job is waiting on, exposing only legit operations.
+    # TODO: turn these into messages?
+    def successors_pending(self, predecessor_id: str, count: int) -> None:
+        """
+        Remember that the given job has the given number more pending
+        successors, that have not yet succeeded or failed.
+        """
+        if predecessor_id not in self.successorCounts:
+            self.successorCounts[predecessor_id] = count
+
+        else:
+            self.successorCounts[predecessor_id] += count
+        logger.debug("Successors: %d more for %s, now have %d", count, predecessor_id, self.successorCounts[predecessor_id])
+    def successor_returned(self, predecessor_id: str) -> None:
+        """
+        Remember that the given job has one fewer pending successors, because one has succeeded or failed.
+        """
+        if predecessor_id not in self.successorCounts:
+            raise RuntimeError(f"Tried to remove successor of {predecessor_id} that wasn't added!")
+        else:
+            self.successorCounts[predecessor_id] -= 1
+            logger.debug("Successors: one fewer for %s, now have %d", predecessor_id, self.successorCounts[predecessor_id])
+            if self.successorCounts[predecessor_id] == 0:
+                del self.successorCounts[predecessor_id]
+    def count_pending_successors(self, predecessor_id: str) -> int:
+        """
+        Get the number of pending successors of the given job, which have not
+        yet succeeded or failed.
+        """
+        if predecessor_id not in self.successorCounts:
+            return 0
+        else:
+            return self.successorCounts[predecessor_id]
+
+
+    def _buildToilState(self, jobDesc: JobDescription) -> None:
+        """
+        Traverses tree of jobs down from the subtree root JobDescription
+        (jobDesc), building the ToilState class.
+
+        :param jobDesc: The description for the root job of the workflow being run.
+        """
+
+        # If the job description has a command, is a checkpoint, has services
+        # or is ready to be deleted it is ready to be processed (i.e. it is updated)
+        if jobDesc.command is not None or (isinstance(jobDesc, CheckpointJobDescription) and jobDesc.checkpoint is not None) or len(jobDesc.services) > 0 or jobDesc.nextSuccessors() is None:
             logger.debug('Found job to run: %s, with command: %s, with checkpoint: %s, '
-                         'with  services: %s, with stack: %s', jobGraph.jobStoreID,
-                         jobGraph.command is not None, jobGraph.checkpoint is not None,
-                         len(jobGraph.services) > 0, len(jobGraph.stack) == 0)
-            self.updatedJobs.add((jobGraph, 0))
+                         'with  services: %s, with no next successors: %s', jobDesc.jobStoreID,
+                         jobDesc.command is not None, isinstance(jobDesc, CheckpointJobDescription) and jobDesc.checkpoint is not None,
+                         len(jobDesc.services) > 0, jobDesc.nextSuccessors() is None)
+            # Set the job updated because we should be able to make progress on it.
+            self.bus.put(JobUpdatedMessage(jobDesc.jobStoreID, 0))
 
-            if jobGraph.checkpoint is not None:
-                jobGraph.command = jobGraph.checkpoint
+            if isinstance(jobDesc, CheckpointJobDescription) and jobDesc.checkpoint is not None:
+                jobDesc.command = jobDesc.checkpoint
 
         else: # There exist successors
-            logger.debug("Adding job: %s to the state with %s successors" % (jobGraph.jobStoreID, len(jobGraph.stack[-1])))
-            
-            # Record the number of successors
-            self.successorCounts[jobGraph.jobStoreID] = len(jobGraph.stack[-1])
+            logger.debug("Adding job: {} to the state with {} successors".format(jobDesc.jobStoreID, len(jobDesc.nextSuccessors())))
 
-            def processSuccessorWithMultiplePredecessors(successorJobGraph):
-                # If jobGraph is not reported as complete by the successor
-                if jobGraph.jobStoreID not in successorJobGraph.predecessorsFinished:
+            # Record the number of successors
+            self.successorCounts[jobDesc.jobStoreID] = len(jobDesc.nextSuccessors())
+
+            def processSuccessorWithMultiplePredecessors(successor: JobDescription) -> None:
+                # If jobDesc is not reported as complete by the successor
+                if jobDesc.jobStoreID not in successor.predecessorsFinished:
 
                     # Update the successor's status to mark the predecessor complete
-                    successorJobGraph.predecessorsFinished.add(jobGraph.jobStoreID)
+                    successor.predecessorsFinished.add(jobDesc.jobStoreID)
 
                 # If the successor has no predecessors to finish
-                assert len(successorJobGraph.predecessorsFinished) <= successorJobGraph.predecessorNumber
-                if len(successorJobGraph.predecessorsFinished) == successorJobGraph.predecessorNumber:
-                    
-                    # It is ready to be run, so remove it from the cache
-                    self.jobsToBeScheduledWithMultiplePredecessors.pop(successorJobStoreID)
-                    
+                assert len(successor.predecessorsFinished) <= successor.predecessorNumber
+                if len(successor.predecessorsFinished) == successor.predecessorNumber:
+
+                    # It is ready to be run, so remove it from the set of waiting jobs
+                    self.jobsToBeScheduledWithMultiplePredecessors.remove(successorJobStoreID)
+
                     # Recursively consider the successor
-                    self._buildToilState(successorJobGraph, jobStore, jobCache=jobCache)
-            
+                    self._buildToilState(successor)
+
             # For each successor
-            for successorJobNode in jobGraph.stack[-1]:
-                successorJobStoreID = successorJobNode.jobStoreID
-                
-                # If the successor jobGraph does not yet point back at a
+            for successorJobStoreID in jobDesc.nextSuccessors():
+
+                # If the successor does not yet point back at a
                 # predecessor we have not yet considered it
-                if successorJobStoreID not in self.successorJobStoreIDToPredecessorJobs:
+                if successorJobStoreID not in self.successor_to_predecessors:
 
                     # Add the job as a predecessor
-                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = [jobGraph]
-                    
+                    self.successor_to_predecessors[successorJobStoreID] = {jobDesc.jobStoreID}
+
+                    # We load the successor job
+                    successor = self.get_job(successorJobStoreID)
+
                     # If predecessor number > 1 then the successor has multiple predecessors
-                    if successorJobNode.predecessorNumber > 1:
-                        
-                        # We load the successor job
-                        successorJobGraph = getJob(successorJobStoreID)
-                        
-                        # We put the successor job in the cache of successor jobs with multiple predecessors
+                    if successor.predecessorNumber > 1:
+
+                        # We put the successor job in the set of waiting successor jobs with multiple predecessors
                         assert successorJobStoreID not in self.jobsToBeScheduledWithMultiplePredecessors
-                        self.jobsToBeScheduledWithMultiplePredecessors[successorJobStoreID] = successorJobGraph
-                        
+                        self.jobsToBeScheduledWithMultiplePredecessors.add(successorJobStoreID)
+
                         # Process successor
-                        processSuccessorWithMultiplePredecessors(successorJobGraph)
-                            
+                        processSuccessorWithMultiplePredecessors(successor)
+
                     else:
-                        # The successor has only the jobGraph as a predecessor so
+                        # The successor has only this job as a predecessor so
                         # recursively consider the successor
-                        self._buildToilState(getJob(successorJobStoreID), jobStore, jobCache=jobCache)
-                
+                        self._buildToilState(successor)
+
                 else:
                     # We've already seen the successor
-                    
+
                     # Add the job as a predecessor
-                    assert jobGraph not in self.successorJobStoreIDToPredecessorJobs[successorJobStoreID]
-                    self.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobGraph)
-                    
+                    assert jobDesc not in self.successor_to_predecessors[successorJobStoreID]
+                    self.successor_to_predecessors[successorJobStoreID].add(jobDesc.jobStoreID)
+
                     # If the successor has multiple predecessors
                     if successorJobStoreID in self.jobsToBeScheduledWithMultiplePredecessors:
-                        
+
                         # Get the successor from cache
-                        successorJobGraph = self.jobsToBeScheduledWithMultiplePredecessors[successorJobStoreID]
-                        
+                        successor = self.get_job(successorJobStoreID)
+
                         # Process successor
-                        processSuccessorWithMultiplePredecessors(successorJobGraph)
+                        processSuccessorWithMultiplePredecessors(successor)

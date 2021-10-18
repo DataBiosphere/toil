@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,91 +13,10 @@
 # limitations under the License.
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
-
-from __future__ import absolute_import
-
-from builtins import object
 from toil.lib.memoize import sync_memoize
 
 
-class abstractclassmethod(classmethod):
-    """
-    This class defines a decorator that allows the decorated class to be both an abstract method
-    and a class method.
-
-    Shamelessly stolen from
-
-    http://stackoverflow.com/questions/11217878/python-2-7-combine-abc-abstractmethod-and-classmethod
-
-    >>> from abc import ABCMeta
-
-    >>> class DemoABC:
-    ...     __metaclass__ = ABCMeta
-    ...
-    ...     @abstractclassmethod
-    ...     def from_int(cls, n):
-    ...         return cls()
-
-    >>> class DemoConcrete(DemoABC):
-    ...     @classmethod
-    ...     def from_int(cls, n):
-    ...         return cls(2*n)
-    ...
-    ...     def __init__(self, n):
-    ...         print ('Initializing with %s' % n)
-
-    >>> d = DemoConcrete(5)  # Succeeds by calling a concrete __init__()
-    Initializing with 5
-
-    >>> d = DemoConcrete.from_int(5)  # Succeeds by calling a concrete from_int()
-    Initializing with 10
-    """
-    __isabstractmethod__ = True
-
-    def __init__(self, callable):
-        callable.__isabstractmethod__ = True
-        super(abstractclassmethod, self).__init__(callable)
-
-
-class abstractstaticmethod(staticmethod):
-    """
-    This class defines a decorator that allows the decorated class to be both an abstract method
-    and a static method.
-
-    Based on code found at
-
-    http://stackoverflow.com/questions/11217878/python-2-7-combine-abc-abstractmethod-and-classmethod
-
-    >>> from abc import ABCMeta
-
-    >>> class DemoABC:
-    ...     __metaclass__ = ABCMeta
-    ...
-    ...     @abstractstaticmethod
-    ...     def f(n):
-    ...         raise NotImplementedError()
-
-    >>> class DemoConcrete(DemoABC):
-    ...     @staticmethod
-    ...     def f(n):
-    ...         return 2*n
-
-    >>> d = DemoABC.f(5)  # Fails because f() is not implemented
-    Traceback (most recent call last):
-    ...
-    NotImplementedError
-
-    >>> DemoConcrete.f(5)  # Succeeds by calling a concrete f()
-    10
-    """
-    __isabstractmethod__ = True
-
-    def __init__(self, callable):
-        callable.__isabstractmethod__ = True
-        super(abstractstaticmethod, self).__init__(callable)
-
-
-class InnerClass(object):
+class InnerClass:
     """
     Note that this is EXPERIMENTAL code.
 
@@ -198,7 +117,7 @@ class InnerClass(object):
     """
 
     def __init__(self, inner_class):
-        super(InnerClass, self).__init__()
+        super().__init__()
         self.inner_class = inner_class
 
     # noinspection PyUnusedLocal
@@ -215,7 +134,7 @@ class InnerClass(object):
             outer = _outer
 
             def __repr__(self):
-                return "%s bound to %s" % (super(BoundInner, self).__repr__(), repr(_outer))
+                return "{} bound to {}".format(super().__repr__(), repr(_outer))
 
         BoundInner.__name__ = self.inner_class.__name__
         BoundInner.__module__ = self.inner_class.__module__

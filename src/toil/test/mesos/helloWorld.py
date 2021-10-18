@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,9 +15,8 @@
 A simple user script for Toil
 """
 
-from __future__ import absolute_import
 import argparse
-import os
+
 from toil.common import Toil
 from toil.job import Job
 
@@ -44,7 +43,7 @@ def hello_world_child(job, hw):
     job.fileStore.logToMaster(childMessage)
     # NOTE: path and the udpated file are stored to /tmp
     # If we want to SAVE our changes to this tmp file, we must write it out.
-    with open(path, 'r') as r:
+    with open(path) as r:
         with open('bar_bam.txt', 'w') as handle:
             for line in r.readlines():
                 handle.write(line)

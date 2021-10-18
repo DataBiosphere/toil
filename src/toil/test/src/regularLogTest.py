@@ -1,5 +1,4 @@
-from __future__ import print_function
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,20 +13,21 @@ from __future__ import print_function
 # limitations under the License.
 import logging
 import mimetypes
-import sys
 import os
-
 import subprocess
+import sys
+
 from toil.test import ToilTest, slow, travis_test
 from toil.test.mesos import helloWorld
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+
 class RegularLogTest(ToilTest):
 
     def setUp(self):
-        super(RegularLogTest, self).setUp()
+        super().setUp()
         self.tempDir = self._createTempDir(purpose='tempDir')
 
     def _getFiles(self, dir):
@@ -41,7 +41,7 @@ class RegularLogTest(ToilTest):
         onlyLogs = [f for f in onlyFiles if f.endswith(extension)]
         logger.info("Found matching: %s", str(onlyLogs))
         assert onlyLogs
-        
+
         if encoding is not None:
             for log in onlyLogs:
                 with open(log, "rb") as f:
@@ -52,7 +52,7 @@ class RegularLogTest(ToilTest):
                     else:
                         mime = mimetypes.guess_type(log)
                         self.assertEqual(mime[1], encoding)
-    
+
     @slow
     def testLogToMaster(self):
         toilOutput = subprocess.check_output([sys.executable,
@@ -61,7 +61,7 @@ class RegularLogTest(ToilTest):
                                               '--clean=always',
                                               '--logLevel=info'], stderr=subprocess.STDOUT)
         assert helloWorld.childMessage in toilOutput.decode('utf-8')
-    
+
     @travis_test
     def testWriteLogs(self):
         subprocess.check_call([sys.executable,
@@ -90,13 +90,13 @@ class RegularLogTest(ToilTest):
                                               '--clean=always',
                                               '--logLevel=info'], stderr=subprocess.STDOUT)
         assert helloWorld.parentMessage in toilOutput.decode('utf-8')
-    
+
     @travis_test
     def testRegularLog(self):
         toilOutput = subprocess.check_output([sys.executable,
                                               '-m', helloWorld.__name__,
                                               './toilTest',
                                               '--clean=always',
-                                              '--batchSystem=singleMachine',
+                                              '--batchSystem=single_machine',
                                               '--logLevel=debug'], stderr=subprocess.STDOUT)
         assert "single machine batch system" in toilOutput.decode('utf-8')

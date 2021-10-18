@@ -1,4 +1,4 @@
-# Copyright (C) 2016 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,17 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from builtins import range
 import os
 
-# Python 3 compatibility imports
-from six.moves import xrange
-
 from toil.job import Job
-from toil.test import ToilTest, slow
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.leader import FailedJobsException
+from toil.test import ToilTest, slow
+
 
 @slow
 class ResumabilityTest(ToilTest):
@@ -77,9 +73,9 @@ def badChild(job):
     Fails the first time it's run, succeeds the second time.
     """
     try:
-        with job.fileStore.jobStore.readSharedFileStream("alreadyRun") as fileHandle:
+        with job.fileStore.jobStore.read_shared_file_stream("alreadyRun") as fileHandle:
             fileHandle.read()
     except NoSuchFileException as ex:
-        with job.fileStore.jobStore.writeSharedFileStream("alreadyRun", isProtected=False) as fileHandle:
+        with job.fileStore.jobStore.write_shared_file_stream("alreadyRun", encrypted=False) as fileHandle:
             fileHandle.write(b"failed once\n")
         raise RuntimeError("this is an expected error: {}".format(str(ex)))

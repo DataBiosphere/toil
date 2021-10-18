@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from toil.job import Job
-from toil.test import ToilTest, travis_test
 import logging
+
+from toil.job import Job
 from toil.realtimeLogger import RealtimeLogger
+from toil.test import ToilTest, travis_test
 
 
 class RealtimeLoggerTest(ToilTest):
-    
+
     @travis_test
     def testRealtimeLogger(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
@@ -48,7 +48,7 @@ class MessageDetector(logging.StreamHandler):
     def __init__(self):
         self.detected = False  # Have we seen the message we want?
         self.overLogged = False  # Have we seen the message we don't want?
-        super(MessageDetector, self).__init__()
+        super().__init__()
 
     def emit(self, record):
         if record.msg == 'This should be logged at info level':

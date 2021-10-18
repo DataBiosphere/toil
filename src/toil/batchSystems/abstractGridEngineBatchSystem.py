@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,39 +11,31 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-
-from builtins import str
-from datetime import datetime
 import logging
 import time
-from threading import Thread, Lock
 from abc import ABCMeta, abstractmethod
+from datetime import datetime
+from queue import Empty, Queue
+from threading import Lock, Thread
+from typing import Any, List, Dict, Union, Optional
 
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
-from future.utils import with_metaclass
-
+from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
+                                                   BatchSystemCleanupSupport,
+                                                   UpdatedBatchJobInfo)
 from toil.lib.misc import CalledProcessErrorStderr
-from toil.lib.objects import abstractclassmethod
-
-from toil.batchSystems.abstractBatchSystem import BatchSystemLocalSupport, UpdatedBatchJobInfo
 
 logger = logging.getLogger(__name__)
 
 
-class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
+class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     """
     A partial implementation of BatchSystemSupport for batch systems run on a
-    standard HPC cluster. By default worker cleanup and auto-deployment are not
-    implemented.
+    standard HPC cluster. By default auto-deployment is not implemented.
     """
 
-    class Worker(with_metaclass(ABCMeta, Thread)):
+    class Worker(Thread, metaclass=ABCMeta):
 
-        def __init__(self, newJobsQueue, updatedJobsQueue, killQueue,
-                     killedJobsQueue, boss):
+        def __init__(self, newJobsQueue: Queue, updatedJobsQueue: Queue, killQueue: Queue, killedJobsQueue: Queue, boss: 'AbstractGridEngineBatchSystem') -> None:
             """
             Abstract worker interface class. All instances are created with five
             initial arguments (below). Note the Queue instances passed are empty.
@@ -64,7 +56,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             self.updatedJobsQueue = updatedJobsQueue
             self.killQueue = killQueue
             self.killedJobsQueue = killedJobsQueue
-            self.waitingJobs = list()
+            self.waitingJobs: List[Any] = list()
             self.runningJobs = set()
             self.runningJobsLock = Lock()
             self.batchJobIDs = dict()
@@ -99,7 +91,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                 self.runningJobs.remove(jobID)
             del self.batchJobIDs[jobID]
 
-        def createJobs(self, newJob):
+        def createJobs(self, newJob: Any) -> bool:
             """
             Create a new job with the Toil job ID.
 
@@ -115,10 +107,10 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             while len(self.waitingJobs) > 0 and \
                     len(self.runningJobs) < int(self.boss.config.maxLocalJobs):
                 activity = True
-                jobID, cpu, memory, command, jobName = self.waitingJobs.pop(0)
+                jobID, cpu, memory, command, jobName, environment = self.waitingJobs.pop(0)
 
                 # prepare job submission command
-                subLine = self.prepareSubmission(cpu, memory, jobID, command, jobName)
+                subLine = self.prepareSubmission(cpu, memory, jobID, command, jobName, environment)
                 logger.debug("Running %r", subLine)
                 batchJobID = self.boss.with_retries(self.submitJob, subLine)
                 logger.debug("Submitted job %s", str(batchJobID))
@@ -190,15 +182,49 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                 return self._checkOnJobsCache
 
             activity = False
-            for jobID in list(self.runningJobs):
-                batchJobID = self.getBatchSystemID(jobID)
-                status = self.boss.with_retries(self.getJobExitCode, batchJobID)
-                if status is not None:
-                    activity = True
-                    self.updatedJobsQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=status, exitReason=None, wallTime=None))
-                    self.forgetJob(jobID)
+            running_job_list = list(self.runningJobs)
+            if self.boss.config.coalesceStatusCalls:
+                batch_job_id_list = list(map(self.getBatchSystemID, running_job_list))
+                if batch_job_id_list:
+                    statuses = self.boss.with_retries(
+                        self.coalesce_job_exit_codes, batch_job_id_list
+                    )
+                    if statuses is not None:
+                        for running_job_id, status in zip(running_job_list, statuses):
+                            activity = self._handle_job_status(
+                                running_job_id, status, activity
+                            )
+            else:
+                for job_id in running_job_list:
+                    batch_job_id = self.getBatchSystemID(job_id)
+                    status = self.boss.with_retries(self.getJobExitCode, batch_job_id)
+                    activity = self._handle_job_status(job_id, status, activity)
             self._checkOnJobsCache = activity
             self._checkOnJobsTimestamp = datetime.now()
+            return activity
+
+        def _handle_job_status(
+            self, job_id: int, status: Union[int, None], activity: bool
+        ) -> bool:
+            """
+            Helper method for checkOnJobs to handle job statuses
+            """
+            if status is not None:
+                self.updatedJobsQueue.put(
+                    UpdatedBatchJobInfo(
+                        jobID=job_id, exitStatus=status, exitReason=None, wallTime=None
+                    )
+                )
+                self.forgetJob(job_id)
+                return True
+            if status is not None and isinstance(status, BatchJobExitReason):
+                self.updatedJobsQueue.put(
+                    UpdatedBatchJobInfo(
+                        jobID=job_id, exitStatus=1, exitReason=status, wallTime=None
+                    )
+                )
+                self.forgetJob(job_id)
+                return True
             return activity
 
         def _runStep(self):
@@ -229,19 +255,35 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                 logger.error("GridEngine like batch system failure", exc_info=ex)
                 raise
 
+        def coalesce_job_exit_codes(self, batch_job_id_list: list) -> list:
+            """
+            Returns exit codes for a list of jobs.
+            Implementation-specific; called by
+            AbstractGridEngineWorker.checkOnJobs()
+            :param string batch_job_id_list: List of batch system job ID
+            """
+            raise NotImplementedError()
+
         @abstractmethod
-        def prepareSubmission(self, cpu, memory, jobID, command, jobName):
+        def prepareSubmission(self,
+                              cpu: int,
+                              memory: int,
+                              jobID: int,
+                              command: str,
+                              jobName: str,
+                              job_environment: Optional[Dict[str, str]] = None) -> List[str]:
             """
             Preparation in putting together a command-line string
             for submitting to batch system (via submitJob().)
 
-            :param: string cpu
-            :param: string memory
-            :param: string jobID  : Toil job ID
+            :param: int cpu
+            :param: int memory
+            :param: int jobID: Toil job ID
             :param: string subLine: the command line string to be called
             :param: string jobName: the name of the Toil job, to provide metadata to batch systems if desired
+            :param: dict job_environment: the environment variables to be set on the worker
 
-            :rtype: string
+            :rtype: List[str]
             """
             raise NotImplementedError()
 
@@ -281,24 +323,23 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
         @abstractmethod
         def getJobExitCode(self, batchJobID):
             """
-            Returns job exit code. Implementation-specific; called by
-            AbstractGridEngineWorker.checkOnJobs()
+            Returns job exit code or an instance of abstractBatchSystem.BatchJobExitReason.
+            if something else happened other than the job exiting.
+            Implementation-specific; called by AbstractGridEngineWorker.checkOnJobs()
 
             :param string batchjobID: batch system job ID
+
+            :rtype: int|toil.batchSystems.abstractBatchSystem.BatchJobExitReason: exit code int
+                    or BatchJobExitReason if something else happened other than job exiting.
             """
             raise NotImplementedError()
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        super(AbstractGridEngineBatchSystem, self).__init__(
+        super().__init__(
             config, maxCores, maxMemory, maxDisk)
         self.config = config
 
         self.currentJobs = set()
-
-        # NOTE: this may be batch system dependent, maybe move into the worker?
-        # Doing so would effectively make each subclass of AbstractGridEngineBatchSystem
-        # much smaller
-        self.maxCPU, self.maxMEM = self.obtainSystemConstants()
 
         self.newJobsQueue = Queue()
         self.updatedJobsQueue = Queue()
@@ -319,18 +360,19 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
     def supportsAutoDeployment(cls):
         return False
 
-    def issueBatchJob(self, jobNode):
+    def issueBatchJob(self, jobDesc, job_environment: Optional[Dict[str, str]] = None):
         # Avoid submitting internal jobs to the batch queue, handle locally
-        localID = self.handleLocalJob(jobNode)
+        localID = self.handleLocalJob(jobDesc)
         if localID:
             return localID
         else:
-            self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
+            self.checkResourceRequest(jobDesc.memory, jobDesc.cores, jobDesc.disk)
             jobID = self.getNextJobID()
             self.currentJobs.add(jobID)
-            self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.command, jobNode.jobName))
-            logger.debug("Issued the job command: %s with job id: %s and job name %s", jobNode.command, str(jobID),
-                         jobNode.jobName)
+            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, jobDesc.jobName,
+                                   job_environment))
+            logger.debug("Issued the job command: %s with job id: %s and job name %s", jobDesc.command, str(jobID),
+                         jobDesc.jobName)
         return jobID
 
     def killBatchJobs(self, jobIDs):
@@ -406,7 +448,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
     def setEnv(self, name, value=None):
         if value and ',' in value:
             raise ValueError(type(self).__name__ + " does not support commata in environment variable values")
-        return super(AbstractGridEngineBatchSystem, self).setEnv(name, value)
+        return super().setEnv(name, value)
 
     @classmethod
     def getWaitDuration(self):
@@ -417,13 +459,6 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
         """
         time.sleep(sleeptime)
         return sleeptime
-
-    @abstractclassmethod
-    def obtainSystemConstants(cls):
-        """
-        Returns the max. memory and max. CPU for the system
-        """
-        raise NotImplementedError()
 
     def with_retries(self, operation, *args, **kwargs):
         """

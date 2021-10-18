@@ -14,13 +14,10 @@
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
 
-from __future__ import absolute_import
-from future.utils import raise_
-from builtins import object
 import sys
 
-
-class panic( object ):
+# TODO: isn't this built in to Python 3 now?
+class panic:
     """
     The Python idiom for reraising a primary exception fails when the except block raises a
     secondary exception, e.g. while trying to cleanup. In that case the original exception is
@@ -41,7 +38,7 @@ class panic( object ):
     """
 
     def __init__( self, log=None ):
-        super( panic, self ).__init__( )
+        super().__init__( )
         self.log = log
         self.exc_info = None
 
@@ -53,3 +50,12 @@ class panic( object ):
             self.log.warning( "Exception during panic", exc_info=exc_info )
         exc_type, exc_value, traceback = self.exc_info
         raise_(exc_type, exc_value, traceback)
+
+def raise_(exc_type, exc_value, traceback) -> None:
+    if exc_value is not None:
+        exc = exc_value
+    else:
+        exc = exc_type
+    if exc.__traceback__ is not traceback:
+        raise exc.with_traceback(traceback)
+    raise exc

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,16 +14,11 @@
 
 """A demonstration of toil. Sorts the lines of a file into ascending order by doing a parallel merge sort.
 """
-from __future__ import absolute_import
-from __future__ import division
-from builtins import range
-from past.utils import old_div
-from argparse import ArgumentParser
 import codecs
 import os
 import random
-import logging
 import shutil
+from argparse import ArgumentParser
 
 from toil.common import Toil
 from toil.job import Job
@@ -55,9 +50,9 @@ def down(job, inputFileStoreID, N, path, downCheckpoints, options, memory=sortMe
     a follow on job is then created which merges back the results else
     the file is sorted and placed in the output.
     """
-    
+
     RealtimeLogger.info("Down job starting: %s" % path)
-    
+
     # Read the file
     inputFile = job.fileStore.readGlobalFile(inputFileStoreID, cache=False)
     length = os.path.getsize(inputFile)
@@ -91,7 +86,7 @@ def down(job, inputFileStoreID, N, path, downCheckpoints, options, memory=sortMe
         shutil.copyfile(inputFile, inputFile + '.sort')
         sort(inputFile + '.sort')
         result = job.fileStore.writeGlobalFile(inputFile + '.sort')
-        
+
     RealtimeLogger.info("Down job finished: %s" % path)
     return result
 
@@ -100,9 +95,9 @@ def up(job, inputFileID1, inputFileID2, path, options, memory=sortMemory):
     """
     Merges the two files and places them in the output.
     """
-    
+
     RealtimeLogger.info("Up job starting: %s" % path)
-    
+
     with job.fileStore.writeGlobalFileStream() as (fileHandle, outputFileStoreID):
         fileHandle = codecs.getwriter('utf-8')(fileHandle)
         with job.fileStore.readGlobalFileStream(inputFileID1) as inputFileHandle1:
@@ -115,15 +110,15 @@ def up(job, inputFileID1, inputFileID2, path, options, memory=sortMemory):
         # Cleanup up the input files - these deletes will occur after the completion is successful.
         job.fileStore.deleteGlobalFile(inputFileID1)
         job.fileStore.deleteGlobalFile(inputFileID2)
-        
+
         RealtimeLogger.info("Up job finished: %s" % path)
-        
+
         return outputFileStoreID
 
 
 def sort(file):
     """Sorts the given file."""
-    with open(file, 'r') as f:
+    with open(file) as f:
         lines = f.readlines()
 
     lines.sort()
@@ -136,7 +131,7 @@ def sort(file):
 def merge(fileHandle1, fileHandle2, outputFileHandle):
     """
     Merges together two files maintaining sorted order.
-    
+
     All handles must be text-mode streams.
     """
     line2 = fileHandle2.readline()
@@ -155,7 +150,7 @@ def copySubRangeOfFile(inputFile, fileStart, fileEnd):
     Copies the range (in bytes) between fileStart and fileEnd to the given
     output file handle.
     """
-    with open(inputFile, 'r') as fileHandle:
+    with open(inputFile) as fileHandle:
         fileHandle.seek(fileStart)
         data = fileHandle.read(fileEnd - fileStart)
         assert len(data) == fileEnd - fileStart
@@ -167,8 +162,8 @@ def getMidPoint(file, fileStart, fileEnd):
     Finds the point in the file to split.
     Returns an int i such that fileStart <= i < fileEnd
     """
-    with open(file, 'r') as f:
-        midPoint = old_div((fileStart + fileEnd), 2)
+    with open(file) as f:
+        midPoint = (fileStart + fileEnd) // 2
         assert midPoint >= fileStart
         f.seek(midPoint)
         line = f.readline()
@@ -209,7 +204,7 @@ def main(options=None):
         parser.add_argument("--sortMemory", dest="sortMemory",
                         help="Memory for jobs that sort chunks of the file.",
                         default=None)
-    
+
         parser.add_argument("--mergeMemory", dest="mergeMemory",
                         help="Memory for jobs that collate results.",
                         default=None)

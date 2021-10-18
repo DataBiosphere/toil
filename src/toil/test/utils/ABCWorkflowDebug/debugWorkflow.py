@@ -1,15 +1,16 @@
-from toil.job import Job
-from toil.common import Toil
-import subprocess
-from toil.version import python
-import os
 import logging
+import os
+import subprocess
+
+from toil.common import Toil
+from toil.job import Job
+from toil.version import python
 
 logger = logging.getLogger(__name__)
 
 '''
-This workflow's purpose is to create files and jobs for viewing using stats, 
-status, and printDot() in toilDebugTest.py.  It's intended for future use in a 
+This workflow's purpose is to create files and jobs for viewing using stats,
+status, and printDot() in toilDebugTest.py.  It's intended for future use in a
 debugging tutorial containing a broken job.  It is also a minor integration test.
 '''
 
@@ -28,10 +29,7 @@ def writeA(job, mkFile):
     tempDir = job.fileStore.getLocalTempDir()
 
     # import files
-    try:
-        mkFile_fs = job.fileStore.readGlobalFile(mkFile[0], userPath=os.path.join(tempDir, mkFile[1]))
-    except:
-        mkFile_fs = os.path.join(tempDir, mkFile[1])
+    mkFile_fs = job.fileStore.readGlobalFile(mkFile[0], userPath=os.path.join(tempDir, mkFile[1]))
 
     # make a file (A.txt) and writes a string 'A' into it using 'mkFile.py'
     content = 'A'
@@ -57,17 +55,11 @@ def writeB(job, mkFile, B_file):
     tempDir = job.fileStore.getLocalTempDir()
 
     # import files
-    try:
-        mkFile_fs = job.fileStore.readGlobalFile(mkFile[0], userPath=os.path.join(tempDir, mkFile[1]))
-    except:
-        mkFile_fs = os.path.join(tempDir, mkFile[1])
-    try:
-        B_file_fs = job.fileStore.readGlobalFile(B_file[0], userPath=os.path.join(tempDir, B_file[1]))
-    except:
-        B_file_fs = os.path.join(tempDir, B_file[1])
+    mkFile_fs = job.fileStore.readGlobalFile(mkFile[0], userPath=os.path.join(tempDir, mkFile[1]))
+    B_file_fs = job.fileStore.readGlobalFile(B_file[0], userPath=os.path.join(tempDir, B_file[1]))
 
     # make a file (B.txt) and write the contents of 'B_file.txt' into it using 'mkFile.py'
-    with open(B_file_fs, "r") as f:
+    with open(B_file_fs) as f:
         file_contents = ''
         for line in f:
             file_contents = file_contents + line
@@ -95,7 +87,7 @@ def writeC(job):
     with open(output_filename, 'w') as f:
         f.write('C')
     output_file = job.fileStore.writeGlobalFile(output_filename)
-    C1 = (output_file, output_filename)
+    C1 = (output_file, 'C.txt')
     rvDict = {"C1": C1}
     return rvDict
 
@@ -107,29 +99,20 @@ def writeABC(job, A_dict, B_dict, C_dict, filepath):
     tempDir = job.fileStore.getLocalTempDir()
 
     # import files
-    try:
-        A_fs = job.fileStore.readGlobalFile(A_dict['A1'][0], userPath=os.path.join(tempDir, A_dict['A1'][1]))
-    except:
-        A_fs = os.path.join(tempDir, A_dict['A1'][1])
-    try:
-        B_fs = job.fileStore.readGlobalFile(B_dict['B1'][0], userPath=os.path.join(tempDir, B_dict['B1'][1]))
-    except:
-        B_fs = os.path.join(tempDir, B_dict['B1'][1])
-    try:
-        C_fs = job.fileStore.readGlobalFile(C_dict['C1'][0], userPath=os.path.join(tempDir, C_dict['C1'][1]))
-    except:
-        C_fs = os.path.join(tempDir, C_dict['C1'][1])
+    A_fs = job.fileStore.readGlobalFile(A_dict['A1'][0], userPath=os.path.join(tempDir, A_dict['A1'][1]))
+    B_fs = job.fileStore.readGlobalFile(B_dict['B1'][0], userPath=os.path.join(tempDir, B_dict['B1'][1]))
+    C_fs = job.fileStore.readGlobalFile(C_dict['C1'][0], userPath=os.path.join(tempDir, C_dict['C1'][1]))
 
     file_contents = ''
-    with open(A_fs, "r") as f:
+    with open(A_fs) as f:
         for line in f:
             file_contents = file_contents + line
 
-    with open(B_fs, "r") as f:
+    with open(B_fs) as f:
         for line in f:
             file_contents = file_contents + line
 
-    with open(C_fs, "r") as f:
+    with open(C_fs) as f:
         for line in f:
             file_contents = file_contents + line
 
@@ -139,7 +122,7 @@ def writeABC(job, A_dict, B_dict, C_dict, filepath):
     # get the output file and return it as a tuple of location + name
     output_filename = os.path.join(tempDir, 'ABC.txt')
     output_file = job.fileStore.writeGlobalFile(output_filename)
-    job.fileStore.exportFile(output_file, "file://" + filepath)
+    job.fileStore.export_file(output_file, "file://" + filepath)
 
 
 def finalize_jobs(job, num):

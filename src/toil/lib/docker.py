@@ -1,22 +1,31 @@
-from __future__ import absolute_import
-
-try:
-    # In Python 3 we have this quote
-    from shlex import quote
-except ImportError:
-    # But in 2.7 we have this deprecated one
-    from pipes import quote
-
-import docker
+# Copyright (C) 2015-2021 Regents of the University of California
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 import base64
-import requests
 import logging
 import os
-import sys
-from docker.errors import create_api_error_from_http_exception
-from docker.errors import ContainerError
-from docker.errors import ImageNotFound
-from docker.errors import NotFound
+import re
+import struct
+from shlex import quote
+
+import requests
+
+import docker
+from docker.errors import (ContainerError,
+                           ImageNotFound,
+                           NotFound,
+                           create_api_error_from_http_exception)
+from docker.utils.socket import consume_socket_output, demux_adaptor
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +65,8 @@ def apiDockerCall(job,
                   environment=None,
                   stdout=None,
                   stderr=False,
+                  stream=False,
+                  demux=False,
                   streamfile=None,
                   timeout=365 * 24 * 60 * 60,
                   **kwargs):
@@ -79,9 +90,9 @@ def apiDockerCall(job,
                       image='quay.io/ucgc_cgl/samtools:latest',
                       working_dir=working_dir,
                       parameters=parameters)
-                      
-    Note that when run with detatch=False, or with detatch=True and stdout=True
-    or stderr=True, this is a blocking call. When run with detatch=True and
+
+    Note that when run with detach=False, or with detach=True and stdout=True
+    or stderr=True, this is a blocking call. When run with detach=True and
     without output capture, the container is started and returned without
     waiting for it to finish.
 
@@ -101,7 +112,7 @@ def apiDockerCall(job,
            FORGO (0) leaves the container untouched and running.
            STOP (1) Sends SIGTERM, then SIGKILL if necessary to the container.
            RM (2) Immediately send SIGKILL to the container. This is the default
-           behavior if defer is set to None.
+           behavior if deferParam is set to None.
     :param str name: The name/ID of the container.
     :param str entrypoint: Prepends commands sent to the container.  See:
                       https://docker-py.readthedocs.io/en/stable/containers.html
@@ -114,7 +125,13 @@ def apiDockerCall(job,
                         Block and capture stderr to a file when detach=True
                         (default: False). Output capture defaults to output.log,
                         and can be specified with the "streamfile" kwarg.
-    :param str streamfile: Collect container output to this file if detach=True and 
+    :param bool stream: If True and detach=False, return a log generator instead
+                        of a string. Ignored if detach=True. (default: False).
+    :param bool demux: Similar to `demux` in container.exec_run(). If True and
+                       detach=False, returns a tuple of (stdout, stderr). If
+                       stream=True, returns a log generator with tuples of
+                       (stdout, stderr). Ignored if detach=True. (default: False).
+    :param str streamfile: Collect container output to this file if detach=True and
                         stderr and/or stdout are True. Defaults to "output.log".
     :param dict log_config: Specify the logs to return from the container.  See:
                       https://docker-py.readthedocs.io/en/stable/containers.html
@@ -138,11 +155,11 @@ def apiDockerCall(job,
                    run command.  The list is 75 keywords total, for examples
                    and full documentation see:
                    https://docker-py.readthedocs.io/en/stable/containers.html
-                   
-    :returns: Returns the standard output/standard error text, as requested, when 
-              detatch=False. Returns the underlying
+
+    :returns: Returns the standard output/standard error text, as requested, when
+              detach=False. Returns the underlying
               docker.models.containers.Container object from the Docker API when
-              detatch=True.
+              detach=True.
     """
 
     # make certain that files have the correct permissions
@@ -160,6 +177,10 @@ def apiDockerCall(job,
     if volumes is None:
         volumes = {working_dir: {'bind': '/data', 'mode': 'rw'}}
 
+    for volume in volumes:
+        if not os.path.exists(volume):
+            os.makedirs(volume, exist_ok=True)
+
     if parameters is None:
         parameters = []
 
@@ -169,7 +190,7 @@ def apiDockerCall(job,
         if entrypoint is None:
             entrypoint = ['/bin/bash', '-c']
         chain_params = \
-            [' '.join((quote(arg) for arg in command)) \
+            [' '.join(quote(arg) for arg in command) \
              for command in parameters]
         command = ' | '.join(chain_params)
         pipe_prefix = "set -eo pipefail && "
@@ -183,7 +204,7 @@ def apiDockerCall(job,
     # practice:
     # http://docker-py.readthedocs.io/en/stable/containers.html
     elif len(parameters) > 0 and type(parameters) is list:
-        command = ' '.join((quote(arg) for arg in parameters))
+        command = ' '.join(quote(arg) for arg in parameters)
         logger.debug("Calling docker with: " + repr(command))
 
     # If the 'parameters' lists are empty, they are respecified as None, which
@@ -200,16 +221,19 @@ def apiDockerCall(job,
 
     client = docker.from_env(version='auto', timeout=timeout)
 
+    if deferParam is None:
+        deferParam = RM
+
     if deferParam == STOP:
         job.defer(dockerStop, containerName)
 
     if deferParam == FORGO:
-        remove = False
+        # Leave the container untouched and running
+        pass
     elif deferParam == RM:
-        remove = True
-        job.defer(dockerKill, containerName)
-    elif remove is True:
-        job.defer(dockerKill, containerName)
+        job.defer(dockerKill, containerName, remove=True)
+    elif remove:
+        job.defer(dockerKill, containerName, remove=True)
 
     if auto_remove is None:
         auto_remove = remove
@@ -231,16 +255,31 @@ def apiDockerCall(job,
                                         auto_remove=auto_remove,
                                         stdout=stdout,
                                         stderr=stderr,
+                                        # to get the generator if demux=True
+                                        stream=stream or demux,
                                         remove=remove,
                                         log_config=log_config,
                                         user=user,
                                         environment=environment,
                                         **kwargs)
-            return out
+
+            if demux is False:
+                return out
+
+            # If demux is True (i.e.: we want STDOUT and STDERR separated), we need to decode
+            # the raw response from the docker API and preserve the stream type this time.
+            response = out._response
+            gen = (demux_adaptor(*frame) for frame in _multiplexed_response_stream_helper(response))
+
+            if stream:
+                return gen
+            else:
+                return consume_socket_output(frames=gen, demux=True)
+
         else:
             if (stdout or stderr) and log_config is None:
                 logger.warning('stdout or stderr specified, but log_config is not set.  '
-                            'Defaulting to "journald".')
+                               'Defaulting to "journald".')
                 log_config = dict(type='journald')
 
             if stdout is None:
@@ -259,6 +298,7 @@ def apiDockerCall(job,
                                               auto_remove=auto_remove,
                                               stdout=stdout,
                                               stderr=stderr,
+                                              stream=stream,
                                               remove=remove,
                                               log_config=log_config,
                                               user=user,
@@ -267,17 +307,17 @@ def apiDockerCall(job,
             if stdout or stderr:
                 if streamfile is None:
                     streamfile = 'output.log'
-                for line in container.logs(stdout=stdout, stderr=stderr, stream=True):
+                with open(streamfile, 'wb') as f:
                     # stream=True makes this loop blocking; we will loop until
                     # the container stops and there is no more output.
-                    with open(streamfile, 'w') as f:
-                        f.write(line)
-                        
+                    for line in container.logs(stdout=stdout, stderr=stderr, stream=True):
+                        f.write(line.encode() if isinstance(line, str) else line)
+
             # If we didn't capture output, the caller will need to .wait() on
             # the container to know when it is done. Even if we did capture
             # output, the caller needs the container to get at the exit code.
             return container
-            
+
     except ContainerError:
         logger.error("Docker had non-zero exit.  Check your command: " + repr(command))
         raise
@@ -289,12 +329,17 @@ def apiDockerCall(job,
         raise create_api_error_from_http_exception(e)
 
 
-def dockerKill(container_name, gentleKill=False, timeout=365 * 24 * 60 * 60):
+def dockerKill(container_name: str,
+               gentleKill: bool = False,
+               remove: bool = False,
+               timeout: int = 365 * 24 * 60 * 60) -> None:
     """
     Immediately kills a container.  Equivalent to "docker kill":
     https://docs.docker.com/engine/reference/commandline/kill/
+
     :param container_name: Name of the container being killed.
-    :param client: The docker API client object to call.
+    :param gentleKill: If True, trigger a graceful shutdown.
+    :param remove: If True, remove the container after it exits.
     :param int timeout: Use the given timeout in seconds for interactions with
                         the Docker daemon. Note that the underlying docker module is
                         not always able to abort ongoing reads and writes in order
@@ -310,36 +355,38 @@ def dockerKill(container_name, gentleKill=False, timeout=365 * 24 * 60 * 60):
             else:
                 client.containers.get(container_name).stop()
             this_container = client.containers.get(container_name)
+        if remove:
+            this_container.remove()
     except NotFound:
-        logger.debug("Attempted to stop container, but container != exist: ",
-                      container_name)
+        logger.debug(f"Attempted to stop container ({container_name}), but container != exist.")
     except requests.exceptions.HTTPError as e:
-        logger.debug("Attempted to stop container, but server gave an error: ",
-                      container_name)
+        logger.debug(f"Attempted to stop container ({container_name}), but server gave an error:")
         raise create_api_error_from_http_exception(e)
 
 
-def dockerStop(container_name):
+def dockerStop(container_name: str, remove: bool = False) -> None:
     """
     Gracefully kills a container.  Equivalent to "docker stop":
     https://docs.docker.com/engine/reference/commandline/stop/
+
     :param container_name: Name of the container being stopped.
-    :param client: The docker API client object to call.
+    :param remove: If True, remove the container after it exits.
     """
-    dockerKill(container_name, gentleKill=True)
+    dockerKill(container_name, gentleKill=True, remove=remove)
 
 
-def containerIsRunning(container_name, timeout=365 * 24 * 60 * 60):
+def containerIsRunning(container_name: str, timeout: int = 365 * 24 * 60 * 60):
     """
     Checks whether the container is running or not.
+
     :param container_name: Name of the container being checked.
-    :returns: True if status is 'running', False if status is anything else,
-    and None if the container does not exist.
     :param int timeout: Use the given timeout in seconds for interactions with
                         the Docker daemon. Note that the underlying docker module is
                         not always able to abort ongoing reads and writes in order
                         to respect the timeout. Defaults to 1 year (i.e. wait
                         essentially indefinitely).
+    :returns: True if status is 'running', False if status is anything else,
+    and None if the container does not exist.
     """
     client = docker.from_env(version='auto', timeout=timeout)
     try:
@@ -353,12 +400,38 @@ def containerIsRunning(container_name, timeout=365 * 24 * 60 * 60):
         return None
     except requests.exceptions.HTTPError as e:
         logger.debug("Server error attempting to call container: ",
-                      container_name)
+                     container_name)
         raise create_api_error_from_http_exception(e)
 
 
 def getContainerName(job):
-    """Create a random string including the job name, and return it."""
-    return '--'.join([str(job),
-                      base64.b64encode(os.urandom(9), b'-_').decode('utf-8')])\
-                      .replace("'", '').replace('"', '').replace('_', '')
+    """
+    Create a random string including the job name, and return it. Name will
+    match [a-zA-Z0-9][a-zA-Z0-9_.-]
+    """
+    parts = ['toil', str(job.description), base64.b64encode(os.urandom(9), b'-_').decode('utf-8')]
+    name = re.sub('[^a-zA-Z0-9_.-]', '', '--'.join(parts))
+    return name
+
+
+def _multiplexed_response_stream_helper(response):
+    """
+    A generator of multiplexed data blocks coming from a response stream modified from:
+    https://github.com/docker/docker-py/blob/4.3.1-release/docker/api/client.py#L370
+
+    :param response: requests.Response
+    :return: a generator with tuples of (stream_type, data)
+    """
+    while True:
+        header = response.raw.read(8)
+        if not header:
+            break
+        # header is 8 bytes with format: {STREAM_TYPE, 0, 0, 0, SIZE1, SIZE2, SIZE3, SIZE4}
+        # protocol: https://docs.docker.com/engine/api/v1.24/#attach-to-a-container
+        stream_type, length = struct.unpack('>BxxxL', header)
+        if not length:
+            continue
+        data = response.raw.read(length)
+        if not data:
+            break
+        yield stream_type, data

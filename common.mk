@@ -3,7 +3,6 @@
 # Configure how toil runs in different environments.  For more detailed descriptions, see:
 #     https://toil.readthedocs.io/en/latest/appendices/environment_vars.html
 SHELL=bash
-python=python
 
 ############
 ### MAIN ###
@@ -15,7 +14,7 @@ python=python
 # TODO: Add and link a better readthedocs for the toil appliance
 export TOIL_DOCKER_REGISTRY?=quay.io/ucsc_cgl
 export TOIL_DOCKER_NAME?=toil
-export TOIL_DOCKER_TAG?=$(shell $(python) version_template.py dockerTag)
+export TOIL_DOCKER_TAG?=$(shell python version_template.py dockerTag)
 export TOIL_APPLIANCE_SELF?=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(TOIL_DOCKER_TAG)
 
 # TOIL_CHECK_ENV=''  # Determines whether toil refers to the same virtualenv paths it spawned from (across machines)
@@ -27,7 +26,7 @@ export TOIL_APPLIANCE_SELF?=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(TOIL_D
 export TOIL_AWS_ZONE?=us-west-2a
 export TOIL_AWS_NODE_DEBUG?=False  # Don't shut down EC2 instances that fail so that they can be debugged
 
-# TOIL_AWS_AMI=''  # ID of the (normally CoreOS) AMI to use in node provisioning.  Defaults to latest.
+# TOIL_AWS_AMI=''  # ID of the Flatcar AMI to use in node provisioning.  Defaults to latest.
 
 #######################
 ### KUBERNETES ONLY ###

@@ -21,20 +21,25 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
-
-from __future__ import print_function
-from __future__ import division
-from past.utils import old_div
-import math
-import os
-import subprocess
 import fnmatch
+import logging
+import os
+import re
+import subprocess
+
+from packaging import version
+
+from toil.lib.conversions import bytes_in_unit, convert_units
 
 LSB_PARAMS_FILENAME = "lsb.params"
 LSF_CONF_FILENAME = "lsf.conf"
 LSF_CONF_ENV = ["LSF_CONFDIR", "LSF_ENVDIR"]
 DEFAULT_LSF_UNITS = "KB"
 DEFAULT_RESOURCE_UNITS = "MB"
+LSF_JSON_OUTPUT_MIN_VERSION = "10.1.0.2"
+
+logger = logging.getLogger(__name__)
+
 
 def find(basedir, string):
     """
@@ -46,12 +51,14 @@ def find(basedir, string):
             matches.append(os.path.join(root, filename))
     return matches
 
+
 def find_first_match(basedir, string):
     """
     return the first file that matches string starting from basedir
     """
     matches = find(basedir, string)
     return matches[0] if matches else matches
+
 
 def get_conf_file(filename, env):
     conf_path = os.environ.get(env)
@@ -60,15 +67,17 @@ def get_conf_file(filename, env):
     conf_file = find_first_match(conf_path, filename)
     return conf_file
 
+
 def apply_conf_file(fn, conf_filename):
     for env in LSF_CONF_ENV:
         conf_file = get_conf_file(conf_filename, env)
         if conf_file:
-            with open(conf_file) as conf_handle:
+            with open(conf_file, encoding='utf-8') as conf_handle:
                 value = fn(conf_handle)
             if value:
                 return value
     return None
+
 
 def per_core_reserve_from_stream(stream):
     for k, v in tokenize_conf_stream(stream):
@@ -76,11 +85,13 @@ def per_core_reserve_from_stream(stream):
             return v.upper()
     return None
 
+
 def get_lsf_units_from_stream(stream):
     for k, v in tokenize_conf_stream(stream):
         if k == "LSF_UNIT_FOR_LIMITS":
             return v
     return None
+
 
 def tokenize_conf_stream(conf_handle):
     """
@@ -94,16 +105,19 @@ def tokenize_conf_stream(conf_handle):
             continue
         yield (tokens[0].strip(), tokens[1].strip())
 
+
 def apply_bparams(fn):
     """
     apply fn to each line of bparams, returning the result
     """
     cmd = ["bparams", "-a"]
     try:
-        output = subprocess.check_output(cmd).decode('utf-8')
-    except:
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode('utf-8')
+    except subprocess.CalledProcessError as exc:
+        logger.debug(exc.output.decode('utf-8'))
         return None
     return fn(output.split("\n"))
+
 
 def apply_lsadmin(fn):
     """
@@ -111,13 +125,14 @@ def apply_lsadmin(fn):
     """
     cmd = ["lsadmin", "showconf", "lim"]
     try:
-        output = subprocess.check_output(cmd).decode('utf-8')
-    except:
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode('utf-8')
+    except subprocess.CalledProcessError as exc:
+        logger.debug(exc.output.decode('utf-8'))
         return None
     return fn(output.split("\n"))
 
 
-def get_lsf_units(resource=False):
+def get_lsf_units(resource: bool = False) -> str:
     """
     check if we can find LSF_UNITS_FOR_LIMITS in lsadmin and lsf.conf
     files, preferring the value in bparams, then lsadmin, then the lsf.conf file
@@ -140,24 +155,53 @@ def get_lsf_units(resource=False):
     else:
         return DEFAULT_LSF_UNITS
 
-def parse_memory_resource(mem):
-    """
-    Parse memory parameter for -R
-    """
-    return parse_memory(mem, True)
 
-def parse_memory_limit(mem):
-    """
-    Parse memory parameter for -M
-    """
-    return parse_memory(mem, False)
+def parse_mem_and_cmd_from_output(output: str):
+    """Use regex to find "MAX MEM" and "Command" inside of an output."""
+    # Handle hard wrapping in the middle of words and arbitrary
+    # indents. May drop spaces at the starts of lines that aren't
+    # meant to be part of the indent.
+    cleaned_up_output = ' '.join(re.sub(r"\n\s*", "", output).split(','))
+    max_mem = re.search(r"MAX ?MEM: ?(.*?);", cleaned_up_output)
+    command = re.search(r"Command ?<(.*?)>", cleaned_up_output)
+    return max_mem, command
 
-def parse_memory(mem, resource):
+
+def get_lsf_version():
     """
-    Parse memory parameter
+    Get current LSF version
     """
-    lsf_unit = get_lsf_units(resource=resource)
-    return convert_mb(float(mem) * 1024, lsf_unit)
+    cmd = ["lsid"]
+    try:
+        output = subprocess.check_output(cmd).decode('utf-8')
+    except:
+        return None
+    bjobs_search = re.search('IBM Spectrum LSF Standard (.*),', output)
+    if bjobs_search:
+        lsf_version = bjobs_search.group(1)
+        return lsf_version
+    else:
+        return None
+
+
+def check_lsf_json_output_supported():
+    """Check if the current LSF system supports bjobs json output."""
+    try:
+        lsf_version = get_lsf_version()
+        if lsf_version and (version.parse(lsf_version) >= version.parse(LSF_JSON_OUTPUT_MIN_VERSION)):
+            return True
+    except:
+        return False
+    return False
+
+
+def parse_memory(mem: float) -> str:
+    """Parse memory parameter."""
+    megabytes_of_mem = convert_units(float(mem), src_unit='B', dst_unit='MB')
+    if megabytes_of_mem < 1:
+        megabytes_of_mem = 1.0
+    # round as a string here to avoid returning something like 1.231e+12
+    return f'{megabytes_of_mem:.0f}MB'
 
 
 def per_core_reservation():
@@ -182,20 +226,7 @@ def per_core_reservation():
     per_core = apply_conf_file(per_core_reserve_from_stream, LSB_PARAMS_FILENAME)
     if per_core and per_core.upper() == "Y":
         return True
-    else:
-        return False
     return False
-
-def convert_mb(kb, unit):
-    UNITS = {"B": -2,
-             "KB": -1,
-             "MB": 0,
-             "GB": 1,
-             "TB": 2}
-    assert unit in UNITS, ("%s not a valid unit, valid units are %s."
-                           % (unit, list(UNITS.keys())))
-    return int(old_div(float(kb), float(math.pow(1024, UNITS[unit]))))
-
 
 
 if __name__ == "__main__":

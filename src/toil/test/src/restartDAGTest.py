@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,20 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
 
 import logging
+import os
+import shutil
+import signal
 
 from toil.common import Toil
 from toil.job import Job
 from toil.leader import FailedJobsException
 from toil.test import ToilTest, slow
-
-import inspect
-import os
-import shutil
-import signal
-
 
 logger = logging.getLogger(__name__)
 
@@ -36,12 +32,12 @@ class RestartDAGTest(ToilTest):
     parent completes successfully in the restart.
     """
     def setUp(self):
-        super(RestartDAGTest, self).setUp()
+        super().setUp()
         self.tempDir = self._createTempDir(purpose='tempDir')
         self.testJobStore = self._getTestJobStorePath()
 
     def tearDown(self):
-        super(RestartDAGTest, self).tearDown()
+        super().tearDown()
         shutil.rmtree(self.testJobStore)
 
     @slow
@@ -57,7 +53,7 @@ class RestartDAGTest(ToilTest):
         Creates a diamond DAG
             /->passingParent-\
         root                 |-->child
-           \->failingParent--/
+           \\->failingParent--/
 
         where root and passingParent are guaranteed to pass, while failingParent will fail.
         child should not run on start or restart and we assert that by ensuring that a file create
@@ -127,7 +123,7 @@ class RestartDAGTest(ToilTest):
                 else:
                     self.fail('No errors were raised on toil "%s".' % runMode)
         if failReasons:
-            self.fail('Test failed for (%s) reasons:\n\t%s' % (len(failReasons),
+            self.fail('Test failed for ({}) reasons:\n\t{}'.format(len(failReasons),
                                                                '\n\t'.join(failReasons)))
 
 def passingFn(job, fileName=None):

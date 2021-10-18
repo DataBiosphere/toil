@@ -1,12 +1,13 @@
 from toil.common import Toil
 from toil.job import Job
 
+
 def binaryStringFn(job, depth, message=""):
     if depth > 0:
         job.addChildJobFn(binaryStringFn, depth-1, message + "0")
         job.addChildJobFn(binaryStringFn, depth-1, message + "1")
     else:
-        job.log("Binary string: {}".format(message))
+        job.log(f"Binary string: {message}")
 
 if __name__=="__main__":
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")

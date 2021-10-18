@@ -151,7 +151,10 @@ Launch-Cluster Command
 Running ``toil launch-cluster`` starts up a leader for a cluster. Workers can be
 added to the initial cluster by specifying the ``-w`` option.  An example would be ::
 
-    $ toil launch-cluster my-cluster --leaderNodeType t2.small -z us-west-2a --keyPairName your-AWS-key-pair-name --nodeTypes m3.large,t2.micro -w 1,4
+    $ toil launch-cluster my-cluster \
+          --leaderNodeType t2.small -z us-west-2a \
+          --keyPairName your-AWS-key-pair-name \
+          --nodeTypes m3.large,t2.micro -w 1,4
 
 Options are listed below.  These can also be displayed by running ::
 
@@ -196,9 +199,9 @@ exist yet, Toil will create it for you.
                         flag. By default the cluster is tagged with:
                         { "Name": clusterName, "Owner": IAM username }.
   --vpcSubnet VPCSUBNET
-                        VPC subnet ID to launch cluster in. Uses default
-                        subnet if not specified. This subnet needs to have
-                        auto assign IPs turned on.
+                        VPC subnet ID to launch cluster leader in. Uses default
+                        subnet if not specified. This subnet needs to have auto
+                        assign IPs turned on.
   --nodeTypes NODETYPES
                         Comma-separated list of node types to create while
                         launching the leader. The syntax for each node type
@@ -221,6 +224,11 @@ exist yet, Toil will create it for you.
                         Specify the size (in gigabytes) of the root volume for
                         any worker instances created when using the -w flag.
                         This is an EBS volume.
+  --nodeStorageOverrides NODESTORAGEOVERRIDES
+                        Comma-separated list of nodeType:nodeStorage that are used
+                        to override the default value from --nodeStorage for the
+                        specified nodeType(s). This is useful for heterogeneous jobs
+                        where some tasks require much more disk than others.
 
 **Logging Options**
 

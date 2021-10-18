@@ -1,5 +1,6 @@
-from toil.job import Job
 from toil.common import Toil
+from toil.job import Job
+
 
 class HelloWorld(Job):
     def __init__(self, message):
@@ -7,7 +8,7 @@ class HelloWorld(Job):
         self.message = message
 
     def run(self, fileStore):
-        self.log("Hello, world!, I have a message: {}".format(self.message))
+        self.log(f"Hello, world!, I have a message: {self.message}")
 
 if __name__=="__main__":
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")

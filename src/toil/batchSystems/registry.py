@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -10,93 +10,77 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-#
+# limitations under the License.
 
-def _gridengineBatchSystemFactory():
+
+from typing import Callable, Type, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
+
+
+def gridengine_batch_system_factory():
     from toil.batchSystems.gridengine import GridEngineBatchSystem
     return GridEngineBatchSystem
 
-def _parasolBatchSystemFactory():
+
+def parasol_batch_system_factory():
     from toil.batchSystems.parasol import ParasolBatchSystem
     return ParasolBatchSystem
 
-def _lsfBatchSystemFactory():
+
+def lsf_batch_system_factory():
     from toil.batchSystems.lsf import LSFBatchSystem
     return LSFBatchSystem
 
-def _singleMachineBatchSystemFactory():
+
+def single_machine_batch_system_factory():
     from toil.batchSystems.singleMachine import SingleMachineBatchSystem
     return SingleMachineBatchSystem
 
-def _mesosBatchSystemFactory():
+
+def mesos_batch_system_factory():
     from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
     return MesosBatchSystem
 
-def _slurmBatchSystemFactory():
+
+def slurm_batch_system_factory():
     from toil.batchSystems.slurm import SlurmBatchSystem
     return SlurmBatchSystem
 
-def _torqueBatchSystemFactory():
+
+def torque_batch_system_factory():
     from toil.batchSystems.torque import TorqueBatchSystem
     return TorqueBatchSystem
 
-def _htcondorBatchSystemFactory():
+
+def htcondor_batch_system_factory():
     from toil.batchSystems.htcondor import HTCondorBatchSystem
     return HTCondorBatchSystem
-    
-def _kubernetesBatchSystemFactory():
+
+
+def kubernetes_batch_system_factory():
     from toil.batchSystems.kubernetes import KubernetesBatchSystem
     return KubernetesBatchSystem
 
 
-_DEFAULT_REGISTRY = {
-    'parasol'        : _parasolBatchSystemFactory,
-    'singleMachine'  : _singleMachineBatchSystemFactory,
-    'single_machine' : _singleMachineBatchSystemFactory,
-    'gridEngine'     : _gridengineBatchSystemFactory,
-    'gridengine'     : _gridengineBatchSystemFactory,
-    'lsf'            : _lsfBatchSystemFactory,
-    'LSF'            : _lsfBatchSystemFactory,
-    'mesos'          : _mesosBatchSystemFactory,
-    'Mesos'          : _mesosBatchSystemFactory,
-    'slurm'          : _slurmBatchSystemFactory,
-    'Slurm'          : _slurmBatchSystemFactory,
-    'torque'         : _torqueBatchSystemFactory,
-    'Torque'         : _torqueBatchSystemFactory,
-    'htcondor'       : _htcondorBatchSystemFactory,
-    'HTCondor'       : _htcondorBatchSystemFactory,
-    'kubernetes'     : _kubernetesBatchSystemFactory,
-    'Kubernetes'     : _kubernetesBatchSystemFactory,
-    'k8s'            : _kubernetesBatchSystemFactory
-    }
+BATCH_SYSTEM_FACTORY_REGISTRY = {
+    'parasol'        : parasol_batch_system_factory,
+    'single_machine' : single_machine_batch_system_factory,
+    'grid_engine'    : gridengine_batch_system_factory,
+    'lsf'            : lsf_batch_system_factory,
+    'mesos'          : mesos_batch_system_factory,
+    'slurm'          : slurm_batch_system_factory,
+    'torque'         : torque_batch_system_factory,
+    'htcondor'       : htcondor_batch_system_factory,
+    'kubernetes'     : kubernetes_batch_system_factory
+}
+BATCH_SYSTEMS = list(BATCH_SYSTEM_FACTORY_REGISTRY.keys())
+DEFAULT_BATCH_SYSTEM = 'single_machine'
 
-_UNIQUE_NAME = {
-    'parasol',
-    'singleMachine',
-    'gridEngine',
-    'LSF',
-    'Mesos',
-    'Slurm',
-    'Torque',
-    'HTCondor',
-    'Kubernetes'
-        }
-
-_batchSystemRegistry = _DEFAULT_REGISTRY.copy()
-_batchSystemNames = set(_UNIQUE_NAME)
-
-def addBatchSystemFactory(key, batchSystemFactory):
-    _batchSystemNames.add(key)
-    _batchSystemRegistry[key] = batchSystemFactory
-
-def batchSystemFactoryFor(batchSystem):
-    return _batchSystemRegistry[batchSystem ]
-
-def defaultBatchSystem():
-    return 'singleMachine'
-
-def uniqueNames():
-    return list(_batchSystemNames)
-
-def batchSystems():
-    list(set(_batchSystemRegistry.values()))
+def addBatchSystemFactory(key: str, batchSystemFactory: Callable[[], Type['AbstractBatchSystem']]):
+    """
+    Adds a batch system to the registry for workflow-supplied batch systems.
+    """
+    BATCH_SYSTEMS.append(key)
+    BATCH_SYSTEM_FACTORY_REGISTRY[key] = batchSystemFactory

@@ -1,17 +1,13 @@
-from builtins import object
-import codecs
+import errno
 import logging
 import os
-import errno
-from abc import ABCMeta
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 
 from toil.lib.threading import ExceptionalThread
-from future.utils import with_metaclass
 
 log = logging.getLogger(__name__)
 
-class WritablePipe(with_metaclass(ABCMeta, object)):
+class WritablePipe(ABC):
     """
     An object-oriented wrapper for os.pipe. Clients should subclass it, implement
     :meth:`.readFrom` to consume the readable end of the pipe, then instantiate the class as a
@@ -76,7 +72,8 @@ class WritablePipe(with_metaclass(ABCMeta, object)):
     @abstractmethod
     def readFrom(self, readable):
         """
-        Implement this method to read data from the pipe.
+        Implement this method to read data from the pipe. This method should support both
+        binary and text mode output.
 
         :param file readable: the file object representing the readable end of the pipe. Do not
         explicitly invoke the close() method of the object, that will be done automatically.
@@ -92,8 +89,19 @@ class WritablePipe(with_metaclass(ABCMeta, object)):
             self.readFrom(readable)
             self.reader_done = True
 
-    def __init__(self):
-        super(WritablePipe, self).__init__()
+    def __init__(self, encoding=None, errors=None):
+        """
+        The specified encoding and errors apply to the writable end of the pipe.
+
+        :param str encoding: the name of the encoding used to encode the file. Encodings are the same
+                as for encode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
+        """
+        super().__init__()
+        self.encoding = encoding
+        self.errors = errors
         self.readable_fh = None
         self.writable = None
         self.thread = None
@@ -101,7 +109,7 @@ class WritablePipe(with_metaclass(ABCMeta, object)):
 
     def __enter__(self):
         self.readable_fh, writable_fh = os.pipe()
-        self.writable = os.fdopen(writable_fh, 'wb')
+        self.writable = os.fdopen(writable_fh, 'wb' if self.encoding == None else 'wt', encoding=self.encoding, errors=self.errors)
         self.thread = ExceptionalThread(target=self._reader)
         self.thread.start()
         return self.writable
@@ -127,11 +135,11 @@ class WritablePipe(with_metaclass(ABCMeta, object)):
             # thread. To cover the small window before the reader takes over we also close it here.
             readable_fh = self.readable_fh
             if readable_fh is not None:
-                # Close the file handle. The reader thread must be dead now. 
+                # Close the file handle. The reader thread must be dead now.
                 os.close(readable_fh)
 
 
-class ReadablePipe(with_metaclass(ABCMeta, object)):
+class ReadablePipe(ABC):
     """
     An object-oriented wrapper for os.pipe. Clients should subclass it, implement
     :meth:`.writeTo` to place data into the writable end of the pipe, then instantiate the class
@@ -196,7 +204,8 @@ class ReadablePipe(with_metaclass(ABCMeta, object)):
     @abstractmethod
     def writeTo(self, writable):
         """
-        Implement this method to read data from the pipe.
+        Implement this method to write data from the pipe. This method should support both
+        binary and text mode input.
 
         :param file writable: the file object representing the writable end of the pipe. Do not
         explicitly invoke the close() method of the object, that will be done automatically.
@@ -207,21 +216,32 @@ class ReadablePipe(with_metaclass(ABCMeta, object)):
         try:
             with os.fdopen(self.writable_fh, 'wb') as writable:
                 self.writeTo(writable)
-        except IOError as e:
+        except OSError as e:
             # The other side of the pipe may have been closed by the
             # reading thread, which is OK.
             if e.errno != errno.EPIPE:
                 raise
 
-    def __init__(self):
-        super(ReadablePipe, self).__init__()
+    def __init__(self, encoding=None, errors=None):
+        """
+        The specified encoding and errors apply to the readable end of the pipe.
+
+        :param str encoding: the name of the encoding used to encode the file. Encodings are the same
+                as for encode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
+        """
+        super().__init__()
+        self.encoding = encoding
+        self.errors = errors
         self.writable_fh = None
         self.readable = None
         self.thread = None
 
     def __enter__(self):
         readable_fh, self.writable_fh = os.pipe()
-        self.readable = os.fdopen(readable_fh, 'rb')
+        self.readable = os.fdopen(readable_fh, 'rb' if self.encoding == None else 'rt', encoding=self.encoding, errors=self.errors)
         self.thread = ExceptionalThread(target=self._writer)
         self.thread.start()
         return self.readable
@@ -240,17 +260,17 @@ class ReadablePipe(with_metaclass(ABCMeta, object)):
                 # Only raise the child exception if there wasn't
                 # already an exception in the main thread
                 raise
-                
+
 class ReadableTransformingPipe(ReadablePipe):
     """
     A pipe which is constructed around a readable stream, and which provides a
     context manager that gives a readable stream.
-    
+
     Useful as a base class for pipes which have to transform or otherwise visit
     bytes that flow through them, instead of just consuming or producing data.
-    
+
     Clients should subclass it and implement :meth:`.transform`, like so:
-    
+
     >>> import sys, shutil
     >>> class MyPipe(ReadableTransformingPipe):
     ...     def transform(self, readable, writable):
@@ -262,21 +282,29 @@ class ReadableTransformingPipe(ReadablePipe):
     ...     with MyPipe(source) as transformed:
     ...         shutil.copyfileobj(codecs.getreader('utf-8')(transformed), sys.stdout)
     HELLO, WORLD!
-    
+
     The :meth:`.transform` method runs in its own thread, and should move data
     chunk by chunk instead of all at once. It should finish normally if it
     encounters either an EOF on the readable, or a :class:`BrokenPipeError` on
     the writable. This means tat it should make sure to actually catch a
     :class:`BrokenPipeError` when writing.
-    
+
     See also: :class:`toil.lib.misc.WriteWatchingStream`.
-    
+
     """
+
     
-    def __init__(self, source):
-        super(ReadableTransformingPipe, self).__init__()
+    def __init__(self, source, encoding=None, errors=None):
+        """
+        :param str encoding: the name of the encoding used to encode the file. Encodings are the same
+                as for encode(). Defaults to None which represents binary mode.
+
+        :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
+                are the same as for open(). Defaults to 'strict' when an encoding is specified.
+        """
+        super().__init__(encoding=encoding, errors=errors)
         self.source = source
-        
+
     @abstractmethod
     def transform(self, readable, writable):
         """
@@ -288,9 +316,6 @@ class ReadableTransformingPipe(ReadablePipe):
         explicitly invoke the close() method of the object, that will be done automatically.
         """
         raise NotImplementedError()
-    
+
     def writeTo(self, writable):
         self.transform(self.source, writable)
-    
-    
-

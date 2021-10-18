@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,25 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import, print_function
-from __future__ import division
-from builtins import range
-from builtins import object
-from past.utils import old_div
-import os
 import logging
+import os
 import time
-import toil.test.batchSystems.batchSystemTest as batchSystemTest
 
-from toil.job import Job
-from toil.job import PromisedRequirement
-from toil.test import needs_mesos, slow, travis_test
+import toil.test.batchSystems.batchSystemTest as batchSystemTest
 from toil.batchSystems.mesos.test import MesosTestSupport
+from toil.job import Job, PromisedRequirement
+from toil.lib.retry import retry_flaky_test
+from toil.test import needs_mesos, slow, travis_test
 
 log = logging.getLogger(__name__)
 
 
-class hidden(object):
+class hidden:
     """
     Hide abstract base class from unittest's test case loader.
 
@@ -56,9 +51,10 @@ class hidden(object):
                                      cores=1, memory='1M', disk='1M')
                 values = Job.Runner.startToil(root, self.getOptions(tempDir))
                 maxValue = max(values)
-                self.assertEqual(maxValue, old_div(self.cpuCount, coresPerJob))
+                self.assertEqual(maxValue, self.cpuCount // coresPerJob)
 
         @slow
+        @retry_flaky_test()
         def testConcurrencyStatic(self):
             """
             Asserts that promised core resources are allocated properly using a static DAG
@@ -80,7 +76,7 @@ class hidden(object):
                                                 disk='1M'))
                 Job.Runner.startToil(root, self.getOptions(tempDir))
                 _, maxValue = batchSystemTest.getCounters(counterPath)
-                self.assertEqual(maxValue, old_div(self.cpuCount, coresPerJob))
+                self.assertEqual(maxValue, self.cpuCount // coresPerJob)
 
         def getOptions(self, tempDir, caching=True):
             options = super(hidden.AbstractPromisedRequirementsTest, self).getOptions(tempDir)
@@ -106,7 +102,7 @@ class hidden(object):
         @travis_test
         def testJobConcurrency(self):
             pass
-        
+
         @travis_test
         def testPromisesWithJobStoreFileObjects(self, caching=True):
             """
@@ -127,7 +123,7 @@ class hidden(object):
             F2.addChild(G)
 
             Job.Runner.startToil(F1, self.getOptions(self._createTempDir('testFiles'), caching=caching))
-        
+
         @travis_test
         def testPromisesWithNonCachingFileStore(self):
             self.testPromisesWithJobStoreFileObjects(caching=False)
@@ -207,7 +203,7 @@ def logDiskUsage(job, funcName, sleep=0):
     :return: job function's disk usage
     """
     diskUsage = job.disk
-    job.fileStore.logToMaster('{}: {}'.format(funcName, diskUsage))
+    job.fileStore.logToMaster(f'{funcName}: {diskUsage}')
     time.sleep(sleep)
     return diskUsage
 
@@ -218,7 +214,7 @@ class SingleMachinePromisedRequirementsTest(hidden.AbstractPromisedRequirementsT
     """
 
     def getBatchSystemName(self):
-        return "singleMachine"
+        return "single_machine"
 
     def tearDown(self):
         pass
@@ -231,7 +227,7 @@ class MesosPromisedRequirementsTest(hidden.AbstractPromisedRequirementsTest, Mes
     """
 
     def getOptions(self, tempDir, caching=True):
-        options = super(MesosPromisedRequirementsTest, self).getOptions(tempDir, caching=caching)
+        options = super().getOptions(tempDir, caching=caching)
         options.mesosMasterAddress = 'localhost:5050'
         return options
 
@@ -241,4 +237,3 @@ class MesosPromisedRequirementsTest(hidden.AbstractPromisedRequirementsTest, Mes
 
     def tearDown(self):
         self._stopMesos()
-

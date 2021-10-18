@@ -40,7 +40,7 @@ example::
             self.message = message
 
         def run(self, fileStore):
-            return "Hello, world!, here's a message: %s" % self.message
+            return "Hello, world! Here's a message: %s" % self.message
 
 
 In the example a class, HelloWorld, is defined. The constructor requests 2
@@ -65,8 +65,8 @@ workflows. For example:
 
 .. note::
 
-    Do not include a `.` in the name of your python script (besides `.py` at the end). 
-    This is to allow toil to import the types and  functions defined in your file while starting a new process. 
+    Do not include a `.` in the name of your python script (besides `.py` at the end).
+    This is to allow toil to import the types and  functions defined in your file while starting a new process.
 
 Alternatively, the more powerful :class:`toil.common.Toil` class can be used to
 run and resume workflows. It is used as a context manager and allows for
@@ -398,8 +398,15 @@ running a workflow when the :class:`toil.common.Toil` context manager is used
 on the leader. The context manager provides methods
 :func:`toil.common.Toil.importFile`, and :func:`toil.common.Toil.exportFile`
 for this purpose. The destination and source locations of such files are
-described with URLs passed to the two methods. A list of the currently
-supported URLs can be found at
+described with URLs passed to the two methods.  Local files can be imported and
+exported as relative paths, and should be relative to the directory where the
+toil workflow is initially run from.
+
+Using absolute paths and appropriate schema where possible (prefixing with
+"file://" or "s3:/" for example), make imports and exports less ambiguous
+and is recommended.
+
+A list of the currently supported URLs can be found at
 :func:`toil.jobStores.abstractJobStore.AbstractJobStore.importFile`. To import
 an external file into the job store as a shared file, pass the optional
 ``sharedFileName`` parameter to that method.

@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,42 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-from __future__ import print_function
-
-from builtins import str
-from builtins import range
-from builtins import object
-import filecmp
-from abc import abstractmethod, ABCMeta
-from struct import pack, unpack
+import os
+import signal
+import time
+import psutil
+from abc import ABCMeta
 from uuid import uuid4
 
 from toil.job import Job
-from toil.fileStores.cachingFileStore import IllegalDeletionCacheError, CacheUnbalancedError, CachingFileStore
-from toil.test import ToilTest, slow, travis_test
 from toil.leader import FailedJobsException
-from toil.lib.threading import cpu_count 
-from toil.jobStores.abstractJobStore import NoSuchFileException
+from toil.lib.threading import cpu_count
+from toil.test import ToilTest, slow, travis_test
 
-import collections
-import inspect
-import os
-import random
-import signal
-import time
-import pytest
 
-# Python 3 compatibility imports
-from six.moves import xrange
-from future.utils import with_metaclass
-
-# Some tests take too long on the AWS jobstore and are unquitable for CI.  They can be
-# be run during manual tests by setting this to False.
-testingIsAutomatic = True
-
-class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
+class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
     """
     Test the deferred function system.
     """
@@ -57,15 +35,15 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
         if self.jobStoreType == 'file':
             return self._getTestJobStorePath()
         elif self.jobStoreType == 'aws':
-            return 'aws:%s:cache-tests-%s' % (self.awsRegion(), uuid4())
+            return f'aws:{self.awsRegion()}:cache-tests-{uuid4()}'
         elif self.jobStoreType == 'google':
             projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
-            return 'google:%s:cache-tests-%s' % (projectID, str(uuid4()))
+            return 'google:{}:cache-tests-{}'.format(projectID, str(uuid4()))
         else:
             raise RuntimeError('Illegal job store type.')
 
     def setUp(self):
-        super(DeferredFunctionTest, self).setUp()
+        super().setUp()
         testDir = self._createTempDir()
         self.options = Job.Runner.getDefaultOptions(self._getTestJobStore())
         self.options.logLevel = 'INFO'
@@ -311,13 +289,14 @@ def _testNewJobsCanHandleOtherJobDeaths_B(job, files):
     while os.path.exists(files[0]):
         time.sleep(0.5)
     # Get the pid of _testNewJobsCanHandleOtherJobDeaths_A and wait for it to truly be dead.
-    with open(files[1], 'r') as fileHandle:
-        meeseeksPID = int(fileHandle.read())
-    while CachingFileStore._pidExists(meeseeksPID):
+    with open(files[1]) as fileHandle:
+        pid = int(fileHandle.read())
+    assert pid > 0
+    while psutil.pid_exists(pid):
         time.sleep(0.5)
     # Now that we are convinced that_testNewJobsCanHandleOtherJobDeaths_A has died, we can
     # spawn the next job
-    return None
+
 
 def _testNewJobsCanHandleOtherJobDeaths_C(job, files, expectedResult):
     """
@@ -331,7 +310,7 @@ def _testNewJobsCanHandleOtherJobDeaths_C(job, files, expectedResult):
         assert os.path.exists(testFile) is expectedResult
 
 
-class _deleteMethods(object):
+class _deleteMethods:
     @staticmethod
     def _deleteFileMethod(nonLocalFile, nlf=None):
         """
@@ -353,4 +332,3 @@ class _deleteMethods(object):
         os.remove(nonLocalFile)
         if nlf is not None:
             os.remove(nlf)
-

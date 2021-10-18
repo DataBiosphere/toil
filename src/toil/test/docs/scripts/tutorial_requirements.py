@@ -1,6 +1,8 @@
+import os
+
 from toil.common import Toil
 from toil.job import Job, PromisedRequirement
-import os
+
 
 def parentJob(job):
     downloadJob = Job.wrapJobFn(stageFn, "File://"+os.path.realpath(__file__), cores=0.1, memory='32M', disk='1M')
@@ -11,7 +13,7 @@ def parentJob(job):
     job.addFollowOn(analysis)
 
 def stageFn(job, url, cores=1):
-    importedFile = job.fileStore.importFile(url)
+    importedFile = job.fileStore.import_file(url)
     return importedFile, importedFile.size
 
 def analysisJob(job, fileStoreID, cores=2):

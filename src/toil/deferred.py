@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2019 Regents of the University of California
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,32 +11,26 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import, print_function
-from future import standard_library
-standard_library.install_aliases()
-from builtins import map
-from builtins import str
-from builtins import range
-from builtins import object
-from collections import namedtuple
-from contextlib import contextmanager
-
-import dill
 import fcntl
 import logging
 import os
 import shutil
 import tempfile
+from collections import namedtuple
+from contextlib import contextmanager
 
-from toil.lib.misc import mkdir_p
+import dill
+
+from toil.lib.io import robust_rmtree
 from toil.realtimeLogger import RealtimeLogger
 from toil.resource import ModuleDescriptor
 
 logger = logging.getLogger(__name__)
 
+
 class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name module')):
     """
+    >>> from collections import defaultdict
     >>> df = DeferredFunction.create(defaultdict, None, {'x':1}, y=2)
     >>> df
     DeferredFunction(defaultdict, ...)
@@ -71,12 +65,12 @@ class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name
         return function(*args, **kwargs)
 
     def __str__(self):
-        return '%s(%s, ...)' % (self.__class__.__name__, self.name)
+        return f'{self.__class__.__name__}({self.name}, ...)'
 
     __repr__ = __str__
 
 
-class DeferredFunctionManager(object):
+class DeferredFunctionManager:
     """
     Implements a deferred function system. Each Toil worker will have an
     instance of this class. When a job is executed, it will happen inside a
@@ -125,7 +119,7 @@ class DeferredFunctionManager(object):
 
         # Work out where state files live
         self.stateDir = os.path.join(stateDirBase, self.STATE_DIR_STEM)
-        mkdir_p(self.stateDir)
+        os.makedirs(self.stateDir, exist_ok=True)
 
         # We need to get a state file, locked by us and not somebody scanning for abandoned state files.
         # So we suffix not-yet-ready ones with our suffix
@@ -136,9 +130,9 @@ class DeferredFunctionManager(object):
         # Lock the state file. The lock will automatically go away if our process does.
         try:
             fcntl.lockf(self.stateFD, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except IOError as e:
+        except OSError as e:
             # Someone else might have locked it even though they should not have.
-            raise RuntimeError("Could not lock deferred function state file %s: %s" % (self.stateFileName, str(e)))
+            raise RuntimeError("Could not lock deferred function state file {}: {}".format(self.stateFileName, str(e)))
 
         # Rename it to remove the suffix
         os.rename(self.stateFileName, self.stateFileName[:-len(self.WIP_SUFFIX)])
@@ -160,14 +154,15 @@ class DeferredFunctionManager(object):
         logger.debug("Deleting %s" % self.stateFileName)
 
         # Hide the state from other processes
-        os.unlink(self.stateFileName)
+        if os.path.exists(self.stateFileName):
+            os.unlink(self.stateFileName)
 
         # Unlock it
         fcntl.lockf(self.stateFD, fcntl.LOCK_UN)
 
         # Don't bother with close, destroying will close and it seems to maybe
-        # have been GC'd already anyway. 
-        
+        # have been GC'd already anyway.
+
     @contextmanager
     def open(self):
         """
@@ -181,7 +176,7 @@ class DeferredFunctionManager(object):
 
         # Clean up other jobs before we run, so our job has a nice clean node
         self._runOrphanedDeferredFunctions()
-    
+
         try:
             def defer(deferredFunction):
                 # Just serialize defered functions one after the other.
@@ -216,11 +211,11 @@ class DeferredFunctionManager(object):
         # Close all the files in there.
         del cleaner
 
-        # Clean up the directory we have been using.
-        # It might not be empty if .tmp files escaped: nobody can tell they
-        # aren't just waiting to be locked.
-        shutil.rmtree(os.path.join(stateDirBase, cls.STATE_DIR_STEM))
-
+        try:
+            robust_rmtree(os.path.join(stateDirBase, cls.STATE_DIR_STEM))
+        except OSError as err:
+            logger.exception(err)
+            # we tried, lets move on
 
 
     def _runDeferredFunction(self, deferredFunction):
@@ -253,13 +248,12 @@ class DeferredFunctionManager(object):
         except EOFError as e:
             # This is expected and means we read all the complete entries.
             logger.debug("Out of deferred functions!")
-            pass
 
     def _runOwnDeferredFunctions(self):
         """
         Run all of the deferred functions that were registered.
         """
-        
+
         logger.debug("Running own deferred functions")
 
         # Seek back to the start of our file
@@ -321,7 +315,7 @@ class DeferredFunctionManager(object):
 
                 try:
                     fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                except IOError:
+                except OSError:
                     # File is still locked by someone else.
                     # Look at the next file instead
                     continue
@@ -341,15 +335,10 @@ class DeferredFunctionManager(object):
                 except OSError:
                     # Maybe the file vanished.
                     pass
-                
+
                 # Unlock it
                 fcntl.lockf(fd, fcntl.LOCK_UN)
 
                 # Now close it. This closes the backing file descriptor. See
                 # <https://stackoverflow.com/a/24984929>
                 fileObj.close()
-
-                
-                
-
-         
