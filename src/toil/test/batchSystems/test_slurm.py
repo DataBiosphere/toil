@@ -8,7 +8,7 @@ from toil.test import ToilTest
 import toil.batchSystems.slurm
 
 
-def call_command_sacct(args) -> str:
+def call_sacct(args) -> str:
     """
     The arguments passed to `call_command` when executing `sacct` are:
     ['sacct', '-n', '-j', '<comma-separated list of job-ids>', '--format',
@@ -40,7 +40,7 @@ def call_command_sacct(args) -> str:
     return stdout
 
 
-def call_command_scontrol(args) -> str:
+def call_scontrol(args) -> str:
     """
     The arguments passed to `call_command` when executing `scontrol` are:
     ['scontrol', 'show', 'job'] or ['scontrol', 'show', 'job', '<job-id>']
@@ -48,6 +48,35 @@ def call_command_scontrol(args) -> str:
     job_id = int(args[3]) if len(args) > 3 else None
     # Fake output per fake job-id.
     scontrol_info = {
+        787204: textwrap.dedent("""\
+            JobId=787204 JobName=toil_job_6_CWLJob
+               UserId=rapthor-mloose(54386) GroupId=rapthor-mloose(54038) MCS_label=N/A
+               Priority=11067 Nice=0 Account=rapthor QOS=normal
+               JobState=COMPLETED Reason=None Dependency=(null)
+               Requeue=0 Restarts=0 BatchFlag=1 Reboot=0 ExitCode=0:0
+               RunTime=00:00:05 TimeLimit=5-00:00:00 TimeMin=N/A
+               SubmitTime=2021-10-11T17:20:42 EligibleTime=2021-10-11T17:20:42
+               AccrueTime=2021-10-11T17:20:42
+               StartTime=2021-10-11T17:20:43 EndTime=2021-10-11T17:20:48 Deadline=N/A
+               SuspendTime=None SecsPreSuspend=0 LastSchedEval=2021-10-11T17:20:43
+               Partition=normal AllocNode:Sid=batch-01:1912150
+               ReqNodeList=(null) ExcNodeList=(null)
+               NodeList=wn-hb-01
+               BatchHost=wn-hb-01
+               NumNodes=1 NumCPUs=1 NumTasks=0 CPUs/Task=1 ReqB:S:C:T=0:0:*:*
+               TRES=cpu=1,mem=2G,node=1,billing=1
+               Socks/Node=* NtasksPerN:B:S:C=0:0:*:* CoreSpec=*
+               MinCPUsNode=1 MinMemoryNode=2G MinTmpDiskNode=0
+               Features=(null) DelayBoot=00:00:00
+               OverSubscribe=OK Contiguous=0 Licenses=(null) Network=(null)
+               Command=(null)
+               WorkDir=/home/rapthor-mloose/code/toil/cwl-v1.2
+               StdErr=/home/rapthor-mloose/code/toil/cwl-v1.2/tmp/toil_19512746-a9f4-4b99-b9ff-48ca5c1b661c.6.787204.err.log
+               StdIn=/dev/null
+               StdOut=/home/rapthor-mloose/code/toil/cwl-v1.2/tmp/toil_19512746-a9f4-4b99-b9ff-48ca5c1b661c.6.787204.out.log
+               Power=
+               NtasksPerTRES:0
+            """),
         789724: textwrap.dedent("""\
             JobId=789724 JobName=run_prefactor-cwltool.sh
                UserId=rapthor-mloose(54386) GroupId=rapthor-mloose(54038) MCS_label=N/A
@@ -105,34 +134,6 @@ def call_command_scontrol(args) -> str:
                Power=
                NtasksPerTRES:0
             """),
-        789867: textwrap.dedent("""\
-            JobId=789867 JobName=sleep.sh
-               UserId=rapthor-mloose(54386) GroupId=rapthor-mloose(54038) MCS_label=N/A
-               Priority=7908 Nice=0 Account=rapthor QOS=normal
-               JobState=PENDING Reason=ReqNodeNotAvail,_UnavailableNodes:wn-ha-04 Dependency=(null)
-               Requeue=0 Restarts=0 BatchFlag=1 Reboot=0 ExitCode=0:0
-               RunTime=00:00:00 TimeLimit=5-00:00:00 TimeMin=N/A
-               SubmitTime=2021-10-15T10:27:59 EligibleTime=2021-10-15T10:27:59
-               AccrueTime=2021-10-15T10:27:59
-               StartTime=Unknown EndTime=Unknown Deadline=N/A
-               SuspendTime=None SecsPreSuspend=0 LastSchedEval=2021-10-15T11:00:07
-               Partition=normal AllocNode:Sid=batch-01:2460968
-               ReqNodeList=wn-ha-[01-05],wn-hb-[01-05] ExcNodeList=(null)
-               NodeList=(null)
-               NumNodes=10 NumCPUs=10 NumTasks=10 CPUs/Task=1 ReqB:S:C:T=0:0:*:*
-               TRES=cpu=10,mem=80000M,node=10,billing=10
-               Socks/Node=* NtasksPerN:B:S:C=0:0:*:* CoreSpec=*
-               MinCPUsNode=1 MinMemoryCPU=8000M MinTmpDiskNode=0
-               Features=(null) DelayBoot=00:00:00
-               OverSubscribe=OK Contiguous=0 Licenses=(null) Network=(null)
-               Command=/home/rapthor-mloose/tmp/sleep.sh
-               WorkDir=/home/rapthor-mloose/tmp
-               StdErr=/home/rapthor-mloose/tmp/slurm-789867.out
-               StdIn=/dev/null
-               StdOut=/home/rapthor-mloose/tmp/slurm-789867.out
-               Power=
-               NtasksPerTRES:0
-            """)
     }
     if job_id is not None:
         try:
@@ -145,6 +146,13 @@ def call_command_scontrol(args) -> str:
         for value in scontrol_info.values():
             stdout += value + '\n'
     return stdout
+
+def call_sacct_raises(*_):
+    """
+    Fake that the `sacct` command fails by raising a `CalledProcessErrorStderr`
+    """
+    raise CalledProcessErrorStderr(1, "sacct: error: Problem talking to the database: "
+                                      "Connection timed out")
 
 
 class FakeBatchSystem(object):
@@ -192,33 +200,33 @@ class SlurmTest(ToilTest):
     ####
 
     def test_getJobDetailsFromSacct_one_exists(self):
-        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_command_sacct)
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
         expected_result = {785023: ("FAILED", 127)}
         result = self.worker._getJobDetailsFromSacct(list(expected_result))
         assert result == expected_result, "{} != {}".format(result, expected_result)
 
     def test_getJobDetailsFromSacct_one_not_exists(self):
-        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_command_sacct)
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
         expected_result = {1234: (None, None)}
         result = self.worker._getJobDetailsFromSacct(list(expected_result))
         assert result == expected_result, "{} != {}".format(result, expected_result)
 
     def test_getJobDetailsFromSacct_many_all_exist(self):
-        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_command_sacct)
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
         expected_result = {754725: ("TIMEOUT", 0), 789456: ("FAILED", 1), 789724: ("RUNNING", 0),
                            789868: ("PENDING", 0), 789869: ("COMPLETED", 0)}
         result = self.worker._getJobDetailsFromSacct(list(expected_result))
         assert result == expected_result, "{} != {}".format(result, expected_result)
 
     def test_getJobDetailsFromSacct_many_some_exist(self):
-        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_command_sacct)
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
         expected_result = {609663: ("FAILED", 130), 767925: ("FAILED", 2), 1234: (None, None),
                            1235: (None, None), 765096: ("FAILED", 137)}
         result = self.worker._getJobDetailsFromSacct(list(expected_result))
         assert result == expected_result, "{} != {}".format(result, expected_result)
 
     def test_getJobDetailsFromSacct_many_none_exist(self):
-        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_command_sacct)
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
         expected_result = {1234: (None, None), 1235: (None, None), 1236: (None, None)}
         result = self.worker._getJobDetailsFromSacct(list(expected_result))
         assert result == expected_result, "{} != {}".format(result, expected_result)
@@ -228,34 +236,151 @@ class SlurmTest(ToilTest):
     ####
 
     def test_getJobDetailsFromScontrol_one_exists(self):
-        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_command_scontrol)
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol)
         expected_result = {789724: ("RUNNING", 0)}
         result = self.worker._getJobDetailsFromScontrol(list(expected_result))
         assert result == expected_result, "{} != {}".format(result, expected_result)
 
     def test_getJobDetailsFromScontrol_one_not_exists(self):
-        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_command_scontrol)
+        """
+        Asking for the job details of a single job that `scontrol` doesn't know about should
+        raise an exception.
+        """
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol)
         expected_result = {1234: (None, None)}
         try:
-            result = self.worker._getJobDetailsFromScontrol(list(expected_result))
-            assert False, "Expected exception CalledProcessErrorStderr"
+            _ = self.worker._getJobDetailsFromScontrol(list(expected_result))
         except CalledProcessErrorStderr:
-            assert True
+            pass
+        else:
+            assert False, "Expected exception CalledProcessErrorStderr"
 
     def test_getJobDetailsFromScontrol_many_all_exist(self):
-        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_command_scontrol)
-        expected_result = {789724: ("RUNNING", 0), 789728: ("PENDING", 0), 789867: ("PENDING", 0)}
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol)
+        expected_result = {787204: ("COMPLETED", 0), 789724: ("RUNNING", 0), 789728: ("PENDING", 0)}
         result = self.worker._getJobDetailsFromScontrol(list(expected_result))
         assert result == expected_result, "{} != {}".format(result, expected_result)
 
     def test_getJobDetailsFromScontrol_many_some_exist(self):
-        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_command_scontrol)
-        expected_result = {789724: ("RUNNING", 0), 1234: (None, None), 789867: ("PENDING", 0)}
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol)
+        expected_result = {787204: ("COMPLETED", 0), 789724: ("RUNNING", 0), 1234: (None, None)}
         result = self.worker._getJobDetailsFromScontrol(list(expected_result))
         assert result == expected_result, "{} != {}".format(result, expected_result)
 
     def test_getJobDetailsFromScontrol_many_none_exist(self):
-        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_command_scontrol)
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol)
         expected_result = {1234: (None, None), 1235: (None, None), 1236: (None, None)}
         result = self.worker._getJobDetailsFromScontrol(list(expected_result))
         assert result == expected_result, "{} != {}".format(result, expected_result)
+
+    ###
+    ### tests for getJobExitCode
+    ###
+
+    def test_getJobExitCode_job_exists(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
+        job_id = '785023'  # FAILED
+        expected_result = 127
+        result = self.worker.getJobExitCode(job_id)
+        assert result == expected_result, "{} != {}".format(result, expected_result)
+
+    def test_getJobExitCode_job_not_exists(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
+        job_id = '1234'  # Non-existent
+        expected_result = None
+        result = self.worker.getJobExitCode(job_id)
+        assert result == expected_result, "{} != {}".format(result, expected_result)
+
+    def test_getJobExitCode_sacct_raises_job_exists(self):
+        """
+        This test forces the use of `scontrol` to get job information, by letting `sacct`
+        raise an exception.
+        """
+        self.monkeypatch.setattr(self.worker, "_getJobDetailsFromSacct", call_sacct_raises)
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol)
+        job_id = '787204'  # COMPLETED
+        expected_result = 0
+        result = self.worker.getJobExitCode(job_id)
+        assert result == expected_result, "{} != {}".format(result, expected_result)
+
+    def test_getJobExitCode_sacct_raises_job_not_exists(self):
+        """
+        This test forces the use of `scontrol` to get job information, by letting `sacct`
+        raise an exception. Next, `scontrol` should also raise because it doesn't know the job.
+        """
+        self.monkeypatch.setattr(self.worker, "_getJobDetailsFromSacct", call_sacct_raises)
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol)
+        job_id = '1234'  # Non-existent
+        try:
+            _ = self.worker.getJobExitCode(job_id)
+        except CalledProcessErrorStderr:
+            pass
+        else:
+            assert False, "Exception CalledProcessErrorStderr not raised"
+
+    ###
+    ### Tests for coalesce_job_exit_codes
+    ###
+
+    def test_coalesce_job_exit_codes_one_exists(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
+        job_ids = ['785023']  # FAILED
+        expected_result = [127]
+        result = self.worker.coalesce_job_exit_codes(job_ids)
+        assert result == expected_result, "{} != {}".format(result, expected_result)
+
+    def test_coalesce_job_exit_codes_one_not_exists(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
+        job_ids = ['1234']  # Non-existent
+        expected_result = [None]
+        result = self.worker.coalesce_job_exit_codes(job_ids)
+        assert result == expected_result, "{} != {}".format(result, expected_result)
+
+    def test_coalesce_job_exit_codes_many_all_exist(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
+        job_ids = ['754725',  # TIMEOUT,
+                   '789456',  # FAILED,
+                   '789724',  # RUNNING,
+                   '789868',  # PENDING,
+                   '789869']  # COMPLETED
+        expected_result = [0, 1, None, None, 0]  # RUNNING and PENDING jobs should return None
+        result = self.worker.coalesce_job_exit_codes(job_ids)
+        assert result == expected_result, "{} != {}".format(result, expected_result)
+
+    def test_coalesce_job_exit_codes_some_exists(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
+        job_ids = ['609663',  # FAILED (SIGINT)
+                   '767925',  # FAILED,
+                   '789724',  # RUNNING,
+                   '999999',  # Non-existent,
+                   '789869']  # COMPLETED
+        expected_result = [130, 2, None, None, 0]    # RUNNING job should return None
+        result = self.worker.coalesce_job_exit_codes(job_ids)
+        assert result == expected_result, "{} != {}".format(result, expected_result)
+
+    def test_coalesce_job_exit_codes_sacct_raises_job_exists(self):
+        """
+        This test forces the use of `scontrol` to get job information, by letting `sacct`
+        raise an exception.
+        """
+        self.monkeypatch.setattr(self.worker, "_getJobDetailsFromSacct", call_sacct_raises)
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol)
+        job_ids = ['787204']  # COMPLETED
+        expected_result = [0]
+        result = self.worker.coalesce_job_exit_codes(job_ids)
+        assert result == expected_result, "{} != {}".format(result, expected_result)
+
+    def test_coalesce_job_exit_codes_sacct_raises_job_not_exists(self):
+        """
+        This test forces the use of `scontrol` to get job information, by letting `sacct`
+        raise an exception. Next, `scontrol` should also raise because it doesn't know the job.
+        """
+        self.monkeypatch.setattr(self.worker, "_getJobDetailsFromSacct", call_sacct_raises)
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol)
+        job_ids = ['1234']  # Non-existent
+        try:
+            _ = self.worker.coalesce_job_exit_codes(job_ids)
+        except CalledProcessErrorStderr:
+            pass
+        else:
+            assert False, "Exception CalledProcessErrorStderr not raised"
