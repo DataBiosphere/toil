@@ -1,4 +1,4 @@
-from typing import Optional
+import os
 from celery import Celery  # type: ignore
 
 """
@@ -8,10 +8,9 @@ Also the entrypoint for starting celery workers.
 """
 
 
-def create_celery_app(broker: Optional[str] = None) -> Celery:
+def create_celery_app() -> Celery:
     """ """
-    if not broker:
-        broker = "amqp://guest:guest@localhost:5672//"
+    broker = os.environ.get("TOIL_WES_BROKER_URL", "amqp://guest:guest@localhost:5672//")
     app = Celery("toil_wes", broker=broker)
 
     # Celery configurations

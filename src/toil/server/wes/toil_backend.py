@@ -132,8 +132,8 @@ class ToilBackend(WESBackend):
 
         self.supported_versions = {
             "py": ["3.6", "3.7", "3.8", "3.9"],
-            "CWL": ["v1.0", "v1.1", "v1.2"],
-            "WDL": ["draft-2", "1.0"]
+            "cwl": ["v1.0", "v1.1", "v1.2"],
+            "wdl": ["draft-2", "1.0"]
         }
 
     def _get_run(self, run_id: str, should_exists: Optional[bool] = None) -> ToilWorkflow:
