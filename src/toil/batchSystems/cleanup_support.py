@@ -53,12 +53,12 @@ class BatchSystemCleanupSupport(BatchSystemLocalSupport):
         context = WorkerCleanupContext(self.workerCleanupInfo)
 
         # Send it along so the worker works inside of it
-        contexts = super(BatchSystemCleanupSupport, self).getWorkerContexts()
+        contexts = super().getWorkerContexts()
         contexts.append(context)
         return contexts
 
     def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
-        super(BatchSystemCleanupSupport, self).__init__(config, maxCores, maxMemory, maxDisk)
+        super().__init__(config, maxCores, maxMemory, maxDisk)
 
 class WorkerCleanupContext:
     """

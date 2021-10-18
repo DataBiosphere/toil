@@ -482,13 +482,8 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
         needs to set mesos_endpoint to localhost for testing since the default is now the
         private IP address
         """
-<<<<<<< HEAD
-        config = super(MesosBatchSystemTest, cls).createConfig()
-        config.mesos_endpoint = 'localhost:5050'
-=======
         config = super().createConfig()
-        config.mesosMasterAddress = 'localhost:5050'
->>>>>>> upstream/master
+        config.mesos_endpoint = 'localhost:5050'
         return config
 
     def supportsWallTime(self):
@@ -1140,13 +1135,8 @@ class MesosBatchSystemJobTest(hidden.AbstractBatchSystemJobTest, MesosTestSuppor
     Tests Toil workflow against the Mesos batch system
     """
     def getOptions(self, tempDir):
-<<<<<<< HEAD
-        options = super(MesosBatchSystemJobTest, self).getOptions(tempDir)
-        options.mesos_endpoint = 'localhost:5050'
-=======
         options = super().getOptions(tempDir)
-        options.mesosMasterAddress = 'localhost:5050'
->>>>>>> upstream/master
+        options.mesos_endpoint = 'localhost:5050'
         return options
 
     def getBatchSystemName(self):
