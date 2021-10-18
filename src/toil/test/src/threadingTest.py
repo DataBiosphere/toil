@@ -6,7 +6,7 @@ import time
 import traceback
 from functools import partial
 
-from toil.lib.threading import LastProcessStandingArena, global_mutex
+from toil.lib.threading import LastProcessStandingArena, global_mutex, cpu_count
 from toil.test import ToilTest, travis_test
 
 log = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ class ThreadingTest(ToilTest):
             scope = self._createTempDir()
             mutex = 'mutex'
             # Use processes (as opposed to threads) to prevent GIL from ordering things artificially
-            pool = multiprocessing.Pool()
+            pool = multiprocessing.Pool(processes=cpu_count())
             try:
                 numTasks = 100
                 results = pool.map_async(
@@ -48,7 +48,7 @@ class ThreadingTest(ToilTest):
             scope = self._createTempDir()
             arena_name = 'thunderdome'
             # Use processes (as opposed to threads) to prevent GIL from ordering things artificially
-            pool = multiprocessing.Pool()
+            pool = multiprocessing.Pool(processes=cpu_count())
             try:
                 numTasks = 100
                 results = pool.map_async(

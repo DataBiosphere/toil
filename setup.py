@@ -17,91 +17,49 @@ import os
 from tempfile import NamedTemporaryFile
 from setuptools import find_packages, setup
 
+def get_requirements(extra=None):
+    """
+    Load the requirements for the given extra from the appropriate
+    requirements-extra.txt, or the main requirements.txt if no extra is
+    specified.
+    """
 
-cwltool_version = '3.1.20211004060744'
+    filename = f"requirements-{extra}.txt" if extra else "requirements.txt"
 
+    with open(filename) as fp:
+        # Parse out as one per line
+        return [l.strip() for l in fp.readlines() if l.strip()]
 
 def run_setup():
     """
     Calls setup(). This function exists so the setup() invocation preceded more internal
     functionality. The `version` module is imported dynamically by import_version() below.
     """
-    boto = 'boto>=2.48.0, <3'
-    boto3 = 'boto3>=1.17, <2'
-    futures = 'futures>=3.1.1, <4'
-    pycryptodome = 'pycryptodome==3.5.1'
-    pymesos = 'pymesos==0.3.15'
-    psutil = 'psutil >= 3.0.1, <6'
-    pynacl = 'pynacl==1.3.0'
-    gcs = 'google-cloud-storage==1.6.0'
-    gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
-    apacheLibcloud = 'apache-libcloud==2.2.1'
-    cwltool = f'cwltool=={cwltool_version}'
-    galaxyToolUtil = 'galaxy-tool-util'
-    htcondor = 'htcondor>=8.6.0'
-    kubernetes = 'kubernetes>=12.0.1, <13'
-    idna = 'idna>=2'
-    pytz = 'pytz>=2012'
-    pyyaml = 'pyyaml>=5, <6'
-    dill = 'dill>=0.3.2, <0.4'
-    requests = 'requests>=2, <3'
-    docker = 'docker==4.3.1'
-    dateutil = 'python-dateutil'
-    addict = 'addict>=2.2.1, <2.3'
-    enlighten = 'enlighten>=1.5.2, <2'
-    wdlparse = 'wdlparse==0.1.0'
 
-    core_reqs = [
-        dill,
-        requests,
-        docker,
-        dateutil,
-        psutil,
-        addict,
-        pytz,
-        pyyaml,
-        enlighten,
-        "typing-extensions ; python_version < '3.8'"
-        ]
-    aws_reqs = [
-        boto,
-        boto3,
-        "boto3-stubs[s3]>=1.17, <2",
-        futures,
-        pycryptodome]
-    cwl_reqs = [
-        cwltool,
-        galaxyToolUtil]
-    encryption_reqs = [
-        pynacl]
-    google_reqs = [
-        gcs_oauth2_boto_plugin,  # is this being used??
-        apacheLibcloud,
-        gcs]
-    htcondor_reqs = [
-        htcondor]
-    kubernetes_reqs = [
-        kubernetes,
-        idna]  # Kubernetes's urllib3 can mange to use idna without really depending on it.
-    mesos_reqs = [
-        pymesos,
-        psutil]
-    wdl_reqs = [
-        wdlparse
-    ]
+    install_requires = get_requirements()
 
+    extras_require = {}
     # htcondor is not supported by apple
     # this is tricky to conditionally support in 'all' due
     # to how wheels work, so it is not included in all and
     # must be explicitly installed as an extra
-    all_reqs = \
-        aws_reqs + \
-        cwl_reqs + \
-        encryption_reqs + \
-        google_reqs + \
-        kubernetes_reqs + \
-        mesos_reqs + \
-        wdl_reqs
+    all_reqs = ""
+    non_htcondor_extras = [
+        "aws",
+        "cwl",
+        "encryption",
+        "google",
+        "kubernetes",
+        "mesos",
+        "wdl",
+    ]
+    for extra in non_htcondor_extras:
+        extras_require[extra] = get_requirements(extra)
+        all_reqs += "\n" + "\n".join(extras_require[extra])
+    # We exclude htcondor from "all" because it can't be on Mac
+    extras_require['htcondor:sys_platform!="darwin"'] = get_requirements("htcondor")
+    extras_require["all"] = all_reqs
+
 
     setup(
         name='toil',
@@ -132,17 +90,8 @@ def run_setup():
           'Topic :: Utilities'],
         license="Apache License v2.0",
         python_requires=">=3.6",
-        install_requires=core_reqs,
-        extras_require={
-            'aws': aws_reqs,
-            'cwl': cwl_reqs,
-            'encryption': encryption_reqs,
-            'google': google_reqs,
-            'htcondor:sys_platform!="darwin"': htcondor_reqs,
-            'kubernetes': kubernetes_reqs,
-            'mesos': mesos_reqs,
-            'wdl': wdl_reqs,
-            'all': all_reqs},
+        install_requires=install_requires,
+        extras_require=extras_require,
         package_dir={'': 'src'},
         packages=find_packages(where='src',
                                # Note that we intentionally include the top-level `test` package for
@@ -168,6 +117,11 @@ def run_setup():
 def import_version():
     """Return the module object for src/toil/version.py, generate from the template if required."""
     if not os.path.exists('src/toil/version.py'):
+        for req in get_requirements("cwl"):
+            # Determine cwltool version from requirements file
+            if req.startswith("cwltool=="):
+                cwltool_version = req[len("cwltool=="):]
+                break
         # Use the template to generate src/toil/version.py
         import version_template
         with NamedTemporaryFile(mode='w', dir='src/toil', prefix='version.py.', delete=False) as f:

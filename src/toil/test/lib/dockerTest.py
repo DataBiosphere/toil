@@ -307,7 +307,7 @@ class DockerTest(ToilTest):
 
         try:
             rv = Job.Runner.startToil(A, options)
-            assert rv == True
+            assert rv is True
         finally:
             try:
                 os.remove(script_file)
