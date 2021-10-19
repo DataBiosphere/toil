@@ -285,9 +285,8 @@ def suppress_exotic_logging(local_logger: str) -> None:
 
     top_level_loggers: List[str] = []
 
-    # Due to https://stackoverflow.com/questions/61683713 we must ignore the
-    # "missing" manager that's definitely there
-    for pkg_logger in list(logging.Logger.manager.loggerDict.keys()) + always_suppress: # type: ignore
+    # Due to https://stackoverflow.com/questions/61683713
+    for pkg_logger in list(logging.Logger.manager.loggerDict.keys()) + always_suppress:
         if pkg_logger != local_logger:
             # many sub-loggers may exist, like "boto.a", "boto.b", "boto.c"; we only want the top_level: "boto"
             top_level_logger = pkg_logger.split('.')[0] if '.' in pkg_logger else pkg_logger
