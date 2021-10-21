@@ -90,10 +90,10 @@ before starting the server.
 
 Also make sure to run it behind a firewall; it opens up the Toil server on port 8080 to anyone who connects.
 
-.. literalinclude:: ../../../contrib/wes-docker/Dockerfile
+.. literalinclude:: ./Dockerfile
    :language: yaml
 
-.. literalinclude:: ../../../contrib/wes-docker/docker-compose.yml
+.. literalinclude:: ./docker-compose.yml
    :language: yaml
    :emphasize-lines: 15,25,30
 
@@ -235,8 +235,8 @@ On the server, the execution directory would have the following structure from t
         └── test.fastq
 
 
-Specifying Toil options
-^^^^^^^^^^^^^^^^^^^^^^^
+Specify Toil options
+^^^^^^^^^^^^^^^^^^^^
 
 To pass Toil specific parameters to the workflow, you can include the ``workflow_engine_parameters`` parameter along
 with your request.
