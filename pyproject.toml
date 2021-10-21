@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "toil"
-version = "5.5.0"
+version = "5.6.0a1"
 description = "A scalable, efficient, cross-platform pipeline management system written entirely in Python and designed around the principles of functional programming."
 authors = ["Benedict Paten and the Toil community"]
 license = "Apache License 2.0"
