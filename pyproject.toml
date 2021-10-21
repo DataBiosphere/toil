@@ -91,7 +91,10 @@ htcondor = ["htcondor"]
 kubernetes = ["kubernetes", "idna"]
 mesos = ["pymesos"]
 wdl = ["wdlparse"]
-all = aws + cwl + encryption + google + kubernetes + mesos + wdl
+all = ["boto", "boto3", "boto3-stubs", "futures", 
+        "cwltool", "galaxy-tool-util", "pynacl", 
+        "apache-libcloud", "google-cloud-storage",
+        "kubernetes", "idna", "pymesos", "wdlparse"]
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
