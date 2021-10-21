@@ -2,7 +2,7 @@
 name = "toil"
 version = "0.1.0"
 description = "A scalable, efficient, cross-platform pipeline management system written entirely in Python and designed around the principles of functional programming."
-authors = ["John Vivian, Arjun Rao, Frank Austin Nothaft, Christopher Ketchum, Joel Armstrong, Adam Novak, Jacob Pfeil, Jake Narkizian, Alden D. Deran, Audrey Musselman-Brown, Hannes Schmidt, Peter Amstutz, Brian Craft, Mary Goldman, Kate Rosenbloom, Melissa Cline, Brian O’Connor, Megan Hanna, Chet Birger, W. James Kent, David A. Patterson, Anthony D. Joseph, Jingchun Zhu, Sasha Zaranek, Gad Getz, David Haussler, Benedict Paten"]
+authors = "Benedict Paten and the Toil community"
 license = "Apache License 2.0"
 readme = "README.rst"
 homepage = "https://toil.ucsc-cgl.org/"
@@ -92,6 +92,7 @@ htcondor = ["htcondor"]
 kubernetes = ["kubernetes", "idna"]
 mesos = ["pymesos"]
 wdl = ["wdlparse"]
+all = aws + cwl + encryption + google + kubernetes + mesos + wdl
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
