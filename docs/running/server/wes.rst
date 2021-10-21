@@ -24,7 +24,7 @@ The WES server requires Celery_ to distribute and execute workflows. To set up C
 
 #. Start Celery workers::
 
-    celery -A toil.server.celery_app worker --detach --loglevel=INFO
+    celery -A toil.server.celery_app worker --loglevel=INFO
 
 
 .. _Celery: https://docs.celeryproject.org/en/stable/getting-started/introduction.html
@@ -68,6 +68,9 @@ Below is a detailed summary of all available options:
 --workers WORKERS
             Ignored if debug mode is on. The number of worker processes launched by the production WSGI server.
             (default: 2).
+--work_dir WORKDIR
+            The directory where workflows should be stored. This directory should be empty or only contain previous
+            workflows. (default: './workflows').
 --opt ENGINE_OPTION
             Specify the default parameters to be sent to the workflow engine for each run.  Accepts multiple values.
 
@@ -76,8 +79,31 @@ Below is a detailed summary of all available options:
 .. _GA4GH docs on CORS: https://w3id.org/ga4gh/product-approval-support/cors
 
 
-Running on EC2
---------------
+Running the Server with `docker-compose`
+----------------------------------------
+
+Instead of manually setting up the server components (``toil server``, RabbitMQ, and Celery), you can use the following
+``docker-compose.yml`` file to orchestrate and link them together.
+
+Make sure to change ``/tmp/toil-workflows`` if you want Toil workflows to live somewhere else, and create the directory
+before starting the server.
+
+Also make sure to run it behind a firewall; it opens up the Toil server on port 8080 to anyone who connects.
+
+.. literalinclude:: ../../../contrib/wes-docker/Dockerfile
+   :language: yaml
+
+.. literalinclude:: ../../../contrib/wes-docker/docker-compose.yml
+   :language: yaml
+   :emphasize-lines: 15,25,30
+
+Once everything is configured, simply run ``docker compose up`` to start the containers. Run ``docker compose down`` to
+stop and remove all containers.
+
+Note that this method only works if ``docker-compose`` is installed, which does not work on the Toil appliance.
+
+Running on a Toil cluster
+-------------------------
 
 To run the server on a Toil leader instance on EC2:
 
@@ -207,6 +233,21 @@ On the server, the execution directory would have the following structure from t
     └── inputs/
         ├── test.fasta
         └── test.fastq
+
+
+Specifying Toil options
+^^^^^^^^^^^^^^^^^^^^^^^
+
+To pass Toil specific parameters to the workflow, you can include the ``workflow_engine_parameters`` parameter along
+with your request.
+
+For example, to set the logging level to ``INFO``, and change the working directory of the workflow, simply include the
+following as ``workflow_engine_parameters``::
+
+    {"--logLevel": "INFO", "--workDir": "/tmp/"}
+
+These options would be appended at the end of existing parameters during command construction, which would override the
+default parameters if provided. (Default parameters that can be passed multiple times would not be overridden).
 
 
 .. _WESMonitoring:

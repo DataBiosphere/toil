@@ -51,7 +51,7 @@ def parser_with_server_options() -> argparse.ArgumentParser:
 
     parser.add_argument("--work_dir", type=str, default=os.path.join(os.getcwd(), "workflows"),
                         help="The directory where workflows should be stored. This directory should be "
-                             "empty or only contain workflows. (default: './workflows').")
+                             "empty or only contain previous workflows. (default: './workflows').")
     parser.add_argument("--opt", "-o", type=str, action="append",
                         help="Specify the default parameters to be sent to the workflow engine for each "
                              "run.  Accepts multiple values.\n"

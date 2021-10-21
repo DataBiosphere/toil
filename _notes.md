@@ -1,9 +1,0 @@
-- Usability
-  - [ ] Add option to auto start server to `toil launch-cluster`
-- Improve documentation
-  - [ ] Add details on how to pass toil specific parameters to `POST /runs`
-- Testing
-  - [ ] Run CWL conformance tests via WES
-    - [ ] Make a CLI entry to submit workflows for `cwltest`?
-  - [ ] More unit tests
-  - [ ] Scalability testing
