@@ -18,7 +18,6 @@ python-dateutil = "^2.8.2"
 psutil = ">=3.0.1, <6"
 addict = ">=2.2.1, <2.3"
 pytz = ">=2012"
-PyYAML = ">=5, <6"
 enlighten = ">=1.5.2, <2"
 
 #Optional Dependencies AWS
@@ -30,7 +29,7 @@ futures = {version = ">=3.1.1, <4", optional = true}
 
 #Optional Dependencies CWL
 
-cwltool = {version= "==3.1.20211004060744", optional = true}
+cwltool = {version= "==3.1.20211020155521", optional = true}
 galaxy-tool-util = {version = "^21.1.2", optional = true}
 
 #Optional Dependencies Encryption
