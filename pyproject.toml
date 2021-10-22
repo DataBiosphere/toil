@@ -82,6 +82,15 @@ lxml = "^4.6.3"
 docutils = ">=0.16, <0.18"
 pyupgrade = "^2.29.0"
 
+[tool.poetry.scripts]
+toil = 'toil.utils.toilMain:main'
+_toil_worker = 'toil.worker:main'
+cwltoil = 'toil.cwl.cwltoil:cwltoil_was_removed [cwl]'
+toil-cwl-runner = 'toil.cwl.cwltoil:main [cwl]'
+toil-wdl-runner = 'toil.wdl.toilwdl:main'
+_toil_mesos_executor = 'toil.batchSystems.mesos.executor:main [mesos]'
+_toil_kubernetes_executor = 'toil.batchSystems.kubernetes:executor [kubernetes]'
+
 [tool.poetry.extras]
 aws = ["boto", "boto3", "boto3-stubs", "futures"]
 cwl = ["cwltool", "galaxy-tool-util"]
