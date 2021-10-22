@@ -85,7 +85,10 @@ def executor() -> None:
 
         # Reproduce child's exit code
         exit_code = child.wait()
-
+    except:
+        # This will print a traceback for us, since exit() in the finally
+        # will bypass the normal way of getting one.
+        logger.exception('Encountered exception running child')
     finally:
         logger.debug('Cleaning up resources')
         # TODO: Change resource system to use a shared resource directory for everyone.
