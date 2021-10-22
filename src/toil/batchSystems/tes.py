@@ -418,9 +418,10 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         parser.add_argument("--tesBearerToken", dest="tes_bearer_token", default=None,
                             help="Bearer token to use for authentication to TES server.")
 
-    T = TypeVar('T')
     @classmethod
     def setOptions(cls, setOption: Callable[..., None]) -> None:
+        # Because we use the keyword arguments, we can't specify a type for setOption without using Protocols.
+        # TODO: start using Protocols, or just start returning objects to represent the options.
         # When actually parsing options, remember to check the environment variables
         setOption("tes_endpoint", default=cls.get_default_tes_endpoint(), env=["TOIL_TES_ENDPOINT"])
         setOption("tes_user", default=None, env=["TOIL_TES_USER"])

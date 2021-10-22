@@ -1152,9 +1152,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                             help="Username to mark Kubernetes jobs with.  "
                                  "(default: %(default)s)")
 
-    T = TypeVar('T')
+    OptionType = TypeVar('OptionType')
     @classmethod
-    def setOptions(cls, setOption: Callable[[str, Optional[Callable[[str], T]], Optional[Callable[[T], None]], Optional[T], Optional[List[str]]], None]) -> None:
+    def setOptions(cls, setOption: Callable[[str, Optional[Callable[[str], OptionType]], Optional[Callable[[OptionType], None]], Optional[OptionType], Optional[List[str]]], None]) -> None:
         setOption("kubernetes_host_path", default=None, env=['TOIL_KUBERNETES_HOST_PATH'])
         setOption("kubernetes_owner", default=cls.get_default_kubernetes_owner(), env=['TOIL_KUBERNETES_OWNER'])
 

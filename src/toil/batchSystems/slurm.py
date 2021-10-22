@@ -347,8 +347,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         allocate_mem.add_argument("--allocate_mem", action='store_true', dest="allocate_mem", help=allocate_mem_help)
         allocate_mem.set_defaults(allocate_mem=True)
 
-    T = TypeVar('T')
+    OptionType = TypeVar('OptionType')
     @classmethod
-    def setOptions(cls, setOption: Callable[[str, Optional[Callable[[str], T]], Optional[Callable[[T], None]], Optional[T]], None]) -> None:
+    def setOptions(cls, setOption: Callable[[str, Optional[Callable[[str], OptionType]], Optional[Callable[[OptionType], None]], Optional[OptionType]], None]) -> None:
         setOption("allocate_mem", bool, default=False)
 

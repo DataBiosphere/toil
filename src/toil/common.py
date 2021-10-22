@@ -150,11 +150,11 @@ class Config:
 
     def setOptions(self, options) -> None:
         """Creates a config object from the options object."""
-        T = TypeVar('T')
+        OptionType = TypeVar('OptionType')
         def set_option(option_name: str,
-                       parsing_function: Optional[Callable[[Any], T]] = None,
-                       check_function: Optional[Callable[[T], None]] = None,
-                       default: Optional[T] = None,
+                       parsing_function: Optional[Callable[[Any], OptionType]] = None,
+                       check_function: Optional[Callable[[OptionType], None]] = None,
+                       default: Optional[OptionType] = None,
                        env: Optional[List[str]] = None,
                        old_names: Optional[List[str]] = None) -> None:
             """

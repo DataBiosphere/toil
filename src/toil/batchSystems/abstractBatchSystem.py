@@ -231,9 +231,9 @@ class AbstractBatchSystem(ABC):
         """
         pass
 
-    T = TypeVar('T')
+    OptionType = TypeVar('OptionType')
     @classmethod
-    def setOptions(cls, setOption: Callable[[str, Optional[Callable[[Any], T]], Optional[Callable[[T], None]], Optional[T], Optional[List[str]]], None]) -> None:
+    def setOptions(cls, setOption: Callable[[str, Optional[Callable[[Any], OptionType]], Optional[Callable[[OptionType], None]], Optional[OptionType], Optional[List[str]]], None]) -> None:
         """
         Process command line or configuration options relevant to this batch system.
 

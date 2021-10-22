@@ -157,11 +157,11 @@ def set_batchsystem_config_defaults(config) -> None:
     config.coalesceStatusCalls = False
     config.statePollingWait: Optional[Union[float, int]] = None  # Number of seconds to wait before querying job state
 
-    T = TypeVar('T')
+    OptionType = TypeVar('OptionType')
     def set_option(option_name: str,
-                   parsing_function: Optional[Callable[[Any], T]] = None,
-                   check_function: Optional[Callable[[T], None]] = None,
-                   default: Optional[T] = None,
+                   parsing_function: Optional[Callable[[Any], OptionType]] = None,
+                   check_function: Optional[Callable[[OptionType], None]] = None,
+                   default: Optional[OptionType] = None,
                    env: Optional[List[str]] = None,
                    old_names: Optional[List[str]] = None) -> None:
         """
