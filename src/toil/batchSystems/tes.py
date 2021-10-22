@@ -107,12 +107,6 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         if os.path.isdir(aws_credentials_path):
             self.__mount_local_path_if_possible(aws_credentials_path, '/root/.aws')
 
-        # Generate a unique ID for this execution.
-        self.unique_id = uuid.uuid4()
-
-        # Create a prefix for jobs
-        self.job_prefix = '{}-'.format(self.unique_id)
-
         # We assign job names based on a numerical job ID. This functionality
         # is managed by the BatchSystemLocalSupport.
 
@@ -178,8 +172,12 @@ class TESBatchSystem(BatchSystemCleanupSupport):
 
             # Make a batch system scope job ID
             bs_id = self.getNextJobID()
-            # Make a unique name
-            job_name = self.job_prefix + str(bs_id)
+            # Make a vaguely human-readable name.
+            # TES does not require it to be unique.
+            # We could add a per-workflow prefix to use with ListTasks, but
+            # ListTasks doesn't let us filter for newly done tasks, so it's not
+            # actually useful for us over polling each task.
+            job_name = str(job_desc)
 
             # Launch the job on TES
 
