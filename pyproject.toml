@@ -112,3 +112,7 @@ all = ["boto", "boto3", "boto3-stubs", "futures",
 requires = ["poetry-core>=1.0.0"]
 #build-backend = "setuptools.build_meta"
 build-backend = "poetry.core.masonry.api"
+
+[build]
+generate-setup-file = false
+script = "import_version.py"
