@@ -9,9 +9,6 @@ homepage = "https://toil.ucsc-cgl.org/"
 documentation = "https://toil.readthedocs.io/en/latest/"
 repository = "https://github.com/DataBiosphere/toil"
 
-[tool.poetry.build]
-script = 'import_version.py'
-
 [tool.poetry.dependencies]
 python = "^3.8"
 dill = ">=0.3.2, <0.4"
