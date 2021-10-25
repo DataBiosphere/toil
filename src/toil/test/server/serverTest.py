@@ -63,10 +63,6 @@ class ToilWESServerTest(ToilTest):
         self.assertEqual(rv.status_code, 200)
         service_info = json.loads(rv.data)
 
-        # self.assertIn("id", service_info)
-        # self.assertIn("name", service_info)
-        # self.assertIn("type", service_info)
-        # self.assertIn("organization", service_info)
         self.assertIn("version", service_info)
         self.assertIn("workflow_type_versions", service_info)
         self.assertIn("supported_wes_versions", service_info)
@@ -74,7 +70,6 @@ class ToilWESServerTest(ToilTest):
         self.assertIn("workflow_engine_versions", service_info)
         self.assertIn("default_workflow_engine_parameters", service_info)
         self.assertIn("system_state_counts", service_info)
-        # self.assertIn("auth_instructions_url", service_info)
         self.assertIn("tags", service_info)
 
     def test_run_example_cwl_workflow(self) -> None:

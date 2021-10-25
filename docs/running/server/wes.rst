@@ -150,7 +150,25 @@ Submitting a Workflow
 Now that the WES API is up and running, we can submit and monitor workflows remotely using the WES API endpoints. A
 workflow can be submitted for execution using the ``POST /runs`` endpoint.
 
-As a quick example, we can submit the example CWL workflow from :ref:`cwlquickstart` to our WES API using cURL::
+As a quick example, we can submit the example CWL workflow from :ref:`cwlquickstart` to our WES API:
+
+.. code-block:: yaml
+
+    # example.cwl
+    cwlVersion: v1.0
+    class: CommandLineTool
+    baseCommand: echo
+    stdout: output.txt
+    inputs:
+     message:
+       type: string
+       inputBinding:
+         position: 1
+    outputs:
+     output:
+       type: stdout
+
+using cURL::
 
     $ curl --location --request POST 'http://localhost:8080/ga4gh/wes/v1/runs' \
         --form 'workflow_url="example.cwl"' \
@@ -175,7 +193,7 @@ There are a few required parameters that have to be set for all workflow submiss
 +---------------------------+-------------------------------------------------------------+
 | workflow_type             | The type of workflow language. Toil currently supports one  |
 |                           | of the following: ``"CWL"``, ``"WDL"``, or ``"py"``. To run |
-|                           | a Toil script, set this to ``"py"``.                        |
+|                           | a Toil native python script, set this to ``"py"``.          |
 +---------------------------+-------------------------------------------------------------+
 | workflow_type_version     | The version of the workflow language. Supported versions    |
 |                           | can be found by accessing the ``GET /service-info``         |
@@ -230,9 +248,10 @@ On the server, the execution directory would have the following structure from t
 
     execution/
     ├── example.cwl
-    └── inputs/
-        ├── test.fasta
-        └── test.fastq
+    ├── inputs
+    │     ├── test.fasta
+    |     └── test.fastq
+    └── wes_inputs.json
 
 
 Specify Toil options

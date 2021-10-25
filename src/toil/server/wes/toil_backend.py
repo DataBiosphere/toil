@@ -146,11 +146,10 @@ class ToilBackend(WESBackend):
         """
         run = ToilWorkflow(run_id, work_dir=os.path.join(self.work_dir, run_id))
 
-        if should_exists is not None:
-            if should_exists and not run.exists():
-                raise WorkflowNotFoundException
-            if should_exists is False and run.exists():
-                raise WorkflowConflictException(run_id)
+        if should_exists and not run.exists():
+            raise WorkflowNotFoundException
+        if should_exists is False and run.exists():
+            raise WorkflowConflictException(run_id)
 
         return run
 
@@ -194,7 +193,7 @@ class ToilBackend(WESBackend):
             },
             "supported_wes_versions": ["1.0.0"],
             "supported_filesystem_protocols": ["file", "http", "https"],
-            "workflow_engine_versions": {"toil": baseVersion},
+            "workflow_engine_versions": {"toil": [baseVersion, ]},
             "default_workflow_engine_parameters": [
                 {
                     "name": key,

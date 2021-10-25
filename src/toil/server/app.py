@@ -17,7 +17,7 @@ import os
 
 import connexion  # type: ignore
 
-from toil.batchSystems.options import getPublicIP
+from toil.lib.misc import get_public_ip
 from toil.server.wes.toil_backend import ToilBackend
 from toil.server.wsgi_app import run_app
 from toil.version import version
@@ -78,7 +78,7 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
     # add workflow execution service (WES) API endpoints
     backend = ToilBackend(work_dir=args.work_dir,
                           options=args.opt,
-                          base_url=f"http://{getPublicIP()}:{args.port}")
+                          base_url=f"http://{get_public_ip()}:{args.port}")
 
     flask_app.add_api('workflow_execution_service.swagger.yaml',
                       resolver=connexion.Resolver(backend.resolve_operation_id))  # noqa
