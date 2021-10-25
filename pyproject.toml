@@ -9,9 +9,6 @@ homepage = "https://toil.ucsc-cgl.org/"
 documentation = "https://toil.readthedocs.io/en/latest/"
 repository = "https://github.com/DataBiosphere/toil"
 
-[tool.poetry.build]
-script = "import_version.py"
-
 [tool.poetry.dependencies]
 python = "^3.8"
 dill = ">=0.3.2, <0.4"
@@ -108,6 +105,9 @@ all = ["boto", "boto3", "boto3-stubs", "futures",
         "cwltool", "galaxy-tool-util", "pynacl", 
         "apache-libcloud", "google-cloud-storage",
         "kubernetes", "idna", "pymesos", "wdlparse"]
+
+[tool.poetry.build]
+script = "import_version.py"
 
 [build-system]
 #requires = ["setuptools", "wheel"]
