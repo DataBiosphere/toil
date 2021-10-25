@@ -16,7 +16,7 @@ def get_requirements(extra=None):
         # Parse out as one per line
         return [l.strip() for l in fp.readlines() if l.strip()]
 
-        
+
 def import_version():
     """Return the module object for src/toil/version.py, generate from the template if required."""
     if not os.path.exists('src/toil/version.py'):
@@ -46,5 +46,5 @@ def import_version():
     # Because SourceFileLoader will error and load "src/toil/__init__.py" .
     return imp.load_source('toil.version', 'src/toil/version.py')
 
-
-version = import_version()
+if __name__ == '__main__':
+    version = import_version()
