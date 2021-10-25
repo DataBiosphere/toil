@@ -8,7 +8,7 @@ from abc import abstractmethod
 from typing import Optional, List, Dict, Any, Tuple, Callable
 
 import connexion  # type: ignore
-from werkzeug.utils import secure_filename
+from werkzeug.utils import secure_filename  # type: ignore
 
 logger = logging.getLogger(__name__)
 
