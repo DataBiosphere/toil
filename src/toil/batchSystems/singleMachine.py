@@ -18,13 +18,15 @@ import signal
 import subprocess
 import time
 import traceback
+from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
 from queue import Empty, Queue
 from threading import Condition, Event, Lock, Thread
-from typing import Dict, List, Optional, Sequence
+from typing import Callable, Dict, List, Optional, Sequence, TypeVar, Union
 
 import toil
-import toil.job
+from toil.common import fC
+from toil.job import JobDescription
 from toil import worker as toil_worker
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchSystemSupport,
@@ -118,8 +120,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.jobIndex = 0
         self.jobIndexLock = Lock()
 
-        # A dictionary mapping IDs of submitted jobs to the command line
-        self.jobs: Dict[str, toil.job.JobDescription] = {}
+        # A dictionary mapping batch system IDs of submitted jobs to the command line
+        self.jobs: Dict[int, JobDescription] = {}
 
         # A queue of jobs waiting to be executed. Consumed by the daddy thread.
         self.inputQueue = Queue()
@@ -127,8 +129,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # A queue of finished jobs. Produced by the daddy thread.
         self.outputQueue = Queue()
 
-        # A dictionary mapping IDs of currently running jobs to their Info objects
-        self.runningJobs: Dict[str, Info] = {}
+        # A dictionary mapping batch system IDs of currently running jobs to their Info objects
+        self.runningJobs: Dict[int, Info] = {}
 
         # These next two are only used outside debug-worker mode
 
@@ -599,7 +601,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         log.debug('Child %d for job %s succeeded', pid, jobID)
 
-    def issueBatchJob(self, jobDesc, job_environment: Optional[Dict[str, str]] = None):
+    def issueBatchJob(self, jobDesc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
         """Adds the command and resources to a queue to be run."""
 
         self._checkOnDaddy()
@@ -634,7 +636,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         return jobID
 
-    def killBatchJobs(self, jobIDs: Sequence[str]) -> None:
+    def killBatchJobs(self, jobIDs: List[int]) -> None:
         """Kills jobs by ID."""
 
         self._checkOnDaddy()
@@ -664,14 +666,14 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 # Wait for the daddy thread to collect them.
                 time.sleep(0.01)
 
-    def getIssuedBatchJobIDs(self):
+    def getIssuedBatchJobIDs(self) -> List[int]:
         """Just returns all the jobs that have been run, but not yet returned as updated."""
 
         self._checkOnDaddy()
 
         return list(self.jobs.keys())
 
-    def getRunningBatchJobIDs(self):
+    def getRunningBatchJobIDs(self) -> Dict[int, float]:
 
         self._checkOnDaddy()
 
@@ -691,7 +693,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         BatchSystemSupport.workerCleanup(self.workerCleanupInfo)
 
-    def getUpdatedBatchJob(self, maxWait):
+    def getUpdatedBatchJob(self, maxWait: int) -> Optional[UpdatedBatchJobInfo]:
         """Returns a tuple of a no-longer-running job, the return value of its process, and its runtime, or None."""
 
         self._checkOnDaddy()
@@ -705,8 +707,16 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         return item
 
     @classmethod
+    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+        parser.add_argument("--scale", dest="scale", default=1,
+                            help="A scaling factor to change the value of all submitted tasks's submitted cores.  "
+                                 "Used in the single_machine batch system. Useful for running workflows on "
+                                 "smaller machines than they were designed for, by setting a value less than 1. "
+                                 "(default: %(default)s)")
+
+    @classmethod
     def setOptions(cls, setOption):
-        setOption("scale", default=1)
+        setOption("scale", float, fC(0.0), default=1)
 
 
 class Info:

@@ -17,9 +17,18 @@ import os
 from tempfile import NamedTemporaryFile
 from setuptools import find_packages, setup
 
+def get_requirements(extra=None):
+    """
+    Load the requirements for the given extra from the appropriate
+    requirements-extra.txt, or the main requirements.txt if no extra is
+    specified.
+    """
 
-cwltool_version = "3.1.20211004060744"
+    filename = f"requirements-{extra}.txt" if extra else "requirements.txt"
 
+    with open(filename) as fp:
+        # Parse out as one per line
+        return [l.strip() for l in fp.readlines() if l.strip()]
 
 def run_setup():
     """
@@ -27,8 +36,7 @@ def run_setup():
     functionality. The `version` module is imported dynamically by import_version() below.
     """
 
-    with open("requirements.txt") as fp:
-        install_requires = fp.read()
+    install_requires = get_requirements()
 
     extras_require = {}
     # htcondor is not supported by apple
@@ -47,11 +55,10 @@ def run_setup():
         "server"
     ]
     for extra in non_htcondor_extras:
-        with open(f"requirements-{extra}.txt") as fp:
-            extras_require[extra] = fp.read()
-            all_reqs += "\n" + extras_require[extra]
-    with open("requirements-htcondor.txt") as htcondor_fp:
-        extras_require['htcondor:sys_platform!="darwin"'] = htcondor_fp.read()
+        extras_require[extra] = get_requirements(extra)
+        all_reqs += "\n" + "\n".join(extras_require[extra])
+    # We exclude htcondor from "all" because it can't be on Mac
+    extras_require['htcondor:sys_platform!="darwin"'] = get_requirements("htcondor")
     extras_require["all"] = all_reqs
 
     setup(
@@ -73,6 +80,8 @@ def run_setup():
           'Operating System :: POSIX',
           'Operating System :: POSIX :: Linux',
           'Programming Language :: Python :: 3.6',
+          'Programming Language :: Python :: 3.7',
+          'Programming Language :: Python :: 3.8',
           'Topic :: Scientific/Engineering',
           'Topic :: Scientific/Engineering :: Bio-Informatics',
           'Topic :: Scientific/Engineering :: Astronomy',
@@ -104,12 +113,17 @@ def run_setup():
                 'toil-cwl-runner = toil.cwl.cwltoil:main [cwl]',
                 'toil-wdl-runner = toil.wdl.toilwdl:main',
                 '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]',
-                '_toil_kubernetes_executor = toil.batchSystems.kubernetes:executor [kubernetes]']})
+                '_toil_contained_executor = toil.batchSystems.contained_executor:executor']})
 
 
 def import_version():
     """Return the module object for src/toil/version.py, generate from the template if required."""
     if not os.path.exists('src/toil/version.py'):
+        for req in get_requirements("cwl"):
+            # Determine cwltool version from requirements file
+            if req.startswith("cwltool=="):
+                cwltool_version = req[len("cwltool=="):]
+                break
         # Use the template to generate src/toil/version.py
         import version_template
         with NamedTemporaryFile(mode='w', dir='src/toil', prefix='version.py.', delete=False) as f:
