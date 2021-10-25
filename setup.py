@@ -80,6 +80,8 @@ def run_setup():
           'Operating System :: POSIX',
           'Operating System :: POSIX :: Linux',
           'Programming Language :: Python :: 3.6',
+          'Programming Language :: Python :: 3.7',
+          'Programming Language :: Python :: 3.8',
           'Topic :: Scientific/Engineering',
           'Topic :: Scientific/Engineering :: Bio-Informatics',
           'Topic :: Scientific/Engineering :: Astronomy',
@@ -111,7 +113,7 @@ def run_setup():
                 'toil-cwl-runner = toil.cwl.cwltoil:main [cwl]',
                 'toil-wdl-runner = toil.wdl.toilwdl:main',
                 '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]',
-                '_toil_kubernetes_executor = toil.batchSystems.kubernetes:executor [kubernetes]']})
+                '_toil_contained_executor = toil.batchSystems.contained_executor:executor']})
 
 
 def import_version():
