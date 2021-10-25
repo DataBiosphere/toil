@@ -47,4 +47,4 @@ def import_version():
     return imp.load_source('toil.version', 'src/toil/version.py')
 
 if __name__ == '__main__':
-    version = import_version()
+    import_version()
