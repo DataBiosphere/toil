@@ -39,6 +39,11 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'rsync',
                          'screen',
                          'build-essential',  # We need a build environment to build Singularity 3.
+                         'containernetworking-plugins',
+                         'libarchive13',
+                         'libc6',
+                         'libseccomp2',
+                         'e2fsprogs'
                          'uuid-dev',
                          'libgpgme11-dev',
                          'libseccomp-dev',
@@ -99,31 +104,9 @@ print(heredoc('''
         mv go/bin/* /usr/bin/ && \
         mv go /usr/local/
 
-    # Build Singularity, but only keep the binaries and scrap the GOPATH to
-    # save space. Hide its binary so we can wrap it.
-    RUN mkdir -p $(go env GOPATH)/src/github.com/sylabs && \
-        cd $(go env GOPATH)/src/github.com/sylabs && \
-        git clone https://github.com/sylabs/singularity.git && \
-        cd singularity && \
-        git checkout v3.4.2 && \
-        ./mconfig && \
-        cd ./builddir && \
-        make -j4 && \
-        make install && \
-        cd && \
-        rm -Rf $(go env GOPATH) \
-        && mkdir -p /usr/local/libexec/toil && \
-        mv /usr/local/bin/singularity /usr/local/libexec/toil/singularity-real
-    RUN mkdir /root/.ssh && \
-        chmod 700 /root/.ssh
-
-    ADD waitForKey.sh /usr/bin/waitForKey.sh
-
-    ADD customDockerInit.sh /usr/bin/customDockerInit.sh
-    
-    ADD singularity-wrapper.sh /usr/local/bin/singularity
-
-    RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/local/bin/singularity
+    # Build Singularity
+    RUN wget https://debian.osuosl.org/debian/pool/main/s/singularity-container/$(curl -sSL 'https://debian.osuosl.org/debian/pool/main/s/singularity-container/' | grep -o 'singularity-container_3[^"]*$TARGETARCH.deb' | head -n1) && \
+        dpkg -i singularity-container_3*.deb
 
     # fixes an incompatibility updating pip on Ubuntu 16 w/ python3.8
     RUN sed -i "s/platform.linux_distribution()/('Ubuntu', '16.04', 'xenial')/g" /usr/lib/python3/dist-packages/pip/download.py
@@ -143,11 +126,13 @@ print(heredoc('''
         && ln -s /home/s3am/bin/s3am /usr/local/bin/
 
     # Install statically linked version of docker client
-    RUN if [$TARGETARCH = amd64] ; then curl https://download.docker.com/linux/static/stable/x86_64/docker-18.06.1-ce.tgz \
-        | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ ; \
-        else curl https://download.docker.com/linux/static/stable/aarch64/docker-18.06.1-ce.tgz \
+    RUN if [$TARGETARCH = amd64] ; then curl https://download.docker.com/linux/static/stable/x86_64/docker-18.06.1-ce.tgz ; \
+        else curl https://download.docker.com/linux/static/stable/aarch64/docker-18.06.1-ce.tgz ; fi \
         | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ ; fi && \
         chmod u+x /usr/local/bin/docker
+
+    RUN curl https://download.docker.com/linux/static/stable/$(if [$TARGETARCH = amd64] ; then echo x86_64 ; else echo aarch64 ; fi)/docker-18.06.1-ce.tgz | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ ...
+
 
     # Fix for Mesos interface dependency missing on ubuntu
     RUN {pip} install protobuf==3.0.0
