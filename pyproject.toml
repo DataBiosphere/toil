@@ -106,8 +106,8 @@ all = ["boto", "boto3", "boto3-stubs", "futures",
         "apache-libcloud", "google-cloud-storage",
         "kubernetes", "idna", "pymesos", "wdlparse"]
 
-[tool.poetry.build]
-script = "import_version.py"
+#[tool.poetry.build]
+#script = "import_version.py"
 
 [build-system]
 #requires = ["setuptools", "wheel"]
