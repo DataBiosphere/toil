@@ -80,7 +80,7 @@ def handle_errors(func: Callable[..., Any]) -> Callable[..., Any]:
         return {"msg": str(msg), "status_code": code}, code
 
     @functools.wraps(func)
-    def wrapper(*args, **kwargs):  # type: ignore
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return func(*args, **kwargs)
         except MalformedRequestException as e:
@@ -193,7 +193,7 @@ class WESBackend:
 
     @staticmethod
     def secure_path(path: str) -> str:
-        return os.path.join(*[secure_filename(p) for p in path.split("/") if p not in ("", ".", "..")])
+        return os.path.join(*[str(secure_filename(p)) for p in path.split("/") if p not in ("", ".", "..")])
 
     def collect_attachments(self, run_id: Optional[str], temp_dir: Optional[str]) -> Tuple[str, Dict[str, Any]]:
         """
