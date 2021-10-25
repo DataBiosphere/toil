@@ -43,7 +43,7 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'libarchive13',
                          'libc6',
                          'libseccomp2',
-                         'e2fsprogs'
+                         'e2fsprogs',
                          'uuid-dev',
                          'libgpgme11-dev',
                          'libseccomp-dev',
