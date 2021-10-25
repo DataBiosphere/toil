@@ -598,7 +598,7 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
         title="Toil miscellaneous options.",
         description="Everything else."
     )
-    misc_options.add_argument('--disableCaching', dest='disableCaching', type='bool', action='store_true',
+    misc_options.add_argument('--disableCaching', dest='disableCaching', action='store_true',
                               default=False,
                               help='Disables caching in the file store. This flag must be set to use '
                                    'a batch system that does not support cleanup, such as Parasol.')
