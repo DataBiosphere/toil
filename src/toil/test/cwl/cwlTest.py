@@ -92,9 +92,11 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
         if skipped_tests:
             cmd.append(f'-S{skipped_tests}')
 
-        args_passed_directly_to_toil = (['--disableCaching'] if not caching else []) +
-                                        [ '--clean=always',
-                                         '--logDebug'] + extra_args
+        args_passed_directly_to_toil = ['--clean=always', '--logDebug']
+        if not caching:
+            # Turn off caching for the run
+            args_passed_directly_to_toil.append('--disableCaching')
+        args_passed_directly_to_toil += extra_args
 
         if 'SINGULARITY_DOCKER_HUB_MIRROR' in os.environ:
             args_passed_directly_to_toil.append('--setEnv=SINGULARITY_DOCKER_HUB_MIRROR')
