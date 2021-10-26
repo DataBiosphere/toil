@@ -39,7 +39,6 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'rsync',
                          'screen',
                          'build-essential',  # We need a build environment to build Singularity 3.
-                         'containernetworking-plugins',
                          'libarchive13',
                          'libc6',
                          'libseccomp2',
@@ -105,7 +104,8 @@ print(heredoc('''
         mv go /usr/local/
 
     # Build Singularity
-    RUN wget https://debian.osuosl.org/debian/pool/main/s/singularity-container/$(curl -sSL 'https://debian.osuosl.org/debian/pool/main/s/singularity-container/' | grep -o 'singularity-container_3[^"]*$TARGETARCH.deb' | head -n1) && \
+    RUN apt-get install containernetworking-plugins && \
+        wget https://debian.osuosl.org/debian/pool/main/s/singularity-container/$(curl -sSL 'https://debian.osuosl.org/debian/pool/main/s/singularity-container/' | grep -o 'singularity-container_3[^"]*$TARGETARCH.deb' | head -n1) && \
         dpkg -i singularity-container_3*.deb
 
     # fixes an incompatibility updating pip on Ubuntu 16 w/ python3.8
