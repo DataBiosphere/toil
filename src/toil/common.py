@@ -24,7 +24,7 @@ import warnings
 
 from urllib.parse import urlparse
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import requests
 
