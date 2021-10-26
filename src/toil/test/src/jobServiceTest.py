@@ -135,7 +135,7 @@ class JobServiceTest(ToilTest):
 
     @slow
     @skipIf(SingleMachineBatchSystem.numCores < 4, 'Need at least four cores to run this test')
-    @retry_flaky_test()
+    @retry_flaky_test(prepare=[ToilTest.tearDown, ToilTest.setUp])
     def testServiceParallelRecursive(self, checkpoint=True):
         """
         Tests the creation of a Job.Service, creating parallel chains of services and accessing jobs.
