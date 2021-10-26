@@ -104,8 +104,7 @@ print(heredoc('''
         mv go /usr/local/
 
     # Build Singularity
-    RUN apt-get install containernetworking-plugins && \
-        wget https://debian.osuosl.org/debian/pool/main/s/singularity-container/$(curl -sSL 'https://debian.osuosl.org/debian/pool/main/s/singularity-container/' | grep -o 'singularity-container_3[^"]*$TARGETARCH.deb' | head -n1) && \
+    RUN wget https://debian.osuosl.org/debian/pool/main/s/singularity-container/$(curl -sSL 'https://debian.osuosl.org/debian/pool/main/s/singularity-container/' | grep -o 'singularity-container_3[^"]*$TARGETARCH.deb' | head -n1) && \
         dpkg -i singularity-container_3*.deb
 
     # fixes an incompatibility updating pip on Ubuntu 16 w/ python3.8
