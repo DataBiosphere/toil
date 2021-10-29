@@ -6,6 +6,7 @@ import logging
 import tempfile
 from abc import abstractmethod
 from typing import Optional, List, Dict, Any, Tuple, Callable
+from urllib.parse import urldefrag
 
 import connexion  # type: ignore
 from werkzeug.utils import secure_filename  # type: ignore
@@ -243,10 +244,14 @@ class WESBackend:
                 raise MalformedRequestException(f"Error reading parameter '{key}': {e}")
 
         if "workflow_url" in body:
-            if ":" not in body["workflow_url"]:
+            url, ref = urldefrag(body["workflow_url"])
+            if ":" not in url:
                 if not has_attachments:
                     raise MalformedRequestException("Relative 'workflow_url' but missing 'workflow_attachment'")
-                body["workflow_url"] = self.secure_path(body["workflow_url"])  # keep this relative
+                body["workflow_url"] = self.secure_path(url)  # keep this relative
+                if ref:
+                    # append "#ref" after the url
+                    body["workflow_url"] += "#" + self.secure_path(ref)
             self.log_for_run(run_id, "Using workflow_url '%s'" % body.get("workflow_url"))
         else:
             raise MalformedRequestException("Missing 'workflow_url' in submission")

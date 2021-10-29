@@ -17,6 +17,7 @@ import logging
 import os
 import subprocess
 from typing import Dict, Any, List, Union
+from urllib.parse import urldefrag
 
 from celery.exceptions import SoftTimeLimitExceeded  # type: ignore
 from toil.common import Toil
@@ -83,7 +84,7 @@ class ToilWorkflowRunner:
             dest = os.path.join(self.exec_dir, src_url)
 
         # Make sure that the destination file actually exists
-        if not os.path.isfile(dest):
+        if not os.path.isfile(urldefrag(dest)[0]):
             raise RuntimeError(f"Cannot resolve workflow file from: '{src_url}'.")
 
         return dest
