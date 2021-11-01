@@ -109,13 +109,13 @@ all = ["boto", "boto3", "boto3-stubs", "futures",
         "kubernetes", "idna", "pymesos", "wdlparse"]
 
 [build-system]
-#requires = ["setuptools", "wheel"]
+
 requires = ["poetry-core>=1.0.0", "setuptools"]
-#build-backend = "setuptools.build_meta"
+
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.build]
 generate-setup-file = true
-#script = "import_version.py"
+script = "import_version.py"
 
 
