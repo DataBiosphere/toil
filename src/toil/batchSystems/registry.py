@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 
-from typing import Callable, Type, TYPE_CHECKING
+from typing import Callable, Dict, List, Tuple, Type, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
 
+logger = logging.getLogger(__name__)
 
 def gridengine_batch_system_factory():
     from toil.batchSystems.gridengine import GridEngineBatchSystem
@@ -48,6 +50,9 @@ def slurm_batch_system_factory():
     from toil.batchSystems.slurm import SlurmBatchSystem
     return SlurmBatchSystem
 
+def tes_batch_system_factory():
+    from toil.batchSystems.tes import TESBatchSystem
+    return TESBatchSystem
 
 def torque_batch_system_factory():
     from toil.batchSystems.torque import TorqueBatchSystem
@@ -71,6 +76,7 @@ BATCH_SYSTEM_FACTORY_REGISTRY = {
     'lsf'            : lsf_batch_system_factory,
     'mesos'          : mesos_batch_system_factory,
     'slurm'          : slurm_batch_system_factory,
+    'tes'            : tes_batch_system_factory,
     'torque'         : torque_batch_system_factory,
     'htcondor'       : htcondor_batch_system_factory,
     'kubernetes'     : kubernetes_batch_system_factory
@@ -84,3 +90,31 @@ def addBatchSystemFactory(key: str, batchSystemFactory: Callable[[], Type['Abstr
     """
     BATCH_SYSTEMS.append(key)
     BATCH_SYSTEM_FACTORY_REGISTRY[key] = batchSystemFactory
+
+# We need a snapshot save/restore system for testing. We can't just tamper with
+# the globals because module-level globals are their own references, so we
+# can't touch this module's global name bindings from a client module.
+
+def save_batch_system_plugin_state() -> Tuple[List[str], Dict[str, Callable[[], Type['AbstractBatchSystem']]]]:
+    """
+    Return a snapshot of the plugin registry that can be restored to remove
+    added plugins. Useful for testing the plugin system in-process with other
+    tests.
+    """
+
+    snapshot = (list(BATCH_SYSTEMS), dict(BATCH_SYSTEM_FACTORY_REGISTRY))
+    return snapshot
+
+def restore_batch_system_plugin_state(snapshot: Tuple[List[str], Dict[str, Callable[[], Type['AbstractBatchSystem']]]]):
+    """
+    Restore the batch system registry state to a snapshot from
+    save_batch_system_plugin_state().
+    """
+
+    # We need to apply the snapshot without rebinding the names, because that
+    # won't affect modules that imported the names.
+    wanted_batch_systems, wanted_registry = snapshot
+    BATCH_SYSTEMS.clear()
+    BATCH_SYSTEMS.extend(wanted_batch_systems)
+    BATCH_SYSTEM_FACTORY_REGISTRY.clear()
+    BATCH_SYSTEM_FACTORY_REGISTRY.update(wanted_registry)

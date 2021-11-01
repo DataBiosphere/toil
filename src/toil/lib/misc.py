@@ -1,15 +1,61 @@
+import datetime
+import pytz
 import logging
 import os
 import random
 import shutil
+import socket
 import subprocess
 import sys
 import typing
 
+from contextlib import closing
 from typing import Iterator, Union, List, Optional
 
 logger = logging.getLogger(__name__)
 
+
+def get_public_ip() -> str:
+    """Get the IP that this machine uses to contact the internet.
+
+    If behind a NAT, this will still be this computer's IP, and not the router's."""
+    try:
+        # Try to get the internet-facing IP by attempting a connection
+        # to a non-existent server and reading what IP was used.
+        ip = '127.0.0.1'
+        with closing(socket.socket(socket.AF_INET, socket.SOCK_DGRAM)) as sock:
+            # 203.0.113.0/24 is reserved as TEST-NET-3 by RFC 5737, so
+            # there is guaranteed to be no one listening on the other
+            # end (and we won't accidentally DOS anyone).
+            sock.connect(('203.0.113.1', 1))
+            ip = sock.getsockname()[0]
+        return ip
+    except:
+        # Something went terribly wrong. Just give loopback rather
+        # than killing everything, because this is often called just
+        # to provide a default argument
+        return '127.0.0.1'
+
+def utc_now() -> datetime.datetime:
+    """Return a datetime in the UTC timezone corresponding to right now."""
+    return datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
+
+def slow_down(seconds: float) -> float:
+    """
+    Toil jobs that have completed are not allowed to have taken 0 seconds, but
+    Kubernetes timestamps round things to the nearest second. It is possible in
+    some batch systems for a pod to have identical start and end timestamps.
+
+    This function takes a possibly 0 job length in seconds and enforces a
+    minimum length to satisfy Toil.
+
+    :param float seconds: Timestamp difference
+
+    :return: seconds, or a small positive number if seconds is 0
+    :rtype: float
+    """
+
+    return max(seconds, sys.float_info.epsilon)
 
 def printq(msg: str, quiet: bool) -> None:
     if not quiet:
