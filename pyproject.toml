@@ -116,6 +116,6 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.build]
 generate-setup-file = true
-script = "import_version.py"
+#script = "import_version.py"
 
 
