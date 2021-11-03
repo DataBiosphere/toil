@@ -76,7 +76,7 @@ data:
               restartPolicy: Never
               containers: 
                 - name: {{printf "funnel-worker-%s" .TaskId}}
-                  image: ohsucompbio/funnel-dind:latest
+                  image: ohsucompbio/funnel-dind
                   imagePullPolicy: IfNotPresent
                   # We need to sneak in before the entrypoint and set up the
                   # Docker config to use a mirror, so we don't hit Docker Hub
@@ -167,7 +167,7 @@ spec:
       serviceAccountName: toil-svc
       containers:
         - name: funnel
-          image: ohsucompbio/funnel:latest
+          image: ohsucompbio/funnel
           imagePullPolicy: IfNotPresent
           command: 
             - 'funnel'
