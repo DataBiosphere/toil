@@ -4,7 +4,8 @@
 # This sets up Funnel with basic authentication as
 # "toil"/"basic_auth_password", under a "toil-svc" service account (which you
 # may need to change for your cluster). It will run TES tasks as Kubernetes
-# Jobs in the "toil" namespace.
+# Jobs in the "toil" namespace. Docker images used in TES tasks will be fetched
+# through a Docker Hub mirror at http://docker-registry.toil.
 #
 # To deploy with a secure password that is a valid quoted YAML string (i.e.
 # does not contain ") (which can still be stolen from your local machine with
@@ -75,16 +76,29 @@ data:
               restartPolicy: Never
               containers: 
                 - name: {{printf "funnel-worker-%s" .TaskId}}
-                  image: ohsucompbio/funnel-kube-dind:latest
+                  image: ohsucompbio/funnel-dind:latest
                   imagePullPolicy: IfNotPresent
-                  args:
-                    - "funnel"
-                    - "worker"
-                    - "run"
-                    - "--config"
-                    - "/etc/config/funnel-worker-config.yml"
-                    - "--taskID"
-                    - {{.TaskId}}
+                  # We need to sneak in before the entrypoint and set up the
+                  # Docker config to use a mirror, so we don't hit Docker Hub
+                  # pull limits
+                  command:
+                    - /bin/bash
+                    - -c
+                    - |
+                      # What mirror should be used to cache images to avoid
+                      # hitting Docker Hub rate limits? You can also replace
+                      # this code with code to configute the Docker daemon to
+                      # log in to Docker Hub. You will probably have to change
+                      # this for your environment.
+                      DOCKER_HUB_MIRROR=http://docker-registry.toil
+                      if [[ "${DOCKER_HUB_MIRROR}" == https* ]] ; then
+                        # Set up a secure mirror
+                        echo "{\"registry-mirrors\": [\"${DOCKER_HUB_MIRROR}\"]}\"]}" | tee /etc/docker/daemon.json
+                      else
+                        # Set up an insecure mirror
+                        echo "{\"registry-mirrors\": [\"${DOCKER_HUB_MIRROR}\"], \"insecure-registries\": [\"${DOCKER_HUB_MIRROR##*://}\"]}" | tee /etc/docker/daemon.json
+                      fi
+                      entrypoint.sh funnel worker run --config /etc/config/funnel-worker-config.yml --taskID {{.TaskId}}
                   resources:
                       requests:
                         cpu: {{if ne .Cpus 0 -}}{{.Cpus}}{{ else }}{{"100m"}}{{end}}
