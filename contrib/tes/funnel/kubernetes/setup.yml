@@ -82,7 +82,7 @@ data:
                   # Docker config to use a mirror, so we don't hit Docker Hub
                   # pull limits
                   command:
-                    - /bin/bash
+                    - /bin/sh
                     - -c
                     - |
                       # What mirror should be used to cache images to avoid
@@ -91,23 +91,28 @@ data:
                       # log in to Docker Hub. You will probably have to change
                       # this for your environment.
                       DOCKER_HUB_MIRROR=http://docker-registry.toil
-                      if [[ "${DOCKER_HUB_MIRROR}" == https* ]] ; then
-                        # Set up a secure mirror
-                        echo "{\"registry-mirrors\": [\"${DOCKER_HUB_MIRROR}\"]}\"]}" | tee /etc/docker/daemon.json
-                      else
-                        # Set up an insecure mirror
-                        echo "{\"registry-mirrors\": [\"${DOCKER_HUB_MIRROR}\"], \"insecure-registries\": [\"${DOCKER_HUB_MIRROR##*://}\"]}" | tee /etc/docker/daemon.json
-                      fi
+                      mkdir -p /etc/docker
+                      case "${DOCKER_HUB_MIRROR}" in
+                        https* )
+                          # Set up a secure mirror
+                          echo "{\"registry-mirrors\": [\"${DOCKER_HUB_MIRROR}\"]}\"]}" | tee /etc/docker/daemon.json
+                          ;;
+                        * )
+                          # Set up an insecure mirror
+                          echo "{\"registry-mirrors\": [\"${DOCKER_HUB_MIRROR}\"], \"insecure-registries\": [\"${DOCKER_HUB_MIRROR##*://}\"]}" | tee /etc/docker/daemon.json
+                          ;;
+                      esac
                       entrypoint.sh funnel worker run --config /etc/config/funnel-worker-config.yml --taskID {{.TaskId}}
                   resources:
                       requests:
                         cpu: {{if ne .Cpus 0 -}}{{.Cpus}}{{ else }}{{"100m"}}{{end}}
-                        memory: {{if ne .RamGb 0.0 -}}{{printf "%.0fG" .RamGb}}{{else}}{{"16M"}}{{end}}
+                        memory: {{if ne .RamGb 0.0 -}}{{printf "%.0fG" .RamGb}}{{else}}{{"256M"}}{{end}}
                         ephemeral-storage: {{if ne .DiskGb 0.0 -}}{{printf "%.0fG" .DiskGb}}{{else}}{{"100M"}}{{end}}
                       # UCSC GI Kubernetes wants requests == limits
+                      # And the 16M memory limit in the example immediately got the pod killed.
                       limits:
                         cpu: {{if ne .Cpus 0 -}}{{.Cpus}}{{ else }}{{"100m"}}{{end}}
-                        memory: {{if ne .RamGb 0.0 -}}{{printf "%.0fG" .RamGb}}{{else}}{{"16M"}}{{end}}
+                        memory: {{if ne .RamGb 0.0 -}}{{printf "%.0fG" .RamGb}}{{else}}{{"256M"}}{{end}}
                         ephemeral-storage: {{if ne .DiskGb 0.0 -}}{{printf "%.0fG" .DiskGb}}{{else}}{{"100M"}}{{end}}
                   volumeMounts:
                     - name: {{printf "funnel-storage-%s" .TaskId}}
