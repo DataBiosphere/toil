@@ -1,0 +1,184 @@
+# Combined YAML for all Funnel components for testing Toil against on UCSC's Kubernetes cluster.
+# Adapted from: https://github.com/ohsu-comp-bio/funnel/tree/master/deployments/kubernetes
+#
+# This sets up Funnel with no auth, under a "toil-svc" service account (which
+# you may need to change for your cluster).
+#
+# You can use this command to expose the server on your local machine's
+# loopback interface:
+#
+#   kubectl port-forward service/funnel 8000:8000
+
+# First we need a Service (of the default Cluster IP type)
+# Since we have no auth, make sure not to expose this to the Internet!
+apiVersion: v1
+kind: Service
+metadata:
+  name: funnel
+spec:
+  selector:
+    app: funnel
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8000
+      targetPort: 8000
+    - name: rpc
+      protocol: TCP
+      port: 9090
+      targetPort: 9090
+---
+# We also need a ConfigMap for configuring the servers and clients.
+# Note that we need to paste the service IP in here!
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: funnel-config
+data:
+  funnel-server-config.yml: |+
+    Database: boltdb
+    Compute: kubernetes
+    Logger:
+      Level: debug
+    Kubernetes:
+      DisableJobCleanup: false
+      DisableReconciler: false
+      ReconcileRate: 5m
+      Namespace: default
+      Template: | 
+        apiVersion: batch/v1
+        kind: Job
+        metadata:
+          ## DO NOT CHANGE NAME
+          name: {{.TaskId}}
+          namespace: {{.Namespace}}
+        spec: 
+          backoffLimit: 0
+          completions: 1
+          template:
+            spec:
+              restartPolicy: Never
+              containers: 
+                - name: {{printf "funnel-worker-%s" .TaskId}}
+                  image: ohsucompbio/funnel-kube-dind:latest
+                  imagePullPolicy: IfNotPresent
+                  args:
+                    - "funnel"
+                    - "worker"
+                    - "run"
+                    - "--config"
+                    - "/etc/config/funnel-worker-config.yml"
+                    - "--taskID"
+                    - {{.TaskId}}
+                  resources:
+                      requests:
+                        cpu: {{if ne .Cpus 0 -}}{{.Cpus}}{{ else }}{{"100m"}}{{end}}
+                        memory: {{if ne .RamGb 0.0 -}}{{printf "%.0fG" .RamGb}}{{else}}{{"16M"}}{{end}}
+                        ephemeral-storage: {{if ne .DiskGb 0.0 -}}{{printf "%.0fG" .DiskGb}}{{else}}{{"100M"}}{{end}}
+                  volumeMounts:
+                    - name: {{printf "funnel-storage-%s" .TaskId}}
+                      mountPath: {{printf "/opt/funnel/funnel-work-dir/%s" .TaskId}}
+                    - name: config-volume
+                      mountPath: /etc/config
+                  securityContext:
+                    privileged: true
+              volumes: 
+                - name: {{printf "funnel-storage-%s" .TaskId}}
+                  emptyDir: {}
+                - name: config-volume
+                  configMap:
+                    name: funnel-config
+  funnel-worker-config.yml: |+
+    Database: boltdb
+    BoltDB:
+      Path: /opt/funnel/funnel-work-dir/funnel.bolt.db
+    Compute: kubernetes
+    Logger:
+      Level: debug
+    RPCClient:
+      MaxRetries: 3
+      Timeout: 30s
+    EventWriters:
+      - rpc
+      - log
+    Server:
+      # The Funnel docs say to paste the service IP here
+      # kubectl get services funnel --output=yaml | grep clusterIP
+      # But we should be able to just use the service name as a DNS name and
+      # let Kubernetes find the IP; that's what it's for.
+      HostName: funnel
+      RPCPort: 9090
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: funnel
+  labels:
+    app: funnel
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: funnel
+  template:
+    metadata:
+      labels:
+        app: funnel
+    spec:
+      # TODO: To use outside the UCSC cluster, change this to a service account you actually have
+      serviceAccountName: toil-svc
+      containers:
+        - name: funnel
+          image: ohsucompbio/funnel:latest
+          imagePullPolicy: IfNotPresent
+          command: 
+            - 'funnel'
+            - 'server'
+            - 'run'
+            - '--config'
+            - '/etc/config/funnel-server-config.yml'
+          resources: 
+            requests: 
+              cpu: 2 
+              memory: 4G
+              ephemeral-storage: 25G # needed since we are using boltdb
+          volumeMounts:
+            - name: funnel-deployment-storage
+              mountPath: /opt/funnel/funnel-work-dir
+            - name: config-volume
+              mountPath: /etc/config
+          ports:
+            - containerPort: 8000
+            - containerPort: 9090
+
+      volumes:
+        - name: funnel-deployment-storage
+          emptyDir: {}
+        - name: config-volume
+          configMap:
+            name: funnel-config
+
+# Funnel is licensed under the following license:
+# MIT License
+# 
+# Copyright (c) 2017 Oregon Health and Science University Computational Biology
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+
