@@ -680,6 +680,9 @@ class AbstractJobStoreTest:
                 self.jobstore_initialized.partSize = cls.mpTestPartSize
                 self.jobstore_initialized.moveExports = moveExports
 
+                # Test assumes imports are not linked
+                self.jobstore_initialized.linkImports = False
+
                 # The string in otherCls() is arbitrary as long as it returns a class that has access
                 # to ._externalStore() and ._prepareTestFile()
                 other = otherCls('testSharedFiles')

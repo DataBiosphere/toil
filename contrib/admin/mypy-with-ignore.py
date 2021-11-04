@@ -52,7 +52,6 @@ def main():
         'src/toil/batchSystems/slurm.py',
         'src/toil/batchSystems/gridengine.py',
         'src/toil/batchSystems/singleMachine.py',
-        'src/toil/batchSystems/abstractBatchSystem.py',
         'src/toil/batchSystems/parasol.py',
         'src/toil/batchSystems/kubernetes.py',
         'src/toil/batchSystems/torque.py',
