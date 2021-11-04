@@ -127,10 +127,9 @@ print(heredoc('''
         && ln -s /home/s3am/bin/s3am /usr/local/bin/
 
     # Install statically linked version of docker client
-    RUN if [$TARGETARCH = amd64] ; then curl https://download.docker.com/linux/static/stable/x86_64/docker-18.06.1-ce.tgz ; \
-        else curl https://download.docker.com/linux/static/stable/aarch64/docker-18.06.1-ce.tgz ; fi \
-        | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ ; fi && \
-        chmod u+x /usr/local/bin/docker
+    RUN curl https://download.docker.com/linux/static/stable/$(if [$TARGETARCH = amd64] ; then echo amd64 ; else echo aarch64 ; fi)/docker-18.06.1-ce.tgz \
+        | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ \
+        && chmod u+x /usr/local/bin/docker
 
     RUN curl https://download.docker.com/linux/static/stable/$(if [$TARGETARCH = amd64] ; then echo x86_64 ; else echo aarch64 ; fi)/docker-18.06.1-ce.tgz | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ ...
 
