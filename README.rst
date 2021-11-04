@@ -25,3 +25,4 @@ Notes:
 
 * Toil moved from https://github.com/BD2KGenomics/toil to https://github.com/DataBiosphere/toil on July 5th, 2018.
 * Toil dropped python 2.7 support on February 13, 2020 (last working py2.7 version is 3.24.0).
+
