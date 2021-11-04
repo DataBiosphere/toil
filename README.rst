@@ -7,8 +7,7 @@ written entirely in Python, and designed around the principles of functional
 programming.
 
 * Check the `website`_ for a description of Toil and its features.
-* Full documentation for the latest stable release can be found at
-  `Read the Docs`_.
+* Full documentation for the latest stable release can be found at `Read the Docs`_.
 * Please subscribe to low-volume `announce`_ mailing list so we keep you informed
 * Google Groups discussion `forum`_
 * See our occasional `blog`_ for tutorials. 
