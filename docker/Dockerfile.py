@@ -104,7 +104,7 @@ print(heredoc('''
         mv go /usr/local/
 
     # Build Singularity
-    RUN wget https://debian.osuosl.org/debian/pool/main/s/singularity-container/$(curl -sSL 'https://debian.osuosl.org/debian/pool/main/s/singularity-container/' | grep -o "singularity-container_3[^\"]*$(if [ $TARGETARCH = amd64 ] ; then echo amd64 ; else echo arm64 ; fi).deb" | head -n1) && \
+    RUN wget https://debian.osuosl.org/debian/pool/main/s/singularity-container/$(curl -sSL 'https://debian.osuosl.org/debian/pool/main/s/singularity-container/' | grep -o "singularity-container_3[^\\"]*$(if [ $TARGETARCH = amd64 ] ; then echo amd64 ; else echo arm64 ; fi).deb" | head -n1) && \
         (dpkg -i singularity-container_3*.deb || true) && \
         dpkg --force-depends --configure -a && \
         sed -i 's/containernetworking-plugins, //' /var/lib/dpkg/status
