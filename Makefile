@@ -155,7 +155,7 @@ docker: docker/Dockerfile
 
 	@set -ex \
 	; cd docker \
-	; docker buildx build --platform linux/amd64,linux/arm64 --output=type=image --tag=$(docker_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
+	; docker buildx build --platform linux/amd64,linux/arm64 --tag=$(docker_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
 
 	@set -ex \
 	; cd dashboard/prometheus \
@@ -181,7 +181,7 @@ clean_docker:
 
 push_docker: docker
 	# Weird if logic is so we fail if all the pushes fail
-	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker buildx build --platform linux/amd64,linux/arm64 --output=type=registry --tag=$(docker_image):$(TOIL_DOCKER_TAG) -f Dockerfile . && break || sleep 60; done
+	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker buildx build --platform linux/amd64,linux/arm64 --push --tag=$(docker_image):$(TOIL_DOCKER_TAG) -f Dockerfile . && break || sleep 60; done
 	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(grafana_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
 	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(prometheus_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
 	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(mtail_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
