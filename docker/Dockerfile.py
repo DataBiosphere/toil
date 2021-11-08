@@ -107,7 +107,8 @@ print(heredoc('''
     RUN wget https://debian.osuosl.org/debian/pool/main/s/singularity-container/$(curl -sSL 'https://debian.osuosl.org/debian/pool/main/s/singularity-container/' | grep -o "singularity-container_3[^\\"]*$(if [ $TARGETARCH = amd64 ] ; then echo amd64 ; else echo arm64 ; fi).deb" | head -n1) && \
         (dpkg -i singularity-container_3*.deb || true) && \
         dpkg --force-depends --configure -a && \
-        sed -i 's/containernetworking-plugins, //' /var/lib/dpkg/status
+        sed -i 's/containernetworking-plugins, //' /var/lib/dpkg/status && \
+        sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf
 
     # fixes an incompatibility updating pip on Ubuntu 16 w/ python3.8
     RUN sed -i "s/platform.linux_distribution()/('Ubuntu', '16.04', 'xenial')/g" /usr/lib/python3/dist-packages/pip/download.py
