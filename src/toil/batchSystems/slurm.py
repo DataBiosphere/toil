@@ -15,8 +15,7 @@ import logging
 import math
 import os
 from pipes import quote
-from argparse import ArgumentParser, _ArgumentGroup
-from typing import Callable, List, Dict, Optional, TypeVar, Union
+from typing import List, Dict, Optional
 
 from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
 from toil.lib.misc import CalledProcessErrorStderr, call_command
@@ -336,19 +335,3 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 # Add a 20% ceiling on the wait duration relative to the scheduler update duration
                 time_value_list.append(math.ceil(time_value*1.2))
         return max(time_value_list)
-
-    @classmethod
-    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]):
-        allocate_mem = parser.add_mutually_exclusive_group()
-        allocate_mem_help = ("A flag that can block allocating memory with '--mem' for job submissions "
-                             "on SLURM since some system servers may reject any job request that "
-                             "explicitly specifies the memory allocation.  The default is to always allocate memory.")
-        allocate_mem.add_argument("--dont_allocate_mem", action='store_false', dest="allocate_mem", help=allocate_mem_help)
-        allocate_mem.add_argument("--allocate_mem", action='store_true', dest="allocate_mem", help=allocate_mem_help)
-        allocate_mem.set_defaults(allocate_mem=True)
-
-    OptionType = TypeVar('OptionType')
-    @classmethod
-    def setOptions(cls, setOption: Callable[[str, Optional[Callable[[str], OptionType]], Optional[Callable[[OptionType], None]], Optional[OptionType]], None]) -> None:
-        setOption("allocate_mem", bool, default=False)
-

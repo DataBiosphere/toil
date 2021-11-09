@@ -31,7 +31,6 @@ from shutil import which
 from textwrap import dedent
 from unittest.util import strclass
 from urllib.request import urlopen
-from urllib.error import HTTPError, URLError
 
 import pytz
 
@@ -329,35 +328,12 @@ def needs_gridengine(test_item):
 
 
 def needs_torque(test_item):
-    """Use as a decorator before test classes or methods to run only if PBS/Torque is installed."""
+    """Use as a decorator before test classes or methods to run only ifPBS/Torque is installed."""
     test_item = _mark_test('torque', test_item)
     if which('pbsnodes'):
         return test_item
     return unittest.skip("Install PBS/Torque to include this test.")(test_item)
 
-def needs_tes(test_item):
-    """Use as a decorator before test classes or methods to run only if TES is available."""
-    test_item = _mark_test('tes', test_item)
-
-    try:
-        from toil.batchSystems.tes import TESBatchSystem
-    except ImportError:
-        return unittest.skip(f"Install py-tes to include this test")(test_item)
-
-    tes_url = os.environ.get('TOIL_TES_ENDPOINT', TESBatchSystem.get_default_tes_endpoint())
-    try:
-        urlopen(tes_url)
-    except HTTPError:
-        # Funnel happens to 404 if TES is working. But any HTTPError means we
-        # dialed somebody who picked up.
-        pass
-    except URLError:
-        # Will give connection refused if we can't connect because the server's
-        # not there. We can also get a "cannot assign requested address" if
-        # we're on Kubernetes dialing localhost and !!creative things!! have
-        # been done to the network stack.
-        return unittest.skip(f"Run a TES server on {tes_url} to include this test")(test_item)
-    return test_item
 
 def needs_kubernetes(test_item):
     """Use as a decorator before test classes or methods to run only if Kubernetes is installed."""

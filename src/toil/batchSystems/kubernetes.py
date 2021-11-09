@@ -32,22 +32,21 @@ import sys
 import tempfile
 import time
 import uuid
-from argparse import ArgumentParser, _ArgumentGroup
-from typing import Callable, Optional, Dict, List, TypeVar, Union
+from typing import Optional, Dict
 
 import kubernetes
+import pytz
 import urllib3
 from kubernetes.client.rest import ApiException
 
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchJobExitReason,
+                                                   BatchSystemCleanupSupport,
                                                    UpdatedBatchJobInfo)
-from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.common import Toil
 from toil.job import JobDescription
 from toil.lib.conversions import human2bytes
-from toil.lib.misc import utc_now, slow_down
 from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
 from toil.statsAndLogging import configure_root_logger, set_log_level
@@ -67,6 +66,28 @@ def is_retryable_kubernetes_error(e):
         if isinstance(e, error):
             return True
     return False
+
+
+def slow_down(seconds):
+    """
+    Toil jobs that have completed are not allowed to have taken 0 seconds, but
+    Kubernetes timestamps round things to the nearest second. It is possible in Kubernetes for
+    a pod to have identical start and end timestamps.
+
+    This function takes a possibly 0 job length in seconds and enforces a minimum length to satisfy Toil.
+
+    :param float seconds: Kubernetes timestamp difference
+
+    :return: seconds, or a small positive number if seconds is 0
+    :rtype: float
+    """
+
+    return max(seconds, sys.float_info.epsilon)
+
+
+def utc_now():
+    """Return a datetime in the UTC timezone corresponding to right now."""
+    return datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
 
 
 class KubernetesBatchSystem(BatchSystemCleanupSupport):
@@ -94,10 +115,20 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Decide if we are going to mount a Kubernetes host path as /tmp in the workers.
         # If we do this and the work dir is the default of the temp dir, caches will be shared.
-        self.host_path = config.kubernetes_host_path
+        self.host_path = config.kubernetesHostPath
+        if self.host_path is None and os.environ.get("TOIL_KUBERNETES_HOST_PATH", None) is not None:
+            # We can also take it from an environment variable
+            self.host_path = os.environ.get("TOIL_KUBERNETES_HOST_PATH")
 
-        # Get the username to mark jobs with
-        username = config.kubernetes_owner
+        # Make a Kubernetes-acceptable version of our username: not too long,
+        # and all lowercase letters, numbers, or - or .
+        acceptableChars = set(string.ascii_lowercase + string.digits + '-.')
+
+        # Use TOIL_KUBERNETES_OWNER if present in env var
+        if os.environ.get("TOIL_KUBERNETES_OWNER", None) is not None:
+            username = os.environ.get("TOIL_KUBERNETES_OWNER")
+        else:
+            username = ''.join([c for c in getpass.getuser().lower() if c in acceptableChars])[:100]
 
         self.uniqueID = uuid.uuid4()
 
@@ -347,7 +378,6 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Make a job dict to send to the executor.
         # First just wrap the command and the environment to run it in
-        # TODO: send environment via pod spec
         job = {'command': jobDesc.command,
                'environment': environment}
         # TODO: query customDockerInitCmd to respect TOIL_CUSTOM_DOCKER_INIT_COMMAND
@@ -421,7 +451,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             mounts.append(secret_volume_mount)
 
         # Make a container definition
-        container = kubernetes.client.V1Container(command=['_toil_contained_executor', encodedJob],
+        container = kubernetes.client.V1Container(command=['_toil_kubernetes_executor', encodedJob],
                                                   image=self.dockerImage,
                                                   name="runner-container",
                                                   resources=resources,
@@ -1131,37 +1161,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Block until it doesn't exist
             self._waitForJobDeath(jobName)
 
-    @classmethod
-    def get_default_kubernetes_owner(cls) -> str:
-        """
-        Get the default Kubernetes-acceptable username string to tack onto jobs.
-        """
-
-        # Make a Kubernetes-acceptable version of our username: not too long,
-        # and all lowercase letters, numbers, or - or .
-        acceptable_chars = set(string.ascii_lowercase + string.digits + '-.')
-
-        return ''.join([c for c in getpass.getuser().lower() if c in acceptable_chars])[:100]
-
-    @classmethod
-    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--kubernetesHostPath", dest="kubernetes_host_path", default=None,
-                            help="Path on Kubernetes hosts to use as shared inter-pod temp directory.  "
-                                 "(default: %(default)s)")
-        parser.add_argument("--kubernetesOwner", dest="kubernetes_owner", default=cls.get_default_kubernetes_owner(),
-                            help="Username to mark Kubernetes jobs with.  "
-                                 "(default: %(default)s)")
-
-    OptionType = TypeVar('OptionType')
-    @classmethod
-    def setOptions(cls, setOption: Callable[[str, Optional[Callable[[str], OptionType]], Optional[Callable[[OptionType], None]], Optional[OptionType], Optional[List[str]]], None]) -> None:
-        setOption("kubernetes_host_path", default=None, env=['TOIL_KUBERNETES_HOST_PATH'])
-        setOption("kubernetes_owner", default=cls.get_default_kubernetes_owner(), env=['TOIL_KUBERNETES_OWNER'])
-
-
 def executor():
     """
-    Main function of the _toil_contained_executor entrypoint.
+    Main function of the _toil_kubernetes_executor entrypoint.
 
     Runs inside the Toil container.
 

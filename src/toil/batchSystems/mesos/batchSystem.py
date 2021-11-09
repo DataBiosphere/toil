@@ -22,10 +22,9 @@ import socket
 import sys
 import time
 import traceback
-from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
 from queue import Empty, Queue
-from typing import Callable, Optional, Dict, TypeVar, Union
+from typing import Optional, Dict
 from urllib.parse import quote_plus
 from urllib.request import urlopen
 
@@ -36,13 +35,12 @@ from toil import resolveEntryPoint
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    AbstractScalableBatchSystem,
                                                    BatchJobExitReason,
+                                                   BatchSystemLocalSupport,
                                                    NodeInfo,
                                                    UpdatedBatchJobInfo)
-from toil.batchSystems.local_support import BatchSystemLocalSupport
 from toil.batchSystems.mesos import JobQueue, MesosShape, TaskData, ToilJob
 from toil.job import JobDescription
 from toil.lib.memoize import strict_bool
-from toil.lib.misc import get_public_ip
 
 log = logging.getLogger(__name__)
 
@@ -92,7 +90,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         self.jobQueues = JobQueue()
 
         # Address of the Mesos master in the form host:port where host can be an IP or a hostname
-        self.mesos_endpoint = config.mesos_endpoint
+        self.mesosMasterAddress = config.mesosMasterAddress
 
         # Written to when Mesos kills tasks, as directed by Toil.
         # Jobs must not enter this set until they are removed from runningJobMap.
@@ -330,7 +328,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         # Make the driver which implements most of the scheduler logic and calls back to us for the user-defined parts.
         # Make sure it will call us with nice namespace-y addicts
         self.driver = MesosSchedulerDriver(self, framework,
-                                           self._resolveAddress(self.mesos_endpoint),
+                                           self._resolveAddress(self.mesosMasterAddress),
                                            use_addict=True, implicit_acknowledgements=True)
         self.driver.start()
 
@@ -831,20 +829,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         self._handleFailedExecutor(agentId.value, failedId)
 
     @classmethod
-    def get_default_mesos_endpoint(cls) -> str:
-        """
-        Get the default IP/hostname and port that we will look for Mesos at.
-        """
-        return f'{get_public_ip()}:5050'
-
-    @classmethod
-    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--mesosEndpoint", "--mesosMaster", dest="mesos_endpoint", default=cls.get_default_mesos_endpoint(),
-                            help="The host and port of the Mesos master separated by colon.  (default: %(default)s)")
-
-    @classmethod
     def setOptions(cls, setOption):
-        setOption("mesos_endpoint", None, None, cls.get_default_mesos_endpoint(), old_names=["mesosMasterAddress"])
+        setOption("mesosMasterAddress", None, None, 'localhost:5050')
 
 
 def toMiB(n):

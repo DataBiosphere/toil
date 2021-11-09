@@ -60,7 +60,7 @@ def add_provisioner_options(parser):
                             f"Toil utils like launch-cluster and destroy-cluster, which always require a provisioner, "
                             f"and so this defaults to: %(default)s.  Choices: {provisioner_choices}.")
     group.add_argument('-z', '--zone', dest='zone', required=False, default=None,
-                       help="The availability zone of the leader. This parameter can also be set via the 'TOIL_X_ZONE' "
+                       help="The availability zone of the master. This parameter can also be set via the 'TOIL_X_ZONE' "
                             "environment variable, where X is AWS or GCE, or by the ec2_region_name parameter "
                             "in your .boto file, or derived from the instance metadata if using this utility on an "
                             "existing EC2 instance.")
@@ -75,7 +75,7 @@ def parse_node_types(node_type_specs: Optional[str]) -> List[Tuple[Set[str], Opt
     Takes a comma-separated list of node types. Each node type is a
     slash-separated list of at least one instance type name (like 'm5a.large'
     for AWS), and an optional bid in dollars after a colon.
-
+    
     Raises ValueError if a node type cannot be parsed.
 
     Inputs should look something like this:
@@ -88,10 +88,10 @@ def parse_node_types(node_type_specs: Optional[str]) -> List[Tuple[Set[str], Opt
     :returns: a list of node types, where each type is the set of
               instance types, and the float bid, or None.
     """
-
+    
     # Collect together all the node types
     parsed = []
-
+    
     if node_type_specs:
         # Some node types were actually specified
         for node_type_spec in node_type_specs.split(','):
@@ -132,7 +132,7 @@ def check_valid_node_types(provisioner, node_types: List[Tuple[Set[str], Optiona
     :param node_types: A list of node types.  Example: [({'t2.micro'}, None), ({'t2.medium'}, 0.5)]
     :return: Nothing.  Raises if any instance type in the node type isn't real.
     """
-
+    
     # check if a valid node type for aws
     from toil.lib.generatedEC2Lists import E2Instances, regionDict
     if provisioner == 'aws':

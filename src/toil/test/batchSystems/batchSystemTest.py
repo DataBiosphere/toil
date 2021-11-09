@@ -37,9 +37,7 @@ from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
                                         BATCH_SYSTEMS,
                                         single_machine_batch_system_factory,
-                                        addBatchSystemFactory,
-                                        save_batch_system_plugin_state,
-                                        restore_batch_system_plugin_state)
+                                        addBatchSystemFactory)
 from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config, Toil
@@ -56,7 +54,6 @@ from toil.test import (ToilTest,
                        needs_mesos,
                        needs_parasol,
                        needs_slurm,
-                       needs_tes,
                        needs_torque,
                        slow,
                        travis_test)
@@ -72,32 +69,6 @@ preemptable = False
 
 defaultRequirements = dict(memory=int(100e6), cores=1, disk=1000, preemptable=preemptable)
 
-class BatchSystemPluginTest(ToilTest):
-    """
-    Class for testing batch system plugin functionality.
-    """
-
-    def setUp(self):
-        # Save plugin state so our plugin doesn't stick around after the test
-        # (and create duplicate options)
-        self.__state = save_batch_system_plugin_state()
-        super().setUp()
-
-    def tearDown(self):
-        # Restore plugin state
-        restore_batch_system_plugin_state(self.__state)
-        super().tearDown()
-
-    def testAddBatchSystemFactory(self):
-        def test_batch_system_factory():
-            # TODO: Adding the same batch system under multiple names means we
-            # can't actually create Toil options, because each version tries to
-            # add its arguments.
-            return SingleMachineBatchSystem
-
-        addBatchSystemFactory('testBatchSystem', test_batch_system_factory)
-        assert ('testBatchSystem', test_batch_system_factory) in BATCH_SYSTEM_FACTORY_REGISTRY.items()
-        assert 'testBatchSystem' in BATCH_SYSTEMS
 
 class hidden:
     """
@@ -180,7 +151,7 @@ class hidden:
         def test_available_cores(self):
             self.assertTrue(cpu_count() >= numCores)
 
-        @retry_flaky_test(prepare=[tearDown, setUp])
+        @retry_flaky_test()
         def test_run_jobs(self):
             jobDesc1 = self._mockJobDescription(command='sleep 1000', jobName='test1', unitName=None,
                                                 jobStoreID='1', requirements=defaultRequirements)
@@ -340,6 +311,14 @@ class hidden:
                 time.sleep(1)
             return runningIDs
 
+        def testAddBatchSystemFactory(self):
+            def test_batch_system_factory():
+                return SingleMachineBatchSystem
+
+            addBatchSystemFactory('testBatchSystem', test_batch_system_factory)
+            assert ('testBatchSystem', test_batch_system_factory) in BATCH_SYSTEM_FACTORY_REGISTRY.items()
+            assert 'testBatchSystem' in BATCH_SYSTEMS
+
     class AbstractBatchSystemJobTest(ToilTest, metaclass=ABCMeta):
         """
         An abstract base class for batch system tests that use a full Toil workflow rather
@@ -451,23 +430,6 @@ class KubernetesBatchSystemTest(hidden.AbstractBatchSystemTest):
         return KubernetesBatchSystem(config=self.config,
                                      maxCores=numCores, maxMemory=1e9, maxDisk=2001)
 
-@needs_tes
-@needs_fetchable_appliance
-class TESBatchSystemTest(hidden.AbstractBatchSystemTest):
-    """
-    Tests against the TES batch system
-    """
-
-    def supportsWallTime(self):
-        return True
-
-    def createBatchSystem(self):
-        # Import the batch system when we know we have it.
-        # Doesn't really matter for TES right now, but someday it might.
-        from toil.batchSystems.tes import TESBatchSystem
-        return TESBatchSystem(config=self.config,
-                              maxCores=numCores, maxMemory=1e9, maxDisk=2001)
-
 
 @slow
 @needs_mesos
@@ -479,11 +441,11 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     @classmethod
     def createConfig(cls):
         """
-        needs to set mesos_endpoint to localhost for testing since the default is now the
+        needs to set mesosMasterAddress to localhost for testing since the default is now the
         private IP address
         """
         config = super().createConfig()
-        config.mesos_endpoint = 'localhost:5050'
+        config.mesosMasterAddress = 'localhost:5050'
         return config
 
     def supportsWallTime(self):
@@ -723,7 +685,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
     def scriptCommand(self) -> str:
         return ' '.join([sys.executable, self.scriptPath, self.counterPath])
 
-    @retry_flaky_test(prepare=[tearDown, setUp])
+    @retry_flaky_test()
     def test(self):
         # We'll use fractions to avoid rounding errors. Remember that not every fraction can be
         # represented as a floating point number.
@@ -1001,7 +963,7 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
         return "single_machine"
 
     @slow
-    @retry_flaky_test(prepare=[hidden.AbstractBatchSystemJobTest.tearDown, hidden.AbstractBatchSystemJobTest.setUp])
+    @retry_flaky_test()
     def testConcurrencyWithDisk(self):
         """
         Tests that the batch system is allocating disk resources properly
@@ -1136,7 +1098,7 @@ class MesosBatchSystemJobTest(hidden.AbstractBatchSystemJobTest, MesosTestSuppor
     """
     def getOptions(self, tempDir):
         options = super().getOptions(tempDir)
-        options.mesos_endpoint = 'localhost:5050'
+        options.mesosMasterAddress = 'localhost:5050'
         return options
 
     def getBatchSystemName(self):

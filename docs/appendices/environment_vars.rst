@@ -48,17 +48,6 @@ There are several environment variables that affect the way Toil runs.
 |                                  | instead of polling for running jobs. Default       |
 |                                  | value is set to False.                             |
 +----------------------------------+----------------------------------------------------+
-| TOIL_TES_ENDPOINT                | URL to the TES server to run against when using    |
-|                                  | the ``tes`` batch system.                          |
-+----------------------------------+----------------------------------------------------+
-| TOIL_TES_USER                    | Username to use with HTTP Basic Authentication to  |
-|                                  | log into the TES server.                           |
-+----------------------------------+----------------------------------------------------+
-| TOIL_TES_PASSWORD                | Password to use with HTTP Basic Authentication to  |
-|                                  | log into the TES server.                           |
-+----------------------------------+----------------------------------------------------+
-| TOIL_TES_BEARER_TOKEN            | Token to use to authenticate to the TES server.    |
-+----------------------------------+----------------------------------------------------+
 | TOIL_APPLIANCE_SELF              | The fully qualified reference for the Toil         |
 |                                  | Appliance you wish to use, in the form             |
 |                                  | ``REPO/IMAGE:TAG``.                                |

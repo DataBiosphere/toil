@@ -54,8 +54,7 @@ class hidden:
                 self.assertEqual(maxValue, self.cpuCount // coresPerJob)
 
         @slow
-        @retry_flaky_test(prepare=[batchSystemTest.hidden.AbstractBatchSystemJobTest.tearDown,
-                                   batchSystemTest.hidden.AbstractBatchSystemJobTest.setUp])
+        @retry_flaky_test()
         def testConcurrencyStatic(self):
             """
             Asserts that promised core resources are allocated properly using a static DAG
@@ -229,7 +228,7 @@ class MesosPromisedRequirementsTest(hidden.AbstractPromisedRequirementsTest, Mes
 
     def getOptions(self, tempDir, caching=True):
         options = super().getOptions(tempDir, caching=caching)
-        options.mesos_endpoint = 'localhost:5050'
+        options.mesosMasterAddress = 'localhost:5050'
         return options
 
     def getBatchSystemName(self):
