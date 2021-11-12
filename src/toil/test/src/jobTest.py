@@ -567,7 +567,8 @@ class JobTest(ToilTest):
         def makeJob(string):
             promises = []
             job = Job.wrapFn(fn2Test, promises, string,
-                             None if outPath is None else os.path.join(outPath, string))
+                             None if outPath is None else os.path.join(outPath, string),
+                             cores=0.1)
             jobsToPromisesMap[job] = promises
             return job
 
@@ -586,7 +587,7 @@ class JobTest(ToilTest):
             predecessors[jobs[tNode]].append(jobs[fNode])
 
         # Map of jobs to return values
-        jobsToRvs = {job: job.addService(TrivialService(job.rv())) if addServices else job.rv() for job in jobs}
+        jobsToRvs = {job: job.addService(TrivialService(job.rv(), cores=0.1)) if addServices else job.rv() for job in jobs}
 
         def getRandomPredecessor(job):
             predecessor = random.choice(list(predecessors[job]))
