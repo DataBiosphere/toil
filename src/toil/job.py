@@ -2694,11 +2694,8 @@ class ServiceHostJob(Job):
         # We can't just pickle right away because we may owe promises from it.
         self.pickledService = None
 
-        # Pick up our name form the service.
-        self.jobName = service.jobName
-        # This references the parent job wrapper. It is initialised just before
-        # the job is run. It is used to access the start and terminate flags.
-        self.jobGraph = None
+        # Pick up our name from the service.
+        self.description.jobName = service.jobName
 
     @property
     def fileStore(self):

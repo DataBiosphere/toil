@@ -305,8 +305,11 @@ class ServiceManager:
                 # Find the service object.
                 service_job_desc = self.__toil_state.get_job(service_id)
                 logger.debug("Service manager is starting service job: %s, start ID: %s", service_job_desc, service_job_desc.startJobStoreID)
-                assert self.__job_store.file_exists(service_job_desc.startJobStoreID)
-                # At this point the terminateJobStoreID and errorJobStoreID could have been deleted!
+                assert self.__job_store.file_exists(service_job_desc.startJobStoreID), f"Service manager attempted to start service {service_job_desc} that has already started"
+                assert self.__toil_state.job_exists(service_job_desc.jobStoreID), f"Service manager attempted to start service {service_job_desc} that is not in the job store"
+                # At this point the terminateJobStoreID and errorJobStoreID
+                # could have been deleted, since the service can be killed at
+                # any time! So we cann't assert their presence here.
                 self.__services_out.put(service_id)
                 # Save for the waiting loop
                 wait_on.append(service_job_desc)
@@ -326,10 +329,22 @@ class ServiceManager:
                     if self.__terminate.is_set():
                         return
 
+                    if (not self.__toil_state.job_exists(service_job_desc.jobStoreID)
+                        and self.__job_store.file_exists(service_job_desc.startJobStoreID)):
+                        # The service job has gone away but the service never flipped its start flag.
+                        logger.error('Service %s has completed and been removed without ever starting', service_job_desc)
+                        # Stop waiting on the service because we know it won't
+                        # flip the flag.
+                        # TODO: We don't protect the user from this problem
+                        # here. But when this eventually comes up as a user
+                        # issue we'll have a log that might help us track down
+                        # who removed the service.
+                        continue
+
                 # We don't bail out early here.
 
                 # We need to try and fail to start *all* the services, so they
-                # *all* come back to the leaser as expected, or the leader will get
+                # *all* come back to the leader as expected, or the leader will get
                 # stuck waiting to hear about a later dependent service failing. So
                 # we have to *try* to start all the services, even if the services
                 # they depend on failed. They should already have been killed,
