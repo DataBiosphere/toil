@@ -2778,10 +2778,16 @@ class ServiceHostJob(Job):
                 # Check the service's status and exit if failed or complete
                 try:
                     if not service.check():
-                        logger.debug("The service has finished okay, exiting")
-                        break
+                        logger.debug("The service has finished okay, but we have not been told to terminate. "
+                                     "Waiting for leader to tell us to come back.")
+                        # TODO: Adjust leader so that it keys on something
+                        # other than the services finishing (assumed to be
+                        # after the children) to know when to run follow-on
+                        # successors. Otherwise, if we come back now, we try to
+                        # run the child jobs again and get
+                        # https://github.com/DataBiosphere/toil/issues/3484
                 except RuntimeError:
-                    logger.debug("Detected termination of the service")
+                    logger.debug("Detected abnormal termination of the service")
                     raise
 
                 time.sleep(fileStore.jobStore.config.servicePollingInterval) #Avoid excessive polling
