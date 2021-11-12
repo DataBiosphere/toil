@@ -700,7 +700,11 @@ class Leader:
             # check in with the batch system
             updatedJobTuple = self.batchSystem.getUpdatedBatchJob(maxWait=2)
             if updatedJobTuple is not None:
+                # Collect and process all the updates
                 self._gatherUpdatedJobs(updatedJobTuple)
+                # As long as we are getting updates we definitely can't be
+                # deadlocked.
+                self.feed_deadlock_watchdog()
             else:
                 # If nothing is happening, see if any jobs have wandered off
                 self._processLostJobs()
@@ -794,23 +798,21 @@ class Leader:
                                        stuckFor, self.config.deadlockWait - stuckFor, waitingNormalJobs, message)
             else:
                 # We have observed non-service jobs running, so reset the potential deadlock
-
-                if len(self.potentialDeadlockedJobs) > 0:
-                    # We thought we had a deadlock. Tell the user it is fixed.
-                    logger.warning("Potential deadlock has been resolved; non-service jobs are now running.")
-
-                self.potentialDeadlockedJobs = set()
-                self.potentialDeadlockTime = 0
+                self.feed_deadlock_watchdog()
         else:
             # We have observed non-service jobs running, so reset the potential deadlock.
-            # TODO: deduplicate with above
+            self.feed_deadlock_watchdog()
 
-            if len(self.potentialDeadlockedJobs) > 0:
-                # We thought we had a deadlock. Tell the user it is fixed.
-                logger.warning("Potential deadlock has been resolved; non-service jobs are now running.")
+    def feed_deadlock_watchdog(self) -> None:
+        """
+        Note that progress has been made and any pending deadlock checks should be reset.
+        """
+        if len(self.potentialDeadlockedJobs) > 0:
+            # We thought we had a deadlock. Tell the user it is fixed.
+            logger.warning("Potential deadlock has been resolved; detected progress")
 
-            self.potentialDeadlockedJobs = set()
-            self.potentialDeadlockTime = 0
+        self.potentialDeadlockedJobs = set()
+        self.potentialDeadlockTime = 0
 
     def issueJob(self, jobNode: JobDescription) -> None:
         """Add a job to the queue of jobs."""
