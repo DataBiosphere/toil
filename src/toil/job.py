@@ -2449,7 +2449,7 @@ class FunctionWrappingJob(Job):
 
         self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__).globalize()
         self.userFunctionName = str(userFunction.__name__)
-        self.jobName = self.userFunctionName
+        self.description.jobName = self.userFunctionName
         self._args = args
         self._kwargs = kwargs
 
