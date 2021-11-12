@@ -405,6 +405,9 @@ class JobTest(ToilTest):
             options.retryCount = 1
             options.badWorker = 0.25
             options.badWorkerFailInterval = 0.01
+            # Because we're going to be killing the services all the time for
+            # restarts, make sure they are paying attention.
+            options.servicePollingInterval = 1
 
             # Now actually run the workflow
             try:
