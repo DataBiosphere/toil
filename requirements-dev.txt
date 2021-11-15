@@ -3,7 +3,7 @@ pytest>=6.2.1,<7
 pytest-cov>=2.12.1,<4
 pytest-timeout>=1.4.2,<3
 stubserver>=1.1,<2
-setuptools>=51.3.3,<59
+setuptools>=51.3.3,<60
 sphinx>=3.5.3,<4
 cwltest>=2.2.20210901154959
 mypy==0.910
