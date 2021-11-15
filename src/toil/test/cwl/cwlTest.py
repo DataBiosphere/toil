@@ -36,6 +36,7 @@ sys.path.insert(0, pkg_root)  # noqa
 from toil.cwl.utils import visit_top_cwl_class, visit_cwl_class_and_reduce, download_structure
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.lib.threading import cpu_count
 
 from toil.test import (ToilTest,
                        needs_aws_s3,
@@ -112,10 +113,13 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
         if batchSystem == 'kubernetes':
             # Run tests in parallel on Kubernetes.
             # We can throw a bunch at it at once and let Kubernetes schedule.
-            cmd.append('-j8')
+            # But we still want a local core for each.
+            parallel_tests = max(min(cpu_count(), 8), 1)
         else:
-            # Run tests in parallel on the local machine
-            cmd.append(f'-j{int(psutil.cpu_count()/2)}')
+            # Run tests in parallel on the local machine. Don't run too many
+            # tests at once; we want at least a couple cores for each.
+            parallel_tests = max(int(cpu_count() / 2), 1)
+        cmd.append(f'-j{parallel_tests}')
 
         if batchSystem:
             args_passed_directly_to_toil.append(f"--batchSystem={batchSystem}")
