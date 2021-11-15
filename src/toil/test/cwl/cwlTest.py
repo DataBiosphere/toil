@@ -544,6 +544,7 @@ class CWLv12Test(ToilTest):
 
     @slow
     @needs_kubernetes
+    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance(self, **kwargs):
         return self.test_run_conformance(batchSystem="kubernetes",
                                          # This test doesn't work with
@@ -556,6 +557,7 @@ class CWLv12Test(ToilTest):
 
     @slow
     @needs_kubernetes
+    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance_with_caching(self):
         return self.test_kubernetes_cwl_conformance(caching=True)
 
