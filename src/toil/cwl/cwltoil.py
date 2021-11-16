@@ -115,6 +115,7 @@ from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.lib.threading import ExceptionalThread
+from toil.statsAndLogging import DEFAULT_LOGLEVEL
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
@@ -2832,7 +2833,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         help="Enable loading and running 'cwltool:' extensions to the CWL standards.",
         default=False,
     )
-    parser.add_argument("--quiet", dest="logLevel", action="store_const", const="ERROR")
+    parser.add_argument("--quiet", dest="quiet", action="store_true", default=False)
     parser.add_argument("--basedir", type=str)  # TODO: Might be hard-coded?
     parser.add_argument("--outdir", type=str, default=os.getcwd())
     parser.add_argument("--version", action="version", version=baseVersion)
@@ -3132,6 +3133,10 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # Containers under Kubernetes can only run in Singularity
         options.singularity = True
 
+    if (not options.logLevel or options.logLevel == DEFAULT_LOGLEVEL) and options.quiet:
+        # --quiet can override only the default log level, so if you have
+        # --logLevel=DEBUG (and debug isn't the default) it beats --quiet.
+        options.logLevel = "ERROR"
     if options.logLevel:
         # Make sure cwltool uses Toil's log level.
         # Applies only on the leader.
