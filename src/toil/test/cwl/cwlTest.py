@@ -556,7 +556,6 @@ class CWLv12Test(ToilTest):
 
     @slow
     @needs_kubernetes
-    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance(self, **kwargs):
         if 'junit_file' not in kwargs:
             kwargs['junit_file'] = 'kubernetes-conformance.junit.xml'
@@ -571,7 +570,6 @@ class CWLv12Test(ToilTest):
 
     @slow
     @needs_kubernetes
-    @pytest.mark.xfail
     def test_kubernetes_cwl_conformance_with_caching(self):
         return self.test_kubernetes_cwl_conformance(caching=True, junit_file=os.path.join(self.rootDir,
                                                                                           'kubernetes-caching-conformance.junit.xml'))
