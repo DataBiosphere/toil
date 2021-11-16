@@ -309,7 +309,7 @@ class ServiceManager:
                 assert self.__toil_state.job_exists(service_job_desc.jobStoreID), f"Service manager attempted to start service {service_job_desc} that is not in the job store"
                 # At this point the terminateJobStoreID and errorJobStoreID
                 # could have been deleted, since the service can be killed at
-                # any time! So we cann't assert their presence here.
+                # any time! So we can't assert their presence here.
                 self.__services_out.put(service_id)
                 # Save for the waiting loop
                 wait_on.append(service_job_desc)
