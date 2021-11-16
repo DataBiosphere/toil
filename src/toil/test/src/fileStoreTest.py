@@ -406,9 +406,9 @@ class hidden:
             """
             if testingIsAutomatic and self.jobStoreType != 'file':
                 self.skipTest("To save time")
-            self.options.retryCount = 20
-            self.options.badWorker = 0.5
-            self.options.badWorkerFailInterval = 0.1
+            self.options.retryCount = 10
+            self.options.badWorker = 0.25
+            self.options.badWorkerFailInterval = 0.2
             for test in range(0, 20):
                 E = Job.wrapJobFn(self._uselessFunc)
                 F = Job.wrapJobFn(self._uselessFunc)
