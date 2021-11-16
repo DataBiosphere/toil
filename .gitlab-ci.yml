@@ -196,7 +196,7 @@ cwl_v1.1_kubernetes:
     - mkdir -p ${TOIL_WORKDIR}
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance_with_caching
-    
+
 cwl_v1.2_kubernetes:
   stage: main_tests
   script:
