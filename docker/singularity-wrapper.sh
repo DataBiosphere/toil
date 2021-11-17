@@ -60,9 +60,33 @@ if [[ "${ARGC}" -ge "2" && "${ARGV[1]}" == "pull" && ! -z "${MIRROR_HOST}" ]] ; 
         HTTP_ARG="--nohttps"
     fi
 
-    # Run the pull with our extra args, and then all the args starting at 2
-    # Run it as the current process so it gets signals intended for it
-    exec "${SINGULARITY_PATH}" pull ${HTTP_ARG} "${ARGV[@]:2}"
+    # Run the pull with our extra args, and then all the args starting at 2.
+    set +e
+    "${SINGULARITY_PATH}" pull ${HTTP_ARG} "${ARGV[@]:2}"
+
+    # Do some exponential backoff
+    SUCCESS="${?}"
+    set -e
+    TRY_NUMBER=1
+    DELAY=5
+    while [[ "${SUCCESS}" != "0" ]] ; do
+        if [[ "${TRY_NUMBER}" == 5 ]] ; then
+            # We're out of tries.
+            exit "${SUCCESS}"
+        fi
+        # Otherwise wait and try again.
+        echo 1>&2 "Toil Singularity Wrapper: retrying failed pull after ${DELAY} seconds..."
+        sleep "${DELAY}"
+
+        # Record that we are using a try.
+        TRY_NUMBER=$((TRY_NUMBER+1))
+        DELAY=$((DELAY*2))
+
+        set +e
+        "${SINGULARITY_PATH}" pull ${HTTP_ARG} "${ARGV[@]:2}"
+        SUCCESS="${?}"
+        set -e
+    done
 else
     # Pass along all the args except the program name
     # Run it as the current process so it gets signals intended for it

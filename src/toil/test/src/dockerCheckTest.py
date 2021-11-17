@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import unittest
 from docker.errors import ImageNotFound
 from toil import checkDockerImageExists, parseDockerAppliance
 from toil.test import ToilTest, needs_docker
@@ -19,22 +20,27 @@ from toil.test import ToilTest, needs_docker
 @needs_docker
 class DockerCheckTest(ToilTest):
     """Tests checking whether a docker image exists or not."""
+
+    @unittest.skip('Consumes unauthenticated Docker Hub pulls if run')
     def testOfficialUbuntuRepo(self):
         """Image exists.  This should pass."""
         ubuntu_repo = 'ubuntu:latest'
         assert checkDockerImageExists(ubuntu_repo)
 
+    @unittest.skip('Consumes unauthenticated Docker Hub pulls if run')
     def testBroadDockerRepo(self):
         """Image exists.  This should pass."""
         broad_repo = 'broadinstitute/genomes-in-the-cloud:2.0.0'
         assert checkDockerImageExists(broad_repo)
 
+    @unittest.skip('Consumes unauthenticated Docker Hub pulls if run')
     def testBroadDockerRepoBadTag(self):
         """Bad tag.  This should raise."""
         broad_repo = 'broadinstitute/genomes-in-the-cloud:-----'
         with self.assertRaises(ImageNotFound):
             checkDockerImageExists(broad_repo)
 
+    @unittest.skip('Consumes unauthenticated Docker Hub pulls if run')
     def testNonexistentRepo(self):
         """Bad image.  This should raise."""
         nonexistent_repo = '------:-----'
