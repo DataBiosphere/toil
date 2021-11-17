@@ -24,6 +24,7 @@ import base64
 import datetime
 import getpass
 import logging
+import math
 import os
 import pickle
 import string
@@ -211,9 +212,19 @@ class TESBatchSystem(BatchSystemCleanupSupport):
             # Prepare inputs.
             task_inputs = list(self.mounts)
             # If we had any per-job input files they would come in here.
+            
+            # Prepare resource requirements
+            task_resources = tes.Resources(cpu_cores=math.ceil(job_desc.cores),
+                                           ram_gb=job_desc.memory / (1024**3),
+                                           disk_gb=job_desc.disk / (1024**3),
+                                           # TODO: py-tes spells this differently than Toil
+                                           preemptible=job_desc.preemptable)
 
             # Package into a TES Task
-            task = tes.Task(name=job_name, executors=task_executors, inputs=task_inputs)
+            task = tes.Task(name=job_name,
+                            executors=task_executors,
+                            inputs=task_inputs,
+                            resources=task_resources)
 
             # Launch it and get back the TES ID that we can use to poll the task
             tes_id = self.tes.create_task(task)
