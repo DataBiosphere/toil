@@ -473,7 +473,7 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def destroyCluster(self):
+    def destroyCluster(self) -> None:
         """
         Terminates all nodes in the specified cluster and cleans up all resources associated with the
         cluser.

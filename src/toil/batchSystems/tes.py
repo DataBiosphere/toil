@@ -22,18 +22,12 @@ Additional containers should be launched with Singularity, not Docker.
 """
 import base64
 import datetime
-import getpass
 import logging
 import os
 import pickle
-import string
-import subprocess
-import sys
-import tempfile
 import time
-import uuid
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Callable, Optional, Dict, List, TypeVar, Union
+from typing import Any, Callable, Optional, Dict, List, Union
 
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
@@ -42,11 +36,8 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.common import Toil, Config
 from toil.job import JobDescription
-from toil.lib.conversions import human2bytes
 from toil.lib.misc import utc_now, slow_down, get_public_ip
-from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
-from toil.statsAndLogging import configure_root_logger, set_log_level
 
 import tes
 from requests.exceptions import HTTPError
@@ -72,8 +63,9 @@ class TESBatchSystem(BatchSystemCleanupSupport):
     @classmethod
     def get_default_tes_endpoint(cls) -> str:
         """
-        Get the default TES endpoint URL to use, unless overridden by an option
-        or environment variable.
+        Get the default TES endpoint URL to use.
+
+        (unless overridden by an option or environment variable)
         """
         return f'http://{get_public_ip()}:8000'
 
@@ -125,7 +117,6 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         Return true if the given URL is under a supported storage location for
         the TES server, and false otherwise.
         """
-
         # TODO: build some kind of fast matcher in case there are a lot of
         # storages supported.
 
@@ -139,7 +130,6 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         If a local path is somewhere the server thinks it can access, mount it
         into all the tasks.
         """
-
         # TODO: We aren't going to work well with linked imports if we're mounting the job store into the container...
 
         path_url = 'file://' + os.path.abspath(local_path)
@@ -188,7 +178,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
 
             # Make a job dict to send to the executor.
             # TODO: Factor out executor setup from here and Kubernetes
-            job = {'command': job_desc.command}
+            job: Dict[str, Any] = {"command": job_desc.command}
             if self.user_script is not None:
                 # If there's a user script resource be sure to send it along
                 job['userScript'] = self.user_script
@@ -231,7 +221,6 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         Get the time that the given job ran/has been running for, in seconds,
         or None if that time is not available. Never returns 0.
         """
-
         start_time = None
         end_time = utc_now()
         for log in (task.logs or []):
@@ -258,7 +247,6 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         Get the exit code of the last executor with a log in the task, or
         EXIT_STATUS_UNAVAILABLE_VALUE if no executor has a log.
         """
-
         for task_log in reversed(task.logs or []):
              for executor_log in reversed(task_log.logs or []):
                  if isinstance(executor_log.exit_code, int):
@@ -347,10 +335,11 @@ class TESBatchSystem(BatchSystemCleanupSupport):
 
     def __try_cancel(self, tes_id: str) -> None:
         """
-        Try to cancel a TES job. Succeed if it can't be canceled because it has
-        stopped, but fail if it can't be canceled for some other reason.
-        """
+        Try to cancel a TES job.
 
+        Succeed if it can't be canceled because it has stopped,
+        but fail if it can't be canceled for some other reason.
+        """
         try:
             # Kill each of our tasks in TES
             self.tes.cancel_task(tes_id)

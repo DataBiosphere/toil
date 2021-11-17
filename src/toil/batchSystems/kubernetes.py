@@ -1016,7 +1016,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # It was a 404; the job is gone. Stop polling it.
                 break
 
-    def shutdown(self):
+    def shutdown(self) -> None:
 
         # Shutdown local processes first
         self.shutdownLocal()

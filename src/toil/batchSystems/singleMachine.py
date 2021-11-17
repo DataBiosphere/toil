@@ -31,7 +31,7 @@ from toil import worker as toil_worker
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
-from toil.common import SYS_MAX_SIZE, Toil
+from toil.common import Config, SYS_MAX_SIZE, Toil
 from toil.lib.threading import cpu_count
 
 log = logging.getLogger(__name__)
@@ -73,7 +73,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     """
     physicalMemory = toil.physicalMemory()
 
-    def __init__(self, config, maxCores, maxMemory, maxDisk):
+    def __init__(
+        self, config: Config, maxCores: int, maxMemory: int, maxDisk: int
+    ) -> None:
         self.config = config
         # Limit to the smaller of the user-imposed limit and what we actually
         # have on this machine for each resource.
@@ -680,11 +682,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         now = time.time()
         return {jobID: now - info.time for jobID, info in list(self.runningJobs.items())}
 
-    def shutdown(self):
-        """
-        Cleanly terminate and join daddy thread.
-        """
-
+    def shutdown(self) -> None:
+        """Terminate cleanly and join daddy thread."""
         if self.daddyThread is not None:
             # Tell the daddy thread to stop.
             self.shuttingDown.set()

@@ -68,7 +68,7 @@ class ToilTest(unittest.TestCase):
         print(f"\n\n[TEST] {strclass(self.__class__)}:{self._testMethodName} ({timestamp})\n\n")
 
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         super().setUpClass()
         cls._tempDirs = []
         tempBaseDir = os.environ.get('TOIL_TEST_TEMP', None)
@@ -78,7 +78,7 @@ class ToilTest(unittest.TestCase):
         cls._tempBaseDir = tempBaseDir
 
     @classmethod
-    def tearDownClass(cls):
+    def tearDownClass(cls) -> None:
         if cls._tempBaseDir is None:
             while cls._tempDirs:
                 tempDir = cls._tempDirs.pop()
@@ -88,11 +88,11 @@ class ToilTest(unittest.TestCase):
             cls._tempDirs = []
         super().tearDownClass()
 
-    def setUp(self):
+    def setUp(self) -> None:
         logger.info("Setting up %s ...", self.id())
         super().setUp()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         super().tearDown()
         logger.info("Tore down %s", self.id())
 
@@ -145,11 +145,11 @@ class ToilTest(unittest.TestCase):
         projectRootPath = projectRootPath[:-len(expectedSuffix)]
         return projectRootPath
 
-    def _createTempDir(self, purpose=None):
+    def _createTempDir(self, purpose: str = None) -> str:
         return self._createTempDirEx(self._testMethodName, purpose)
 
     @classmethod
-    def _createTempDirEx(cls, *names):
+    def _createTempDirEx(cls, *names: str) -> str:
         prefix = ['toil', 'test', strclass(cls)]
         prefix.extend([_f for _f in names if _f])
         prefix.append('')
@@ -157,8 +157,9 @@ class ToilTest(unittest.TestCase):
         cls._tempDirs.append(temp_dir_path)
         return temp_dir_path
 
-    def _getTestJobStorePath(self):
-        path = self._createTempDir(purpose='jobstore')
+    @classmethod
+    def _getTestJobStorePath(cls) -> str:
+        path = cls._createTempDirEx("jobstore")
         # We only need a unique path, directory shouldn't actually exist. This of course is racy
         # and insecure because another thread could now allocate the same path as a temporary
         # directory. However, the built-in tempfile module randomizes the name temp dir suffixes
@@ -185,7 +186,10 @@ class ToilTest(unittest.TestCase):
         assert all(path.startswith('src') for path in dirty)
         dirty = set(dirty)
         dirty.difference_update(excluded)
-        assert not dirty, "Run 'make clean_sdist sdist'. Files newer than {}: {!r}".format(sdistPath, list(dirty))
+        assert not dirty, "Run 'make clean_sdist sdist'. Files newer than %s: %r" % (
+            sdistPath,
+            list(dirty),
+        )
         return sdistPath
 
     @classmethod

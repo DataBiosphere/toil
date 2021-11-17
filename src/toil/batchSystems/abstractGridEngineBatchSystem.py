@@ -434,7 +434,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             self.currentJobs.remove(item.jobID)
             return item
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """
         Signals worker to shutdown (via sentinel) then cleanly joins the thread
         """

@@ -259,13 +259,11 @@ class AbstractBatchSystem(ABC):
 
 
 class BatchSystemSupport(AbstractBatchSystem):
-    """
-    Partial implementation of AbstractBatchSystem, support methods.
-    """
+    """Partial implementation of AbstractBatchSystem, support methods."""
 
     def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
         """
-        Initializes initial state of the object
+        Initialize initial state of the object.
 
         :param toil.common.Config config: object is setup by the toilSetup script and
           has configuration parameters for the jobtree. You can add code
@@ -286,9 +284,14 @@ class BatchSystemSupport(AbstractBatchSystem):
         self.maxMemory = maxMemory
         self.maxDisk = maxDisk
         self.environment: Dict[str, str] = {}
-        self.workerCleanupInfo = WorkerCleanupInfo(workDir=self.config.workDir,
-                                                   workflowID=self.config.workflowID,
-                                                   cleanWorkDir=self.config.cleanWorkDir)
+        if config.workflowID is None:
+            raise Exception("config.workflowID must be set")
+        else:
+            self.workerCleanupInfo = WorkerCleanupInfo(
+                workDir=config.workDir,
+                workflowID=config.workflowID,
+                cleanWorkDir=config.cleanWorkDir,
+            )
 
     def checkResourceRequest(self, memory: int, cores: float, disk: int, job_name: str = '', detail: str = '') -> None:
         """

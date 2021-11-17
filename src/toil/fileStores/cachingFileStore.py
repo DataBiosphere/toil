@@ -23,7 +23,7 @@ import tempfile
 import threading
 import time
 from contextlib import contextmanager
-from typing import Callable, Generator, Optional
+from typing import Any, Callable, Generator, Optional
 
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.fileStores import FileID
@@ -172,7 +172,13 @@ class CachingFileStore(AbstractFileStore):
 
     """
 
-    def __init__(self, jobStore: AbstractJobStore, jobDesc: JobDescription, localTempDir: str, waitForPreviousCommit: Callable[[],None]) -> None:
+    def __init__(
+        self,
+        jobStore: AbstractJobStore,
+        jobDesc: JobDescription,
+        localTempDir: str,
+        waitForPreviousCommit: Callable[[], Any],
+    ) -> None:
         super().__init__(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
 
         # For testing, we have the ability to force caching to be non-free, by never linking from the file store
@@ -1767,7 +1773,7 @@ class CachingFileStore(AbstractFileStore):
         # cache? How would we write the URL?
         self.jobStore.export_file(file_id, dst_uri)
 
-    def waitForCommit(self):
+    def waitForCommit(self) -> bool:
         # We need to block on the upload thread.
 
         # We may be called even if startCommit is not called. In that
@@ -1842,7 +1848,7 @@ class CachingFileStore(AbstractFileStore):
 
 
     @classmethod
-    def shutdown(cls, dir_):
+    def shutdown(cls, dir_: str) -> None:
         """
         :param dir_: The workflow diorectory for the node, which is used as the
                      cache directory, containing cache state database. Job

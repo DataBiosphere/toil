@@ -102,7 +102,7 @@ class DeferredFunctionManager:
     # And a suffix to distinguish in-progress from completed files
     WIP_SUFFIX = '.tmp'
 
-    def __init__(self, stateDirBase):
+    def __init__(self, stateDirBase: str) -> None:
         """
         Create a new DeferredFunctionManager, sharing state with other
         instances in other processes using the given shared state directory.
@@ -194,7 +194,7 @@ class DeferredFunctionManager:
             self._runOrphanedDeferredFunctions()
 
     @classmethod
-    def cleanupWorker(cls, stateDirBase):
+    def cleanupWorker(cls, stateDirBase: str) -> None:
         """
         Called by the batch system when it shuts down the node, after all
         workers are done, if the batch system supports worker cleanup. Checks

@@ -640,10 +640,8 @@ class AWSProvisioner(AbstractProvisioner):
     def retryPredicate(e):
         return awsRetryPredicate(e)
 
-    def destroyCluster(self):
-        """
-        Terminate instances and delete the profile and security group.
-        """
+    def destroyCluster(self) -> None:
+        """Terminate instances and delete the profile and security group."""
 
         # We should terminate the leader first in case a workflow is still running in the cluster.
         # The leader may create more instances while we're terminating the workers.

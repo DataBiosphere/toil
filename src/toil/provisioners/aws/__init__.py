@@ -45,7 +45,7 @@ def running_on_ec2():
     except (URLError, socket.timeout):
         return False
 
-def get_current_aws_region():
+def get_current_aws_region() -> Optional[str]:
     aws_zone = get_best_aws_zone()
     return zone_to_region(aws_zone) if aws_zone else None
 

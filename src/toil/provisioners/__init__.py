@@ -13,15 +13,27 @@
 # limitations under the License.
 import logging
 from difflib import get_close_matches
-from typing import List, Tuple, Set, Optional
+from typing import List, Tuple, Set, Optional, TYPE_CHECKING, Union
+
+if TYPE_CHECKING:
+    from toil.provisioners.aws.awsProvisioner import AWSProvisioner
+    from toil.provisioners.gceProvisioner import GCEProvisioner
+
 
 logger = logging.getLogger(__name__)
 
 
-def cluster_factory(provisioner, clusterName=None, clusterType='mesos', zone=None, nodeStorage=50, nodeStorageOverrides=None, sseKey=None):
+def cluster_factory(
+    provisioner: str,
+    clusterName: Optional[str] = None,
+    clusterType: str = "mesos",
+    zone: Optional[str] = None,
+    nodeStorage: int = 50,
+    nodeStorageOverrides: Optional[str] = None,
+    sseKey: Optional[str] = None,
+) -> Union["AWSProvisioner", "GCEProvisioner"]:
     """
-    Find and instantiate the appropriate provisioner instance to make clusters
-    in the given cloud.
+    Find and instantiate the appropriate provisioner instance to make clusters in the given cloud.
 
     Raises ClusterTypeNotSupportedException if the given provisioner does not
     implement clusters of the given type.

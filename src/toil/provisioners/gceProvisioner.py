@@ -220,7 +220,7 @@ class GCEProvisioner(AbstractProvisioner):
         """ Not used by GCE """
         return False
 
-    def destroyCluster(self):
+    def destroyCluster(self) -> None:
         """
         Try a few times to terminate all of the instances in the group.
         """

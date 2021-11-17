@@ -12,40 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
-from typing import (Any,
-                    Callable,
-                    ContextManager,
-                    Dict,
-                    List,
-                    Optional,
-                    Tuple,
-                    Type,
-                    TypeVar,
-                    Union,
-                    NamedTuple)
+from typing import Dict, List, Optional
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, UpdatedBatchJobInfo
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config
+from toil.cwl.utils import CWL_INTERNAL_JOBS
 from toil.job import JobDescription
-
-try:
-    from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
-except ImportError:
-    # CWL extra not installed
-    CWL_INTERNAL_JOBS = ()
 
 logger = logging.getLogger(__name__)
 
+
 class BatchSystemLocalSupport(BatchSystemSupport):
-    """
-    Adds a local queue for helper jobs, useful for CWL & others
-    """
+    """Adds a local queue for helper jobs, useful for CWL & others."""
 
     def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
         self.localBatch: SingleMachineBatchSystem = SingleMachineBatchSystem(
-                config, config.maxLocalJobs, maxMemory, maxDisk)
+            config, config.maxLocalJobs, maxMemory, maxDisk
+        )
 
     def handleLocalJob(self, jobDesc: JobDescription) -> Optional[int]:
         """
@@ -70,13 +55,14 @@ class BatchSystemLocalSupport(BatchSystemSupport):
 
     def killLocalJobs(self, jobIDs: List[int]) -> None:
         """
-        To be called by killBatchJobs. Will kill all local jobs that match the
-        provided jobIDs.
+        Will kill all local jobs that match the provided jobIDs.
+
+        To be called by killBatchJobs.
         """
         self.localBatch.killBatchJobs(jobIDs)
 
     def getIssuedLocalJobIDs(self) -> List[int]:
-        """To be called by getIssuedBatchJobIDs"""
+        """To be called by getIssuedBatchJobIDs."""
         local_ids: List[int] = self.localBatch.getIssuedBatchJobIDs()
         return local_ids
 
@@ -86,15 +72,11 @@ class BatchSystemLocalSupport(BatchSystemSupport):
         return local_running
 
     def getUpdatedLocalJob(self, maxWait: int) -> Optional[UpdatedBatchJobInfo]:
-        """To be called by getUpdatedBatchJob()"""
-        local_update: Optional[UpdatedBatchJobInfo] = self.localBatch.getUpdatedBatchJob(maxWait)
-        return local_update
+        """To be called by getUpdatedBatchJob()."""
+        return self.localBatch.getUpdatedBatchJob(maxWait)
 
     def getNextJobID(self) -> int:
-        """
-        Must be used to get job IDs so that the local and batch jobs do not
-        conflict.
-        """
+        """Must be used to get job IDs so that the local and batch jobs do not conflict."""
         # TODO: This reaches deep into SingleMachineBatchSystem when it probably shouldn't
         with self.localBatch.jobIndexLock:
             jobID: int = self.localBatch.jobIndex
@@ -102,6 +84,5 @@ class BatchSystemLocalSupport(BatchSystemSupport):
         return jobID
 
     def shutdownLocal(self) -> None:
-        """To be called from shutdown()"""
+        """To be called from shutdown()."""
         self.localBatch.shutdown()
-

@@ -347,7 +347,7 @@ class ParasolBatchSystem(BatchSystemSupport):
             for fileHandle in resultsFileHandles:
                 fileHandle.close()
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         self.killBatchJobs(self.getIssuedBatchJobIDs())  # cleanup jobs
         for results in self.resultsFiles.values():
             exitValue = self._runParasol(['-results=' + results, 'clear', 'sick'],

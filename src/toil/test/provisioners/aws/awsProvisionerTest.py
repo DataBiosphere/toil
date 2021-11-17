@@ -129,7 +129,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         """
         return os.path.join(self.dataDir, filename)
 
-    def destroyCluster(self):
+    def destroyCluster(self) -> None:
         """
         Destroy the cluster we built, if it exists.
 

@@ -17,7 +17,20 @@ import logging
 import os
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import DefaultDict, List, Dict, BinaryIO, Callable, Iterator, Optional, Generator, TextIO, Union, cast
+from typing import (
+    Any,
+    DefaultDict,
+    List,
+    Dict,
+    BinaryIO,
+    Callable,
+    Iterator,
+    Optional,
+    Generator,
+    TextIO,
+    Union,
+    cast,
+)
 
 import dill
 
@@ -35,7 +48,13 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 
 class NonCachingFileStore(AbstractFileStore):
-    def __init__(self, jobStore: AbstractJobStore, jobDesc: JobDescription, localTempDir: str, waitForPreviousCommit: Callable[[], None]) -> None:
+    def __init__(
+        self,
+        jobStore: AbstractJobStore,
+        jobDesc: JobDescription,
+        localTempDir: str,
+        waitForPreviousCommit: Callable[[], Any],
+    ) -> None:
         super().__init__(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
         # This will be defined in the `open` method.
         self.jobStateFile: Optional[str] = None
@@ -72,7 +91,7 @@ class NonCachingFileStore(AbstractFileStore):
 
     def writeGlobalFile(self, localFileName: str, cleanup: bool=False) -> FileID:
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
-        creatorID = self.jobDesc.jobStoreID
+        creatorID = str(self.jobDesc.jobStoreID)
         fileStoreID = self.jobStore.write_file(absLocalFileName, creatorID, cleanup)
         if absLocalFileName.startswith(self.localTempDir):
             # Only files in the appropriate directory should become local files

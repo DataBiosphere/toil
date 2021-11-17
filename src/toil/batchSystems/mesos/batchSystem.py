@@ -356,7 +356,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         address[0] = socket.gethostbyname(address[0])
         return ':'.join(address)
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         self.shutdownLocal()
         log.debug("Stopping Mesos driver")
         self.driver.stop()

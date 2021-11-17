@@ -17,7 +17,7 @@ import logging
 import os
 import time
 
-from argparse import ArgumentParser
+from argparse import ArgumentParser, Namespace
 from threading import Event, Thread
 from logging.handlers import RotatingFileHandler
 from typing import List, Any, Optional, Union, TextIO, BinaryIO, Callable, TYPE_CHECKING
@@ -245,7 +245,7 @@ def configure_root_logger() -> None:
     root_logger.setLevel(DEFAULT_LOGLEVEL)
 
 
-def log_to_file(log_file: str, log_rotation: bool) -> None:
+def log_to_file(log_file: Optional[str], log_rotation: bool) -> None:
     if log_file and log_file not in __loggingFiles:
         logger.debug(f"Logging to file '{log_file}'.")
         __loggingFiles.append(log_file)
@@ -257,7 +257,7 @@ def log_to_file(log_file: str, log_rotation: bool) -> None:
         root_logger.addHandler(handler)
 
 
-def set_logging_from_options(options: 'Config') -> None:
+def set_logging_from_options(options: Union["Config", Namespace]) -> None:
     configure_root_logger()
     options.logLevel = options.logLevel or logging.getLevelName(root_logger.getEffectiveLevel())
     set_log_level(options.logLevel)

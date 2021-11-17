@@ -215,12 +215,19 @@ class CWLv10Test(ToilTest):
     def test_mpi(self):
         from toil.cwl import cwltoil
         stdout = StringIO()
-        main_args = ['--outdir', self.outDir,
-                     '--enable-dev',
-                     '--enable-ext',
-                     '--mpi-config-file', os.path.join(self.rootDir, 'src/toil/test/cwl/mock_mpi/fake_mpi.yml'),
-                     os.path.join(self.rootDir, 'src/toil/test/cwl/mpi_simple.cwl')]
+        main_args = [
+            "--outdir",
+            self.outDir,
+            "--enable-dev",
+            "--enable-ext",
+            "--mpi-config-file",
+            os.path.join(self.rootDir, "src/toil/test/cwl/mock_mpi/fake_mpi.yml"),
+            os.path.join(self.rootDir, "src/toil/test/cwl/mpi_simple.cwl"),
+        ]
+        path = os.environ["PATH"]
+        os.environ["PATH"] = f"{path}:{self.rootDir}/src/toil/test/cwl/mock_mpi/"
         cwltoil.main(main_args, stdout=stdout)
+        os.environ["PATH"] = path
         out = json.loads(stdout.getvalue())
         with open(out.get('pids', {}).get('location')[len('file://'):]) as f:
             two_pids = [int(i) for i in f.read().split()]

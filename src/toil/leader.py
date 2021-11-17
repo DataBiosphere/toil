@@ -32,6 +32,7 @@ from toil.batchSystems import DeadlockException
 from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem, BatchJobExitReason
 from toil.bus import JobUpdatedMessage
 from toil.common import Config, Toil, ToilMetrics
+from toil.cwl.utils import CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE, CWL_INTERNAL_JOBS
 from toil.job import JobDescription, CheckpointJobDescription, ServiceJobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
 from toil.lib.conversions import bytes2human
@@ -42,15 +43,7 @@ from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
 from toil.toilState import ToilState
 
-try:
-    from toil.cwl.cwltoil import CWL_INTERNAL_JOBS, CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
-except ImportError:
-    # CWL extra not installed
-    CWL_INTERNAL_JOBS = ()
-    CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE = 0
-
-
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
 ###############################################################################
 # Implementation Notes
@@ -69,16 +62,23 @@ logger = logging.getLogger( __name__ )
 
 
 class FailedJobsException(Exception):
-    def __init__(self, job_store: AbstractJobStore, failed_jobs: List[JobDescription], exit_code: int = 1):
+    def __init__(
+        self,
+        job_store: AbstractJobStore,
+        failed_jobs: List[JobDescription],
+        exit_code: int = 1,
+    ):
         """
         Make an exception to report failed jobs.
 
         :param job_store: The job store with the failed jobs in it.
         :param failed_jobs: All the failed jobs.
         :param exit_code: Recommended process exit code.
-
         """
-        self.msg = "The job store '%s' contains %i failed jobs" % (job_store.locator, len(failed_jobs))
+        self.msg = (
+            f"The job store '{job_store.locator}' contains "
+            f"{len(failed_jobs)} failed jobs"
+        )
         self.exit_code = exit_code
         try:
             self.msg += ": %s" % ", ".join(str(failedJob) for failedJob in failed_jobs)
@@ -87,9 +87,9 @@ class FailedJobsException(Exception):
                     with job_desc.getLogFileHandle(job_store) as f:
                         self.msg += "\n" + StatsAndLogging.formatLogStream(f, job_desc)
         # catch failures to prepare more complex details and only return the basics
-        except:
-            logger.exception('Exception when compiling information about failed jobs')
-        self.msg = self.msg.rstrip('\n')
+        except Exception:
+            logger.exception("Exception when compiling information about failed jobs")
+        self.msg = self.msg.rstrip("\n")
         super().__init__()
 
         # Save fields that catchers can look at

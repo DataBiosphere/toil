@@ -29,7 +29,6 @@ from uuid import uuid4
 from toil.common import safeUnpickleFromStream, Config
 from toil.fileStores import FileID
 from toil.job import (CheckpointJobDescription,
-                      TemporaryID,
                       JobException,
                       JobDescription,
                       ServiceJobDescription)
@@ -37,8 +36,24 @@ from toil.lib.memoize import memoize
 from toil.lib.io import WriteWatchingStream
 from toil.lib.retry import ErrorCondition, retry
 from toil.lib.compatibility import deprecated
-from typing import (cast, IO, List, TextIO, Tuple, Dict, Iterator, Callable,
-                    ValuesView, Set, Union, Optional, Any, ContextManager)
+from typing import (
+    cast,
+    TextIO,
+    IO,
+    List,
+    TextIO,
+    Tuple,
+    Dict,
+    Iterator,
+    Callable,
+    ValuesView,
+    Set,
+    Union,
+    Optional,
+    Any,
+    ContextManager,
+)
+from typing_extensions import overload, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -46,13 +61,13 @@ try:
     from botocore.exceptions import ProxyConnectionError
 except ImportError:
     class ProxyConnectionError(BaseException):  # type: ignore
-        pass
+        """Dummy class."""
 
 
 class InvalidImportExportUrlException(Exception):
-    def __init__(self, url: ParseResult):
+    def __init__(self, url: ParseResult) -> None:
         """
-        :param ParseResult url: The given URL
+        :param url: The given URL
         """
         super().__init__("The URL '%s' is invalid." % url.geturl())
 
@@ -70,7 +85,7 @@ class ConcurrentFileModificationException(Exception):
     """Indicates that the file was attempted to be modified by multiple processes at once."""
     def __init__(self, jobStoreFileID: FileID):
         """
-        :param str jobStoreFileID: the ID of the file that was modified by multiple workers
+        :param jobStoreFileID: the ID of the file that was modified by multiple workers
                or processes concurrently
         """
         super().__init__('Concurrent update to file %s detected.' % jobStoreFileID)
@@ -80,8 +95,8 @@ class NoSuchFileException(Exception):
     """Indicates that the specified file does not exist."""
     def __init__(self, jobStoreFileID: FileID, customName: Optional[str] = None, *extra: Any):
         """
-        :param str jobStoreFileID: the ID of the file that was mistakenly assumed to exist
-        :param str customName: optionally, an alternate name for the nonexistent file
+        :param jobStoreFileID: the ID of the file that was mistakenly assumed to exist
+        :param customName: optionally, an alternate name for the nonexistent file
         :param list extra: optional extra information to add to the error message
         """
         # Having the extra argument may help resolve the __init__() takes at
@@ -136,26 +151,31 @@ class AbstractJobStore(ABC):
 
     def __init__(self, locator: str) -> None:
         """
-        Create an instance of the job store. The instance will not be fully functional until
-        either :meth:`.initialize` or :meth:`.resume` is invoked. Note that the :meth:`.destroy`
-        method may be invoked on the object with or without prior invocation of either of these two
-        methods.
+        Create an instance of the job store.
+
+        The instance will not be fully functional until either :meth:`.initialize`
+        or :meth:`.resume` is invoked. Note that the :meth:`.destroy` method may
+        be invoked on the object with or without prior invocation of either of
+        these two methods.
 
         Takes and stores the locator string for the job store, which will be
         accessible via self.locator.
         """
         self.__locator = locator
-        self.__config = None
 
     def initialize(self, config: Config) -> None:
         """
-        Create the physical storage for this job store, allocate a workflow ID and persist the
-        given Toil configuration to the store.
+        Initialize this job store.
 
-        :param toil.common.Config config: the Toil configuration to initialize this job store
-               with. The given configuration will be updated with the newly allocated workflow ID.
+        Create the physical storage for this job store, allocate a workflow ID
+        and persist the given Toil configuration to the store.
 
-        :raises JobStoreExistsException: if the physical storage for this job store already exists
+        :param config: the Toil configuration to initialize this job store with.
+                       The given configuration will be updated with the newly
+                       allocated workflow ID.
+
+        :raises JobStoreExistsException: if the physical storage for this job store
+                                         already exists
         """
         assert config.workflowID is None
         config.workflowID = str(uuid4())
@@ -189,9 +209,7 @@ class AbstractJobStore(ABC):
 
     @property
     def config(self) -> Config:
-        """
-        The Toil configuration associated with this job store.
-        """
+        """Return the Toil configuration associated with this job store."""
         return self.__config
 
     @property
@@ -206,13 +224,14 @@ class AbstractJobStore(ABC):
 
     @deprecated(new_function_name='set_root_job')
     def setRootJob(self, rootJobStoreID: FileID) -> None:
+        """Set the root job of the workflow backed by this job store."""
         return self.set_root_job(rootJobStoreID)
 
     def set_root_job(self, job_id: FileID) -> None:
         """
-        Set the root job of the workflow backed by this job store
+        Set the root job of the workflow backed by this job store.
 
-        :param str job_id: The ID of the job to set as root
+        :param job_id: The ID of the job to set as root
         """
         with self.write_shared_file_stream(self.rootJobStoreIDFileName) as f:
             f.write(job_id.encode('utf-8'))
@@ -229,7 +248,6 @@ class AbstractJobStore(ABC):
                 this job store
 
         :return: The root job.
-        :rtype: toil.job.JobDescription
         """
         try:
             with self.read_shared_file_stream(self.rootJobStoreIDFileName) as f:
@@ -249,13 +267,13 @@ class AbstractJobStore(ABC):
     # FIXME: This is only used in tests, why do we have it?
     def create_root_job(self, job_description: JobDescription) -> JobDescription:
         """
-        Create the given JobDescription and set it as the root job in this job store
+        Create the given JobDescription and set it as the root job in this job store.
 
-        :param toil.job.JobDescription job_description: JobDescription to save and make the root job.
-
-        :rtype: toil.job.JobDescription
+        :param job_description: JobDescription to save and make the root job.
         """
         self.create_job(job_description)
+        if not isinstance(job_description.jobStoreID, FileID):
+            raise Exception(f"Must use a registered JobDescription: {job_description}")
         self.set_root_job(job_description.jobStoreID)
         return job_description
 
@@ -559,23 +577,25 @@ class AbstractJobStore(ABC):
         return {}
 
     # Cleanup functions
-    def clean(self, jobCache: Optional[Dict[str, JobDescription]] = None) -> JobDescription:
+    def clean(
+        self, jobCache: Optional[Dict[str, JobDescription]] = None
+    ) -> JobDescription:
         """
         Function to cleanup the state of a job store after a restart.
-        Fixes jobs that might have been partially updated. Resets the try counts and removes jobs
-        that are not successors of the current root job.
 
-        :param dict[str,toil.job.JobDescription] jobCache: if a value it must be a dict
-               from job ID keys to JobDescription object values. Jobs will be loaded from the cache
-               (which can be downloaded from the job store in a batch) instead of piecemeal when
-               recursed into.
+        Fixes jobs that might have been partially updated. Resets the try counts
+        and removes jobs that are not successors of the current root job.
 
-        :rtype: toil.job.JobDescription
+        :param jobCache: if a value it must be a dict
+               from job ID keys to JobDescription object values. Jobs will be loaded
+               from the cache (which can be downloaded from the job store in a batch)
+               instead of piecemeal when recursed into.
         """
         if jobCache is None:
             logger.warning("Cleaning jobStore recursively. This may be slow.")
 
-        # Functions to get and check the existence of jobs, using the jobCache if present
+        # Functions to get and check the existence of jobs,
+        # using the jobCache if present
         def getJobDescription(jobId: str) -> JobDescription:
             if jobCache is not None:
                 try:
@@ -603,7 +623,7 @@ class AbstractJobStore(ABC):
 
         def updateJobDescription(jobDescription: JobDescription) -> None:
             if jobCache is not None:
-                jobCache[jobDescription.jobStoreID] = jobDescription
+                jobCache[str(jobDescription.jobStoreID)] = jobDescription
                 self.update_job(jobDescription)
 
         def getJobDescriptions() -> Union[ValuesView[JobDescription], Iterator[JobDescription]]:
@@ -612,20 +632,20 @@ class AbstractJobStore(ABC):
             else:
                 return self.jobs()
 
-        def get_jobs_reachable_from_root() -> Set[Union[TemporaryID, str]]:
+        def get_jobs_reachable_from_root() -> Set[str]:
             """
             Traverse the job graph from the root job and return a flattened set of all active jobstore IDs.
 
-            Note: Jobs returned by self.jobs(), but not this function, are orphaned, and can be removed as dead jobs.
-
-            :rtype: Set[Union[TemporaryID, str]]
+            Note: Jobs returned by self.jobs(), but not this function, are orphaned,
+            and can be removed as dead jobs.
             """
-            # Iterate from the root JobDescription and collate all jobs that are reachable from it.
+            # Iterate from the root JobDescription and collate all jobs
+            # that are reachable from it.
             root_job_description = self.load_root_job()
-            reachable_from_root = set()
+            reachable_from_root: Set[str] = set()
 
             # Add first root job outside of the loop below.
-            reachable_from_root.add(root_job_description.jobStoreID)
+            reachable_from_root.add(str(root_job_description.jobStoreID))
             # add all of root's linked service jobs as well
             for service_jobstore_id in root_job_description.services:
                 if haveJob(service_jobstore_id):
@@ -643,7 +663,9 @@ class AbstractJobStore(ABC):
                                 successor_job_description = getJobDescription(successor_jobstore_id)
 
                                 # Add each successor job.
-                                reachable_from_root.add(successor_job_description.jobStoreID)
+                                reachable_from_root.add(
+                                    str(successor_job_description.jobStoreID)
+                                )
                                 # Add all of the successor's linked service jobs as well.
                                 for service_jobstore_id in successor_job_description.services:
                                     if haveJob(service_jobstore_id):
@@ -667,7 +689,7 @@ class AbstractJobStore(ABC):
                 logger.warning(f"Deleting file '{fileID}'. It is marked for deletion but has not yet been removed.")
                 self.delete_file(fileID)
             # Delete the job from us and the cache
-            deleteJob(jobDescription.jobStoreID)
+            deleteJob(str(jobDescription.jobStoreID))
 
         jobDescriptionsReachableFromRoot = {id: getJobDescription(id) for id in reachable_from_root}
 
@@ -706,11 +728,14 @@ class AbstractJobStore(ABC):
                 jobDescription.filesToDelete = []
                 changed[0] = True
 
-            # For a job whose command is already executed, remove jobs from the stack that are
-            # already deleted. This cleans up the case that the jobDescription had successors to run,
-            # but had not been updated to reflect this.
+            # For a job whose command is already executed, remove jobs from the
+            # stack that are already deleted. This cleans up the case that the
+            # jobDescription had successors to run, but had not been updated to
+            # reflect this.
             if jobDescription.command is None:
-                stackSizeFn = lambda: sum(map(len, jobDescription.stack))
+
+                def stackSizeFn() -> int:
+                    return sum(map(len, jobDescription.stack))
                 startStackSize = stackSizeFn()
                 # Remove deleted jobs
                 jobDescription.filterSuccessors(haveJob)
@@ -756,15 +781,42 @@ class AbstractJobStore(ABC):
 
                 return newFlag
 
-            servicesSizeFn = lambda: len(jobDescription.services)
+            def servicesSizeFn() -> int:
+                return len(jobDescription.services)
             startServicesSize = servicesSizeFn()
 
-            def replaceFlagsIfNeeded(serviceJobDescription: ServiceJobDescription) -> None:
+            def replaceFlagsIfNeeded(serviceJobDescription: JobDescription) -> None:
                 # Make sure it really is a service
-                assert isinstance(serviceJobDescription, ServiceJobDescription)
-                serviceJobDescription.startJobStoreID = subFlagFile(serviceJobDescription.jobStoreID, serviceJobDescription.startJobStoreID, 1)
-                serviceJobDescription.terminateJobStoreID = subFlagFile(serviceJobDescription.jobStoreID, serviceJobDescription.terminateJobStoreID, 2)
-                serviceJobDescription.errorJobStoreID = subFlagFile(serviceJobDescription.jobStoreID, serviceJobDescription.errorJobStoreID, 3)
+                if not isinstance(serviceJobDescription, ServiceJobDescription):
+                    raise Exception(
+                        "Must be a ServiceJobDescription, not "
+                        f'"{type(serviceJobDescription)}": '
+                        f'"{serviceJobDescription}".'
+                    )
+                if not serviceJobDescription.startJobStoreID:
+                    raise Exception("Must be a registered ServiceJobDescription.")
+                else:
+                    serviceJobDescription.startJobStoreID = subFlagFile(
+                        str(serviceJobDescription.jobStoreID),
+                        serviceJobDescription.startJobStoreID,
+                        1,
+                    )
+                if not serviceJobDescription.terminateJobStoreID:
+                    raise Exception("Must be a registered ServiceJobDescription.")
+                else:
+                    serviceJobDescription.terminateJobStoreID = subFlagFile(
+                        str(serviceJobDescription.jobStoreID),
+                        serviceJobDescription.terminateJobStoreID,
+                        2,
+                    )
+                if not serviceJobDescription.errorJobStoreID:
+                    raise Exception("Must be a registered ServiceJobDescription.")
+                else:
+                    serviceJobDescription.errorJobStoreID = subFlagFile(
+                        str(serviceJobDescription.jobStoreID),
+                        serviceJobDescription.errorJobStoreID,
+                        3,
+                    )
 
             # remove all services that no longer exist
             jobDescription.filterServiceHosts(haveJob)
@@ -780,7 +832,7 @@ class AbstractJobStore(ABC):
 
             # This cleans the old log file which may
             # have been left if the job is being retried after a failure.
-            if jobDescription.logJobStoreFileID != None:
+            if jobDescription.logJobStoreFileID is not None:
                 self.delete_file(jobDescription.logJobStoreFileID)
                 jobDescription.logJobStoreFileID = None
                 changed[0] = True
@@ -919,11 +971,9 @@ class AbstractJobStore(ABC):
         :meth:`toil.job.JobDescription.setupJobAfterFailure`) if there is
         evidence of a failed update attempt.
 
-        :param str job_id: the ID of the job to load
+        :param job_id: the ID of the job to load
 
         :raise NoSuchJobException: if there is no job with the given ID
-
-        :rtype: toil.job.JobDescription
         """
         raise NotImplementedError()
 
@@ -1129,18 +1179,36 @@ class AbstractJobStore(ABC):
         raise NotImplementedError()
 
     @deprecated(new_function_name='read_file_stream')
-    def readFileStream(self,
-                       jobStoreFileID: str,
-                       encoding: Optional[str] = None,
-                       errors: Optional[str] = None) -> ContextManager[Union[BytesIO, TextIO]]:
+    def readFileStream(
+        self,
+        jobStoreFileID: str,
+        encoding: Optional[str] = None,
+        errors: Optional[str] = None,
+    ) -> Union[ContextManager[BytesIO], ContextManager[TextIO]]:
         return self.read_file_stream(jobStoreFileID, encoding, errors)
 
+    @overload
+    def read_file_stream(
+        self,
+        file_id: Union[FileID, str],
+        encoding: Literal[None] = None,
+        errors: Optional[str] = None,
+    ) -> ContextManager[BytesIO]:
+        ...
+
+    @overload
+    def read_file_stream(
+        self, file_id: Union[FileID, str], encoding: str, errors: Optional[str] = None
+    ) -> ContextManager[TextIO]:
+        ...
+
     @abstractmethod
-    @contextmanager
-    def read_file_stream(self,
-                         file_id: str,
-                         encoding: Optional[str] = None,
-                         errors: Optional[str] = None) -> Iterator[Union[BytesIO, TextIO]]:
+    def read_file_stream(
+        self,
+        file_id: Union[FileID, str],
+        encoding: Optional[str] = None,
+        errors: Optional[str] = None,
+    ) -> Union[ContextManager[BytesIO], ContextManager[TextIO]]:
         """
         Similar to readFile, but returns a context manager yielding a file handle which can be
         read from. The yielded file handle does not need to and should not be closed explicitly.
@@ -1174,6 +1242,7 @@ class AbstractJobStore(ABC):
 
     @deprecated(new_function_name='file_exists')
     def fileExists(self, jobStoreFileID: str) -> bool:
+        """Determine whether a file exists in this job store."""
         return self.file_exists(jobStoreFileID)
 
     @abstractmethod
@@ -1181,14 +1250,13 @@ class AbstractJobStore(ABC):
         """
         Determine whether a file exists in this job store.
 
-        :param str file_id: an ID referencing the file to be checked
-
-        :rtype: bool
+        :param file_id: an ID referencing the file to be checked
         """
         raise NotImplementedError()
 
     @deprecated(new_function_name='get_file_size')
     def getFileSize(self, jobStoreFileID: str) -> int:
+        """Get the size of the given file in bytes."""
         return self.get_file_size(jobStoreFileID)
 
     @abstractmethod
@@ -1208,21 +1276,21 @@ class AbstractJobStore(ABC):
 
     @deprecated(new_function_name='update_file')
     def updateFile(self, jobStoreFileID: str, localFilePath: str) -> None:
+        """Replaces the existing version of a file in the job store."""
         return self.update_file(jobStoreFileID, localFilePath)
 
     @abstractmethod
     def update_file(self, file_id: str, local_path: str) -> None:
         """
-        Replaces the existing version of a file in the job store. Throws an exception if the file
-        does not exist.
+        Replaces the existing version of a file in the job store.
 
-        :param str file_id: the ID of the file in the job store to be updated
+        Throws an exception if the file does not exist.
 
-        :param str local_path: the local path to a file that will overwrite the current version
-          in the job store
-
-        :raise ConcurrentFileModificationException: if the file was modified concurrently during
-               an invocation of this method
+        :param file_id: the ID of the file in the job store to be updated
+        :param local_path: the local path to a file that will overwrite the current
+                           version in the job store
+        :raise ConcurrentFileModificationException: if the file was modified
+               concurrently during an invocation of this method
         :raise NoSuchFileException: if the specified file does not exist
         """
         raise NotImplementedError()
@@ -1376,9 +1444,11 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError()
 
-    ## Helper methods for subclasses
+    # Helper methods for subclasses
 
     def _defaultTryCount(self) -> int:
+        if not self.config:
+            raise Exception("Must initialize first.")
         return int(self.config.retryCount + 1)
 
     @classmethod
@@ -1397,12 +1467,12 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
         return url.scheme.lower() in ('http', 'https', 'ftp') and not export
 
     @classmethod
-    @retry(errors=[BadStatusLine] + [
-                         ErrorCondition(
-                             error=HTTPError,
-                             error_codes=[408, 500, 503]
-                         )
-                     ])
+    @retry(
+        errors=[
+            BadStatusLine,
+            ErrorCondition(error=HTTPError, error_codes=[408, 500, 503]),
+        ]
+    )
     def get_size(cls, url: ParseResult) -> Optional[int]:
         if url.scheme.lower() == 'ftp':
             return None
@@ -1412,13 +1482,15 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
             return int(size) if size is not None else None
 
     @classmethod
-    @retry(errors=[BadStatusLine] + [
-                         ErrorCondition(
-                             error=HTTPError,
-                             error_codes=[408, 500, 503]
-                         )
-                     ])
-    def _read_from_url(cls, url: ParseResult, writable: Union[BytesIO, TextIO]) -> Tuple[int, bool]:
+    @retry(
+        errors=[
+            BadStatusLine,
+            ErrorCondition(error=HTTPError, error_codes=[408, 500, 503]),
+        ]
+    )
+    def _read_from_url(
+        cls, url: ParseResult, writable: Union[BytesIO, TextIO]
+    ) -> Tuple[int, bool]:
         # We can only retry on errors that happen as responses to the request.
         # If we start getting file data, and the connection drops, we fail.
         # So we don't have to worry about writing the start of the file twice.

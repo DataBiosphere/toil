@@ -20,6 +20,7 @@ import subprocess
 import sys
 import time
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 import requests
 from pytz import timezone
@@ -28,6 +29,9 @@ from docker.errors import ImageNotFound
 from toil.lib.memoize import memoize
 from toil.lib.retry import retry
 from toil.version import currentCommit
+
+if TYPE_CHECKING:
+    from toil.common import Config
 
 log = logging.getLogger(__name__)
 
@@ -161,7 +165,7 @@ def physicalDisk(directory: str) -> int:
     return diskStats.f_frsize * diskStats.f_bavail
 
 
-def applianceSelf(forceDockerAppliance=False):
+def applianceSelf(forceDockerAppliance: bool = False) -> str:
     """
     Returns the fully qualified name of the Docker image to start Toil appliance containers from.
     The result is determined by the current version of Toil and three environment variables:
@@ -433,7 +437,7 @@ def requestCheckDockerIo(origAppliance, imageName, tag):
         return origAppliance
 
 
-def logProcessContext(config):
+def logProcessContext(config: "Config") -> None:
     # toil.version.version (string) cannot be imported at top level because it conflicts with
     # toil.version (module) and Sphinx doesn't like that.
     from toil.version import version
