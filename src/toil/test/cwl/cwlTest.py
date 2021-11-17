@@ -36,6 +36,7 @@ sys.path.insert(0, pkg_root)  # noqa
 from toil.cwl.utils import visit_top_cwl_class, visit_cwl_class_and_reduce, download_structure
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.lib.threading import cpu_count
 
 from toil.test import (ToilTest,
                        needs_aws_s3,
@@ -56,7 +57,7 @@ CONFORMANCE_TEST_TIMEOUT = 3600
 
 def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSystem: str = None,
     selected_tests: str = None, selected_tags: str = None, skipped_tests: str = None,
-    extra_args: List[str] = [], must_support_all_features: bool = False) -> Optional[str]:
+    extra_args: List[str] = [], must_support_all_features: bool = False, junit_file: Optional[str] = None) -> Optional[str]:
     """
     Run the CWL conformance tests.
 
@@ -77,10 +78,11 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
     :param extra_args: Provide these extra arguments to toil-cwl-runner for each test.
 
     :param must_support_all_features: If set, fail if some CWL optional features are unsupported.
+
+    :param junit_file: JUnit XML file to write test info to.
     """
     try:
         cmd = ['cwltest',
-               '--verbose',
                '--tool=toil-cwl-runner',
                f'--test={yml}',
                '--timeout=2400',
@@ -91,6 +93,13 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
             cmd.append(f'--tags={selected_tags}')
         if skipped_tests:
             cmd.append(f'-S{skipped_tests}')
+        if junit_file:
+            # Capture output for JUnit
+            cmd.append('--junit-verbose')
+            cmd.append(f'--junit-xml={junit_file}')
+        else:
+            # Otherwise dump all output to our output stream
+            cmd.append('--verbose')
 
         args_passed_directly_to_toil = [f'--disableCaching={not caching}',
                                         '--clean=always',
@@ -104,10 +113,13 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
         if batchSystem == 'kubernetes':
             # Run tests in parallel on Kubernetes.
             # We can throw a bunch at it at once and let Kubernetes schedule.
-            cmd.append('-j8')
+            # But we still want a local core for each.
+            parallel_tests = max(min(cpu_count(), 8), 1)
         else:
-            # Run tests in parallel on the local machine
-            cmd.append(f'-j{int(psutil.cpu_count()/2)}')
+            # Run tests in parallel on the local machine. Don't run too many
+            # tests at once; we want at least a couple cores for each.
+            parallel_tests = max(int(cpu_count() / 2), 1)
+        cmd.append(f'-j{parallel_tests}')
 
         if batchSystem:
             args_passed_directly_to_toil.append(f"--batchSystem={batchSystem}")
@@ -545,6 +557,8 @@ class CWLv12Test(ToilTest):
     @slow
     @needs_kubernetes
     def test_kubernetes_cwl_conformance(self, **kwargs):
+        if 'junit_file' not in kwargs:
+            kwargs['junit_file'] = 'kubernetes-conformance.junit.xml'
         return self.test_run_conformance(batchSystem="kubernetes",
                                          # This test doesn't work with
                                          # Singularity; see
@@ -557,7 +571,8 @@ class CWLv12Test(ToilTest):
     @slow
     @needs_kubernetes
     def test_kubernetes_cwl_conformance_with_caching(self):
-        return self.test_kubernetes_cwl_conformance(caching=True)
+        return self.test_kubernetes_cwl_conformance(caching=True, junit_file=os.path.join(self.rootDir,
+                                                                                          'kubernetes-caching-conformance.junit.xml'))
 
     def _expected_streaming_output(self, outDir):
         # Having unicode string literals isn't necessary for the assertion but
