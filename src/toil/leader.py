@@ -451,8 +451,8 @@ class Leader:
             # The job has services running; signal for them to be killed.
             # Once they are killed, then the job will be updated again and then
             # scheduled to be removed.
-            logger.debug("Telling job %s to terminate its services due to successor failure",
-                         predecessor)
+            logger.warning("Telling job %s to terminate its services due to successor failure",
+                           predecessor)
             self.serviceManager.kill_services(self.toilState.servicesIssued[predecessor_id],
                                               error=True)
         elif self.toilState.count_pending_successors(predecessor_id) > 0:
@@ -608,7 +608,7 @@ class Leader:
             client_id = self.serviceManager.get_ready_client(0)
             if client_id is None: # Stop trying to get jobs when function returns None
                 break
-            logger.debug('Job: %s has established its services.', client_id)
+            logger.debug('Job: %s has established its services; all services are running', client_id)
 
             # Grab the client job description
             client = self.toilState.get_job(client_id)
@@ -700,7 +700,11 @@ class Leader:
             # check in with the batch system
             updatedJobTuple = self.batchSystem.getUpdatedBatchJob(maxWait=2)
             if updatedJobTuple is not None:
+                # Collect and process all the updates
                 self._gatherUpdatedJobs(updatedJobTuple)
+                # As long as we are getting updates we definitely can't be
+                # deadlocked.
+                self.feed_deadlock_watchdog()
             else:
                 # If nothing is happening, see if any jobs have wandered off
                 self._processLostJobs()
@@ -794,23 +798,21 @@ class Leader:
                                        stuckFor, self.config.deadlockWait - stuckFor, waitingNormalJobs, message)
             else:
                 # We have observed non-service jobs running, so reset the potential deadlock
-
-                if len(self.potentialDeadlockedJobs) > 0:
-                    # We thought we had a deadlock. Tell the user it is fixed.
-                    logger.warning("Potential deadlock has been resolved; non-service jobs are now running.")
-
-                self.potentialDeadlockedJobs = set()
-                self.potentialDeadlockTime = 0
+                self.feed_deadlock_watchdog()
         else:
             # We have observed non-service jobs running, so reset the potential deadlock.
-            # TODO: deduplicate with above
+            self.feed_deadlock_watchdog()
 
-            if len(self.potentialDeadlockedJobs) > 0:
-                # We thought we had a deadlock. Tell the user it is fixed.
-                logger.warning("Potential deadlock has been resolved; non-service jobs are now running.")
+    def feed_deadlock_watchdog(self) -> None:
+        """
+        Note that progress has been made and any pending deadlock checks should be reset.
+        """
+        if len(self.potentialDeadlockedJobs) > 0:
+            # We thought we had a deadlock. Tell the user it is fixed.
+            logger.warning("Potential deadlock has been resolved; detected progress")
 
-            self.potentialDeadlockedJobs = set()
-            self.potentialDeadlockTime = 0
+        self.potentialDeadlockedJobs = set()
+        self.potentialDeadlockTime = 0
 
     def issueJob(self, jobNode: JobDescription) -> None:
         """Add a job to the queue of jobs."""
@@ -1231,7 +1233,7 @@ class Leader:
             # and possibly never started.
             if client_id in self.toilState.servicesIssued:
                 self.serviceManager.kill_services(self.toilState.servicesIssued[client_id], error=True)
-                logger.debug("Job: %s is instructing all other services of its parent job to quit", job_desc)
+                logger.warning("Job: %s is instructing all other services of its parent job to quit", job_desc)
 
             # This ensures that the job will not attempt to run any of it's
             # successors on the stack
@@ -1307,7 +1309,7 @@ class Leader:
                 # all its services terminated
                 self.toilState.servicesIssued.pop(client_id) # The job has no running services
 
-                logger.debug('Job %s is no longer waiting on services', self.toilState.get_job(client_id))
+                logger.debug('Job %s is no longer waiting on services; all services have stopped', self.toilState.get_job(client_id))
 
                 # Now we know the job is done we can add it to the list of
                 # updated job files
