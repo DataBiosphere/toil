@@ -186,6 +186,12 @@ class TESBatchSystem(BatchSystemCleanupSupport):
             environment = self.environment.copy()
             if job_environment:
                 environment.update(job_environment)
+            if 'TOIL_WORKDIR' not in environment:
+                # The appliance container defaults TOIL_WORKDIR to
+                # /var/lib/toil, but TES doesn't (always?) give us a writable
+                # /, so we need to use the writable space in /tmp by default
+                # instead when running on TES.
+                environment['TOIL_WORKDIR'] = '/tmp'
 
             # Make a job dict to send to the executor.
             # TODO: Factor out executor setup from here and Kubernetes
