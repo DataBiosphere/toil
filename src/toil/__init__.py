@@ -632,8 +632,18 @@ try:
                         dir_path = os.path.dirname(path)
                         if not os.path.exists(dir_path):
                             log.debug('Creating parent directory %s', dir_path)
-                            # A race would be ok at this point
-                            os.makedirs(dir_path, exist_ok=True)
+                            try:
+                                # A race would be ok at this point
+                                os.makedirs(dir_path, exist_ok=True)
+                            except OSError as e2:
+                                if e.errno == errno.EROFS:
+                                    # Sometimes we don't actually have write access to ~.
+                                    # We may be running in a non-writable Toil container.
+                                    # We should just go get our own credentials
+                                    log.debug('Cannot use the credentials cache because we are working on a read-only filesystem.')
+                                    self._obtain_credentials_from_boto3()
+                                else:
+                                    raise
                     else:
                         raise
                 else:
