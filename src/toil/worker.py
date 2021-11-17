@@ -172,7 +172,7 @@ def nextChainable(
     successorID = next(iter(jobs))
 
     # Load the successor JobDescription
-    successor = jobStore.load(successorID)
+    successor = jobStore.load_job(successorID)
 
     #We check the requirements of the successor to see if we can run it
     #within the current worker
@@ -285,7 +285,7 @@ def workerScript(
     ##########################################
 
     #First load the environment for the job.
-    with jobStore.readSharedFileStream("environment.pickle") as fileHandle:
+    with jobStore.read_shared_file_stream("environment.pickle") as fileHandle:
         environment = safeUnpickleFromStream(fileHandle)
     env_reject = {
         "TMPDIR",
@@ -408,7 +408,7 @@ def workerScript(
         #Load the JobDescription
         ##########################################
 
-        jobDesc = jobStore.load(jobStoreID)
+        jobDesc = jobStore.load_job(jobStoreID)
         listOfJobs[0] = str(jobDesc)
         logger.debug("Parsed job description")
 
@@ -419,7 +419,7 @@ def workerScript(
         if jobDesc.command == None:
             logger.debug("Job description has no body to run.")
             # Cleanup jobs already finished
-            predicate = lambda jID: jobStore.exists(jID)
+            predicate = lambda jID: jobStore.job_exists(jID)
             jobDesc.filterSuccessors(predicate)
             jobDesc.filterServiceHosts(predicate)
             logger.debug("Cleaned up any references to completed successor jobs")
@@ -429,8 +429,8 @@ def workerScript(
         oldLogFile = jobDesc.logJobStoreFileID
         if oldLogFile != None:
             jobDesc.logJobStoreFileID = None
-            jobStore.update(jobDesc) #Update first, before deleting any files
-            jobStore.deleteFile(oldLogFile)
+            jobStore.update_job(jobDesc) #Update first, before deleting any files
+            jobStore.delete_file(oldLogFile)
 
         ##########################################
         # If a checkpoint exists, restart from the checkpoint
@@ -453,7 +453,7 @@ def workerScript(
             else:
                 logger.debug("The checkpoint jobs seems to have completed okay, removing any checkpoint files to delete.")
                 #Delete any remnant files
-                list(map(jobStore.deleteFile, list(filter(jobStore.fileExists, jobDesc.checkpointFilesToDelete))))
+                list(map(jobStore.delete_file, list(filter(jobStore.file_exists, jobDesc.checkpointFilesToDelete))))
 
         ##########################################
         #Setup the stats, if requested
@@ -636,7 +636,7 @@ def workerScript(
 
         # Clobber any garbage state we have for this job from failing with
         # whatever good state is still stored in the JobStore
-        jobDesc = jobStore.load(jobStoreID)
+        jobDesc = jobStore.load_job(jobStoreID)
         # Remember that we failed
         jobAttemptFailed = True
 
@@ -678,7 +678,7 @@ def workerScript(
     if jobAttemptFailed and redirectOutputToLogFile:
         jobDesc.logJobStoreFileID = jobStore.getEmptyFileStoreID(jobDesc.jobStoreID, cleanup=True)
         jobDesc.chainedJobs = listOfJobs
-        with jobStore.updateFileStream(jobDesc.logJobStoreFileID) as w:
+        with jobStore.update_file_stream(jobDesc.logJobStoreFileID) as w:
             with open(tempWorkerLogPath, 'rb') as f:
                 if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit !=0:
                     if logFileByteReportLimit > 0:
@@ -688,7 +688,7 @@ def workerScript(
                 # Dump the possibly-invalid-Unicode bytes into the log file
                 w.write(f.read()) # TODO load file using a buffer
         # Commit log file reference back to JobStore
-        jobStore.update(jobDesc)
+        jobStore.update_job(jobDesc)
 
     elif ((debugging or (config.writeLogsFromAllJobs and not jobName.startswith(CWL_INTERNAL_JOBS)))
           and redirectOutputToLogFile):  # write log messages
@@ -705,7 +705,7 @@ def workerScript(
         statsDict.logs.messages = logMessages
 
     if (debugging or config.stats or statsDict.workers.logsToMaster) and not jobAttemptFailed:  # We have stats/logging to report back
-        jobStore.writeStatsAndLogging(json.dumps(statsDict, ensure_ascii=True))
+        jobStore.write_logs(json.dumps(statsDict, ensure_ascii=True))
 
     # Remove the temp dir
     cleanUp = config.cleanWorkDir
@@ -730,8 +730,8 @@ def workerScript(
     if (not jobAttemptFailed) and jobDesc.command == None and next(jobDesc.successorsAndServiceHosts(), None) is None:
         # We can now safely get rid of the JobDescription, and all jobs it chained up
         for otherID in jobDesc.jobsToDelete:
-            jobStore.delete(otherID)
-        jobStore.delete(jobDesc.jobStoreID)
+            jobStore.delete_job(otherID)
+        jobStore.delete_job(jobDesc.jobStoreID)
 
     if jobAttemptFailed:
         return failure_exit_code

@@ -32,21 +32,22 @@ import sys
 import tempfile
 import time
 import uuid
-from typing import Optional, Dict
+from argparse import ArgumentParser, _ArgumentGroup
+from typing import Callable, Optional, Dict, List, TypeVar, Union
 
 import kubernetes
-import pytz
 import urllib3
 from kubernetes.client.rest import ApiException
 
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchJobExitReason,
-                                                   BatchSystemCleanupSupport,
                                                    UpdatedBatchJobInfo)
+from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.common import Toil
 from toil.job import JobDescription
 from toil.lib.conversions import human2bytes
+from toil.lib.misc import utc_now, slow_down
 from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
 from toil.statsAndLogging import configure_root_logger, set_log_level
@@ -68,35 +69,13 @@ def is_retryable_kubernetes_error(e):
     return False
 
 
-def slow_down(seconds):
-    """
-    Toil jobs that have completed are not allowed to have taken 0 seconds, but
-    Kubernetes timestamps round things to the nearest second. It is possible in Kubernetes for
-    a pod to have identical start and end timestamps.
-
-    This function takes a possibly 0 job length in seconds and enforces a minimum length to satisfy Toil.
-
-    :param float seconds: Kubernetes timestamp difference
-
-    :return: seconds, or a small positive number if seconds is 0
-    :rtype: float
-    """
-
-    return max(seconds, sys.float_info.epsilon)
-
-
-def utc_now():
-    """Return a datetime in the UTC timezone corresponding to right now."""
-    return datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
-
-
 class KubernetesBatchSystem(BatchSystemCleanupSupport):
     @classmethod
     def supportsAutoDeployment(cls):
         return True
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        super(KubernetesBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
+        super().__init__(config, maxCores, maxMemory, maxDisk)
 
         # Turn down log level for Kubernetes modules and dependencies.
         # Otherwise if we are at debug log level, we dump every
@@ -115,25 +94,15 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Decide if we are going to mount a Kubernetes host path as /tmp in the workers.
         # If we do this and the work dir is the default of the temp dir, caches will be shared.
-        self.host_path = config.kubernetesHostPath
-        if self.host_path is None and os.environ.get("TOIL_KUBERNETES_HOST_PATH", None) is not None:
-            # We can also take it from an environment variable
-            self.host_path = os.environ.get("TOIL_KUBERNETES_HOST_PATH")
+        self.host_path = config.kubernetes_host_path
 
-        # Make a Kubernetes-acceptable version of our username: not too long,
-        # and all lowercase letters, numbers, or - or .
-        acceptableChars = set(string.ascii_lowercase + string.digits + '-.')
-
-        # Use TOIL_KUBERNETES_OWNER if present in env var
-        if os.environ.get("TOIL_KUBERNETES_OWNER", None) is not None:
-            username = os.environ.get("TOIL_KUBERNETES_OWNER")
-        else:
-            username = ''.join([c for c in getpass.getuser().lower() if c in acceptableChars])[:100]
+        # Get the username to mark jobs with
+        username = config.kubernetes_owner
 
         self.uniqueID = uuid.uuid4()
 
         # Create a prefix for jobs, starting with our username
-        self.jobPrefix = '{}-toil-{}-'.format(username, self.uniqueID)
+        self.jobPrefix = f'{username}-toil-{self.uniqueID}-'
 
         # Instead of letting Kubernetes assign unique job names, we assign our
         # own based on a numerical job ID. This functionality is managed by the
@@ -165,7 +134,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # TODO: Make this an environment variable?
         self.enableWatching = os.environ.get("KUBE_WATCH_ENABLED", False)
 
-        self.runID = 'toil-{}'.format(self.uniqueID)
+        self.runID = f'toil-{self.uniqueID}'
 
         self.jobIds = set()
 
@@ -222,7 +191,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # We just need the namespace string
             if config_source == 'in_cluster':
                 # Our namespace comes from a particular file.
-                with open("/var/run/secrets/kubernetes.io/serviceaccount/namespace", 'r') as fh:
+                with open("/var/run/secrets/kubernetes.io/serviceaccount/namespace") as fh:
                     return fh.read().strip()
             else:
                 # Find all contexts and the active context.
@@ -239,7 +208,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             try:
                 return self._apis[kind]
             except KeyError:
-                raise RuntimeError("Unknown Kubernetes API type: {}".format(kind))
+                raise RuntimeError(f"Unknown Kubernetes API type: {kind}")
 
     @retry(errors=retryable_kubernetes_errors)
     def _try_kubernetes(self, method, *args, **kwargs):
@@ -316,7 +285,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
 
     def setUserScript(self, userScript):
-        logger.info('Setting user script for deployment: {}'.format(userScript))
+        logger.info(f'Setting user script for deployment: {userScript}')
         self.userScript = userScript
 
     # setEnv is provided by BatchSystemSupport, updates self.environment
@@ -378,6 +347,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Make a job dict to send to the executor.
         # First just wrap the command and the environment to run it in
+        # TODO: send environment via pod spec
         job = {'command': jobDesc.command,
                'environment': environment}
         # TODO: query customDockerInitCmd to respect TOIL_CUSTOM_DOCKER_INIT_COMMAND
@@ -451,7 +421,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             mounts.append(secret_volume_mount)
 
         # Make a container definition
-        container = kubernetes.client.V1Container(command=['_toil_kubernetes_executor', encodedJob],
+        container = kubernetes.client.V1Container(command=['_toil_contained_executor', encodedJob],
                                                   image=self.dockerImage,
                                                   name="runner-container",
                                                   resources=resources,
@@ -548,13 +518,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
             if onlySucceeded:
                 results =  self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace,
-                                                label_selector="toil_run={}".format(self.runID), field_selector="status.successful==1", **kwargs)
+                                                label_selector=f"toil_run={self.runID}", field_selector="status.successful==1", **kwargs)
             else:
                 results = self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace,
-                                                label_selector="toil_run={}".format(self.runID), **kwargs)
-            for job in results.items:
-                # This job belongs to us
-                yield job
+                                                label_selector=f"toil_run={self.runID}", **kwargs)
+            yield from results.items  # These jobs belong to us
 
             # Remember the continuation token, if any
             token = getattr(results.metadata, 'continue', None)
@@ -581,10 +549,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             if token is not None:
                 kwargs['_continue'] = token
 
-            results = self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, label_selector="toil_run={}".format(self.runID), **kwargs)
+            results = self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, label_selector=f"toil_run={self.runID}", **kwargs)
 
-            for pod in results.items:
-                yield pod
+            yield from results.items
             # Remember the continuation token, if any
             token = getattr(results.metadata, 'continue', None)
 
@@ -610,7 +577,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Work out what the return code was (which we need to get from the
         # pods) We get the associated pods by querying on the label selector
         # `job-name=JOBNAME`
-        query = 'job-name={}'.format(jobObject.metadata.name)
+        query = f'job-name={jobObject.metadata.name}'
 
         while True:
             # We can't just pass e.g. a None continue token when there isn't
@@ -758,7 +725,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Otherwise we need to maybe wait.
         if self.enableWatching:
             for event in self._try_kubernetes_stream(self._api('batch').list_namespaced_job, self.namespace,
-                                                        label_selector="toil_run={}".format(self.runID),
+                                                        label_selector=f"toil_run={self.runID}",
                                                         timeout_seconds=maxWait):
                 # Grab the metadata data, ID, the list of conditions of the current job, and the total pods
                 jobObject = event['object']
@@ -804,7 +771,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     continue
                 else:
                     # Job is not running/updating ; no active, successful, or failed pods yet
-                    logger.debug("Job %s -> %s" % (jobObject.metadata.name, jobObjectListConditions[0].reason))
+                    logger.debug("Job {} -> {}".format(jobObject.metadata.name, jobObjectListConditions[0].reason))
                     # Pod could be pending; don't say it's lost.
                     continue
         else:
@@ -1059,7 +1026,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         try:
             self._try_kubernetes_expecting_gone(self._api('batch').delete_collection_namespaced_job,
                                                             self.namespace,
-                                                            label_selector="toil_run={}".format(self.runID),
+                                                            label_selector=f"toil_run={self.runID}",
                                                             propagation_policy='Background')
             logger.debug('Killed jobs with delete_collection_namespaced_job; cleaned up')
         except ApiException as e:
@@ -1164,9 +1131,37 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Block until it doesn't exist
             self._waitForJobDeath(jobName)
 
+    @classmethod
+    def get_default_kubernetes_owner(cls) -> str:
+        """
+        Get the default Kubernetes-acceptable username string to tack onto jobs.
+        """
+
+        # Make a Kubernetes-acceptable version of our username: not too long,
+        # and all lowercase letters, numbers, or - or .
+        acceptable_chars = set(string.ascii_lowercase + string.digits + '-.')
+
+        return ''.join([c for c in getpass.getuser().lower() if c in acceptable_chars])[:100]
+
+    @classmethod
+    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+        parser.add_argument("--kubernetesHostPath", dest="kubernetes_host_path", default=None,
+                            help="Path on Kubernetes hosts to use as shared inter-pod temp directory.  "
+                                 "(default: %(default)s)")
+        parser.add_argument("--kubernetesOwner", dest="kubernetes_owner", default=cls.get_default_kubernetes_owner(),
+                            help="Username to mark Kubernetes jobs with.  "
+                                 "(default: %(default)s)")
+
+    OptionType = TypeVar('OptionType')
+    @classmethod
+    def setOptions(cls, setOption: Callable[[str, Optional[Callable[[str], OptionType]], Optional[Callable[[OptionType], None]], Optional[OptionType], Optional[List[str]]], None]) -> None:
+        setOption("kubernetes_host_path", default=None, env=['TOIL_KUBERNETES_HOST_PATH'])
+        setOption("kubernetes_owner", default=cls.get_default_kubernetes_owner(), env=['TOIL_KUBERNETES_OWNER'])
+
+
 def executor():
     """
-    Main function of the _toil_kubernetes_executor entrypoint.
+    Main function of the _toil_contained_executor entrypoint.
 
     Runs inside the Toil container.
 

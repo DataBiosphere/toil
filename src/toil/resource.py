@@ -77,7 +77,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         contentHash = hashlib.md5()
         # noinspection PyProtectedMember
         with cls._load(leaderPath) as src:
-            with jobStore.writeSharedFileStream(sharedFileName=pathHash, isProtected=False) as dst:
+            with jobStore.write_shared_file_stream(shared_file_name=pathHash, encrypted=False) as dst:
                 userScript = src.read()
                 contentHash.update(userScript)
                 dst.write(userScript)
@@ -89,7 +89,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
     def refresh(self, jobStore):
         return type(self)(name=self.name,
                           pathHash=self.pathHash,
-                          url=jobStore.getSharedPublicUrl(sharedFileName=self.pathHash),
+                          url=jobStore.get_shared_public_url(shared_file_name=self.pathHash),
                           contentHash=self.contentHash)
 
     @classmethod
@@ -290,12 +290,12 @@ class DirectoryResource(Resource):
                         try:
                             fullPath = os.path.join(dirName, fileName)
                             zipFile.write(fullPath, os.path.relpath(fullPath, rootDir))
-                        except IOError:
+                        except OSError:
                             logger.critical('Cannot access and read the file at path: %s' % fullPath)
                             sys.exit(1)
         else:
-            logger.critical("Couldn't package the directory at %s for hot deployment. Would recommend to create a \
-                subdirectory (ie %s/MYDIR_HERE/)" % (path, path))
+            logger.critical("Couldn't package the directory at {} for hot deployment. Would recommend to create a \
+                subdirectory (ie {}/MYDIR_HERE/)".format(path, path))
             sys.exit(1)
         bytesIO.seek(0)
         return bytesIO
@@ -421,7 +421,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         inVenv = inVirtualEnv()
         logger.debug("Module dir is %s, our prefix is %s, virtualenv: %s", dirPath, absPrefix, inVenv)
         if not os.path.isdir(dirPath):
-            raise Exception('Bad directory path %s for module %s. Note that hot-deployment does not support .egg-link files yet, or scripts located in the root directory.' % (dirPath, name))
+            raise Exception(f'Bad directory path {dirPath} for module {name}. Note that hot-deployment does not support .egg-link files yet, or scripts located in the root directory.')
         fromVirtualEnv = inVenv and dirPath.startswith(absPrefix)
         return cls(dirPath=dirPath, name=name, fromVirtualEnv=fromVirtualEnv)
 
@@ -442,7 +442,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
                 pass
             else:
                 raise ResourceException(
-                    "The user module '%s' collides with module '%s from '%s'." % (
+                    "The user module '{}' collides with module '{} from '{}'.".format(
                         name, colliding_module.__name__, colliding_module.__file__))
         finally:
             sys.path = old_sys_path
@@ -454,14 +454,13 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         """
         return self.name.startswith('toil.')
 
-    def saveAsResourceTo(self, jobStore):
+    def saveAsResourceTo(self, jobStore) -> Resource:
         """
         Store the file containing this module--or even the Python package directory hierarchy
         containing that file--as a resource to the given job store and return the
         corresponding resource object. Should only be called on a leader node.
 
         :type jobStore: toil.jobStores.abstractJobStore.AbstractJobStore
-        :rtype: toil.resource.Resource
         """
         return self._getResourceClass().create(jobStore, self._resourcePath)
 
@@ -533,7 +532,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             with open(os.path.join(self.dirPath, '.stash')) as f:
                 fromVirtualEnv = [False, True][int(f.read(1))]
                 dirPath = f.read()
-        except IOError as e:
+        except OSError as e:
             if e.errno == errno.ENOENT:
                 return self
             else:

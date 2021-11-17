@@ -62,7 +62,7 @@ class AnalyzeDevelopmentWDL(AnalyzeV1WDL):  # extend from 1.0
             self.visit_workflow(element)
         else:
             # let super take care of the rest.
-            super(AnalyzeDevelopmentWDL, self).visit_document_element(ctx)
+            super().visit_document_element(ctx)
 
     def visit_call(self, ctx: WdlParser.CallContext) -> dict:
         """
@@ -70,7 +70,7 @@ class AnalyzeDevelopmentWDL(AnalyzeV1WDL):  # extend from 1.0
         """
         # TODO: implement call_afters
         # See: https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#call-statement
-        return super(AnalyzeDevelopmentWDL, self).visit_call(ctx)
+        return super().visit_call(ctx)
 
     def visit_string_expr_part(self, ctx: WdlParser.String_expr_partContext) -> str:
         """
@@ -93,7 +93,7 @@ class AnalyzeDevelopmentWDL(AnalyzeV1WDL):  # extend from 1.0
             raise NotImplementedError('Directory type is not implemented.')
         else:
             # let super take care of the rest.
-            return super(AnalyzeDevelopmentWDL, self).visit_wdl_type(ctx)
+            return super().visit_wdl_type(ctx)
 
     def visit_expr_core(self, expr: WdlParser.Expr_coreContext) -> str:
         """
@@ -104,4 +104,4 @@ class AnalyzeDevelopmentWDL(AnalyzeV1WDL):  # extend from 1.0
             raise NotImplementedError(f'WDL struct is not implemented.')
         else:
             # let super take care of the rest.
-            return super(AnalyzeDevelopmentWDL, self).visit_expr_core(expr)
+            return super().visit_expr_core(expr)

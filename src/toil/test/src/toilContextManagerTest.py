@@ -71,7 +71,7 @@ class HelloWorld(Job):
 
 def childFn(job):
     with job.fileStore.writeGlobalFileStream() as (fH, fileID):
-        fH.write("Hello, World!".encode('utf-8'))
+        fH.write(b"Hello, World!")
         return fileID
 
 

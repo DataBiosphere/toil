@@ -1,0 +1,10 @@
+dill>=0.3.2, <0.4
+requests>=2, <3
+docker>=3.7.2, <6
+python-dateutil
+psutil >= 3.0.1, <6
+py-tes>=0.4.2,<1
+addict>=2.2.1, <2.5
+pytz>=2012
+enlighten>=1.5.2, <2
+typing-extensions ; python_version < '3.8'

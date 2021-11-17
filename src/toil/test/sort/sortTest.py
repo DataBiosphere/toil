@@ -69,7 +69,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     systems.
     """
     def setUp(self):
-        super(SortTest, self).setUp()
+        super().setUp()
         self.tempDir = self._createTempDir(purpose='tempDir')
         self.outputFile = os.path.join(self.tempDir, 'sortedFile.txt')
         self.inputFile = os.path.join(self.tempDir, "fileToSort.txt")
@@ -111,10 +111,10 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 options.badWorker = badWorker
                 options.badWorkerFailInterval = 0.05
                 options.disableCaching = disableCaching
-                # This is required because mesosMasterAddress now defaults to the IP of the machine
+                # This is required because mesos_endpoint now defaults to the IP of the machine
                 # that is starting the workflow while the mesos *tests* run locally.
                 if batchSystem == 'mesos':
-                    options.mesosMasterAddress = 'localhost:5050'
+                    options.mesos_endpoint = 'localhost:5050'
                 options.downCheckpoints = downCheckpoints
                 options.N = N
                 options.outputFile = self.outputFile
@@ -126,7 +126,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 makeFileToSort(options.fileToSort, lines=lines, lineLen=lineLen)
 
                 # First make our own sorted version
-                with open(options.fileToSort, 'r') as fileHandle:
+                with open(options.fileToSort) as fileHandle:
                     l = fileHandle.readlines()
                     l.sort()
 
@@ -135,7 +135,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 with self.assertRaises(NoSuchJobStoreException):
                     with runMain(options):
                         # Now check the file is properly sorted..
-                        with open(options.outputFile, 'r') as fileHandle:
+                        with open(options.outputFile) as fileHandle:
                             l2 = fileHandle.readlines()
                             self.assertEqual(l, l2)
 
@@ -253,7 +253,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             lines1 = self._loadFile(tempFile1)
             lines1.sort()
             sort(tempFile1)
-            with open(tempFile1, 'r') as f:
+            with open(tempFile1) as f:
                 lines2 = f.readlines()
             self.assertEqual(lines1, lines2)
 
@@ -272,7 +272,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                         merge(tempFileHandle1, tempFileHandle2, fileHandle)
             lines1 = self._loadFile(tempFile1) + self._loadFile(tempFile2)
             lines1.sort()
-            with open(tempFile3, 'r') as f:
+            with open(tempFile3) as f:
                 lines2 = f.readlines()
             self.assertEqual(lines1, lines2)
 
@@ -287,16 +287,16 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             fileEnd = random.choice(range(fileStart, fileSize))
             with open(outputFile, 'w') as f:
                 f.write(copySubRangeOfFile(tempFile, fileStart, fileEnd))
-            with open(outputFile, 'r') as f:
+            with open(outputFile) as f:
                 l = f.read()
-            with open(tempFile, 'r') as f:
+            with open(tempFile) as f:
                 l2 = f.read()[fileStart:fileEnd]
             self.assertEqual(l, l2)
 
     def testGetMidPoint(self):
         for test in range(self.testNo):
             makeFileToSort(self.inputFile)
-            with open(self.inputFile, 'r') as f:
+            with open(self.inputFile) as f:
                 sorted_contents = f.read()
             fileSize = os.path.getsize(self.inputFile)
             midPoint = getMidPoint(self.inputFile, 0, fileSize)
@@ -312,5 +312,5 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         return f'google:{os.getenv("TOIL_GOOGLE_PROJECTID")}:sort-test-{uuid4()}'
 
     def _loadFile(self, path):
-        with open(path, 'r') as f:
+        with open(path) as f:
             return f.readlines()

@@ -190,7 +190,7 @@ def apiDockerCall(job,
         if entrypoint is None:
             entrypoint = ['/bin/bash', '-c']
         chain_params = \
-            [' '.join((quote(arg) for arg in command)) \
+            [' '.join(quote(arg) for arg in command) \
              for command in parameters]
         command = ' | '.join(chain_params)
         pipe_prefix = "set -eo pipefail && "
@@ -204,7 +204,7 @@ def apiDockerCall(job,
     # practice:
     # http://docker-py.readthedocs.io/en/stable/containers.html
     elif len(parameters) > 0 and type(parameters) is list:
-        command = ' '.join((quote(arg) for arg in parameters))
+        command = ' '.join(quote(arg) for arg in parameters)
         logger.debug("Calling docker with: " + repr(command))
 
     # If the 'parameters' lists are empty, they are respecified as None, which

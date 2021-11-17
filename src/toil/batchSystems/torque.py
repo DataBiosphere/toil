@@ -61,7 +61,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
         def getRunningJobIDs(self):
             times = {}
             with self.runningJobsLock:
-                currentjobs = dict((str(self.batchJobIDs[x][0].strip()), x) for x in self.runningJobs)
+                currentjobs = {str(self.batchJobIDs[x][0].strip()): x for x in self.runningJobs}
             logger.debug("getRunningJobIDs current jobs are: " + str(currentjobs))
             # Skip running qstat if we don't have any current jobs
             if not currentjobs:
@@ -142,7 +142,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                 if 'unknown job id' in line.lower():
                     # some clusters configure Torque to forget everything about just
                     # finished jobs instantly, apparently for performance reasons
-                    logger.debug('Batch system no longer remembers about job {}'.format(torqueJobID))
+                    logger.debug(f'Batch system no longer remembers about job {torqueJobID}')
                     # return assumed success; status files should reveal failure
                     return 0
             return None
@@ -159,7 +159,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             # TODO: passing $PWD on command line not working for -d, resorting to
             # $PBS_O_WORKDIR but maybe should fix this here instead of in script?
 
-            qsubline = ['qsub', '-S', '/bin/sh', '-V', '-N', 'toil_job_{}'.format(jobID)]
+            qsubline = ['qsub', '-S', '/bin/sh', '-V', '-N', f'toil_job_{jobID}']
 
             environment = self.boss.environment.copy()
             if job_environment:
@@ -183,7 +183,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                 logger.debug("Additional Torque resource requirements appended to qsub from "
                              "TOIL_TORQUE_REQS env. variable: {}".format(reqlineEnv))
                 if ("mem=" in reqlineEnv) or ("nodes=" in reqlineEnv) or ("ppn=" in reqlineEnv):
-                    raise ValueError("Incompatible resource arguments ('mem=', 'nodes=', 'ppn='): {}".format(reqlineEnv))
+                    raise ValueError(f"Incompatible resource arguments ('mem=', 'nodes=', 'ppn='): {reqlineEnv}")
 
                 reqline.append(reqlineEnv)
 
@@ -198,7 +198,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                 logger.debug("Native Torque options appended to qsub from TOIL_TORQUE_ARGS env. variable: {}"
                              .format(arglineEnv))
                 if ("mem=" in arglineEnv) or ("nodes=" in arglineEnv) or ("ppn=" in arglineEnv):
-                    raise ValueError("Incompatible resource arguments ('mem=', 'nodes=', 'ppn='): {}".format(arglineEnv))
+                    raise ValueError(f"Incompatible resource arguments ('mem=', 'nodes=', 'ppn='): {arglineEnv}")
                 qsubline += shlex.split(arglineEnv)
 
             return qsubline
@@ -214,8 +214,8 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             _, tmp_file = tempfile.mkstemp(suffix='.sh', prefix='torque_wrapper')
             with open(tmp_file, 'w') as f:
                 f.write("#!/bin/sh\n")
-                f.write("#PBS -o {}\n".format(stdoutfile))
-                f.write("#PBS -e {}\n".format(stderrfile))
+                f.write(f"#PBS -o {stdoutfile}\n")
+                f.write(f"#PBS -e {stderrfile}\n")
                 f.write("cd $PBS_O_WORKDIR\n\n")
                 f.write(command + "\n")
 

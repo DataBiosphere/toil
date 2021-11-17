@@ -58,7 +58,7 @@ class ToilDebugFileTest(ToilTest):
         jobstoreFileContents = os.path.abspath('jobstore_files.txt')
         files = []
         match = 0
-        with open(jobstoreFileContents, 'r') as f:
+        with open(jobstoreFileContents) as f:
             for line in f:
                 files.append(line.strip())
         for xfile in files:

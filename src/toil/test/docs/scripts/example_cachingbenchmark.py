@@ -80,7 +80,7 @@ def poll(job, options, file_id, number, cores=0.1, disk='200M', memory='512M'):
     # Check what machine we are
     hostname = socket.gethostname()
 
-    RealtimeLogger.info('Job {} on host {} sees file at device {} inode {}'.format(number, hostname, stats.st_dev, stats.st_ino))
+    RealtimeLogger.info(f'Job {number} on host {hostname} sees file at device {stats.st_dev} inode {stats.st_ino}')
 
     # Return a tuple representing our view of the file.
     # Drop hostname since hostnames are unique per pod.
@@ -96,7 +96,7 @@ def report(job, views):
     report = ['{} distinct views, most frequent:'.format(len(counts))]
 
     for view, count in counts.most_common(10):
-        report.append('{}: {}'.format(view, count))
+        report.append(f'{view}: {count}')
 
     return '\n'.join(report)
 

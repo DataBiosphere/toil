@@ -83,32 +83,32 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             submit_parameters = {
                 'executable': '/bin/sh',
                 'transfer_executable': 'False',
-                'arguments': '''"-c '{0}'"'''.format(command).encode('utf-8'),    # Workaround for HTCondor Python bindings Unicode conversion bug
+                'arguments': f'''"-c '{command}'"'''.encode('utf-8'),    # Workaround for HTCondor Python bindings Unicode conversion bug
                 'environment': self.getEnvString(),
                 'getenv': 'True',
                 'should_transfer_files': 'Yes',   # See note above for stdoutfile, stderrfile
                 'output': stdoutfile,
                 'error': stderrfile,
                 'log': condorlogfile,
-                'request_cpus': '{0}'.format(cpu),
-                'request_memory': '{0:.3f}KB'.format(ht_memory),
-                'request_disk': '{0:.3f}KB'.format(ht_disk),
+                'request_cpus': f'{cpu}',
+                'request_memory': f'{ht_memory:.3f}KB',
+                'request_disk': f'{ht_disk:.3f}KB',
                 'leave_in_queue': '(JobStatus == 4)',
                 '+IsToilJob': 'True',
-                '+ToilJobID': '{0}'.format(jobID),
-                '+ToilJobName': '"{0}"'.format(jobName),
+                '+ToilJobID': f'{jobID}',
+                '+ToilJobName': f'"{jobName}"',
                 '+ToilJobKilled': 'False',
             }
 
             # Extra parameters for HTCondor
             extra_parameters = os.getenv('TOIL_HTCONDOR_PARAMS')
             if extra_parameters is not None:
-                logger.debug("Extra HTCondor parameters added to submit file from TOIL_HTCONDOR_PARAMS env. variable: {}".format(extra_parameters))
+                logger.debug(f"Extra HTCondor parameters added to submit file from TOIL_HTCONDOR_PARAMS env. variable: {extra_parameters}")
                 for parameter, value in [parameter_value.split('=', 1) for parameter_value in extra_parameters.split(';')]:
                     parameter = parameter.strip()
                     value = value.strip()
                     if parameter in submit_parameters:
-                        raise ValueError("Some extra parameters are incompatible: {}".format(extra_parameters))
+                        raise ValueError(f"Some extra parameters are incompatible: {extra_parameters}")
 
                     submit_parameters[parameter] = value
 
@@ -151,15 +151,15 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
         def killJob(self, jobID):
             batchJobID = self.batchJobIDs[jobID][0]
-            logger.debug("Killing HTCondor job {0}".format(batchJobID))
+            logger.debug(f"Killing HTCondor job {batchJobID}")
 
             # Set the job to be killed when its exit status is checked
             schedd = self.connectSchedd()
-            job_spec = '(ClusterId == {0})'.format(batchJobID)
+            job_spec = f'(ClusterId == {batchJobID})'
             schedd.edit(job_spec, 'ToilJobKilled', 'True')
 
         def getJobExitCode(self, batchJobID):
-            logger.debug("Getting exit code for HTCondor job {0}".format(batchJobID))
+            logger.debug(f"Getting exit code for HTCondor job {batchJobID}")
 
             status = {
                 1: 'Idle',
@@ -171,7 +171,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 7: 'Suspended'
             }
 
-            requirements = '(ClusterId == {0})'.format(batchJobID)
+            requirements = f'(ClusterId == {batchJobID})'
             projection = ['JobStatus', 'ToilJobKilled', 'ExitCode',
                               'HoldReason', 'HoldReasonSubCode']
 
@@ -186,7 +186,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                     ad = ads.next()
             except StopIteration:
                 logger.error(
-                    "No HTCondor ads returned using constraint: {0}".format(requirements))
+                    f"No HTCondor ads returned using constraint: {requirements}")
                 raise
 
             # Make sure only one ClassAd was returned
@@ -199,36 +199,36 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 pass
             else:
                 logger.warning(
-                    "Multiple HTCondor ads returned using constraint: {0}".format(requirements))
+                    f"Multiple HTCondor ads returned using constraint: {requirements}")
 
             if ad['ToilJobKilled']:
-                logger.debug("HTCondor job {0} was killed by Toil".format(batchJobID))
+                logger.debug(f"HTCondor job {batchJobID} was killed by Toil")
 
                 # Remove the job from the Schedd and return 1
-                job_spec = 'ClusterId == {0}'.format(batchJobID)
+                job_spec = f'ClusterId == {batchJobID}'
                 schedd.act(htcondor.JobAction.Remove, job_spec)
                 return 1
 
             elif status[ad['JobStatus']] == 'Completed':
-                logger.debug("HTCondor job {0} completed with exit code {1}".format(
+                logger.debug("HTCondor job {} completed with exit code {}".format(
                     batchJobID, ad['ExitCode']))
 
                 # Remove the job from the Schedd and return its exit code
-                job_spec = 'ClusterId == {0}'.format(batchJobID)
+                job_spec = f'ClusterId == {batchJobID}'
                 schedd.act(htcondor.JobAction.Remove, job_spec)
                 return int(ad['ExitCode'])
 
             elif status[ad['JobStatus']] == 'Held':
-                logger.error("HTCondor job {0} was held: '{1} (sub code {2})'".format(
+                logger.error("HTCondor job {} was held: '{} (sub code {})'".format(
                     batchJobID, ad['HoldReason'], ad['HoldReasonSubCode']))
 
                 # Remove the job from the Schedd and return 1
-                job_spec = 'ClusterId == {0}'.format(batchJobID)
+                job_spec = f'ClusterId == {batchJobID}'
                 schedd.act(htcondor.JobAction.Remove, job_spec)
                 return 1
 
             else: # Job still running or idle or doing something else
-                logger.debug("HTCondor job {0} has not completed (Status: {1})".format(
+                logger.debug("HTCondor job {} has not completed (Status: {})".format(
                     batchJobID, status[ad['JobStatus']]))
                 return None
 
@@ -246,18 +246,18 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             # If TOIL_HTCONDOR_ variables are set, use them to find the Schedd
             if condor_host and schedd_name:
                 logger.debug(
-                    "Connecting to HTCondor Schedd {0} using Collector at {1}".format(
+                    "Connecting to HTCondor Schedd {} using Collector at {}".format(
                         schedd_name, condor_host))
                 try:
                     schedd_ad = htcondor.Collector(condor_host).locate(
                         htcondor.DaemonTypes.Schedd, schedd_name)
-                except IOError:
+                except OSError:
                     logger.error(
-                        "Could not connect to HTCondor Collector at {0}".format(condor_host))
+                        f"Could not connect to HTCondor Collector at {condor_host}")
                     raise
                 except ValueError:
                     logger.error(
-                        "Could not find HTCondor Schedd with name {0}".format(schedd_name))
+                        f"Could not find HTCondor Schedd with name {schedd_name}")
                     raise
                 else:
                     schedd = htcondor.Schedd(schedd_ad)

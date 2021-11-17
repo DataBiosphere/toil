@@ -23,7 +23,7 @@ import unittest
 import uuid
 import zipfile
 from io import StringIO
-from mock import Mock, call
+from unittest.mock import Mock, call
 from typing import Dict, List, MutableMapping, Optional
 from urllib.request import urlretrieve
 
@@ -36,6 +36,7 @@ sys.path.insert(0, pkg_root)  # noqa
 from toil.cwl.utils import visit_top_cwl_class, visit_cwl_class_and_reduce, download_structure
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.lib.threading import cpu_count
 
 from toil.test import (ToilTest,
                        needs_aws_s3,
@@ -56,7 +57,7 @@ CONFORMANCE_TEST_TIMEOUT = 3600
 
 def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSystem: str = None,
     selected_tests: str = None, selected_tags: str = None, skipped_tests: str = None,
-    extra_args: List[str] = [], must_support_all_features: bool = False) -> Optional[str]:
+    extra_args: List[str] = [], must_support_all_features: bool = False, junit_file: Optional[str] = None) -> Optional[str]:
     """
     Run the CWL conformance tests.
 
@@ -77,10 +78,11 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
     :param extra_args: Provide these extra arguments to toil-cwl-runner for each test.
 
     :param must_support_all_features: If set, fail if some CWL optional features are unsupported.
+
+    :param junit_file: JUnit XML file to write test info to.
     """
     try:
         cmd = ['cwltest',
-               '--verbose',
                '--tool=toil-cwl-runner',
                f'--test={yml}',
                '--timeout=2400',
@@ -91,6 +93,13 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
             cmd.append(f'--tags={selected_tags}')
         if skipped_tests:
             cmd.append(f'-S{skipped_tests}')
+        if junit_file:
+            # Capture output for JUnit
+            cmd.append('--junit-verbose')
+            cmd.append(f'--junit-xml={junit_file}')
+        else:
+            # Otherwise dump all output to our output stream
+            cmd.append('--verbose')
 
         args_passed_directly_to_toil = [f'--disableCaching={not caching}',
                                         '--clean=always',
@@ -104,10 +113,13 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
         if batchSystem == 'kubernetes':
             # Run tests in parallel on Kubernetes.
             # We can throw a bunch at it at once and let Kubernetes schedule.
-            cmd.append('-j8')
+            # But we still want a local core for each.
+            parallel_tests = max(min(cpu_count(), 8), 1)
         else:
-            # Run tests in parallel on the local machine
-            cmd.append(f'-j{int(psutil.cpu_count()/2)}')
+            # Run tests in parallel on the local machine. Don't run too many
+            # tests at once; we want at least a couple cores for each.
+            parallel_tests = max(int(cpu_count() / 2), 1)
+        cmd.append(f'-j{parallel_tests}')
 
         if batchSystem:
             args_passed_directly_to_toil.append(f"--batchSystem={batchSystem}")
@@ -210,7 +222,7 @@ class CWLv10Test(ToilTest):
                      os.path.join(self.rootDir, 'src/toil/test/cwl/mpi_simple.cwl')]
         cwltoil.main(main_args, stdout=stdout)
         out = json.loads(stdout.getvalue())
-        with open(out.get('pids', {}).get('location')[len('file://'):], 'r') as f:
+        with open(out.get('pids', {}).get('location')[len('file://'):]) as f:
             two_pids = [int(i) for i in f.read().split()]
         self.assertEqual(len(two_pids), 2)
         self.assertTrue(isinstance(two_pids[0], int))
@@ -227,7 +239,7 @@ class CWLv10Test(ToilTest):
         out = json.loads(stdout.getvalue())
         self.assertEqual(out['output']['checksum'], 'sha1$d14dd02e354918b4776b941d154c18ebc15b9b38')
         self.assertEqual(out['output']['size'], 24)
-        with open(out['output']['location'][len('file://'):], 'r') as f:
+        with open(out['output']['location'][len('file://'):]) as f:
             self.assertEqual(f.read().strip(), 'When is s4 coming out?')
 
     def test_run_revsort(self):
@@ -545,6 +557,8 @@ class CWLv12Test(ToilTest):
     @slow
     @needs_kubernetes
     def test_kubernetes_cwl_conformance(self, **kwargs):
+        if 'junit_file' not in kwargs:
+            kwargs['junit_file'] = 'kubernetes-conformance.junit.xml'
         return self.test_run_conformance(batchSystem="kubernetes",
                                          # This test doesn't work with
                                          # Singularity; see
@@ -557,7 +571,8 @@ class CWLv12Test(ToilTest):
     @slow
     @needs_kubernetes
     def test_kubernetes_cwl_conformance_with_caching(self):
-        return self.test_kubernetes_cwl_conformance(caching=True)
+        return self.test_kubernetes_cwl_conformance(caching=True, junit_file=os.path.join(self.rootDir,
+                                                                                          'kubernetes-caching-conformance.junit.xml'))
 
     def _expected_streaming_output(self, outDir):
         # Having unicode string literals isn't necessary for the assertion but
@@ -598,7 +613,7 @@ class CWLv12Test(ToilTest):
         out[out_name].pop("nameext", None)
         out[out_name].pop("nameroot", None)
         self.assertEqual(out, self._expected_streaming_output(self.outDir))
-        with open(out[out_name]["location"][len("file://") :], "r") as f:
+        with open(out[out_name]["location"][len("file://") :]) as f:
             self.assertEqual(f.read().strip(), "When is s4 coming out?")
 
 
@@ -632,7 +647,7 @@ class CWLSmallTests(ToilTest):
         option_1 = '--strict-memory-limit'
         option_2 = '--force-docker-pull'
         option_3 = '--clean=always'
-        cwl = os.path.join(self._projectRootPath(), 'src/toil/test/cwl/echo_string.cwl')
+        cwl = os.path.join(os.path.dirname(__file__), 'echo_string.cwl')
         cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
         log.debug(f'Now running: {" ".join(cmd)}')
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

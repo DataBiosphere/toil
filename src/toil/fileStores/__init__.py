@@ -26,12 +26,12 @@ class FileID(str):
     """
 
     def __new__(cls, fileStoreID: str, *args: Any) -> 'FileID':
-        return super(FileID, cls).__new__(cls, fileStoreID)
+        return super().__new__(cls, fileStoreID)
 
     def __init__(self, fileStoreID: str, size: int, executable: bool = False):
         # Don't pass an argument to parent class's __init__.
         # In Python 3 we can have super(FileID, self) hand us object's __init__ which chokes on any arguments.
-        super(FileID, self).__init__()
+        super().__init__()
         self.size = size
         self.executable = executable
 

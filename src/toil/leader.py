@@ -81,7 +81,7 @@ class FailedJobsException(Exception):
         self.msg = "The job store '%s' contains %i failed jobs" % (job_store.locator, len(failed_jobs))
         self.exit_code = exit_code
         try:
-            self.msg += ": %s" % ", ".join((str(failedJob) for failedJob in failed_jobs))
+            self.msg += ": %s" % ", ".join(str(failedJob) for failedJob in failed_jobs)
             for job_desc in failed_jobs:
                 if job_desc.logJobStoreFileID:
                     with job_desc.getLogFileHandle(job_store) as f:
@@ -107,7 +107,7 @@ class FailedJobsException(Exception):
 ##Following class represents the leader
 ####################################################
 
-class Leader(object):
+class Leader:
     """ Class that encapsulates the logic of the leader.
     """
     def __init__(self, config: Config, batchSystem: AbstractBatchSystem,
@@ -268,8 +268,8 @@ class Leader(object):
 
             try:
                 self.create_status_sentinel_file(self.toilState.totalFailedJobs)
-            except IOError as e:
-                logger.debug('Error from importFile with hardlink=True: {}'.format(e))
+            except OSError as e:
+                logger.debug(f'Error from importFile with hardlink=True: {e}')
 
             logger.info("Finished toil run %s" %
                          ("successfully." if not self.toilState.totalFailedJobs \
@@ -285,14 +285,14 @@ class Leader(object):
                 logger.info("Failed jobs at end of the run: %s", ' '.join(str(j) for j in failed_jobs))
                 raise FailedJobsException(self.jobStore, failed_jobs, exit_code=self.recommended_fail_exit_code)
 
-            return self.jobStore.getRootJobReturnValue()
+            return self.jobStore.get_root_job_return_value()
 
     def create_status_sentinel_file(self, fail: bool) -> None:
         """Create a file in the jobstore indicating failure or success."""
         logName = 'failed.log' if fail else 'succeeded.log'
         localLog = os.path.join(os.getcwd(), logName)
         open(localLog, 'w').close()
-        self.jobStore.importFile('file://' + localLog, logName, hardlink=True)
+        self.jobStore.import_file('file://' + localLog, logName, hardlink=True)
 
         if os.path.exists(localLog):  # Bandaid for Jenkins tests failing stochastically and unexplainably.
             os.remove(localLog)
@@ -451,8 +451,8 @@ class Leader(object):
             # The job has services running; signal for them to be killed.
             # Once they are killed, then the job will be updated again and then
             # scheduled to be removed.
-            logger.debug("Telling job %s to terminate its services due to successor failure",
-                         predecessor)
+            logger.warning("Telling job %s to terminate its services due to successor failure",
+                           predecessor)
             self.serviceManager.kill_services(self.toilState.servicesIssued[predecessor_id],
                                               error=True)
         elif self.toilState.count_pending_successors(predecessor_id) > 0:
@@ -503,7 +503,7 @@ class Leader(object):
             # If the job has run out of tries or is a service job whose error flag has
             # been indicated, fail the job.
             if (readyJob.remainingTryCount == 0 or
-                (isServiceJob and not self.jobStore.fileExists(readyJob.errorJobStoreID))):
+                (isServiceJob and not self.jobStore.file_exists(readyJob.errorJobStoreID))):
                 self.processTotallyFailedJob(job_id)
                 logger.warning("Job %s is completely failed", readyJob)
             else:
@@ -608,7 +608,7 @@ class Leader(object):
             client_id = self.serviceManager.get_ready_client(0)
             if client_id is None: # Stop trying to get jobs when function returns None
                 break
-            logger.debug('Job: %s has established its services.', client_id)
+            logger.debug('Job: %s has established its services; all services are running', client_id)
 
             # Grab the client job description
             client = self.toilState.get_job(client_id)
@@ -700,7 +700,11 @@ class Leader(object):
             # check in with the batch system
             updatedJobTuple = self.batchSystem.getUpdatedBatchJob(maxWait=2)
             if updatedJobTuple is not None:
+                # Collect and process all the updates
                 self._gatherUpdatedJobs(updatedJobTuple)
+                # As long as we are getting updates we definitely can't be
+                # deadlocked.
+                self.feed_deadlock_watchdog()
             else:
                 # If nothing is happening, see if any jobs have wandered off
                 self._processLostJobs()
@@ -766,7 +770,7 @@ class Leader(object):
                 message = self.batchSystem.getSchedulingStatusMessage()
                 if message is not None:
                     # Prepend something explaining the message
-                    message = "The batch system reports: {}".format(message)
+                    message = f"The batch system reports: {message}"
                 else:
                     # Use a generic message if none is available
                     message = "Cluster may be too small."
@@ -794,23 +798,21 @@ class Leader(object):
                                        stuckFor, self.config.deadlockWait - stuckFor, waitingNormalJobs, message)
             else:
                 # We have observed non-service jobs running, so reset the potential deadlock
-
-                if len(self.potentialDeadlockedJobs) > 0:
-                    # We thought we had a deadlock. Tell the user it is fixed.
-                    logger.warning("Potential deadlock has been resolved; non-service jobs are now running.")
-
-                self.potentialDeadlockedJobs = set()
-                self.potentialDeadlockTime = 0
+                self.feed_deadlock_watchdog()
         else:
             # We have observed non-service jobs running, so reset the potential deadlock.
-            # TODO: deduplicate with above
+            self.feed_deadlock_watchdog()
 
-            if len(self.potentialDeadlockedJobs) > 0:
-                # We thought we had a deadlock. Tell the user it is fixed.
-                logger.warning("Potential deadlock has been resolved; non-service jobs are now running.")
+    def feed_deadlock_watchdog(self) -> None:
+        """
+        Note that progress has been made and any pending deadlock checks should be reset.
+        """
+        if len(self.potentialDeadlockedJobs) > 0:
+            # We thought we had a deadlock. Tell the user it is fixed.
+            logger.warning("Potential deadlock has been resolved; detected progress")
 
-            self.potentialDeadlockedJobs = set()
-            self.potentialDeadlockTime = 0
+        self.potentialDeadlockedJobs = set()
+        self.potentialDeadlockTime = 0
 
     def issueJob(self, jobNode: JobDescription) -> None:
         """Add a job to the queue of jobs."""
@@ -1147,7 +1149,7 @@ class Leader(object):
                             else:
                                 logger.warning('The batch system left an empty file %s' % batchSystemFile)
 
-                replacementJob.setupJobAfterFailure(exitReason=exitReason)
+                replacementJob.setupJobAfterFailure(exitStatus=result_status)
                 self.toilState.commit_job(jobStoreID)
 
                 # Show job as failed in progress (and take it from completed)
@@ -1240,7 +1242,7 @@ class Leader(object):
             # and possibly never started.
             if client_id in self.toilState.servicesIssued:
                 self.serviceManager.kill_services(self.toilState.servicesIssued[client_id], error=True)
-                logger.debug("Job: %s is instructing all other services of its parent job to quit", job_desc)
+                logger.warning("Job: %s is instructing all other services of its parent job to quit", job_desc)
 
             # This ensures that the job will not attempt to run any of it's
             # successors on the stack
@@ -1252,7 +1254,7 @@ class Leader(object):
             # lets it continue, now that we have issued kill orders for them,
             # to start dependent services, which all need to actually fail
             # before we can finish up with the services' predecessor job.
-            self.jobStore.deleteFile(job_desc.startJobStoreID)
+            self.jobStore.delete_file(job_desc.startJobStoreID)
         else:
             # Is a non-service job
             assert job_id not in self.toilState.servicesIssued
@@ -1316,7 +1318,7 @@ class Leader(object):
                 # all its services terminated
                 self.toilState.servicesIssued.pop(client_id) # The job has no running services
 
-                logger.debug('Job %s is no longer waiting on services', self.toilState.get_job(client_id))
+                logger.debug('Job %s is no longer waiting on services; all services have stopped', self.toilState.get_job(client_id))
 
                 # Now we know the job is done we can add it to the list of
                 # updated job files

@@ -19,14 +19,15 @@ import subprocess
 import sys
 import tempfile
 import time
+from argparse import ArgumentParser, _ArgumentGroup
 from queue import Empty, Queue
 from shutil import which
 from threading import Thread
-from typing import Optional, Dict
+from typing import Optional, Union, Dict
 
 from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
-from toil.common import Toil
+from toil.common import SYS_MAX_SIZE, Toil
 from toil.test import get_temp_file
 from toil.lib.iterables import concat
 
@@ -47,8 +48,8 @@ class ParasolBatchSystem(BatchSystemSupport):
         return False
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        super(ParasolBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
-        if maxMemory != sys.maxsize:
+        super().__init__(config, maxCores, maxMemory, maxDisk)
+        if maxMemory != SYS_MAX_SIZE:
             logger.warning('The Parasol batch system does not support maxMemory.')
         # Keep the name of the results file for the pstat2 command..
         command = config.parasolCommand
@@ -180,13 +181,13 @@ class ParasolBatchSystem(BatchSystemSupport):
                 jobID = int(match.group(1))
                 self.jobIDsToCpu[jobID] = jobDesc.cores
                 self.runningJobs.add(jobID)
-                logger.debug("Got the parasol job id: %s from line: %s" % (jobID, line))
+                logger.debug(f"Got the parasol job id: {jobID} from line: {line}")
                 return jobID
 
     def setEnv(self, name, value=None):
         if value and ' ' in value:
             raise ValueError('Parasol does not support spaces in environment variable values.')
-        return super(ParasolBatchSystem, self).setEnv(name, value)
+        return super().setEnv(name, value)
 
     def __environment(self, job_environment: Optional[Dict[str, str]] = None):
         environment = self.environment.copy()
@@ -305,7 +306,7 @@ class ParasolBatchSystem(BatchSystemSupport):
                 newResultsFiles = set(os.listdir(self.parasolResultsDir)).difference(resultsFiles)
                 for newFile in newResultsFiles:
                     newFilePath = os.path.join(self.parasolResultsDir, newFile)
-                    resultsFileHandles.append(open(newFilePath, 'r'))
+                    resultsFileHandles.append(open(newFilePath))
                     resultsFiles.add(newFile)
                 for fileHandle in resultsFileHandles:
                     while self.running:
@@ -364,6 +365,15 @@ class ParasolBatchSystem(BatchSystemSupport):
         for results in list(self.resultsFiles.values()):
             os.remove(results)
         os.rmdir(self.parasolResultsDir)
+
+    @classmethod
+    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+        parser.add_argument("--parasolCommand", dest="parasolCommand", default='parasol',
+                            help="The name or path of the parasol program. Will be looked up on PATH "
+                                 "unless it starts with a slash.  (default: %(default)s).")
+        parser.add_argument("--parasolMaxBatches", dest="parasolMaxBatches", default=1000,
+                            help="Maximum number of job batches the Parasol batch is allowed to create. One batch is "
+                                 "created for jobs with a a unique set of resource requirements.  (default: %(default)s).")
 
     @classmethod
     def setOptions(cls, setOption):

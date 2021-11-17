@@ -26,7 +26,7 @@ from toil.toilState import ToilState
 
 logger = logging.getLogger( __name__ )
 
-class ServiceManager( object ):
+class ServiceManager:
     """
     Manages the scheduling of services.
     """
@@ -162,8 +162,8 @@ class ServiceManager( object ):
             service = self.__toil_state.get_job(service_id)
             assert isinstance(service, ServiceJobDescription)
             if error:
-                self.__job_store.deleteFile(service.errorJobStoreID)
-            self.__job_store.deleteFile(service.terminateJobStoreID)
+                self.__job_store.delete_file(service.errorJobStoreID)
+            self.__job_store.delete_file(service.terminateJobStoreID)
 
     def is_active(self, service_id: str) -> bool:
         """
@@ -173,7 +173,7 @@ class ServiceManager( object ):
         :rtype: boolean
         """
         service = self.__toil_state.get_job(service_id)
-        return self.__job_store.fileExists(service.terminateJobStoreID)
+        return self.__job_store.file_exists(service.terminateJobStoreID)
 
     def is_running(self, service_id: str) -> bool:
         """
@@ -183,7 +183,7 @@ class ServiceManager( object ):
         :rtype: boolean
         """
         service = self.__toil_state.get_job(service_id)
-        return (not self.__job_store.fileExists(service.startJobStoreID)) and self.is_active(service_id)
+        return (not self.__job_store.file_exists(service.startJobStoreID)) and self.is_active(service_id)
 
     def check(self) -> None:
         """
@@ -260,7 +260,7 @@ class ServiceManager( object ):
 
                 for service_id in list(starting_services):
                     service_job_desc = self.__toil_state.get_job(service_id)
-                    if not self.__job_store.fileExists(service_job_desc.startJobStoreID):
+                    if not self.__job_store.file_exists(service_job_desc.startJobStoreID):
                         # Service has started (or failed)
                         logger.debug('Service %s has removed %s and is therefore started', service_job_desc, service_job_desc.startJobStoreID)
                         starting_services.remove(service_id)
@@ -268,7 +268,7 @@ class ServiceManager( object ):
                         remaining_services_by_client[client_id] -= 1
                         assert remaining_services_by_client[client_id] >= 0
                         del service_to_client[service_id]
-                        if not self.__job_store.fileExists(service_job_desc.errorJobStoreID):
+                        if not self.__job_store.file_exists(service_job_desc.errorJobStoreID):
                             logger.error('Service %s has immediately failed before it could be used', service_job_desc)
                             # It probably hasn't fileld in the promise that the job that uses the service needs.
                             clients_with_failed_services.add(client_id)
@@ -305,8 +305,11 @@ class ServiceManager( object ):
                 # Find the service object.
                 service_job_desc = self.__toil_state.get_job(service_id)
                 logger.debug("Service manager is starting service job: %s, start ID: %s", service_job_desc, service_job_desc.startJobStoreID)
-                assert self.__job_store.fileExists(service_job_desc.startJobStoreID)
-                # At this point the terminateJobStoreID and errorJobStoreID could have been deleted!
+                assert self.__job_store.file_exists(service_job_desc.startJobStoreID), f"Service manager attempted to start service {service_job_desc} that has already started"
+                assert self.__toil_state.job_exists(service_job_desc.jobStoreID), f"Service manager attempted to start service {service_job_desc} that is not in the job store"
+                # At this point the terminateJobStoreID and errorJobStoreID
+                # could have been deleted, since the service can be killed at
+                # any time! So we can't assert their presence here.
                 self.__services_out.put(service_id)
                 # Save for the waiting loop
                 wait_on.append(service_job_desc)
@@ -315,7 +318,7 @@ class ServiceManager( object ):
             for service_id in service_job_list:
                 # Find the service object.
                 service_job_desc = self.__toil_state.get_job(service_id)
-                while self.__job_store.fileExists(service_job_desc.startJobStoreID):
+                while self.__job_store.file_exists(service_job_desc.startJobStoreID):
                     # Sleep to avoid thrashing
                     time.sleep(1.0)
 
@@ -326,10 +329,22 @@ class ServiceManager( object ):
                     if self.__terminate.is_set():
                         return
 
+                    if (not self.__toil_state.job_exists(service_job_desc.jobStoreID)
+                        and self.__job_store.file_exists(service_job_desc.startJobStoreID)):
+                        # The service job has gone away but the service never flipped its start flag.
+                        logger.error('Service %s has completed and been removed without ever starting', service_job_desc)
+                        # Stop waiting on the service because we know it won't
+                        # flip the flag.
+                        # TODO: We don't protect the user from this problem
+                        # here. But when this eventually comes up as a user
+                        # issue we'll have a log that might help us track down
+                        # who removed the service.
+                        continue
+
                 # We don't bail out early here.
 
                 # We need to try and fail to start *all* the services, so they
-                # *all* come back to the leaser as expected, or the leader will get
+                # *all* come back to the leader as expected, or the leader will get
                 # stuck waiting to hear about a later dependent service failing. So
                 # we have to *try* to start all the services, even if the services
                 # they depend on failed. They should already have been killed,

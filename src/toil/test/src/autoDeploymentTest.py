@@ -23,7 +23,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
 
     def setUp(self):
         logging.basicConfig(level=logging.INFO)
-        super(AutoDeploymentTest, self).setUp()
+        super().setUp()
 
     @contextmanager
     def _venvApplianceCluster(self):
@@ -43,7 +43,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
 
     # TODO: Are we sure the python in the appliance we are testing is the same
     # as the one we are testing from? If not, how can we get the version it is?
-    sitePackages = 'venv/lib/{}/site-packages'.format(exactPython)
+    sitePackages = f'venv/lib/{exactPython}/site-packages'
 
     def testRestart(self):
         """
@@ -75,7 +75,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
             pythonArgs = ['venv/bin/python', '-m', 'foo.bar']
             toilArgs = ['--logDebug',
                         '--batchSystem=mesos',
-                        '--mesosMaster=localhost:5050',
+                        '--mesosEndpoint=localhost:5050',
                         '--defaultMemory=10M',
                         '/data/jobstore']
             command = concat(pythonArgs, toilArgs)
@@ -146,7 +146,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
                                   '-m', 'toil_script.bar',
                                   '--logDebug',
                                   '--batchSystem=mesos',
-                                  '--mesosMaster=localhost:5050',
+                                  '--mesosEndpoint=localhost:5050',
                                   '--defaultMemory=10M',
                                   '/data/jobstore')
             # Assert that out output file is there
@@ -166,7 +166,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
                 from toil.job import Job
 
                 # A user-defined type, i.e. a type defined in the user script
-                class X(object):
+                class X:
                     pass
 
                 # noinspection PyUnusedLocal
@@ -196,7 +196,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
             leader.runOnAppliance('venv/bin/python', '-m', 'foo.bar',
                                   '--logDebug',
                                   '--batchSystem=mesos',
-                                  '--mesosMaster=localhost:5050',
+                                  '--mesosEndpoint=localhost:5050',
                                   '--defaultMemory=10M',
                                   '--defaultDisk=10M',
                                   '/data/jobstore')
@@ -250,7 +250,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
 
                 def root(rootJob):
                     def nullFile():
-                        return rootJob.fileStore.jobStore.importFile('file:///dev/null')
+                        return rootJob.fileStore.jobStore.import_file('file:///dev/null')
 
                     startFile = nullFile()
                     endFile = nullFile()
@@ -271,20 +271,20 @@ class AutoDeploymentTest(ApplianceTestSupport):
                 # noinspection PyUnusedLocal
                 def deferring(job, startFile, endFile):
                     job.defer(deferred)
-                    job.fileStore.jobStore.deleteFile(startFile)
+                    job.fileStore.jobStore.delete_file(startFile)
                     timeout = time.time() + 10
-                    while job.fileStore.jobStore.fileExists(endFile):
+                    while job.fileStore.jobStore.file_exists(endFile):
                         assert time.time() < timeout
                         time.sleep(1)
 
                 def encapsulated(job, startFile):
                     timeout = time.time() + 10
-                    while job.fileStore.jobStore.fileExists(startFile):
+                    while job.fileStore.jobStore.file_exists(startFile):
                         assert time.time() < timeout
                         time.sleep(1)
 
                 def last(job, endFile):
-                    job.fileStore.jobStore.deleteFile(endFile)
+                    job.fileStore.jobStore.delete_file(endFile)
 
                 if __name__ == '__main__':
                     options = Job.Runner.getDefaultArgumentParser().parse_args()
@@ -301,7 +301,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
             leader.runOnAppliance('venv/bin/python', '-m', 'foo.bar',
                                   '--logDebug',
                                   '--batchSystem=mesos',
-                                  '--mesosMaster=localhost:5050',
+                                  '--mesosEndpoint=localhost:5050',
                                   '--retryCount=0',
                                   '--defaultMemory=10M',
                                   '--defaultDisk=10M',
@@ -356,7 +356,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
 
                 def root(rootJob):
                     def nullFile():
-                        return rootJob.fileStore.jobStore.importFile('file:///dev/null')
+                        return rootJob.fileStore.jobStore.import_file('file:///dev/null')
 
                     startFile = nullFile()
                     endFile = nullFile()
@@ -396,11 +396,11 @@ class AutoDeploymentTest(ApplianceTestSupport):
                     """
                     job.defer(deferred, deferredFile(job._config))
                     jobStore = job.fileStore.jobStore
-                    jobStore.deleteFile(startFile)
-                    with jobStore.updateFileStream(endFile) as fH:
+                    jobStore.delete_file(startFile)
+                    with jobStore.update_file_stream(endFile) as fH:
                         fH.write(str(os.getpid()))
                     timeout = time.time() + TIMEOUT
-                    while jobStore.fileExists(endFile):
+                    while jobStore.file_exists(endFile):
                         assert time.time() < timeout
                         time.sleep(1)
                     os.kill(os.getpid(), 9)
@@ -410,7 +410,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
                     A job that waits until the `deferring` job is running and waiting to be crashed.
                     """
                     timeout = time.time() + TIMEOUT
-                    while job.fileStore.jobStore.fileExists(startFile):
+                    while job.fileStore.jobStore.file_exists(startFile):
                         assert time.time() < timeout
                         time.sleep(1)
 
@@ -423,10 +423,10 @@ class AutoDeploymentTest(ApplianceTestSupport):
                     """
                     import errno
                     jobStore = job.fileStore.jobStore
-                    with jobStore.readFileStream(endFile) as fH:
+                    with jobStore.read_file_stream(endFile) as fH:
                         pid = int(fH.read())
                     os.kill(pid, 0)
-                    jobStore.deleteFile(endFile)
+                    jobStore.delete_file(endFile)
                     timeout = time.time() + TIMEOUT
                     while True:
                         try:
@@ -477,7 +477,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
             leader.runOnAppliance('venv/bin/python', '-m', 'foo.bar',
                                   '--logDebug',
                                   '--batchSystem=mesos',
-                                  '--mesosMaster=localhost:5050',
+                                  '--mesosEndpoint=localhost:5050',
                                   '--retryCount=0',
                                   '--defaultMemory=10M',
                                   '--defaultDisk=10M',

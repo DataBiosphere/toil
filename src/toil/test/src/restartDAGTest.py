@@ -32,12 +32,12 @@ class RestartDAGTest(ToilTest):
     parent completes successfully in the restart.
     """
     def setUp(self):
-        super(RestartDAGTest, self).setUp()
+        super().setUp()
         self.tempDir = self._createTempDir(purpose='tempDir')
         self.testJobStore = self._getTestJobStorePath()
 
     def tearDown(self):
-        super(RestartDAGTest, self).tearDown()
+        super().tearDown()
         shutil.rmtree(self.testJobStore)
 
     @slow
@@ -53,7 +53,7 @@ class RestartDAGTest(ToilTest):
         Creates a diamond DAG
             /->passingParent-\
         root                 |-->child
-           \->failingParent--/
+           \\->failingParent--/
 
         where root and passingParent are guaranteed to pass, while failingParent will fail.
         child should not run on start or restart and we assert that by ensuring that a file create
@@ -123,7 +123,7 @@ class RestartDAGTest(ToilTest):
                 else:
                     self.fail('No errors were raised on toil "%s".' % runMode)
         if failReasons:
-            self.fail('Test failed for (%s) reasons:\n\t%s' % (len(failReasons),
+            self.fail('Test failed for ({}) reasons:\n\t{}'.format(len(failReasons),
                                                                '\n\t'.join(failReasons)))
 
 def passingFn(job, fileName=None):

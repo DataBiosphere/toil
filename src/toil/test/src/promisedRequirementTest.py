@@ -25,7 +25,7 @@ from toil.test import needs_mesos, slow, travis_test
 log = logging.getLogger(__name__)
 
 
-class hidden(object):
+class hidden:
     """
     Hide abstract base class from unittest's test case loader.
 
@@ -54,7 +54,8 @@ class hidden(object):
                 self.assertEqual(maxValue, self.cpuCount // coresPerJob)
 
         @slow
-        @retry_flaky_test()
+        @retry_flaky_test(prepare=[batchSystemTest.hidden.AbstractBatchSystemJobTest.tearDown,
+                                   batchSystemTest.hidden.AbstractBatchSystemJobTest.setUp])
         def testConcurrencyStatic(self):
             """
             Asserts that promised core resources are allocated properly using a static DAG
@@ -203,7 +204,7 @@ def logDiskUsage(job, funcName, sleep=0):
     :return: job function's disk usage
     """
     diskUsage = job.disk
-    job.fileStore.logToMaster('{}: {}'.format(funcName, diskUsage))
+    job.fileStore.logToMaster(f'{funcName}: {diskUsage}')
     time.sleep(sleep)
     return diskUsage
 
@@ -227,8 +228,8 @@ class MesosPromisedRequirementsTest(hidden.AbstractPromisedRequirementsTest, Mes
     """
 
     def getOptions(self, tempDir, caching=True):
-        options = super(MesosPromisedRequirementsTest, self).getOptions(tempDir, caching=caching)
-        options.mesosMasterAddress = 'localhost:5050'
+        options = super().getOptions(tempDir, caching=caching)
+        options.mesos_endpoint = 'localhost:5050'
         return options
 
     def getBatchSystemName(self):

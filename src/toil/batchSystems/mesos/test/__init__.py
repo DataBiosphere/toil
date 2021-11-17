@@ -14,7 +14,7 @@ from toil.lib.threading import ExceptionalThread, cpu_count
 log = logging.getLogger(__name__)
 
 
-class MesosTestSupport(object):
+class MesosTestSupport:
     """
     A mixin for test cases that need a running Mesos master and agent on the local host
     """

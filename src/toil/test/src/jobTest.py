@@ -34,7 +34,7 @@ class JobTest(ToilTest):
 
     @classmethod
     def setUpClass(cls):
-        super(JobTest, cls).setUpClass()
+        super().setUpClass()
         logging.basicConfig(level=logging.DEBUG)
 
     @slow
@@ -78,7 +78,7 @@ class JobTest(ToilTest):
             Job.Runner.startToil(A, options)
 
             # Check output
-            self.assertEqual(open(outFile, 'r').readline(), "ABCDEFG")
+            self.assertEqual(open(outFile).readline(), "ABCDEFG")
         finally:
             os.remove(outFile)
 
@@ -119,7 +119,7 @@ class JobTest(ToilTest):
             Job.Runner.startToil(A, options)
 
             # Check output
-            self.assertEqual(open(outFile, 'r').readline(), "ABCDE")
+            self.assertEqual(open(outFile).readline(), "ABCDE")
         finally:
             os.remove(outFile)
 
@@ -405,6 +405,9 @@ class JobTest(ToilTest):
             options.retryCount = 1
             options.badWorker = 0.25
             options.badWorkerFailInterval = 0.01
+            # Because we're going to be killing the services all the time for
+            # restarts, make sure they are paying attention.
+            options.servicePollingInterval = 1
 
             # Now actually run the workflow
             try:
@@ -433,7 +436,7 @@ class JobTest(ToilTest):
             # so we can check they are compatible with the relationships defined by the job DAG.
             ordering = None
             for i in range(nodeNumber):
-                with open(os.path.join(tempDir, str(i)), 'r') as fH:
+                with open(os.path.join(tempDir, str(i))) as fH:
                     ordering = list(map(int, fH.readline().split()))
                     self.assertEqual(int(ordering[-1]), i)
                     for j in ordering[:-1]:
@@ -462,7 +465,7 @@ class JobTest(ToilTest):
         # Pick number of total edges to create
         edgeNumber = random.choice(range(nodeNumber - 1, 1 + (nodeNumber * (nodeNumber - 1) // 2)))
         # Make a spanning tree of edges so that nodes are connected
-        edges = set([(random.choice(range(i)), i) for i in range(1, nodeNumber)])
+        edges = {(random.choice(range(i)), i) for i in range(1, nodeNumber)}
         # Add extra random edges until there are edgeNumber edges
         while len(edges) < edgeNumber:
             edges.add(JobTest.getRandomEdge(nodeNumber))
@@ -564,7 +567,8 @@ class JobTest(ToilTest):
         def makeJob(string):
             promises = []
             job = Job.wrapFn(fn2Test, promises, string,
-                             None if outPath is None else os.path.join(outPath, string))
+                             None if outPath is None else os.path.join(outPath, string),
+                             cores=0.1, memory="0.5G", disk="0.1G")
             jobsToPromisesMap[job] = promises
             return job
 
@@ -583,7 +587,7 @@ class JobTest(ToilTest):
             predecessors[jobs[tNode]].append(jobs[fNode])
 
         # Map of jobs to return values
-        jobsToRvs = dict([(job, job.addService(TrivialService(job.rv())) if addServices else job.rv()) for job in jobs])
+        jobsToRvs = {job: job.addService(TrivialService(job.rv(), cores=0.1, memory="0.5G", disk="0.1G")) if addServices else job.rv() for job in jobs}
 
         def getRandomPredecessor(job):
             predecessor = random.choice(list(predecessors[job]))
