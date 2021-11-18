@@ -42,7 +42,7 @@ class MessageBus:
 
     All messages are NamedTuple objects of various subtypes.
 
-    Message order is guranteed to be preserved within a type.
+    Message order is guaranteed to be preserved within a type.
 
     TODO: Not yet thread safe, but should be made thread safe if we want e.g.
     the ServiceManager to talk to it. Note that defaultdict itself isn't
