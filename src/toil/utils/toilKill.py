@@ -41,11 +41,12 @@ def main() -> None:
         logger.info("All jobs SHOULD have been killed")
     # otherwise, kill the pid recorded in the jobstore
     else:
-        pid_log = os.path.join(os.path.abspath(config.jobStore), 'pid.log')
+        jobStore = Toil.resumeJobStore(config.jobStore)
+        pid_log = os.path.join(jobStore.sharedFilesDir, 'pid.log')
         with open(pid_log) as f:
             pid2kill = f.read().strip()
         try:
-            os.kill(int(pid2kill), signal.SIGKILL)
+            os.kill(int(pid2kill), signal.SIGTERM)
             logger.info("Toil process %s successfully terminated." % str(pid2kill))
         except OSError:
             logger.error("Toil process %s could not be terminated." % str(pid2kill))
