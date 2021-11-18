@@ -959,7 +959,6 @@ class Leader:
         :return: Job description as it was issued.
         """
         assert jobBatchSystemID in self.issued_jobs_by_batch_system_id
-        assert jobBatchSystemID in self.toilState.jobs_issued
         issuedDesc = self.toilState.get_job(self.issued_jobs_by_batch_system_id[jobBatchSystemID])
         if issuedDesc.preemptable:
             # len(issued_jobs_by_batch_system_id) should always be greater than or equal to preemptableJobsIssued,
@@ -968,6 +967,7 @@ class Leader:
             self.preemptableJobsIssued -= 1
         # It's not issued anymore.
         del self.issued_jobs_by_batch_system_id[jobBatchSystemID]
+        assert issuedDesc.jobStoreID in self.toilState.jobs_issued, f"Job {issuedDesc} came back without being issued"
         self.toilState.jobs_issued.remove(issuedDesc.jobStoreID)
         # If service job
         if issuedDesc.jobStoreID in self.toilState.service_to_client:
