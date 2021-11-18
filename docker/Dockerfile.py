@@ -108,7 +108,20 @@ print(heredoc('''
         (dpkg -i singularity-container_3*.deb || true) && \
         dpkg --force-depends --configure -a && \
         sed -i 's/containernetworking-plugins, //' /var/lib/dpkg/status && \
-        sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf
+        sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf && \
+        mkdir -p /usr/local/libexec/toil && \
+        mv /usr/local/bin/singularity /usr/local/libexec/toil/singularity-real
+
+    RUN mkdir /root/.ssh && \
+        chmod 700 /root/.ssh
+
+    ADD waitForKey.sh /usr/bin/waitForKey.sh
+
+    ADD customDockerInit.sh /usr/bin/customDockerInit.sh
+
+    ADD singularity-wrapper.sh /usr/local/bin/singularity
+
+    RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/local/bin/singularity
 
     # fixes an incompatibility updating pip on Ubuntu 16 w/ python3.8
     RUN sed -i "s/platform.linux_distribution()/('Ubuntu', '16.04', 'xenial')/g" /usr/lib/python3/dist-packages/pip/download.py
