@@ -110,7 +110,7 @@ print(heredoc('''
         sed -i 's/containernetworking-plugins, //' /var/lib/dpkg/status && \
         sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf && \
         mkdir -p /usr/local/libexec/toil && \
-        mv /usr/local/bin/singularity /usr/local/libexec/toil/singularity-real
+        mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real
 
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh
