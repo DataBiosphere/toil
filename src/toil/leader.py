@@ -463,7 +463,7 @@ class Leader:
                          predecessor, predecessor_id)
         elif (isinstance(predecessor, CheckpointJobDescription) and
               predecessor.checkpoint is not None and
-              predecessor.remainingTryCount > 1 and):
+              predecessor.remainingTryCount > 1):
             # If the job is a checkpoint and has remaining retries...
             # The logic behind using > 1 rather than > 0 here: Since this job has
             # been tried once (without decreasing its try count as the job
