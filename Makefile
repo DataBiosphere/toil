@@ -96,9 +96,11 @@ develop: check_venv
 	pip install -e .$(extras) $(packages)
 
 clean_develop: check_venv
-	- pip uninstall -y toil
 	- rm -rf src/*.egg-info
 	- rm src/toil/version.py
+
+uninstall:
+	- pip uninstall -y toil
 
 sdist: dist/$(sdist_name)
 
