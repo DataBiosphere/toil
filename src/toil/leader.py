@@ -478,7 +478,7 @@ class Leader:
                 # making sure that we don't stay in a state that where we
                 # reissue the job every time we get one.
                 logger.warning('Job: %s is being restarted as a checkpoint after the total '
-                            'failure of jobs in its subtree.', predecessor_id)
+                               'failure of jobs in its subtree.', predecessor_id)
                 self.issueJob(predecessor)
         else:
             # Mark it totally failed
