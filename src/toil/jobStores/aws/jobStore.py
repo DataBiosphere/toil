@@ -1274,7 +1274,11 @@ class AWSJobStore(AbstractJobStore):
                             # Save the checksum
                             info.checksum = info._finish_checksum(hasher)
 
-                            for attempt in retry_s3():
+                            for attempt in retry_s3(timeout=600):
+                                # Wait here for a bit longer if S3 breaks,
+                                # because we have been known to flake out here
+                                # in tests
+                                # (https://github.com/DataBiosphere/toil/issues/3894)
                                 with attempt:
                                     logger.debug('Attempting to complete upload...')
                                     completed = client.complete_multipart_upload(

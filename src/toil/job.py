@@ -2449,7 +2449,7 @@ class FunctionWrappingJob(Job):
 
         self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__).globalize()
         self.userFunctionName = str(userFunction.__name__)
-        self.jobName = self.userFunctionName
+        self.description.jobName = self.userFunctionName
         self._args = args
         self._kwargs = kwargs
 
@@ -2694,11 +2694,8 @@ class ServiceHostJob(Job):
         # We can't just pickle right away because we may owe promises from it.
         self.pickledService = None
 
-        # Pick up our name form the service.
-        self.jobName = service.jobName
-        # This references the parent job wrapper. It is initialised just before
-        # the job is run. It is used to access the start and terminate flags.
-        self.jobGraph = None
+        # Pick up our name from the service.
+        self.description.jobName = service.jobName
 
     @property
     def fileStore(self):
@@ -2781,10 +2778,16 @@ class ServiceHostJob(Job):
                 # Check the service's status and exit if failed or complete
                 try:
                     if not service.check():
-                        logger.debug("The service has finished okay, exiting")
-                        break
+                        logger.debug("The service has finished okay, but we have not been told to terminate. "
+                                     "Waiting for leader to tell us to come back.")
+                        # TODO: Adjust leader so that it keys on something
+                        # other than the services finishing (assumed to be
+                        # after the children) to know when to run follow-on
+                        # successors. Otherwise, if we come back now, we try to
+                        # run the child jobs again and get
+                        # https://github.com/DataBiosphere/toil/issues/3484
                 except RuntimeError:
-                    logger.debug("Detected termination of the service")
+                    logger.debug("Detected abnormal termination of the service")
                     raise
 
                 time.sleep(fileStore.jobStore.config.servicePollingInterval) #Avoid excessive polling
