@@ -41,7 +41,6 @@ class ManagedNodesNotSupportedException(RuntimeError):
     Polling with this and try/except is the Right Way to check if managed nodes
     are available from a provisioner.
     """
-    pass
 
 
 @total_ordering

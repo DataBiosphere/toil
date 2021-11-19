@@ -15,15 +15,12 @@ import fcntl
 import itertools
 import logging
 import os
-import stat
 import subprocess
 import sys
 import tempfile
 import time
 from abc import ABCMeta, abstractmethod
 from fractions import Fraction
-from inspect import getsource
-from textwrap import dedent
 from unittest import skipIf
 
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
@@ -40,7 +37,6 @@ from toil.batchSystems.registry import (
     addBatchSystemFactory,
     restore_batch_system_plugin_state,
     save_batch_system_plugin_state,
-    single_machine_batch_system_factory,
 )
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config, Toil

@@ -50,7 +50,6 @@ from toil.jobStores.aws.utils import (
     fileSizeAndTime,
     monkeyPatchSdbConnection,
     no_such_sdb_domain,
-    region_to_bucket_location,
     retry_s3,
     retry_sdb,
     retryable_s3_errors,

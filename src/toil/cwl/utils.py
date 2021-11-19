@@ -24,7 +24,6 @@ from typing import (
     List,
     MutableMapping,
     MutableSequence,
-    Optional,
     Tuple,
     Type,
     TypeVar,

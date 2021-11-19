@@ -25,7 +25,7 @@ import traceback
 from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
 from queue import Empty, Queue
-from typing import Callable, Dict, Optional, TypeVar, Union
+from typing import Dict, Optional, Union
 from urllib.parse import quote_plus
 from urllib.request import urlopen
 

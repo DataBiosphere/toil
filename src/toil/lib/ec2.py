@@ -1,14 +1,9 @@
-import json
 import logging
-import os
-import re
 import time
-import urllib.request
 from base64 import b64encode
 from operator import attrgetter
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Dict, Iterable, List, Optional, Union
 
-import boto3
 from boto3 import Session
 from boto3.resources.base import ServiceResource
 from boto.ec2.instance import Instance as Boto2Instance

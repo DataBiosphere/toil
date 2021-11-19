@@ -16,7 +16,6 @@ import datetime
 import logging
 import random
 import time
-import types
 import uuid
 from collections import defaultdict
 from contextlib import contextmanager
@@ -31,7 +30,6 @@ from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
 from toil.common import Config, defaultTargetTime
 from toil.job import JobDescription
 from toil.lib.conversions import human2bytes as h2b
-from toil.provisioners import parse_node_types
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.clusterScaler import (BinPackedFit,
                                              ClusterScaler,

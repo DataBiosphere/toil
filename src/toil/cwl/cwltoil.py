@@ -2771,7 +2771,7 @@ def generate_default_job_store(
             # We can't use a local directory on Google cloud
 
             # Make sure we have the Google job store
-            from toil.jobStores.googleJobStore import GoogleJobStore
+            from toil.jobStores.googleJobStore import GoogleJobStore  # noqa
 
             # Look for a project
             project = os.getenv("TOIL_GOOGLE_PROJECTID")
@@ -2784,7 +2784,7 @@ def generate_default_job_store(
             # If we aren't provisioning on Google, we should try an AWS batch system.
 
             # Make sure we have AWS
-            from toil.jobStores.aws.jobStore import AWSJobStore
+            from toil.jobStores.aws.jobStore import AWSJobStore  # noqa
 
             # Find a region
             from toil.provisioners.aws import get_current_aws_region

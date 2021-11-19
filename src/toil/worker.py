@@ -618,7 +618,6 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
                 os.chmod(os.path.dirname(path),  stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
             except PermissionError as e:
                 logger.error('Could not set permissions on %s to allow cleanup of %s: %s', os.path.dirname(path), path, e)
-                pass
         shutil.rmtree(localWorkerTempDir, onerror=make_parent_writable)
 
     # This must happen after the log file is done with, else there is no place to put the log

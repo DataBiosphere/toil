@@ -2,7 +2,6 @@ import datetime
 import logging
 import os
 import random
-import shutil
 import socket
 import subprocess
 import sys

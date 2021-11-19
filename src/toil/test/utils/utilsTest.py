@@ -16,7 +16,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 import uuid
 from unittest.mock import patch
@@ -153,7 +152,6 @@ class UtilsTest(ToilTest):
                     '--leaderNodeType=t2.medium', '--keyPairName=' + keyName, clusterName,
                     '--provisioner=aws', '--zone=us-west-2a', '--logLevel=DEBUG'])
 
-            from toil.provisioners import cluster_factory
             cluster = toil.provisioners.cluster_factory(provisioner='aws', zone='us-west-2a', clusterName=clusterName)
             leader = cluster.getLeader()
 

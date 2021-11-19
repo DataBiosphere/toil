@@ -11,24 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import enum
 import logging
-import os
-import shutil
-from abc import ABC, abstractmethod
-from contextlib import contextmanager
 from types import TracebackType
 from typing import (
     Any,
-    Callable,
     ContextManager,
-    Dict,
     List,
-    NamedTuple,
     Optional,
-    Tuple,
     Type,
-    Union,
 )
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, WorkerCleanupInfo

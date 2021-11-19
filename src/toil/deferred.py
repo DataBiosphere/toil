@@ -14,7 +14,6 @@
 import fcntl
 import logging
 import os
-import shutil
 import tempfile
 from collections import namedtuple
 from contextlib import contextmanager

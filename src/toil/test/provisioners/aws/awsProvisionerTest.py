@@ -457,9 +457,9 @@ class AWSManagedAutoscaleTest(AWSAutoscaleTest):
         self.requestedNodeStorage = 20
 
     def launchCluster(self):
-        from boto.ec2.blockdevicemapping import BlockDeviceType
+        from boto.ec2.blockdevicemapping import BlockDeviceType  # noqa
 
-        from toil.lib.ec2 import wait_instances_running
+        from toil.lib.ec2 import wait_instances_running  # noqa
         self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
                                      '--nodeTypes', ",".join(self.instanceTypes),
                                      '--workers', ",".join([f'0-{c}' for c in self.numWorkers]),

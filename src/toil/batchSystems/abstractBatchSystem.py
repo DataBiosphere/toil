@@ -27,8 +27,6 @@ from typing import (
     List,
     NamedTuple,
     Optional,
-    Tuple,
-    Type,
     TypeVar,
     Union,
 )
@@ -231,7 +229,6 @@ class AbstractBatchSystem(ABC):
         """
         If this batch system provides any command line options, add them to the given parser.
         """
-        pass
 
     OptionType = TypeVar('OptionType')
     @classmethod
@@ -245,7 +242,6 @@ class AbstractBatchSystem(ABC):
         """
         # TODO: change type to a Protocol to express kwarg names, or else use a
         # different interface (generator?)
-        pass
 
     def getWorkerContexts(self) -> List[ContextManager[Any]]:
         """

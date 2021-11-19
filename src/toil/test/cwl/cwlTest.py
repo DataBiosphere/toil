@@ -27,7 +27,6 @@ from typing import Dict, List, MutableMapping, Optional
 from unittest.mock import Mock, call
 from urllib.request import urlretrieve
 
-import psutil
 import pytest
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa

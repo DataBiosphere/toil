@@ -61,7 +61,6 @@ from toil.lib.retry import (
     ErrorCondition,
     get_error_body,
     get_error_code,
-    get_error_message,
     get_error_status,
     old_retry,
     retry,
@@ -1700,7 +1699,6 @@ class AWSProvisioner(AbstractProvisioner):
         except BotoServerError as e:
             if e.status == 409 and e.error_code == 'EntityAlreadyExists':
                 logger.debug('IAM role already exists. Reusing.')
-                pass
             else:
                 raise
 

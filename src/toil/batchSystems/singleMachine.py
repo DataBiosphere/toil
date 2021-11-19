@@ -22,7 +22,7 @@ from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
 from queue import Empty, Queue
 from threading import Condition, Event, Lock, Thread
-from typing import Callable, Dict, List, Optional, Sequence, TypeVar, Union
+from typing import Dict, List, Optional, Sequence, Union
 
 import toil
 from toil import worker as toil_worker
