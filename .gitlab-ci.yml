@@ -49,6 +49,7 @@ lint:
     - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && make prepare && make develop extras=[all] packages=htcondor
     - make mypy
     - make docs
+    - make diff_pydocstyle_report
 
 
 cwl_dependency_is_stand_alone:
