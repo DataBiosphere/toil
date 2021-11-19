@@ -32,8 +32,9 @@ import sys
 import tempfile
 import time
 import uuid
+import yaml
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Callable, Optional, Dict, List, TypeVar, Union
+from typing import Any, Callable, Optional, Dict, List, TypeVar, Union
 
 import kubernetes
 import urllib3
@@ -49,6 +50,7 @@ from toil.job import JobDescription
 from toil.lib.conversions import human2bytes
 from toil.lib.misc import utc_now, slow_down
 from toil.lib.retry import ErrorCondition, retry
+from toil.lib.throttle import LocalThrottle
 from toil.resource import Resource
 from toil.statsAndLogging import configure_root_logger, set_log_level
 
@@ -138,6 +140,45 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         self.jobIds = set()
 
+        # Because CWL tests sometimes time out on CI with Kubernetes, we need
+        # to have some machinery to log potentially
+        # stuck/running-longer-than-nprmal pods. We want to log these
+        # periodically, so we use a throttle to make sure we don't talk about
+        # them too much.
+        self.dump_throttle = LocalThrottle(60)
+
+    def _pretty_print(self, kubernetes_object: Any) -> str:
+        """
+        Pretty-print a Kubernetes API object to a YAML string. Recursively
+        drops boring fields.
+        """
+
+        if not kubernetes_object:
+            return 'None'
+
+        # We need a Kubernetes widget that knows how to translate
+        # its data structures to nice YAML-able dicts. See:
+        # <https://github.com/kubernetes-client/python/issues/1117#issuecomment-939957007>
+        api_client = kubernetes.client.ApiClient()
+
+        # Convert to a dict
+        root_dict = api_client.sanitize_for_serialization(kubernetes_object)
+
+        def drop_boring(here):
+            """
+            Drop boring fields recursively.
+            """
+            boring_keys = []
+            for k, v in here.items():
+                if isinstance(v, dict):
+                    drop_boring(v)
+                if k in ['managedFields']:
+                    boring_keys.append(k)
+            for k in boring_keys:
+                del here[k]
+
+        drop_boring(root_dict)
+        return yaml.dump(root_dict)
 
     def _api(self, kind, max_age_seconds = 5 * 60):
         """
@@ -753,7 +794,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     if jobObject.status.failed > 0:
                         exitReason = BatchJobExitReason.FAILED
                         pod = self._getPodForJob(jobObject)
-                        logger.debug("Failed job %s", str(jobObject))
+                        logger.debug("Failed job %s", self._pretty_print(jobObject))
                         logger.warning("Failed Job Message: %s", termination.message)
                         exitCode = pod.status.container_statuses[0].state.terminated.exit_code
 
@@ -814,15 +855,20 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         jobObject = None
         # Put 'done', 'failed', or 'stuck' here
         chosenFor = ''
+        # And this will be an arbitrary job that may or may not meet our
+        # criteria, for debugging
+        any_job = None
 
         for j in self._ourJobObject(onlySucceeded=True):
             # Look for succeeded jobs because that's the only filter Kubernetes has
             jobObject = j
             chosenFor = 'done'
+            any_job = j
 
         if jobObject is None:
             for j in self._ourJobObject():
                 # If there aren't any succeeded jobs, scan all jobs
+                any_job = j
                 # See how many times each failed
                 failCount = getattr(j.status, 'failed', 0)
                 if failCount is None:
@@ -878,6 +924,13 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         if jobObject is None:
             # Say we couldn't find anything
+            if any_job:
+                # But log what's there and not updated, in case it should be
+                # updated and is somehow stuck.
+                if self.dump_throttle.throttle(wait=False):
+
+                    logger.debug('No Kubernetes job is finished, but we do have a job: %s', any_job.metadata.name)
+                    logger.debug('Unfinished job pod:\n%s', self._pretty_print(self._getPodForJob(any_job)))
             return None
 
 
@@ -1040,14 +1093,14 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             for pod in ourPods:
                 try:
                     if pod.status.phase == 'Failed':
-                            logger.debug('Failed pod encountered at shutdown: %s', str(pod))
+                            logger.debug('Failed pod encountered at shutdown:\n%s', self._pretty_print(pod))
                     if pod.status.phase == 'Orphaned':
-                            logger.debug('Orphaned pod encountered at shutdown: %s', str(pod))
+                            logger.debug('Orphaned pod encountered at shutdown:\n%s', self._pretty_print(pod))
                 except:
                     # Don't get mad if that doesn't work.
                     pass
                 try:
-                    logger.debug('Cleaning up pod at shutdown: %s', str(pod))
+                    logger.debug('Cleaning up pod at shutdown: %s', pod.metadata.name)
                     respone = self._try_kubernetes_expecting_gone(self._api('core').delete_namespaced_pod,  pod.metadata.name,
                                         self.namespace,
                                         propagation_policy='Background')
