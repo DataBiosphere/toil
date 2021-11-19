@@ -332,7 +332,7 @@ class AbstractJobStore(ABC):
         """
         for jobStoreCls in self._jobStoreClasses:
             if jobStoreCls._supports_url(url, export):
-                return cast('AbstractJobStore', jobStoreCls)
+                return jobStoreCls
         raise RuntimeError("No job store implementation supports %sporting for URL '%s'" %
                            ('ex' if export else 'im', url.geturl()))
 

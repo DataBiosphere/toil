@@ -32,6 +32,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Dict,
     List,
     Optional,
     Tuple,
@@ -96,6 +97,7 @@ class Config:
         self.jobStore is the same, e.g. when a job store name is reused after a previous run has
         finished successfully and its job store has been clean up."""
         self.workflowAttemptNumber = None
+        self.jobStore = None
         self.logLevel: str = logging.getLevelName(root_logger.getEffectiveLevel())
         self.workDir = None
         self.noStdOutErr: bool = False

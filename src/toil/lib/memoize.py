@@ -23,7 +23,7 @@ MAT = TypeVar("MAT")
 MRT = TypeVar("MRT")
 
 
-def memoize(f: Callable[MAT, MRT]) -> Callable[MAT, MRT]:
+def memoize(f: Callable[[MAT], MRT]) -> Callable[[MAT], MRT]:
     """
     Memoize a function result based on its parameters using this decorator.
 
@@ -46,7 +46,7 @@ def memoize(f: Callable[MAT, MRT]) -> Callable[MAT, MRT]:
     return new_f
 
 
-def sync_memoize(f: Callable[MAT, MRT]) -> Callable[MAT, MRT]:
+def sync_memoize(f: Callable[[MAT], MRT]) -> Callable[[MAT], MRT]:
     """
     Like memoize, but guarantees that decorated function is only called once, even when multiple
     threads are calling the decorating function with multiple parameters.
