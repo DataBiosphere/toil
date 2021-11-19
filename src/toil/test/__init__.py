@@ -150,7 +150,7 @@ class ToilTest(unittest.TestCase):
 
     @classmethod
     def _createTempDirEx(cls, *names: str) -> str:
-        prefix = ['toil', 'test', strclass(cls)]
+        prefix = ['toil', 'test', strclass(cls)[len("toil.test."):]
         prefix.extend([_f for _f in names if _f])
         prefix.append('')
         temp_dir_path = os.path.realpath(tempfile.mkdtemp(dir=cls._tempBaseDir, prefix='-'.join(prefix)))
