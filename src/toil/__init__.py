@@ -103,9 +103,10 @@ def which(cmd, mode=os.F_OK | os.X_OK, path=None):
     return None
 
 
-def toilPackageDirPath():
+def toilPackageDirPath() -> str:
     """
-    Returns the absolute path of the directory that corresponds to the top-level toil package.
+    Return the absolute path of the directory that corresponds to the top-level toil package.
+
     The return value is guaranteed to end in '/toil'.
     """
     result = os.path.dirname(os.path.realpath(__file__))

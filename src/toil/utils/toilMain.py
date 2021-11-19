@@ -44,18 +44,16 @@ def get_or_die(module: types.ModuleType, name: str) -> Any:
 
 def loadModules() -> Dict[str, types.ModuleType]:
     # noinspection PyUnresolvedReferences
-    from toil.utils import (
-        toilClean,  # noqa
-        toilDebugFile,  # noqa
-        toilDebugJob,  # noqa
-        toilDestroyCluster,  # noqa
-        toilKill,  # noqa
-        toilLaunchCluster,  # noqa
-        toilRsyncCluster,  # noqa
-        toilSshCluster,  # noqa
-        toilStats,  # noqa
-        toilStatus,  # noqa
-    )
+    from toil.utils import toilClean  # noqa
+    from toil.utils import toilDebugFile  # noqa
+    from toil.utils import toilDebugJob  # noqa
+    from toil.utils import toilDestroyCluster  # noqa
+    from toil.utils import toilKill  # noqa
+    from toil.utils import toilLaunchCluster  # noqa
+    from toil.utils import toilRsyncCluster  # noqa
+    from toil.utils import toilSshCluster  # noqa
+    from toil.utils import toilStats  # noqa
+    from toil.utils import toilStatus  # noqa
 
     return {
         "-".join([i.lower() for i in re.findall("[A-Z][^A-Z]*", name)]): module

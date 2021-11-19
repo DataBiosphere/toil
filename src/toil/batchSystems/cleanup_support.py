@@ -13,13 +13,7 @@
 # limitations under the License.
 import logging
 from types import TracebackType
-from typing import (
-    Any,
-    ContextManager,
-    List,
-    Optional,
-    Type,
-)
+from typing import Any, ContextManager, List, Optional, Type
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, WorkerCleanupInfo
 from toil.batchSystems.local_support import BatchSystemLocalSupport

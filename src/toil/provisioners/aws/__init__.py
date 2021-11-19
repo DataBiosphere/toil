@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 ZoneTuple = namedtuple('ZoneTuple', ['name', 'price_deviation'])
 
 
-def running_on_ec2():
+def running_on_ec2() -> bool:
     def file_begins_with(path, prefix):
         with open(path) as f:
             return f.read(len(prefix)) == prefix
