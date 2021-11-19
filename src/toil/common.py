@@ -326,6 +326,7 @@ class Config:
         set_option("writeLogsGzip")
         set_option("writeLogsFromAllJobs")
         set_option("runCwlInternalJobsOnWorkers")
+        set_option("statusWait", int)
         set_option("disableProgress")
 
         assert not (self.writeLogs and self.writeLogsGzip), \
@@ -708,6 +709,8 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
     misc_options.add_argument('--forceDockerAppliance', dest='forceDockerAppliance', action='store_true', default=False,
                               help='Disables sanity checking the existence of the docker image specified by '
                                    'TOIL_APPLIANCE_SELF, which Toil uses to provision mesos for autoscaling.')
+    misc_options.add_argument('--statusWait', dest='statusWait', type=int, default=3600,
+                              help="Seconds to wait between reports of running jobs.")
     misc_options.add_argument('--disableProgress', dest='disableProgress', action='store_true', default=False,
                               help="Disables the progress bar shown when standard error is a terminal.")
 
