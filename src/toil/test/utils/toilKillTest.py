@@ -42,7 +42,7 @@ class ToilKillTest(ToilTest):
         unittest.TestCase.tearDown(self)
 
     @needs_cwl
-    def testCWLToilKill(self):
+    def test_cwl_toil_kill(self):
         """Test "toil kill" on a CWL workflow with a 100 second sleep."""
 
         run_cmd = ['toil-cwl-runner', '--jobStore', self.jobstore, self.cwl, self.yaml]
