@@ -17,6 +17,7 @@ import threading
 import time
 from typing import Union
 
+
 class LocalThrottle:
     """
     A thread-safe rate limiter that throttles each thread independently. Can be used as a

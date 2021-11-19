@@ -17,21 +17,23 @@ import os
 import shutil
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from typing import (Any,
-                    Callable,
-                    ContextManager,
-                    Dict,
-                    List,
-                    Optional,
-                    Tuple,
-                    Type,
-                    Union,
-                    NamedTuple)
 from types import TracebackType
+from typing import (
+    Any,
+    Callable,
+    ContextManager,
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+    Type,
+    Union,
+)
 
-from toil.batchSystems.abstractBatchSystem import WorkerCleanupInfo, BatchSystemSupport
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, WorkerCleanupInfo
 from toil.batchSystems.local_support import BatchSystemLocalSupport
-from toil.common import Toil, Config
+from toil.common import Config, Toil
 from toil.lib.threading import LastProcessStandingArena
 
 logger = logging.getLogger(__name__)

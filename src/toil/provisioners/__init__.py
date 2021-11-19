@@ -13,7 +13,7 @@
 # limitations under the License.
 import logging
 from difflib import get_close_matches
-from typing import List, Tuple, Set, Optional, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, List, Optional, Set, Tuple, Union
 
 if TYPE_CHECKING:
     from toil.provisioners.aws.awsProvisioner import AWSProvisioner

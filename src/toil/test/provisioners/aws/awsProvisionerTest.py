@@ -14,27 +14,28 @@
 import logging
 import os
 import subprocess
-import time
 import tempfile
+import time
 from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent
 from uuid import uuid4
 
-import pytest
-
 import boto.ec2
+import pytest
 
 from toil.lib.aws import zone_to_region
 from toil.provisioners import cluster_factory
 from toil.provisioners.aws import get_best_aws_zone
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-from toil.test import (ToilTest,
-                       integrative,
-                       needs_fetchable_appliance,
-                       needs_aws_ec2,
-                       slow,
-                       timeLimit)
+from toil.test import (
+    ToilTest,
+    integrative,
+    needs_aws_ec2,
+    needs_fetchable_appliance,
+    slow,
+    timeLimit,
+)
 from toil.version import exactPython
 
 log = logging.getLogger(__name__)

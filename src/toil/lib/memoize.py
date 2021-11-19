@@ -15,10 +15,9 @@
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
 import datetime
 import re
-
 from functools import wraps
 from threading import Lock
-from typing import Dict, Any, Callable, Tuple
+from typing import Any, Callable, Dict, Tuple
 
 
 def memoize(f: Callable[..., Any]) -> Callable[..., Any]:

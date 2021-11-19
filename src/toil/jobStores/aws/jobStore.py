@@ -11,10 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import hashlib
 import itertools
 import logging
+import os
 import pickle
 import re
 import reprlib
@@ -26,44 +26,46 @@ import urllib.request
 import uuid
 from contextlib import contextmanager
 from io import BytesIO
-
-import boto.sdb
-import boto.s3.connection
 from typing import Optional
+
+import boto.s3.connection
+import boto.sdb
 from boto.exception import SDBResponseError
 from botocore.exceptions import ClientError
 
 import toil.lib.encryption as encryption
 from toil.fileStores import FileID
-from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             ConcurrentFileModificationException,
-                                             JobStoreExistsException,
-                                             NoSuchFileException,
-                                             NoSuchJobException,
-                                             NoSuchJobStoreException)
-from toil.jobStores.aws.utils import (SDBHelper,
-                                      bucket_location_to_region,
-                                      uploadFromPath,
-                                      uploadFile,
-                                      copyKeyMultipart,
-                                      fileSizeAndTime,
-                                      monkeyPatchSdbConnection,
-                                      no_such_sdb_domain,
-                                      region_to_bucket_location,
-                                      retry_s3,
-                                      retry_sdb,
-                                      retryable_s3_errors,
-                                      sdb_unavailable)
-from toil.jobStores.utils import (ReadablePipe,
-                                  ReadableTransformingPipe,
-                                  WritablePipe)
+from toil.jobStores.abstractJobStore import (
+    AbstractJobStore,
+    ConcurrentFileModificationException,
+    JobStoreExistsException,
+    NoSuchFileException,
+    NoSuchJobException,
+    NoSuchJobStoreException,
+)
+from toil.jobStores.aws.utils import (
+    SDBHelper,
+    bucket_location_to_region,
+    copyKeyMultipart,
+    fileSizeAndTime,
+    monkeyPatchSdbConnection,
+    no_such_sdb_domain,
+    region_to_bucket_location,
+    retry_s3,
+    retry_sdb,
+    retryable_s3_errors,
+    sdb_unavailable,
+    uploadFile,
+    uploadFromPath,
+)
+from toil.jobStores.utils import ReadablePipe, ReadableTransformingPipe, WritablePipe
 from toil.lib.aws.utils import create_s3_bucket
 from toil.lib.compatibility import compat_bytes
 from toil.lib.ec2 import establish_boto3_session
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.exceptions import panic
-from toil.lib.memoize import strict_bool
 from toil.lib.io import AtomicFileCreate
+from toil.lib.memoize import strict_bool
 from toil.lib.objects import InnerClass
 from toil.lib.retry import retry
 

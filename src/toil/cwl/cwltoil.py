@@ -36,10 +36,10 @@ import urllib
 import uuid
 from threading import Thread
 from typing import (
+    IO,
     Any,
     Callable,
     Dict,
-    IO,
     Iterator,
     List,
     Mapping,
@@ -87,23 +87,23 @@ from cwltool.utils import (
     CWLOutputType,
     adjustDirObjs,
     aslist,
+    downloadHttpFile,
     get_listing,
     normalizeFilesDirs,
     visit_class,
-    downloadHttpFile,
 )
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
-from schema_salad.exceptions import ValidationException
 from schema_salad.avro.schema import Names
+from schema_salad.exceptions import ValidationException
 from schema_salad.sourceline import SourceLine
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Config, Toil, addOptions
 from toil.cwl.utils import (
+    CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
+    CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
     download_structure,
     visit_cwl_class_and_reduce,
-    CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
-    CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
 )
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -611,9 +611,7 @@ class ToilPathMapper(PathMapper):
         self.stage_listing = stage_listing
         self.streaming_allowed = streaming_allowed
 
-        super().__init__(
-            referenced_files, basedir, stagedir, separateDirs=separateDirs
-        )
+        super().__init__(referenced_files, basedir, stagedir, separateDirs=separateDirs)
 
     def visit(
         self,
@@ -3277,8 +3275,10 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             if options.overrides:
                 loading_context.overrides_list.extend(
                     cwltool.load_tool.load_overrides(
-                        schema_salad.ref_resolver.file_uri(os.path.abspath(options.overrides)),
-                        tool_file_uri
+                        schema_salad.ref_resolver.file_uri(
+                            os.path.abspath(options.overrides)
+                        ),
+                        tool_file_uri,
                     )
                 )
 
@@ -3434,7 +3434,10 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             except Exception as err:
                 # TODO: We can't import FailedJobsException due to a circular
                 # import but that's what we'd expect here.
-                if getattr(err, "exit_code", None) == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
+                if (
+                    getattr(err, "exit_code", None)
+                    == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
+                ):
                     # We figured out that we can't support this workflow.
                     logging.error(err)
                     logging.error(

@@ -26,36 +26,36 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
 from contextlib import contextmanager
 from io import BytesIO
 from typing import (
-    cast,
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
-    List,
     Iterator,
+    List,
     Mapping,
     Optional,
-    Union,
     Set,
     Tuple,
-    TYPE_CHECKING,
+    Union,
+    cast,
 )
 
-from typing_extensions import overload, Literal
 import dill
+from typing_extensions import Literal, overload
 
 from toil.common import Config, Toil, addOptions, safeUnpickleFromStream
 from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
-from toil.lib.expando import Expando
 from toil.lib.conversions import human2bytes
+from toil.lib.expando import Expando
 from toil.lib.resources import (get_total_cpu_time,
                                 get_total_cpu_time_and_memory_usage)
 from toil.resource import ModuleDescriptor
 from toil.statsAndLogging import set_logging_from_options
 
 if TYPE_CHECKING:
-    from toil.jobStores.abstractJobStore import AbstractJobStore
     from toil.fileStores.abstractFileStore import AbstractFileStore
+    from toil.jobStores.abstractJobStore import AbstractJobStore
 
 logger = logging.getLogger(__name__)
 

@@ -16,14 +16,13 @@ import logging
 import os
 import sys
 from functools import reduce
+from typing import Any, Dict, List, Optional, Set
 
 from toil.common import Config, Toil, parser_with_common_options
 from toil.job import Job, JobDescription, JobException, ServiceJobDescription
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobStoreException)
 from toil.statsAndLogging import StatsAndLogging, set_logging_from_options
-
-from typing import List, Dict, Set, Any, Optional
 
 logger = logging.getLogger(__name__)
 

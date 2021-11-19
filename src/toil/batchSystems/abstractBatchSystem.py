@@ -18,20 +18,22 @@ import shutil
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
-from typing import (Any,
-                    Callable,
-                    ContextManager,
-                    Dict,
-                    Iterator,
-                    List,
-                    Optional,
-                    Tuple,
-                    Type,
-                    TypeVar,
-                    Union,
-                    NamedTuple)
+from typing import (
+    Any,
+    Callable,
+    ContextManager,
+    Dict,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+)
 
-from toil.common import Toil, cacheDirName, Config
+from toil.common import Config, Toil, cacheDirName
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import JobDescription

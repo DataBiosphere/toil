@@ -12,16 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import configparser
+import json
 import logging
 import os.path
 import subprocess
 import tempfile
 import textwrap
-import json
 from abc import ABC, abstractmethod
-
 from functools import total_ordering
-from typing import List, Dict, Tuple, Optional, Set, Union
+from typing import Dict, List, Optional, Set, Tuple, Union
 from urllib.parse import quote
 from uuid import uuid4
 

@@ -34,18 +34,19 @@ from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
 # protected by annotations.
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
-from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
-                                        BATCH_SYSTEMS,
-                                        single_machine_batch_system_factory,
-                                        addBatchSystemFactory,
-                                        save_batch_system_plugin_state,
-                                        restore_batch_system_plugin_state)
-from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
+from toil.batchSystems.registry import (
+    BATCH_SYSTEM_FACTORY_REGISTRY,
+    BATCH_SYSTEMS,
+    addBatchSystemFactory,
+    restore_batch_system_plugin_state,
+    save_batch_system_plugin_state,
+    single_machine_batch_system_factory,
+)
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config, Toil
 from toil.job import Job, JobDescription
-from toil.lib.threading import cpu_count
 from toil.lib.retry import retry_flaky_test
+from toil.lib.threading import cpu_count
 from toil.test import (ToilTest,
                        needs_aws_s3,
                        needs_fetchable_appliance,
@@ -60,6 +61,7 @@ from toil.test import (ToilTest,
                        needs_torque,
                        slow,
                        travis_test)
+from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 
 logger = logging.getLogger(__name__)
 
@@ -558,8 +560,8 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
             #!/usr/bin/env python3
             import fcntl
             import os
-            import sys
             import signal
+            import sys
             import time
             from typing import Any
 

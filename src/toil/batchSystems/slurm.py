@@ -14,11 +14,13 @@
 import logging
 import math
 import os
-from pipes import quote
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Callable, List, Dict, Optional, TypeVar, Union
+from pipes import quote
+from typing import Callable, Dict, List, Optional, TypeVar, Union
 
-from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
+from toil.batchSystems.abstractGridEngineBatchSystem import (
+    AbstractGridEngineBatchSystem,
+)
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)

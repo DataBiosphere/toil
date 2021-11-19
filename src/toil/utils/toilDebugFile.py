@@ -15,12 +15,12 @@
 import argparse
 import logging
 import os.path
+from typing import Optional
 
 from toil.common import Config, Toil, parser_with_common_options
 from toil.jobStores.abstractJobStore import AbstractJobStore
-from toil.statsAndLogging import set_logging_from_options
 from toil.lib.resources import glob
-from typing import Optional
+from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
 

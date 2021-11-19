@@ -13,7 +13,6 @@
 # limitations under the License.
 import os
 import stat
-
 from typing import Any
 
 

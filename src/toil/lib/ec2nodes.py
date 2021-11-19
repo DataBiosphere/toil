@@ -16,10 +16,9 @@ import json
 import logging
 import os
 import textwrap
+from typing import Any, Dict, List, Tuple, Union
 
 import requests
-
-from typing import Dict, List, Union, Tuple, Any
 
 logger = logging.getLogger(__name__)
 dirname = os.path.dirname(__file__)

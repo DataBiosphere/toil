@@ -18,37 +18,38 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from threading import Event, Semaphore
 from typing import (
+    TYPE_CHECKING,
     Any,
-    List,
-    Dict,
-    Set,
     BinaryIO,
     Callable,
     ContextManager,
+    Dict,
     Generator,
     Iterator,
+    List,
     Optional,
+    Set,
     TextIO,
     Tuple,
     Type,
     Union,
-    TYPE_CHECKING,
     cast,
 )
+
 import dill
 
 from toil.common import cacheDirName
 from toil.fileStores import FileID
-from toil.jobStores.abstractJobStore import AbstractJobStore
-from toil.lib.io import WriteWatchingStream
 from toil.job import Job, JobDescription
+from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.compatibility import deprecated
+from toil.lib.io import WriteWatchingStream
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from toil.fileStores.nonCachingFileStore import NonCachingFileStore
     from toil.fileStores.cachingFileStore import CachingFileStore
+    from toil.fileStores.nonCachingFileStore import NonCachingFileStore
 
 
 class AbstractFileStore(ABC):

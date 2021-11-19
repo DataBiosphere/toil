@@ -3,11 +3,12 @@ import re
 import sys
 import textwrap
 import types
+from typing import Any, Dict
 
 import pkg_resources
 
 from toil.version import version
-from typing import Any, Dict
+
 
 def main() -> None:
     modules = loadModules()

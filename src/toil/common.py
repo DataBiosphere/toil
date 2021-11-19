@@ -21,37 +21,36 @@ import tempfile
 import time
 import uuid
 import warnings
-
-from urllib.parse import urlparse
 from argparse import (
     ArgumentDefaultsHelpFormatter,
     ArgumentParser,
-    _ArgumentGroup,
     Namespace,
+    _ArgumentGroup,
 )
 from typing import (
+    IO,
+    TYPE_CHECKING,
     Any,
     Callable,
-    IO,
     List,
     Optional,
     Tuple,
     TypeVar,
     Union,
-    TYPE_CHECKING,
 )
+from urllib.parse import urlparse
 
 import requests
 
 from toil import logProcessContext, lookupEnvVar
-from toil.fileStores import FileID
 from toil.batchSystems.options import (add_all_batchsystem_options,
                                        set_batchsystem_config_defaults,
                                        set_batchsystem_options)
+from toil.fileStores import FileID
 from toil.lib.aws import zone_to_region
+from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.retry import retry
-from toil.lib.compatibility import deprecated
 from toil.provisioners import add_provisioner_options, cluster_factory, parse_node_types
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import (
@@ -62,8 +61,8 @@ from toil.statsAndLogging import (
 from toil.version import dockerRegistry, dockerTag, version
 
 if TYPE_CHECKING:
-    from toil.jobStores.abstractJobStore import AbstractJobStore
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
+    from toil.jobStores.abstractJobStore import AbstractJobStore
 
 # aim to pack autoscaling jobs within a 30 minute block before provisioning a new node
 defaultTargetTime = 1800

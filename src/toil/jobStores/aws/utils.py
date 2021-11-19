@@ -21,21 +21,12 @@ import types
 from ssl import SSLError
 from typing import Optional
 
-from boto.exception import (
-    BotoServerError,
-    SDBResponseError,
-    S3ResponseError
-)
 from boto3.s3.transfer import TransferConfig
+from boto.exception import BotoServerError, S3ResponseError, SDBResponseError
 from botocore.exceptions import ClientError
 
 from toil.lib.compatibility import compat_bytes
-from toil.lib.retry import (
-    old_retry,
-    retry,
-    ErrorCondition,
-    get_error_status
-)
+from toil.lib.retry import ErrorCondition, get_error_status, old_retry, retry
 
 logger = logging.getLogger(__name__)
 

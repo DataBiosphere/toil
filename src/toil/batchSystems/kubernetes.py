@@ -33,7 +33,7 @@ import tempfile
 import time
 import uuid
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Callable, Optional, Dict, List, TypeVar, Union
+from typing import Callable, Dict, List, Optional, TypeVar, Union
 
 import kubernetes
 import urllib3
@@ -47,7 +47,7 @@ from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.common import Toil
 from toil.job import JobDescription
 from toil.lib.conversions import human2bytes
-from toil.lib.misc import utc_now, slow_down
+from toil.lib.misc import slow_down, utc_now
 from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
 from toil.statsAndLogging import configure_root_logger, set_log_level

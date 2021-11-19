@@ -14,7 +14,10 @@
 import logging
 from typing import Dict, List, Optional
 
-from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, UpdatedBatchJobInfo
+from toil.batchSystems.abstractBatchSystem import (
+    BatchSystemSupport,
+    UpdatedBatchJobInfo,
+)
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config
 from toil.cwl.utils import CWL_INTERNAL_JOBS

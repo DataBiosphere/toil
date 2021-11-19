@@ -23,8 +23,8 @@ import unittest
 import uuid
 import zipfile
 from io import StringIO
-from unittest.mock import Mock, call
 from typing import Dict, List, MutableMapping, Optional
+from unittest.mock import Mock, call
 from urllib.request import urlretrieve
 
 import psutil
@@ -33,11 +33,14 @@ import pytest
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
-from toil.cwl.utils import visit_top_cwl_class, visit_cwl_class_and_reduce, download_structure
+from toil.cwl.utils import (
+    download_structure,
+    visit_cwl_class_and_reduce,
+    visit_top_cwl_class,
+)
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.threading import cpu_count
-
 from toil.test import (ToilTest,
                        needs_aws_s3,
                        needs_cwl,

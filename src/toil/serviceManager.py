@@ -17,11 +17,11 @@ import logging
 import time
 from queue import Empty, Queue
 from threading import Event, Thread
-from typing import Iterable, Set, Optional
+from typing import Iterable, Optional, Set
 
 from toil.job import ServiceJobDescription
-from toil.lib.throttle import LocalThrottle, throttle
 from toil.jobStores.abstractJobStore import AbstractJobStore
+from toil.lib.throttle import LocalThrottle, throttle
 from toil.toilState import ToilState
 
 logger = logging.getLogger(__name__)

@@ -25,13 +25,12 @@ from threading import Condition, Event, Lock, Thread
 from typing import Callable, Dict, List, Optional, Sequence, TypeVar, Union
 
 import toil
-from toil.common import fC
-from toil.job import JobDescription
 from toil import worker as toil_worker
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
-from toil.common import Config, SYS_MAX_SIZE, Toil
+from toil.common import SYS_MAX_SIZE, Config, Toil, fC
+from toil.job import JobDescription
 from toil.lib.threading import cpu_count
 
 log = logging.getLogger(__name__)

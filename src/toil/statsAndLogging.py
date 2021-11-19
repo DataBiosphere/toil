@@ -16,11 +16,10 @@ import json
 import logging
 import os
 import time
-
 from argparse import ArgumentParser, Namespace
-from threading import Event, Thread
 from logging.handlers import RotatingFileHandler
-from typing import List, Any, Optional, Union, TextIO, BinaryIO, Callable, TYPE_CHECKING
+from threading import Event, Thread
+from typing import TYPE_CHECKING, Any, BinaryIO, Callable, List, Optional, TextIO, Union
 
 from toil.lib.expando import Expando
 from toil.lib.resources import get_total_cpu_time

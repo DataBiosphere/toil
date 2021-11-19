@@ -25,12 +25,12 @@ import tempfile
 import threading
 import traceback
 from contextlib import contextmanager
+from typing import Any, Dict, Iterator, Optional, Union
 
 import psutil  # type: ignore
 
 from toil.lib.exceptions import raise_
 from toil.lib.io import robust_rmtree
-from typing import Dict, Union, Iterator, Optional, Any
 
 logger = logging.getLogger(__name__)
 

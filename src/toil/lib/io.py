@@ -1,12 +1,11 @@
 import logging
 import os
-import stat
 import shutil
+import stat
 import uuid
-
 from contextlib import contextmanager
 from io import BytesIO
-from typing import Any, Callable, IO, Iterator, Union, Optional
+from typing import IO, Any, Callable, Iterator, Optional, Union
 
 logger = logging.getLogger(__name__)
 

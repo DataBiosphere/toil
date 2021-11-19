@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import unittest
+
 from docker.errors import ImageNotFound
 from toil import checkDockerImageExists, parseDockerAppliance
 from toil.test import ToilTest, needs_docker

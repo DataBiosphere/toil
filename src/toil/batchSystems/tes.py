@@ -27,20 +27,20 @@ import os
 import pickle
 import time
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, Optional, Dict, List, Union
+from typing import Any, Callable, Dict, List, Optional, Union
+
+import tes
+from requests.exceptions import HTTPError
 
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchJobExitReason,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
-from toil.common import Toil, Config
+from toil.common import Config, Toil
 from toil.job import JobDescription
-from toil.lib.misc import utc_now, slow_down, get_public_ip
+from toil.lib.misc import get_public_ip, slow_down, utc_now
 from toil.resource import Resource
-
-import tes
-from requests.exceptions import HTTPError
 
 logger = logging.getLogger(__name__)
 

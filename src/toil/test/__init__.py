@@ -30,8 +30,8 @@ from inspect import getsource
 from shutil import which
 from textwrap import dedent
 from unittest.util import strclass
-from urllib.request import urlopen
 from urllib.error import HTTPError, URLError
+from urllib.request import urlopen
 
 import pytz
 

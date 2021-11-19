@@ -15,10 +15,10 @@ import errno
 import hashlib
 import logging
 import os
-import stat
 import re
 import shutil
 import sqlite3
+import stat
 import tempfile
 import threading
 import time
@@ -28,13 +28,13 @@ from typing import Any, Callable, Generator, Optional
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.job import Job, JobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore
+from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human
-from toil.lib.io import atomic_copy, atomic_copyobj, robust_rmtree, make_public_dir
+from toil.lib.io import atomic_copy, atomic_copyobj, make_public_dir, robust_rmtree
 from toil.lib.retry import ErrorCondition, retry
 from toil.lib.threading import get_process_name, process_name_exists
-from toil.job import Job, JobDescription
-from toil.lib.compatibility import deprecated
 
 logger = logging.getLogger(__name__)
 

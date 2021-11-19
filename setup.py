@@ -13,9 +13,10 @@
 # limitations under the License.
 import imp
 import os
-
 from tempfile import NamedTemporaryFile
+
 from setuptools import find_packages, setup
+
 
 def get_requirements(extra=None):
     """

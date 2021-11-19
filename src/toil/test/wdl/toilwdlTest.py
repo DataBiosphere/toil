@@ -2,10 +2,10 @@ import os
 import shutil
 import subprocess
 import tempfile
-from typing import List
 import unittest
 import uuid
 import zipfile
+from typing import List
 from urllib.request import urlretrieve
 
 from toil.test import ToilTest, needs_docker, needs_java, slow

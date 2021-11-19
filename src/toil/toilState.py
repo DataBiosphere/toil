@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+from typing import Dict, Optional, Set
 
-from toil.bus import MessageBus, JobUpdatedMessage
+from toil.bus import JobUpdatedMessage, MessageBus
 from toil.job import CheckpointJobDescription, JobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
-from typing import Dict, Set, Optional
 
 logger = logging.getLogger(__name__)
 

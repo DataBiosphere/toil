@@ -23,13 +23,13 @@ from argparse import ArgumentParser, _ArgumentGroup
 from queue import Empty, Queue
 from shutil import which
 from threading import Thread
-from typing import Optional, Union, Dict
+from typing import Dict, Optional, Union
 
 from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
 from toil.common import SYS_MAX_SIZE, Toil
-from toil.test import get_temp_file
 from toil.lib.iterables import concat
+from toil.test import get_temp_file
 
 logger = logging.getLogger(__name__)
 

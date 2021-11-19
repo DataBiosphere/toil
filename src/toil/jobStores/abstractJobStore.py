@@ -15,45 +15,46 @@ import logging
 import pickle
 import re
 import shutil
-from urllib.parse import urlparse, ParseResult
-
 from abc import ABC, ABCMeta, abstractmethod
 from contextlib import closing, contextmanager
 from datetime import timedelta
 from http.client import BadStatusLine
 from io import BytesIO
-from requests.exceptions import HTTPError
+from typing import (
+    IO,
+    Any,
+    Callable,
+    ContextManager,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    TextIO,
+    Tuple,
+    Union,
+    ValuesView,
+    cast,
+)
+from urllib.parse import ParseResult, urlparse
 from urllib.request import urlopen
 from uuid import uuid4
 
-from toil.common import safeUnpickleFromStream, Config
+from requests.exceptions import HTTPError
+from typing_extensions import Literal, overload
+
+from toil.common import Config, safeUnpickleFromStream
 from toil.fileStores import FileID
-from toil.job import (CheckpointJobDescription,
-                      JobException,
-                      JobDescription,
-                      ServiceJobDescription)
-from toil.lib.memoize import memoize
-from toil.lib.io import WriteWatchingStream
-from toil.lib.retry import ErrorCondition, retry
-from toil.lib.compatibility import deprecated
-from typing import (
-    cast,
-    TextIO,
-    IO,
-    List,
-    TextIO,
-    Tuple,
-    Dict,
-    Iterator,
-    Callable,
-    ValuesView,
-    Set,
-    Union,
-    Optional,
-    Any,
-    ContextManager,
+from toil.job import (
+    CheckpointJobDescription,
+    JobDescription,
+    JobException,
+    ServiceJobDescription,
 )
-from typing_extensions import overload, Literal
+from toil.lib.compatibility import deprecated
+from toil.lib.io import WriteWatchingStream
+from toil.lib.memoize import memoize
+from toil.lib.retry import ErrorCondition, retry
 
 logger = logging.getLogger(__name__)
 

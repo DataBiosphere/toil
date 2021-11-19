@@ -14,26 +14,28 @@
 import errno
 import logging
 import os
-import stat
 import pickle
 import random
 import re
 import shutil
+import stat
 import tempfile
 import time
 import uuid
 from contextlib import contextmanager
-from typing import overload, BinaryIO, TextIO, Iterator, Optional, Union
+from typing import BinaryIO, Iterator, Optional, TextIO, Union, overload
 
 from typing_extensions import Literal
 
 from toil.fileStores import FileID
 from toil.job import TemporaryID
-from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             JobStoreExistsException,
-                                             NoSuchFileException,
-                                             NoSuchJobException,
-                                             NoSuchJobStoreException)
+from toil.jobStores.abstractJobStore import (
+    AbstractJobStore,
+    JobStoreExistsException,
+    NoSuchFileException,
+    NoSuchJobException,
+    NoSuchJobStoreException,
+)
 from toil.lib.io import AtomicFileCreate, atomic_copy, atomic_copyobj, robust_rmtree
 
 logger = logging.getLogger(__name__)

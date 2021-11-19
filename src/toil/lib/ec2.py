@@ -1,29 +1,30 @@
-import boto3
-import os
-import urllib.request
 import json
 import logging
+import os
 import re
 import time
-from operator import attrgetter
-from typing import Any, Dict, Iterable, List, Union, Optional
-
+import urllib.request
 from base64 import b64encode
-from boto.ec2.instance import Instance as Boto2Instance
-from boto.ec2.spotinstancerequest import SpotInstanceRequest
+from operator import attrgetter
+from typing import Any, Dict, Iterable, List, Optional, Union
+
+import boto3
 from boto3 import Session
 from boto3.resources.base import ServiceResource
+from boto.ec2.instance import Instance as Boto2Instance
+from boto.ec2.spotinstancerequest import SpotInstanceRequest
 from botocore.client import BaseClient
 from botocore.credentials import JSONFileCache
 from botocore.session import get_session
 
-
 from toil.lib.exceptions import panic
-from toil.lib.retry import (get_error_code,
-                            get_error_message,
-                            old_retry,
-                            retry,
-                            ErrorCondition)
+from toil.lib.retry import (
+    ErrorCondition,
+    get_error_code,
+    get_error_message,
+    old_retry,
+    retry,
+)
 
 a_short_time = 5
 a_long_time = 60 * 60
