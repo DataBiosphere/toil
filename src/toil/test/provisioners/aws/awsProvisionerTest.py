@@ -423,6 +423,10 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
                                      '--nodeStorage', str(self.requestedLeaderStorage)])
 
         self.cluster = cluster_factory(provisioner='aws', zone=self.zone, clusterName=self.clusterName)
+        # We need to wait a little bit here because the workers might not be
+        # visible to EC2 read requests immediately after the create returns,
+        # which is the last thing that starting the cluster does.
+        time.sleep(10)
         nodes = self.cluster._getNodesInCluster(both=True)
         nodes.sort(key=lambda x: x.launch_time)
         # assuming that leader is first
