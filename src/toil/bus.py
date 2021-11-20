@@ -41,7 +41,7 @@ class MessageBus:
 
     All messages are NamedTuple objects of various subtypes.
 
-    Message order is not necessarily preserved.
+    Message order is guaranteed to be preserved within a type.
 
     TODO: Not yet thread safe, but should be made thread safe if we want e.g.
     the ServiceManager to talk to it. Note that defaultdict itself isn't
@@ -101,6 +101,8 @@ class MessageBus:
         # threads could have a reference to the old buffer.
         self.__messages_by_type[message_type] = []
 
+        # Flip around to chronological order
+        message_list.reverse()
         try:
             while len(message_list) > 0:
                 # We need to handle the case where a new message of this type comes
@@ -123,8 +125,10 @@ class MessageBus:
                         # later with another for_each call.
                         message_list.append(message)
         finally:
-            # Dump anything remaining in our buffer back into the main buffer.
-            self.__messages_by_type[message_type] += message_list
+            # Dump anything remaining in our buffer back into the main buffer,
+            # in the right order, and before the later messages.
+            message_list.reverse()
+            self.__messages_by_type[message_type] = message_list + self.__messages_by_type[message_type]
 
 
 

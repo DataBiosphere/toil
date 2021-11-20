@@ -381,14 +381,10 @@ class ServiceManager:
                         service_job_desc.startJobStoreID
                     ):
                         # The service job has gone away but the service never flipped its start flag.
+                        # That's not what the worker is supposed to do when running a service at all.
                         logger.error('Service %s has completed and been removed without ever starting', service_job_desc)
-                        # Stop waiting on the service because we know it won't
-                        # flip the flag.
-                        # TODO: We don't protect the user from this problem
-                        # here. But when this eventually comes up as a user
-                        # issue we'll have a log that might help us track down
-                        # who removed the service.
-                        continue
+                        # Stop everything.
+                        raise RuntimeError(f"Service {service_job_desc} is in an inconsistent state")
 
                 # We don't bail out early here.
 

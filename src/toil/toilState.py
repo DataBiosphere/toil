@@ -80,8 +80,15 @@ class ToilState:
         self.service_to_client: Dict[str, str] = {}
 
         # Holds, for each client job ID, the job IDs of its services that are
-        # currently issued.
+        # possibly currently issued. Includes every service host that has been
+        # given to the service manager by the leader, and hasn't been seen by
+        # the leader as stopped yet.
         self.servicesIssued: Dict[str, Set[str]] = {}
+
+        # Holds the IDs of jobs that are currently issued to the batch system
+        # and haven't come back yet.
+        # TODO: a bit redundant with leader's issued_jobs_by_batch_system_id
+        self.jobs_issued: Set[str] = set()
 
         # The set of totally failed jobs - this needs to be filtered at the
         # end to remove jobs that were removed by checkpoints

@@ -1877,10 +1877,11 @@ class CachingFileStore(AbstractFileStore):
 
             for dbCandidate in os.listdir(dir_):
                 # For each thing in the directory
-                match = re.match('cache-([0-9]+).db', dbCandidate)
+                match = re.match('^cache-([0-9]+).db$', dbCandidate)
                 if match and int(match.group(1)) > dbAttempt:
-                    # If it looks like a caching database and it has a higher
-                    # number than any other one we have seen, use it.
+                    # If it looks like a caching database (and not a journal
+                    # file itself) and it has a higher number than any other
+                    # one we have seen, use it.
                     dbFilename = dbCandidate
                     dbAttempt = int(match.group(1))
 

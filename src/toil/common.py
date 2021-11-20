@@ -15,6 +15,7 @@ import logging
 import os
 import pickle
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -872,6 +873,10 @@ class Toil:
         self.config = config
         self._jobStore = jobStore
         self._inContextManager = True
+
+        # This will make sure `self.__exit__()` is called when we get a SIGTERM signal.
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
+
         return self
 
     # noinspection PyUnusedLocal
@@ -881,8 +886,8 @@ class Toil:
         """
         try:
             if (exc_type is not None and self.config.clean == "onError" or
-                            exc_type is None and self.config.clean == "onSuccess" or
-                        self.config.clean == "always"):
+                    exc_type is None and self.config.clean == "onSuccess" or
+                    self.config.clean == "always"):
 
                 try:
                     if self.config.restart and not self._inRestart:
