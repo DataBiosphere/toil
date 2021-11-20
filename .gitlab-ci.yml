@@ -5,7 +5,7 @@ variables:
   PYTHONIOENCODING: "utf-8"
   DEBIAN_FRONTEND: "noninteractive"
   TOIL_OWNER_TAG: "shared"
-  MAIN_PYTHON_PKG: "python3.10"
+  MAIN_PYTHON_PKG: "python3.9"
 
 before_script:
   # Configure Docker to use a mirror for Docker Hub and restart the daemon
