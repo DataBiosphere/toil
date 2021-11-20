@@ -1,0 +1,3 @@
+from typing import Any
+
+def send_from_directory(directory: Any, filename: Any, **options: Any): ...

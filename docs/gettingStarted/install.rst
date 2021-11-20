@@ -151,11 +151,15 @@ Here's what each extra provides:
 |                | `Workflow Description Language`_. This extra has no native |
 |                | dependencies.                                              |
 +----------------+------------------------------------------------------------+
+| ``server``     | Provides support for Toil server mode, including support   |
+|                | for the GA4GH `Workflow Execution Service`_ API.           |
++----------------+------------------------------------------------------------+
 
 .. _AWS: https://aws.amazon.com/
 .. _Apache Mesos: https://mesos.apache.org/gettingstarted/
 .. _Google Cloud Storage: https://cloud.google.com/storage/
 .. _Workflow Description Language: https://software.broadinstitute.org/wdl/
+.. _Workflow Execution Service: https://ga4gh.github.io/workflow-execution-service-schemas/docs/
 .. _Cryptography: https://cryptography.io/en/latest/installation/
 .. _Homebrew: http://brew.sh/
 
