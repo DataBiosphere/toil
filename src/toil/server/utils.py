@@ -18,7 +18,7 @@ from typing import Optional
 
 import requests
 
-from toil import retry
+from toil.lib.retry import retry
 
 
 def get_iso_time() -> str:

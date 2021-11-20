@@ -93,6 +93,8 @@ def main():
         'src/toil/lib/encryption/conftest.py',
         'src/toil/lib/encryption/__init__.py',
         'src/toil/lib/aws/__init__.py',
+        'src/toil/server/utils.py',
+        'src/toil/server/wes/tasks.py',
         'src/toil/utils/toilStats.py'
     ]]
 
