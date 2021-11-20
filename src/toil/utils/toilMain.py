@@ -9,6 +9,7 @@ import pkg_resources
 from toil.version import version
 from typing import Any, Dict
 
+
 def main() -> None:
     modules = loadModules()
 
@@ -30,6 +31,7 @@ def main() -> None:
     del sys.argv[1]
     get_or_die(module, 'main')()
 
+
 def get_or_die(module: types.ModuleType, name: str) -> Any:
     """
     Get an object from a module or complain that it is missing.
@@ -40,6 +42,7 @@ def get_or_die(module: types.ModuleType, name: str) -> Any:
         sys.stderr.write(f'Internal Toil error!\nToil utility module '
                          f'{module.__name__} is missing required attribute {name}\n')
         sys.exit(1)
+
 
 def loadModules() -> Dict[str, types.ModuleType]:
     # noinspection PyUnresolvedReferences
@@ -52,7 +55,8 @@ def loadModules() -> Dict[str, types.ModuleType]:
                             toilRsyncCluster,
                             toilSshCluster,
                             toilStats,
-                            toilStatus)
+                            toilStatus,
+                            toilServer)
     return {"-".join([i.lower() for i in re.findall('[A-Z][^A-Z]*', name)]): module for name, module in locals().items()}
 
 
