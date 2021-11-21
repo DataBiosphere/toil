@@ -182,7 +182,7 @@ To configure your workflow to run on Kubernetes, you will have to configure seve
 
 #. ``TOIL_AWS_SECRET_NAME`` is the most important, and **must** be set to the secret that contains your AWS ``credentials`` file, **if** your cluster nodes don't otherwise have access to S3 and SimpleDB (such as through IAM roles). This is required for the AWS job store to work, which is currently the only job store that can be used on Kubernetes. In this example we are using ``aws-credentials``.
 
-#. ``TOIL_KUBERNETES_HOST_PATH`` **can** be set to allow Toil jobs on the same physical host to share a cache. It should be set to a path on the host where the shared cache should be stored. It will be mounted as ``/var/lib/toil``, or at ``TOIL_WORKDIR`` if specified, inside the container. This path must already exist on the host, and must have as much free space as your Kubernetes node offers to jobs. In this example, we are using ``/data/scratch``. To actually make use of caching, make sure to also pass ``--disableCaching false`` to your Toil workflow.
+#. ``TOIL_KUBERNETES_HOST_PATH`` **can** be set to allow Toil jobs on the same physical host to share a cache. It should be set to a path on the host where the shared cache should be stored. It will be mounted as ``/var/lib/toil``, or at ``TOIL_WORKDIR`` if specified, inside the container. This path must already exist on the host, and must have as much free space as your Kubernetes node offers to jobs. In this example, we are using ``/data/scratch``. To actually make use of caching, make sure not to use ``--disableCaching``.
 
 #. ``TOIL_KUBERNETES_OWNER`` **should** be set to the username of the user running the Toil workflow. The jobs that Toil creates will include this username, so they can be more easily recognized, and cleaned up by the user if anything happens to the Toil leader. In this example we are using ``demo-user``.
 
@@ -200,7 +200,7 @@ Option 1: Running the Leader Inside Kubernetes
 
 Once you have determined a set of environment variable values for your workflow run, write a YAML file that defines a Kubernetes job to run your workflow with that configuration. Some configuration items (such as your username, and the name of your AWS credentials secret) need to be written into the YAML so that they can be used from the leader as well.
 
-Note that the leader pod will need your workflow script, its other dependencies, and Toil all installed. An easy way to get Toil installed is to start with the Toil appliance image for the version of Toil you want to use. In this example, we use ``quay.io/ucsc_cgl/toil:4.1.0``.
+Note that the leader pod will need your workflow script, its other dependencies, and Toil all installed. An easy way to get Toil installed is to start with the Toil appliance image for the version of Toil you want to use. In this example, we use ``quay.io/ucsc_cgl/toil:5.5.0``.
 
 Here's an example YAML file to run a test workflow: ::
 
@@ -230,7 +230,7 @@ Here's an example YAML file to run a test workflow: ::
         serviceAccountName: default
         containers:
         - name: main
-          image: quay.io/ucsc_cgl/toil:4.1.0
+          image: quay.io/ucsc_cgl/toil:5.5.0
           env:
           # Specify your username for inclusion in job names
           - name: TOIL_KUBERNETES_OWNER
@@ -287,8 +287,7 @@ Here's an example YAML file to run a test workflow: ::
                 aws:us-west-2:demouser-toil-test-jobstore \
                 --batchSystem kubernetes \
                 --realTimeLogging \
-                --logInfo \
-                --disableCaching false
+                --logInfo
 
 You can save this YAML as ``leader.yaml``, and then run it on your Kubernetes installation with: ::
 
@@ -368,8 +367,7 @@ Here is an example of running our test workflow leader locally, outside of Kuber
          aws:us-west-2:demouser-toil-test-jobstore \
          --batchSystem kubernetes \
          --realTimeLogging \
-         --logInfo \
-         --disableCaching false
+         --logInfo
 
 
 

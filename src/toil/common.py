@@ -41,6 +41,8 @@ from typing import (
     Union,
 )
 from urllib.parse import urlparse
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, _ArgumentGroup
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import requests
 
@@ -509,7 +511,7 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
     move_exports.add_argument("--moveExports", dest="moveExports", action='store_true', help=move_exports_help)
     move_exports.add_argument("--noMoveExports", dest="moveExports", action='store_false', help=move_exports_help)
     move_exports.set_defaults(moveExports=False)
-    file_store_options.add_argument('--disableCaching', dest='disableCaching', type='bool', nargs='?', const=True,
+    file_store_options.add_argument('--disableCaching', dest='disableCaching', action='store_true',
                                     default=False,
                                     help='Disables caching in the file store. This flag must be set to use '
                                          'a batch system that does not support cleanup, such as Parasol.')
