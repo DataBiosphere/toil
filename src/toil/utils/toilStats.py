@@ -14,12 +14,12 @@
 """Reports statistical data about a given Toil workflow."""
 import json
 import logging
-from functools import partial
 from argparse import ArgumentParser, Namespace
-from typing import Optional, Dict, List, Callable, TextIO, Any
+from functools import partial
+from typing import Any, Callable, Dict, List, Optional, TextIO
 
-from toil.job import Job
 from toil.common import Config, Toil, parser_with_common_options
+from toil.job import Job
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.expando import Expando
 from toil.statsAndLogging import set_logging_from_options

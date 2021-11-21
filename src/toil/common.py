@@ -22,7 +22,24 @@ import tempfile
 import time
 import uuid
 import warnings
-
+from argparse import (
+    ArgumentDefaultsHelpFormatter,
+    ArgumentParser,
+    Namespace,
+    _ArgumentGroup,
+)
+from typing import (
+    IO,
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
 from urllib.parse import urlparse
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, _ArgumentGroup
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
@@ -30,14 +47,14 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 import requests
 
 from toil import logProcessContext, lookupEnvVar
-from toil.fileStores import FileID
 from toil.batchSystems.options import (add_all_batchsystem_options,
                                        set_batchsystem_config_defaults,
                                        set_batchsystem_options)
+from toil.fileStores import FileID
 from toil.lib.aws import zone_to_region
+from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.retry import retry
-from toil.lib.compatibility import deprecated
 from toil.provisioners import add_provisioner_options, cluster_factory, parse_node_types
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import (
@@ -46,6 +63,10 @@ from toil.statsAndLogging import (
     set_logging_from_options,
 )
 from toil.version import dockerRegistry, dockerTag, version
+
+if TYPE_CHECKING:
+    from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
+    from toil.jobStores.abstractJobStore import AbstractJobStore
 
 # aim to pack autoscaling jobs within a 30 minute block before provisioning a new node
 defaultTargetTime = 1800
@@ -58,7 +79,20 @@ logger = logging.getLogger(__name__)
 
 class Config:
     """Class to represent configuration operations for a toil workflow run."""
-    def __init__(self):
+
+    logFile: Optional[str]
+    logRotating: bool
+    workDir: str
+    cleanWorkDir: str
+    maxLocalJobs: int
+    runCwlInternalJobsOnWorkers: bool
+    tes_endpoint: str
+    tes_user: str
+    tes_password: str
+    tes_bearer_token: str
+    jobStore: str
+
+    def __init__(self) -> None:
         # Core options
         self.workflowID: Optional[str] = None
         """This attribute uniquely identifies the job store and therefore the workflow. It is
@@ -68,14 +102,13 @@ class Config:
         self.workflowAttemptNumber = None
         self.jobStore = None
         self.logLevel: str = logging.getLevelName(root_logger.getEffectiveLevel())
-        self.workDir: Optional[str] = None
+        self.workDir = None
         self.noStdOutErr: bool = False
         self.stats: bool = False
 
         # Because the stats option needs the jobStore to persist past the end of the run,
         # the clean default value depends the specified stats option and is determined in setOptions
         self.clean = None
-        self.cleanWorkDir: Optional[bool] = None
         self.clusterStats = None
 
         # Restarting the workflow options
@@ -370,8 +403,10 @@ JOBSTORE_HELP = ("The location of the job store for the workflow.  "
                  "file:./foo or just file:foo) or /bar (equivalent to file:/bar).")
 
 
-def parser_with_common_options(provisioner_options=False, jobstore_option=True):
-    parser = ArgumentParser(prog='Toil', formatter_class=ArgumentDefaultsHelpFormatter)
+def parser_with_common_options(
+    provisioner_options: bool = False, jobstore_option: bool = True
+) -> ArgumentParser:
+    parser = ArgumentParser(prog="Toil", formatter_class=ArgumentDefaultsHelpFormatter)
 
     if provisioner_options:
         add_provisioner_options(parser)
@@ -786,12 +821,14 @@ class Toil:
     and its configuration.
     """
 
-    def __init__(self, options):
+    def __init__(self, options: Namespace) -> None:
         """
-        Initialize a Toil object from the given options. Note that this is very light-weight and
-        that the bulk of the work is done when the context is entered.
+        Initialize a Toil object from the given options.
 
-        :param argparse.Namespace options: command line options specified by the user
+        Note that this is very light-weight and that the bulk of the work is
+        done when the context is entered.
+
+        :param options: command line options specified by the user
         """
         super().__init__()
         self.options = options
@@ -958,14 +995,13 @@ class Toil:
             self._provisioner.setAutoscaledNodeTypes(self.config.nodeTypes)
 
     @classmethod
-    def getJobStore(cls, locator):
+    def getJobStore(cls, locator: str) -> "AbstractJobStore":
         """
         Create an instance of the concrete job store implementation that matches the given locator.
 
         :param str locator: The location of the job store to be represent by the instance
 
         :return: an instance of a concrete subclass of AbstractJobStore
-        :rtype: toil.jobStores.abstractJobStore.AbstractJobStore
         """
         name, rest = cls.parseLocator(locator)
         if name == 'file':
@@ -981,7 +1017,7 @@ class Toil:
             raise RuntimeError("Unknown job store implementation '%s'" % name)
 
     @staticmethod
-    def parseLocator(locator):
+    def parseLocator(locator: str) -> Tuple[str, str]:
         if locator[0] in '/.' or ':' not in locator:
             return 'file', locator
         else:
@@ -998,13 +1034,13 @@ class Toil:
         return f'{name}:{rest}'
 
     @classmethod
-    def resumeJobStore(cls, locator):
+    def resumeJobStore(cls, locator) -> "AbstractJobStore":
         jobStore = cls.getJobStore(locator)
         jobStore.resume()
         return jobStore
 
     @staticmethod
-    def createBatchSystem(config):
+    def createBatchSystem(config: Config) -> "AbstractBatchSystem":
         """
         Creates an instance of the batch system specified in the given config.
 
@@ -1192,14 +1228,15 @@ class Toil:
         return workDir
 
     @classmethod
-    def getLocalWorkflowDir(cls, workflowID, configWorkDir=None):
+    def getLocalWorkflowDir(
+        cls, workflowID: str, configWorkDir: Optional[str] = None
+    ) -> str:
         """
         Returns a path to the directory where worker directories and the cache will be located
         for this workflow on this machine.
 
-        :param str configWorkDir: Value passed to the program using the --workDir flag
+        :param configWorkDir: Value passed to the program using the --workDir flag
         :return: Path to the local workflow directory on this machine
-        :rtype: str
         """
         # Get the global Toil work directory. This ensures that it exists.
         base = cls.getToilWorkDir(configWorkDir=configWorkDir)
@@ -1237,7 +1274,7 @@ class Toil:
                           rootJob=rootJob,
                           jobCache=self._jobCache).run()
 
-    def _shutdownBatchSystem(self):
+    def _shutdownBatchSystem(self) -> None:
         """
         Shuts down current batch system if it has been created.
         """
@@ -1421,7 +1458,7 @@ class ToilMetrics:
     def logCompletedJob(self, jobType):
         self.log("completed_job %s" % jobType)
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         if self.mtailProc:
             self.mtailProc.kill()
         if self.nodeExporterProc:
@@ -1487,7 +1524,7 @@ def fC(minValue, maxValue=None):
         return lambda x: minValue <= x < maxValue
 
 
-def cacheDirName(workflowID):
+def cacheDirName(workflowID: str) -> str:
     """
     :return: Name of the cache directory.
     """
@@ -1541,6 +1578,6 @@ def getFileSystemSize(dirPath: str) -> Tuple[int, int]:
     return freeSpace, diskSize
 
 
-def safeUnpickleFromStream(stream):
+def safeUnpickleFromStream(stream: IO[Any]) -> Any:
     string = stream.read()
     return pickle.loads(string)

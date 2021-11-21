@@ -15,11 +15,11 @@
 import argparse
 import logging
 import sys
+from typing import List
 
 from toil.common import parser_with_common_options
 from toil.provisioners import cluster_factory
 from toil.statsAndLogging import set_logging_from_options
-from typing import List
 
 logger = logging.getLogger(__name__)
 

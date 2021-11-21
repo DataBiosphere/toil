@@ -29,7 +29,7 @@ import subprocess
 
 from packaging import version
 
-from toil.lib.conversions import bytes_in_unit, convert_units
+from toil.lib.conversions import convert_units
 
 LSB_PARAMS_FILENAME = "lsb.params"
 LSF_CONF_FILENAME = "lsf.conf"

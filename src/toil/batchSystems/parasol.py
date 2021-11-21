@@ -16,20 +16,19 @@ import logging
 import os
 import re
 import subprocess
-import sys
 import tempfile
 import time
 from argparse import ArgumentParser, _ArgumentGroup
 from queue import Empty, Queue
 from shutil import which
 from threading import Thread
-from typing import Optional, Union, Dict
+from typing import Dict, Optional, Union
 
 from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
 from toil.common import SYS_MAX_SIZE, Toil
-from toil.test import get_temp_file
 from toil.lib.iterables import concat
+from toil.test import get_temp_file
 
 logger = logging.getLogger(__name__)
 
@@ -347,7 +346,7 @@ class ParasolBatchSystem(BatchSystemSupport):
             for fileHandle in resultsFileHandles:
                 fileHandle.close()
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         self.killBatchJobs(self.getIssuedBatchJobIDs())  # cleanup jobs
         for results in self.resultsFiles.values():
             exitValue = self._runParasol(['-results=' + results, 'clear', 'sick'],

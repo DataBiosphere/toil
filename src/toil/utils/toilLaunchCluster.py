@@ -14,12 +14,12 @@
 """Launches a toil leader instance with the specified provisioner."""
 import logging
 import os
+from typing import Dict, List, Tuple, Union
 
 from toil import applianceSelf
 from toil.common import parser_with_common_options
-from toil.provisioners import parse_node_types, check_valid_node_types, cluster_factory
+from toil.provisioners import check_valid_node_types, cluster_factory, parse_node_types
 from toil.statsAndLogging import set_logging_from_options
-from typing import List, Dict, Union, Tuple
 
 logger = logging.getLogger(__name__)
 

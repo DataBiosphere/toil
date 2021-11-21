@@ -253,6 +253,12 @@ format: $(wildcard src/toil/cwl/*.py)
 mypy:
 	$(CURDIR)/contrib/admin/mypy-with-ignore.py
 
+pydocstyle_report.txt: src/toil
+	pydocstyle setup.py $^ > $@ 2>&1 || true
+
+diff_pydocstyle_report: pydocstyle_report.txt
+	diff-quality --compare-branch=master --violations=pycodestyle --fail-under=100 $^
+
 diff_mypy:
 	mypy --cobertura-xml-report . src/toil || true
 	diff-cover --fail-under=100 cobertura.xml

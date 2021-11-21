@@ -13,22 +13,25 @@
 # limitations under the License.
 import os
 import stat
-
 from typing import Any
 
 
 class FileID(str):
     """
-    A small wrapper around Python's builtin string class. It is used to represent a file's ID in the file store, and
-    has a size attribute that is the file's size in bytes. This object is returned by importFile and writeGlobalFile.
+    A small wrapper around Python's builtin string class.
 
-    Calls into the file store can use bare strings; size will be queried from the job store if unavailable in the ID.
+    It is used to represent a file's ID in the file store, and has a size attribute
+    that is the file's size in bytes. This object is returned by importFile and
+    writeGlobalFile.
+
+    Calls into the file store can use bare strings; size will be queried from
+    the job store if unavailable in the ID.
     """
 
     def __new__(cls, fileStoreID: str, *args: Any) -> 'FileID':
         return super().__new__(cls, fileStoreID)
 
-    def __init__(self, fileStoreID: str, size: int, executable: bool = False):
+    def __init__(self, fileStoreID: str, size: int, executable: bool = False) -> None:
         # Don't pass an argument to parent class's __init__.
         # In Python 3 we can have super(FileID, self) hand us object's __init__ which chokes on any arguments.
         super().__init__()
@@ -36,9 +39,7 @@ class FileID(str):
         self.executable = executable
 
     def pack(self) -> str:
-        """
-        Pack the FileID into a string so it can be passed through external code.
-        """
+        """Pack the FileID into a string so it can be passed through external code."""
         return '{}:{}:{}'.format(self.size, int(self.executable), self)
 
     @classmethod
@@ -48,9 +49,7 @@ class FileID(str):
 
     @classmethod
     def unpack(cls, packedFileStoreID: str) -> 'FileID':
-        """
-        Unpack the result of pack() into a FileID object.
-        """
+        """Unpack the result of pack() into a FileID object."""
         # Only separate twice in case the FileID itself has colons in it
         vals = packedFileStoreID.split(':', 2)
         # Break up the packed value

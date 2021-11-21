@@ -21,25 +21,26 @@ import textwrap
 import threading
 import time
 import uuid
+from functools import wraps
+from typing import Any, Callable, Collection, Dict, Iterable, List, Optional, Set
+from urllib.parse import unquote
 
 import boto3
 import boto3.resources.base
-import botocore
-from botocore.exceptions import ClientError
 # We need these to exist as attributes we can get off of the boto object
 import boto.ec2
 import boto.iam
 import boto.vpc
-
-from typing import Any, Callable, Collection, Dict, Iterable, List, Optional, Set
-from functools import wraps
-from urllib.parse import unquote
-
-from boto.ec2.blockdevicemapping import BlockDeviceMapping as Boto2BlockDeviceMapping, BlockDeviceType as Boto2BlockDeviceType
+import botocore
+from boto.ec2.blockdevicemapping import BlockDeviceMapping as Boto2BlockDeviceMapping
+from boto.ec2.blockdevicemapping import BlockDeviceType as Boto2BlockDeviceType
+from boto.ec2.instance import Instance as Boto2Instance
 from boto.exception import BotoServerError, EC2ResponseError
 from boto.utils import get_instance_metadata
-from boto.ec2.instance import Instance as Boto2Instance
+from botocore.exceptions import ClientError
 
+from toil.lib.aws import zone_to_region
+from toil.lib.aws.ami import get_flatcar_ami
 from toil.lib.aws.utils import create_s3_bucket
 from toil.lib.conversions import human2bytes
 from toil.lib.ec2 import (a_short_time,
@@ -52,23 +53,24 @@ from toil.lib.ec2 import (a_short_time,
                           wait_instances_running,
                           wait_transition,
                           wait_until_instance_profile_arn_exists)
-from toil.lib.aws import zone_to_region
 from toil.lib.ec2nodes import InstanceType
 from toil.lib.generatedEC2Lists import E2Instances
-from toil.lib.aws.ami import get_flatcar_ami
 from toil.lib.memoize import memoize
 from toil.lib.misc import truncExpBackoff
-from toil.lib.retry import (get_error_body,
-                            get_error_code,
-                            get_error_message,
-                            get_error_status,
-                            old_retry,
-                            retry,
-                            ErrorCondition)
+from toil.lib.retry import (
+    ErrorCondition,
+    get_error_body,
+    get_error_code,
+    get_error_status,
+    old_retry,
+    retry,
+)
 from toil.provisioners import NoSuchClusterException
-from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
-                                                   Shape,
-                                                   ManagedNodesNotSupportedException)
+from toil.provisioners.abstractProvisioner import (
+    AbstractProvisioner,
+    ManagedNodesNotSupportedException,
+    Shape,
+)
 from toil.provisioners.aws import get_best_aws_zone
 from toil.provisioners.node import Node
 
@@ -640,10 +642,8 @@ class AWSProvisioner(AbstractProvisioner):
     def retryPredicate(e):
         return awsRetryPredicate(e)
 
-    def destroyCluster(self):
-        """
-        Terminate instances and delete the profile and security group.
-        """
+    def destroyCluster(self) -> None:
+        """Terminate instances and delete the profile and security group."""
 
         # We should terminate the leader first in case a workflow is still running in the cluster.
         # The leader may create more instances while we're terminating the workers.
@@ -1699,7 +1699,6 @@ class AWSProvisioner(AbstractProvisioner):
         except BotoServerError as e:
             if e.status == 409 and e.error_code == 'EntityAlreadyExists':
                 logger.debug('IAM role already exists. Reusing.')
-                pass
             else:
                 raise
 
