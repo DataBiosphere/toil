@@ -101,9 +101,11 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
             # Otherwise dump all output to our output stream
             cmd.append('--verbose')
 
-        args_passed_directly_to_toil = [f'--disableCaching={not caching}',
-                                        '--clean=always',
-                                        '--logDebug'] + extra_args
+        args_passed_directly_to_toil = ['--clean=always', '--logDebug']
+        if not caching:
+            # Turn off caching for the run
+            args_passed_directly_to_toil.append('--disableCaching')
+        args_passed_directly_to_toil += extra_args
 
         if 'SINGULARITY_DOCKER_HUB_MIRROR' in os.environ:
             args_passed_directly_to_toil.append('--setEnv=SINGULARITY_DOCKER_HUB_MIRROR')
@@ -629,7 +631,7 @@ class CWLSmallTests(ToilTest):
         cwl_job_json = 'test/cwl/revsort-job.json'
         jobstore = 'delete-test-toil'
         random_option_1 = '--logInfo'
-        random_option_2 = '--disableCaching=false'
+        random_option_2 = '--disableChaining'
         cmd_wrong_ordering_1 = [toil, cwl, cwl_job_json, jobstore, random_option_1, random_option_2]
         cmd_wrong_ordering_2 = [toil, cwl, jobstore, random_option_1, random_option_2, cwl_job_json]
         cmd_wrong_ordering_3 = [toil, jobstore, random_option_1, random_option_2, cwl, cwl_job_json]
