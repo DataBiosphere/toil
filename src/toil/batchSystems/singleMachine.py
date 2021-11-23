@@ -27,6 +27,7 @@ from typing import Callable, Dict, List, Optional, Sequence, TypeVar, Union
 import toil
 from toil.common import fC
 from toil.job import JobDescription
+from toil.lib.throttle import LocalThrottle
 from toil import worker as toil_worker
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchSystemSupport,
@@ -149,6 +150,10 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         # If we can't schedule something, we fill this in with a reason why
         self.schedulingStatusMessage = None
+
+        # We may need to dump info about running/pending jobs, but we don't
+        # want to do it constantly.
+        self.dump_throttle = LocalThrottle(60)
 
         # We use this event to signal shutdown
         self.shuttingDown = Event()
@@ -701,7 +706,26 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         try:
             item = self.outputQueue.get(timeout=maxWait)
         except Empty:
-            return None
+            # Nothing is done
+            if len(self.runningJobs) > 0:
+                # But something is running
+                try:
+                    item = next(iter(self.runningJobs.items()))
+                    if self.dump_throttle.throttle(wait=False):
+                        log.debug("No local jobs are updated, but a running job exists: %s", item)
+                except StopIteration:
+                    pass
+            elif len(self.jobs) > 0:
+                # Nothing looks done or running, but something is issued.
+                try:
+                    item = next(iter(self.jobs.items()))
+                    if self.dump_throttle.throttle(wait=False):
+                        log.debug("No local jobs are updated or running, but an issued job exists: %s", item)
+                except StopIteration:
+                    pass
+            else:
+                # Nothing looks done, running, or issued.
+                return None
         self.jobs.pop(item.jobID)
         log.debug("Ran jobID: %s with exit value: %i", item.jobID, item.exitStatus)
         return item
