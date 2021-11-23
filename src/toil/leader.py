@@ -917,10 +917,24 @@ class Leader:
         :rtype: str
         """
 
-        issuedJobCount = self.getNumberOfJobsIssued()
-        runningJobCount = len(self.batchSystem.getRunningBatchJobIDs())
+        # Grab a snapshot of everything. May be inconsistent since it's not atomic.
+        issued_job_count = self.getNumberOfJobsIssued()
+        # TODO: Can we just census all the jobs and get the issued and running ones?
+        running_jobs = self.batchSystem.getRunningBatchJobIDs()
+        issued_jobs = self.batchSystem.getIssuedBatchJobIDs()
+        expected_issued_jobs = list(self.issued_jobs_by_batch_system_id.keys())
 
-        return "%d jobs are running, %d jobs are issued and waiting to run" % (runningJobCount, issuedJobCount - runningJobCount)
+        running_job_count = len(running_jobs)
+        issued_job_count = len(expected_issued_jobs)
+
+        if len(issued_jobs) != issued_job_count:
+            # The batch system has a different idea of what's issued than we do.
+            logger.warning('Expected to see %d issued jobs, but batch system thinks it has %d', issued_job_count, len(issued_jobs))
+            logger.warning('Leader expected: %s', expected_issued_jobs)
+            logger.warning('Batch system reports: %s', issued_jobs)
+
+        message = "%d jobs are running, %d jobs are issued and waiting to run or be collected" % (running_job_count, issued_job_count - running_job_count)
+        return message
 
     def _reportWorkflowStatus(self):
         """
