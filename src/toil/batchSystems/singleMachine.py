@@ -710,17 +710,17 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             if len(self.runningJobs) > 0:
                 # But something is running
                 try:
-                    item = next(iter(self.runningJobs.items()))
+                    found_job = next(iter(self.runningJobs.items()))
                     if self.dump_throttle.throttle(wait=False):
-                        log.debug("No local jobs are updated, but a running job exists: %s", item)
+                        log.debug("No local jobs are updated, but a running job exists: %s", found_job)
                 except StopIteration:
                     pass
             elif len(self.jobs) > 0:
                 # Nothing looks done or running, but something is issued.
                 try:
-                    item = next(iter(self.jobs.items()))
+                    found_job = next(iter(self.jobs.items()))
                     if self.dump_throttle.throttle(wait=False):
-                        log.debug("No local jobs are updated or running, but an issued job exists: %s", item)
+                        log.debug("No local jobs are updated or running, but an issued job exists: %s", found_job)
                 except StopIteration:
                     pass
             else:
