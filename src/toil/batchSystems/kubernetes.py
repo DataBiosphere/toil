@@ -133,7 +133,6 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.awsSecretName = os.environ.get("TOIL_AWS_SECRET_NAME", None)
 
         # Set this to True to enable the experimental wait-for-job-update code
-        # TODO: Make this an environment variable?
         self.enableWatching = os.environ.get("KUBE_WATCH_ENABLED", False)
 
         self.runID = f'toil-{self.uniqueID}'
@@ -803,6 +802,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
                     if (exitReason == BatchJobExitReason.FAILED) or (jobObject.status.finished == totalPods):
                         # Cleanup if job is all finished or there was a pod that failed
+                        logger.debug('Deleting Kubernetes job %s', jobObject.metadata.name)
                         self._try_kubernetes(self._api('batch').delete_namespaced_job,
                                             jobObject.metadata.name,
                                             self.namespace,
@@ -924,14 +924,19 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         if jobObject is None:
             # Say we couldn't find anything
-            if any_job:
-                # But log what's there and not updated, in case it should be
-                # updated and is somehow stuck.
-                if self.dump_throttle.throttle(wait=False):
-
+            if self.dump_throttle.throttle(wait=False):
+                # As long as it's not too chatty
+                if any_job:
+                    # There's at least a pending job or something
                     logger.debug('No Kubernetes job is finished, but we do have a job: %s', any_job.metadata.name)
                     logger.debug('Unfinished job pod:\n%s', self._pretty_print(self._getPodForJob(any_job)))
+                else:
+                    # We have nothing on Kubernetes
+                    logger.debug('No Kubernetes job is issued')
             return None
+        else:
+            # We actually have something
+            logger.debug('Identified stopped Kubernetes job %s as %s', jobObject.metadata.name, chosenFor)
 
 
         # Otherwise we got something.
@@ -1021,6 +1026,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         try:
             # Delete the job and all dependents (pods), hoping to get a 404 if it's magically gone
+            logger.debug('Deleting Kubernetes job %s', jobObject.metadata.name)
             self._try_kubernetes_expecting_gone(self._api('batch').delete_namespaced_job, jobObject.metadata.name,
                                                 self.namespace,
                                                 propagation_policy='Foreground')
@@ -1077,6 +1083,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Kill all of our jobs and clean up pods that are associated with those jobs
         try:
+            logger.debug('Deleting all Kubernetes job %s', self.runID)
             self._try_kubernetes_expecting_gone(self._api('batch').delete_collection_namespaced_job,
                                                             self.namespace,
                                                             label_selector=f"toil_run={self.runID}",
@@ -1170,6 +1177,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
             # Delete the requested job in the foreground.
             # This doesn't block, but it does delete expeditiously.
+            logger.debug('Deleting Kubernetes job %s', jobName)
             response = self._try_kubernetes(self._api('batch').delete_namespaced_job, jobName,
                                                                 self.namespace,
                                                                 propagation_policy='Foreground')
