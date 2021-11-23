@@ -104,7 +104,8 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
         args_passed_directly_to_toil = [f'--disableCaching={not caching}',
                                         '--clean=always',
                                         '--logDebug',
-                                        '--statusWait=10'] + extra_args
+                                        '--statusWait=10',
+                                        '--rescueJobsFrequency=120'] + extra_args
 
         if 'SINGULARITY_DOCKER_HUB_MIRROR' in os.environ:
             args_passed_directly_to_toil.append('--setEnv=SINGULARITY_DOCKER_HUB_MIRROR')
