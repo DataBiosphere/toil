@@ -16,8 +16,8 @@ import os
 from collections import OrderedDict
 
 from wdlparse.draft2 import wdl_parser
-from toil.wdl.wdl_analysis import AnalyzeWDL
 
+from toil.wdl.wdl_analysis import AnalyzeWDL
 
 logger = logging.getLogger(__name__)
 

@@ -14,7 +14,6 @@
 import codecs
 import logging
 import os
-import pytest
 import random
 import sys
 import time
@@ -22,12 +21,13 @@ import traceback
 from threading import Event, Thread
 from unittest import skipIf
 
+import pytest
+
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.job import Job
 from toil.leader import DeadlockException, FailedJobsException
 from toil.lib.retry import retry_flaky_test
-from toil.test import get_temp_file
-from toil.test import ToilTest, slow
+from toil.test import ToilTest, get_temp_file, slow
 
 logger = logging.getLogger(__name__)
 

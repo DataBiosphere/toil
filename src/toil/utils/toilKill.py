@@ -37,7 +37,7 @@ def main() -> None:
         # TODO: This behaviour is now broken: https://github.com/DataBiosphere/toil/commit/a3d65fc8925712221e4cda116d1825d4a1e963a1
         batchSystem = Toil.createBatchSystem(jobStore.config)  # Should automatically kill existing jobs, so we're good.
         for jobID in batchSystem.getIssuedBatchJobIDs():  # Just in case we do it again.
-            batchSystem.killBatchJobs(jobID)
+            batchSystem.killBatchJobs([jobID])
         logger.info("All jobs SHOULD have been killed")
     # otherwise, kill the pid recorded in the jobstore
     else:

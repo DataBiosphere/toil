@@ -23,21 +23,23 @@ import unittest
 import uuid
 import zipfile
 from io import StringIO
-from unittest.mock import Mock, call
 from typing import Dict, List, MutableMapping, Optional
+from unittest.mock import Mock, call
 from urllib.request import urlretrieve
 
-import psutil
 import pytest
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
-from toil.cwl.utils import visit_top_cwl_class, visit_cwl_class_and_reduce, download_structure
+from toil.cwl.utils import (
+    download_structure,
+    visit_cwl_class_and_reduce,
+    visit_top_cwl_class,
+)
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.threading import cpu_count
-
 from toil.test import (ToilTest,
                        needs_aws_s3,
                        needs_cwl,
@@ -101,9 +103,11 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
             # Otherwise dump all output to our output stream
             cmd.append('--verbose')
 
-        args_passed_directly_to_toil = [f'--disableCaching={not caching}',
-                                        '--clean=always',
-                                        '--logDebug'] + extra_args
+        args_passed_directly_to_toil = ['--clean=always', '--logDebug']
+        if not caching:
+            # Turn off caching for the run
+            args_passed_directly_to_toil.append('--disableCaching')
+        args_passed_directly_to_toil += extra_args
 
         if 'SINGULARITY_DOCKER_HUB_MIRROR' in os.environ:
             args_passed_directly_to_toil.append('--setEnv=SINGULARITY_DOCKER_HUB_MIRROR')
@@ -215,12 +219,19 @@ class CWLv10Test(ToilTest):
     def test_mpi(self):
         from toil.cwl import cwltoil
         stdout = StringIO()
-        main_args = ['--outdir', self.outDir,
-                     '--enable-dev',
-                     '--enable-ext',
-                     '--mpi-config-file', os.path.join(self.rootDir, 'src/toil/test/cwl/mock_mpi/fake_mpi.yml'),
-                     os.path.join(self.rootDir, 'src/toil/test/cwl/mpi_simple.cwl')]
+        main_args = [
+            "--outdir",
+            self.outDir,
+            "--enable-dev",
+            "--enable-ext",
+            "--mpi-config-file",
+            os.path.join(self.rootDir, "src/toil/test/cwl/mock_mpi/fake_mpi.yml"),
+            os.path.join(self.rootDir, "src/toil/test/cwl/mpi_simple.cwl"),
+        ]
+        path = os.environ["PATH"]
+        os.environ["PATH"] = f"{path}:{self.rootDir}/src/toil/test/cwl/mock_mpi/"
         cwltoil.main(main_args, stdout=stdout)
+        os.environ["PATH"] = path
         out = json.loads(stdout.getvalue())
         with open(out.get('pids', {}).get('location')[len('file://'):]) as f:
             two_pids = [int(i) for i in f.read().split()]
@@ -629,7 +640,7 @@ class CWLSmallTests(ToilTest):
         cwl_job_json = 'test/cwl/revsort-job.json'
         jobstore = 'delete-test-toil'
         random_option_1 = '--logInfo'
-        random_option_2 = '--disableCaching=false'
+        random_option_2 = '--disableChaining'
         cmd_wrong_ordering_1 = [toil, cwl, cwl_job_json, jobstore, random_option_1, random_option_2]
         cmd_wrong_ordering_2 = [toil, cwl, jobstore, random_option_1, random_option_2, cwl_job_json]
         cmd_wrong_ordering_3 = [toil, jobstore, random_option_1, random_option_2, cwl, cwl_job_json]

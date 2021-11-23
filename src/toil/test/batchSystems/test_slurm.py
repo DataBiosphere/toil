@@ -1,11 +1,12 @@
-import pytest
 import textwrap
 from queue import Queue
 
+import pytest
+
+import toil.batchSystems.slurm
 from toil.common import Config
 from toil.lib.misc import CalledProcessErrorStderr
 from toil.test import ToilTest
-import toil.batchSystems.slurm
 
 
 def call_sacct(args) -> str:
