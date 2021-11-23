@@ -723,9 +723,10 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                         log.debug("No local jobs are updated or running, but an issued job exists: %s", found_job)
                 except StopIteration:
                     pass
-            else:
-                # Nothing looks done, running, or issued.
-                return None
+
+            # Whether we see anything issued or not, nothing is updated, so
+            # return None.
+            return None
         self.jobs.pop(item.jobID)
         log.debug("Ran jobID: %s with exit value: %i", item.jobID, item.exitStatus)
         return item
