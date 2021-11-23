@@ -6,13 +6,13 @@ This workflow collects statistics about caching.
 
 Invoke like:
 
-    python examples/example_cachingbenchmark.py ./jobstore --realTimeLogging --logInfo --disableCaching False
+    python examples/example_cachingbenchmark.py ./jobstore --realTimeLogging --logInfo
 
-    python examples/example_cachingbenchmark.py ./jobstore --realTimeLogging --logInfo --disableCaching True
+    python examples/example_cachingbenchmark.py ./jobstore --realTimeLogging --logInfo --disableCaching
 
-    python examples/example_cachingbenchmark.py aws:us-west-2:cachingjobstore --realTimeLogging --logInfo --disableCaching False
+    python examples/example_cachingbenchmark.py aws:us-west-2:cachingjobstore --realTimeLogging --logInfo
 
-    python examples/example_cachingbenchmark.py aws:us-west-2:cachingjobstore --realTimeLogging --logInfo --disableCaching True
+    python examples/example_cachingbenchmark.py aws:us-west-2:cachingjobstore --realTimeLogging --logInfo --disableCaching
 
 """
 

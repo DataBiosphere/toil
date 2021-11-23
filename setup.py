@@ -13,9 +13,10 @@
 # limitations under the License.
 import imp
 import os
-
 from tempfile import NamedTemporaryFile
+
 from setuptools import find_packages, setup
+
 
 def get_requirements(extra=None):
     """
@@ -52,6 +53,7 @@ def run_setup():
         "kubernetes",
         "mesos",
         "wdl",
+        "server"
     ]
     for extra in non_htcondor_extras:
         extras_require[extra] = get_requirements(extra)
@@ -59,7 +61,6 @@ def run_setup():
     # We exclude htcondor from "all" because it can't be on Mac
     extras_require['htcondor:sys_platform!="darwin"'] = get_requirements("htcondor")
     extras_require["all"] = all_reqs
-
 
     setup(
         name='toil',
@@ -100,7 +101,7 @@ def run_setup():
                                # functionality like the @experimental and @integrative decorators:
                                exclude=['*.test.*']),
         package_data={
-            '': ['*.yml', 'cloud-config'],
+            '': ['*.yml', '*.yaml', 'cloud-config'],
         },
         # Unfortunately, the names of the entry points are hard-coded elsewhere in the code base so
         # you can't just change them here. Luckily, most of them are pretty unique strings, and thus

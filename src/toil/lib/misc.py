@@ -1,16 +1,15 @@
 import datetime
-import pytz
 import logging
 import os
 import random
-import shutil
 import socket
 import subprocess
 import sys
 import typing
-
 from contextlib import closing
-from typing import Iterator, Union, List, Optional
+from typing import Iterator, List, Optional, Union
+
+import pytz
 
 logger = logging.getLogger(__name__)
 

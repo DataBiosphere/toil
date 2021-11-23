@@ -1,11 +1,10 @@
-import os
-import urllib.request
 import json
 import logging
+import os
+import urllib.request
+from typing import Dict, Optional
 
 from botocore.client import BaseClient
-
-from typing import Optional, Dict
 
 from toil.lib.retry import retry
 

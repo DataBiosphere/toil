@@ -14,27 +14,28 @@
 import logging
 import os
 import subprocess
-import time
 import tempfile
+import time
 from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent
 from uuid import uuid4
 
-import pytest
-
 import boto.ec2
+import pytest
 
 from toil.lib.aws import zone_to_region
 from toil.provisioners import cluster_factory
 from toil.provisioners.aws import get_best_aws_zone
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-from toil.test import (ToilTest,
-                       integrative,
-                       needs_fetchable_appliance,
-                       needs_aws_ec2,
-                       slow,
-                       timeLimit)
+from toil.test import (
+    ToilTest,
+    integrative,
+    needs_aws_ec2,
+    needs_fetchable_appliance,
+    slow,
+    timeLimit,
+)
 from toil.version import exactPython
 
 log = logging.getLogger(__name__)
@@ -129,7 +130,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         """
         return os.path.join(self.dataDir, filename)
 
-    def destroyCluster(self):
+    def destroyCluster(self) -> None:
         """
         Destroy the cluster we built, if it exists.
 
@@ -422,6 +423,10 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
                                      '--nodeStorage', str(self.requestedLeaderStorage)])
 
         self.cluster = cluster_factory(provisioner='aws', zone=self.zone, clusterName=self.clusterName)
+        # We need to wait a little bit here because the workers might not be
+        # visible to EC2 read requests immediately after the create returns,
+        # which is the last thing that starting the cluster does.
+        time.sleep(10)
         nodes = self.cluster._getNodesInCluster(both=True)
         nodes.sort(key=lambda x: x.launch_time)
         # assuming that leader is first
@@ -456,9 +461,9 @@ class AWSManagedAutoscaleTest(AWSAutoscaleTest):
         self.requestedNodeStorage = 20
 
     def launchCluster(self):
-        from boto.ec2.blockdevicemapping import BlockDeviceType
+        from boto.ec2.blockdevicemapping import BlockDeviceType  # noqa
 
-        from toil.lib.ec2 import wait_instances_running
+        from toil.lib.ec2 import wait_instances_running  # noqa
         self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
                                      '--nodeTypes', ",".join(self.instanceTypes),
                                      '--workers', ",".join([f'0-{c}' for c in self.numWorkers]),

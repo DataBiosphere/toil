@@ -17,7 +17,7 @@ from abc import ABCMeta, abstractmethod
 from datetime import datetime
 from queue import Empty, Queue
 from threading import Lock, Thread
-from typing import Any, List, Dict, Union, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
                                                    UpdatedBatchJobInfo)
@@ -434,7 +434,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             self.currentJobs.remove(item.jobID)
             return item
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """
         Signals worker to shutdown (via sentinel) then cleanly joins the thread
         """

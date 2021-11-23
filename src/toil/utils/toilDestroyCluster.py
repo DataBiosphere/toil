@@ -13,10 +13,10 @@
 # limitations under the License.
 """Terminates the specified cluster and associated resources."""
 import logging
+
 from toil.common import parser_with_common_options
 from toil.provisioners import cluster_factory
 from toil.statsAndLogging import set_logging_from_options
-
 
 logger = logging.getLogger(__name__)
 
