@@ -100,15 +100,24 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Get the username to mark jobs with
         username = config.kubernetes_owner
-
+        # And a unique ID for the run
         self.uniqueID = uuid.uuid4()
 
         # Create a prefix for jobs, starting with our username
         self.jobPrefix = f'{username}-toil-{self.uniqueID}-'
-
         # Instead of letting Kubernetes assign unique job names, we assign our
         # own based on a numerical job ID. This functionality is managed by the
         # BatchSystemLocalSupport.
+
+        # The UCSC GI Kubernetes cluster (and maybe other clusters?) appears to
+        # relatively promptly destroy finished jobs for you if they don't
+        # specify a ttlSecondsAfterFinished. This leads to "lost" Toil jobs,
+        # and (if your workflow isn't allowed to run longer than the default
+        # lost job recovery interval) timeouts of e.g. CWL Kubernetes
+        # conformance tests. To work around this, we tag all our jobs with an
+        # explicit TTL that is long enough that we're sure we can deal with all
+        # the finished jobs before they expire.
+        self.finished_job_ttl = 3600
 
         # Here is where we will store the user script resource object if we get one.
         self.userScript = None
@@ -135,9 +144,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Set this to True to enable the experimental wait-for-job-update code
         self.enableWatching = os.environ.get("KUBE_WATCH_ENABLED", False)
 
+        # This will be a label to select all our jobs.
         self.runID = f'toil-{self.uniqueID}'
-
-        self.jobIds = set()
 
         # Because CWL tests sometimes time out on CI with Kubernetes, we need
         # to have some machinery to log potentially
@@ -507,8 +515,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Wrap the spec in a template
             template = kubernetes.client.V1PodTemplateSpec(spec=pod_spec, metadata=metadata)
 
-            # Make another spec for the job, asking to run the template with no backoff
-            job_spec = kubernetes.client.V1JobSpec(template=template, backoff_limit=0)
+            # Make another spec for the job, asking to run the template with no
+            # backoff/retry. Specify our own TTL to avoid catching the notice
+            # of over-zealous abandoned job cleanup scripts.
+            job_spec = kubernetes.client.V1JobSpec(template=template,
+                                                   backoff_limit=0,
+                                                   ttl_seconds_after_finished=self.finished_job_ttl)
 
             # And make the actual job
             job = kubernetes.client.V1Job(spec=job_spec,
