@@ -50,7 +50,6 @@ from toil.job import JobDescription
 from toil.lib.conversions import human2bytes
 from toil.lib.misc import slow_down, utc_now
 from toil.lib.retry import ErrorCondition, retry
-from toil.lib.throttle import LocalThrottle
 from toil.resource import Resource
 from toil.statsAndLogging import configure_root_logger, set_log_level
 
@@ -147,17 +146,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # This will be a label to select all our jobs.
         self.runID = f'toil-{self.uniqueID}'
 
-        # Because CWL tests sometimes time out on CI with Kubernetes, we need
-        # to have some machinery to log potentially
-        # stuck/running-longer-than-nprmal pods. We want to log these
-        # periodically, so we use a throttle to make sure we don't talk about
-        # them too much.
-        self.dump_throttle = LocalThrottle(60)
-
     def _pretty_print(self, kubernetes_object: Any) -> str:
         """
         Pretty-print a Kubernetes API object to a YAML string. Recursively
         drops boring fields.
+        Takes any Kubernetes API object; not clear if any base type exists for
+        them.
         """
 
         if not kubernetes_object:
@@ -867,20 +861,15 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         jobObject = None
         # Put 'done', 'failed', or 'stuck' here
         chosenFor = ''
-        # And this will be an arbitrary job that may or may not meet our
-        # criteria, for debugging
-        any_job = None
 
         for j in self._ourJobObject(onlySucceeded=True):
             # Look for succeeded jobs because that's the only filter Kubernetes has
             jobObject = j
             chosenFor = 'done'
-            any_job = j
 
         if jobObject is None:
             for j in self._ourJobObject():
                 # If there aren't any succeeded jobs, scan all jobs
-                any_job = j
                 # See how many times each failed
                 failCount = getattr(j.status, 'failed', 0)
                 if failCount is None:
@@ -936,15 +925,6 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         if jobObject is None:
             # Say we couldn't find anything
-            if self.dump_throttle.throttle(wait=False):
-                # As long as it's not too chatty
-                if any_job:
-                    # There's at least a pending job or something
-                    logger.debug('No Kubernetes job is finished, but we do have a job: %s', any_job.metadata.name)
-                    logger.debug('Unfinished job pod:\n%s', self._pretty_print(self._getPodForJob(any_job)))
-                else:
-                    # We have nothing on Kubernetes
-                    logger.debug('No Kubernetes job is issued')
             return None
         else:
             # We actually have something
@@ -1095,7 +1075,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Kill all of our jobs and clean up pods that are associated with those jobs
         try:
-            logger.debug('Deleting all Kubernetes job %s', self.runID)
+            logger.debug('Deleting all Kubernetes jobs for toil_run=%s', self.runID)
             self._try_kubernetes_expecting_gone(self._api('batch').delete_collection_namespaced_job,
                                                             self.namespace,
                                                             label_selector=f"toil_run={self.runID}",
