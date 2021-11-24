@@ -32,7 +32,6 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.common import SYS_MAX_SIZE, Config, Toil, fC
 from toil.job import JobDescription
 from toil.lib.threading import cpu_count
-from toil.lib.throttle import LocalThrottle
 
 log = logging.getLogger(__name__)
 
@@ -151,10 +150,6 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         # If we can't schedule something, we fill this in with a reason why
         self.schedulingStatusMessage = None
-
-        # We may need to dump info about running/pending jobs, but we don't
-        # want to do it constantly.
-        self.dump_throttle = LocalThrottle(60)
 
         # We use this event to signal shutdown
         self.shuttingDown = Event()
@@ -704,26 +699,6 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         try:
             item = self.outputQueue.get(timeout=maxWait)
         except Empty:
-            # Nothing is done
-            if len(self.runningJobs) > 0:
-                # But something is running
-                try:
-                    found_job = next(iter(self.runningJobs.items()))
-                    if self.dump_throttle.throttle(wait=False):
-                        log.debug("No local jobs are updated, but a running job exists: %s", found_job)
-                except StopIteration:
-                    pass
-            elif len(self.jobs) > 0:
-                # Nothing looks done or running, but something is issued.
-                try:
-                    found_job = next(iter(self.jobs.items()))
-                    if self.dump_throttle.throttle(wait=False):
-                        log.debug("No local jobs are updated or running, but an issued job exists: %s", found_job)
-                except StopIteration:
-                    pass
-
-            # Whether we see anything issued or not, nothing is updated, so
-            # return None.
             return None
         self.jobs.pop(item.jobID)
         log.debug("Ran jobID: %s with exit value: %i", item.jobID, item.exitStatus)
