@@ -105,8 +105,7 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
 
         args_passed_directly_to_toil = ['--clean=always',
                                         '--logDebug',
-                                        '--statusWait=10',
-                                        '--rescueJobsFrequency=120']
+                                        '--statusWait=10']
         if not caching:
             # Turn off caching for the run
             args_passed_directly_to_toil.append('--disableCaching')
