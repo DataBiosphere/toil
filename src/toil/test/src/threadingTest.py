@@ -6,7 +6,7 @@ import time
 import traceback
 from functools import partial
 
-from toil.lib.threading import LastProcessStandingArena, global_mutex, cpu_count
+from toil.lib.threading import LastProcessStandingArena, cpu_count, global_mutex
 from toil.test import ToilTest, travis_test
 
 log = logging.getLogger(__name__)

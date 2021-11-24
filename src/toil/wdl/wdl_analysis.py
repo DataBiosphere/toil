@@ -75,13 +75,11 @@ class AnalyzeWDL:
 
         :return: Returns nothing.
         """
-        pass
 
     def write_AST(self, out_dir):
         """
         Writes a file with the AST for a wdl file in the out_dir.
         """
-        pass
 
     primitive_types = {
         'String': WDLStringType,
