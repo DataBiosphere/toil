@@ -116,7 +116,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # conformance tests. To work around this, we tag all our jobs with an
         # explicit TTL that is long enough that we're sure we can deal with all
         # the finished jobs before they expire.
-        self.finished_job_ttl = 3600
+        self.finished_job_ttl = 3600  # seconds
 
         # Here is where we will store the user script resource object if we get one.
         self.userScript = None
