@@ -103,7 +103,9 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
             # Otherwise dump all output to our output stream
             cmd.append('--verbose')
 
-        args_passed_directly_to_toil = ['--clean=always', '--logDebug']
+        args_passed_directly_to_toil = ['--clean=always',
+                                        '--logDebug',
+                                        '--statusWait=10']
         if not caching:
             # Turn off caching for the run
             args_passed_directly_to_toil.append('--disableCaching')
@@ -569,7 +571,7 @@ class CWLv12Test(ToilTest):
     @needs_kubernetes
     def test_kubernetes_cwl_conformance(self, **kwargs):
         if 'junit_file' not in kwargs:
-            kwargs['junit_file'] = 'kubernetes-conformance.junit.xml'
+            kwargs['junit_file'] = os.path.join(self.rootDir, 'kubernetes-conformance.junit.xml')
         return self.test_run_conformance(batchSystem="kubernetes",
                                          # This test doesn't work with
                                          # Singularity; see

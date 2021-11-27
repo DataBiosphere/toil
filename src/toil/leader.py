@@ -940,10 +940,12 @@ class Leader:
         :rtype: str
         """
 
-        issuedJobCount = self.getNumberOfJobsIssued()
-        runningJobCount = len(self.batchSystem.getRunningBatchJobIDs())
-
-        return "%d jobs are running, %d jobs are issued and waiting to run" % (runningJobCount, issuedJobCount - runningJobCount)
+        # Grab a snapshot of everything. May be inconsistent since it's not atomic.
+        issued_job_count = self.getNumberOfJobsIssued()
+        running_job_count = len(self.batchSystem.getRunningBatchJobIDs())
+        # TODO: When a job stops running but has yet to be collected from the
+        # batch system, it will show up here as waiting to run.
+        return f"{running_job_count} jobs are running, {issued_job_count - running_job_count} jobs are issued and waiting to run"
 
     def _reportWorkflowStatus(self):
         """
