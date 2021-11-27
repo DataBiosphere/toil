@@ -5,7 +5,7 @@ variables:
   PYTHONIOENCODING: "utf-8"
   DEBIAN_FRONTEND: "noninteractive"
   TOIL_OWNER_TAG: "shared"
-  MAIN_PYTHON_PKG: "python3.10"
+  MAIN_PYTHON_PKG: "python3.9"
 
 before_script:
   # Configure Docker to use a mirror for Docker Hub and restart the daemon
@@ -33,7 +33,7 @@ before_script:
   - sudo apt-get install -y software-properties-common build-essential virtualenv
   - sudo add-apt-repository -y ppa:deadsnakes/ppa
   - sudo apt-get update
-  - sudo apt-get install -y tzdata jq python3.7 python3.7-dev python3.8 python3.8-dev python3.9 python3.9-dev python3.9-distutils python3.10 python3.10-dev python3.10-venv
+  - sudo apt-get install -y tzdata jq python3.7 python3.7-dev python3.8 python3.8-dev python3.9 python3.9-dev python3.9-distutils  # python3.10 python3.10-dev python3.10-venv
 
 after_script:
   # We need to clean up any files that Toil may have made via Docker that
