@@ -34,28 +34,28 @@ def main() -> None:
 
     if job_store_type != 'file':
         # Remote (aws/google) jobstore; use the old (broken?) method
-        jobStore = Toil.resumeJobStore(config.jobStore)
+        job_store = Toil.resumeJobStore(config.jobStore)
         logger.info("Starting routine to kill running jobs in the toil workflow: %s", config.jobStore)
         # TODO: This behaviour is now broken: https://github.com/DataBiosphere/toil/commit/a3d65fc8925712221e4cda116d1825d4a1e963a1
         # There's no guarantee that the batch system in use can enumerate
         # running jobs belonging to the job store we've attached to. And
         # moreover we don't even bother trying to kill the leader at its
         # recorded PID, even if it is a local process.
-        batchSystem = Toil.createBatchSystem(jobStore.config)  # Should automatically kill existing jobs, so we're good.
-        for jobID in batchSystem.getIssuedBatchJobIDs():  # Just in case we do it again.
-            batchSystem.killBatchJobs([jobID])
+        batch_system = Toil.createBatchSystem(job_store.config)  # Should automatically kill existing jobs, so we're good.
+        for job_id in batch_system.getIssuedBatchJobIDs():  # Just in case we do it again.
+            batch_system.killBatchJobs([job_id])
         logger.info("All jobs SHOULD have been killed")
     else:
         # otherwise, kill the pid recorded in the jobstore.
         # TODO: We assume thnis is a local PID.
-        jobStore = Toil.resumeJobStore(config.jobStore)
-        assert isinstance(jobStore, FileJobStore), "Need a FileJobStore which has a sharedFilesDir"
-        pid_log = os.path.join(jobStore.sharedFilesDir, 'pid.log')
+        job_store = Toil.resumeJobStore(config.jobStore)
+        assert isinstance(job_store, FileJobStore), "Need a FileJobStore which has a sharedFilesDir"
+        pid_log = os.path.join(job_store.sharedFilesDir, 'pid.log')
         with open(pid_log) as f:
-            pid2kill = f.read().strip()
+            pid_to_kill = f.read().strip()
         try:
-            os.kill(int(pid2kill), signal.SIGTERM)
-            logger.info("Toil process %s successfully terminated." % str(pid2kill))
+            os.kill(int(pid_to_kill), signal.SIGTERM)
+            logger.info("Toil process %s successfully terminated." % str(pid_to_kill))
         except OSError:
-            logger.error("Toil process %s could not be terminated." % str(pid2kill))
+            logger.error("Toil process %s could not be terminated." % str(pid_to_kill))
             raise
