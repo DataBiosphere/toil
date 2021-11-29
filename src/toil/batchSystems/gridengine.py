@@ -16,9 +16,11 @@ import math
 import os
 import time
 from pipes import quote
-from typing import Optional, List, Dict
+from typing import Dict, List, Optional
 
-from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
+from toil.batchSystems.abstractGridEngineBatchSystem import (
+    AbstractGridEngineBatchSystem,
+)
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)

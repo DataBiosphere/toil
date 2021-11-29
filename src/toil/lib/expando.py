@@ -14,7 +14,6 @@
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
 
-
 class Expando(dict):
     """
     Pass inital attributes to the constructor:
@@ -111,7 +110,9 @@ class Expando(dict):
 
 class MagicExpando(Expando):
     """
-    Use MagicExpando for chained attribute access. The first time a missing attribute is
+    Use MagicExpando for chained attribute access.
+
+    The first time a missing attribute is
     accessed, it will be set to a new child MagicExpando.
 
     >>> o=MagicExpando()
@@ -122,10 +123,11 @@ class MagicExpando(Expando):
     >>> o.bar
     {'hello': 'hi'}
     """
-    def __getattribute__( self, name ):
+
+    def __getattribute__(self, name: str):
         try:
-            return super( Expando, self ).__getattribute__( name )
+            return super(Expando, self).__getattribute__(name)
         except AttributeError:
-            child = self.__class__( )
+            child = self.__class__()
             self[name] = child
             return child

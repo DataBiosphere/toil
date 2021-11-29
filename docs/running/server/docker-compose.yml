@@ -1,0 +1,33 @@
+# docker-compose.yml
+version: "3.8"
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.9.5
+    hostname: rabbitmq
+    container_name: rabbitmq
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: celery-worker
+    volumes:
+      - /tmp/toil-workflows:/app/toil-workflows
+    command: celery --broker=amqp://guest:guest@rabbitmq:5672// -A toil.server.celery_app worker --loglevel=INFO
+    depends_on:
+      - rabbitmq
+  wes-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wes-server
+    volumes:
+      - /tmp/toil-workflows:/app/toil-workflows
+    environment:
+      - TOIL_WES_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+    command: toil server --host 0.0.0.0
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      - rabbitmq
+      - celery-worker

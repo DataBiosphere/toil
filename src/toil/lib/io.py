@@ -1,13 +1,11 @@
 import logging
 import os
-import stat
 import shutil
-import tempfile
+import stat
 import uuid
-
 from contextlib import contextmanager
 from io import BytesIO
-from typing import Iterator, Union, Optional
+from typing import IO, Any, Callable, Iterator, Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +154,7 @@ class WriteWatchingStream:
     Not seekable.
     """
 
-    def __init__(self, backingStream):
+    def __init__(self, backingStream: IO[Any]) -> None:
         """
         Wrap the given backing stream.
         """
@@ -165,7 +163,7 @@ class WriteWatchingStream:
         # We have no write listeners yet
         self.writeListeners = []
 
-    def onWrite(self, listener):
+    def onWrite(self, listener: Callable[[int], None]) -> None:
         """
         Call the given listener with the number of bytes written on every write.
         """

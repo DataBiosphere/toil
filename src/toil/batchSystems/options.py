@@ -11,11 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 
-import os
 import logging
-
+import os
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, List, Optional, Union, TypeVar
+from typing import Any, Callable, List, Optional, TypeVar, Union
 
 from toil.batchSystems.registry import (
     BATCH_SYSTEM_FACTORY_REGISTRY,

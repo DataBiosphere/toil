@@ -25,11 +25,11 @@ import sys
 import threading
 import time
 import traceback
+from urllib.request import urlopen
+
 import addict
 import psutil
-
 from pymesos import Executor, MesosExecutorDriver, decode_data, encode_data
-from urllib.request import urlopen
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.lib.expando import Expando

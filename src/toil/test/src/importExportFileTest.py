@@ -21,7 +21,7 @@ from toil.common import Toil
 from toil.fileStores import FileID
 from toil.job import Job
 from toil.leader import FailedJobsException
-from toil.test import ToilTest, slow, travis_test
+from toil.test import ToilTest, slow
 
 
 class ImportExportFileTest(ToilTest):

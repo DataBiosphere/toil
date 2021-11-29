@@ -19,7 +19,7 @@ import tempfile
 import time
 from pipes import quote
 from queue import Empty
-from typing import Optional, List, Dict
+from typing import Dict, List, Optional
 
 from toil.batchSystems.abstractGridEngineBatchSystem import (AbstractGridEngineBatchSystem,
                                                              UpdatedBatchJobInfo)

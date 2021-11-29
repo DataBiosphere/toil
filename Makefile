@@ -96,9 +96,11 @@ develop: check_venv
 	pip install -e .$(extras) $(packages)
 
 clean_develop: check_venv
-	- pip uninstall -y toil
 	- rm -rf src/*.egg-info
 	- rm src/toil/version.py
+
+uninstall:
+	- pip uninstall -y toil
 
 sdist: dist/$(sdist_name)
 
@@ -155,7 +157,7 @@ docker: docker/Dockerfile
 
 	@set -ex \
 	; cd docker \
-	; docker build --tag=$(docker_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
+	; docker buildx build --platform linux/amd64,linux/arm64 --tag=$(docker_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
 
 	@set -ex \
 	; cd dashboard/prometheus \
@@ -169,7 +171,6 @@ docker: docker/Dockerfile
 	; cd dashboard/mtail \
 	; docker build --tag=$(mtail_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
 
-
 docker/$(sdist_name): dist/$(sdist_name)
 	cp $< $@
 
@@ -182,7 +183,7 @@ clean_docker:
 
 push_docker: docker
 	# Weird if logic is so we fail if all the pushes fail
-	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(docker_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
+	cd docker ; for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker buildx build --platform linux/amd64,linux/arm64 --push --tag=$(docker_image):$(TOIL_DOCKER_TAG) -f Dockerfile . && break || sleep 60; done
 	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(grafana_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
 	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(prometheus_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
 	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(mtail_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
@@ -251,6 +252,12 @@ format: $(wildcard src/toil/cwl/*.py)
 
 mypy:
 	$(CURDIR)/contrib/admin/mypy-with-ignore.py
+
+pydocstyle_report.txt: src/toil
+	pydocstyle setup.py $^ > $@ 2>&1 || true
+
+diff_pydocstyle_report: pydocstyle_report.txt
+	diff-quality --compare-branch=master --violations=pycodestyle --fail-under=100 $^
 
 diff_mypy:
 	mypy --cobertura-xml-report . src/toil || true
