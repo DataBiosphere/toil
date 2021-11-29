@@ -1843,9 +1843,12 @@ class CWLJob(Job):
 
         req = tool.evalResources(self.builder, runtime_context)
         try:
-            displayName = str(self.cwltool.tool["id"])
+            displayName: Optional[str] = str(self.cwltool.tool["id"])
             #Make our job names more descriptive for HPC batch systems.
-            unitName =  f"{workflow_name}.{shortname(displayName)}" if workflow_name else f"{shortname(displayName)}"
+            # We know that displayName can't be None right now, since we just
+            # set it, but MyPy doesn't, so inform it.
+            assert displayName is not None
+            unitName: Optional[str] = f"{workflow_name}.{shortname(displayName)}" if workflow_name else f"{shortname(displayName)}"
         except KeyError:
             displayName = None
             unitName = None
