@@ -48,11 +48,11 @@ class ToilKillTest(ToilTest):
         run_cmd = ['toil-cwl-runner', '--jobStore', self.jobstore, self.cwl, self.yaml]
         kill_cmd = ['toil', 'kill', self.jobstore]
 
-        cwlProcess = subprocess.Popen(run_cmd)
+        cwl_process = subprocess.Popen(run_cmd)
         time.sleep(2)
         subprocess.Popen(kill_cmd, stderr=subprocess.PIPE)
 
-        assert cwlProcess.poll()==None
+        assert cwl_process.poll()==None
 
 
 if __name__ == "__main__":
