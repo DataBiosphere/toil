@@ -18,6 +18,7 @@ import signal
 
 from toil.common import Config, Toil, parser_with_common_options
 from toil.statsAndLogging import set_logging_from_options
+from toil.jobStores.fileJobStore import FileJobStore
 
 logger = logging.getLogger(__name__)
 
@@ -28,20 +29,27 @@ def main() -> None:
     set_logging_from_options(options)
     config = Config()
     config.setOptions(options)
-    config.jobStore = config.jobStore[5:] if config.jobStore.startswith('file:') else config.jobStore
 
-    # ':' means an aws/google jobstore; use the old (broken?) method
-    if ':' in config.jobStore:
+    job_store_type, _ = Toil.parseLocator(config.jobStore)
+
+    if job_store_type != 'file':
+        # Remote (aws/google) jobstore; use the old (broken?) method
         jobStore = Toil.resumeJobStore(config.jobStore)
         logger.info("Starting routine to kill running jobs in the toil workflow: %s", config.jobStore)
         # TODO: This behaviour is now broken: https://github.com/DataBiosphere/toil/commit/a3d65fc8925712221e4cda116d1825d4a1e963a1
+        # There's no guarantee that the batch system in use can enumerate
+        # running jobs belonging to the job store we've attached to. And
+        # moreover we don't even bother trying to kill the leader at its
+        # recorded PID, even if it is a local process.
         batchSystem = Toil.createBatchSystem(jobStore.config)  # Should automatically kill existing jobs, so we're good.
         for jobID in batchSystem.getIssuedBatchJobIDs():  # Just in case we do it again.
             batchSystem.killBatchJobs([jobID])
         logger.info("All jobs SHOULD have been killed")
-    # otherwise, kill the pid recorded in the jobstore
     else:
+        # otherwise, kill the pid recorded in the jobstore.
+        # TODO: We assume thnis is a local PID.
         jobStore = Toil.resumeJobStore(config.jobStore)
+        assert isinstance(jobStore, FileJobStore), "Need a FileJobStore which has a sharedFilesDir"
         pid_log = os.path.join(jobStore.sharedFilesDir, 'pid.log')
         with open(pid_log) as f:
             pid2kill = f.read().strip()
