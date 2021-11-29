@@ -283,24 +283,6 @@ jobstore_and_provisioning:
 # https://ucsc-ci.com/databiosphere/toil/-/jobs/38672
 # guessing decorators are masking class as function?  ^  also, abstract class is run as normal test?  should hide.
 
-main:
-  stage: basic_tests
-  script:
-    - pwd
-    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages=htcondor
-    - make test tests=src/toil/test/src
-    - make test tests=src/toil/test/utils
-#    - make test tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testDocker
-
-appliance_build:
-  stage: basic_tests
-  script:
-    - pwd
-    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && pip install pycparser && make develop extras=[all] packages='htcondor awscli'
-    # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
-    - python setup_gitlab_docker.py
-    - make push_docker
-
 integration:
   stage: integration
   script:
