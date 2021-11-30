@@ -9,33 +9,37 @@ from urllib.request import urlretrieve
 from toil.test import ToilTest, needs_docker, needs_java, slow
 from toil.version import exactPython
 from toil.wdl.utils import get_analyzer
-from toil.wdl.wdl_functions import (abspath_file,
-                                    basename,
-                                    combine_dicts,
-                                    generate_docker_bashscript_file,
-                                    glob,
-                                    parse_cores,
-                                    parse_disk,
-                                    parse_memory,
-                                    process_and_read_file,
-                                    process_infile,
-                                    process_outfile,
-                                    read_csv,
-                                    read_tsv,
-                                    select_first,
-                                    size)
+from toil.wdl.wdl_functions import (
+    basename,
+    glob,
+    parse_cores,
+    parse_disk,
+    parse_memory,
+    process_infile,
+    read_csv,
+    read_tsv,
+    select_first,
+    size,
+)
 
 
 class ToilWdlIntegrationTest(ToilTest):
     """A set of test cases for toilwdl.py"""
 
-    def setUp(self):
+    gatk_data: str
+    gatk_data_dir: str
+    encode_data: str
+    encode_data_dir: str
+    wdl_data: str
+    wdl_data_dir: str
+
+    def setUp(self) -> None:
         """Runs anew before each test to create farm fresh temp dirs."""
         self.output_dir = os.path.join('/tmp/', 'toil-wdl-test-' + str(uuid.uuid4()))
         os.makedirs(self.output_dir)
 
     @classmethod
-    def setUpClass(cls):
+    def setUpClass(cls) -> None:
         """Runs once for all tests."""
         cls.program = os.path.abspath("src/toil/wdl/toilwdl.py")
 
@@ -62,12 +66,12 @@ class ToilWdlIntegrationTest(ToilTest):
                                     data=cls.gatk_data,
                                     data_dir=cls.gatk_data_dir)
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         if os.path.exists(self.output_dir):
             shutil.rmtree(self.output_dir)
 
     @classmethod
-    def tearDownClass(cls):
+    def tearDownClass(cls) -> None:
         """We generate a lot of cruft."""
         jobstores = ['./toilWorkflowRun', '/mnt/ephemeral/workspace/toil-pull-requests/toilWorkflowRun']
         data_dirs = [cls.gatk_data_dir, cls.wdl_data_dir, cls.encode_data_dir]
@@ -129,7 +133,7 @@ class ToilWdlIntegrationTest(ToilTest):
         assert select_first(['', 2, 1, 'somestring', None, '']) == 2
 
     # estimated run time <1 sec
-    def testFn_Size(self):
+    def testFn_Size(self) -> None:
         """Test the wdl built-in functional equivalent of 'size()',
         which returns a file's size based on the path."""
         from toil.common import Toil

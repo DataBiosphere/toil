@@ -93,7 +93,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
                           contentHash=self.contentHash)
 
     @classmethod
-    def prepareSystem(cls):
+    def prepareSystem(cls) -> None:
         """
         Prepares this system for the downloading and lookup of resources. This method should only
         be invoked on a worker node. It is idempotent but not thread-safe.
@@ -109,7 +109,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         assert os.path.isdir(resourceRootDirPath)
 
     @classmethod
-    def cleanSystem(cls):
+    def cleanSystem(cls) -> None:
         """
         Removes all downloaded, localized resources
         """

@@ -20,9 +20,8 @@ from contextlib import contextmanager
 from inspect import getsource
 from io import BytesIO
 from textwrap import dedent
-from zipfile import ZipFile
-
 from unittest.mock import MagicMock, patch
+from zipfile import ZipFile
 
 from toil import inVirtualEnv
 from toil.resource import ModuleDescriptor, Resource, ResourceException

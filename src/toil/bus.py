@@ -19,7 +19,6 @@ Message types and message bus for leader component coordination.
 import collections
 import inspect
 import logging
-import threading
 from typing import Any, Dict, Iterator, List, NamedTuple, Type, TypeVar
 
 logger = logging.getLogger( __name__ )

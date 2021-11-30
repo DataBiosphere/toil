@@ -58,6 +58,7 @@ lint:
     - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && make prepare && make develop extras=[all] packages=htcondor
     - make mypy
     - make docs
+    # - make diff_pydocstyle_report
 
 
 cwl_dependency_is_stand_alone:
@@ -354,5 +355,4 @@ cactus_integration:
     - pip install --upgrade .
     - pip install psutil numpy --upgrade
     - toil clean aws:us-west-2:${BUCKET_NAME}
-    - time cactus --setEnv SINGULARITY_DOCKER_HUB_MIRROR --batchSystem kubernetes --binariesMode singularity --clean always aws:us-west-2:${BUCKET_NAME} examples/evolverMammals.txt examples/evolverMammals.hal --root mr --defaultDisk "8G" --logDebug --disableCaching false
-
+    - time cactus --setEnv SINGULARITY_DOCKER_HUB_MIRROR --batchSystem kubernetes --binariesMode singularity --clean always aws:us-west-2:${BUCKET_NAME} examples/evolverMammals.txt examples/evolverMammals.hal --root mr --defaultDisk "8G" --logDebug

@@ -12,16 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import configparser
+import json
 import logging
 import os.path
 import subprocess
 import tempfile
 import textwrap
-import json
 from abc import ABC, abstractmethod
-
 from functools import total_ordering
-from typing import List, Dict, Tuple, Optional, Set, Union
+from typing import Dict, List, Optional, Set, Tuple, Union
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -42,7 +41,6 @@ class ManagedNodesNotSupportedException(RuntimeError):
     Polling with this and try/except is the Right Way to check if managed nodes
     are available from a provisioner.
     """
-    pass
 
 
 @total_ordering
@@ -473,7 +471,7 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def destroyCluster(self):
+    def destroyCluster(self) -> None:
         """
         Terminates all nodes in the specified cluster and cleans up all resources associated with the
         cluser.

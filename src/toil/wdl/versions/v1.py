@@ -15,8 +15,8 @@ import logging
 from collections import OrderedDict
 from typing import Union
 
-from wdlparse.v1.WdlV1Lexer import WdlV1Lexer, FileStream
-from wdlparse.v1.WdlV1Parser import WdlV1Parser, CommonTokenStream
+from wdlparse.v1.WdlV1Lexer import FileStream, WdlV1Lexer
+from wdlparse.v1.WdlV1Parser import CommonTokenStream, WdlV1Parser
 
 from toil.wdl.wdl_analysis import AnalyzeWDL
 

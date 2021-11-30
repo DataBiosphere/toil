@@ -14,7 +14,6 @@
 import errno
 import logging
 import os
-import stat
 import pickle
 import random
 import re
@@ -24,14 +23,19 @@ import tempfile
 import time
 import uuid
 from contextlib import contextmanager
+from typing import BinaryIO, Iterator, Optional, TextIO, Union, overload
+
+from typing_extensions import Literal
 
 from toil.fileStores import FileID
 from toil.job import TemporaryID
-from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             JobStoreExistsException,
-                                             NoSuchFileException,
-                                             NoSuchJobException,
-                                             NoSuchJobStoreException)
+from toil.jobStores.abstractJobStore import (
+    AbstractJobStore,
+    JobStoreExistsException,
+    NoSuchFileException,
+    NoSuchJobException,
+    NoSuchJobStoreException,
+)
 from toil.lib.io import AtomicFileCreate, atomic_copy, atomic_copyobj, robust_rmtree
 
 logger = logging.getLogger(__name__)
@@ -556,10 +560,57 @@ class FileJobStore(AbstractJobStore):
             yield f
 
     @contextmanager
-    def read_file_stream(self, file_id, encoding=None, errors=None):
+    @overload
+    def read_file_stream(
+        self,
+        file_id: Union[str, FileID],
+        encoding: Literal[None] = None,
+        errors: Optional[str] = None,
+    ) -> Iterator[BinaryIO]:
+        ...
+
+    @contextmanager
+    @overload
+    def read_file_stream(
+        self, file_id: Union[str, FileID], encoding: str, errors: Optional[str] = None
+    ) -> Iterator[TextIO]:
+        ...
+
+    @contextmanager
+    @overload
+    def read_file_stream(
+        self,
+        file_id: Union[str, FileID],
+        encoding: Optional[str] = None,
+        errors: Optional[str] = None,
+    ) -> Union[Iterator[BinaryIO], Iterator[TextIO]]:
+        ...
+
+    @contextmanager
+    def read_file_stream(
+        self,
+        file_id: Union[str, FileID],
+        encoding: Optional[str] = None,
+        errors: Optional[str] = None,
+    ) -> Union[Iterator[BinaryIO], Iterator[TextIO]]:
         self._check_job_store_file_id(file_id)
-        with open(self._get_file_path_from_id(file_id), 'rb' if encoding == None else 'rt', encoding=encoding, errors=errors) as f:
-            yield f
+        if encoding is None:
+            with open(
+                self._get_file_path_from_id(file_id),
+                "rb",
+                encoding=encoding,
+                errors=errors,
+            ) as fb:
+                yield fb
+        else:
+            with open(
+                self._get_file_path_from_id(file_id),
+                "rt",
+                1,
+                encoding=encoding,
+                errors=errors,
+            ) as ft:
+                yield ft
 
     ##########################################
     # The following methods deal with shared files, i.e. files not associated
