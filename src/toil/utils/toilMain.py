@@ -3,11 +3,13 @@ import re
 import sys
 import textwrap
 import types
+from typing import Any, Dict
 
 import pkg_resources
 
 from toil.version import version
-from typing import Any, Dict
+
+
 
 def main() -> None:
     modules = loadModules()
@@ -30,6 +32,7 @@ def main() -> None:
     del sys.argv[1]
     get_or_die(module, 'main')()
 
+
 def get_or_die(module: types.ModuleType, name: str) -> Any:
     """
     Get an object from a module or complain that it is missing.
@@ -41,19 +44,22 @@ def get_or_die(module: types.ModuleType, name: str) -> Any:
                          f'{module.__name__} is missing required attribute {name}\n')
         sys.exit(1)
 
+
 def loadModules() -> Dict[str, types.ModuleType]:
     # noinspection PyUnresolvedReferences
-    from toil.utils import (toilClean,
-                            toilDebugFile,
-                            toilDebugJob,
-                            toilDestroyCluster,
-                            toilKill,
-                            toilLaunchCluster,
-                            toilRsyncCluster,
-                            toilSshCluster,
-                            toilStats,
-                            toilStatus)
-    return {"-".join([i.lower() for i in re.findall('[A-Z][^A-Z]*', name)]): module for name, module in locals().items()}
+    from toil.utils import toilClean  # noqa
+    from toil.utils import toilDebugFile  # noqa
+    from toil.utils import toilDebugJob  # noqa
+    from toil.utils import toilDestroyCluster  # noqa
+    from toil.utils import toilKill  # noqa
+    from toil.utils import toilLaunchCluster  # noqa
+    from toil.utils import toilRsyncCluster  # noqa
+    from toil.utils import toilSshCluster  # noqa
+    from toil.utils import toilStats  # noqa
+    from toil.utils import toilStatus  # noqa
+    from toil.utils import toilServer  # noqa
+
+    return {'-'.join([i.lower() for i in re.findall('[A-Z][^A-Z]*', name)]): module for name, module in locals().items()}
 
 
 def printHelp(modules: Dict[str, types.ModuleType]) -> None:

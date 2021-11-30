@@ -13,22 +13,26 @@
 # limitations under the License.
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
+from typing import Any, Iterable, Iterator, TypeVar
+
+IT = TypeVar("IT")
 
 
-
-def flatten( iterables ):
-    """ Flatten an iterable, except for string elements. """
+def flatten(iterables: Iterable[IT]) -> Iterator[IT]:
+    """Flatten an iterable, except for string elements."""
     for it in iterables:
         if isinstance(it, str):
             yield it
         else:
             yield from it
 
+
 # noinspection PyPep8Naming
 class concat:
     """
-    A literal iterable that lets you combine sequence literals (lists, set) with generators or list
-    comprehensions. Instead of
+    A literal iterable to combine sequence literals (lists, set) with generators or list comprehensions.
+
+    Instead of
 
     >>> [ -1 ] + [ x * 2 for x in range( 3 ) ] + [ -1 ]
     [-1, 0, 2, 4, -1]
@@ -41,7 +45,8 @@ class concat:
     This is slightly shorter (not counting the list constructor) and does not involve array
     construction or concatenation.
 
-    Note that concat() flattens (or chains) all iterable arguments into a single result iterable:
+    Note that concat() flattens (or chains) all iterable arguments into a single
+    result iterable:
 
     >>> list( concat( 1, range( 2, 4 ), 4 ) )
     [1, 2, 3, 4]
@@ -85,21 +90,21 @@ class concat:
     ['ab']
     """
 
-    def __init__( self, *args ):
-        super().__init__( )
+    def __init__(self, *args: Any) -> None:
+        super().__init__()
         self.args = args
 
-    def __iter__( self ):
-        def expand( x ):
-            if isinstance( x, concat ) and len( x.args ) == 1:
+    def __iter__(self) -> Iterator[Any]:
+        def expand(x):
+            if isinstance(x, concat) and len(x.args) == 1:
                 i = x.args
             elif not isinstance(x, str):
                 try:
-                    i = x.__iter__( )
+                    i = x.__iter__()
                 except AttributeError:
                     i = x,
             else:
                 i = x
             return i
 
-        return flatten( map( expand, self.args ) )
+        return flatten(map(expand, self.args))

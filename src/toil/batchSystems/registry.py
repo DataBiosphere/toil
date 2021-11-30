@@ -13,8 +13,7 @@
 # limitations under the License.
 
 import logging
-
-from typing import Callable, Dict, List, Tuple, Type, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Dict, List, Tuple, Type
 
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem

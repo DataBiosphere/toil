@@ -20,6 +20,15 @@ before_script:
   - cat /etc/hosts
   - mkdir -p ~/.kube && cp "$GITLAB_SECRET_FILE_KUBE_CONFIG" ~/.kube/config
   - mkdir -p ~/.aws && cp "$GITLAB_SECRET_FILE_AWS_CREDENTIALS" ~/.aws/credentials
+  - mkdir -p ~/.docker/cli-plugins/ ; curl -L https://github.com/docker/buildx/releases/download/v0.6.3/buildx-v0.6.3.linux-amd64 >  ~/.docker/cli-plugins/docker-buildx ; chmod u+x ~/.docker/cli-plugins/docker-buildx
+  # We need to make sure docker buildx create can't see the ~/.kube/config that we deploy. It has
+  # a service account bearer token for auth and triggers https://github.com/docker/buildx/issues/267
+  # where buildx can't use a bearer token from a kube config and falls back to anonymous instead
+  # of using the system's service account.
+  - KUBECONFIG=/dev/null docker buildx create --use --name toilbuilder --platform=linux/amd64,linux/arm64 --node=buildkit-amd64 --driver=kubernetes --driver-opt="nodeselector=kubernetes.io/arch=amd64"
+  # Dump the builder info
+  - docker buildx inspect --bootstrap || true
+  - (echo "y" | docker buildx prune --keep-storage 80G) || true
   - sudo apt-get update
   - sudo apt-get install -y software-properties-common build-essential virtualenv
   - sudo add-apt-repository -y ppa:deadsnakes/ppa
@@ -49,6 +58,7 @@ lint:
     - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && make prepare && make develop extras=[all] packages=htcondor
     - make mypy
     - make docs
+    # - make diff_pydocstyle_report
 
 
 cwl_dependency_is_stand_alone:
@@ -200,7 +210,6 @@ cwl_v1.2_kubernetes:
     - export TOIL_WORKDIR=/var/lib/toil
     - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
     - mkdir -p ${TOIL_WORKDIR}
-    - pip install -U git+https://github.com/adamnovak/cwltest.git@issues/121-keep-output-on-timeout
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance_with_caching
   artifacts:
@@ -346,5 +355,4 @@ cactus_integration:
     - pip install --upgrade .
     - pip install psutil numpy --upgrade
     - toil clean aws:us-west-2:${BUCKET_NAME}
-    - time cactus --setEnv SINGULARITY_DOCKER_HUB_MIRROR --batchSystem kubernetes --binariesMode singularity --clean always aws:us-west-2:${BUCKET_NAME} examples/evolverMammals.txt examples/evolverMammals.hal --root mr --defaultDisk "8G" --logDebug --disableCaching false
-
+    - time cactus --setEnv SINGULARITY_DOCKER_HUB_MIRROR --batchSystem kubernetes --binariesMode singularity --clean always aws:us-west-2:${BUCKET_NAME} examples/evolverMammals.txt examples/evolverMammals.hal --root mr --defaultDisk "8G" --logDebug

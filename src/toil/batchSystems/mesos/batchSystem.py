@@ -25,7 +25,7 @@ import traceback
 from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
 from queue import Empty, Queue
-from typing import Callable, Optional, Dict, TypeVar, Union
+from typing import Dict, Optional, Union
 from urllib.parse import quote_plus
 from urllib.request import urlopen
 
@@ -356,7 +356,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         address[0] = socket.gethostbyname(address[0])
         return ':'.join(address)
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         self.shutdownLocal()
         log.debug("Stopping Mesos driver")
         self.driver.stop()

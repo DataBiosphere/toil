@@ -16,6 +16,7 @@
 
 import sys
 
+
 # TODO: isn't this built in to Python 3 now?
 class panic:
     """

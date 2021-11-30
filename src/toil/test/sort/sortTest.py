@@ -22,7 +22,6 @@ from uuid import uuid4
 
 from toil import resolveEntryPoint
 from toil.batchSystems.mesos.test import MesosTestSupport
-from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.common import Toil
 from toil.job import Job
 from toil.jobStores.abstractJobStore import (JobStoreExistsException,
@@ -37,6 +36,7 @@ from toil.test import (ToilTest,
                        needs_parasol,
                        needs_torque,
                        slow)
+from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.test.sort.sort import (copySubRangeOfFile,
                                  getMidPoint,
                                  main,

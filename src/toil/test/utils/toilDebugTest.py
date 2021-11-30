@@ -17,9 +17,10 @@ import shutil
 import subprocess
 import unittest
 
-from toil.test import ToilTest, slow, travis_test
 from toil.lib.resources import glob
+from toil.test import ToilTest, slow, travis_test
 from toil.version import python
+
 logger = logging.getLogger(__name__)
 
 class ToilDebugFileTest(ToilTest):
