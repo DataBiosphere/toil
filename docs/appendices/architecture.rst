@@ -77,15 +77,22 @@ several human-readable names that are useful for logging and identification:
 |                  |                                                                    |
 |                  | For a :class:`~toil.job.FunctionWrappingJob`, the jobName is       |
 |                  | replaced by the wrapped function's name.                           |
+|                  |                                                                    |
+|                  | For a CWL workflow, the jobName is the class name of the internal  |
+|                  | job that is running the CWL workflow, such as ``"CWLJob"``.        |
 +------------------+--------------------------------------------------------------------+
-| unitName         | Name of this *instance* of this kind of job. Optionally defined by |
-|                  | the user via the ``unitName`` keyword argument in the Job          |
-|                  | constructor. If set, it will appear with the jobName in logging.   |
+| unitName         | Name of this *instance* of this kind of job. If set by the user,   |
+|                  | it will appear with the jobName in logging.                        |
+|                  |                                                                    |
+|                  | For a CWL workflow, the unitName is set to a descriptive name that |
+|                  | includes the CWL file name and the ID in the file if set.          |
 +------------------+--------------------------------------------------------------------+
 | displayName      | A human-readable name to identify this particular job instance.    |
 |                  | Used as an identifier of the job class in the stats report.        |
 |                  | Defaults to the job class's name if no real user-defined name is   |
 |                  | available.                                                         |
+|                  |                                                                    |
+|                  | For a CWL workflow, the displayName is the absolute workflow URI.  |
 +------------------+--------------------------------------------------------------------+
 
 
