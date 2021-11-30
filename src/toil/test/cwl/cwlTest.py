@@ -23,20 +23,23 @@ import unittest
 import uuid
 import zipfile
 from io import StringIO
-from unittest.mock import Mock, call
 from typing import Dict, List, MutableMapping, Optional
+from unittest.mock import Mock, call
 from urllib.request import urlretrieve
 
-import psutil
 import pytest
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
-from toil.cwl.utils import visit_top_cwl_class, visit_cwl_class_and_reduce, download_structure
+from toil.cwl.utils import (
+    download_structure,
+    visit_cwl_class_and_reduce,
+    visit_top_cwl_class,
+)
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
-
+from toil.lib.threading import cpu_count
 from toil.test import (ToilTest,
                        needs_aws_s3,
                        needs_cwl,
@@ -56,7 +59,7 @@ CONFORMANCE_TEST_TIMEOUT = 3600
 
 def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSystem: str = None,
     selected_tests: str = None, selected_tags: str = None, skipped_tests: str = None,
-    extra_args: List[str] = [], must_support_all_features: bool = False) -> Optional[str]:
+    extra_args: List[str] = [], must_support_all_features: bool = False, junit_file: Optional[str] = None) -> Optional[str]:
     """
     Run the CWL conformance tests.
 
@@ -77,10 +80,11 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
     :param extra_args: Provide these extra arguments to toil-cwl-runner for each test.
 
     :param must_support_all_features: If set, fail if some CWL optional features are unsupported.
+
+    :param junit_file: JUnit XML file to write test info to.
     """
     try:
         cmd = ['cwltest',
-               '--verbose',
                '--tool=toil-cwl-runner',
                f'--test={yml}',
                '--timeout=2400',
@@ -91,10 +95,21 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
             cmd.append(f'--tags={selected_tags}')
         if skipped_tests:
             cmd.append(f'-S{skipped_tests}')
+        if junit_file:
+            # Capture output for JUnit
+            cmd.append('--junit-verbose')
+            cmd.append(f'--junit-xml={junit_file}')
+        else:
+            # Otherwise dump all output to our output stream
+            cmd.append('--verbose')
 
-        args_passed_directly_to_toil = [f'--disableCaching={not caching}',
-                                        '--clean=always',
-                                        '--logDebug'] + extra_args
+        args_passed_directly_to_toil = ['--clean=always',
+                                        '--logDebug',
+                                        '--statusWait=10']
+        if not caching:
+            # Turn off caching for the run
+            args_passed_directly_to_toil.append('--disableCaching')
+        args_passed_directly_to_toil += extra_args
 
         if 'SINGULARITY_DOCKER_HUB_MIRROR' in os.environ:
             args_passed_directly_to_toil.append('--setEnv=SINGULARITY_DOCKER_HUB_MIRROR')
@@ -104,10 +119,13 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
         if batchSystem == 'kubernetes':
             # Run tests in parallel on Kubernetes.
             # We can throw a bunch at it at once and let Kubernetes schedule.
-            cmd.append('-j8')
+            # But we still want a local core for each.
+            parallel_tests = max(min(cpu_count(), 8), 1)
         else:
-            # Run tests in parallel on the local machine
-            cmd.append(f'-j{int(psutil.cpu_count()/2)}')
+            # Run tests in parallel on the local machine. Don't run too many
+            # tests at once; we want at least a couple cores for each.
+            parallel_tests = max(int(cpu_count() / 2), 1)
+        cmd.append(f'-j{parallel_tests}')
 
         if batchSystem:
             args_passed_directly_to_toil.append(f"--batchSystem={batchSystem}")
@@ -203,12 +221,19 @@ class CWLv10Test(ToilTest):
     def test_mpi(self):
         from toil.cwl import cwltoil
         stdout = StringIO()
-        main_args = ['--outdir', self.outDir,
-                     '--enable-dev',
-                     '--enable-ext',
-                     '--mpi-config-file', os.path.join(self.rootDir, 'src/toil/test/cwl/mock_mpi/fake_mpi.yml'),
-                     os.path.join(self.rootDir, 'src/toil/test/cwl/mpi_simple.cwl')]
+        main_args = [
+            "--outdir",
+            self.outDir,
+            "--enable-dev",
+            "--enable-ext",
+            "--mpi-config-file",
+            os.path.join(self.rootDir, "src/toil/test/cwl/mock_mpi/fake_mpi.yml"),
+            os.path.join(self.rootDir, "src/toil/test/cwl/mpi_simple.cwl"),
+        ]
+        path = os.environ["PATH"]
+        os.environ["PATH"] = f"{path}:{self.rootDir}/src/toil/test/cwl/mock_mpi/"
         cwltoil.main(main_args, stdout=stdout)
+        os.environ["PATH"] = path
         out = json.loads(stdout.getvalue())
         with open(out.get('pids', {}).get('location')[len('file://'):]) as f:
             two_pids = [int(i) for i in f.read().split()]
@@ -545,6 +570,8 @@ class CWLv12Test(ToilTest):
     @slow
     @needs_kubernetes
     def test_kubernetes_cwl_conformance(self, **kwargs):
+        if 'junit_file' not in kwargs:
+            kwargs['junit_file'] = os.path.join(self.rootDir, 'kubernetes-conformance.junit.xml')
         return self.test_run_conformance(batchSystem="kubernetes",
                                          # This test doesn't work with
                                          # Singularity; see
@@ -557,7 +584,8 @@ class CWLv12Test(ToilTest):
     @slow
     @needs_kubernetes
     def test_kubernetes_cwl_conformance_with_caching(self):
-        return self.test_kubernetes_cwl_conformance(caching=True)
+        return self.test_kubernetes_cwl_conformance(caching=True, junit_file=os.path.join(self.rootDir,
+                                                                                          'kubernetes-caching-conformance.junit.xml'))
 
     def _expected_streaming_output(self, outDir):
         # Having unicode string literals isn't necessary for the assertion but
@@ -614,7 +642,7 @@ class CWLSmallTests(ToilTest):
         cwl_job_json = 'test/cwl/revsort-job.json'
         jobstore = 'delete-test-toil'
         random_option_1 = '--logInfo'
-        random_option_2 = '--disableCaching=false'
+        random_option_2 = '--disableChaining'
         cmd_wrong_ordering_1 = [toil, cwl, cwl_job_json, jobstore, random_option_1, random_option_2]
         cmd_wrong_ordering_2 = [toil, cwl, jobstore, random_option_1, random_option_2, cwl_job_json]
         cmd_wrong_ordering_3 = [toil, jobstore, random_option_1, random_option_2, cwl, cwl_job_json]

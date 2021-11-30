@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Utility functions used for Toil's CWL interpreter.
-"""
+"""Utility functions used for Toil's CWL interpreter."""
 
 import logging
 import os
@@ -27,6 +25,7 @@ from typing import (
     MutableMapping,
     MutableSequence,
     Tuple,
+    Type,
     TypeVar,
     Union,
 )
@@ -38,12 +37,43 @@ logger = logging.getLogger(__name__)
 
 # Customized CWL utilities
 
+# Define internal jobs we should avoid submitting to batch systems and logging
+CWL_INTERNAL_JOBS: Tuple[str, ...] = (
+    "CWLJobWrapper",
+    "CWLWorkflow",
+    "CWLScatter",
+    "CWLGather",
+    "ResolveIndirect",
+)
+
+
+# What exit code do we need to bail with if we or any of the local jobs that
+# parse workflow files see an unsupported feature?
+CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE = 33
+
+# And what error will make the worker exit with that code
+
+
+class CWLUnsupportedException(Exception):
+    """Fallback exception."""
+
+
+try:
+    import cwltool.errors
+
+    CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION: Union[
+        Type[cwltool.errors.UnsupportedRequirement], Type[CWLUnsupportedException]
+    ] = cwltool.errors.UnsupportedRequirement
+except ImportError:
+    CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION = CWLUnsupportedException
+
 
 def visit_top_cwl_class(
     rec: Any, classes: Iterable[str], op: Callable[[Any], Any]
 ) -> None:
     """
     Apply the given operation to all top-level CWL objects with the given named CWL class.
+
     Like cwltool's visit_class but doesn't look inside any object visited.
     """
     if isinstance(rec, MutableMapping):
@@ -73,6 +103,7 @@ def visit_cwl_class_and_reduce(
 ) -> List[UpReturnType]:
     """
     Apply the given operations to all CWL objects with the given named CWL class.
+
     Applies the down operation top-down, and the up operation bottom-up, and
     passes the down operation's result and a list of the up operation results
     for all child keys (flattening across lists and collapsing nodes of
@@ -80,7 +111,6 @@ def visit_cwl_class_and_reduce(
 
     :returns: The flattened list of up operation results from all calls.
     """
-
     results = []
 
     if isinstance(rec, MutableMapping):
@@ -122,8 +152,7 @@ def download_structure(
     into_dir: str,
 ) -> None:
     """
-    Download a whole nested dictionary of files and directories from the
-    Toil file store to a local path.
+    Download nested dictionary from the Toil file store to a local path.
 
     :param file_store: The Toil file store to download from.
 
@@ -137,7 +166,6 @@ def download_structure(
     :param into_dir: The directory to download the top-level dict's files
     into.
     """
-
     logger.debug("Downloading directory with %s items", len(dir_dict))
 
     for name, value in dir_dict.items():

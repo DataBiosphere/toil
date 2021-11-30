@@ -20,6 +20,7 @@ import subprocess
 import sys
 import time
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 import requests
 from pytz import timezone
@@ -28,6 +29,9 @@ from docker.errors import ImageNotFound
 from toil.lib.memoize import memoize
 from toil.lib.retry import retry
 from toil.version import currentCommit
+
+if TYPE_CHECKING:
+    from toil.common import Config
 
 log = logging.getLogger(__name__)
 
@@ -99,9 +103,10 @@ def which(cmd, mode=os.F_OK | os.X_OK, path=None):
     return None
 
 
-def toilPackageDirPath():
+def toilPackageDirPath() -> str:
     """
-    Returns the absolute path of the directory that corresponds to the top-level toil package.
+    Return the absolute path of the directory that corresponds to the top-level toil package.
+
     The return value is guaranteed to end in '/toil'.
     """
     result = os.path.dirname(os.path.realpath(__file__))
@@ -161,7 +166,7 @@ def physicalDisk(directory: str) -> int:
     return diskStats.f_frsize * diskStats.f_bavail
 
 
-def applianceSelf(forceDockerAppliance=False):
+def applianceSelf(forceDockerAppliance: bool = False) -> str:
     """
     Returns the fully qualified name of the Docker image to start Toil appliance containers from.
     The result is determined by the current version of Toil and three environment variables:
@@ -357,6 +362,9 @@ class ApplianceImageNotFound(ImageNotFound):
                "" % (origAppliance, url, str(statusCode)))
         super().__init__(msg)
 
+# Cache images we know exist so we don't have to ask the registry about them
+# all the time.
+KNOWN_EXTANT_IMAGES = set()
 
 def requestCheckRegularDocker(origAppliance, registryName, imageName, tag):
     """
@@ -379,12 +387,18 @@ def requestCheckRegularDocker(origAppliance, registryName, imageName, tag):
     :param str tag: The tag used at that docker image's registry.  e.g. "latest"
     :return: Return True if match found.  Raise otherwise.
     """
+
+    if origAppliance in KNOWN_EXTANT_IMAGES:
+        # Check the cache first
+        return origAppliance
+
     ioURL = 'https://{webhost}/v2/{pathName}/manifests/{tag}' \
             ''.format(webhost=registryName, pathName=imageName, tag=tag)
     response = requests.head(ioURL)
     if not response.ok:
         raise ApplianceImageNotFound(origAppliance, ioURL, response.status_code)
     else:
+        KNOWN_EXTANT_IMAGES.add(origAppliance)
         return origAppliance
 
 
@@ -400,6 +414,11 @@ def requestCheckDockerIo(origAppliance, imageName, tag):
     :param str tag: The tag used at that docker image's registry.  e.g. "latest"
     :return: Return True if match found.  Raise otherwise.
     """
+
+    if origAppliance in KNOWN_EXTANT_IMAGES:
+        # Check the cache first
+        return origAppliance
+
     # only official images like 'busybox' or 'ubuntu'
     if '/' not in imageName:
         imageName = 'library/' + imageName
@@ -415,10 +434,11 @@ def requestCheckDockerIo(origAppliance, imageName, tag):
     if not response.ok:
         raise ApplianceImageNotFound(origAppliance, requests_url, response.status_code)
     else:
+        KNOWN_EXTANT_IMAGES.add(origAppliance)
         return origAppliance
 
 
-def logProcessContext(config):
+def logProcessContext(config: "Config") -> None:
     # toil.version.version (string) cannot be imported at top level because it conflicts with
     # toil.version (module) and Sphinx doesn't like that.
     from toil.version import version

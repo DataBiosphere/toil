@@ -48,6 +48,17 @@ There are several environment variables that affect the way Toil runs.
 |                                  | instead of polling for running jobs. Default       |
 |                                  | value is set to False.                             |
 +----------------------------------+----------------------------------------------------+
+| TOIL_TES_ENDPOINT                | URL to the TES server to run against when using    |
+|                                  | the ``tes`` batch system.                          |
++----------------------------------+----------------------------------------------------+
+| TOIL_TES_USER                    | Username to use with HTTP Basic Authentication to  |
+|                                  | log into the TES server.                           |
++----------------------------------+----------------------------------------------------+
+| TOIL_TES_PASSWORD                | Password to use with HTTP Basic Authentication to  |
+|                                  | log into the TES server.                           |
++----------------------------------+----------------------------------------------------+
+| TOIL_TES_BEARER_TOKEN            | Token to use to authenticate to the TES server.    |
++----------------------------------+----------------------------------------------------+
 | TOIL_APPLIANCE_SELF              | The fully qualified reference for the Toil         |
 |                                  | Appliance you wish to use, in the form             |
 |                                  | ``REPO/IMAGE:TAG``.                                |
@@ -164,6 +175,11 @@ There are several environment variables that affect the way Toil runs.
 | TOIL_S3_USE_SSL                  | enable or disable the usage of SSL for connecting  |
 |                                  | to S3 (``True`` by default).                       |
 |                                  | Example: ``TOIL_S3_USE_SSL=False``                 |
++----------------------------------+----------------------------------------------------+
+| TOIL_WES_BROKER_URL              | An optional broker URL to use to communicate       |
+|                                  | between the WES server and Celery task queue. If   |
+|                                  | unset, ``amqp://guest:guest@localhost:5672//`` is  |
+|                                  | used.                                              |
 +----------------------------------+----------------------------------------------------+
 | TOIL_OWNER_TAG                   | This will tag cloud resources with a tag reading:  |
 |                                  | "Owner: $TOIL_OWNER_TAG".  Currently only on AWS   |

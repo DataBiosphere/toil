@@ -16,19 +16,19 @@ import logging
 import os
 import re
 import subprocess
-import sys
 import tempfile
 import time
+from argparse import ArgumentParser, _ArgumentGroup
 from queue import Empty, Queue
 from shutil import which
 from threading import Thread
-from typing import Optional, Dict
+from typing import Dict, Optional, Union
 
 from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
 from toil.common import SYS_MAX_SIZE, Toil
-from toil.test import get_temp_file
 from toil.lib.iterables import concat
+from toil.test import get_temp_file
 
 logger = logging.getLogger(__name__)
 
@@ -346,7 +346,7 @@ class ParasolBatchSystem(BatchSystemSupport):
             for fileHandle in resultsFileHandles:
                 fileHandle.close()
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         self.killBatchJobs(self.getIssuedBatchJobIDs())  # cleanup jobs
         for results in self.resultsFiles.values():
             exitValue = self._runParasol(['-results=' + results, 'clear', 'sick'],
@@ -364,6 +364,15 @@ class ParasolBatchSystem(BatchSystemSupport):
         for results in list(self.resultsFiles.values()):
             os.remove(results)
         os.rmdir(self.parasolResultsDir)
+
+    @classmethod
+    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+        parser.add_argument("--parasolCommand", dest="parasolCommand", default='parasol',
+                            help="The name or path of the parasol program. Will be looked up on PATH "
+                                 "unless it starts with a slash.  (default: %(default)s).")
+        parser.add_argument("--parasolMaxBatches", dest="parasolMaxBatches", default=1000,
+                            help="Maximum number of job batches the Parasol batch is allowed to create. One batch is "
+                                 "created for jobs with a a unique set of resource requirements.  (default: %(default)s).")
 
     @classmethod
     def setOptions(cls, setOption):

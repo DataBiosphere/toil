@@ -14,9 +14,11 @@
 import logging
 import os
 
-from toil.lib.aws.ami import (get_flatcar_ami,
-                              official_flatcar_ami_release,
-                              aws_marketplace_flatcar_ami_search)
+from toil.lib.aws.ami import (
+    aws_marketplace_flatcar_ami_search,
+    get_flatcar_ami,
+    official_flatcar_ami_release,
+)
 from toil.lib.ec2 import establish_boto3_session
 from toil.test import ToilTest, needs_aws_ec2
 

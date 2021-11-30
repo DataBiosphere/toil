@@ -22,7 +22,6 @@ from uuid import uuid4
 
 from toil import resolveEntryPoint
 from toil.batchSystems.mesos.test import MesosTestSupport
-from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.common import Toil
 from toil.job import Job
 from toil.jobStores.abstractJobStore import (JobStoreExistsException,
@@ -37,6 +36,7 @@ from toil.test import (ToilTest,
                        needs_parasol,
                        needs_torque,
                        slow)
+from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.test.sort.sort import (copySubRangeOfFile,
                                  getMidPoint,
                                  main,
@@ -111,10 +111,10 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 options.badWorker = badWorker
                 options.badWorkerFailInterval = 0.05
                 options.disableCaching = disableCaching
-                # This is required because mesosMasterAddress now defaults to the IP of the machine
+                # This is required because mesos_endpoint now defaults to the IP of the machine
                 # that is starting the workflow while the mesos *tests* run locally.
                 if batchSystem == 'mesos':
-                    options.mesosMasterAddress = 'localhost:5050'
+                    options.mesos_endpoint = 'localhost:5050'
                 options.downCheckpoints = downCheckpoints
                 options.N = N
                 options.outputFile = self.outputFile

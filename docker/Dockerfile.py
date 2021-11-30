@@ -35,11 +35,14 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'wget',
                          'curl',
                          'openssh-server',
-                         'mesos=1.0.1-2.0.94.ubuntu1604',
                          "nodejs",  # CWL support for javascript expressions
                          'rsync',
                          'screen',
                          'build-essential',  # We need a build environment to build Singularity 3.
+                         'libarchive13',
+                         'libc6',
+                         'libseccomp2',
+                         'e2fsprogs',
                          'uuid-dev',
                          'libgpgme11-dev',
                          'libseccomp-dev',
@@ -74,6 +77,8 @@ motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 print(heredoc('''
     FROM ubuntu:16.04
 
+    ARG TARGETARCH
+
     RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install apt-transport-https ca-certificates software-properties-common && apt-get clean && rm -rf /var/lib/apt/lists/*
 
     RUN echo "deb http://repos.mesosphere.io/ubuntu/ xenial main" \
@@ -88,37 +93,32 @@ print(heredoc('''
     RUN apt-get -y update --fix-missing && \
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
         DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
+        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos=1.0.1-2.0.94.ubuntu1604 ; fi && \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
-    RUN wget -q https://dl.google.com/go/go1.13.3.linux-amd64.tar.gz && \
-        tar xf go1.13.3.linux-amd64.tar.gz && \
-        rm go1.13.3.linux-amd64.tar.gz && \
+    RUN wget -q https://dl.google.com/go/go1.13.3.linux-$TARGETARCH.tar.gz && \
+        tar xf go1.13.3.linux-$TARGETARCH.tar.gz && \
+        rm go1.13.3.linux-$TARGETARCH.tar.gz && \
         mv go/bin/* /usr/bin/ && \
         mv go /usr/local/
 
-    # Build Singularity, but only keep the binaries and scrap the GOPATH to
-    # save space. Hide its binary so we can wrap it.
-    RUN mkdir -p $(go env GOPATH)/src/github.com/sylabs && \
-        cd $(go env GOPATH)/src/github.com/sylabs && \
-        git clone https://github.com/sylabs/singularity.git && \
-        cd singularity && \
-        git checkout v3.4.2 && \
-        ./mconfig && \
-        cd ./builddir && \
-        make -j4 && \
-        make install && \
-        cd && \
-        rm -Rf $(go env GOPATH) \
-        && mkdir -p /usr/local/libexec/toil && \
-        mv /usr/local/bin/singularity /usr/local/libexec/toil/singularity-real
+    # Build Singularity
+    RUN wget https://debian.osuosl.org/debian/pool/main/s/singularity-container/$(curl -sSL 'https://debian.osuosl.org/debian/pool/main/s/singularity-container/' | grep -o "singularity-container_3[^\\"]*$(if [ $TARGETARCH = amd64 ] ; then echo amd64 ; else echo arm64 ; fi).deb" | head -n1) && \
+        (dpkg -i singularity-container_3*.deb || true) && \
+        dpkg --force-depends --configure -a && \
+        sed -i 's/containernetworking-plugins, //' /var/lib/dpkg/status && \
+        sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf && \
+        mkdir -p /usr/local/libexec/toil && \
+        mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real
+
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh
 
     ADD waitForKey.sh /usr/bin/waitForKey.sh
 
     ADD customDockerInit.sh /usr/bin/customDockerInit.sh
-    
+
     ADD singularity-wrapper.sh /usr/local/bin/singularity
 
     RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/local/bin/singularity
@@ -141,9 +141,9 @@ print(heredoc('''
         && ln -s /home/s3am/bin/s3am /usr/local/bin/
 
     # Install statically linked version of docker client
-    RUN curl https://download.docker.com/linux/static/stable/x86_64/docker-18.06.1-ce.tgz \
-         | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ \
-         && chmod u+x /usr/local/bin/docker
+    RUN curl https://download.docker.com/linux/static/stable/$(if [$TARGETARCH = amd64] ; then echo x86_64 ; else echo aarch64 ; fi)/docker-18.06.1-ce.tgz \
+        | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ \
+        && chmod u+x /usr/local/bin/docker
 
     # Fix for Mesos interface dependency missing on ubuntu
     RUN {pip} install protobuf==3.0.0

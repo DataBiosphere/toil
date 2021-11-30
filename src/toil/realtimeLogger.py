@@ -19,11 +19,10 @@ import os
 import os.path
 import socketserver as SocketServer
 import threading
-
 from types import TracebackType
-from typing import Any, Optional, Type, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional, Type
 
-from toil.batchSystems.options import getPublicIP
+from toil.lib.misc import get_public_ip
 from toil.statsAndLogging import set_log_level
 
 if TYPE_CHECKING:
@@ -149,7 +148,7 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
                     cls.serverThread.start()
 
                     # Set options for logging in the environment so they get sent out to jobs
-                    ip = getPublicIP()
+                    ip = get_public_ip()
                     port = cls.loggingServer.server_address[1]
 
                     def _setEnv(name: str, value: str) -> None:

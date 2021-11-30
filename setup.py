@@ -13,9 +13,10 @@
 # limitations under the License.
 import imp
 import os
-
 from tempfile import NamedTemporaryFile
+
 from setuptools import find_packages, setup
+
 
 def get_requirements(extra=None):
     """
@@ -52,6 +53,7 @@ def run_setup():
         "kubernetes",
         "mesos",
         "wdl",
+        "server"
     ]
     for extra in non_htcondor_extras:
         extras_require[extra] = get_requirements(extra)
@@ -59,7 +61,6 @@ def run_setup():
     # We exclude htcondor from "all" because it can't be on Mac
     extras_require['htcondor:sys_platform!="darwin"'] = get_requirements("htcondor")
     extras_require["all"] = all_reqs
-
 
     setup(
         name='toil',
@@ -80,6 +81,8 @@ def run_setup():
           'Operating System :: POSIX',
           'Operating System :: POSIX :: Linux',
           'Programming Language :: Python :: 3.6',
+          'Programming Language :: Python :: 3.7',
+          'Programming Language :: Python :: 3.8',
           'Topic :: Scientific/Engineering',
           'Topic :: Scientific/Engineering :: Bio-Informatics',
           'Topic :: Scientific/Engineering :: Astronomy',
@@ -98,7 +101,7 @@ def run_setup():
                                # functionality like the @experimental and @integrative decorators:
                                exclude=['*.test.*']),
         package_data={
-            '': ['*.yml', 'cloud-config'],
+            '': ['*.yml', '*.yaml', 'cloud-config'],
         },
         # Unfortunately, the names of the entry points are hard-coded elsewhere in the code base so
         # you can't just change them here. Luckily, most of them are pretty unique strings, and thus
@@ -111,7 +114,7 @@ def run_setup():
                 'toil-cwl-runner = toil.cwl.cwltoil:main [cwl]',
                 'toil-wdl-runner = toil.wdl.toilwdl:main',
                 '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]',
-                '_toil_kubernetes_executor = toil.batchSystems.kubernetes:executor [kubernetes]']})
+                '_toil_contained_executor = toil.batchSystems.contained_executor:executor']})
 
 
 def import_version():

@@ -22,8 +22,7 @@ import pytest
 from toil.common import Toil
 from toil.job import Job, JobFunctionWrappingJob, JobGraphDeadlockException
 from toil.leader import FailedJobsException
-from toil.test import get_temp_file
-from toil.test import ToilTest, slow, travis_test
+from toil.test import ToilTest, get_temp_file, slow, travis_test
 
 logger = logging.getLogger(__name__)
 
@@ -405,6 +404,9 @@ class JobTest(ToilTest):
             options.retryCount = 1
             options.badWorker = 0.25
             options.badWorkerFailInterval = 0.01
+            # Because we're going to be killing the services all the time for
+            # restarts, make sure they are paying attention.
+            options.servicePollingInterval = 1
 
             # Now actually run the workflow
             try:
@@ -564,7 +566,8 @@ class JobTest(ToilTest):
         def makeJob(string):
             promises = []
             job = Job.wrapFn(fn2Test, promises, string,
-                             None if outPath is None else os.path.join(outPath, string))
+                             None if outPath is None else os.path.join(outPath, string),
+                             cores=0.1, memory="0.5G", disk="0.1G")
             jobsToPromisesMap[job] = promises
             return job
 
@@ -583,7 +586,7 @@ class JobTest(ToilTest):
             predecessors[jobs[tNode]].append(jobs[fNode])
 
         # Map of jobs to return values
-        jobsToRvs = {job: job.addService(TrivialService(job.rv())) if addServices else job.rv() for job in jobs}
+        jobsToRvs = {job: job.addService(TrivialService(job.rv(), cores=0.1, memory="0.5G", disk="0.1G")) if addServices else job.rv() for job in jobs}
 
         def getRandomPredecessor(job):
             predecessor = random.choice(list(predecessors[job]))

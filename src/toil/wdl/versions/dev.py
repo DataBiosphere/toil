@@ -13,8 +13,8 @@
 # limitations under the License.
 import logging
 
-from wdlparse.dev.WdlLexer import WdlLexer, FileStream
-from wdlparse.dev.WdlParser import WdlParser, CommonTokenStream
+from wdlparse.dev.WdlLexer import FileStream, WdlLexer
+from wdlparse.dev.WdlParser import CommonTokenStream, WdlParser
 
 from toil.wdl.versions.v1 import AnalyzeV1WDL, is_context
 from toil.wdl.wdl_types import WDLType

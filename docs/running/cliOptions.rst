@@ -117,9 +117,11 @@ the logging module:
 
   --batchSystem BATCHSYSTEM
                         The type of batch system to run the job(s) with,
-                        currently can be one of lsf, Mesos, slurm, torque,
-                        htcondor, single_machine, parasol, grid_engine', kubernetes.
+                        currently can be one of lsf, mesos, slurm, torque,
+                        htcondor, single_machine, parasol, grid_engine,
+                        kubernetes, tes.
                         (default: single_machine)
+
   --parasolCommand PARASOLCOMMAND
                         The name or path of the parasol program. Will be
                         looked up on PATH unless it starts with a
@@ -128,19 +130,31 @@ the logging module:
                         Maximum number of job batches the Parasol batch is
                         allowed to create. One batch is created for jobs with
                         a unique set of resource requirements. (default: 1000)
+
+  --mesosEndpoint MESOSENDPOINT
+                        The host and port of the Mesos server separated by a
+                        colon. (default: <leader IP>:5050)
+
+  --tesEndpoint TES_ENDPOINT
+                        The http(s) URL of the TES server.
+                        (default: http://<leader IP>:8000)
+  --tesUser TES_USER    User name to use for basic authentication to TES server.
+  --tesPassword TES_PASSWORD
+                        Password to use for basic authentication to TES server.
+  --tesBearerToken TES_BEARER_TOKEN
+                        Bearer token to use for authentication to TES server.
+
   --scale SCALE         A scaling factor to change the value of all submitted
                         tasks' submitted cores. Used in singleMachine batch
-                        system. (default: 1)
+                        system. Useful for running workflows on smaller
+                        machines than they were designed for, by setting a
+                        value less than 1. (default: 1)
   --linkImports         When using Toil's importFile function for staging,
                         input files are copied to the job store. Specifying
                         this option saves space by sym-linking imported files.
                         As long as caching is enabled Toil will protect the
                         file automatically by changing the permissions to
                         read-only.
-  --mesosMaster MESOSMASTERADDRESS
-                        The host and port of the Mesos master separated by a
-                        colon. (default: 169.233.147.202:5050)
-
   --coalesceStatusCalls Coalese status calls to prevent the batch system from
                         being overloaded. Currently only supported for LSF.
 
@@ -151,10 +165,10 @@ the logging module:
                         currently supported choices are 'aws' or 'gce'. The
                         default is None.
   --nodeTypes NODETYPES
-                        Specifies a list of comma-separated node types, each of which is 
-                        composed of slash-separated instance types, and an optional spot 
-                        bid set off by a colon, making the node type preemptable. Instance 
-                        types may appear in multiple node types, and the same node type 
+                        Specifies a list of comma-separated node types, each of which is
+                        composed of slash-separated instance types, and an optional spot
+                        bid set off by a colon, making the node type preemptable. Instance
+                        types may appear in multiple node types, and the same node type
                         may appear as both preemptable and non-preemptable.
                         Valid argument specifying two node types:
                             c5.4xlarge/c5a.4xlarge:0.42,t2.large
@@ -265,7 +279,9 @@ the logging module:
   --statePollingWait STATEPOLLINGWAIT
                         Time, in seconds, to wait before doing a scheduler
                         query for job state. Return cached results if within
-                        the waiting period.
+                        the waiting period. Only works for grid engine batch
+                        systems such as gridengine, htcondor, torque, slurm,
+                        and lsf.
 
   **Miscellaneous Options**
 
@@ -295,7 +311,7 @@ the logging module:
   --writeLogsGzip FILEPATH
                         Identical to -\\-writeLogs except the logs files are
                         gzipped on the leader.
-  --realTimeLogging     Enable real-time logging from workers to masters.
+  --realTimeLogging     Enable real-time logging from workers to leader.
   --sseKey SSEKEY       Path to file containing 32 character key to be used
                         for server-side encryption on awsJobStore or
                         googleJobStore. SSE will not be used if this flag is
@@ -315,6 +331,8 @@ the logging module:
   --debugWorker         Experimental no forking mode for local debugging.
                         Specifically, workers are not forked and stderr/stdout
                         are not redirected to the log. (default=False)
+  --statusWait INT      Seconds to wait between reports of running jobs.
+                        (default=3600)
   --disableProgress     Disables the progress bar shown when standard error is
                         a terminal.
 

@@ -69,7 +69,6 @@ class WDLCompoundType(WDLType, ABC):
     """
     Represents a WDL compound type.
     """
-    pass
 
 
 class WDLStringType(WDLType):

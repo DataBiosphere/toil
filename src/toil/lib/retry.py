@@ -16,10 +16,11 @@
 """
 This file holds the retry() decorator function and RetryCondition object.
 
-retry() can be used to decorate any function based on the list of errors one wishes to retry on.
+retry() can be used to decorate any function based on the list of errors one
+wishes to retry on.
 
-This list of errors can contain normal Exception objects, and/or RetryCondition objects wrapping Exceptions to
-include additional conditions.
+This list of errors can contain normal Exception objects, and/or RetryCondition
+objects wrapping Exceptions to include additional conditions.
 
 For example, retrying on a one Exception (HTTPError)::
 
@@ -39,9 +40,11 @@ Or::
     def update_my_wallpaper():
         return get('https://www.deviantart.com/')
 
-The examples above will retry for the default interval on any errors specified the "errors=" arg list.
+The examples above will retry for the default interval on any errors specified
+the "errors=" arg list.
 
-To retry on specifically 500/502/503/504 errors, you could specify an ErrorCondition object instead, for example::
+To retry on specifically 500/502/503/504 errors, you could specify an ErrorCondition
+object instead, for example::
 
     from requests import get
     from requests.exceptions import HTTPError
@@ -97,22 +100,23 @@ To retry on boto3's specific status errors, an example of the implementation is:
         s3_resource = boto_session.resource('s3')
         return s3_resource.Bucket(bucket_name)
 
-Any combination of these will also work, provided the codes are matched to the correct exceptions.  A ValueError will
-not return a 404, for example.
+Any combination of these will also work, provided the codes are matched to the correct
+exceptions.  A ValueError will not return a 404, for example.
 
-The retry function as a decorator should make retrying functions easier and clearer.  It also encourages
-smaller independent functions, as opposed to lumping many different things that may need to be retried on
-different conditions in the same function.
+The retry function as a decorator should make retrying functions easier and clearer
+It also encourages smaller independent functions, as opposed to lumping many different
+things that may need to be retried on different conditions in the same function.
 
-The ErrorCondition object tries to take some of the heavy lifting of writing specific retry conditions
-and boil it down to an API that covers all common use-cases without the user having to write
-any new bespoke functions.
+The ErrorCondition object tries to take some of the heavy lifting of writing specific
+retry conditions and boil it down to an API that covers all common use-cases without
+the user having to write any new bespoke functions.
 
 Use-cases covered currently:
 
 1. Retrying on a normal error, like a KeyError.
 2. Retrying on HTTP error codes (use ErrorCondition).
-3. Retrying on boto 3's specific status errors, like "BucketNotFound" (use ErrorCondition).
+3. Retrying on boto 3's specific status errors,
+   like "BucketNotFound" (use ErrorCondition).
 4. Retrying when an error message contains a certain phrase (use ErrorCondition).
 5. Explicitly NOT retrying on a condition (use ErrorCondition).
 
@@ -128,7 +132,7 @@ import time
 import traceback
 import urllib.error
 from contextlib import contextmanager
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 
 import requests.exceptions
 import urllib3.exceptions
@@ -157,24 +161,32 @@ class ErrorCondition:
     """
     A wrapper describing an error condition.
 
-    ErrorCondition events may be used to define errors in more detail to determine whether to retry.
-
-    :param error: An Exception class to restrict to. Must be specified if error_codes is used.
-    :param error_codes: Numeric error codes (e.g. 404, 500, etc.) that must match to be retried
-        (optional; defaults to not checking).
-    :param boto_error_codes: Human-readable error codes (e.g. "BucketNotFound", "ClientError", etc.) that
-        are specific to Boto 3 and must match to be retried (optional; defaults to not checking).
-    :param error_message_must_include: A string that must be in the error message to be retried
-        (optional; defaults to not checking)
-    :param retry_on_this_condition: This can be set to False to always error on this condition.
+    ErrorCondition events may be used to define errors in more detail to determine
+    whether to retry.
     """
+
     def __init__(self,
                  error: Optional[Any] = None,
                  error_codes: List[int] = None,
                  boto_error_codes: List[str] = None,
                  error_message_must_include: str = None,
                  retry_on_this_condition: bool = True):
+        """
+        Initialize this ErrorCondition.
 
+        :param error: An Exception class to restrict to.
+                      Must be specified if error_codes is used.
+        :param error_codes: Numeric error codes (e.g. 404, 500, etc.) that must match
+                            to be retried (optional; defaults to not checking).
+        :param boto_error_codes: Human-readable error codes
+                                 (e.g. "BucketNotFound", "ClientError", etc.) that are
+                                 specific to Boto 3 and must match to be retried
+                                 (optional; defaults to not checking).
+        :param error_message_must_include: A string that must be in the error message
+               to be retried (optional; defaults to not checking)
+        :param retry_on_this_condition: This can be set to False to always error on
+                                        this condition.
+        """
         if error is None:
             if boto_error_codes:
                 # Default to the base Boto 3 error
@@ -182,7 +194,6 @@ class ErrorCondition:
             else:
                 # Default to base Exception
                 error = Exception
-
 
         self.error = error
         self.error_codes = error_codes
@@ -192,35 +203,49 @@ class ErrorCondition:
 
         if self.error_codes:
             if error not in SUPPORTED_HTTP_ERRORS:
-                raise NotImplementedError(f'Unknown error type used with error_codes: {error}')
+                raise NotImplementedError(
+                    f"Unknown error type used with error_codes: {error}"
+                )
 
         if self.boto_error_codes:
             if not issubclass(error, botocore.exceptions.ClientError):
-                raise NotImplementedError(f'Unknown error type used with boto_error_codes: {error}')
+                raise NotImplementedError(
+                    f"Unknown error type used with boto_error_codes: {error}"
+                )
 
 
-def retry(intervals: Optional[List] = None,
-          infinite_retries: bool = False,
-          errors: Optional[List[Union[ErrorCondition, Exception, Any]]] = None,
-          log_message: Optional[Tuple[Callable, str]] = None):
+def retry(
+    intervals: Optional[List] = None,
+    infinite_retries: bool = False,
+    errors: Optional[Sequence[Union[ErrorCondition, Exception, Any]]] = None,
+    log_message: Optional[Tuple[Callable, str]] = None,
+    prepare: Optional[List[Callable]] = None,
+) -> Callable[[Any], Any]:
     """
-    Retry a function if it fails with any Exception defined in "errors", every x seconds,
-    where x is defined by a list of numbers (ints or floats) in "intervals".  Also accepts ErrorCondition events
+    Retry a function if it fails with any Exception defined in "errors".
+
+    Does so every x seconds, where x is defined by a list of numbers (ints or
+    floats) in "intervals".  Also accepts ErrorCondition events
     for more detailed retry attempts.
 
-    :param Optional[List] intervals: A list of times in seconds we keep retrying until returning failure.
+    :param intervals: A list of times in seconds we keep retrying until returning failure.
         Defaults to retrying with the following exponential back-off before failing:
             1s, 1s, 2s, 4s, 8s, 16s
-    :param infinite_retries: If this is True, reset the intervals when they run out.  Defaults to: False.
+    :param infinite_retries: If this is True, reset the intervals when they run out.
+        Defaults to: False.
     :param errors: A list of exceptions OR ErrorCondition objects to catch and retry on.
         ErrorCondition objects describe more detailed error event conditions than a plain error.
         An ErrorCondition specifies:
             - Exception (required)
             - Error codes that must match to be retried (optional; defaults to not checking)
-            - A string that must be in the error message to be retried (optional; defaults to not checking)
+            - A string that must be in the error message to be retried
+              (optional; defaults to not checking)
             - A bool that can be set to False to always error on this condition.
         If not specified, this will default to a generic Exception.
-    :param log_message: Optional tuple of ("log/print function()", "message string") that will precede each attempt.
+    :param log_message: Optional tuple of ("log/print function()", "message string")
+        that will precede each attempt.
+    :param prepare: Optional list of functions to call, with the function's
+        arguments, between retries, to reset state.
     :return: The result of the wrapped function or raise.
     """
     # set mutable defaults
@@ -234,10 +259,11 @@ def retry(intervals: Optional[List] = None,
         post_message_function = log_message[0]
         message = log_message[1]
 
-    # if a generic error exists (with no restrictions), delete more specific error_condition instances of it
+    # if a generic error exists (with no restrictions),
+    # delete more specific error_condition instances of it
     for error_condition in error_conditions:
         if error_condition.retry_on_this_condition and error_condition.error in retriable_errors:
-            del error_conditions[error_condition]
+            error_conditions.remove(error_condition)
 
     # if a more specific error exists that isn't in the general set,
     # add it to the total errors that will be try/except-ed upon
@@ -267,8 +293,12 @@ def retry(intervals: Optional[List] = None,
                             raise
 
                     interval = intervals_remaining.pop(0)
-                    logger.debug(f"Error in {func}: {e}. Retrying after {interval} s...")
+                    logger.warning(f"Error in {func}: {e}. Retrying after {interval} s...")
                     time.sleep(interval)
+                    if prepare is not None:
+                        for prep_function in prepare:
+                            # Reset state for next attempt
+                            prep_function(*args, **kwargs)
         return call
     return decorate
 
@@ -292,6 +322,7 @@ def return_status_code(e):
     else:
         raise ValueError(f'Unsupported error type; cannot grok status code: {e}.')
 
+
 def get_error_code(e: Exception) -> str:
     """
     Get the error code name from a Boto 2 or 3 error, or compatible types.
@@ -314,6 +345,7 @@ def get_error_code(e: Exception) -> str:
     else:
         return ''
 
+
 def get_error_message(e: Exception) -> str:
     """
     Get the error message string from a Boto 2 or 3 error, or compatible types.
@@ -334,18 +366,20 @@ def get_error_message(e: Exception) -> str:
     else:
         return ''
 
+
 def get_error_status(e: Exception) -> int:
     """
-    Get the HTTP status code from a Boto 2 or 3 error,
+    Get the HTTP status code from a compatible source.
+
+    Such as a Boto 2 or 3 error,
     kubernetes.client.rest.ApiException, http.client.HTTPException,
     urllib3.exceptions.HTTPError, requests.exceptions.HTTPError,
     urllib.error.HTTPError, or compatible type
 
     Returns 0 from other errors.
     """
-
     def numify(x):
-        """Make sure a value is an integer"""
+        """Make sure a value is an integer."""
         return int(str(x).strip())
 
     if hasattr(e, 'status'):
@@ -365,13 +399,13 @@ def get_error_status(e: Exception) -> int:
     else:
         return 0
 
+
 def get_error_body(e: Exception) -> str:
     """
-    Gets the body from a Boto 2 or 3 error, or compatible types.
+    Get the body from a Boto 2 or 3 error, or compatible types.
 
     Returns the code and message if the error does not have a body.
     """
-
     if hasattr(e, 'body'):
         # A Boto 2 error
         if isinstance(e.body, bytes):
@@ -546,5 +580,7 @@ def old_retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: Fals
 
         yield single_attempt( )
 
-
+# Decorator to retry tests that fail. Needs to be called with
+# prepare=[tearDown, setUp] if the test class has tear down and set up that
+# needs to happen between tests.
 retry_flaky_test = functools.partial(retry, intervals=[1, 1, 1])

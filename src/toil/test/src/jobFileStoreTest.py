@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import codecs
 import errno
 import logging
 import os
@@ -20,7 +19,6 @@ import random
 from toil.common import Toil
 from toil.fileStores import FileID
 from toil.job import Job
-from toil.lib.retry import retry_flaky_test
 from toil.test import ToilTest, slow, travis_test
 
 logger = logging.getLogger(__name__)
@@ -106,7 +104,7 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
                 local_path = job.fileStore.getLocalTempFileName() if random.random() > 0.5 else None
                 cache = random.random() > 0.5
 
-                tempFile = job.fileStore.readGlobalFile(fileStoreID, 
+                tempFile = job.fileStore.readGlobalFile(fileStoreID,
                                                         local_path,
                                                         cache=cache)
                 with open(tempFile) as fH:

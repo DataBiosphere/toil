@@ -21,20 +21,12 @@ import types
 from ssl import SSLError
 from typing import Optional
 
-from boto.exception import (
-    BotoServerError,
-    SDBResponseError,
-    S3ResponseError
-)
 from boto3.s3.transfer import TransferConfig
+from boto.exception import BotoServerError, S3ResponseError, SDBResponseError
 from botocore.exceptions import ClientError
 
 from toil.lib.compatibility import compat_bytes
-from toil.lib.retry import (
-    old_retry,
-    retry,
-    ErrorCondition
-)
+from toil.lib.retry import ErrorCondition, get_error_status, old_retry, retry
 
 logger = logging.getLogger(__name__)
 
@@ -378,7 +370,10 @@ def connection_reset(e):
 
 
 def sdb_unavailable(e):
-    return isinstance(e, BotoServerError) and e.status in (500, 503)
+    # Since we're checking against a collection here we absolutely need an
+    # integer status code. This is probably a BotoServerError, but other 500s
+    # and 503s probably ought to be retried too.
+    return get_error_status(e) in (500, 503)
 
 
 def no_such_sdb_domain(e):

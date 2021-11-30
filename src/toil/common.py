@@ -15,27 +15,46 @@ import logging
 import os
 import pickle
 import re
+import signal
 import subprocess
 import sys
 import tempfile
 import time
 import uuid
-
+import warnings
+from argparse import (
+    ArgumentDefaultsHelpFormatter,
+    ArgumentParser,
+    Namespace,
+    _ArgumentGroup,
+)
+from typing import (
+    IO,
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
 from urllib.parse import urlparse
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import requests
 
 from toil import logProcessContext, lookupEnvVar
-from toil.fileStores import FileID
 from toil.batchSystems.options import (add_all_batchsystem_options,
                                        set_batchsystem_config_defaults,
                                        set_batchsystem_options)
+from toil.fileStores import FileID
 from toil.lib.aws import zone_to_region
+from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.retry import retry
-from toil.lib.compatibility import deprecated
 from toil.provisioners import add_provisioner_options, cluster_factory, parse_node_types
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import (
@@ -44,6 +63,10 @@ from toil.statsAndLogging import (
     set_logging_from_options,
 )
 from toil.version import dockerRegistry, dockerTag, version
+
+if TYPE_CHECKING:
+    from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
+    from toil.jobStores.abstractJobStore import AbstractJobStore
 
 # aim to pack autoscaling jobs within a 30 minute block before provisioning a new node
 defaultTargetTime = 1800
@@ -56,7 +79,20 @@ logger = logging.getLogger(__name__)
 
 class Config:
     """Class to represent configuration operations for a toil workflow run."""
-    def __init__(self):
+
+    logFile: Optional[str]
+    logRotating: bool
+    workDir: str
+    cleanWorkDir: str
+    maxLocalJobs: int
+    runCwlInternalJobsOnWorkers: bool
+    tes_endpoint: str
+    tes_user: str
+    tes_password: str
+    tes_bearer_token: str
+    jobStore: str
+
+    def __init__(self) -> None:
         # Core options
         self.workflowID: Optional[str] = None
         """This attribute uniquely identifies the job store and therefore the workflow. It is
@@ -66,14 +102,13 @@ class Config:
         self.workflowAttemptNumber = None
         self.jobStore = None
         self.logLevel: str = logging.getLevelName(root_logger.getEffectiveLevel())
-        self.workDir: Optional[str] = None
+        self.workDir = None
         self.noStdOutErr: bool = False
         self.stats: bool = False
 
         # Because the stats option needs the jobStore to persist past the end of the run,
         # the clean default value depends the specified stats option and is determined in setOptions
         self.clean = None
-        self.cleanWorkDir: Optional[bool] = None
         self.clusterStats = None
 
         # Restarting the workflow options
@@ -81,6 +116,11 @@ class Config:
 
         # Batch system options
         set_batchsystem_config_defaults(self)
+        
+        # File store options
+        self.disableCaching: bool = False
+        self.linkImports: bool = True
+        self.moveExports: bool = False
 
         # Autoscaling options
         self.provisioner = None
@@ -100,7 +140,6 @@ class Config:
         self.maxServiceJobs: int = sys.maxsize
         self.deadlockWait: Union[float, int] = 60  # Number of seconds we must be stuck with all services before declaring a deadlock
         self.deadlockCheckInterval: Union[float, int] = 30  # Minimum polling delay for deadlocks
-        self.statePollingWait: Optional[Union[float, int]] = None  # Number of seconds to wait before querying job state
 
         # Resource requirements
         self.defaultMemory: int = 2147483648
@@ -120,7 +159,7 @@ class Config:
         self.rescueJobsFrequency: int = 3600
 
         # Misc
-        self.disableCaching: bool = False
+        self.environment: Dict[str, str] = {}
         self.disableChaining: bool = False
         self.disableJobStoreChecksumVerification: bool = False
         self.maxLogFileSize: int = 64000
@@ -131,7 +170,6 @@ class Config:
         self.servicePollingInterval: int = 60
         self.useAsync: bool = True
         self.forceDockerAppliance: bool = False
-        self.runCwlInternalJobsOnWorkers: bool = False
         self.statusWait: int = 3600
         self.disableProgress: bool = False
 
@@ -146,14 +184,56 @@ class Config:
 
     def setOptions(self, options) -> None:
         """Creates a config object from the options object."""
+        OptionType = TypeVar('OptionType')
         def set_option(option_name: str,
-                       parsing_function: Optional[Callable] = None,
-                       check_function: Optional[Callable] = None,
-                       default: Any = None) -> None:
+                       parsing_function: Optional[Callable[[Any], OptionType]] = None,
+                       check_function: Optional[Callable[[OptionType], None]] = None,
+                       default: Optional[OptionType] = None,
+                       env: Optional[List[str]] = None,
+                       old_names: Optional[List[str]] = None) -> None:
+            """
+            Determine the correct value for the given option.
+
+            Priority order is:
+
+            1. options object under option_name
+            2. options object under old_names
+            3. environment variables in env
+            4. provided default value
+
+            Selected option value is run through parsing_funtion if it is set.
+            Then the parsed value is run through check_function to check it for
+            acceptability, which should raise AssertionError if the value is
+            unacceptable.
+
+            If the option gets a non-None value, sets it as an attribute in
+            this Config.
+            """
+
             option_value = getattr(options, option_name, default)
 
-            if option_value is not None:
+            if old_names is not None:
+                for old_name in old_names:
+                    # Try all the old names in case user code is setting them
+                    # in an options object.
+                    if option_value != default:
+                        break
+                    if hasattr(options, old_name):
+                        warnings.warn(f'Using deprecated option field {old_name} to '
+                                      f'provide value for config field {option_name}',
+                                      DeprecationWarning)
+                        option_value = getattr(options, old_name)
+
+            if env is not None:
+                for env_var in env:
+                    # Try all the environment variables
+                    if option_value != default:
+                        break
+                    option_value = os.environ.get(env_var, default)
+
+            if option_value is not None or not hasattr(self, option_name):
                 if parsing_function is not None:
+                    # Parse whatever it is (string, argparse-made list, etc.)
                     option_value = parsing_function(option_value)
                 if check_function is not None:
                     try:
@@ -213,17 +293,11 @@ class Config:
         # Batch system options
         set_option("batchSystem")
         set_batchsystem_options(self.batchSystem, set_option)
-        set_option("disableAutoDeployment")
-        set_option("coalesceStatusCalls")
-        set_option("scale", float, fC(0.0))
-        set_option("parasolCommand")
-        set_option("parasolMaxBatches", int, iC(1))
-        set_option("linkImports")
-        set_option("moveExports")
-        set_option("allocate_mem")
-        set_option("mesosMasterAddress")
-        set_option("kubernetesHostPath")
-        set_option("environment", parseSetEnv)
+
+        # File store options
+        set_option("linkImports", bool, default=True)
+        set_option("moveExports", bool, default=False)
+        set_option("disableCaching", bool, default=False)
 
         # Autoscaling options
         set_option("provisioner")
@@ -259,7 +333,6 @@ class Config:
         set_option("maxPreemptableServiceJobs", int)
         set_option("deadlockWait", int)
         set_option("deadlockCheckInterval", int)
-        set_option("statePollingWait", int)
 
         # Resource requirements
         set_option("defaultMemory", h2b, iC(1))
@@ -279,8 +352,7 @@ class Config:
         set_option("rescueJobsFrequency", int, iC(1))
 
         # Misc
-        set_option("maxLocalJobs", int)
-        set_option("disableCaching")
+        set_option("environment", parseSetEnv)
         set_option("disableChaining")
         set_option("disableJobStoreChecksumVerification")
         set_option("maxLogFileSize", h2b, iC(1))
@@ -288,6 +360,7 @@ class Config:
         set_option("writeLogsGzip")
         set_option("writeLogsFromAllJobs")
         set_option("runCwlInternalJobsOnWorkers")
+        set_option("statusWait", int)
         set_option("disableProgress")
 
         assert not (self.writeLogs and self.writeLogsGzip), \
@@ -331,8 +404,10 @@ JOBSTORE_HELP = ("The location of the job store for the workflow.  "
                  "file:./foo or just file:foo) or /bar (equivalent to file:/bar).")
 
 
-def parser_with_common_options(provisioner_options=False, jobstore_option=True):
-    parser = ArgumentParser(prog='Toil', formatter_class=ArgumentDefaultsHelpFormatter)
+def parser_with_common_options(
+    provisioner_options: bool = False, jobstore_option: bool = True
+) -> ArgumentParser:
+    parser = ArgumentParser(prog="Toil", formatter_class=ArgumentDefaultsHelpFormatter)
 
     if provisioner_options:
         add_provisioner_options(parser)
@@ -413,10 +488,34 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
         title="Toil options for specifying the batch system.",
         description="Allows the specification of the batch system."
     )
-    batchsystem_options.add_argument("--statePollingWait", dest="statePollingWait", type=int,
-                                     help="Time, in seconds, to wait before doing a scheduler query for job state.  "
-                                          "Return cached results if within the waiting period.")
     add_all_batchsystem_options(batchsystem_options)
+    
+    # File store options
+    file_store_options = parser.add_argument_group(
+        title="Toil options for configuring storage.",
+        description="Allows configuring Toil's data storage."
+    )
+    link_imports = file_store_options.add_mutually_exclusive_group()
+    link_imports_help = ("When using a filesystem based job store, CWL input files are by default symlinked in.  "
+                         "Specifying this option instead copies the files into the job store, which may protect "
+                         "them from being modified externally.  When not specified and as long as caching is enabled, "
+                         "Toil will protect the file automatically by changing the permissions to read-only.")
+    link_imports.add_argument("--linkImports", dest="linkImports", action='store_true', help=link_imports_help)
+    link_imports.add_argument("--noLinkImports", dest="linkImports", action='store_false', help=link_imports_help)
+    link_imports.set_defaults(linkImports=True)
+
+    move_exports = file_store_options.add_mutually_exclusive_group()
+    move_exports_help = ('When using a filesystem based job store, output files are by default moved to the '
+                         'output directory, and a symlink to the moved exported file is created at the initial '
+                         'location.  Specifying this option instead copies the files into the output directory.  '
+                         'Applies to filesystem-based job stores only.')
+    move_exports.add_argument("--moveExports", dest="moveExports", action='store_true', help=move_exports_help)
+    move_exports.add_argument("--noMoveExports", dest="moveExports", action='store_false', help=move_exports_help)
+    move_exports.set_defaults(moveExports=False)
+    file_store_options.add_argument('--disableCaching', dest='disableCaching', action='store_true',
+                                    default=False,
+                                    help='Disables caching in the file store. This flag must be set to use '
+                                         'a batch system that does not support cleanup, such as Parasol.')
 
     # Auto scaling options
     autoscaling_options = parser.add_argument_group(
@@ -598,10 +697,6 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
         title="Toil miscellaneous options.",
         description="Everything else."
     )
-    misc_options.add_argument('--disableCaching', dest='disableCaching', type='bool', nargs='?', const=True,
-                              default=False,
-                              help='Disables caching in the file store. This flag must be set to use '
-                                   'a batch system that does not support cleanup, such as Parasol.')
     misc_options.add_argument('--disableChaining', dest='disableChaining', action='store_true', default=False,
                               help="Disables chaining of jobs (chaining uses one job's resource allocation "
                                    "for its successor job if possible).")
@@ -633,7 +728,7 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
                                    "necessarily setting the log level to 'debug'. Ensure that either --writeLogs "
                                    "or --writeLogsGzip is set if enabling this option.")
     misc_options.add_argument("--realTimeLogging", dest="realTimeLogging", action="store_true", default=False,
-                              help="Enable real-time logging from workers to masters")
+                              help="Enable real-time logging from workers to leader")
     misc_options.add_argument("--sseKey", dest="sseKey", default=None,
                               help="Path to file containing 32 character key to be used for server-side encryption on "
                                    "awsJobStore or googleJobStore. SSE will not be used if this flag is not passed.")
@@ -650,6 +745,8 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
     misc_options.add_argument('--forceDockerAppliance', dest='forceDockerAppliance', action='store_true', default=False,
                               help='Disables sanity checking the existence of the docker image specified by '
                                    'TOIL_APPLIANCE_SELF, which Toil uses to provision mesos for autoscaling.')
+    misc_options.add_argument('--statusWait', dest='statusWait', type=int, default=3600,
+                              help="Seconds to wait between reports of running jobs.")
     misc_options.add_argument('--disableProgress', dest='disableProgress', action='store_true', default=False,
                               help="Disables the progress bar shown when standard error is a terminal.")
 
@@ -727,12 +824,14 @@ class Toil:
     and its configuration.
     """
 
-    def __init__(self, options):
+    def __init__(self, options: Namespace) -> None:
         """
-        Initialize a Toil object from the given options. Note that this is very light-weight and
-        that the bulk of the work is done when the context is entered.
+        Initialize a Toil object from the given options.
 
-        :param argparse.Namespace options: command line options specified by the user
+        Note that this is very light-weight and that the bulk of the work is
+        done when the context is entered.
+
+        :param options: command line options specified by the user
         """
         super().__init__()
         self.options = options
@@ -779,6 +878,10 @@ class Toil:
         self.config = config
         self._jobStore = jobStore
         self._inContextManager = True
+
+        # This will make sure `self.__exit__()` is called when we get a SIGTERM signal.
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
+
         return self
 
     # noinspection PyUnusedLocal
@@ -788,8 +891,8 @@ class Toil:
         """
         try:
             if (exc_type is not None and self.config.clean == "onError" or
-                            exc_type is None and self.config.clean == "onSuccess" or
-                        self.config.clean == "always"):
+                    exc_type is None and self.config.clean == "onSuccess" or
+                    self.config.clean == "always"):
 
                 try:
                     if self.config.restart and not self._inRestart:
@@ -895,14 +998,13 @@ class Toil:
             self._provisioner.setAutoscaledNodeTypes(self.config.nodeTypes)
 
     @classmethod
-    def getJobStore(cls, locator):
+    def getJobStore(cls, locator: str) -> "AbstractJobStore":
         """
         Create an instance of the concrete job store implementation that matches the given locator.
 
         :param str locator: The location of the job store to be represent by the instance
 
         :return: an instance of a concrete subclass of AbstractJobStore
-        :rtype: toil.jobStores.abstractJobStore.AbstractJobStore
         """
         name, rest = cls.parseLocator(locator)
         if name == 'file':
@@ -918,7 +1020,7 @@ class Toil:
             raise RuntimeError("Unknown job store implementation '%s'" % name)
 
     @staticmethod
-    def parseLocator(locator):
+    def parseLocator(locator: str) -> Tuple[str, str]:
         if locator[0] in '/.' or ':' not in locator:
             return 'file', locator
         else:
@@ -935,13 +1037,13 @@ class Toil:
         return f'{name}:{rest}'
 
     @classmethod
-    def resumeJobStore(cls, locator):
+    def resumeJobStore(cls, locator) -> "AbstractJobStore":
         jobStore = cls.getJobStore(locator)
         jobStore.resume()
         return jobStore
 
     @staticmethod
-    def createBatchSystem(config):
+    def createBatchSystem(config: Config) -> "AbstractBatchSystem":
         """
         Creates an instance of the batch system specified in the given config.
 
@@ -1129,14 +1231,15 @@ class Toil:
         return workDir
 
     @classmethod
-    def getLocalWorkflowDir(cls, workflowID, configWorkDir=None):
+    def getLocalWorkflowDir(
+        cls, workflowID: str, configWorkDir: Optional[str] = None
+    ) -> str:
         """
         Returns a path to the directory where worker directories and the cache will be located
         for this workflow on this machine.
 
-        :param str configWorkDir: Value passed to the program using the --workDir flag
+        :param configWorkDir: Value passed to the program using the --workDir flag
         :return: Path to the local workflow directory on this machine
-        :rtype: str
         """
         # Get the global Toil work directory. This ensures that it exists.
         base = cls.getToilWorkDir(configWorkDir=configWorkDir)
@@ -1174,7 +1277,7 @@ class Toil:
                           rootJob=rootJob,
                           jobCache=self._jobCache).run()
 
-    def _shutdownBatchSystem(self):
+    def _shutdownBatchSystem(self) -> None:
         """
         Shuts down current batch system if it has been created.
         """
@@ -1358,7 +1461,7 @@ class ToilMetrics:
     def logCompletedJob(self, jobType):
         self.log("completed_job %s" % jobType)
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         if self.mtailProc:
             self.mtailProc.kill()
         if self.nodeExporterProc:
@@ -1424,7 +1527,7 @@ def fC(minValue, maxValue=None):
         return lambda x: minValue <= x < maxValue
 
 
-def cacheDirName(workflowID):
+def cacheDirName(workflowID: str) -> str:
     """
     :return: Name of the cache directory.
     """
@@ -1478,6 +1581,6 @@ def getFileSystemSize(dirPath: str) -> Tuple[int, int]:
     return freeSpace, diskSize
 
 
-def safeUnpickleFromStream(stream):
+def safeUnpickleFromStream(stream: IO[Any]) -> Any:
     string = stream.read()
     return pickle.loads(string)

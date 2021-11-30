@@ -40,8 +40,8 @@ from toil.job import Job, JobDescription, TemporaryID
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobException)
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.lib.memoize import memoize
 from toil.lib.aws.utils import create_s3_bucket
+from toil.lib.memoize import memoize
 from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
                        make_tests,
@@ -680,6 +680,9 @@ class AbstractJobStoreTest:
                 self.jobstore_initialized.partSize = cls.mpTestPartSize
                 self.jobstore_initialized.moveExports = moveExports
 
+                # Test assumes imports are not linked
+                self.jobstore_initialized.linkImports = False
+
                 # The string in otherCls() is arbitrary as long as it returns a class that has access
                 # to ._externalStore() and ._prepareTestFile()
                 other = otherCls('testSharedFiles')
@@ -1225,6 +1228,7 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
 
 
 @needs_google
+@pytest.mark.xfail
 class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
     headers = {"x-goog-project-id": projectID}
@@ -1290,11 +1294,14 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         failed to be created.  We simulate a failed jobstore bucket creation by using a bucket in a
         different region with the same name.
         """
-        from botocore.exceptions import ClientError
         from boto.sdb import connect_to_region
-        from toil.jobStores.aws.jobStore import BucketLocationConflictException
+        from botocore.exceptions import ClientError
+
+        from toil.jobStores.aws.jobStore import (
+            BucketLocationConflictException,
+            establish_boto3_session,
+        )
         from toil.jobStores.aws.utils import retry_s3
-        from toil.jobStores.aws.jobStore import establish_boto3_session
 
         externalAWSLocation = 'us-west-1'
         for testRegion in 'us-east-1', 'us-west-2':
@@ -1391,6 +1398,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         """ Tests that importFile is thread-safe."""
 
         from concurrent.futures.thread import ThreadPoolExecutor
+
         from toil.lib.threading import cpu_count
 
         threads: Tuple[int, ...] = (2, cpu_count()) if cpu_count() > 2 else (2, )
@@ -1446,8 +1454,8 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def _createExternalStore(self):
         """A S3.Bucket instance is returned"""
-        from toil.jobStores.aws.utils import retry_s3
         from toil.jobStores.aws.jobStore import establish_boto3_session
+        from toil.jobStores.aws.utils import retry_s3
 
         resource = establish_boto3_session().resource(
             "s3", region_name=self.awsRegion()
