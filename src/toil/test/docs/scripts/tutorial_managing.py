@@ -4,13 +4,14 @@ from toil.job import Job
 
 class LocalFileStoreJob(Job):
     def run(self, fileStore):
-        # self.TempDir will always contain the name of a directory within the allocated disk space reserved for the job
+        # self.tempDir will always contain the name of a directory within the allocated disk space reserved for the job
         scratchDir = self.tempDir
 
         # Similarly create a temporary file.
         scratchFile = fileStore.getLocalTempFile()
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
     options.logLevel = "INFO"
     options.clean = "always"
@@ -18,6 +19,6 @@ if __name__=="__main__":
     # Create an instance of FooJob which will have at least 2 gigabytes of storage space.
     j = LocalFileStoreJob(disk="2G")
 
-    #Run the workflow
+    # Run the workflow
     with Toil(options) as toil:
         toil.start(j)
