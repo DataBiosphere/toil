@@ -369,10 +369,10 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             self.checkResourceRequest(jobDesc.memory, jobDesc.cores, jobDesc.disk)
             jobID = self.getNextJobID()
             self.currentJobs.add(jobID)
-            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, jobDesc.jobName,
+            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, jobDesc.unitName,
                                    job_environment))
             logger.debug("Issued the job command: %s with job id: %s and job name %s", jobDesc.command, str(jobID),
-                         jobDesc.jobName)
+                         jobDesc.unitName)
         return jobID
 
     def killBatchJobs(self, jobIDs):
