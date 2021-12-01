@@ -3428,7 +3428,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 # were required.
                 rm_unprocessed_secondary_files(param_value)
 
-            logger.debug('tool ', tool)
+            logger.debug('tool %s', tool)
             try:
                 wf1, _ = makeJob(
                     tool=tool,
