@@ -1768,7 +1768,7 @@ class CWLJobWrapper(Job):
         tool: Process,
         cwljob: CWLObjectType,
         runtime_context: cwltool.context.RuntimeContext,
-        workflow_name: Optional[str],
+        parent_name: Optional[str],
         conditional: Union[Conditional, None] = None,
     ):
         """Store our context for later evaluation."""
@@ -1777,7 +1777,7 @@ class CWLJobWrapper(Job):
         self.cwljob = cwljob
         self.runtime_context = runtime_context
         self.conditional = conditional
-        self.workflow_name = workflow_name
+        self.parent_name = parent_name
 
     def run(self, file_store: AbstractFileStore) -> Any:
         """Create a child job with the correct resource requirements set."""
@@ -1791,7 +1791,7 @@ class CWLJobWrapper(Job):
             tool=self.cwltool,
             cwljob=cwljob,
             runtime_context=self.runtime_context,
-            workflow_name=self.workflow_name,
+            parent_name=self.parent_name,
             conditional=self.conditional,
         )
         self.addChild(realjob)
@@ -1806,7 +1806,7 @@ class CWLJob(Job):
         tool: Process,
         cwljob: CWLObjectType,
         runtime_context: cwltool.context.RuntimeContext,
-        workflow_name: Optional[str],
+        parent_name: Optional[str],
         conditional: Union[Conditional, None] = None,
     ):
         """Store the context for later execution."""
@@ -1845,10 +1845,9 @@ class CWLJob(Job):
         req = tool.evalResources(self.builder, runtime_context)
         displayName = cast(str, self.cwltool.tool["id"])
         # Make our job names more descriptive for HPC batch systems.
-        if workflow_name:
-            unitName = f"{workflow_name}.{shortname(displayName)}"
-        else:
-            unitName = shortname(displayName)
+        unitName = shortname(displayName)
+        if parent_name:
+            unitName = f"{parent_name}.{unitName}"
 
         super().__init__(
             cores=req["cores"],
@@ -2055,7 +2054,7 @@ def makeJob(
     tool: Process,
     jobobj: CWLObjectType,
     runtime_context: cwltool.context.RuntimeContext,
-    workflow_name: Optional[str],
+    parent_name: Optional[str],
     conditional: Union[Conditional, None],
 ) -> Union[
     Tuple["CWLWorkflow", ResolveIndirect],
@@ -2103,11 +2102,11 @@ def makeJob(
                         cast(ToilCommandLineTool, tool),
                         jobobj,
                         runtime_context,
-                        workflow_name=workflow_name,
+                        parent_name=parent_name,
                         conditional=conditional,
                     )
                     return job_wrapper, job_wrapper
-        job = CWLJob(tool, jobobj, runtime_context, workflow_name, conditional)
+        job = CWLJob(tool, jobobj, runtime_context, parent_name, conditional)
         return job, job
 
 
@@ -2123,7 +2122,7 @@ class CWLScatter(Job):
         step: cwltool.workflow.WorkflowStep,
         cwljob: CWLObjectType,
         runtime_context: cwltool.context.RuntimeContext,
-        workflow_name: Optional[str],
+        parent_name: Optional[str],
         conditional: Union[Conditional, None],
     ):
         """Store our context for later execution."""
@@ -2132,7 +2131,7 @@ class CWLScatter(Job):
         self.cwljob = cwljob
         self.runtime_context = runtime_context
         self.conditional = conditional
-        self.workflow_name = workflow_name
+        self.parent_name = parent_name
 
     def flat_crossproduct_scatter(
         self,
@@ -2154,7 +2153,7 @@ class CWLScatter(Job):
                     tool=self.step.embedded_tool,
                     jobobj=updated_joborder,
                     runtime_context=self.runtime_context,
-                    workflow_name=self.workflow_name,
+                    parent_name=f"{self.parent_name}[{n}]",
                     conditional=self.conditional,
                 )
                 self.addChild(subjob)
@@ -2184,7 +2183,7 @@ class CWLScatter(Job):
                     tool=self.step.embedded_tool,
                     jobobj=updated_joborder,
                     runtime_context=self.runtime_context,
-                    workflow_name=self.workflow_name,
+                    parent_name=f"{self.parent_name}[{n}]",
                     conditional=self.conditional,
                 )
                 self.addChild(subjob)
@@ -2251,7 +2250,7 @@ class CWLScatter(Job):
                     tool=self.step.embedded_tool,
                     jobobj=copyjob,
                     runtime_context=self.runtime_context,
-                    workflow_name=self.workflow_name,
+                    parent_name=f"{self.parent_name}[{i}]",
                     conditional=self.conditional,
                 )
                 self.addChild(subjob)
@@ -2413,7 +2412,7 @@ class CWLWorkflow(Job):
         # to: the job that will produce that value.
         promises: Dict[str, Job] = {}
 
-        workflow_name = shortname(self.cwlwf.tool["id"])
+        parent_name = shortname(self.cwlwf.tool["id"])
 
         # `jobs` dict from step id to job that implements that step.
         jobs = {}
@@ -2431,16 +2430,15 @@ class CWLWorkflow(Job):
             all_outputs_fulfilled = True
 
             for step in self.cwlwf.steps:
-                if step.tool["id"] not in jobs:
+                step_id = step.tool["id"]
+                if step_id not in jobs:
                     stepinputs_fufilled = True
                     for inp in step.tool["inputs"]:
                         for s in aslist(inp.get("source", [])):
                             if s not in promises:
                                 stepinputs_fufilled = False
                     if stepinputs_fufilled:
-                        logger.debug(
-                            "Ready to make job for workflow step %s", step.tool["id"]
-                        )
+                        logger.debug("Ready to make job for workflow step %s", step_id)
                         jobobj: Dict[
                             str, Union[ResolveSource, DefaultWithSource, StepValueFrom]
                         ] = {}
@@ -2450,7 +2448,7 @@ class CWLWorkflow(Job):
                             key = shortname(inp["id"])
                             if "source" in inp:
                                 jobobj[key] = ResolveSource(
-                                    name=f'{step.tool["id"]}/{key}',
+                                    name=f"{step_id}/{key}",
                                     input=inp,
                                     source_key="source",
                                     promises=promises,
@@ -2483,7 +2481,7 @@ class CWLWorkflow(Job):
                                 step,
                                 UnresolvedDict(jobobj),
                                 self.runtime_context,
-                                workflow_name=workflow_name,
+                                parent_name=parent_name,
                                 conditional=conditional,
                             )
                             followOn: Union[
@@ -2500,7 +2498,7 @@ class CWLWorkflow(Job):
                                 tool=step.embedded_tool,
                                 jobobj=UnresolvedDict(jobobj),
                                 runtime_context=self.runtime_context,
-                                workflow_name=workflow_name,
+                                parent_name=f"{parent_name}.{shortname(step_id)}",
                                 conditional=conditional,
                             )
                             logger.debug(
@@ -2509,7 +2507,7 @@ class CWLWorkflow(Job):
                                 followOn,
                             )
 
-                        jobs[step.tool["id"]] = followOn
+                        jobs[step_id] = followOn
 
                         connected = False
                         for inp in step.tool["inputs"]:
@@ -3433,7 +3431,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     tool=tool,
                     jobobj={},
                     runtime_context=runtime_context,
-                    workflow_name=None,  # toplevel, no name needed
+                    parent_name=None,  # toplevel, no name needed
                     conditional=None,
                 )
             except CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION as err:
