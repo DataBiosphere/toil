@@ -52,6 +52,50 @@ These components are described below:
         Monitors logging and statistics produced by the workers and reports them. Uses the
         job-store to gather this information.
 
+Jobs and JobDescriptions
+------------------------
+
+As noted in :ref:`jobBasics`, a job is the atomic unit of work in a Toil workflow.
+User scripts inherit from the :class:`~toil.job.Job` class to define units of work.
+These jobs are pickled and stored in the job-store by the leader, and are retrieved
+and un-pickled by the worker when they are scheduled to run.
+
+During scheduling, Toil does not work with the actual Job objects. Instead,
+:class:`~toil.job.JobDescription` objects are used to store all the information
+that the Toil Leader ever needs to know about the Job. This includes requirements
+information, dependency information, commands to issue, etc.
+
+Internally, the JobDescription object is referenced by its jobStoreID, which is
+often not human readable. However, the Job and JobDescription objects contain
+several human-readable names that are useful for logging and identification:
+
++------------------+--------------------------------------------------------------------+
+| jobName          | Name of the kind of job this is. This may be used in job store IDs |
+|                  | and logging. Also used to let the cluster scaler learn a model for |
+|                  | how long the job will take. Defaults to the job class's name if no |
+|                  | real user-defined name is available.                               |
+|                  |                                                                    |
+|                  | For a :class:`~toil.job.FunctionWrappingJob`, the jobName is       |
+|                  | replaced by the wrapped function's name.                           |
+|                  |                                                                    |
+|                  | For a CWL workflow, the jobName is the class name of the internal  |
+|                  | job that is running the CWL workflow, such as ``"CWLJob"``.        |
++------------------+--------------------------------------------------------------------+
+| unitName         | Name of this *instance* of this kind of job. If set by the user,   |
+|                  | it will appear with the jobName in logging.                        |
+|                  |                                                                    |
+|                  | For a CWL workflow, the unitName is set to a descriptive name that |
+|                  | includes the CWL file name and the ID in the file if set.          |
++------------------+--------------------------------------------------------------------+
+| displayName      | A human-readable name to identify this particular job instance.    |
+|                  | Used as an identifier of the job class in the stats report.        |
+|                  | Defaults to the job class's name if no real user-defined name is   |
+|                  | available.                                                         |
+|                  |                                                                    |
+|                  | For a CWL workflow, the displayName is the absolute workflow URI.  |
++------------------+--------------------------------------------------------------------+
+
+
 Optimizations
 -------------
 

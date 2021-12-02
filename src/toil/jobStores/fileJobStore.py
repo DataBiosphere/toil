@@ -61,7 +61,7 @@ class FileJobStore(AbstractJobStore):
     JOB_NAME_DIR_PREFIX = 'kind-'
 
     # 10Mb RAM chunks when reading/writing files
-    BUFFER_SIZE = 10485760 # 10Mb
+    BUFFER_SIZE = 10485760  # 10Mb
 
     def __init__(self, path, fanOut=1000):
         """
@@ -794,7 +794,6 @@ class FileJobStore(AbstractJobStore):
 
 
         """
-
 
         if len(os.listdir(self.jobsDir)) > self.fanOut:
             # Make sure that we don't over-fill the root with too many unique job names.

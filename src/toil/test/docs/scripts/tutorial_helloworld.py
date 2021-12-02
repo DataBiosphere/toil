@@ -3,7 +3,8 @@ from toil.job import Job
 
 
 def helloWorld(message, memory="1G", cores=1, disk="1G"):
-    return "Hello, world!, here's a message: %s" % message
+    return f"Hello, world!, here's a message: {message}"
+
 
 if __name__ == "__main__":
     parser = Job.Runner.getDefaultArgumentParser()
