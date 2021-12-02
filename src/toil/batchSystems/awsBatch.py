@@ -32,6 +32,7 @@ import logging
 import math
 import os
 import pickle
+import tempfile
 import time
 import uuid
 from argparse import ArgumentParser, _ArgumentGroup
@@ -74,14 +75,14 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         super().__init__(config, maxCores, maxMemory, maxDisk)
         # Connect to AWS Batch
         self.client = client('batch')
-        
+
         # Determine our batch queue
         self.queue = config.aws_batch_queue
         if self.queue is None:
             # Make sure we actually have a queue
             raise RuntimeError("To use AWS Batch, --awsBatchQueue or TOIL_AWS_BATCH_QUEUE must be set")
         self.job_role_arn = config.aws_batch_job_role_arn
-        
+
         # Try and guess what Toil work dir the workers will use.
         # We need to be able to provision (possibly shared) space there.
         # TODO: Deduplicate with Kubernetes batch system.
@@ -161,7 +162,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             encoded_job = base64.b64encode(pickle.dumps(job, pickle.HIGHEST_PROTOCOL)).decode('utf-8')
             # Make a command to run it in the exacutor
             command_list = ['_toil_contained_executor', encoded_job]
-            
+
             # Compose a job sepc to submit
             job_spec = {
                 'jobName': job_name,
@@ -169,10 +170,10 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                 'jobDefinition': self.__get_or_create_job_definition(),
                 'containerOverrides': {
                     'command': command_list,
-                    'environment': [{'name': k, 'value': v} for k, v in job_environment.items()}],
+                    'environment': [{'name': k, 'value': v} for k, v in job_environment.items()],
                     'resourceRequirements': [
-                        {'type': 'MEMORY', 'value': math.ceil(math.max(4, to_mib(job_desc.memory)))},  # A min of 4 is demanded by the API
-                        {'type': 'VCPU', 'value', math.ceil(job_desc.cores)}  # Must be at least 1 on EC2, probably can't be 1.5
+                        {'type': 'MEMORY', 'value': math.ceil(max(4, to_mib(job_desc.memory)))},  # A min of 4 is demanded by the API
+                        {'type': 'VCPU', 'value': math.ceil(job_desc.cores)}  # Must be at least 1 on EC2, probably can't be 1.5
                     ]
                 }
             }
@@ -189,26 +190,26 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             logger.debug('Launched job: %s', job_name)
 
             return bs_id
-            
+
 
     def __get_runtime(self, job_detail: Dict[str, Any]) -> Optional[float]:
         """
         Get the time that the given job ran/has been running for, in seconds,
         or None if that time is not available. Never returns 0.
-        
+
         Takes an AWS JobDetail as a dict.
         """
-        
+
         if job_detail['status'] not in ['RUNNING', 'SUCCEEDED', 'FAILED']:
             # Job is not running yet.
             return None
-            
+
         start_ms = job_detail['startedAt']
         end_ms = unix_now_ms()
-        
+
         if 'stoppedAt' in job_detail:
             end_ms = job_detail['stoppedAt']
-        
+
         # We have a set start time, so it is/was running. Return the time
         # it has been running for.
         return slow_down((end_ms - start_ms) / 1000)
@@ -218,8 +219,8 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         Get the exit code of the given JobDetail, or
         EXIT_STATUS_UNAVAILABLE_VALUE if it cannot be gotten.
         """
-        
-        return job_detail.get('container', {}).get('exitCode', EXIT_STATUS_UNAVAILABLE_VALUE) 
+
+        return job_detail.get('container', {}).get('exitCode', EXIT_STATUS_UNAVAILABLE_VALUE)
 
     def getUpdatedBatchJob(self, maxWait: int) -> Optional[UpdatedBatchJobInfo]:
         # Remember when we started, for respecting the timeout
@@ -238,46 +239,45 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
             # Get all the AWS IDs to poll
             to_check = list(aws_and_bs_id[0] for aws_and_bs_id in self.aws_id_to_bs_id.items())
-            
+
             while len(to_check) > 0:
                 # Go through jobs we want to poll in batches of the max size
                 check_batch = to_check[-MAX_POLL_COUNT:]
                 to_check = to_check[:MAX_POLL_COUNT - 1]
-                
+
                 # TODO: retry
                 response = self.client.describe_jobs(jobs=to_check)
-                
+
                 for job_detail in response.get('jobs', []):
                     if job_detail.get('status') in ['SUCCEEDED', 'FAILED']:
                         # This job is done!
+                        logger.debug("Found stopped job: %s", job_detail)
+                        aws_id = job_detail['jobId']
+                        bs_id = self.aws_id_to_bs_id[aws_id]
 
-                    logger.debug("Found stopped job: %s", job_detail)
-                    aws_id = job_detail['jobId']
-                    bs_id = self.aws_id_to_bs_id[aws_id]
+                        # Acknowledge it
+                        acknowledged.append((aws_id, bs_id))
 
-                    # Acknowledge it
-                    acknowledged.append((aws_id, bs_id))
+                        if job_detail['jobId'] in self.killed_job_aws_ids:
+                            # Killed jobs aren't allowed to appear as updated.
+                            continue
 
-                    if job_detail['jobId'] in self.killed_job_aws_ids:
-                        # Killed jobs aren't allowed to appear as updated.
-                        continue
+                        # Otherwise, it stopped running and it wasn't our fault.
 
-                    # Otherwise, it stopped running and it wasn't our fault.
+                        # Record runtime
+                        runtime = self.__get_runtime(job_detail)
 
-                    # Record runtime
-                    runtime = self.__get_runtime(job_detail)
+                        # Determine if it succeeded
+                        exit_reason = STATE_TO_EXIT_REASON[job_detail['status']]
 
-                    # Determine if it succeeded
-                    exit_reason = STATE_TO_EXIT_REASON[job_detail['status']]
+                        # Get its exit code
+                        exit_code = self.__get_exit_code(job_detail)
 
-                    # Get its exit code
-                    exit_code = self.__get_exit_code(job_detail)
+                        # Compose a result
+                        result = UpdatedBatchJobInfo(jobID=bs_id, exitStatus=exit_code, wallTime=runtime, exitReason=exit_reason)
 
-                    # Compose a result
-                    result = UpdatedBatchJobInfo(jobID=bs_id, exitStatus=exit_code, wallTime=runtime, exitReason=exit_reason)
-
-                    # No more iteration needed, we found a result.
-                    break
+                        # No more iteration needed, we found a result.
+                        break
 
             # After the iteration, drop all the records for tasks we acknowledged
             for (aws_id, bs_id) in acknowledged:
@@ -305,7 +305,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         for aws_id in self.aws_id_to_bs_id.keys():
             # Shut down all the AWS jobs we issued.
             self.__try_terminate(aws_id)
-            
+
         # Get rid of the job definition we are using if we can.
         self.__destroy_job_definition()
 
@@ -322,7 +322,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         self.killed_job_aws_ids.add(aws_id)
         # Kill the AWS Batch job
         self.client.terminate_job(jobId=aws_id, reason='Killed by Toil')
-    
+
     @retry(errors=[BotoServerError])
     def __get_or_create_job_definition(self) -> str:
         """
@@ -347,10 +347,10 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                 job_def_spec['jobRoleArn'] = self.job_role_arn
             response = self.client.register_job_definition(**job_def_spec)
             self.job_definition = response['jobDefinitionArn']
-    
+
         return self.job_definition
-    
-    @retry(errors=[BotoServerError]) 
+
+    @retry(errors=[BotoServerError])
     def __destroy_job_definition(self) -> None:
         """
         Destroy any job definition we have created for this workflow run.
@@ -369,20 +369,22 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
         # Get all the AWS IDs to poll
         to_check = list(aws_and_bs_id[0] for aws_and_bs_id in self.aws_id_to_bs_id.items())
-        
+
         while len(to_check) > 0:
             # Go through jobs we want to poll in batches of the max size
             check_batch = to_check[-MAX_POLL_COUNT:]
             to_check = to_check[:MAX_POLL_COUNT - 1]
-            
+
             # TODO: retry
             response = self.client.describe_jobs(jobs=to_check)
-            
+
             for job_detail in response.get('jobs', []):
                 if job_detail.get('state') in ['STARTING', 'RUNNING']:
                     runtime = self.__get_runtime(job_detail)
                     if runtime:
                         # We can measure a runtime
+                        aws_id = job_detail['jobId']
+                        bs_id = self.aws_id_to_bs_id[aws_id]
                         bs_id_to_runtime[bs_id] = runtime
                     # If we can't find a runtime, we can't say it's running
                     # because we can't say how long it has been running for.
