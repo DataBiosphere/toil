@@ -156,7 +156,7 @@ class Config:
         self.enableUnlimitedPreemptableRetries: bool = False
         self.doubleMem: bool = False
         self.maxJobDuration: int = sys.maxsize
-        self.rescueJobsFrequency: int = 3600
+        self.rescueJobsFrequency: int = 60
 
         # Misc
         self.environment: Dict[str, str] = {}
