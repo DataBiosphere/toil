@@ -75,6 +75,7 @@ motd = heredoc('''
 motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 
 print(heredoc('''
+    # We can't use a newwe Ubuntu until we no longer need Mesos
     FROM ubuntu:16.04
 
     ARG TARGETARCH
@@ -104,7 +105,9 @@ print(heredoc('''
         mv go /usr/local/ && \
         /usr/local/go version
 
-    # Build Singularity
+    # Install Singularity from a newer Debian.
+    # The dependencies it thinks it needs aren't really needed and aren't
+    # available here.
     RUN wget https://debian.osuosl.org/debian/pool/main/s/singularity-container/$(curl -sSL 'https://debian.osuosl.org/debian/pool/main/s/singularity-container/' | grep -o "singularity-container_3[^\\"]*$(if [ $TARGETARCH = amd64 ] ; then echo amd64 ; else echo arm64 ; fi).deb" | head -n1) && \
         (dpkg -i singularity-container_3*.deb || true) && \
         dpkg --force-depends --configure -a && \
