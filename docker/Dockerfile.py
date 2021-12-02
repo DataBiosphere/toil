@@ -101,7 +101,8 @@ print(heredoc('''
         tar xf go1.13.3.linux-$TARGETARCH.tar.gz && \
         rm go1.13.3.linux-$TARGETARCH.tar.gz && \
         mv go/bin/* /usr/bin/ && \
-        mv go /usr/local/
+        mv go /usr/local/ && \
+        /usr/local/go version
 
     # Build Singularity
     RUN wget https://debian.osuosl.org/debian/pool/main/s/singularity-container/$(curl -sSL 'https://debian.osuosl.org/debian/pool/main/s/singularity-container/' | grep -o "singularity-container_3[^\\"]*$(if [ $TARGETARCH = amd64 ] ; then echo amd64 ; else echo arm64 ; fi).deb" | head -n1) && \
@@ -110,7 +111,8 @@ print(heredoc('''
         sed -i 's/containernetworking-plugins, //' /var/lib/dpkg/status && \
         sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf && \
         mkdir -p /usr/local/libexec/toil && \
-        mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real
+        mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real \
+        && /usr/local/libexec/toil/singularity-real version
 
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh
@@ -143,7 +145,8 @@ print(heredoc('''
     # Install statically linked version of docker client
     RUN curl https://download.docker.com/linux/static/stable/$(if [ $TARGETARCH = amd64 ] ; then echo x86_64 ; else echo aarch64 ; fi)/docker-18.06.1-ce.tgz \
         | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ \
-        && chmod u+x /usr/local/bin/docker
+        && chmod u+x /usr/local/bin/docker \
+        && /usr/local/bin/docker -v
 
     # Fix for Mesos interface dependency missing on ubuntu
     RUN {pip} install protobuf==3.0.0
