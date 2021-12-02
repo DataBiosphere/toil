@@ -48,7 +48,7 @@ class Node:
     def __hash__(self):
         return hash(self.effectiveIP)
 
-    def remainingBillingInterval(self):
+    def remainingBillingInterval(self) -> float:
         """
         If the node has a launch time, this function returns a floating point value
         between 0 and 1.0 representing how far we are into the

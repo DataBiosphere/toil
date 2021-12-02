@@ -68,7 +68,7 @@ def kubernetes_batch_system_factory():
     return KubernetesBatchSystem
 
 
-BATCH_SYSTEM_FACTORY_REGISTRY = {
+BATCH_SYSTEM_FACTORY_REGISTRY: Dict[str, Callable[[], Type["AbstractBatchSystem"]]] = {
     'parasol'        : parasol_batch_system_factory,
     'single_machine' : single_machine_batch_system_factory,
     'grid_engine'    : gridengine_batch_system_factory,
