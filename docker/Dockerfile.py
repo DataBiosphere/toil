@@ -98,13 +98,6 @@ print(heredoc('''
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
-    RUN wget -q https://dl.google.com/go/go1.13.3.linux-$TARGETARCH.tar.gz && \
-        tar xf go1.13.3.linux-$TARGETARCH.tar.gz && \
-        rm go1.13.3.linux-$TARGETARCH.tar.gz && \
-        mv go/bin/* /usr/bin/ && \
-        mv go /usr/local/ && \
-        /usr/local/go version
-
     # Install Singularity from a newer Debian.
     # The dependencies it thinks it needs aren't really needed and aren't
     # available here.
