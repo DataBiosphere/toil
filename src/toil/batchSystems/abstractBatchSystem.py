@@ -64,7 +64,7 @@ class UpdatedBatchJobInfo(NamedTuple):
 
 # Information required for worker cleanup on shutdown of the batch system.
 class WorkerCleanupInfo(NamedTuple):
-    workDir: str
+    workDir: Optional[str]
     """workdir path (where the cache would go)"""
 
     workflowID: str
@@ -72,19 +72,22 @@ class WorkerCleanupInfo(NamedTuple):
 
     cleanWorkDir: str
 
+
 class AbstractBatchSystem(ABC):
-    """
-    An abstract (as far as Python currently allows) base class to represent the interface the batch
-    system must provide to Toil.
-    """
+    """An abstract (as far as Python currently allows) base class to represent the interface the batch system must provide to Toil."""
+
+    @abstractmethod
+    def __init__(self, **kwargs: Any) -> None:
+        """Must support keyword based constructor."""
 
     @classmethod
     @abstractmethod
     def supportsAutoDeployment(cls) -> bool:
         """
-        Whether this batch system supports auto-deployment of the user script itself. If it does,
-        the :meth:`.setUserScript` can be invoked to set the resource object representing the user
-        script.
+        Whether this batch system supports auto-deployment of the user script itself.
+
+        If it does, the :meth:`.setUserScript` can be invoked to set the resource
+        object representing the user script.
 
         Note to implementors: If your implementation returns True here, it should also override
         """

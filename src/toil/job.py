@@ -1062,7 +1062,9 @@ class Job:
         # Note that self.__module__ is not necessarily this module, i.e. job.py. It is the module
         # defining the class self is an instance of, which may be a subclass of Job that may be
         # defined in a different module.
-        self.userModule = ModuleDescriptor.forModule(self.__module__).globalize()
+        self.userModule: ModuleDescriptor = ModuleDescriptor.forModule(
+            self.__module__
+        ).globalize()
         # Maps index paths into composite return values to lists of IDs of files containing
         # promised values for those return value items. An index path is a tuple of indices that
         # traverses a nested data structure of lists, dicts, tuples or any other type supporting
@@ -1504,15 +1506,15 @@ class Job:
         self._rvs[path].append(jobStoreFileID)
         return self._promiseJobStore.config.jobStore, jobStoreFileID
 
-    def prepareForPromiseRegistration(self, jobStore):
+    def prepareForPromiseRegistration(self, jobStore: "AbstractJobStore") -> None:
         """
-        Ensure that a promise by this job (the promissor) can register with the promissor when
-        another job referring to the promise (the promissee) is being serialized. The promissee
-        holds the reference to the promise (usually as part of the the job arguments) and when it
-        is being pickled, so will the promises it refers to. Pickling a promise triggers it to be
-        registered with the promissor.
+        Ensure that a promise by this job (the promissor) can register with the promissor.
 
-        :return:
+        (when another job referring to the promise (the promissee) is being serialized).
+
+        The promissee holds the reference to the promise (usually as part of the
+        job arguments) and when it is being pickled, so will the promises it refers
+        to. Pickling a promise triggers it to be registered with the promissor.
         """
         self._promiseJobStore = jobStore
 
@@ -1913,7 +1915,7 @@ class Job:
 
         return runnable
 
-    def getUserScript(self):
+    def getUserScript(self) -> ModuleDescriptor:
         return self.userModule
 
     def _fulfillPromises(self, returnValues, jobStore):
@@ -2225,11 +2227,10 @@ class Job:
                 if job != self or saveSelf:
                     jobStore.create_job(job.description)
 
-    def saveAsRootJob(self, jobStore):
+    def saveAsRootJob(self, jobStore: "AbstractJobStore") -> JobDescription:
         """
         Save this job to the given jobStore as the root job of the workflow.
 
-        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore:
         :return: the JobDescription describing this job.
         """
 

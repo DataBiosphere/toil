@@ -291,7 +291,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             else:
                 log.debug('Job %s ended naturally before it could be killed.', item.jobID)
 
-    def nodeInUse(self, nodeIP):
+    def nodeInUse(self, nodeIP: str) -> bool:
         return nodeIP in self.hostToJobIDs
 
     @contextmanager
@@ -714,7 +714,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
         return executor
 
-    def getNodes(self, preemptable=None, timeout=600):
+    def getNodes(self, preemptable=None, timeout=600) -> Dict[str, NodeInfo]:
         timeout = timeout or sys.maxsize
         return {nodeAddress: executor.nodeInfo
                 for nodeAddress, executor in self.executors.items()

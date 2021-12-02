@@ -132,7 +132,18 @@ import time
 import traceback
 import urllib.error
 from contextlib import contextmanager
-from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    ContextManager,
+    Generator,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 import requests.exceptions
 import urllib3.exceptions
@@ -479,7 +490,11 @@ def error_meets_conditions(e, error_conditions):
 # TODO: Replace the use of this with retry()
 #  The aws provisioner and jobstore need a large refactoring to be boto3 compliant, so this is
 #  still used there to avoid the duplication of future work
-def old_retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: False):
+def old_retry(
+    delays: Iterable[float] = (0, 1, 1, 4, 16, 64),
+    timeout: float = 300,
+    predicate: Callable[[Exception], bool] = lambda e: False,
+) -> Generator[ContextManager, None, None]:
     """
     Deprecated.
 

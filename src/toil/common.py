@@ -28,23 +28,27 @@ from argparse import (
     Namespace,
     _ArgumentGroup,
 )
+from types import TracebackType
 from typing import (
     IO,
     TYPE_CHECKING,
     Any,
     Callable,
+    ContextManager,
     Dict,
     List,
     Optional,
+    Set,
     Tuple,
+    Type,
     TypeVar,
     Union,
+    cast,
 )
 from urllib.parse import urlparse
-from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import requests
+from typing_extensions import Literal
 
 from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import (add_all_batchsystem_options,
@@ -66,7 +70,10 @@ from toil.version import dockerRegistry, dockerTag, version
 
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
+    from toil.job import Job, JobDescription, TemporaryID
     from toil.jobStores.abstractJobStore import AbstractJobStore
+    from toil.provisioners.abstractProvisioner import AbstractProvisioner
+    from toil.resource import ModuleDescriptor
 
 # aim to pack autoscaling jobs within a 30 minute block before provisioning a new node
 defaultTargetTime = 1800
@@ -82,7 +89,6 @@ class Config:
 
     logFile: Optional[str]
     logRotating: bool
-    workDir: str
     cleanWorkDir: str
     maxLocalJobs: int
     runCwlInternalJobsOnWorkers: bool
@@ -91,24 +97,26 @@ class Config:
     tes_password: str
     tes_bearer_token: str
     jobStore: str
+    batchSystem: str
+    workflowAttemptNumber: int
+    disableAutoDeployment: bool
 
     def __init__(self) -> None:
+        super().__init__()
         # Core options
         self.workflowID: Optional[str] = None
         """This attribute uniquely identifies the job store and therefore the workflow. It is
         necessary in order to distinguish between two consecutive workflows for which
         self.jobStore is the same, e.g. when a job store name is reused after a previous run has
         finished successfully and its job store has been clean up."""
-        self.workflowAttemptNumber = None
-        self.jobStore = None
         self.logLevel: str = logging.getLevelName(root_logger.getEffectiveLevel())
-        self.workDir = None
+        self.workDir: Optional[str] = None
         self.noStdOutErr: bool = False
         self.stats: bool = False
 
         # Because the stats option needs the jobStore to persist past the end of the run,
         # the clean default value depends the specified stats option and is determined in setOptions
-        self.clean = None
+        self.clean: Optional[str] = None
         self.clusterStats = None
 
         # Restarting the workflow options
@@ -116,15 +124,15 @@ class Config:
 
         # Batch system options
         set_batchsystem_config_defaults(self)
-        
+
         # File store options
         self.disableCaching: bool = False
         self.linkImports: bool = True
         self.moveExports: bool = False
 
         # Autoscaling options
-        self.provisioner = None
-        self.nodeTypes = []
+        self.provisioner: Optional[str] = None
+        self.nodeTypes: List[Tuple[Set[str], Optional[float]]] = []
         self.minNodes = None
         self.maxNodes = [10]
         self.targetTime = defaultTargetTime
@@ -132,7 +140,7 @@ class Config:
         self.scaleInterval = 60
         self.preemptableCompensation = 0.0
         self.nodeStorage = 50
-        self.nodeStorageOverrides = []
+        self.nodeStorageOverrides: List[str] = []
         self.metrics: bool = False
 
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
@@ -166,7 +174,7 @@ class Config:
         self.writeLogs = None
         self.writeLogsGzip = None
         self.writeLogsFromAllJobs: bool = False
-        self.sseKey: str = None
+        self.sseKey: Optional[str] = None
         self.servicePollingInterval: int = 60
         self.useAsync: bool = True
         self.forceDockerAppliance: bool = False
@@ -182,15 +190,18 @@ class Config:
         # CWL
         self.cwl: bool = False
 
-    def setOptions(self, options) -> None:
+    def setOptions(self, options: Namespace) -> None:
         """Creates a config object from the options object."""
-        OptionType = TypeVar('OptionType')
-        def set_option(option_name: str,
-                       parsing_function: Optional[Callable[[Any], OptionType]] = None,
-                       check_function: Optional[Callable[[OptionType], None]] = None,
-                       default: Optional[OptionType] = None,
-                       env: Optional[List[str]] = None,
-                       old_names: Optional[List[str]] = None) -> None:
+        OptionType = TypeVar("OptionType")
+
+        def set_option(
+            option_name: str,
+            parsing_function: Optional[Callable[[Any], OptionType]] = None,
+            check_function: Optional[Callable[[OptionType], bool]] = None,
+            default: Optional[OptionType] = None,
+            env: Optional[List[str]] = None,
+            old_names: Optional[List[str]] = None,
+        ) -> None:
             """
             Determine the correct value for the given option.
 
@@ -237,15 +248,19 @@ class Config:
                     option_value = parsing_function(option_value)
                 if check_function is not None:
                     try:
-                        check_function(option_value)
+                        result = check_function(option_value)
                     except AssertionError:
+                        raise RuntimeError(
+                            f"The {option_name} option has an invalid value: {option_value}"
+                        )
+                    if result is False:
                         raise RuntimeError(f"The {option_name} option has an invalid value: {option_value}")
                 setattr(self, option_name, option_value)
 
         # Function to parse integer from string expressed in different formats
         h2b = lambda x: human2bytes(str(x))
 
-        def parse_jobstore(jobstore_uri: str):
+        def parse_jobstore(jobstore_uri: str) -> str:
             name, rest = Toil.parseLocator(jobstore_uri)
             if name == 'file':
                 # We need to resolve relative paths early, on the leader, because the worker process
@@ -254,10 +269,10 @@ class Config:
             else:
                 return jobstore_uri
 
-        def parse_str_list(s: str):
+        def parse_str_list(s: str) -> List[str]:
             return [str(x) for x in s.split(",")]
 
-        def parse_int_list(s: str):
+        def parse_int_list(s: str) -> List[int]:
             return [int(x) for x in s.split(",")]
 
         # Core options
@@ -265,7 +280,7 @@ class Config:
         # TODO: LOG LEVEL STRING
         set_option("workDir")
         if self.workDir is not None:
-            self.workDir: Optional[str] = os.path.abspath(self.workDir)
+            self.workDir = os.path.abspath(self.workDir)
             if not os.path.exists(self.workDir):
                 raise RuntimeError(f"The path provided to --workDir ({self.workDir}) does not exist.")
 
@@ -321,11 +336,17 @@ class Config:
             for override in overrides:
                 tokens = override.split(":")
                 if len(tokens) != 2:
-                    raise AssertionError('Each component of --nodeStorageOverrides must be of the form <instance type>:<storage in GiB>')
+                    raise AssertionError(
+                        "Each component of --nodeStorageOverrides must be of the form <instance type>:<storage in GiB>"
+                    )
                 if not any(tokens[0] in n[0] for n in self.nodeTypes):
-                    raise AssertionError('instance type in --nodeStorageOverrides must be used in --nodeTypes')
+                    raise AssertionError(
+                        "instance type in --nodeStorageOverrides must be used in --nodeTypes"
+                    )
                 if not tokens[1].isdigit():
-                    raise AssertionError('storage must be an integer in --nodeStorageOverrides')
+                    raise AssertionError(
+                        "storage must be an integer in --nodeStorageOverrides"
+                    )
             return True
         set_option("nodeStorageOverrides", parse_str_list, check_function=check_nodestoreage_overrides)
 
@@ -365,14 +386,18 @@ class Config:
         set_option("disableProgress")
 
         if self.writeLogs and self.writeLogsGzip:
-            raise AssertionError("Cannot use both --writeLogs and --writeLogsGzip at the same time.")
+            raise AssertionError(
+                "Cannot use both --writeLogs and --writeLogsGzip at the same time."
+            )
         if self.writeLogsFromAllJobs or self.writeLogs or self.writeLogsGzip:
-            raise AssertionError("To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set.")
+            raise AssertionError(
+                "To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set."
+            )
 
         def check_sse_key(sse_key: str) -> bool:
             with open(sse_key) as f:
                 if not len(f.readline().rstrip()) == 32:
-                    raise AssertionError('SSE key appears to be invalid.')
+                    raise AssertionError("SSE key appears to be invalid.")
             return True
 
         set_option("sseKey", check_function=check_sse_key)
@@ -385,11 +410,11 @@ class Config:
         set_option("badWorker", float, fC(0.0, 1.0))
         set_option("badWorkerFailInterval", float, fC(0.0))
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         return self.__dict__ == other.__dict__
 
-    def __hash__(self):
-        return self.__dict__.__hash__()
+    def __hash__(self) -> int:
+        return self.__dict__.__hash__()  # type: ignore[misc,no-any-return]
 
 
 JOBSTORE_HELP = ("The location of the job store for the workflow.  "
@@ -427,7 +452,9 @@ def parser_with_common_options(
     return parser
 
 
-def addOptions(parser: ArgumentParser, config: Config = Config()):
+def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
+    if config is None:
+        config = Config()
     if not (isinstance(parser, ArgumentParser) or isinstance(parser, _ArgumentGroup)):
         raise ValueError(f"Unanticipated class: {parser.__class__}.  Must be: argparse.ArgumentParser or ArgumentGroup.")
 
@@ -626,31 +653,76 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
         description="The options to specify default cores/memory requirements (if not specified by the jobs "
                     "themselves), and to limit the total amount of memory/cores requested from the batch system."
     )
-    resource_help_msg = ('The {} amount of {} to request for a job.  '
-                         'Only applicable to jobs that do not specify an explicit value for this requirement.  '
-                         '{}.  '
-                         'Default is {}.')
-    cpu_note = 'Fractions of a core (for example 0.1) are supported on some batch systems [mesos, single_machine]'
-    disk_mem_note = 'Standard suffixes like K, Ki, M, Mi, G or Gi are supported'
-    resource_options.add_argument('--defaultMemory', dest='defaultMemory', default=None, metavar='INT',
-                                  help=resource_help_msg.format('default', 'memory', disk_mem_note,
-                                                                bytes2human(config.defaultMemory)))
-    resource_options.add_argument('--defaultCores', dest='defaultCores', default=None, metavar='FLOAT',
-                                  help=resource_help_msg.format('default', 'cpu', cpu_note, str(config.defaultCores)))
-    resource_options.add_argument('--defaultDisk', dest='defaultDisk', default=None, metavar='INT',
-                                  help=resource_help_msg.format('default', 'disk', disk_mem_note,
-                                                                bytes2human(config.defaultDisk)))
-    resource_options.add_argument('--defaultPreemptable', dest='defaultPreemptable', metavar='BOOL',
-                                  type='bool', nargs='?', const=True, default=False,
-                                  help='Make all jobs able to run on preemptable (spot) nodes by default.')
-    resource_options.add_argument('--maxCores', dest='maxCores', default=None, metavar='INT',
-                                  help=resource_help_msg.format('max', 'cpu', cpu_note, str(config.maxCores)))
-    resource_options.add_argument('--maxMemory', dest='maxMemory', default=None, metavar='INT',
-                                  help=resource_help_msg.format('max', 'memory', disk_mem_note,
-                                                                bytes2human(config.maxMemory)))
-    resource_options.add_argument('--maxDisk', dest='maxDisk', default=None, metavar='INT',
-                                  help=resource_help_msg.format('max', 'disk', disk_mem_note,
-                                                                bytes2human(config.maxDisk)))
+    resource_help_msg = (
+        "The {} amount of {} to request for a job.  "
+        "Only applicable to jobs that do not specify an explicit value for this requirement.  "
+        "{}.  "
+        "Default is {}."
+    )
+    cpu_note = "Fractions of a core (for example 0.1) are supported on some batch systems [mesos, single_machine]"
+    disk_mem_note = "Standard suffixes like K, Ki, M, Mi, G or Gi are supported"
+    resource_options.add_argument(
+        "--defaultMemory",
+        dest="defaultMemory",
+        default=None,
+        metavar="INT",
+        help=resource_help_msg.format(
+            "default", "memory", disk_mem_note, bytes2human(config.defaultMemory)
+        ),
+    )
+    resource_options.add_argument(
+        "--defaultCores",
+        dest="defaultCores",
+        default=None,
+        metavar="FLOAT",
+        help=resource_help_msg.format(
+            "default", "cpu", cpu_note, str(config.defaultCores)
+        ),
+    )
+    resource_options.add_argument(
+        "--defaultDisk",
+        dest="defaultDisk",
+        default=None,
+        metavar="INT",
+        help=resource_help_msg.format(
+            "default", "disk", disk_mem_note, bytes2human(config.defaultDisk)
+        ),
+    )
+    resource_options.add_argument(
+        "--defaultPreemptable",
+        dest="defaultPreemptable",
+        metavar="BOOL",
+        type=bool,
+        nargs="?",
+        const=True,
+        default=False,
+        help="Make all jobs able to run on preemptable (spot) nodes by default.",
+    )
+    resource_options.add_argument(
+        "--maxCores",
+        dest="maxCores",
+        default=None,
+        metavar="INT",
+        help=resource_help_msg.format("max", "cpu", cpu_note, str(config.maxCores)),
+    )
+    resource_options.add_argument(
+        "--maxMemory",
+        dest="maxMemory",
+        default=None,
+        metavar="INT",
+        help=resource_help_msg.format(
+            "max", "memory", disk_mem_note, bytes2human(config.maxMemory)
+        ),
+    )
+    resource_options.add_argument(
+        "--maxDisk",
+        dest="maxDisk",
+        default=None,
+        metavar="INT",
+        help=resource_help_msg.format(
+            "max", "disk", disk_mem_note, bytes2human(config.maxDisk)
+        ),
+    )
 
     # Retrying/rescuing jobs
     job_options = parser.add_argument_group(
@@ -754,7 +826,7 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
                               help="Disables the progress bar shown when standard error is a terminal.")
 
 
-def parseBool(val):
+def parseBool(val: str) -> bool:
     if val.lower() in ['true', 't', 'yes', 'y', 'on', '1']:
         return True
     elif val.lower() in ['false', 'f', 'no', 'n', 'off', '0']:
@@ -821,11 +893,17 @@ def getNodeID() -> str:
     return nodeID
 
 
-class Toil:
+class Toil(ContextManager["Toil"]):
     """
-    A context manager that represents a Toil workflow, specifically the batch system, job store,
-    and its configuration.
+    A context manager that represents a Toil workflow.
+
+    Specifically the batch system, job store, and its configuration.
     """
+
+    config: Config
+    _jobStore: "AbstractJobStore"
+    _batchSystem: "AbstractBatchSystem"
+    _provisioner: Optional["AbstractProvisioner"]
 
     def __init__(self, options: Namespace) -> None:
         """
@@ -838,31 +916,16 @@ class Toil:
         """
         super().__init__()
         self.options = options
-        self.config = None
-        """
-        :type: toil.common.Config
-        """
-        self._jobStore = None
-        """
-        :type: toil.jobStores.abstractJobStore.AbstractJobStore
-        """
-        self._batchSystem = None
-        """
-        :type: toil.batchSystems.abstractBatchSystem.AbstractBatchSystem
-        """
-        self._provisioner = None
-        """
-        :type: toil.provisioners.abstractProvisioner.AbstractProvisioner
-        """
-        self._jobCache = dict()
+        self._jobCache: Dict[Union[str, "TemporaryID"], "JobDescription"] = {}
         self._inContextManager = False
         self._inRestart = False
 
-    def __enter__(self):
+    def __enter__(self) -> "Toil":
         """
-        Derive configuration from the command line options, load the job store and, on restart,
-        consolidate the derived configuration with the one from the previous invocation of the
-        workflow.
+        Derive configuration from the command line options.
+
+        Then load the job store and, on restart, consolidate the derived
+        configuration with the one from the previous invocation of the workflow.
         """
         set_logging_from_options(self.options)
         config = Config()
@@ -888,9 +951,16 @@ class Toil:
         return self
 
     # noinspection PyUnusedLocal
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> Literal[False]:
         """
-        Clean up after a workflow invocation. Depending on the configuration, delete the job store.
+        Clean up after a workflow invocation.
+
+        Depending on the configuration, delete the job store.
         """
         try:
             if (exc_type is not None and self.config.clean == "onError" or
@@ -915,13 +985,15 @@ class Toil:
         self._inRestart = False
         return False  # let exceptions through
 
-    def start(self, rootJob):
+    def start(self, rootJob: "Job") -> Any:
         """
-        Invoke a Toil workflow with the given job as the root for an initial run. This method
-        must be called in the body of a ``with Toil(...) as toil:`` statement. This method should
-        not be called more than once for a workflow that has not finished.
+        Invoke a Toil workflow with the given job as the root for an initial run.
 
-        :param toil.job.Job rootJob: The root job of the workflow
+        This method must be called in the body of a ``with Toil(...) as toil:``
+        statement. This method should not be called more than once for a workflow
+        that has not finished.
+
+        :param rootJob: The root job of the workflow
         :return: The root job's return value
         """
         self._assertContextManagerUsed()
@@ -955,7 +1027,7 @@ class Toil:
         finally:
             self._shutdownBatchSystem()
 
-    def restart(self):
+    def restart(self) -> Any:
         """
         Restarts a workflow that has been interrupted.
 
@@ -988,7 +1060,7 @@ class Toil:
         finally:
             self._shutdownBatchSystem()
 
-    def _setProvisioner(self):
+    def _setProvisioner(self) -> None:
         if self.config.provisioner is None:
             self._provisioner = None
         else:
@@ -1036,12 +1108,12 @@ class Toil:
 
     @staticmethod
     def buildLocator(name: str, rest: str) -> str:
-        if ':' in name:
+        if ":" in name:
             raise Exception(f"Can't have a : in the name: {name}.")
         return f'{name}:{rest}'
 
     @classmethod
-    def resumeJobStore(cls, locator) -> "AbstractJobStore":
+    def resumeJobStore(cls, locator: str) -> "AbstractJobStore":
         jobStore = cls.getJobStore(locator)
         jobStore.resume()
         return jobStore
@@ -1049,11 +1121,9 @@ class Toil:
     @staticmethod
     def createBatchSystem(config: Config) -> "AbstractBatchSystem":
         """
-        Creates an instance of the batch system specified in the given config.
+        Create an instance of the batch system specified in the given config.
 
-        :param toil.common.Config config: the current configuration
-
-        :rtype: batchSystems.abstractBatchSystem.AbstractBatchSystem
+        :param config: the current configuration
 
         :return: an instance of a concrete subclass of AbstractBatchSystem
         """
@@ -1066,7 +1136,7 @@ class Toil:
 
         try:
             batch_system = BATCH_SYSTEM_FACTORY_REGISTRY[config.batchSystem]()
-        except:
+        except Exception:
             raise RuntimeError(f'Unrecognized batch system: {config.batchSystem}')
 
         if not config.disableCaching and not batch_system.supportsWorkerCleanup():
@@ -1078,14 +1148,16 @@ class Toil:
 
         return batch_system(**kwargs)
 
-    def _setupAutoDeployment(self, userScript=None):
+    def _setupAutoDeployment(
+        self, userScript: Optional["ModuleDescriptor"] = None
+    ) -> None:
         """
-        Determine the user script, save it to the job store and inject a reference to the saved
-        copy into the batch system such that it can auto-deploy the resource on the worker
-        nodes.
+        Determine the user script, save it to the job store and inject a reference to the saved copy into the batch system.
 
-        :param toil.resource.ModuleDescriptor userScript: the module descriptor referencing the
-               user script. If None, it will be looked up in the job store.
+        Do it such that the batch system can auto-deploy the resource on the worker nodes.
+
+        :param userScript: the module descriptor referencing the user script.
+               If None, it will be looked up in the job store.
         """
         if userScript is not None:
             # This branch is hit when a workflow is being started
@@ -1121,7 +1193,7 @@ class Toil:
             logger.debug('No user script to auto-deploy.')
         else:
             logger.debug('Saving user script %s as a resource', userScript)
-            userScriptResource = userScript.saveAsResourceTo(self._jobStore)
+            userScriptResource = userScript.saveAsResourceTo(self._jobStore)  # type: ignore[misc]
             logger.debug('Injecting user script %s into batch system.', userScriptResource)
             self._batchSystem.setUserScript(userScriptResource)
 
@@ -1137,7 +1209,7 @@ class Toil:
                     shared_file_name: Optional[str] = None,
                     symlink: bool = False) -> Optional[Union[FileID, str]]:
         """
-        Imports the file at the given URL into job store.
+        Import the file at the given URL into job store.
 
         See :func:`toil.jobStores.abstractJobStore.AbstractJobStore.importFile` for a
         full description
@@ -1147,12 +1219,12 @@ class Toil:
         return self._jobStore.import_file(src_uri, shared_file_name=shared_file_name, symlink=symlink)
 
     @deprecated(new_function_name='export_file')
-    def exportFile(self, jobStoreFileID: Union[FileID, str], dstUrl: str) -> None:
+    def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
         return self.export_file(jobStoreFileID, dstUrl)
 
-    def export_file(self, file_id: Union[FileID, str], dst_uri: str) -> None:
+    def export_file(self, file_id: FileID, dst_uri: str) -> None:
         """
-        Exports file to destination pointed at by the destination URL.
+        Export file to destination pointed at by the destination URL.
 
         See :func:`toil.jobStores.abstractJobStore.AbstractJobStore.exportFile` for a
         full description
@@ -1183,51 +1255,44 @@ class Toil:
             return f'file://{abs_path}'
         return uri
 
-    def _setBatchSystemEnvVars(self):
-        """
-        Sets the environment variables required by the job store and those passed on command line.
-        """
+    def _setBatchSystemEnvVars(self) -> None:
+        """Set the environment variables required by the job store and those passed on command line."""
         for envDict in (self._jobStore.get_env(), self.config.environment):
             for k, v in envDict.items():
                 self._batchSystem.setEnv(k, v)
 
-    def _serialiseEnv(self):
-        """
-        Puts the environment in a globally accessible pickle file.
-        """
+    def _serialiseEnv(self) -> None:
+        """Put the environment in a globally accessible pickle file."""
         # Dump out the environment of this process in the environment pickle file.
         with self._jobStore.write_shared_file_stream("environment.pickle") as fileHandle:
             pickle.dump(dict(os.environ), fileHandle, pickle.HIGHEST_PROTOCOL)
         logger.debug("Written the environment for the jobs to the environment file")
 
-    def _cacheAllJobs(self):
-        """
-        Downloads all jobs in the current job store into self.jobCache.
-        """
+    def _cacheAllJobs(self) -> None:
+        """Download all jobs in the current job store into self.jobCache."""
         logger.debug('Caching all jobs in job store')
         self._jobCache = {jobDesc.jobStoreID: jobDesc for jobDesc in self._jobStore.jobs()}
         logger.debug('{} jobs downloaded.'.format(len(self._jobCache)))
 
-    def _cacheJob(self, job):
+    def _cacheJob(self, job: "JobDescription") -> None:
         """
-        Adds given job to current job cache.
+        Add given job to current job cache.
 
-        :param toil.job.JobDescription job: job to be added to current job cache
+        :param job: job to be added to current job cache
         """
         self._jobCache[job.jobStoreID] = job
 
     @staticmethod
     def getToilWorkDir(configWorkDir: Optional[str] = None) -> str:
         """
-        Returns a path to a writable directory under which per-workflow
-        directories exist.  This directory is always required to exist on a
-        machine, even if the Toil worker has not run yet.  If your workers and
-        leader have different temp directories, you may need to set
-        TOIL_WORKDIR.
+        Return a path to a writable directory under which per-workflow directories exist.
 
-        :param str configWorkDir: Value passed to the program using the --workDir flag
+        This directory is always required to exist on a machine, even if the Toil
+        worker has not run yet.  If your workers and leader have different temp
+        directories, you may need to set TOIL_WORKDIR.
+
+        :param configWorkDir: Value passed to the program using the --workDir flag
         :return: Path to the Toil work directory, constant across all machines
-        :rtype: str
         """
         workDir = os.getenv('TOIL_WORKDIR_OVERRIDE') or configWorkDir or os.getenv('TOIL_WORKDIR') or tempfile.gettempdir()
         if not os.path.exists(workDir):
@@ -1239,8 +1304,7 @@ class Toil:
         cls, workflowID: str, configWorkDir: Optional[str] = None
     ) -> str:
         """
-        Returns a path to the directory where worker directories and the cache will be located
-        for this workflow on this machine.
+        Return the directory where worker directories and the cache will be located for this workflow on this machine.
 
         :param configWorkDir: Value passed to the program using the --workDir flag
         :return: Path to the local workflow directory on this machine
@@ -1262,11 +1326,11 @@ class Toil:
             logger.debug('Created the workflow directory for this machine at %s' % workflowDir)
         return workflowDir
 
-    def _runMainLoop(self, rootJob):
+    def _runMainLoop(self, rootJob: "JobDescription") -> Any:
         """
-        Runs the main loop with the given job.
-        :param toil.job.Job rootJob: The root job for the workflow.
-        :rtype: Any
+        Run the main loop with the given job.
+
+        :param rootJob: The root job for the workflow.
         """
         logProcessContext(self.config)
 
@@ -1292,11 +1356,11 @@ class Toil:
         logger.debug('... finished shutting down the batch system in %s seconds.'
                      % (time.time() - startTime))
 
-    def _assertContextManagerUsed(self):
+    def _assertContextManagerUsed(self) -> None:
         if not self._inContextManager:
             raise ToilContextManagerException()
 
-    def writePIDFile(self):
+    def writePIDFile(self) -> None:
         """
         Write a the pid of this process to a file in the jobstore.
 
@@ -1309,22 +1373,22 @@ class Toil:
 
 
 class ToilRestartException(Exception):
-    def __init__(self, message):
+    def __init__(self, message: str) -> None:
         super().__init__(message)
 
 
 class ToilContextManagerException(Exception):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             'This method cannot be called outside the "with Toil(...)" context manager.')
 
 
 class ToilMetrics:
-    def __init__(self, provisioner=None):
-        clusterName = 'none'
-        region = 'us-west-2'
+    def __init__(self, provisioner: Optional["AbstractProvisioner"] = None) -> None:
+        clusterName = "none"
+        region = "us-west-2"
         if provisioner is not None:
-            clusterName = provisioner.clusterName
+            clusterName = str(provisioner.clusterName)
             if provisioner._zone is not None:
                 if provisioner.cloud == 'aws':
                     # Remove AZ name
@@ -1350,17 +1414,27 @@ class ToilMetrics:
             pass
 
         try:
-            self.mtailProc = subprocess.Popen(["docker", "run", "--rm", "--interactive",
-                                               "--net=host",
-                                               "--name", "toil_mtail",
-                                               "-p", "3903:3903",
-                                               self.mtailImage],
-                                              stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            self.mtailProc: Optional[subprocess.Popen[bytes]] = subprocess.Popen(
+                [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "--interactive",
+                    "--net=host",
+                    "--name",
+                    "toil_mtail",
+                    "-p",
+                    "3903:3903",
+                    self.mtailImage,
+                ],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+            )
         except subprocess.CalledProcessError:
             logger.warning("Could not start toil metrics server.")
             self.mtailProc = None
         except KeyboardInterrupt:
-            self.mtailProc.terminate()
+            self.mtailProc.terminate()  # type: ignore[union-attr]
 
         # On single machine, launch a node exporter instance to monitor CPU/RAM usage.
         # On AWS this is handled by the EC2 init script
@@ -1383,10 +1457,10 @@ class ToilMetrics:
                     "Couldn't start node exporter, won't get RAM and CPU usage for dashboard.")
                 self.nodeExporterProc = None
             except KeyboardInterrupt:
-                self.nodeExporterProc.terminate()
+                self.nodeExporterProc.terminate()  # type: ignore[union-attr]
 
     @staticmethod
-    def _containerRunning(containerName):
+    def _containerRunning(containerName: str) -> bool:
         try:
             result = subprocess.check_output(["docker", "inspect", "-f",
                                               "'{{.State.Running}}'", containerName]).decode('utf-8') == "true"
@@ -1394,7 +1468,7 @@ class ToilMetrics:
             result = False
         return result
 
-    def startDashboard(self, clusterName, zone):
+    def startDashboard(self, clusterName: str, zone: str) -> None:
         try:
             if not self._containerRunning("toil_prometheus"):
                 try:
@@ -1429,7 +1503,7 @@ class ToilMetrics:
             logger.debug("Could not add data source to Grafana dashboard - no metrics will be displayed.")
 
     @retry(errors=[requests.exceptions.ConnectionError])
-    def add_prometheus_data_source(self):
+    def add_prometheus_data_source(self) -> None:
         requests.post(
             'http://localhost:3000/api/datasources',
             auth=('admin', 'admin'),
@@ -1437,31 +1511,33 @@ class ToilMetrics:
             headers={'content-type': 'application/json', "access": "direct"}
         )
 
-    def log(self, message):
+    def log(self, message: str) -> None:
         if self.mtailProc:
-            self.mtailProc.stdin.write((message + "\n").encode("utf-8"))
-            self.mtailProc.stdin.flush()
+            self.mtailProc.stdin.write((message + "\n").encode("utf-8"))  # type: ignore[union-attr]
+            self.mtailProc.stdin.flush()  # type: ignore[union-attr]
 
     # Note: The mtail configuration (dashboard/mtail/toil.mtail) depends on these messages
     # remaining intact
 
-    def logMissingJob(self):
+    def logMissingJob(self) -> None:
         self.log("missing_job")
 
-    def logClusterSize(self, instance_type, currentSize, desiredSize):
+    def logClusterSize(
+        self, instance_type: str, currentSize: int, desiredSize: int
+    ) -> None:
         self.log("current_size '%s' %i" % (instance_type, currentSize))
         self.log("desired_size '%s' %i" % (instance_type, desiredSize))
 
-    def logQueueSize(self, queueSize):
+    def logQueueSize(self, queueSize: int) -> None:
         self.log("queue_size %i" % queueSize)
 
-    def logIssuedJob(self, jobType):
+    def logIssuedJob(self, jobType: str) -> None:
         self.log("issued_job %s" % jobType)
 
-    def logFailedJob(self, jobType):
+    def logFailedJob(self, jobType: str) -> None:
         self.log("failed_job %s" % jobType)
 
-    def logCompletedJob(self, jobType):
+    def logCompletedJob(self, jobType: str) -> None:
         self.log("completed_job %s" % jobType)
 
     def shutdown(self) -> None:
@@ -1471,13 +1547,11 @@ class ToilMetrics:
             self.nodeExporterProc.kill()
 
 
-def parseSetEnv(l):
+def parseSetEnv(l: List[str]) -> Dict[str, Optional[str]]:
     """
-    Parses a list of strings of the form "NAME=VALUE" or just "NAME" into a dictionary. Strings
-    of the latter from will result in dictionary entries whose value is None.
+    Parse a list of strings of the form "NAME=VALUE" or just "NAME" into a dictionary.
 
-    :type l: list[str]
-    :rtype: dict[str,str]
+    Strings of the latter from will result in dictionary entries whose value is None.
 
     >>> parseSetEnv([])
     {}
@@ -1502,7 +1576,8 @@ def parseSetEnv(l):
     ...
     ValueError: Empty name
     """
-    d = dict()
+    d = {}
+    v: Optional[str] = None
     for i in l:
         try:
             k, v = i.split('=', 1)
@@ -1521,6 +1596,7 @@ def iC(minValue: int, maxValue: int = SYS_MAX_SIZE) -> Callable[[int], bool]:
 
     def func(value: int) -> bool:
         return minValue <= value < maxValue
+
     return func
 
 
@@ -1529,13 +1605,16 @@ def fC(minValue: float, maxValue: Optional[float] = None) -> Callable[[float], b
     if not isinstance(minValue, float):
         raise AssertionError
     if maxValue is None:
+
         def func(value: float) -> bool:
             return minValue <= value
     else:
+
         def func(value: float) -> bool:
             if not isinstance(maxValue, float):
                 raise AssertionError
             return minValue <= value < maxValue
+
     return func
 
 
