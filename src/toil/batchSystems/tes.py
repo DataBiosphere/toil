@@ -386,13 +386,16 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         # Kill all the ones that are local
         self.killLocalJobs(job_ids)
 
-        # TODO: implement
         for bs_id in job_ids:
             if bs_id in self.bs_id_to_tes_id:
                 # We sent this to TES. So try to cancel it.
                 self.__try_cancel(self.bs_id_to_tes_id[bs_id])
                 # But don't forget the mapping until we actually get the finish
                 # notification for the job.
+
+        # TODO: If the kill races the collection of a finished update, do we
+        # have to censor the finished update even if the kill never took
+        # effect??? That's not implemented.
 
     @classmethod
     def add_tes_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:

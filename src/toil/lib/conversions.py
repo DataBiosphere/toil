@@ -88,6 +88,19 @@ def bytes2human(n: SupportsInt) -> str:
     unit = units[power_level if power_level < len(units) else -1]
     value = convert_units(n, "b", unit)
     return f'{value:.1f} {unit}'
+    
+def to_mib(n: Union[int, float]) -> float:
+    """
+    Convert a number from bytes to mibibytes.
+    """
+    return n / 1024 / 1024
+
+
+def from_mib(n: Union[int, float]) -> float:
+    """
+    Convert a number from mibibytes to bytes.
+    """
+    return n * 1024 * 1024
 
 #General Conversions
 
