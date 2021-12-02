@@ -77,11 +77,11 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         self.client = client('batch')
 
         # Determine our batch queue
-        self.queue = config.aws_batch_queue
+        self.queue = getattr(config, 'aws_batch_queue')
         if self.queue is None:
             # Make sure we actually have a queue
             raise RuntimeError("To use AWS Batch, --awsBatchQueue or TOIL_AWS_BATCH_QUEUE must be set")
-        self.job_role_arn = config.aws_batch_job_role_arn
+        self.job_role_arn = getattr(config, 'aws_batch_job_role_arn')
 
         # Try and guess what Toil work dir the workers will use.
         # We need to be able to provision (possibly shared) space there.
@@ -170,7 +170,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                 'jobDefinition': self.__get_or_create_job_definition(),
                 'containerOverrides': {
                     'command': command_list,
-                    'environment': [{'name': k, 'value': v} for k, v in job_environment.items()],
+                    'environment': [{'name': k, 'value': v} for k, v in environment.items()],
                     'resourceRequirements': [
                         {'type': 'MEMORY', 'value': math.ceil(max(4, to_mib(job_desc.memory)))},  # A min of 4 is demanded by the API
                         {'type': 'VCPU', 'value': math.ceil(job_desc.cores)}  # Must be at least 1 on EC2, probably can't be 1.5
@@ -220,7 +220,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         EXIT_STATUS_UNAVAILABLE_VALUE if it cannot be gotten.
         """
 
-        return job_detail.get('container', {}).get('exitCode', EXIT_STATUS_UNAVAILABLE_VALUE)
+        return int(job_detail.get('container', {}).get('exitCode', EXIT_STATUS_UNAVAILABLE_VALUE))
 
     def getUpdatedBatchJob(self, maxWait: int) -> Optional[UpdatedBatchJobInfo]:
         # Remember when we started, for respecting the timeout
