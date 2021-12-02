@@ -317,15 +317,16 @@ class Config:
             raise RuntimeError(f'preemptableCompensation ({self.preemptableCompensation}) must be between 0.0 and 1.0!')
         set_option("nodeStorage", int)
 
-        def check_nodestoreage_overrides(overrides: List[str]) -> None:
+        def check_nodestoreage_overrides(overrides: List[str]) -> bool:
             for override in overrides:
                 tokens = override.split(":")
-                assert len(tokens) == 2, \
-                    'Each component of --nodeStorageOverrides must be of the form <instance type>:<storage in GiB>'
-                assert any(tokens[0] in n[0] for n in self.nodeTypes), \
-                    'instance type in --nodeStorageOverrides must be used in --nodeTypes'
-                assert tokens[1].isdigit(), \
-                    'storage must be an integer in --nodeStorageOverrides'
+                if len(tokens) != 2:
+                    raise AssertionError('Each component of --nodeStorageOverrides must be of the form <instance type>:<storage in GiB>')
+                if not any(tokens[0] in n[0] for n in self.nodeTypes):
+                    raise AssertionError('instance type in --nodeStorageOverrides must be used in --nodeTypes')
+                if not tokens[1].isdigit():
+                    raise AssertionError('storage must be an integer in --nodeStorageOverrides')
+            return True
         set_option("nodeStorageOverrides", parse_str_list, check_function=check_nodestoreage_overrides)
 
         # Parameters to limit service jobs / detect deadlocks
@@ -363,14 +364,16 @@ class Config:
         set_option("statusWait", int)
         set_option("disableProgress")
 
-        assert not (self.writeLogs and self.writeLogsGzip), \
-            "Cannot use both --writeLogs and --writeLogsGzip at the same time."
-        assert not self.writeLogsFromAllJobs or self.writeLogs or self.writeLogsGzip, \
-            "To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set."
+        if self.writeLogs and self.writeLogsGzip:
+            raise AssertionError("Cannot use both --writeLogs and --writeLogsGzip at the same time.")
+        if self.writeLogsFromAllJobs or self.writeLogs or self.writeLogsGzip:
+            raise AssertionError("To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set.")
 
-        def check_sse_key(sse_key: str) -> None:
+        def check_sse_key(sse_key: str) -> bool:
             with open(sse_key) as f:
-                assert len(f.readline().rstrip()) == 32, 'SSE key appears to be invalid.'
+                if not len(f.readline().rstrip()) == 32:
+                    raise AssertionError('SSE key appears to be invalid.')
+            return True
 
         set_option("sseKey", check_function=check_sse_key)
         set_option("servicePollingInterval", float, fC(0.0))
@@ -1032,8 +1035,9 @@ class Toil:
                 return name, rest
 
     @staticmethod
-    def buildLocator(name, rest):
-        assert ':' not in name
+    def buildLocator(name: str, rest: str) -> str:
+        if ':' in name:
+            raise Exception(f"Can't have a : in the name: {name}.")
         return f'{name}:{rest}'
 
     @classmethod
@@ -1278,10 +1282,9 @@ class Toil:
                           jobCache=self._jobCache).run()
 
     def _shutdownBatchSystem(self) -> None:
-        """
-        Shuts down current batch system if it has been created.
-        """
-        assert self._batchSystem is not None
+        """Shuts down current batch system if it has been created."""
+        if self._batchSystem is None:
+            raise AssertionError()
 
         startTime = time.time()
         logger.debug('Shutting down batch system ...')
@@ -1511,20 +1514,29 @@ def parseSetEnv(l):
     return d
 
 
-def iC(minValue, maxValue=SYS_MAX_SIZE):
-    # Returns function that checks if a given int is in the given half-open interval
-    assert isinstance(minValue, int) and isinstance(maxValue, int)
-    return lambda x: minValue <= x < maxValue
+def iC(minValue: int, maxValue: int = SYS_MAX_SIZE) -> Callable[[int], bool]:
+    """Return function that checks if a given int is in the given half-open interval."""
+    if not (isinstance(minValue, int) and isinstance(maxValue, int)):
+        raise AssertionError
+
+    def func(value: int) -> bool:
+        return minValue <= value < maxValue
+    return func
 
 
-def fC(minValue, maxValue=None):
-    # Returns function that checks if a given float is in the given half-open interval
-    assert isinstance(minValue, float)
+def fC(minValue: float, maxValue: Optional[float] = None) -> Callable[[float], bool]:
+    """Return function that checks if a given float is in the given half-open interval."""
+    if not isinstance(minValue, float):
+        raise AssertionError
     if maxValue is None:
-        return lambda x: minValue <= x
+        def func(value: float) -> bool:
+            return minValue <= value
     else:
-        assert isinstance(maxValue, float)
-        return lambda x: minValue <= x < maxValue
+        def func(value: float) -> bool:
+            if not isinstance(maxValue, float):
+                raise AssertionError
+            return minValue <= value < maxValue
+    return func
 
 
 def cacheDirName(workflowID: str) -> str:
@@ -1570,11 +1582,11 @@ def getFileSystemSize(dirPath: str) -> Tuple[int, int]:
     """
     Return the free space, and total size of the file system hosting `dirPath`.
 
-    :param str dirPath: A valid path to a directory.
+    :param dirPath: A valid path to a directory.
     :return: free space and total size of file system
-    :rtype: tuple
     """
-    assert os.path.exists(dirPath)
+    if not os.path.exists(dirPath):
+        raise AssertionError()
     diskStats = os.statvfs(dirPath)
     freeSpace = diskStats.f_frsize * diskStats.f_bavail
     diskSize = diskStats.f_frsize * diskStats.f_blocks
