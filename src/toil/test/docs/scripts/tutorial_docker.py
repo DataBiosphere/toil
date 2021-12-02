@@ -9,10 +9,10 @@ align = Job.wrapJobFn(apiDockerCall,
                       working_dir=os.getcwd(),
                       parameters=['ls', '-lha'])
 
-if __name__=="__main__":
+if __name__ == "__main__":
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
     options.logLevel = "INFO"
     options.clean = "always"
 
     with Toil(options) as toil:
-       toil.start(align)
+        toil.start(align)

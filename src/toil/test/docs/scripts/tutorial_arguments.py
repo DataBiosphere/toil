@@ -10,7 +10,8 @@ class HelloWorld(Job):
     def run(self, fileStore):
         return "Hello, world!, here's a message: %s" % self.message
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     parser = Job.Runner.getDefaultArgumentParser()
     options = parser.parse_args()
     options.logLevel = "OFF"

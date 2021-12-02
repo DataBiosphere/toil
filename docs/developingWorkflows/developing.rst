@@ -24,6 +24,8 @@ script is run using :func:`toil.job.Job.Runner.getDefaultOptions`. Below we
 explain the components of this code in detail.
 
 
+.. _jobBasics:
+
 Job Basics
 ----------
 
@@ -40,26 +42,28 @@ example::
             self.message = message
 
         def run(self, fileStore):
-            return "Hello, world! Here's a message: %s" % self.message
+            return f"Hello, world! Here's a message: {self.message}"
 
 
 In the example a class, HelloWorld, is defined. The constructor requests 2
 gigabytes of memory, 2 cores and 3 gigabytes of local disk to complete the work.
 
 The :func:`toil.job.Job.run` method is the function the user overrides to get
-work done. Here it just logs a message using
-:func:`toil.job.Job.log`, which will be registered in the log
-output of the leader process of the workflow.
+work done. Here it just returns a message.
 
+It is also possible to log a message using :func:`toil.job.Job.log`, which will
+be registered in the log output of the leader process of the workflow::
+
+    ...
+        def run(self, fileStore):
+            self.log(f"Hello, world! Here's a message: {self.message}")
 
 Invoking a Workflow
 -------------------
 
 We can add to the previous example to turn it into a complete workflow by
 adding the necessary function calls to create an instance of HelloWorld and to
-run this as a workflow containing a single job. This uses the
-:class:`toil.job.Job.Runner` class, which is used to start and resume Toil
-workflows. For example:
+run this as a workflow containing a single job. For example:
 
 .. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_invokeworkflow.py
 
@@ -68,10 +72,10 @@ workflows. For example:
     Do not include a `.` in the name of your python script (besides `.py` at the end).
     This is to allow toil to import the types and  functions defined in your file while starting a new process.
 
-Alternatively, the more powerful :class:`toil.common.Toil` class can be used to
-run and resume workflows. It is used as a context manager and allows for
-preliminary setup, such as staging of files into the job store on the leader
-node. An instance of the class is initialized by specifying an options object.
+This uses the :class:`toil.common.Toil` class, which is used to run and resume
+Toil workflows. It is used as a context manager and allows for preliminary
+setup, such as staging of files into the job store on the leader node. An
+instance of the class is initialized by specifying an options object.
 The actual workflow is then invoked by calling the
 :func:`toil.common.Toil.start` method, passing the root job of the workflow,
 or, if a workflow is being restarted, :func:`toil.common.Toil.restart` should
@@ -314,12 +318,13 @@ multiple jobs' output values::
 
     def parentJob(job):
         aggregator = []
-        for fileNum in range(0,10):
-            downloadJob = Job.wrapJobFn(stageFn, "File://"+os.path.realpath(__file__), cores=0.1, memory='32M', disk='1M')
+        for fileNum in range(0, 10):
+            downloadJob = Job.wrapJobFn(stageFn, "file://" + os.path.realpath(__file__), cores=0.1, memory='32M', disk='1M')
             job.addChild(downloadJob)
             aggregator.append(downloadJob)
 
-        analysis = Job.wrapJobFn(analysisJob, fileStoreID=downloadJob.rv(0),
+        analysis = Job.wrapJobFn(analysisJob,
+                                 fileStoreID=downloadJob.rv(0),
                                  disk=PromisedRequirement(lambda xs: sum(xs), [j.rv(1) for j in aggregator]))
         job.addFollowOn(analysis)
 

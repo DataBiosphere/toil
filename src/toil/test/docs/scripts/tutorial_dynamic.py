@@ -9,7 +9,8 @@ def binaryStringFn(job, depth, message=""):
     else:
         job.log(f"Binary string: {message}")
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
     options.logLevel = "INFO"
     options.clean = "always"
