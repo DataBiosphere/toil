@@ -93,7 +93,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Get our namespace (and our Kubernetes credentials to make sure they exist)
         self.namespace = self._api('namespace')
 
-        # Decide if we are going to mount a Kubernetes host path as /tmp in the workers.
+        # Decide if we are going to mount a Kubernetes host path as the work dir in the workers.
         # If we do this and the work dir is the default of the temp dir, caches will be shared.
         self.host_path = config.kubernetes_host_path
 

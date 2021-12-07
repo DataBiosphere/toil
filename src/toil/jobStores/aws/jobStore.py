@@ -66,7 +66,7 @@ from toil.lib.exceptions import panic
 from toil.lib.io import AtomicFileCreate
 from toil.lib.memoize import strict_bool
 from toil.lib.objects import InnerClass
-from toil.lib.retry import retry
+from toil.lib.retry import retry, get_error_status, get_error_code
 
 boto3_session = establish_boto3_session()
 s3_boto3_resource = boto3_session.resource('s3')
@@ -512,7 +512,7 @@ class AWSJobStore(AbstractJobStore):
         try:
             obj.load()
         except ClientError as e:
-            if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+            if get_error_status(e) == 404:
                 objExists = False
             else:
                 raise
@@ -718,19 +718,31 @@ class AWSJobStore(AbstractJobStore):
         assert self.bucketNameRe.match(bucket_name)
         logger.debug("Binding to job store bucket '%s'.", bucket_name)
 
-        def bucket_creation_pending(error):
-            # https://github.com/BD2KGenomics/toil/issues/955
-            # https://github.com/BD2KGenomics/toil/issues/995
-            # https://github.com/BD2KGenomics/toil/issues/1093
+        def bucket_retry_predicate(error):
+            """
+            Decide, given an error, whether we should retry binding the bucket.
+            """
+            
+            if (isinstance(error, ClientError) and
+                get_error_status(error) in (404, 409)):
+                # Handle cases where the bucket creation is in a weird state that might let us proceed. 
+                # https://github.com/BD2KGenomics/toil/issues/955
+                # https://github.com/BD2KGenomics/toil/issues/995
+                # https://github.com/BD2KGenomics/toil/issues/1093
 
-            # BucketAlreadyOwnedByYou == 409
-            # OperationAborted == 409
-            # NoSuchBucket == 404
-            return (isinstance(error, ClientError) and
-                    error.response.get('ResponseMetadata', {}).get('HTTPStatusCode') in (404, 409))
+                # BucketAlreadyOwnedByYou == 409
+                # OperationAborted == 409
+                # NoSuchBucket == 404
+                return True
+            if get_error_code(error) == 'SlowDown':
+                # We may get told to SlowDown by AWS when we try to create our
+                # bucket. In that case, we should retry and use the exponential
+                # backoff.
+                return True
+            return False
 
         bucketExisted = True
-        for attempt in retry_s3(predicate=bucket_creation_pending):
+        for attempt in retry_s3(predicate=bucket_retry_predicate):
             with attempt:
                 try:
                     # the head_bucket() call makes sure that the bucket exists and the user can access it
@@ -738,8 +750,8 @@ class AWSJobStore(AbstractJobStore):
 
                     bucket = self.s3_resource.Bucket(bucket_name)
                 except ClientError as e:
-                    error_code = e.response.get('ResponseMetadata', {}).get('HTTPStatusCode')
-                    if error_code == 404:
+                    error_http_status = get_error_status(e)
+                    if error_http_status == 404:
                         bucketExisted = False
                         logger.debug("Bucket '%s' does not exist.", bucket_name)
                         if create:
@@ -766,7 +778,7 @@ class AWSJobStore(AbstractJobStore):
                             raise
                         else:
                             return None
-                    elif error_code == 301:
+                    elif error_http_status == 301:
                         # This is raised if the user attempts to get a bucket in a region outside
                         # the specified one, if the specified one is not `us-east-1`.  The us-east-1
                         # server allows a user to use buckets from any region.
@@ -1661,7 +1673,7 @@ class AWSJobStore(AbstractJobStore):
                 except s3_boto3_client.exceptions.NoSuchBucket:
                     pass
                 except ClientError as e:
-                    if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') != 404:
+                    if get_error_status(e) != 404:
                         raise
 
 
