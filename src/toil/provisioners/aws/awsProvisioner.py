@@ -11,27 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import collections
 import json
 import logging
 import os
 import socket
 import string
 import textwrap
-import threading
 import time
 import uuid
 from functools import wraps
 from typing import Any, Callable, Collection, Dict, Iterable, List, Optional, Set
 from urllib.parse import unquote
 
-import boto3
-import boto3.resources.base
 # We need these to exist as attributes we can get off of the boto object
 import boto.ec2
 import boto.iam
 import boto.vpc
-import botocore
 from boto.ec2.blockdevicemapping import BlockDeviceMapping as Boto2BlockDeviceMapping
 from boto.ec2.blockdevicemapping import BlockDeviceType as Boto2BlockDeviceType
 from boto.ec2.instance import Instance as Boto2Instance
@@ -39,7 +34,7 @@ from boto.exception import BotoServerError, EC2ResponseError
 from boto.utils import get_instance_metadata
 from botocore.exceptions import ClientError
 
-from toil.lib.aws import zone_to_region
+from toil.lib.aws import AWSConnectionManager, zone_to_region
 from toil.lib.aws.ami import get_flatcar_ami
 from toil.lib.aws.utils import create_s3_bucket
 from toil.lib.conversions import human2bytes
@@ -49,7 +44,6 @@ from toil.lib.ec2 import (a_short_time,
                           create_launch_template,
                           create_ondemand_instances,
                           create_spot_instances,
-                          establish_boto3_session,
                           wait_instances_running,
                           wait_transition,
                           wait_until_instance_profile_arn_exists)
@@ -149,91 +143,6 @@ def awsFilterImpairedNodes(nodes, ec2):
 
 class InvalidClusterStateException(Exception):
     pass
-
-class AWSConnectionManager:
-    """
-    Class that represents a connection to AWS. Caches Boto 3 and Boto 2 objects
-    by region.
-
-    Access to any kind of item goes through the particular method for the thing
-    you want (session, resource, service, Boto2 Context), and then you pass the
-    region you want to work in, and possibly the type of thing you want, as arguments.
-
-    This class is intended to eventually enable multi-region clusters, where
-    connections to multiple regions may need to be managed in the same
-    provisioner.
-
-    Since connection objects may not be thread safe (see
-    <https://boto3.amazonaws.com/v1/documentation/api/1.14.31/guide/session.html#multithreading-or-multiprocessing-with-sessions>),
-    one is created for each thread that calls the relevant lookup method.
-    """
-
-    # TODO: mypy is going to have !!FUN!! with this API because the final type
-    # we get out (and whether it has the right methods for where we want to use
-    # it) depends on having the right string value for the service. We could
-    # also individually wrap every service we use, but that seems like a good
-    # way to generate a lot of boring code.
-
-    def __init__(self):
-        """
-        Make a new empty AWSConnectionManager.
-        """
-        # This stores Boto3 sessions in .item of a thread-local storage, by
-        # region.
-        self.sessions_by_region = collections.defaultdict(threading.local)
-        # This stores Boto3 resources in .item of a thread-local storage, by
-        # (region, service name) tuples
-        self.resource_cache = collections.defaultdict(threading.local)
-        # This stores Boto3 clients in .item of a thread-local storage, by
-        # (region, service name) tuples
-        self.client_cache = collections.defaultdict(threading.local)
-        # This stores Boto 2 connections in .item of a thread-local storage, by
-        # (region, service name) tuples.
-        self.boto2_cache = collections.defaultdict(threading.local)
-
-    def session(self, region: str) -> boto3.session.Session:
-        """
-        Get the Boto3 Session to use for the given region.
-        """
-        storage = self.sessions_by_region[region]
-        if not hasattr(storage, 'item'):
-            # This is the first time this thread wants to talk to this region
-            # through this manager
-            storage.item = establish_boto3_session(region_name=region)
-        return storage.item
-
-    def resource(self, region: str, service_name: str) -> boto3.resources.base.ServiceResource:
-        """
-        Get the Boto3 Resource to use with the given service (like 'ec2') in the given region.
-        """
-        key = (region, service_name)
-        storage = self.resource_cache[key]
-        if not hasattr(storage, 'item'):
-            storage.item = self.session(region).resource(service_name)
-        return storage.item
-
-    def client(self, region: str, service_name: str) -> botocore.client.BaseClient:
-        """
-        Get the Boto3 Client to use with the given service (like 'ec2') in the given region.
-        """
-        key = (region, service_name)
-        storage = self.client_cache[key]
-        if not hasattr(storage, 'item'):
-            storage.item = self.session(region).client(service_name)
-        return storage.item
-
-    def boto2(self, region: str, service_name: str) -> boto.connection.AWSAuthConnection:
-        """
-        Get the connected boto2 connection for the given region and service.
-        """
-        if service_name == 'iam':
-            # IAM connections are regionless
-            region = 'universal'
-        key = (region, service_name)
-        storage = self.boto2_cache[key]
-        if not hasattr(storage, 'item'):
-            storage.item = getattr(boto, service_name).connect_to_region(region)
-        return storage.item
 
 class AWSProvisioner(AbstractProvisioner):
     def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):

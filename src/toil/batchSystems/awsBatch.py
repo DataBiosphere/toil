@@ -48,7 +48,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.common import Config, Toil
 from toil.job import JobDescription
-from toil.lib.aws import client
+from toil.lib.aws import establish_boto3_session
 from toil.lib.conversions import to_mib, from_mib
 from toil.lib.misc import slow_down, utc_now, unix_now_ms
 from toil.lib.retry import retry
@@ -74,7 +74,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
     def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
         # Connect to AWS Batch
-        self.client = client('batch')
+        self.client = establish_boto3_session().client('batch')
 
         # Determine our batch queue
         self.queue = getattr(config, 'aws_batch_queue')

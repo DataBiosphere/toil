@@ -4,14 +4,12 @@ from base64 import b64encode
 from operator import attrgetter
 from typing import Dict, Iterable, List, Optional, Union
 
-from boto3 import Session
 from boto3.resources.base import ServiceResource
 from boto.ec2.instance import Instance as Boto2Instance
 from boto.ec2.spotinstancerequest import SpotInstanceRequest
 from botocore.client import BaseClient
-from botocore.credentials import JSONFileCache
-from botocore.session import get_session
 
+from toil.lib.aws import establish_boto3_session
 from toil.lib.exceptions import panic
 from toil.lib.retry import (
     ErrorCondition,
@@ -65,24 +63,6 @@ class UnexpectedResourceState(Exception):
         super().__init__(
             "Expected state of %s to be '%s' but got '%s'" %
             (resource, to_state, state))
-
-def establish_boto3_session(region_name: Optional[str] = None) -> Session:
-    """
-    This is the One True Place where Boto3 sessions should be established, and
-    prepares them with the necessary credential caching.
-
-    :param region_name: If given, the session will be associated with the given AWS region.
-    """
-
-    # Make sure to use credential caching when talking to Amazon via boto3
-    # See https://github.com/boto/botocore/pull/1338/
-    # And https://github.com/boto/botocore/commit/2dae76f52ae63db3304b5933730ea5efaaaf2bfc
-
-    botocore_session = get_session()
-    botocore_session.get_component('credential_provider').get_provider(
-        'assume-role').cache = JSONFileCache()
-    return Session(botocore_session=botocore_session, region_name=region_name)
-
 
 def wait_transition(resource, from_states, to_state,
                     state_getter=attrgetter('state')):

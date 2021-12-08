@@ -60,7 +60,7 @@ from toil.jobStores.aws.utils import (
 from toil.jobStores.utils import ReadablePipe, ReadableTransformingPipe, WritablePipe
 from toil.lib.aws.utils import create_s3_bucket
 from toil.lib.compatibility import compat_bytes
-from toil.lib.ec2 import establish_boto3_session
+from toil.lib.aws import establish_boto3_session
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.exceptions import panic
 from toil.lib.io import AtomicFileCreate

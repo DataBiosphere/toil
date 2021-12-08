@@ -18,7 +18,7 @@ from typing import Optional
 
 from toil.jobStores.aws.jobStore import AWSJobStore
 from toil.lib.aws.utils import create_s3_bucket
-from toil.lib.ec2 import establish_boto3_session
+from toil.lib.aws import establish_boto3_session
 from toil.test import ToilTest, needs_aws_s3
 
 logger = logging.getLogger(__name__)
