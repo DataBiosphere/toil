@@ -179,7 +179,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             # Make a command to run it in the exacutor
             command_list = ['_toil_contained_executor', encoded_job]
 
-            # Compose a job sepc to submit
+            # Compose a job spec to submit
             job_spec = {
                 'jobName': job_name,
                 'jobQueue': self.queue,
@@ -281,7 +281,6 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             for job_detail in self.__describe_jobs_in_batches():
                 if job_detail.get('status') in ['SUCCEEDED', 'FAILED']:
                     # This job is done!
-                    logger.debug("Found stopped job: %s", job_detail)
                     aws_id = job_detail['jobId']
                     bs_id = self.aws_id_to_bs_id[aws_id]
 
@@ -303,7 +302,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
                     # Get its exit code
                     exit_code = self.__get_exit_code(job_detail)
-                    
+
                     if job_detail['status'] == 'FAILED' and 'statusReason' in job_detail:
                         # AWS knows why the job failed, so log the error
                         logger.error('Job %s failed because: %s', bs_id, job_detail['statusReason'])
@@ -381,12 +380,17 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                         {'type': 'VCPU', 'value': str(math.ceil(self.config.defaultCores))}
                     ]
                 },
-                'retryStrategy': {'attempts': 1}
+                'retryStrategy': {'attempts': 1},
+                'propagateTags': True
             }
             if self.job_role_arn:
                 # We need to give the job a role.
                 # We might not be able to do much job store access without this!
                 job_def_spec['containerProperties']['jobRoleArn'] = self.job_role_arn
+            owner_tag = os.environ.get('TOIL_OWNER_TAG')
+            if owner_tag:
+                # We are meant to tag everything with an owner
+                job_def_spec['tags'] = {'Owner': owner_tag}
             response = self.client.register_job_definition(**job_def_spec)
             self.job_definition = response['jobDefinitionArn']
 
@@ -462,7 +466,8 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                             help="The name or ARN of the AWS Batch queue to submit to.")
         parser.add_argument("--awsBatchJobRoleArn", dest="aws_batch_job_role_arn", default=None,
                             help=("The ARN of an IAM role to run AWS Batch jobs as, so they "
-                                  "can e.g. access a job store."))
+                                  "can e.g. access a job store. Must be assumable by "
+                                  "ecs-tasks.amazonaws.com."))
 
     @classmethod
     def setOptions(cls, setOption: Callable[..., None]) -> None:
