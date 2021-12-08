@@ -36,7 +36,7 @@ import tempfile
 import time
 import uuid
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, Dict, List, Optional, Set, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Union
 
 from requests.exceptions import HTTPError
 from boto.exception import BotoServerError
@@ -206,7 +206,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             logger.debug('Launched job: %s', job_name)
 
             return bs_id
-    
+
     def __ensafen_name(self, input_name: str) -> str:
         """
         Make a job name safe for Amazon Batch.
@@ -236,15 +236,20 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         Takes an AWS JobDetail as a dict.
         """
 
-        if job_detail['status'] not in ['RUNNING', 'SUCCEEDED', 'FAILED']:
+        if 'status' not in job_detail or job_detail['status'] not in ['RUNNING', 'SUCCEEDED', 'FAILED']:
             # Job is not running yet.
             return None
 
+        if 'startedAt' not in job_detail:
+            # Job has no known start time
+            return None
+
         start_ms = job_detail['startedAt']
-        end_ms = unix_now_ms()
 
         if 'stoppedAt' in job_detail:
             end_ms = job_detail['stoppedAt']
+        else:
+            end_ms = unix_now_ms()
 
         # We have a set start time, so it is/was running. Return the time
         # it has been running for.
@@ -273,47 +278,41 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             # are acknowledging and don't care about anymore.
             acknowledged = []
 
-            # Get all the AWS IDs to poll
-            to_check = list(aws_and_bs_id[0] for aws_and_bs_id in self.aws_id_to_bs_id.items())
+            for job_detail in self.__describe_jobs_in_batches():
+                if job_detail.get('status') in ['SUCCEEDED', 'FAILED']:
+                    # This job is done!
+                    logger.debug("Found stopped job: %s", job_detail)
+                    aws_id = job_detail['jobId']
+                    bs_id = self.aws_id_to_bs_id[aws_id]
 
-            while len(to_check) > 0:
-                # Go through jobs we want to poll in batches of the max size
-                check_batch = to_check[-MAX_POLL_COUNT:]
-                to_check = to_check[:MAX_POLL_COUNT - 1]
+                    # Acknowledge it
+                    acknowledged.append((aws_id, bs_id))
 
-                # TODO: retry
-                response = self.client.describe_jobs(jobs=to_check)
+                    if job_detail['jobId'] in self.killed_job_aws_ids:
+                        # Killed jobs aren't allowed to appear as updated.
+                        logger.debug('Job %s was killed so skipping it', bs_id)
+                        continue
 
-                for job_detail in response.get('jobs', []):
-                    if job_detail.get('status') in ['SUCCEEDED', 'FAILED']:
-                        # This job is done!
-                        logger.debug("Found stopped job: %s", job_detail)
-                        aws_id = job_detail['jobId']
-                        bs_id = self.aws_id_to_bs_id[aws_id]
+                    # Otherwise, it stopped running and it wasn't our fault.
 
-                        # Acknowledge it
-                        acknowledged.append((aws_id, bs_id))
+                    # Record runtime
+                    runtime = self.__get_runtime(job_detail)
 
-                        if job_detail['jobId'] in self.killed_job_aws_ids:
-                            # Killed jobs aren't allowed to appear as updated.
-                            continue
+                    # Determine if it succeeded
+                    exit_reason = STATE_TO_EXIT_REASON[job_detail['status']]
 
-                        # Otherwise, it stopped running and it wasn't our fault.
+                    # Get its exit code
+                    exit_code = self.__get_exit_code(job_detail)
+                    
+                    if job_detail['status'] == 'FAILED' and 'statusReason' in job_detail:
+                        # AWS knows why the job failed, so log the error
+                        logger.error('Job %s failed because: %s', bs_id, job_detail['statusReason'])
 
-                        # Record runtime
-                        runtime = self.__get_runtime(job_detail)
+                    # Compose a result
+                    result = UpdatedBatchJobInfo(jobID=bs_id, exitStatus=exit_code, wallTime=runtime, exitReason=exit_reason)
 
-                        # Determine if it succeeded
-                        exit_reason = STATE_TO_EXIT_REASON[job_detail['status']]
-
-                        # Get its exit code
-                        exit_code = self.__get_exit_code(job_detail)
-
-                        # Compose a result
-                        result = UpdatedBatchJobInfo(jobID=bs_id, exitStatus=exit_code, wallTime=runtime, exitReason=exit_reason)
-
-                        # No more iteration needed, we found a result.
-                        break
+                    # No more iteration needed, we found a result.
+                    break
 
             # After the iteration, drop all the records for tasks we acknowledged
             for (aws_id, bs_id) in acknowledged:
@@ -406,9 +405,11 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
     def getIssuedBatchJobIDs(self) -> List[int]:
         return self.getIssuedLocalJobIDs() + list(self.bs_id_to_aws_id.keys())
 
-    def getRunningBatchJobIDs(self) -> Dict[int, float]:
-        # We need a dict from job_id (integer) to seconds it has been running
-        bs_id_to_runtime = {}
+    def __describe_jobs_in_batches(self) -> Iterator[Dict[str, Any]]:
+        """
+        Describe all the outstanding jobs in batches of a reasonable size.
+        Yields each JobDetail.
+        """
 
         # Get all the AWS IDs to poll
         to_check = list(aws_and_bs_id[0] for aws_and_bs_id in self.aws_id_to_bs_id.items())
@@ -416,21 +417,28 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         while len(to_check) > 0:
             # Go through jobs we want to poll in batches of the max size
             check_batch = to_check[-MAX_POLL_COUNT:]
-            to_check = to_check[:MAX_POLL_COUNT - 1]
+            to_check = to_check[:len(check_batch) - 1]
 
             # TODO: retry
-            response = self.client.describe_jobs(jobs=to_check)
+            response = self.client.describe_jobs(jobs=check_batch)
 
-            for job_detail in response.get('jobs', []):
-                if job_detail.get('state') in ['STARTING', 'RUNNING']:
-                    runtime = self.__get_runtime(job_detail)
-                    if runtime:
-                        # We can measure a runtime
-                        aws_id = job_detail['jobId']
-                        bs_id = self.aws_id_to_bs_id[aws_id]
-                        bs_id_to_runtime[bs_id] = runtime
-                    # If we can't find a runtime, we can't say it's running
-                    # because we can't say how long it has been running for.
+            # Yield each returned JobDetail
+            yield from response.get('jobs', [])
+
+    def getRunningBatchJobIDs(self) -> Dict[int, float]:
+        # We need a dict from job_id (integer) to seconds it has been running
+        bs_id_to_runtime = {}
+
+        for job_detail in self.__describe_jobs_in_batches():
+            if job_detail.get('state') in ['STARTING', 'RUNNING']:
+                runtime = self.__get_runtime(job_detail)
+                if runtime:
+                    # We can measure a runtime
+                    aws_id = job_detail['jobId']
+                    bs_id = self.aws_id_to_bs_id[aws_id]
+                    bs_id_to_runtime[bs_id] = runtime
+                # If we can't find a runtime, we can't say it's running
+                # because we can't say how long it has been running for.
 
         # Give back the times all our running jobs have been running for.
         return bs_id_to_runtime
