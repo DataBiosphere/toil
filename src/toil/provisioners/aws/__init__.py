@@ -14,40 +14,46 @@
 import datetime
 import logging
 import os
-import socket
 from collections import namedtuple
 from operator import attrgetter
 from statistics import mean, stdev
 from typing import List, Optional
-from urllib.error import URLError
-from urllib.request import urlopen
 
-from toil.lib.aws import zone_to_region
+from toil.lib.aws import (get_aws_zone_from_environment,
+                          get_aws_zone_from_metadata,
+                          get_aws_zone_from_boto,
+                          running_on_ec2,
+                          try_providers,
+                          zone_to_region)
+                          
 
 logger = logging.getLogger(__name__)
 
 ZoneTuple = namedtuple('ZoneTuple', ['name', 'price_deviation'])
 
-
-def running_on_ec2() -> bool:
-    def file_begins_with(path, prefix):
-        with open(path) as f:
-            return f.read(len(prefix)) == prefix
-
-    hv_uuid_path = '/sys/hypervisor/uuid'
-    if os.path.exists(hv_uuid_path) and file_begins_with(hv_uuid_path, 'ec2'):
-        return True
-    # Some instances do not have the /sys/hypervisor/uuid file, so check the identity document instead.
-    # See https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-identity-documents.html
-    try:
-        urlopen('http://169.254.169.254/latest/dynamic/instance-identity/document', timeout=1)
-        return True
-    except (URLError, socket.timeout):
-        return False
-
-def get_current_aws_region() -> Optional[str]:
-    aws_zone = get_best_aws_zone()
-    return zone_to_region(aws_zone) if aws_zone else None
+def get_aws_zone_from_spot_market(spotBid=None, nodeType=None, boto2_ec2=None, zone_options: List[str] = None) -> Optional[str]:
+    """
+    If a spot bid, node type, and Boto2 EC2 connection are specified, picks a
+    zone where instances are easy to buy from the zones in the region of the
+    Boto2 connection. These parameters must always be specified together, or
+    not at all.
+    
+    In this case, zone_options can be used to restrict to a subset of the zones
+    in the region.
+    """
+    if spotBid:
+        # if spot bid is present, all the other parameters must be as well
+        assert bool(spotBid) == bool(nodeType) == bool(boto2_ec2)
+        # if the zone is unset and we are using the spot market, optimize our
+        # choice based on the spot history
+        
+        if zone_options is None:
+            # We can use all the zones in the region
+            zone_options = [z.name for z in boto2_ec2.get_all_zones()]
+        
+        return optimize_spot_bid(boto2_ec2, instance_type=nodeType, spot_bid=float(spotBid), zone_options=zone_options)
+    else:
+        return None
 
 
 def get_best_aws_zone(spotBid=None, nodeType=None, boto2_ec2=None, zone_options: List[str] = None) -> Optional[str]:
@@ -71,35 +77,12 @@ def get_best_aws_zone(spotBid=None, nodeType=None, boto2_ec2=None, zone_options:
     
     Returns None if no method can produce a zone to use.
     """
-    zone = os.environ.get('TOIL_AWS_ZONE', None)
-    if not zone and running_on_ec2():
-        try:
-            import boto
-            from boto.utils import get_instance_metadata
-            zone = get_instance_metadata()['placement']['availability-zone']
-        except (KeyError, ImportError):
-            pass
-    if not zone and spotBid:
-        # if spot bid is present, all the other parameters must be as well
-        assert bool(spotBid) == bool(nodeType) == bool(boto2_ec2)
-        # if the zone is unset and we are using the spot market, optimize our
-        # choice based on the spot history
-        
-        if zone_options is None:
-            # We can use all the zones in the region
-            zone_options = [z.name for z in boto2_ec2.get_all_zones()]
-        
-        return optimize_spot_bid(boto2_ec2, instance_type=nodeType, spot_bid=float(spotBid), zone_options=zone_options)
-    if not zone:
-        try:
-            import boto
-            zone = boto.config.get('Boto', 'ec2_region_name')
-            if zone is not None:
-                zone += 'a'  # derive an availability zone in the region
-        except ImportError:
-            pass
-
-    return zone
+    return try_providers([get_aws_zone_from_environment,
+                          get_aws_zone_from_metadata,
+                          get_aws_zone_from_spot_market,
+                          get_aws_zone_from_boto],
+                         dict(spotBid=spotBid, nodeType=nodeType,
+                              boto2_ec2=boto2_ec2, zone_options=zone_options))
 
 
 def choose_spot_zone(zones: List[str], bid: float, spot_history: List['boto.ec2.spotpricehistory.SpotPriceHistory']) -> str:

@@ -48,7 +48,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.common import Config, Toil
 from toil.job import JobDescription
-from toil.lib.aws import establish_boto3_session, zone_to_region
+from toil.lib.aws import establish_boto3_session, get_current_aws_zone, zone_to_region
 from toil.lib.conversions import to_mib, from_mib
 from toil.lib.misc import slow_down, utc_now, unix_now_ms
 from toil.lib.retry import retry
@@ -79,7 +79,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # TODO: Parse it from a full queue ARN?
         self.region = getattr(config, 'aws_batch_region')
         if self.region is None:
-            zone = get_best_aws_zone()
+            zone = get_current_aws_zone()
             if zone is None:
                 # Can't proceed without a real zone
                 raise RuntimeError('To use AWS Batch, specify --awsBatchRegion or '

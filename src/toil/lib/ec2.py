@@ -63,7 +63,7 @@ class UnexpectedResourceState(Exception):
         super().__init__(
             "Expected state of %s to be '%s' but got '%s'" %
             (resource, to_state, state))
-
+            
 def wait_transition(resource, from_states, to_state,
                     state_getter=attrgetter('state')):
     """

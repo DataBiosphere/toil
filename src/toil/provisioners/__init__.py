@@ -148,7 +148,7 @@ def check_valid_node_types(provisioner, node_types: List[Tuple[Set[str], Optiona
     # check if a valid node type for aws
     from toil.lib.generatedEC2Lists import E2Instances, regionDict
     if provisioner == 'aws':
-        from toil.provisioners.aws import get_current_aws_region
+        from toil.lib.aws import get_current_aws_region
         current_region = get_current_aws_region() or 'us-west-2'
         # check if instance type exists in this region
         for node_type in node_types:
