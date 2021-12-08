@@ -48,7 +48,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.common import Config, Toil
 from toil.job import JobDescription
-from toil.lib.aws import establish_boto3_session
+from toil.lib.aws import establish_boto3_session, zone_to_region
 from toil.lib.conversions import to_mib, from_mib
 from toil.lib.misc import slow_down, utc_now, unix_now_ms
 from toil.lib.retry import retry
@@ -73,8 +73,24 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
     def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
-        # Connect to AWS Batch
-        self.client = establish_boto3_session().client('batch')
+
+        # Determine region to use.
+        # Either it's set specifically or maybe we can get it from the "best" zone.
+        # TODO: Parse it from a full queue ARN?
+        self.region = getattr(config, 'aws_batch_region')
+        if self.region is None:
+            zone = get_best_aws_zone()
+            if zone is None:
+                # Can't proceed without a real zone
+                raise RuntimeError('To use AWS Batch, specify --awsBatchRegion or '
+                                   'TOIL_AWS_BATCH_REGION or TOIL_AWS_ZONE, or configure '
+                                   'a default zone in boto')
+            self.region = zone_to_region(zone)
+
+        # Connect to AWS Batch.
+        # TODO: Use a global AWSConnectionManager so we can share a client
+        # cache with provisioners, etc.
+        self.client = establish_boto3_session(self.region).client('batch')
 
         # Determine our batch queue
         self.queue = getattr(config, 'aws_batch_queue')
@@ -412,6 +428,8 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+        parser.add_argument("--awsBatchRegion", dest="aws_batch_region", default=None,
+                            help="The AWS region containing the AWS Batch queue to submit to.")
         parser.add_argument("--awsBatchQueue", dest="aws_batch_queue", default=None,
                             help="The name or ARN of the AWS Batch queue to submit to.")
         parser.add_argument("--awsBatchJobRoleArn", dest="aws_batch_job_role_arn", default=None,
@@ -420,5 +438,6 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
     @classmethod
     def setOptions(cls, setOption: Callable[..., None]) -> None:
+        setOption("aws_batch_region", default=None, env=["TOIL_AWS_BATCH_REGION"])
         setOption("aws_batch_queue", default=None, env=["TOIL_AWS_BATCH_QUEUE"])
         setOption("aws_batch_job_role_arn", default=None, env=["TOIL_AWS_BATCH_JOB_ROLE_ARN"])

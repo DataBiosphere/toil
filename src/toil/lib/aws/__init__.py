@@ -14,6 +14,7 @@
 import collections
 import re
 import threading
+from functools import lru_cache
 
 from typing import Dict, Iterable, List, Optional, Union
 
@@ -26,6 +27,7 @@ from botocore.session import get_session
 
 import boto.connection
 
+@lru_cache(maxsize=None)
 def establish_boto3_session(region_name: Optional[str] = None) -> Session:
     """
     This is the One True Place where Boto3 sessions should be established, and

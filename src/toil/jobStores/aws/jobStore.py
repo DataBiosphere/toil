@@ -254,12 +254,12 @@ class AWSJobStore(AbstractJobStore):
     def _checkItem(self, item, enforce: bool = True):
         """
         Make sure that the given SimpleDB item actually has the attributes we think it should.
-        
+
         Throw otherwise.
-        
+
         If enforce is false, log but don't throw.
         """
-        
+
         if "overlargeID" not in item:
             logger.error("overlargeID attribute isn't present: either SimpleDB entry is "
                          "corrupt or jobstore is from an extremely old Toil: %s", item)
@@ -722,10 +722,10 @@ class AWSJobStore(AbstractJobStore):
             """
             Decide, given an error, whether we should retry binding the bucket.
             """
-            
+
             if (isinstance(error, ClientError) and
                 get_error_status(error) in (404, 409)):
-                # Handle cases where the bucket creation is in a weird state that might let us proceed. 
+                # Handle cases where the bucket creation is in a weird state that might let us proceed.
                 # https://github.com/BD2KGenomics/toil/issues/955
                 # https://github.com/BD2KGenomics/toil/issues/995
                 # https://github.com/BD2KGenomics/toil/issues/1093
