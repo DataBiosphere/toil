@@ -156,7 +156,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             # We could add a per-workflow prefix to use with ListTasks, but
             # ListTasks doesn't let us filter for newly done tasks, so it's not
             # actually useful for us over polling each task.
-            job_name = str(job_desc)
+            job_name = self.__ensafen_name(str(job_desc))
 
             # Launch the job on AWS Batch
 
@@ -206,7 +206,27 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             logger.debug('Launched job: %s', job_name)
 
             return bs_id
+    
+    def __ensafen_name(self, input_name: str) -> str:
+        """
+        Make a job name safe for Amazon Batch.
+        From the API docs:
 
+            It can be up to 128 letters long. The first character must be
+            alphanumeric, can contain uppercase and lowercase letters, numbers,
+            hyphens (-), and underscores (_).
+        """
+        # Do replacements to enhance readability
+        input_name = input_name.replace(" ", "-")
+        # Keep only acceptable characters
+        kept_chars = [c for c in input_name if c.isalnum() or c == '-' or c == '_']
+        if len(kept_chars) == 0 or not kept_chars[0].isalnum():
+            # Make sure we start with something alphanumeric
+            kept_chars = ['j'] + kept_chars
+        # Keep no more than the limit of them
+        kept_chars = kept_chars[:128]
+        # And re-compose them into a string
+        return ''.join(kept_chars)
 
     def __get_runtime(self, job_detail: Dict[str, Any]) -> Optional[float]:
         """
