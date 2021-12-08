@@ -97,7 +97,10 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         if self.queue is None:
             # Make sure we actually have a queue
             raise RuntimeError("To use AWS Batch, --awsBatchQueue or TOIL_AWS_BATCH_QUEUE must be set")
+        # And the role, if any, jobs should assume
         self.job_role_arn = getattr(config, 'aws_batch_job_role_arn')
+        # And the Owner tag value, if any, to apply to things we create
+        self.owner_tag = os.environ.get('TOIL_OWNER_TAG')
 
         # Try and guess what Toil work dir the workers will use.
         # We need to be able to provision (possibly shared) space there.
@@ -193,6 +196,9 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                     ]
                 }
             }
+            if self.owner_tag:
+                # We are meant to tag everything with an owner
+                job_spec['tags'] = {'Owner': self.owner_tag}
 
             # Launch it and get back the AWS ID that we can use to poll the task.
             # TODO: retry!
@@ -381,16 +387,15 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                     ]
                 },
                 'retryStrategy': {'attempts': 1},
-                'propagateTags': True
+                'propagateTags': True  # This will propagate to ECS task but not to job!
             }
             if self.job_role_arn:
                 # We need to give the job a role.
                 # We might not be able to do much job store access without this!
                 job_def_spec['containerProperties']['jobRoleArn'] = self.job_role_arn
-            owner_tag = os.environ.get('TOIL_OWNER_TAG')
-            if owner_tag:
+            if self.owner_tag:
                 # We are meant to tag everything with an owner
-                job_def_spec['tags'] = {'Owner': owner_tag}
+                job_def_spec['tags'] = {'Owner': self.owner_tag}
             response = self.client.register_job_definition(**job_def_spec)
             self.job_definition = response['jobDefinitionArn']
 
