@@ -172,8 +172,8 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                     'command': command_list,
                     'environment': [{'name': k, 'value': v} for k, v in environment.items()],
                     'resourceRequirements': [
-                        {'type': 'MEMORY', 'value': math.ceil(max(4, to_mib(job_desc.memory)))},  # A min of 4 is demanded by the API
-                        {'type': 'VCPU', 'value': math.ceil(job_desc.cores)}  # Must be at least 1 on EC2, probably can't be 1.5
+                        {'type': 'MEMORY', 'value': str(math.ceil(max(4, to_mib(job_desc.memory))))},  # A min of 4 is demanded by the API
+                        {'type': 'VCPU', 'value': str(math.ceil(job_desc.cores))}  # Must be at least 1 on EC2, probably can't be 1.5
                     ]
                 }
             }
@@ -333,18 +333,25 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             job_def_spec = {
                 'jobDefinitionName': 'toil-' + str(uuid.uuid4()),
                 'type': 'container',
-                'containerProperties': {'image': self.docker_image},
-                # Unlike the Lubernetes batch system we always mount the Toil
-                # workDir onto the host. Hopefully it has its ephemeral dosks mounted there.
-                # TODO: Where do the default batch AMIs mount their ephemeral disks, if anywhere?
-                'volumes': [{'name': 'workdir', 'host': {'sourcePath': '/var/lib/toil'}}],
-                'mountPoints': [{'containerPath': self.worker_work_dir, 'sourceVolume': 'workdir'}],
+                'containerProperties': {
+                    'image': self.docker_image,
+                    # Unlike the Kubernetes batch system we always mount the Toil
+                    # workDir onto the host. Hopefully it has its ephemeral disks mounted there.
+                    # TODO: Where do the default batch AMIs mount their ephemeral disks, if anywhere?
+                    'volumes': [{'name': 'workdir', 'host': {'sourcePath': '/var/lib/toil'}}],
+                    'mountPoints': [{'containerPath': self.worker_work_dir, 'sourceVolume': 'workdir'}],
+                    # Requirements will always be overridden but mist be present anyway
+                    'resourceRequirements': [
+                        {'type': 'MEMORY', 'value': str(math.ceil(max(4, to_mib(self.config.defaultMemory))))},
+                        {'type': 'VCPU', 'value': str(math.ceil(self.config.defaultCores))}
+                    ]
+                },
                 'retryStrategy': {'attempts': 1}
             }
             if self.job_role_arn:
                 # We need to give the job a role.
                 # We might not be able to do much job store access without this!
-                job_def_spec['jobRoleArn'] = self.job_role_arn
+                job_def_spec['containerProperties']['jobRoleArn'] = self.job_role_arn
             response = self.client.register_job_definition(**job_def_spec)
             self.job_definition = response['jobDefinitionArn']
 
