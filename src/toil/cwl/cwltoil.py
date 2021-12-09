@@ -321,6 +321,7 @@ class ResolveSource:
 
     def resolve(self) -> Any:
         """First apply linkMerge then pickValue if either present."""
+        result: Optional[Any] = None
         if isinstance(self.promise_tuples, list):
             result = self.link_merge(
                 cast(
@@ -329,7 +330,7 @@ class ResolveSource:
             )
         else:
             value = self.promise_tuples
-            result = value[1].get(value[0])  # type: ignore
+            result = cast(Dict[str, Any], value[1]).get(value[0])
 
         result = self.pick_value(result)
         result = filter_skip_null(self.name, result)
@@ -1767,6 +1768,7 @@ class CWLJobWrapper(Job):
         tool: Process,
         cwljob: CWLObjectType,
         runtime_context: cwltool.context.RuntimeContext,
+        parent_name: Optional[str],
         conditional: Union[Conditional, None] = None,
     ):
         """Store our context for later evaluation."""
@@ -1775,6 +1777,7 @@ class CWLJobWrapper(Job):
         self.cwljob = cwljob
         self.runtime_context = runtime_context
         self.conditional = conditional
+        self.parent_name = parent_name
 
     def run(self, file_store: AbstractFileStore) -> Any:
         """Create a child job with the correct resource requirements set."""
@@ -1788,6 +1791,7 @@ class CWLJobWrapper(Job):
             tool=self.cwltool,
             cwljob=cwljob,
             runtime_context=self.runtime_context,
+            parent_name=self.parent_name,
             conditional=self.conditional,
         )
         self.addChild(realjob)
@@ -1802,6 +1806,7 @@ class CWLJob(Job):
         tool: Process,
         cwljob: CWLObjectType,
         runtime_context: cwltool.context.RuntimeContext,
+        parent_name: Optional[str],
         conditional: Union[Conditional, None] = None,
     ):
         """Store the context for later execution."""
@@ -1822,7 +1827,7 @@ class CWLJob(Job):
                 resources={},
                 mutation_manager=runtime_context.mutation_manager,
                 formatgraph=tool.formatgraph,
-                make_fs_access=runtime_context.make_fs_access,  # type: ignore
+                make_fs_access=runtime_context.make_fs_access,  # type: ignore[arg-type]
                 fs_access=runtime_context.make_fs_access(""),
                 job_script_provider=runtime_context.job_script_provider,
                 timeout=runtime_context.eval_timeout,
@@ -1838,15 +1843,11 @@ class CWLJob(Job):
             )
 
         req = tool.evalResources(self.builder, runtime_context)
-        # pass the default of None if basecommand is empty
-        unitName = self.cwltool.tool.get("baseCommand", None)
-        if isinstance(unitName, (MutableSequence, tuple)):
-            unitName = " ".join(unitName)
-
-        try:
-            displayName: Optional[str] = str(self.cwltool.tool["id"])
-        except KeyError:
-            displayName = None
+        displayName = cast(str, self.cwltool.tool["id"])
+        # Make our job names more descriptive for HPC batch systems.
+        unitName = shortname(displayName)
+        if parent_name:
+            unitName = f"{parent_name}.{unitName}"
 
         super().__init__(
             cores=req["cores"],
@@ -1860,15 +1861,9 @@ class CWLJob(Job):
         )
 
         self.cwljob = cwljob
-        try:
-            self.jobName = str(self.cwltool.tool["id"])
-        except KeyError:
-            # fall back to the Toil defined class name if the tool doesn't have
-            # an identifier
-            pass
         self.runtime_context = runtime_context
         self.step_inputs = self.cwltool.tool["inputs"]
-        self.workdir = runtime_context.workdir  # type: ignore
+        self.workdir: str = runtime_context.workdir  # type: ignore[attr-defined]
 
     def required_env_vars(self, cwljob: Any) -> Iterator[Tuple[str, str]]:
         """Yield environment variables from EnvVarRequirement."""
@@ -1957,8 +1952,8 @@ class CWLJob(Job):
             functools.partial(remove_empty_listings),
         )
 
-        index = {}  # type: ignore
-        existing = {}  # type: ignore
+        index: Dict[str, str] = {}
+        existing: Dict[str, str] = {}
 
         # Prepare the run instructions for cwltool
         runtime_context = self.runtime_context.copy()
@@ -1993,7 +1988,7 @@ class CWLJob(Job):
             )
 
         pipe_threads: List[Tuple[Thread, int]] = []
-        runtime_context.toil_get_file = functools.partial(  # type: ignore
+        runtime_context.toil_get_file = functools.partial(  # type: ignore[attr-defined]
             toil_get_file, file_store, index, existing, pipe_threads=pipe_threads
         )
 
@@ -2059,6 +2054,7 @@ def makeJob(
     tool: Process,
     jobobj: CWLObjectType,
     runtime_context: cwltool.context.RuntimeContext,
+    parent_name: Optional[str],
     conditional: Union[Conditional, None],
 ) -> Union[
     Tuple["CWLWorkflow", ResolveIndirect],
@@ -2072,7 +2068,7 @@ def makeJob(
 
     :return: "wfjob, followOn" if the input tool is a workflow, and "job, job" otherwise
     """
-    logger.debug("Make job for tool: %s", tool)
+    logger.debug("Make job for tool: %s", tool.tool["id"])
     scan_for_unsupported_requirements(
         tool, bypass_file_store=getattr(runtime_context, "bypass_file_store", False)
     )
@@ -2102,14 +2098,15 @@ def makeJob(
                 r = resourceReq.get(req)
                 if isinstance(r, str) and ("$(" in r or "${" in r):
                     # Found a dynamic resource requirement so use a job wrapper
-                    job = CWLJobWrapper(
+                    job_wrapper = CWLJobWrapper(
                         cast(ToilCommandLineTool, tool),
                         jobobj,
                         runtime_context,
+                        parent_name=parent_name,
                         conditional=conditional,
                     )
-                    return job, job
-        job = CWLJob(tool, jobobj, runtime_context, conditional=conditional)  # type: ignore
+                    return job_wrapper, job_wrapper
+        job = CWLJob(tool, jobobj, runtime_context, parent_name, conditional)
         return job, job
 
 
@@ -2125,6 +2122,7 @@ class CWLScatter(Job):
         step: cwltool.workflow.WorkflowStep,
         cwljob: CWLObjectType,
         runtime_context: cwltool.context.RuntimeContext,
+        parent_name: Optional[str],
         conditional: Union[Conditional, None],
     ):
         """Store our context for later execution."""
@@ -2133,6 +2131,7 @@ class CWLScatter(Job):
         self.cwljob = cwljob
         self.runtime_context = runtime_context
         self.conditional = conditional
+        self.parent_name = parent_name
 
     def flat_crossproduct_scatter(
         self,
@@ -2154,6 +2153,7 @@ class CWLScatter(Job):
                     tool=self.step.embedded_tool,
                     jobobj=updated_joborder,
                     runtime_context=self.runtime_context,
+                    parent_name=f"{self.parent_name}[{n}]",
                     conditional=self.conditional,
                 )
                 self.addChild(subjob)
@@ -2183,6 +2183,7 @@ class CWLScatter(Job):
                     tool=self.step.embedded_tool,
                     jobobj=updated_joborder,
                     runtime_context=self.runtime_context,
+                    parent_name=f"{self.parent_name}[{n}]",
                     conditional=self.conditional,
                 )
                 self.addChild(subjob)
@@ -2249,6 +2250,7 @@ class CWLScatter(Job):
                     tool=self.step.embedded_tool,
                     jobobj=copyjob,
                     runtime_context=self.runtime_context,
+                    parent_name=f"{self.parent_name}[{i}]",
                     conditional=self.conditional,
                 )
                 self.addChild(subjob)
@@ -2410,6 +2412,8 @@ class CWLWorkflow(Job):
         # to: the job that will produce that value.
         promises: Dict[str, Job] = {}
 
+        parent_name = shortname(self.cwlwf.tool["id"])
+
         # `jobs` dict from step id to job that implements that step.
         jobs = {}
 
@@ -2426,36 +2430,37 @@ class CWLWorkflow(Job):
             all_outputs_fulfilled = True
 
             for step in self.cwlwf.steps:
-                if step.tool["id"] not in jobs:
+                step_id = step.tool["id"]
+                if step_id not in jobs:
                     stepinputs_fufilled = True
                     for inp in step.tool["inputs"]:
                         for s in aslist(inp.get("source", [])):
                             if s not in promises:
                                 stepinputs_fufilled = False
                     if stepinputs_fufilled:
-                        logger.debug(
-                            "Ready to make job for workflow step %s", step.tool["id"]
-                        )
-                        jobobj = {}
+                        logger.debug("Ready to make job for workflow step %s", step_id)
+                        jobobj: Dict[
+                            str, Union[ResolveSource, DefaultWithSource, StepValueFrom]
+                        ] = {}
 
                         for inp in step.tool["inputs"]:
                             logger.debug("Takes input: %s", inp["id"])
                             key = shortname(inp["id"])
                             if "source" in inp:
                                 jobobj[key] = ResolveSource(
-                                    name=f'{step.tool["id"]}/{key}',
+                                    name=f"{step_id}/{key}",
                                     input=inp,
                                     source_key="source",
                                     promises=promises,
                                 )
 
                             if "default" in inp:
-                                jobobj[key] = DefaultWithSource(  # type: ignore
+                                jobobj[key] = DefaultWithSource(
                                     copy.copy(inp["default"]), jobobj.get(key)
                                 )
 
                             if "valueFrom" in inp and "scatter" not in step.tool:
-                                jobobj[key] = StepValueFrom(  # type: ignore
+                                jobobj[key] = StepValueFrom(
                                     inp["valueFrom"],
                                     jobobj.get(key, JustAValue(None)),
                                     self.cwlwf.requirements,
@@ -2476,6 +2481,7 @@ class CWLWorkflow(Job):
                                 step,
                                 UnresolvedDict(jobobj),
                                 self.runtime_context,
+                                parent_name=parent_name,
                                 conditional=conditional,
                             )
                             followOn: Union[
@@ -2492,15 +2498,16 @@ class CWLWorkflow(Job):
                                 tool=step.embedded_tool,
                                 jobobj=UnresolvedDict(jobobj),
                                 runtime_context=self.runtime_context,
+                                parent_name=f"{parent_name}.{shortname(step_id)}",
                                 conditional=conditional,
                             )
                             logger.debug(
-                                "Is non-scatter with job %s and follow-on %s",
+                                "Is non-scatter with %s and follow-on %s",
                                 wfjob,
                                 followOn,
                             )
 
-                        jobs[step.tool["id"]] = followOn
+                        jobs[step_id] = followOn
 
                         connected = False
                         for inp in step.tool["inputs"]:
@@ -3180,8 +3187,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     outdir = os.path.abspath(options.outdir)
     tmp_outdir_prefix = os.path.abspath(options.tmp_outdir_prefix)
 
-    fileindex = dict()  # type: ignore
-    existing = dict()  # type: ignore
+    fileindex: Dict[str, str] = {}
+    existing: Dict[str, str] = {}
     conf_file = getattr(options, "beta_dependency_resolvers_configuration", None)
     use_conda_dependencies = getattr(options, "beta_conda_dependencies", None)
     job_script_provider = None
@@ -3195,7 +3202,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     runtime_context.find_default_container = functools.partial(
         find_default_container, options
     )
-    runtime_context.workdir = workdir  # type: ignore
+    runtime_context.workdir = workdir  # type: ignore[attr-defined]
     runtime_context.move_outputs = "leave"
     runtime_context.rm_tmpdir = False
     runtime_context.streaming_allowed = not options.disable_streaming
@@ -3418,11 +3425,13 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 # were required.
                 rm_unprocessed_secondary_files(param_value)
 
+            logger.debug("tool %s", tool)
             try:
                 wf1, _ = makeJob(
                     tool=tool,
                     jobobj={},
                     runtime_context=runtime_context,
+                    parent_name=None,  # toplevel, no name needed
                     conditional=None,
                 )
             except CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION as err:

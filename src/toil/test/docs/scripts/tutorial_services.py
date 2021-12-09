@@ -3,7 +3,6 @@ from toil.job import Job
 
 
 class DemoService(Job.Service):
-
     def start(self, fileStore):
         # Start up a database/service here
         # Return a value that enables another process to connect to the database
@@ -18,17 +17,21 @@ class DemoService(Job.Service):
         # Cleanup the database here
         pass
 
+
 j = Job()
 s = DemoService()
 loginCredentialsPromise = j.addService(s)
+
 
 def dbFn(loginCredentials):
     # Use the login credentials returned from the service's start method to connect to the service
     pass
 
+
 j.addChildFn(dbFn, loginCredentialsPromise)
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
     options.logLevel = "INFO"
     options.clean = "always"
