@@ -5,7 +5,8 @@ from toil.job import Job
 def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
     job.log(f"Hello world, I have a message: {message}")
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
     options.logLevel = "INFO"
     options.clean = "always"

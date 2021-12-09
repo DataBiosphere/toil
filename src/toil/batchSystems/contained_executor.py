@@ -21,7 +21,6 @@ import os
 import pickle
 import subprocess
 import sys
-from typing import Callable, Optional, Dict, List, TypeVar, Union
 
 from toil.batchSystems.abstractBatchSystem import EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.resource import Resource

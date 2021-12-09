@@ -6,13 +6,13 @@ This workflow collects statistics about caching.
 
 Invoke like:
 
-    python examples/example_cachingbenchmark.py ./jobstore --realTimeLogging --logInfo --disableCaching False
+    python examples/example_cachingbenchmark.py ./jobstore --realTimeLogging --logInfo
 
-    python examples/example_cachingbenchmark.py ./jobstore --realTimeLogging --logInfo --disableCaching True
+    python examples/example_cachingbenchmark.py ./jobstore --realTimeLogging --logInfo --disableCaching
 
-    python examples/example_cachingbenchmark.py aws:us-west-2:cachingjobstore --realTimeLogging --logInfo --disableCaching False
+    python examples/example_cachingbenchmark.py aws:us-west-2:cachingjobstore --realTimeLogging --logInfo
 
-    python examples/example_cachingbenchmark.py aws:us-west-2:cachingjobstore --realTimeLogging --logInfo --disableCaching True
+    python examples/example_cachingbenchmark.py aws:us-west-2:cachingjobstore --realTimeLogging --logInfo --disableCaching
 
 """
 
@@ -33,7 +33,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 
     parser.add_argument('--minSleep', type=int, default=1,
-        help="Minimum seconds to sleep")
+                        help="Minimum seconds to sleep")
 
     Job.Runner.addToilOptions(parser)
 
@@ -51,8 +51,8 @@ def main():
 def root(job, options):
     # Make a file
     with job.fileStore.writeGlobalFileStream() as (stream, file_id):
-        stream.write(('This is a test of the Toil file caching system. ' +
-            'Had this been an actual file, its contents would have been more interesting.').encode('utf-8'))
+        stream.write(("This is a test of the Toil file caching system. "
+                      "Had this been an actual file, its contents would have been more interesting.").encode('utf-8'))
 
     child_rvs = []
     for i in range(100):
@@ -61,6 +61,7 @@ def root(job, options):
 
     # Collect all their views into a report
     return job.addFollowOnJobFn(report, child_rvs).rv()
+
 
 def poll(job, options, file_id, number, cores=0.1, disk='200M', memory='512M'):
 
@@ -84,7 +85,7 @@ def poll(job, options, file_id, number, cores=0.1, disk='200M', memory='512M'):
 
     # Return a tuple representing our view of the file.
     # Drop hostname since hostnames are unique per pod.
-    return (stats.st_dev, stats.st_ino)
+    return stats.st_dev, stats.st_ino
 
 
 def report(job, views):
@@ -101,5 +102,5 @@ def report(job, views):
     return '\n'.join(report)
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()

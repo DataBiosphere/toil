@@ -5,8 +5,8 @@ from toil.job import Job
 
 
 def globalFileStoreJobFn(job):
-    job.log("The following example exercises all the methods provided"
-            " by the toil.fileStores.abstractFileStore.AbstractFileStore class")
+    job.log("The following example exercises all the methods provided "
+            "by the toil.fileStores.abstractFileStore.AbstractFileStore class")
 
     # Create a local temporary file.
     scratchFile = job.fileStore.getLocalTempFile()
@@ -33,7 +33,7 @@ def globalFileStoreJobFn(job):
 
     # Read the second file again using a stream.
     with job.fileStore.readGlobalFileStream(fileID2) as fH:
-        print(fH.read()) #This prints "Out brief candle"
+        print(fH.read())  # This prints "Out brief candle"
 
     # Delete the first file from the global file-store.
     job.fileStore.deleteGlobalFile(fileID)
@@ -41,7 +41,8 @@ def globalFileStoreJobFn(job):
     # It is unnecessary to delete the file keyed by fileID2 because we used the cleanup flag,
     # which removes the file after this job and all its successors have run (if the file still exists)
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
     options.logLevel = "INFO"
     options.clean = "always"

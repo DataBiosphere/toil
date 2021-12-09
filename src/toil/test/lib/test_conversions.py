@@ -13,7 +13,7 @@
 # limitations under the License.
 import logging
 
-from toil.lib.conversions import convert_units, human2bytes, hms_duration_to_seconds
+from toil.lib.conversions import convert_units, hms_duration_to_seconds, human2bytes
 from toil.test import ToilTest
 
 logger = logging.getLogger(__name__)

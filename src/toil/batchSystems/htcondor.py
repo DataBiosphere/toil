@@ -16,11 +16,13 @@ import logging
 import math
 import os
 import time
-from typing import Any, Optional, Dict
+from typing import Any, Dict, Optional
 
 import htcondor
 
-from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
+from toil.batchSystems.abstractGridEngineBatchSystem import (
+    AbstractGridEngineBatchSystem,
+)
 
 logger = logging.getLogger(__name__)
 

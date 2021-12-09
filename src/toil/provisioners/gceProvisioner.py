@@ -17,7 +17,7 @@ import os
 import threading
 import time
 import uuid
-from typing import Set, Optional
+from typing import Optional, Set
 
 import requests
 from libcloud.compute.drivers.gce import GCEFailedNode
@@ -220,7 +220,7 @@ class GCEProvisioner(AbstractProvisioner):
         """ Not used by GCE """
         return False
 
-    def destroyCluster(self):
+    def destroyCluster(self) -> None:
         """
         Try a few times to terminate all of the instances in the group.
         """

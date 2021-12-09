@@ -18,20 +18,20 @@ import shutil
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
-from typing import (Any,
-                    Callable,
-                    ContextManager,
-                    Dict,
-                    Iterator,
-                    List,
-                    Optional,
-                    Tuple,
-                    Type,
-                    TypeVar,
-                    Union,
-                    NamedTuple)
+from typing import (
+    Any,
+    Callable,
+    ContextManager,
+    Dict,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    TypeVar,
+    Union,
+)
 
-from toil.common import Toil, cacheDirName, Config
+from toil.common import Config, Toil, cacheDirName
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import JobDescription
@@ -229,7 +229,6 @@ class AbstractBatchSystem(ABC):
         """
         If this batch system provides any command line options, add them to the given parser.
         """
-        pass
 
     OptionType = TypeVar('OptionType')
     @classmethod
@@ -243,7 +242,6 @@ class AbstractBatchSystem(ABC):
         """
         # TODO: change type to a Protocol to express kwarg names, or else use a
         # different interface (generator?)
-        pass
 
     def getWorkerContexts(self) -> List[ContextManager[Any]]:
         """
@@ -259,13 +257,11 @@ class AbstractBatchSystem(ABC):
 
 
 class BatchSystemSupport(AbstractBatchSystem):
-    """
-    Partial implementation of AbstractBatchSystem, support methods.
-    """
+    """Partial implementation of AbstractBatchSystem, support methods."""
 
     def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
         """
-        Initializes initial state of the object
+        Initialize initial state of the object.
 
         :param toil.common.Config config: object is setup by the toilSetup script and
           has configuration parameters for the jobtree. You can add code
@@ -286,9 +282,14 @@ class BatchSystemSupport(AbstractBatchSystem):
         self.maxMemory = maxMemory
         self.maxDisk = maxDisk
         self.environment: Dict[str, str] = {}
-        self.workerCleanupInfo = WorkerCleanupInfo(workDir=self.config.workDir,
-                                                   workflowID=self.config.workflowID,
-                                                   cleanWorkDir=self.config.cleanWorkDir)
+        if config.workflowID is None:
+            raise Exception("config.workflowID must be set")
+        else:
+            self.workerCleanupInfo = WorkerCleanupInfo(
+                workDir=config.workDir,
+                workflowID=config.workflowID,
+                cleanWorkDir=config.cleanWorkDir,
+            )
 
     def checkResourceRequest(self, memory: int, cores: float, disk: int, job_name: str = '', detail: str = '') -> None:
         """

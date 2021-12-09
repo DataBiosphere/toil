@@ -3,9 +3,10 @@ from toil.job import Job
 
 
 def helloWorld(message, memory="2G", cores=2, disk="3G"):
-    return "Hello, world!, here's a message: %s" % message
+    return f"Hello, world!, here's a message: {message}"
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
     options.logLevel = "OFF"
     options.clean = "always"
@@ -13,4 +14,4 @@ if __name__=="__main__":
     hello_job = Job.wrapFn(helloWorld, "Woot")
 
     with Toil(options) as toil:
-        print(toil.start(hello_job)) #Prints Hello, world!, ...
+        print(toil.start(hello_job))  # prints "Hello, world!, ..."

@@ -23,9 +23,9 @@ import uuid
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.wdl.wdl_types import WDLFile, WDLPair
 from toil.lib.conversions import bytes_in_unit
 from toil.lib.resources import glob  # type: ignore
+from toil.wdl.wdl_types import WDLFile, WDLPair
 
 logger = logging.getLogger(__name__)
 

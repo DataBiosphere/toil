@@ -15,26 +15,26 @@ import errno
 import hashlib
 import logging
 import os
-import stat
 import re
 import shutil
 import sqlite3
+import stat
 import tempfile
 import threading
 import time
 from contextlib import contextmanager
-from typing import Callable, Generator, Optional
+from typing import Any, Callable, Generator, Optional
 
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.job import Job, JobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore
+from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human
-from toil.lib.io import atomic_copy, atomic_copyobj, robust_rmtree, make_public_dir
+from toil.lib.io import atomic_copy, atomic_copyobj, make_public_dir, robust_rmtree
 from toil.lib.retry import ErrorCondition, retry
 from toil.lib.threading import get_process_name, process_name_exists
-from toil.job import Job, JobDescription
-from toil.lib.compatibility import deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +172,13 @@ class CachingFileStore(AbstractFileStore):
 
     """
 
-    def __init__(self, jobStore: AbstractJobStore, jobDesc: JobDescription, localTempDir: str, waitForPreviousCommit: Callable[[],None]) -> None:
+    def __init__(
+        self,
+        jobStore: AbstractJobStore,
+        jobDesc: JobDescription,
+        localTempDir: str,
+        waitForPreviousCommit: Callable[[], Any],
+    ) -> None:
         super().__init__(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
 
         # For testing, we have the ability to force caching to be non-free, by never linking from the file store
@@ -1767,7 +1773,7 @@ class CachingFileStore(AbstractFileStore):
         # cache? How would we write the URL?
         self.jobStore.export_file(file_id, dst_uri)
 
-    def waitForCommit(self):
+    def waitForCommit(self) -> bool:
         # We need to block on the upload thread.
 
         # We may be called even if startCommit is not called. In that
@@ -1842,7 +1848,7 @@ class CachingFileStore(AbstractFileStore):
 
 
     @classmethod
-    def shutdown(cls, dir_):
+    def shutdown(cls, dir_: str) -> None:
         """
         :param dir_: The workflow diorectory for the node, which is used as the
                      cache directory, containing cache state database. Job
@@ -1871,10 +1877,11 @@ class CachingFileStore(AbstractFileStore):
 
             for dbCandidate in os.listdir(dir_):
                 # For each thing in the directory
-                match = re.match('cache-([0-9]+).db', dbCandidate)
+                match = re.match('^cache-([0-9]+).db$', dbCandidate)
                 if match and int(match.group(1)) > dbAttempt:
-                    # If it looks like a caching database and it has a higher
-                    # number than any other one we have seen, use it.
+                    # If it looks like a caching database (and not a journal
+                    # file itself) and it has a higher number than any other
+                    # one we have seen, use it.
                     dbFilename = dbCandidate
                     dbAttempt = int(match.group(1))
 
