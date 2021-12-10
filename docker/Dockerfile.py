@@ -75,6 +75,7 @@ motd = heredoc('''
 motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 
 print(heredoc('''
+    # We can't use a newwe Ubuntu until we no longer need Mesos
     FROM ubuntu:16.04
 
     ARG TARGETARCH
@@ -97,20 +98,17 @@ print(heredoc('''
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
-    RUN wget -q https://dl.google.com/go/go1.13.3.linux-$TARGETARCH.tar.gz && \
-        tar xf go1.13.3.linux-$TARGETARCH.tar.gz && \
-        rm go1.13.3.linux-$TARGETARCH.tar.gz && \
-        mv go/bin/* /usr/bin/ && \
-        mv go /usr/local/
-
-    # Build Singularity
+    # Install Singularity from a newer Debian.
+    # The dependencies it thinks it needs aren't really needed and aren't
+    # available here.
     RUN wget https://debian.osuosl.org/debian/pool/main/s/singularity-container/$(curl -sSL 'https://debian.osuosl.org/debian/pool/main/s/singularity-container/' | grep -o "singularity-container_3[^\\"]*$(if [ $TARGETARCH = amd64 ] ; then echo amd64 ; else echo arm64 ; fi).deb" | head -n1) && \
         (dpkg -i singularity-container_3*.deb || true) && \
         dpkg --force-depends --configure -a && \
         sed -i 's/containernetworking-plugins, //' /var/lib/dpkg/status && \
         sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf && \
         mkdir -p /usr/local/libexec/toil && \
-        mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real
+        mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real \
+        && /usr/local/libexec/toil/singularity-real version
 
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh
@@ -141,9 +139,10 @@ print(heredoc('''
         && ln -s /home/s3am/bin/s3am /usr/local/bin/
 
     # Install statically linked version of docker client
-    RUN curl https://download.docker.com/linux/static/stable/$(if [$TARGETARCH = amd64] ; then echo x86_64 ; else echo aarch64 ; fi)/docker-18.06.1-ce.tgz \
+    RUN curl https://download.docker.com/linux/static/stable/$(if [ $TARGETARCH = amd64 ] ; then echo x86_64 ; else echo aarch64 ; fi)/docker-18.06.1-ce.tgz \
         | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ \
-        && chmod u+x /usr/local/bin/docker
+        && chmod u+x /usr/local/bin/docker \
+        && /usr/local/bin/docker -v
 
     # Fix for Mesos interface dependency missing on ubuntu
     RUN {pip} install protobuf==3.0.0
