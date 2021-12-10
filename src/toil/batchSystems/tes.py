@@ -435,7 +435,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                 # notification for the job.
 
     @classmethod
-    def add_tes_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
         parser.add_argument("--tesEndpoint", dest="tes_endpoint", default=cls.get_default_tes_endpoint(),
                             help="The http(s) URL of the TES server.  (default: %(default)s)")
         parser.add_argument("--tesUser", dest="tes_user", default=None,
