@@ -91,7 +91,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                     if jobid in currentjobs:
                         logger.debug("getRunningJobIDs job status for is: %s", items[4])
                     if jobid in currentjobs and items[4] == 'R':
-                        walltime = items[3]
+                        walltime = items[3].strip()
                         logger.debug(
                             "getRunningJobIDs qstat reported walltime is: %s", walltime
                         )
@@ -99,6 +99,13 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                         # when initially running; this catches this case
                         if walltime == '0':
                             walltime = time.mktime(time.strptime(walltime, "%S"))
+                        elif not walltime:
+                            # Sometimes we don't get any data here.
+                            # See https://github.com/DataBiosphere/toil/issues/3715
+                            logger.warning(
+                                "Assuming 0 walltime due to missing field in qstat line: %s", currline
+                            )
+                            walltime = 0
                         else:
                             walltime = hms_duration_to_seconds(walltime)
                         times[currentjobs[jobid]] = walltime
