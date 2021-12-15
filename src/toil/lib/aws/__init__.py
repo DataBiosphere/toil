@@ -203,7 +203,7 @@ def try_providers(functions: List[Callable[..., Optional[ResultType]]], kwargs: 
                 call_args[param_name] = kwargs[param_name]
 
         # Now pass the subset of kwargs along to the function
-        result = callback(**kwargs)
+        result = callback(**call_args)
         if result is not None:
             # And return the first non-None result
             return result
