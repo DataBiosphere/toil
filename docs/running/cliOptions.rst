@@ -144,6 +144,20 @@ the logging module:
   --tesBearerToken TES_BEARER_TOKEN
                         Bearer token to use for authentication to TES server.
 
+  --awsBatchRegion AWS_BATCH_REGION
+                        Region to use when using the AWS Batch batch system.
+                        Can often be autodetected from Boto configuration or
+                        the AWS region in which the current machine is running,
+                        if any.
+  --awsBatchQueue AWS_BATCH_QUEUE
+                        Name or ARN of an AWS Batch Queue to use with the AWS
+                        Batch batch system.
+  --awsBatchJobRoleArn AWS_BATCH_JOB_ROLE_ARN
+                        ARN of an IAM role to run AWS Batch jobs as with the
+                        AWS Batch batch system. If the jobs are not run with an
+                        IAM role or on machines that have access to S3 and
+                        SimpleDB, the AWS job store will not be usable.
+
   --scale SCALE         A scaling factor to change the value of all submitted
                         tasks' submitted cores. Used in singleMachine batch
                         system. Useful for running workflows on smaller

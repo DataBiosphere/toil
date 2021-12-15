@@ -103,6 +103,20 @@ There are several environment variables that affect the way Toil runs.
 |                                  | deleted until all associated nodes have been       |
 |                                  | terminated.                                        |
 +----------------------------------+----------------------------------------------------+
+| TOIL_AWS_BATCH_REGION            | Region to use when using the AWS Batch batch       |
+|                                  | system. Can often be autodetected from Boto        |
+|                                  | configuration or the AWS region in which the       |
+|                                  | current machine is running, if any.                |
++----------------------------------+----------------------------------------------------+
+| TOIL_AWS_BATCH_QUEUE             | Name or ARN of an AWS Batch Queue to use with the  |
+|                                  | AWS Batch batch system.                            |
++----------------------------------+----------------------------------------------------+
+| TOIL_AWS_BATCH_JOB_ROLE_ARN      | ARN of an IAM role to run AWS Batch jobs as with   |
+|                                  | the AWS Batch batch system. If the jobs are not    |
+|                                  | run with an IAM role or on machines that have      |
+|                                  | access to S3 and SimpleDB, the AWS job store will  |
+|                                  | not be usable.                                     |
++----------------------------------+----------------------------------------------------+
 | TOIL_GOOGLE_PROJECTID            | The Google project ID to use when generating       |
 |                                  | Google job store names for tests or CWL workflows. |
 +----------------------------------+----------------------------------------------------+
