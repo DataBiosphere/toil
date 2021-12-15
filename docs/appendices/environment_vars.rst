@@ -44,6 +44,9 @@ There are several environment variables that affect the way Toil runs.
 |                                  | Kubernetes jobs. If not set, Toil will use the     |
 |                                  | current user name.                                 |
 +----------------------------------+----------------------------------------------------+
+| TOIL_KUBERNETES_SERVICE_ACCOUNT  | A service account name to apply when creating      |
+|                                  | Kubernetes pods.                                   |
++----------------------------------+----------------------------------------------------+
 | KUBE_WATCH_ENABLED               | A boolean variable that allows for users           |
 |                                  | to utilize kubernetes watch stream feature         |
 |                                  | instead of polling for running jobs. Default       |

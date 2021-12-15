@@ -142,6 +142,9 @@ the logging module:
   --kubernetesOwner KUBERNETES_OWNER
                         A name prefix for easy identification of Kubernetes
                         jobs. If not set, Toil will use the current user name.
+  --kubernetesServiceAccount KUBERNETES_SERVICE_ACCOUNT
+                        A service account name to apply when creating
+                        Kubernetes pods.
 
   --tesEndpoint TES_ENDPOINT
                         The http(s) URL of the TES server.
