@@ -59,6 +59,26 @@ try:
             'assume-role').cache = JSONFileCache()
         return Session(botocore_session=botocore_session, region_name=region_name)
 
+    @lru_cache(maxsize=None)
+    def client(service_name: str, *args, region_name: Optional[str] = None, **kwargs):
+        """
+        Get a Boto 3 client for a particular AWS service.
+
+        Global alternative to AWSConnectionManager.
+        """
+        session = establish_boto3_session(region_name=region_name)
+        return session.client(service_name, *args, **kwargs)
+
+    @lru_cache(maxsize=None)
+    def resource(service_name: str, *args, region_name: Optional[str] = None, **kwargs):
+        """
+        Get a Boto 3 resource for a particular AWS service.
+
+        Global alternative to AWSConnectionManager.
+        """
+        session = establish_boto3_session(region_name=region_name)
+        return session.resource(service_name, *args, **kwargs)
+
     class AWSConnectionManager:
         """
         Class that represents a connection to AWS. Caches Boto 3 and Boto 2 objects
@@ -162,10 +182,10 @@ def try_providers(functions: List[Callable[..., Optional[ResultType]]], kwargs: 
     that each function can accept. If any function returns a non-None answer,
     stop and return that answer. Otherwise, return None.
     """
-    
+
     for callback in functions:
         # Call all the passed functions in order
-        
+
         # We need to work out what arguments are accepted and out them all in here
         call_args: Dict[str, Any] = {}
         sig = inspect.signature(callback)
@@ -189,13 +209,13 @@ def try_providers(functions: List[Callable[..., Optional[ResultType]]], kwargs: 
             return result
     # Otherwise return None
     return None
-    
+
 def get_aws_zone_from_environment() -> Optional[str]:
     """
     Get the AWS zone from TOIL_AWS_ZONE if set.
     """
     return os.environ.get('TOIL_AWS_ZONE', None)
-    
+
 def get_aws_zone_from_metadata() -> Optional[str]:
     """
     Get the AWS zone from instance metadata, if on EC2 and the boto module is
@@ -209,7 +229,7 @@ def get_aws_zone_from_metadata() -> Optional[str]:
         except (KeyError, ImportError):
             pass
     return None
-    
+
 def get_aws_zone_from_boto() -> Optional[str]:
     """
     Get the AWS zone from the Boto config file, if it is configured and the
@@ -229,15 +249,15 @@ def get_aws_zone_from_boto() -> Optional[str]:
 def get_current_aws_zone() -> Optional[str]:
     """
     Get the currently configured or occupied AWS zone to use.
-    
+
     Reports the TOIL_AWS_ZONE environment variable if set.
-    
+
     Otherwise, if we have boto and are running on EC2, reports the zone we are
     running in.
-    
+
     Finally, if we have boto2, and a default region is configured in Boto 2,
     chooses a zone in that region.
-    
+
     Returns None if no method can produce a zone to use.
     """
     return try_providers([get_aws_zone_from_environment,
@@ -252,7 +272,7 @@ def zone_to_region(zone: str) -> str:
     if not m:
         raise ValueError(f"Can't extract region from availability zone '{zone}'")
     return m.group(1)
-    
+
 def running_on_ec2() -> bool:
     """
     Return True if we are currently running on EC2, and false otherwise.

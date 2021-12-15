@@ -392,7 +392,9 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             if self.job_role_arn:
                 # We need to give the job a role.
                 # We might not be able to do much job store access without this!
-                job_def_spec['containerProperties']['jobRoleArn'] = self.job_role_arn
+                container_properties = job_def_spec['containerProperties']
+                assert isinstance(container_properties, dict)
+                container_properties['jobRoleArn'] = self.job_role_arn
             if self.owner_tag:
                 # We are meant to tag everything with an owner
                 job_def_spec['tags'] = {'Owner': self.owner_tag}

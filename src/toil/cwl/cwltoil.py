@@ -2794,7 +2794,7 @@ def generate_default_job_store(
             from toil.jobStores.aws.jobStore import AWSJobStore  # noqa
 
             # Find a region
-            from toil.provisioners.aws import get_current_aws_region
+            from toil.lib.aws import get_current_aws_region
 
             region = get_current_aws_region()
 
