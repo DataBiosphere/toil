@@ -44,6 +44,7 @@ from toil.job import Job, JobDescription
 from toil.lib.retry import retry_flaky_test
 from toil.lib.threading import cpu_count
 from toil.test import (ToilTest,
+                       needs_aws_batch,
                        needs_aws_s3,
                        needs_fetchable_appliance,
                        needs_gridengine,
@@ -466,6 +467,20 @@ class TESBatchSystemTest(hidden.AbstractBatchSystemTest):
         return TESBatchSystem(config=self.config,
                               maxCores=numCores, maxMemory=1e9, maxDisk=2001)
 
+@needs_aws_batch
+@needs_fetchable_appliance
+class AWSBatchBatchSystemTest(hidden.AbstractBatchSystemTest):
+    """
+    Tests against the AWS Batch batch system
+    """
+
+    def supportsWallTime(self):
+        return True
+
+    def createBatchSystem(self):
+        from toil.batchSystems.awsBatch import AWSBatchBatchSystem
+        return AWSBatchBatchSystem(config=self.config,
+                                   maxCores=numCores, maxMemory=1e9, maxDisk=2001)
 
 @slow
 @needs_mesos

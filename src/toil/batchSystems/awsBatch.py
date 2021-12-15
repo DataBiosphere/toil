@@ -242,12 +242,14 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         Takes an AWS JobDetail as a dict.
         """
 
-        if 'status' not in job_detail or job_detail['status'] not in ['RUNNING', 'SUCCEEDED', 'FAILED']:
+        if 'status' not in job_detail or job_detail['status'] not in ['STARTING', 'RUNNING', 'SUCCEEDED', 'FAILED']:
             # Job is not running yet.
+            logger.info("Runtime unavailable because job is still waiting")
             return None
 
         if 'startedAt' not in job_detail:
             # Job has no known start time
+            logger.info("Runtime unavailable because job has no start time")
             return None
 
         start_ms = job_detail['startedAt']
@@ -257,9 +259,10 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         else:
             end_ms = unix_now_ms()
 
-        # We have a set start time, so it is/was running. Return the time
-        # it has been running for.
-        return slow_down((end_ms - start_ms) / 1000)
+        # We have a set start time, so it is/was running.
+        runtime = slow_down((end_ms - start_ms) / 1000)
+        # Return the time it has been running for.
+        return runtime
 
     def __get_exit_code(self, job_detail: Dict[str, Any]) -> int:
         """
@@ -364,6 +367,30 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         self.client.terminate_job(jobId=aws_id, reason='Killed by Toil')
 
     @retry(errors=[BotoServerError])
+    def __wait_until_stopped(self, aws_id: str) -> None:
+        """
+        Wait for a terminated job to actually stop. The AWS Batch API does not
+        guarantee that the status of a job will be SUCCEEDED or FAILED as soon
+        as a terminate call succeeds for it, but Toil requires that a job that
+        has been successfully killed can no longer be observed to be running.
+        """
+
+        while True:
+            # Poll the job
+            response = self.client.describe_jobs(jobs=[aws_id])
+            jobs = response.get('jobs', [])
+            if len(jobs) == 0:
+                # Job no longer exists at all
+                return
+            job = jobs[0]
+            if job.get('status') and job['status'] in ['SUCCEEDED', 'FAILED']:
+                # The job has stopped
+                return
+            # Otherwise the job is still going. Wait for it to stop.
+            logger.info('Waiting for killed job %s to stop', self.aws_id_to_bs_id.get(aws_id, aws_id))
+            time.sleep(2)
+
+    @retry(errors=[BotoServerError])
     def __get_or_create_job_definition(self) -> str:
         """
         Create, if not already created, and return the ARN for the
@@ -428,7 +455,8 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         while len(to_check) > 0:
             # Go through jobs we want to poll in batches of the max size
             check_batch = to_check[-MAX_POLL_COUNT:]
-            to_check = to_check[:len(check_batch) - 1]
+            # And pop them off the end of the list of jobs to check
+            to_check = to_check[:-len(check_batch)]
 
             # TODO: retry
             response = self.client.describe_jobs(jobs=check_batch)
@@ -441,15 +469,17 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         bs_id_to_runtime = {}
 
         for job_detail in self.__describe_jobs_in_batches():
-            if job_detail.get('state') in ['STARTING', 'RUNNING']:
+            if job_detail.get('status') == 'RUNNING':
                 runtime = self.__get_runtime(job_detail)
+                aws_id = job_detail['jobId']
+                bs_id = self.aws_id_to_bs_id[aws_id]
                 if runtime:
                     # We can measure a runtime
-                    aws_id = job_detail['jobId']
-                    bs_id = self.aws_id_to_bs_id[aws_id]
                     bs_id_to_runtime[bs_id] = runtime
-                # If we can't find a runtime, we can't say it's running
-                # because we can't say how long it has been running for.
+                else:
+                    # If we can't find a runtime, we can't say it's running
+                    # because we can't say how long it has been running for.
+                    logger.warning("Job %s is %s but has no runtime: %s", bs_id, job_detail['status'], job_detail)
 
         # Give back the times all our running jobs have been running for.
         return bs_id_to_runtime
@@ -464,6 +494,12 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                 self.__try_terminate(self.bs_id_to_aws_id[bs_id])
                 # But don't forget the mapping until we actually get the finish
                 # notification for the job.
+        for bs_id in job_ids:
+            if bs_id in self.bs_id_to_aws_id:
+                # Poll each job to make sure it is dead and won't look running,
+                # before we return. TODO: we could do this in batches to save
+                # requests, but we already make O(n) requests to issue the kills.
+                self.__wait_until_stopped(self.bs_id_to_aws_id[bs_id])
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
