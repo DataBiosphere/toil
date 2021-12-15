@@ -135,6 +135,14 @@ the logging module:
                         The host and port of the Mesos server separated by a
                         colon. (default: <leader IP>:5050)
 
+  --kubernetesHostPath KUBERNETES_HOST_PATH
+                        A path on Kubernetes hosts that will be mounted as the
+                        Toil work directory in the workers, to allow for shared
+                        caching.
+  --kubernetesOwner KUBERNETES_OWNER
+                        A name prefix for easy identification of Kubernetes
+                        jobs. If not set, Toil will use the current user name.
+
   --tesEndpoint TES_ENDPOINT
                         The http(s) URL of the TES server.
                         (default: http://<leader IP>:8000)
