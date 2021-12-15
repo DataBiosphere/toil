@@ -417,7 +417,6 @@ THROTTLED_ERROR_CODES = [
 
 # TODO: Replace with: @retry and ErrorCondition
 def retryable_s3_errors(e):
-    logger.debug('Right type: %s Error code: %s', isinstance(e, ClientError), e.error_code)
     return    (connection_reset(e)
             or (isinstance(e, BotoServerError) and e.status in (429, 500))
             or (isinstance(e, BotoServerError) and e.code in THROTTLED_ERROR_CODES)
