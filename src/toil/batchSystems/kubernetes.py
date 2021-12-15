@@ -93,9 +93,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Get our namespace (and our Kubernetes credentials to make sure they exist)
         self.namespace = self._api('namespace')
 
-        # Decide if we are going to mount a Kubernetes host path as /tmp in the workers.
-        # If we do this and the work dir is the default of the temp dir, caches will be shared.
+        # Decide if we are going to mount a Kubernetes host path as the Toil
+        # work dir in the workers, for shared caching.
         self.host_path = config.kubernetes_host_path
+
+        # Get the service account name to use, if any.
+        self.service_account = config.kubernetes_service_account
 
         # Get the username to mark jobs with
         username = config.kubernetes_owner
@@ -137,7 +140,6 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             self.workerWorkDir = '/var/lib/toil'
 
         # Get the name of the AWS secret, if any, to mount in containers.
-        # TODO: have some way to specify this (env var?)!
         self.awsSecretName = os.environ.get("TOIL_AWS_SECRET_NAME", None)
 
         # Set this to True to enable the experimental wait-for-job-update code
@@ -474,6 +476,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                                                restart_policy="Never")
         # Tell the spec where to land
         pod_spec.affinity = self._create_affinity(jobDesc.preemptable)
+
+        if self.service_account:
+            # Apply service account if set
+            pod_spec.service_account_name = self.service_account
 
         return pod_spec
 
@@ -1204,10 +1210,14 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         parser.add_argument("--kubernetesOwner", dest="kubernetes_owner", default=cls.get_default_kubernetes_owner(),
                             help="Username to mark Kubernetes jobs with.  "
                                  "(default: %(default)s)")
+        parser.add_argument("--kubernetesServiceAccount", dest="kubernetes_service_account", default=None,
+                            help="Service account to run jobs as.  "
+                                 "(default: %(default)s)")
 
     OptionType = TypeVar('OptionType')
     @classmethod
     def setOptions(cls, setOption: Callable[[str, Optional[Callable[[str], OptionType]], Optional[Callable[[OptionType], None]], Optional[OptionType], Optional[List[str]]], None]) -> None:
         setOption("kubernetes_host_path", default=None, env=['TOIL_KUBERNETES_HOST_PATH'])
         setOption("kubernetes_owner", default=cls.get_default_kubernetes_owner(), env=['TOIL_KUBERNETES_OWNER'])
+        setOption("kubernetes_service_account", default=None, env=['TOIL_KUBERNETES_SERVICE_ACCOUNT'])
 
