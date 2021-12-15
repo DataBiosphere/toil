@@ -399,7 +399,7 @@ def containerIsRunning(container_name: str, timeout: int = 365 * 24 * 60 * 60):
     except NotFound:
         return None
     except requests.exceptions.HTTPError as e:
-        logger.debug("Server error attempting to call container: ",
+        logger.debug("Server error attempting to call container: %s",
                      container_name)
         raise create_api_error_from_http_exception(e)
 

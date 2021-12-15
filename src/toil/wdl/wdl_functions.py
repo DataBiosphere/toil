@@ -226,7 +226,7 @@ def process_infile(f: Any, fileStore: AbstractFileStore):
     elif isinstance(f, (int, str, bool, float)):
         return f
     else:
-        raise WDLRuntimeError('Error processing file: '.format(str(f)))
+        raise WDLRuntimeError('Error processing file: {}'.format(str(f)))
 
 
 def sub(input_str: str, pattern: str, replace: str) -> str:
@@ -303,7 +303,7 @@ def process_outfile(f, fileStore, workDir, outDir):
     elif isinstance(f, (int, str, bool, float)):
         return f
     else:
-        raise WDLRuntimeError('Error processing file: '.format(str(f)))
+        raise WDLRuntimeError('Error processing file: {}'.format(str(f)))
 
 
 def abspath_single_file(f: WDLFile, cwd: str) -> WDLFile:
