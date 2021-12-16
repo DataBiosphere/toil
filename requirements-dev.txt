@@ -6,7 +6,7 @@ stubserver>=1.1,<2
 setuptools>=51.3.3,<59
 sphinx>=3.5.3,<4
 cwltest>=2.2.20211116163652
-mypy==0.910
+mypy==0.920
 types-requests
 types-setuptools
 types-boto
