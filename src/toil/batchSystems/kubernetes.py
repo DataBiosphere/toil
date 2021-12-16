@@ -93,9 +93,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Get our namespace (and our Kubernetes credentials to make sure they exist)
         self.namespace = self._api('namespace')
 
-        # Decide if we are going to mount a Kubernetes host path as /tmp in the workers.
-        # If we do this and the work dir is the default of the temp dir, caches will be shared.
+        # Decide if we are going to mount a Kubernetes host path as the Toil
+        # work dir in the workers, for shared caching.
         self.host_path = config.kubernetes_host_path
+
+        # Get the service account name to use, if any.
+        self.service_account = config.kubernetes_service_account
 
         # Get the username to mark jobs with
         username = config.kubernetes_owner
@@ -137,7 +140,6 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             self.workerWorkDir = '/var/lib/toil'
 
         # Get the name of the AWS secret, if any, to mount in containers.
-        # TODO: have some way to specify this (env var?)!
         self.awsSecretName = os.environ.get("TOIL_AWS_SECRET_NAME", None)
 
         # Set this to True to enable the experimental wait-for-job-update code
@@ -474,6 +476,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                                                restart_policy="Never")
         # Tell the spec where to land
         pod_spec.affinity = self._create_affinity(jobDesc.preemptable)
+
+        if self.service_account:
+            # Apply service account if set
+            pod_spec.service_account_name = self.service_account
 
         return pod_spec
 
@@ -1204,75 +1210,14 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         parser.add_argument("--kubernetesOwner", dest="kubernetes_owner", default=cls.get_default_kubernetes_owner(),
                             help="Username to mark Kubernetes jobs with.  "
                                  "(default: %(default)s)")
+        parser.add_argument("--kubernetesServiceAccount", dest="kubernetes_service_account", default=None,
+                            help="Service account to run jobs as.  "
+                                 "(default: %(default)s)")
 
     OptionType = TypeVar('OptionType')
     @classmethod
     def setOptions(cls, setOption: Callable[[str, Optional[Callable[[str], OptionType]], Optional[Callable[[OptionType], None]], Optional[OptionType], Optional[List[str]]], None]) -> None:
         setOption("kubernetes_host_path", default=None, env=['TOIL_KUBERNETES_HOST_PATH'])
         setOption("kubernetes_owner", default=cls.get_default_kubernetes_owner(), env=['TOIL_KUBERNETES_OWNER'])
+        setOption("kubernetes_service_account", default=None, env=['TOIL_KUBERNETES_SERVICE_ACCOUNT'])
 
-
-def executor():
-    """
-    Main function of the _toil_contained_executor entrypoint.
-
-    Runs inside the Toil container.
-
-    Responsible for setting up the user script and running the command for the
-    job (which may in turn invoke the Toil worker entrypoint).
-
-    """
-
-    configure_root_logger()
-    set_log_level("DEBUG")
-    logger.debug("Starting executor")
-
-    # If we don't manage to run the child, what should our exit code be?
-    exit_code = EXIT_STATUS_UNAVAILABLE_VALUE
-
-    if len(sys.argv) != 2:
-        logger.error('Executor requires exactly one base64-encoded argument')
-        sys.exit(exit_code)
-
-    # Take in a base64-encoded pickled dict as our first argument and decode it
-    try:
-        # Make sure to encode the text arguments to bytes before base 64 decoding
-        job = pickle.loads(base64.b64decode(sys.argv[1].encode('utf-8')))
-    except:
-        exc_info = sys.exc_info()
-        logger.error('Exception while unpickling task: ', exc_info=exc_info)
-        sys.exit(exit_code)
-
-    if 'environment' in job:
-        # Adopt the job environment into the executor.
-        # This lets us use things like TOIL_WORKDIR when figuring out how to talk to other executors.
-        logger.debug('Adopting environment: %s', str(job['environment'].keys()))
-        for var, value in job['environment'].items():
-            os.environ[var] = value
-
-    # Set JTRES_ROOT and other global state needed for resource
-    # downloading/deployment to work.
-    # TODO: Every worker downloads resources independently.
-    # We should have a way to share a resource directory.
-    logger.debug('Preparing system for resource download')
-    Resource.prepareSystem()
-    try:
-        if 'userScript' in job:
-            job['userScript'].register()
-
-        # Start the child process
-        logger.debug("Invoking command: '%s'", job['command'])
-        child = subprocess.Popen(job['command'],
-                                 preexec_fn=lambda: os.setpgrp(),
-                                 shell=True)
-
-        # Reproduce child's exit code
-        exit_code = child.wait()
-
-    finally:
-        logger.debug('Cleaning up resources')
-        # TODO: Change resource system to use a shared resource directory for everyone.
-        # Then move this into worker cleanup somehow
-        Resource.cleanSystem()
-        logger.debug('Shutting down')
-        sys.exit(exit_code)
