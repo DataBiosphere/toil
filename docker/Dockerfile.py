@@ -127,6 +127,7 @@ print(heredoc('''
     RUN sed -i "s/platform.linux_distribution()/('Ubuntu', '16.04', 'xenial')/g" /usr/lib/python3/dist-packages/pip/download.py
 
     # The stock pip is too old and can't install from sdist with extras
+    RUN curl https://bootstrap.pypa.io/get-pip.py | python
     RUN curl https://bootstrap.pypa.io/get-pip.py | {python}
 
     # Default setuptools is too old
@@ -137,6 +138,7 @@ print(heredoc('''
 
     # Install s3am (--never-download prevents silent upgrades to pip, wheel and setuptools)
     RUN virtualenv --python {python} --never-download /home/s3am \
+        && curl https://bootstrap.pypa.io/get-pip.py | {python}\
         && /home/s3am/bin/pip install s3am==2.0 \
         && ln -s /home/s3am/bin/s3am /usr/local/bin/
 
