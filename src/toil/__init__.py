@@ -641,7 +641,7 @@ try:
                                 # A race would be ok at this point
                                 os.makedirs(dir_path, exist_ok=True)
                             except OSError as e2:
-                                if e.errno == errno.EROFS:
+                                if e2.errno == errno.EROFS:
                                     # Sometimes we don't actually have write access to ~.
                                     # We may be running in a non-writable Toil container.
                                     # We should just go get our own credentials
