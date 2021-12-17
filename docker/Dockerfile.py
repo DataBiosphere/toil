@@ -29,6 +29,8 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          python,
                          f'{python}-dev',
                          'python3.8-distutils' if python == 'python3.8' else '',
+                         'python3.9-distutils' if python == 'python3.9' else '',
+                         # 'python3.9-venv' if python == 'python3.9' else '',
                          'python3-pip',
                          'libcurl4-openssl-dev',
                          'libssl-dev',
