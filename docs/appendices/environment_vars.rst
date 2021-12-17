@@ -37,11 +37,15 @@ There are several environment variables that affect the way Toil runs.
 |                                  | line option.                                       |
 +----------------------------------+----------------------------------------------------+
 | TOIL_KUBERNETES_HOST_PATH        | A path on Kubernetes hosts that will be mounted as |
-|                                  | /tmp in the workers, to allow for shared caching.  |
+|                                  | the Toil work directory in the workers, to allow   |
+|                                  | for shared caching.                                |
 +----------------------------------+----------------------------------------------------+
 | TOIL_KUBERNETES_OWNER            | A name prefix for easy identification of           |
 |                                  | Kubernetes jobs. If not set, Toil will use the     |
 |                                  | current user name.                                 |
++----------------------------------+----------------------------------------------------+
+| TOIL_KUBERNETES_SERVICE_ACCOUNT  | A service account name to apply when creating      |
+|                                  | Kubernetes pods.                                   |
 +----------------------------------+----------------------------------------------------+
 | KUBE_WATCH_ENABLED               | A boolean variable that allows for users           |
 |                                  | to utilize kubernetes watch stream feature         |
@@ -182,9 +186,9 @@ There are several environment variables that affect the way Toil runs.
 |                                  | used.                                              |
 +----------------------------------+----------------------------------------------------+
 | TOIL_OWNER_TAG                   | This will tag cloud resources with a tag reading:  |
-|                                  | "Owner: $TOIL_OWNER_TAG".  Currently only on AWS   |
-|                                  | buckets, this is an internal UCSC flag to stop a   |
-|                                  | bot we have that terminates untagged resources.    |
+|                                  | "Owner: $TOIL_OWNER_TAG". This is used internally  |
+|                                  | at UCSC to stop a bot we have that terminates      |
+|                                  | untagged resources.                                |
 +----------------------------------+----------------------------------------------------+
 | SINGULARITY_DOCKER_HUB_MIRROR    | An http or https URL for the Singularity wrapper   |
 |                                  | in the Toil Docker container to use as a mirror    |
