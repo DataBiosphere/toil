@@ -852,12 +852,42 @@ class ToilPathMapper(PathMapper):
                     # If we didn't download something that is a toilfile:
                     # reference, we just pass that along.
 
-                    logger.debug(
-                        "ToilPathMapper adding file mapping %s -> %s", deref, tgt
-                    )
-                    self._pathmap[path] = MapperEnt(
-                        deref, tgt, "WritableFile" if copy else "File", staged
-                    )
+                    """Link or copy files to their targets. Create them as needed."""
+                    targets = {}  # type: Dict[str, MapperEnt]
+                    for _, value in self._pathmap.items():
+                        # If the target already exists in the pathmap, it means we have a conflict.  But we didn't change tgt to reflect new name.
+                        new_target = value.target.rpartition("_")[0]
+                        if value.target == tgt:  # Conflict detected in the pathmap
+                            new_target = tgt
+                        if new_target and new_target == tgt:
+                            i = 2
+                            new_tgt = f"{tgt}_{i}"
+                            while new_tgt in targets:
+                                i += 1
+                                new_tgt = f"{tgt}_{i}"
+                            targets[new_tgt] = new_tgt
+
+                    for _, value_conflict in targets.items():
+                        logger.debug(
+                            "ToilPathMapper adding file mapping for conflict %s -> %s",
+                            deref,
+                            value_conflict,
+                        )
+                        self._pathmap[path] = MapperEnt(
+                            deref,
+                            value_conflict,
+                            "WritableFile" if copy else "File",
+                            staged,
+                        )
+                    # No conflicts detected so we can write out the original name.
+                    if not targets:
+                        logger.debug(
+                            "ToilPathMapper adding file mapping %s -> %s", deref, tgt
+                        )
+
+                        self._pathmap[path] = MapperEnt(
+                            deref, tgt, "WritableFile" if copy else "File", staged
+                        )
 
             # Handle all secondary files that need to be next to this one.
             self.visitlisting(

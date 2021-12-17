@@ -669,6 +669,34 @@ class CWLSmallTests(ToilTest):
         assert b'Finished toil run successfully' in stderr
         assert p.returncode == 0
 
+
+    def test_workflow_echo_string_scatter_capture_stdout(self):
+        toil = 'toil-cwl-runner'
+        jobstore = f'--jobStore=file:explicit-local-jobstore-{uuid.uuid4()}'
+        option_1 = '--strict-memory-limit'
+        option_2 = '--force-docker-pull'
+        option_3 = '--clean=always'
+        cwl = os.path.join(os.path.dirname(__file__), 'echo_string_scatter_capture_stdout.cwl')
+        cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
+        log.debug(f'Now running: {" ".join(cmd)}')
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = p.communicate()
+        outputs = json.loads(stdout)
+        out_list = outputs["list_out"]
+        assert len(out_list) == 2, f"outList shoud have two file elements {out_list}"
+        out_base = outputs["list_out"][0]
+        # This is a test on the scatter functionality and stdout.
+        # Each value of scatter should generate a separate file in the output.
+        for index, file in enumerate(out_list):
+            if index > 0:
+                new_file_loc = out_base["location"] + f'_{index + 1}'
+            else:
+                new_file_loc = out_base["location"]
+            assert new_file_loc == file['location'], f"Toil should have detected conflicts for these stdout files {new_file_loc} and {file}"
+
+        assert b'Finished toil run successfully' in stderr
+        assert p.returncode == 0
+
     def test_visit_top_cwl_class(self):
         structure = {
             'class': 'Directory',
