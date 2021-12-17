@@ -127,8 +127,7 @@ print(heredoc('''
     RUN sed -i "s/platform.linux_distribution()/('Ubuntu', '16.04', 'xenial')/g" /usr/lib/python3/dist-packages/pip/download.py
 
     # The stock pip is too old and can't install from sdist with extras
-    RUN curl https://bootstrap.pypa.io/get-pip.py | python
-    RUN curl https://bootstrap.pypa.io/get-pip.py | {python}
+    # RUN curl https://bootstrap.pypa.io/get-pip.py | {python}
 
     # Default setuptools is too old
     RUN {pip} install --upgrade setuptools==45
