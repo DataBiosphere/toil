@@ -80,7 +80,7 @@ print(heredoc('''
     # We can't use a newwe Ubuntu until we no longer need Mesos
     FROM ubuntu:16.04
 
-    ARG TARGETARCH
+    ENV TARGETARCH=amd64
 
     RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install apt-transport-https ca-certificates software-properties-common && apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -130,16 +130,39 @@ print(heredoc('''
     # RUN curl https://bootstrap.pypa.io/get-pip.py | {python}
 
     # Default setuptools is too old
-    RUN {pip} install --upgrade setuptools==45
+    # RUN {pip} install --upgrade setuptools==45
+    
+    RUN apt update
 
+    RUN apt install -y python3.8-dev python3.8-distutils python3-pip
+    
+    RUN export PYTHON_PATH=$(which python3) \
+        && rm ${{PYTHON_PATH}} \
+        && ln -s $(which python3.8) ${{PYTHON_PATH}} \
+        && curl https://bootstrap.pypa.io/get-pip.py | python3 \
+        && python3.8 -m pip install --upgrade setuptools==45
+
+    
+
+    
+    #RUN curl https://bootstrap.pypa.io/get-pip.py | python3
+    
     # Include virtualenv, as it is still the recommended way to deploy pipelines
-    RUN {pip} install --upgrade virtualenv==20.0.
+    RUN python3.8 -m pip install --upgrade virtualenv==20.8.1
+
 
     # Install s3am (--never-download prevents silent upgrades to pip, wheel and setuptools)
-    RUN virtualenv --python {python} --never-download /home/s3am \
-        && curl https://bootstrap.pypa.io/get-pip.py | {python}\
-        && /home/s3am/bin/pip install s3am==2.0 \
-        && ln -s /home/s3am/bin/s3am /usr/local/bin/
+    RUN virtualenv --python {python} --never-download /home/s3am
+    RUN curl https://bootstrap.pypa.io/get-pip.py | {python}
+    
+    RUN /home/s3am/bin/pip install s3am==2.0 
+
+    RUN wget https://bootstrap.pypa.io/get-pip.py
+    RUN python3.8 get-pip.py
+
+    RUN ln -s /home/s3am/bin/s3am /usr/local/bin/
+
+    RUN ln -s /usr/bin/pip /usr/bin/pip3
 
     # Install statically linked version of docker client
     RUN curl https://download.docker.com/linux/static/stable/$(if [ $TARGETARCH = amd64 ] ; then echo x86_64 ; else echo aarch64 ; fi)/docker-18.06.1-ce.tgz \
@@ -148,7 +171,7 @@ print(heredoc('''
         && /usr/local/bin/docker -v
 
     # Fix for Mesos interface dependency missing on ubuntu
-    RUN {pip} install protobuf==3.0.0
+    RUN /home/s3am/bin/pip install protobuf==3.0.0
 
     # Fix for https://issues.apache.org/jira/browse/MESOS-3793
     ENV MESOS_LAUNCHER=posix
@@ -177,7 +200,7 @@ print(heredoc('''
 
     # This component changes most frequently and keeping it last maximizes Docker cache hits.
     COPY {sdistName} .
-    RUN {pip} install {sdistName}[all]
+    RUN /home/s3am/bin/pip install {sdistName}[all]
     RUN rm {sdistName}
 
     # We intentionally inherit the default ENTRYPOINT and CMD from the base image, to the effect
