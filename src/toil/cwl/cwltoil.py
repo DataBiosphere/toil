@@ -853,7 +853,7 @@ class ToilPathMapper(PathMapper):
                     # reference, we just pass that along.
 
                     """Link or copy files to their targets. Create them as needed."""
-                    targets = {}  # type: Dict[str, MapperEnt]
+                    targets: Dict[str, str] = {}
                     for _, value in self._pathmap.items():
                         # If the target already exists in the pathmap, it means we have a conflict.  But we didn't change tgt to reflect new name.
                         new_target = value.target.rpartition("_")[0]
