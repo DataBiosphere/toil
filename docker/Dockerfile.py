@@ -127,10 +127,10 @@ print(heredoc('''
     RUN sed -i "s/platform.linux_distribution()/('Ubuntu', '16.04', 'xenial')/g" /usr/lib/python3/dist-packages/pip/download.py
 
     # The stock pip is too old and can't install from sdist with extras
-    RUN {pip} install --upgrade pip==21.0.1
+    RUN {pip} install --upgrade pip==21.3.1
 
     # Default setuptools is too old
-    RUN {pip} install --upgrade setuptools==45
+    RUN {pip} install --upgrade setuptools==59.7.0
 
     # Include virtualenv, as it is still the recommended way to deploy pipelines
     RUN {pip} install --upgrade virtualenv==20.0.
