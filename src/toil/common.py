@@ -42,8 +42,7 @@ from typing import (
     Tuple,
     Type,
     TypeVar,
-    Union,
-    cast,
+    Union
 )
 from urllib.parse import urlparse
 
@@ -108,7 +107,7 @@ class Config:
         self.jobStore is the same, e.g. when a job store name is reused after a previous run has
         finished successfully and its job store has been clean up."""
         self.workflowAttemptNumber: int = 0
-        self.jobStore = None
+        self.jobStore: Optional[str] = None  # type: ignore
         self.logLevel: str = logging.getLevelName(root_logger.getEffectiveLevel())
         self.workDir: Optional[str] = None
         self.noStdOutErr: bool = False
