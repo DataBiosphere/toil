@@ -1,4 +1,4 @@
-cwltool==3.1.20211107152837
+git+https://github.com/common-workflow-language/cwltool.git@609317ad7b68d527199d2cb83e0039a51a81a452#egg=cwltool
 galaxy-tool-util
 ruamel.yaml==0.17.16
 ruamel.yaml.clib>=0.2.6

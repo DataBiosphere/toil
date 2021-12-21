@@ -27,6 +27,7 @@ import json
 import logging
 import os
 import shutil
+import signal
 import socket
 import stat
 import sys
@@ -1579,7 +1580,7 @@ def upload_file(
             cast(str, file_metadata["path"])
         )
     if location.startswith("file://") and not os.path.isfile(
-        location[len("file://") :]
+        location[len("file://"):]
     ):
         if skip_broken:
             return
@@ -1606,6 +1607,15 @@ def remove_empty_listings(rec: CWLObjectType) -> None:
     if "listing" in rec and rec["listing"] == []:
         del rec["listing"]
         return
+
+
+def terminate_cwltool_processes() -> None:
+    """
+    Terminate the processes spawned by cwltool. This should be called after
+    cwltool is used.
+    """
+    # Since we aren't using cwltool from its entrypoint, we need to manually trigger the process cleanup code.
+    cwltool.main._terminate_processes()
 
 
 class ResolveIndirect(Job):
@@ -1920,6 +1930,13 @@ class CWLJob(Job):
         cwllogger.removeHandler(defaultStreamHandler)
         cwllogger.setLevel(logger.getEffectiveLevel())
 
+        # Register a sigterm handler to clean up processes.
+        # We also need to make sure that this happens in every worker process.
+        def signal_handler(signum: int, _: Any) -> None:
+            terminate_cwltool_processes()
+            sys.exit(signum)
+        signal.signal(signal.SIGTERM, signal_handler)
+
         logger.debug("Loaded order: %s", self.cwljob)
 
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
@@ -2012,6 +2029,9 @@ class CWLJob(Job):
         for t, fd in pipe_threads:
             os.close(fd)
             t.join()
+
+        # Clean up child processes spawned by cwltool
+        terminate_cwltool_processes()
 
         # Get ahold of the filesystem
         fs_access = runtime_context.make_fs_access(runtime_context.basedir)
@@ -3455,6 +3475,9 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     return CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
                 else:
                     raise
+
+        # Clean up child processes spawned by cwltool
+        terminate_cwltool_processes()
 
         # Now the workflow has completed. We need to make sure the outputs (and
         # inputs) end up where the user wants them to be.
