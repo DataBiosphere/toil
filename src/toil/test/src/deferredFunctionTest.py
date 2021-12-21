@@ -22,13 +22,11 @@ import psutil
 from toil.job import Job
 from toil.leader import FailedJobsException
 from toil.lib.threading import cpu_count
-from toil.test import ToilTest, slow, travis_test
+from toil.test import ToilTest, slow
 
 
 class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
-    """
-    Test the deferred function system.
-    """
+    """Test the deferred function system."""
     # This determines what job store type to use.
     jobStoreType = 'file'
 
@@ -53,7 +51,6 @@ class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
         self.options.logFile = os.path.join(testDir, 'logFile')
 
     # Tests for the various defer possibilities
-    @travis_test
     def testDeferredFunctionRunsWithMethod(self):
         """
         Refer docstring in _testDeferredFunctionRuns.
@@ -61,7 +58,6 @@ class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
         """
         self._testDeferredFunctionRuns(_writeNonLocalFilesMethod)
 
-    @travis_test
     def testDeferredFunctionRunsWithClassMethod(self):
         """
         Refer docstring in _testDeferredFunctionRuns.
@@ -69,7 +65,6 @@ class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
         """
         self._testDeferredFunctionRuns(_writeNonLocalFilesClassMethod)
 
-    @travis_test
     def testDeferredFunctionRunsWithLambda(self):
         """
         Refer docstring in _testDeferredFunctionRuns.
@@ -169,7 +164,6 @@ class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
         except FailedJobsException as e:
             pass
 
-    @travis_test
     def testBatchSystemCleanupCanHandleWorkerDeaths(self):
         """
         Create a non-local files. Create a job that registers a deferred job to delete the file

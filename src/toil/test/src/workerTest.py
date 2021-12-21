@@ -15,7 +15,7 @@
 from toil.common import Config
 from toil.job import CheckpointJobDescription, JobDescription
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.test import ToilTest, travis_test
+from toil.test import ToilTest
 from toil.worker import nextChainable
 
 
@@ -30,7 +30,6 @@ class WorkerTests(ToilTest):
         self.jobStore.initialize(self.config)
         self.jobNumber = 0
 
-    @travis_test
     def testNextChainable(self):
         """Make sure chainable/non-chainable jobs are identified correctly."""
         def createTestJobDesc(memory, cores, disk, preemptable, checkpoint):

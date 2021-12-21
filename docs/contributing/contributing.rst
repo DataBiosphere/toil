@@ -375,7 +375,7 @@ Pull Requests
 
   .. _Draft Changelog: https://github.com/DataBiosphere/toil/wiki/Draft-Changelog
 
-* Pull requests will not be merged unless Travis and Gitlab CI tests pass.
+* Pull requests will not be merged unless CI tests pass.
   Gitlab tests are only run on code in the main Toil repository on some branch,
   so it is the responsibility of the approving reviewer to make sure that pull
   requests from outside repositories are copied to branches in the main

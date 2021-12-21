@@ -19,7 +19,7 @@ import random
 from toil.common import Toil
 from toil.fileStores import FileID
 from toil.job import Job
-from toil.test import ToilTest, slow, travis_test
+from toil.test import ToilTest, slow
 
 logger = logging.getLogger(__name__)
 
@@ -32,21 +32,17 @@ class JobFileStoreTest(ToilTest):
     """
     Tests testing the methods defined in :class:toil.fileStores.abstractFileStore.AbstractFileStore.
     """
-
-    @travis_test
     def testCachingFileStore(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         with Toil(options) as workflow:
             workflow.start(Job.wrapJobFn(simpleFileStoreJob))
 
-    @travis_test
     def testNonCachingFileStore(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.disableCaching = True
         with Toil(options) as workflow:
             workflow.start(Job.wrapJobFn(simpleFileStoreJob))
 
-    @travis_test
     def _testJobFileStore(self, retryCount=0, badWorker=0.0, stringNo=1, stringLength=1000000,
                           testNo=2):
         """
