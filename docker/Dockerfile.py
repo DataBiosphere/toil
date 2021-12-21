@@ -77,7 +77,7 @@ motd = heredoc('''
 motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 
 print(heredoc('''
-    # We can't use a newwe Ubuntu until we no longer need Mesos
+    # We can't use a newer Ubuntu until we no longer need Mesos
     FROM ubuntu:16.04
 
     ARG TARGETARCH
@@ -176,7 +176,7 @@ print(heredoc('''
 
     # This component changes most frequently and keeping it last maximizes Docker cache hits.
     COPY {sdistName} .
-    RUN {pip} install {sdistName}[all]
+    RUN {pip} install --upgrade setuptools==45 && {pip} install {sdistName}[all]
     RUN rm {sdistName}
 
     # We intentionally inherit the default ENTRYPOINT and CMD from the base image, to the effect
