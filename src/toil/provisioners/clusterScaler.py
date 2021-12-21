@@ -16,15 +16,13 @@ import logging
 import os
 import time
 from collections import defaultdict
-from itertools import islice
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
 from toil.batchSystems.abstractBatchSystem import (
     AbstractBatchSystem,
     AbstractScalableBatchSystem,
     NodeInfo,
 )
-from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
 from toil.common import Config, defaultTargetTime
 from toil.job import JobDescription, ServiceJobDescription
 from toil.lib.retry import old_retry
