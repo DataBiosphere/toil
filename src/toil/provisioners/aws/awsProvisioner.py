@@ -394,7 +394,7 @@ class AWSProvisioner(AbstractProvisioner):
                 raise RuntimeError('Kubernetes requires 2 or more cores, and %s is too small' %
                                    leaderNodeType)
         self._keyName = keyName
-        self._architecture = 'arm64' if re.search(".*g.*\..*", leaderNodeType) else 'amd64'
+        self._architecture = leader_type.architecture
 
         if vpcSubnet:
             # This is where we put the leader
