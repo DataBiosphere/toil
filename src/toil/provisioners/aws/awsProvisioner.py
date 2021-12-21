@@ -15,7 +15,6 @@ import collections
 import json
 import logging
 import os
-import re
 import socket
 import string
 import textwrap

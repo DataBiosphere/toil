@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
 
-#@needs_aws_ec2
+@needs_aws_ec2
 class AMITest(ToilTest):
     @classmethod
     def setUpClass(cls):
