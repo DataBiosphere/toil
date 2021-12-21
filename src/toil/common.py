@@ -86,7 +86,6 @@ logger = logging.getLogger(__name__)
 
 class Config:
     """Class to represent configuration operations for a toil workflow run."""
-
     logFile: Optional[str]
     logRotating: bool
     cleanWorkDir: str
@@ -102,13 +101,14 @@ class Config:
     disableAutoDeployment: bool
 
     def __init__(self) -> None:
-        super().__init__()
         # Core options
         self.workflowID: Optional[str] = None
         """This attribute uniquely identifies the job store and therefore the workflow. It is
         necessary in order to distinguish between two consecutive workflows for which
         self.jobStore is the same, e.g. when a job store name is reused after a previous run has
         finished successfully and its job store has been clean up."""
+        self.workflowAttemptNumber: int = 0
+        self.jobStore = None
         self.logLevel: str = logging.getLevelName(root_logger.getEffectiveLevel())
         self.workDir: Optional[str] = None
         self.noStdOutErr: bool = False
@@ -248,12 +248,8 @@ class Config:
                     option_value = parsing_function(option_value)
                 if check_function is not None:
                     try:
-                        result = check_function(option_value)  # type: ignore
+                        check_function(option_value)  # type: ignore
                     except AssertionError:
-                        raise RuntimeError(
-                            f"The {option_name} option has an invalid value: {option_value}"
-                        )
-                    if not result:
                         raise RuntimeError(f"The {option_name} option has an invalid value: {option_value}")
                 setattr(self, option_name, option_value)
 
@@ -336,17 +332,11 @@ class Config:
             for override in overrides:
                 tokens = override.split(":")
                 if len(tokens) != 2:
-                    raise AssertionError(
-                        "Each component of --nodeStorageOverrides must be of the form <instance type>:<storage in GiB>"
-                    )
+                    raise ValueError("Each component of --nodeStorageOverrides must be of the form <instance type>:<storage in GiB>")
                 if not any(tokens[0] in n[0] for n in self.nodeTypes):
-                    raise AssertionError(
-                        "instance type in --nodeStorageOverrides must be used in --nodeTypes"
-                    )
+                    raise ValueError("Instance type in --nodeStorageOverrides must be in --nodeTypes")
                 if not tokens[1].isdigit():
-                    raise AssertionError(
-                        "storage must be an integer in --nodeStorageOverrides"
-                    )
+                    raise ValueError("storage must be an integer in --nodeStorageOverrides")
             return True
         set_option("nodeStorageOverrides", parse_str_list, check_function=check_nodestoreage_overrides)
 
