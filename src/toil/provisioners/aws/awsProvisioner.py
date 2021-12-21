@@ -15,6 +15,7 @@ import collections
 import json
 import logging
 import os
+import re
 import socket
 import string
 import textwrap
@@ -392,8 +393,8 @@ class AWSProvisioner(AbstractProvisioner):
                 # Kubernetes won't run here.
                 raise RuntimeError('Kubernetes requires 2 or more cores, and %s is too small' %
                                    leaderNodeType)
-
         self._keyName = keyName
+        self._architecture = 'arm64' if re.search(".*g.*\..*", leaderNodeType) else 'amd64'
 
         if vpcSubnet:
             # This is where we put the leader
@@ -940,7 +941,7 @@ class AWSProvisioner(AbstractProvisioner):
         :return: The AMI ID (a string like 'ami-0a9a5d2b65cce04eb') for Flatcar.
         :rtype: str
         """
-        return get_flatcar_ami(self.aws.client(self._region, 'ec2'))
+        return get_flatcar_ami(self.aws.client(self._region, 'ec2'), self._architecture)
 
     def _toNameSpace(self) -> str:
         assert isinstance(self.clusterName, (str, bytes))
