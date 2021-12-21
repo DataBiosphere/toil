@@ -692,7 +692,7 @@ class ClusterScaler:
         return numNodes
 
     def _addNodes(self, instance_type: str, numNodes: int, preemptable: bool) -> int:
-        return self.provisioner.addNodes(nodeTypes={instance_type}, numNodes=numNodes, preemptable=preemptable)
+        return self.provisioner.addNodes(nodeTypes={instance_type}, numNodes=numNodes, preemptable=preemptable)  # type: ignore
 
     def _removeNodes(
         self,
@@ -738,7 +738,7 @@ class ClusterScaler:
             nodes_to_terminate = [node for (node, nodeInfo) in filtered_nodes]
         else:
             # Without load info all we can do is sort instances by time left in billing cycle.
-            nodes_to_terminate = sorted(nodeToNodeInfo.keys(), key=lambda x: x.remainingBillingInterval())
+            nodes_to_terminate = sorted(nodeToNodeInfo.keys(), key=lambda x: x.remainingBillingInterval())  # type: ignore
             nodes_to_terminate = nodes_to_terminate[:numNodes]
         number_terminated = len(nodes_to_terminate)
         logger.debug('Terminating %i instance(s).', number_terminated)
