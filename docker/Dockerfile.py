@@ -176,7 +176,7 @@ print(heredoc('''
 
     # This component changes most frequently and keeping it last maximizes Docker cache hits.
     COPY {sdistName} .
-    RUN {pip} install --upgrade setuptools==45 && {pip} install {sdistName}[all]
+    RUN {pip} install --upgrade pip==21.3.1 && {pip} install --upgrade setuptools==45 && {pip} install {sdistName}[all]
     RUN rm {sdistName}
 
     # We intentionally inherit the default ENTRYPOINT and CMD from the base image, to the effect
