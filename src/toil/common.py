@@ -248,7 +248,7 @@ class Config:
                     option_value = parsing_function(option_value)
                 if check_function is not None:
                     try:
-                        result = check_function(option_value)
+                        result = check_function(option_value)  # type: ignore
                     except AssertionError:
                         raise RuntimeError(
                             f"The {option_name} option has an invalid value: {option_value}"
@@ -414,7 +414,7 @@ class Config:
         return self.__dict__ == other.__dict__
 
     def __hash__(self) -> int:
-        return self.__dict__.__hash__()
+        return self.__dict__.__hash__()  # type: ignore
 
 
 JOBSTORE_HELP = ("The location of the job store for the workflow.  "

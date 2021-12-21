@@ -578,9 +578,7 @@ class ClusterScaler:
             estimatedNodeCounts[nodeShape] = estimatedNodeCount
         return estimatedNodeCounts
 
-    def updateClusterSize(
-        self, estimatedNodeCounts: Dict[Shape, int]
-    ) -> Dict[Shape, int]:
+    def updateClusterSize(self, estimatedNodeCounts: Dict[Shape, int]) -> Dict[Shape, int]:
         """
         Given the desired and current size of the cluster, attempts to launch/remove instances to get to the desired size.
 
@@ -692,7 +690,7 @@ class ClusterScaler:
         return numNodes
 
     def _addNodes(self, instance_type: str, numNodes: int, preemptable: bool) -> int:
-        return self.provisioner.addNodes(nodeTypes={instance_type}, numNodes=numNodes, preemptable=preemptable)  # type: ignore
+        return self.provisioner.addNodes(nodeTypes={instance_type}, numNodes=numNodes, preemptable=preemptable)
 
     def _removeNodes(
         self,
@@ -736,9 +734,13 @@ class ClusterScaler:
                 filtered_nodes = [(node, nodeInfo) for (node, nodeInfo) in filtered_nodes if
                                   nodeInfo and nodeInfo.workers < 1]
             nodes_to_terminate = [node for (node, nodeInfo) in filtered_nodes]
+            for node in nodes_to_terminate:
+                if node.privateIP in self.ignoredNodes:
+                    # TODO: Why are we undoing what was just done above???
+                    self.leader.batchSystem.unignoreNode(node.privateIP)
         else:
             # Without load info all we can do is sort instances by time left in billing cycle.
-            nodes_to_terminate = sorted(nodeToNodeInfo.keys(), key=lambda x: x.remainingBillingInterval())  # type: ignore
+            nodes_to_terminate = sorted(nodeToNodeInfo.keys(), key=lambda x: x.remainingBillingInterval())
             nodes_to_terminate = nodes_to_terminate[:numNodes]
         number_terminated = len(nodes_to_terminate)
         logger.debug('Terminating %i instance(s).', number_terminated)
@@ -746,39 +748,39 @@ class ClusterScaler:
             if node.privateIP in self.ignoredNodes:
                 # TODO: Why are we undoing what was just done above???
                 self.ignoredNodes.remove(node.privateIP)
-                self.leader.batchSystem.unignoreNode(node.privateIP)
         self.provisioner.terminateNodes(nodes_to_terminate)
         return number_terminated
 
     def _terminateIgnoredNodes(self) -> None:
-        #Try to terminate any straggling nodes that we designated for
-        #termination, but which still has workers running
+        """
+        Terminate straggling nodes designated for termination,
+        but which still have workers running.
+        """
         nodeToNodeInfo = self.getNodes(preemptable=None)
 
-        #Remove any nodes that have already been terminated from the list
-        # of ignored nodes
+        # Remove any nodes that have already been terminated from ignored nodes
         allNodeIPs = [node.privateIP for node in nodeToNodeInfo]
         terminatedIPs = {ip for ip in self.ignoredNodes if ip not in allNodeIPs}
+
         if not isinstance(self.leader.batchSystem, AbstractScalableBatchSystem):
-            raise AssertionError()
+            raise RuntimeError('Non-scalable batch system abusing a scalable-only function.')
+
         for ip in terminatedIPs:
             self.ignoredNodes.remove(ip)
             self.leader.batchSystem.unignoreNode(ip)
 
         logger.debug("There are %i nodes being ignored by the batch system, "
-                    "checking if they can be terminated" % len(self.ignoredNodes))
-        nodeToNodeInfo = {node:nodeToNodeInfo[node] for node in nodeToNodeInfo
+                     "checking if they can be terminated" % len(self.ignoredNodes))
+        nodeToNodeInfo = {node: nodeToNodeInfo[node] for node in nodeToNodeInfo
                           if node.privateIP in self.ignoredNodes}
-        nodeToNodeInfo = {node:nodeToNodeInfo[node] for node in nodeToNodeInfo
+        nodeToNodeInfo = {node: nodeToNodeInfo[node] for node in nodeToNodeInfo
                           if nodeToNodeInfo[node] is not None and nodeToNodeInfo[node].workers < 1}
+        nodes_to_terminate = list(nodeToNodeInfo.keys())
 
-        for node in nodeToNodeInfo:
+        for node in nodes_to_terminate:
             self.ignoredNodes.remove(node.privateIP)
             self.leader.batchSystem.unignoreNode(node.privateIP)
-        if len(nodeToNodeInfo) > 0:
-            logger.debug("Terminating %i nodes that were being ignored by the batch system."
-                        "" % len(nodeToNodeInfo))
-            self.provisioner.terminateNodes(nodeToNodeInfo)
+        self.provisioner.terminateNodes(nodes_to_terminate)
 
     def chooseNodes(
             self,
@@ -937,6 +939,9 @@ class ScalerThread(ExceptionalThread):
         self.scaler.addCompletedJob(job, wallTime)
 
     def tryRun(self) -> None:
+        if self.scaler.leader.provisioner is None:
+            raise RuntimeError('No provisioner found for a scaling cluster '
+                               '(cannot access "getProvisionedWorkers").')
         while not self.stop:
             with throttle(self.scaler.config.scaleInterval):
                 try:
