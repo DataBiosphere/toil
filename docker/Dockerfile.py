@@ -82,6 +82,9 @@ print(heredoc('''
 
     ARG TARGETARCH
 
+    # make sure we don't use too new a version of setuptools (which can get out of sync with poetry and break things)
+    ENV SETUPTOOLS_USE_DISTUTILS=stdlib
+
     RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install apt-transport-https ca-certificates software-properties-common && apt-get clean && rm -rf /var/lib/apt/lists/*
 
     RUN echo "deb http://repos.mesosphere.io/ubuntu/ xenial main" \
@@ -133,7 +136,7 @@ print(heredoc('''
     RUN {pip} install --upgrade setuptools==59.7.0
 
     # Include virtualenv, as it is still the recommended way to deploy pipelines
-    RUN {pip} install --upgrade virtualenv==20.0.
+    RUN {pip} install --upgrade virtualenv==20.0.17
 
     # Install s3am (--never-download prevents silent upgrades to pip, wheel and setuptools)
     RUN virtualenv --python {python} --never-download /home/s3am \
@@ -176,7 +179,7 @@ print(heredoc('''
 
     # This component changes most frequently and keeping it last maximizes Docker cache hits.
     COPY {sdistName} .
-    RUN {pip} install --upgrade pip==21.3.1 && {pip} install --upgrade setuptools==45 && {pip} install {sdistName}[all]
+    RUN {pip} install {sdistName}[all]
     RUN rm {sdistName}
 
     # We intentionally inherit the default ENTRYPOINT and CMD from the base image, to the effect
