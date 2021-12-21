@@ -1333,8 +1333,6 @@ class Toil(ContextManager["Toil"]):
         :param rootJob: The root job for the workflow.
         """
         logProcessContext(self.config)
-        if not self._provisioner:
-            raise AssertionError("Must set self._provisioner to call _runMainLoop.")
 
         with RealtimeLogger(self._batchSystem,
                             level=self.options.logLevel if self.options.realTimeLogging else None):
@@ -1349,9 +1347,6 @@ class Toil(ContextManager["Toil"]):
 
     def _shutdownBatchSystem(self) -> None:
         """Shuts down current batch system if it has been created."""
-        if self._batchSystem is None:
-            raise AssertionError()
-
         startTime = time.time()
         logger.debug('Shutting down batch system ...')
         self._batchSystem.shutdown()
