@@ -135,11 +135,11 @@ class Config:
         self.nodeTypes: List[Tuple[Set[str], Optional[float]]] = []
         self.minNodes = None
         self.maxNodes = [10]
-        self.targetTime = defaultTargetTime
-        self.betaInertia = 0.1
-        self.scaleInterval = 60
-        self.preemptableCompensation = 0.0
-        self.nodeStorage = 50
+        self.targetTime: float = defaultTargetTime
+        self.betaInertia: float = 0.1
+        self.scaleInterval: int = 60
+        self.preemptableCompensation: float = 0.0
+        self.nodeStorage: int = 50
         self.nodeStorageOverrides: List[str] = []
         self.metrics: bool = False
 

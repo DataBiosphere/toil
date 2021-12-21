@@ -728,7 +728,8 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         return results
 
     def terminateNodes(self, nodes):
-        self._removeNodes(nodes)
+        if nodes:
+            self._removeNodes(nodes)
 
     def remainingBillingInterval(self, node):
         pass
@@ -770,7 +771,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         return nodes
 
     # AbstractProvisioner functionality
-    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable):
+    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable) -> int:
         nodeType = next(iter(nodeTypes))
         self._addNodes(numNodes=numNodes, nodeType=nodeType, preemptable=preemptable)
         return self.getNumberOfNodes(nodeType=nodeType, preemptable=preemptable)
@@ -843,10 +844,8 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         self.maxWorkers[nodeShape] = max(self.maxWorkers[nodeShape], len(self.workers[nodeShape]))
 
     def _removeNodes(self, nodes):
-        logger.debug("Removing nodes. %s workers and %s to terminate.", len(self.nodesToWorker),
-                    len(nodes))
+        logger.debug("Removing nodes. %s workers and %s to terminate.", len(self.nodesToWorker), len(nodes))
         for node in nodes:
-            logger.debug("removed node")
             try:
                 nodeShape = self.getNodeShape(node.nodeType, node.preemptable)
                 worker = self.nodesToWorker.pop(node)

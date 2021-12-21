@@ -60,7 +60,7 @@ class BinPackedFit:
     """
 
     def __init__(
-        self, nodeShapes: List[Shape], targetTime: int = defaultTargetTime
+        self, nodeShapes: List[Shape], targetTime: float = defaultTargetTime
     ) -> None:
         self.nodeShapes = sorted(nodeShapes)
         self.targetTime = targetTime
@@ -196,7 +196,7 @@ class NodeReservation:
                            self.shape.preemptable)
 
     def attemptToAddJob(
-        self, jobShape: Shape, nodeShape: Shape, targetTime: int
+        self, jobShape: Shape, nodeShape: Shape, targetTime: float
     ) -> bool:
         """
         Attempt to pack a job into this reservation timeslice and/or the reservations after it.
@@ -304,7 +304,7 @@ def split(
 
 
 def binPacking(
-    nodeShapes: List[Shape], jobShapes: List[Shape], goalTime: int
+    nodeShapes: List[Shape], jobShapes: List[Shape], goalTime: float
 ) -> Dict[Shape, int]:
     bpf = BinPackedFit(nodeShapes, goalTime)
     bpf.binPack(jobShapes)
@@ -333,7 +333,7 @@ class ClusterScaler:
         self.totalAvgRuntime = 0.0
         self.totalJobsCompleted = 0
 
-        self.targetTime = config.targetTime
+        self.targetTime: float = config.targetTime
         if self.targetTime <= 0:
             raise RuntimeError('targetTime (%s) must be a positive integer!' % self.targetTime)
         self.betaInertia = config.betaInertia
@@ -707,23 +707,21 @@ class ClusterScaler:
             # the batch system to report stale nodes for which the corresponding instance was
             # terminated already. There can also be instances that the batch system doesn't have
             # nodes for yet. We'll ignore those, too, unless forced.
+            # TODO: This ignores/overrides the input arg, do we really want to do that???
             nodeToNodeInfo = self.getNodes(preemptable)
             # Filter down to nodes of the correct node type
-            nodeToNodeInfo = {
-                node: nodeToNodeInfo[node]
-                for node in nodeToNodeInfo
-                if node.nodeType == instance_type
-            }
+            nodeToNodeInfo = {node: nodeToNodeInfo[node] for node in nodeToNodeInfo if
+                              node.nodeType == instance_type}
 
-            nodesToTerminate = self.chooseNodes(nodeToNodeInfo, force, preemptable=preemptable)
-
-            nodesToTerminate = nodesToTerminate[:numNodes]
+            filtered_nodes = self.chooseNodes(nodeToNodeInfo, preemptable)
+            filtered_nodes = filtered_nodes[:numNodes]
 
             # Join nodes and instances on private IP address.
-            logger.debug('Nodes considered to terminate: %s', ' '.join(map(str, nodeToNodeInfo)))
+            logger.debug('Nodes considered to terminate: %s',
+                         ' '.join(map(str, nodeToNodeInfo)))
 
-            #Tell the batch system to stop sending jobs to these nodes
-            for (node, nodeInfo) in nodesToTerminate:
+            # Tell the batch system to stop sending jobs to these nodes
+            for (node, nodeInfo) in filtered_nodes:
                 self.ignoredNodes.add(node.privateIP)
                 self.leader.batchSystem.ignoreNode(node.privateIP)
 
@@ -732,28 +730,22 @@ class ClusterScaler:
                 # will be terminated in _removeIgnoredNodes later on
                 # once all jobs have finished, but they will be ignored by
                 # the batch system and cluster scaler from now on
-                nodesToTerminate = [
-                    (node, nodeInfo)
-                    for (node, nodeInfo) in nodesToTerminate
-                    if nodeInfo is not None and nodeInfo.workers < 1
-                ]
-            nodesToTerminate = {node: nodeInfo for (node, nodeInfo) in nodesToTerminate}  # type: ignore[assignment]  # FIXME
-            nodeToNodeInfo = nodesToTerminate  # type: ignore[assignment]  # FIXME
+                filtered_nodes = [(node, nodeInfo) for (node, nodeInfo) in filtered_nodes if
+                                  nodeInfo and nodeInfo.workers < 1]
+            nodes_to_terminate = [node for (node, nodeInfo) in filtered_nodes]
         else:
             # Without load info all we can do is sort instances by time left in billing cycle.
-            nodeToNodeInfo = sorted(nodeToNodeInfo, key=lambda x: x.remainingBillingInterval())  # type: ignore[assignment]  # FIXME
-            nodeToNodeInfo = [instance for instance in islice(nodeToNodeInfo, numNodes)]  # type: ignore[assignment]  # FIXME
-        logger.debug('Terminating %i instance(s).', len(nodeToNodeInfo))
-        if not isinstance(self.leader.batchSystem, AbstractScalableBatchSystem):
-            raise AssertionError()
-        if nodeToNodeInfo:
-            for node in nodeToNodeInfo:
-                if node.privateIP in self.ignoredNodes:
-                    self.ignoredNodes.remove(node.privateIP)
-                    self.leader.batchSystem.unignoreNode(node.privateIP)
-            self.provisioner.terminateNodes(nodeToNodeInfo)  # type: ignore[arg-type]
-            # FIXME: this is also a real error, what is going on here?
-        return len(nodeToNodeInfo)
+            nodes_to_terminate = sorted(nodeToNodeInfo.keys(), key=lambda x: x.remainingBillingInterval())
+            nodes_to_terminate = nodes_to_terminate[:numNodes]
+        number_terminated = len(nodes_to_terminate)
+        logger.debug('Terminating %i instance(s).', number_terminated)
+        for node in nodes_to_terminate:
+            if node.privateIP in self.ignoredNodes:
+                # TODO: Why are we undoing what was just done above???
+                self.ignoredNodes.remove(node.privateIP)
+                self.leader.batchSystem.unignoreNode(node.privateIP)
+        self.provisioner.terminateNodes(nodes_to_terminate)
+        return number_terminated
 
     def _terminateIgnoredNodes(self) -> None:
         #Try to terminate any straggling nodes that we designated for
@@ -783,15 +775,13 @@ class ClusterScaler:
         if len(nodeToNodeInfo) > 0:
             logger.debug("Terminating %i nodes that were being ignored by the batch system."
                         "" % len(nodeToNodeInfo))
-            self.provisioner.terminateNodes(nodeToNodeInfo)  # type: ignore[arg-type]
+            self.provisioner.terminateNodes(nodeToNodeInfo)
             # FIXME: this is also a real error, what is going on here?
 
     def chooseNodes(
-        self,
-        nodeToNodeInfo: Dict["Node", NodeInfo],
-        force: bool = False,
-        preemptable: bool = False,
-    ) -> List[Tuple["Node", NodeInfo]]:
+            self,
+            nodeToNodeInfo: Dict["Node", NodeInfo],
+            preemptable: bool = False) -> List[Tuple["Node", NodeInfo]]:
         nodesToTerminate = []
         for node, nodeInfo in list(nodeToNodeInfo.items()):
             if node is None:
@@ -830,37 +820,6 @@ class ClusterScaler:
                 f"AbstractScalableBatchSystem; but is {type(self.leader.batchSystem)}"
             )
         batchSystem = self.leader.batchSystem
-
-        def _getInfo(allMesosNodes: Dict[str, NodeInfo], ip: str) -> NodeInfo:
-            info = None
-            try:
-                info = allMesosNodes[ip]
-            except KeyError:
-                # never seen by mesos - 1 of 3 possibilities:
-                # 1) node is still launching mesos & will come online soon
-                # 2) no jobs have been assigned to this worker. This means the executor was never
-                #    launched, so we don't even get an executorInfo back indicating 0 workers running
-                # 3) mesos crashed before launching, worker will never come online
-                # In all 3 situations it's safe to fake executor info with 0 workers, since in all
-                # cases there are no workers running.
-                info = NodeInfo(coresTotal=1, coresUsed=0, requestedCores=0,
-                                memoryTotal=1, memoryUsed=0, requestedMemory=0,
-                                workers=0)
-            else:
-                # Node was tracked but we haven't seen this in the last 10 minutes
-                inUse = batchSystem.nodeInUse(ip)
-                if not inUse and info:
-                    # The node hasn't reported in the last 10 minutes & last we know
-                    # there weren't any tasks running. We will fake executorInfo with no
-                    # worker to reflect this, since otherwise this node will never
-                    # be considered for termination
-                    info.workers = 0
-                else:
-                    pass
-                    # despite the node not reporting to mesos jobs may still be running
-                    # so we can't terminate the node
-            return info
-
         allMesosNodes = batchSystem.getNodes(preemptable, timeout=None)
         recentMesosNodes = batchSystem.getNodes(preemptable)
         provisionerNodes = self.provisioner.getProvisionedWorkers(preemptable=preemptable)
@@ -875,10 +834,33 @@ class ClusterScaler:
         for node, ip in ((node, node.privateIP) for node in provisionerNodes):
             if ip not in recentMesosNodes:
                 logger.debug("Worker node at %s is not reporting executor information", ip)
-                # we don't have up to date information about the node
-                info = _getInfo(allMesosNodes, ip)
+
+                # get up-to-date information about the node, if available
+                info = allMesosNodes.get(ip)
+
+                # info was found, but the node is not in use
+                if not batchSystem.nodeInUse(ip) and info:
+                    # Node hasn't reported in the last 10 minutes & last we know there weren't
+                    # any tasks running.  We will fake executorInfo with no worker to reflect
+                    # this, since otherwise this node will never be considered for termination.
+                    info.workers = 0
+
+                # info was not found about the node
+                if not info:
+                    # Never seen by mesos - 1 of 3 possibilities:
+                    # 1) Node is still launching mesos & will come online soon.
+                    # 2) No jobs have been assigned to this worker. This means the executor
+                    #    was never launched, so we don't even get an executorInfo back indicating
+                    #    0 workers running.
+                    # 3) Mesos crashed before launching, worker will never come online.
+                    #
+                    # In all 3 situations it's safe to fake executor info with 0 workers,
+                    # since in all cases there are no workers running.
+                    info = NodeInfo(coresTotal=1, coresUsed=0, requestedCores=0,
+                                    memoryTotal=1, memoryUsed=0, requestedMemory=0,
+                                    workers=0)
             else:
-                # mesos knows about the ip & we have up to date information - easy!
+                # mesos knows about the ip & we have up-to-date information - easy!
                 info = recentMesosNodes[ip]
             # add info to dict to return
             nodeToInfo[node] = info
