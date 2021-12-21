@@ -334,7 +334,6 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 # The group is not only gone but reused
                 pass
 
-
     def _pollForDoneChildrenIn(self, pid_to_popen):
         """
         See if any children represented in the given dict from PID to Popen
@@ -569,31 +568,6 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             # Report if the job failed and we didn't kill it.
             # If we killed it then it shouldn't show up in the queue.
             self.outputQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=statusCode, wallTime=time.time() - info.time, exitReason=None))
-
-        # Make absolutely sure all processes in the group have received their
-        # kill signals and been cleaned up.
-        # TODO: this opens a PGID reuse risk; we reaped the process and its
-        # PGID may have been re-used. But it probably hasn't been and we
-        # definitely want to make sure all its children died before saying the
-        # job is done. Some might not be dead yet if we don't do this.
-        # TODO: can we safely do this before reaping? Or would we sit forever
-        # signaling a dead but unreaped process?
-        try:
-            while True:
-                # Send a kill to the group again, to see if anything in it
-                # is still alive. Our first kill might not have been
-                # delivered yet.
-                os.killpg(pid, signal.SIGKILL)
-                # If that worked it is still alive, so wait for the kernel
-                # to stop fooling around and kill it.
-                log.warning('Sent redundant job completion kill to surviving process group %s known to batch system %s', pid, id(self))
-                time.sleep(0.1)
-        except ProcessLookupError:
-            # It is dead already
-            pass
-        except PermissionError:
-            # It isn't ours actually. Ours is dead.
-            pass
 
         # Free up the job's resources.
         self.coreFractions.release(coreFractions)
