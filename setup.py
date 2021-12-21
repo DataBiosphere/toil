@@ -120,6 +120,7 @@ def run_setup():
 def import_version():
     """Return the module object for src/toil/version.py, generate from the template if required."""
     if not os.path.exists('src/toil/version.py'):
+        cwltool_version = "3.1.20211107152837"
         for req in get_requirements("cwl"):
             # Determine cwltool version from requirements file
             if req.startswith("cwltool=="):
