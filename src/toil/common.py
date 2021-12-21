@@ -89,7 +89,6 @@ class Config:
 
     logFile: Optional[str]
     logRotating: bool
-    workDir: str
     cleanWorkDir: str
     maxLocalJobs: int
     runCwlInternalJobsOnWorkers: bool
@@ -111,6 +110,7 @@ class Config:
         self.jobStore is the same, e.g. when a job store name is reused after a previous run has
         finished successfully and its job store has been clean up."""
         self.logLevel: str = logging.getLevelName(root_logger.getEffectiveLevel())
+        self.workDir: Optional[str] = None
         self.noStdOutErr: bool = False
         self.stats: bool = False
 
@@ -280,7 +280,7 @@ class Config:
         # TODO: LOG LEVEL STRING
         set_option("workDir")
         if self.workDir is not None:
-            self.workDir: Optional[str] = os.path.abspath(self.workDir)
+            self.workDir = os.path.abspath(self.workDir)
             if not os.path.exists(self.workDir):
                 raise RuntimeError(f"The path provided to --workDir ({self.workDir}) does not exist.")
 
@@ -414,7 +414,7 @@ class Config:
         return self.__dict__ == other.__dict__
 
     def __hash__(self) -> int:
-        return self.__dict__.__hash__()  # type: ignore[misc,no-any-return]
+        return self.__dict__.__hash__()
 
 
 JOBSTORE_HELP = ("The location of the job store for the workflow.  "

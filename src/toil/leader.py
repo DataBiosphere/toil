@@ -23,7 +23,7 @@ import os
 import pickle
 import sys
 import time
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Union
 
 import enlighten
 
@@ -122,7 +122,7 @@ class Leader:
         self,
         config: Config,
         batchSystem: AbstractBatchSystem,
-        provisioner: AbstractProvisioner,
+        provisioner: Optional[AbstractProvisioner],
         jobStore: AbstractJobStore,
         rootJob: JobDescription,
         jobCache: Optional[Dict[Union[str, TemporaryID], JobDescription]] = None,

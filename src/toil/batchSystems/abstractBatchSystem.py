@@ -64,7 +64,7 @@ class UpdatedBatchJobInfo(NamedTuple):
 
 # Information required for worker cleanup on shutdown of the batch system.
 class WorkerCleanupInfo(NamedTuple):
-    workDir: str
+    workDir: Optional[str]
     """workdir path (where the cache would go)"""
 
     workflowID: str

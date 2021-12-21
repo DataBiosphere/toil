@@ -389,8 +389,10 @@ class ClusterScaler:
         #Node shape to number of currently provisioned nodes
         totalNodes: Dict[Shape, int] = defaultdict(int)
         if isinstance(leader.batchSystem, AbstractScalableBatchSystem):
+            if leader.provisioner is None:
+                raise AssertionError()
             for preemptable in (True, False):
-                nodes = []
+                nodes: List[Node] = []
                 for nodeShape, instance_type in self.nodeShapeToType.items():
                     nodes_thisType = leader.provisioner.getProvisionedWorkers(instance_type=instance_type,
                                                                               preemptable=preemptable)
@@ -710,6 +712,7 @@ class ClusterScaler:
             # TODO: This ignores/overrides the input arg, do we really want to do that???
             nodeToNodeInfo = self.getNodes(preemptable)
             # Filter down to nodes of the correct node type
+
             nodeToNodeInfo = {node: nodeToNodeInfo[node] for node in nodeToNodeInfo if
                               node.nodeType == instance_type}
 
@@ -776,7 +779,6 @@ class ClusterScaler:
             logger.debug("Terminating %i nodes that were being ignored by the batch system."
                         "" % len(nodeToNodeInfo))
             self.provisioner.terminateNodes(nodeToNodeInfo)
-            # FIXME: this is also a real error, what is going on here?
 
     def chooseNodes(
             self,
@@ -814,14 +816,15 @@ class ClusterScaler:
                If None, all nodes will be returned.
 
         """
+        from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
+
         if not isinstance(self.leader.batchSystem, MesosBatchSystem):
             raise AssertionError(
                 "self.leader.batchSystem is the wrong type, should be "
                 f"AbstractScalableBatchSystem; but is {type(self.leader.batchSystem)}"
             )
-        batchSystem = self.leader.batchSystem
-        allMesosNodes = batchSystem.getNodes(preemptable, timeout=None)
-        recentMesosNodes = batchSystem.getNodes(preemptable)
+        allMesosNodes = self.leader.batchSystem.getNodes(preemptable, timeout=None)
+        recentMesosNodes = self.leader.batchSystem.getNodes(preemptable)
         provisionerNodes = self.provisioner.getProvisionedWorkers(preemptable=preemptable)
 
         if len(recentMesosNodes) != len(provisionerNodes):
@@ -839,7 +842,7 @@ class ClusterScaler:
                 info = allMesosNodes.get(ip)
 
                 # info was found, but the node is not in use
-                if not batchSystem.nodeInUse(ip) and info:
+                if not self.leader.batchSystem.nodeInUse(ip) and info:
                     # Node hasn't reported in the last 10 minutes & last we know there weren't
                     # any tasks running.  We will fake executorInfo with no worker to reflect
                     # this, since otherwise this node will never be considered for termination.
@@ -890,7 +893,7 @@ class ScalerThread(ExceptionalThread):
     """
 
     def __init__(
-        self, provisioner: AbstractProvisioner, leader: Leader, config: Config
+        self, provisioner: AbstractProvisioner, leader: "Leader", config: Config
     ) -> None:
         """
         :param ClusterScaler scaler: the parent class
@@ -950,10 +953,14 @@ class ScalerThread(ExceptionalThread):
                     for nodeShape in self.scaler.nodeShapes:
                         instance_type = self.scaler.nodeShapeToType[nodeShape]
                         currentNodeCounts[nodeShape] = len(
-                            self.scaler.leader.provisioner.getProvisionedWorkers(instance_type=instance_type,
-                                                                                 preemptable=nodeShape.preemptable))
-                    estimatedNodeCounts = self.scaler.getEstimatedNodeCounts(queuedJobShapes,
-                                                                             currentNodeCounts)
+                            self.scaler.leader.provisioner.getProvisionedWorkers(
+                                instance_type=instance_type,
+                                preemptable=nodeShape.preemptable,
+                            )
+                        )
+                    estimatedNodeCounts = self.scaler.getEstimatedNodeCounts(
+                        queuedJobShapes, currentNodeCounts
+                    )
                     self.scaler.updateClusterSize(estimatedNodeCounts)
                     if self.stats:
                         self.stats.checkStats()
@@ -1025,7 +1032,8 @@ class ClusterStats:
             stats: Dict[str, List[Dict[str, Any]]] = {}
             if not isinstance(self.batchSystem, AbstractScalableBatchSystem):
                 raise AssertionError(
-                    f"self.batchSystem should be AbstractScalableBatchSystem based, is {type(self.batchSystem)}"
+                    "self.batchSystem should be AbstractScalableBatchSystem "
+                    f"based, is {type(self.batchSystem)}"
                 )
             try:
                 while not self.stop:
@@ -1035,8 +1043,8 @@ class ClusterStats:
                         if nodeStats is not None:
                             nodeStatsDict = toDict(nodeStats)
                             try:
-                                # if the node is already registered update the dictionary with the
-                                # newly reported stats
+                                # if the node is already registered update the
+                                # dictionary with the newly reported stats
                                 stats[nodeIP].append(nodeStatsDict)
                             except KeyError:
                                 # create a new entry for the node

@@ -762,8 +762,12 @@ class AWSProvisioner(AbstractProvisioner):
             print('... Successfully deleted S3 buckets')
 
     def terminateNodes(self, nodes: List[Node]) -> None:
+<<<<<<< HEAD
         if nodes:
             self._terminateIDs([x.name for x in nodes])
+=======
+        self._terminateIDs([x.name for x in nodes])
+>>>>>>> b25b8324f1ed8209fbd604cbcae076c6311ea325
 
     def _recover_node_type_bid(self, node_type: Set[str], spot_bid: Optional[float]) -> Optional[float]:
         """

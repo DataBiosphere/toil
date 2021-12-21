@@ -328,8 +328,8 @@ class VirtualEnvResource(DirectoryResource):
 
 
 class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromVirtualEnv'))):
-    r"""
-    A path to a Python module decomposed into a namedtuple of three elements/
+    """
+    A path to a Python module decomposed into a namedtuple of three elements
 
     - dirPath, the path to the directory that should be added to sys.path before importing the
       module,
@@ -518,7 +518,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             workerModuleFiles = ['worker.py', 'worker.pyc', 'worker.pyo', '_toil_worker']  # setuptools entry point
             return mainModuleFile in workerModuleFiles
 
-    def globalize(self) -> ModuleDescriptor:
+    def globalize(self) -> "ModuleDescriptor":
         """
         Reverse the effect of localize().
         """
