@@ -264,6 +264,14 @@ class CWLv10Test(ToilTest):
     def test_run_revsort_debug_worker(self):
         self.revsort('revsort.cwl', self._debug_worker_tester)
 
+    def test_run_colon_output(self):
+        self._tester(
+            "src/toil/test/cwl/colon_test_output.cwl",
+            "src/toil/test/cwl/colon_test_output_job.yaml",
+            self._expected_colon_output(self.outDir),
+            out_name="result",
+        )
+
     @needs_aws_s3
     def test_run_s3(self):
         self.download('download_s3.json', self._tester)
@@ -470,6 +478,28 @@ class CWLv10Test(ToilTest):
                 'size': 0,
                 'class': 'File',
                 'checksum': 'sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709'}}
+
+    @staticmethod
+    def _expected_colon_output(outDir):
+        loc = "file://" + os.path.join(outDir, "A%3AGln2Cys_result")
+        return {
+            "result": {
+                "location": loc,
+                "basename": "A:Gln2Cys_result",
+                "class": "Directory",
+                "listing": [
+                    {
+                        "class": "File",
+                        "location": f"{loc}/whale.txt",
+                        "basename": "whale.txt",
+                        "checksum": "sha1$327fc7aedf4f6b69a42a7c8b808dc5a7aff61376",
+                        "size": 1111,
+                        "nameroot": "whale",
+                        "nameext": ".txt",
+                    }
+                ],
+            }
+        }
 
 
 @needs_cwl
