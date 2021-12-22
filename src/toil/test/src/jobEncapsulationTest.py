@@ -14,16 +14,12 @@
 import os
 
 from toil.job import Job
-from toil.test import ToilTest, get_temp_file, travis_test
+from toil.test import ToilTest, get_temp_file
 from toil.test.src.jobTest import fn1Test
 
 
 class JobEncapsulationTest(ToilTest):
-    """
-    Tests testing the EncapsulationJob class
-    """
-
-    @travis_test
+    """Tests testing the EncapsulationJob class."""
     def testEncapsulation(self):
         """
         Tests the Job.encapsulation method, which uses the EncapsulationJob
@@ -50,7 +46,6 @@ class JobEncapsulationTest(ToilTest):
         finally:
             os.remove(outFile)
 
-    @travis_test
     def testAddChildEncapsulate(self):
         """
         Make sure that the encapsulate child does not have two parents

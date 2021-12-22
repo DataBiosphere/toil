@@ -7,16 +7,12 @@ import traceback
 from functools import partial
 
 from toil.lib.threading import LastProcessStandingArena, cpu_count, global_mutex
-from toil.test import ToilTest, travis_test
+from toil.test import ToilTest
 
 log = logging.getLogger(__name__)
 
 class ThreadingTest(ToilTest):
-    """
-    Test Toil threading/synchronization tools
-    """
-
-    @travis_test
+    """Test Toil threading/synchronization tools."""
     def testGlobalMutexOrdering(self):
         for it in range(10):
             log.info('Iteration %d', it)
@@ -40,7 +36,6 @@ class ThreadingTest(ToilTest):
                 # Make sure all workers say they succeeded
                 self.assertEqual(item, True)
 
-    @travis_test
     def testLastProcessStanding(self):
         for it in range(10):
             log.info('Iteration %d', it)

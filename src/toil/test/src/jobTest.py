@@ -22,15 +22,13 @@ import pytest
 from toil.common import Toil
 from toil.job import Job, JobFunctionWrappingJob, JobGraphDeadlockException
 from toil.leader import FailedJobsException
-from toil.test import ToilTest, get_temp_file, slow, travis_test
+from toil.test import ToilTest, get_temp_file, slow
 
 logger = logging.getLogger(__name__)
 
-class JobTest(ToilTest):
-    """
-    Tests testing the job class
-    """
 
+class JobTest(ToilTest):
+    """Tests the job class."""
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -81,7 +79,6 @@ class JobTest(ToilTest):
         finally:
             os.remove(outFile)
 
-    @travis_test
     def testStatic2(self):
         r"""
         Create a DAG of jobs non-dynamically and run it. DAG is:
@@ -137,7 +134,6 @@ class JobTest(ToilTest):
             else:
                 self.fail()
 
-    @travis_test
     @pytest.mark.timeout(30)
     def testDAGConsistency(self):
         options = Job.Runner.getDefaultOptions(self._createTempDir() + '/jobStore')
@@ -172,7 +168,6 @@ class JobTest(ToilTest):
             else:
                 self.fail()
 
-    @travis_test
     def testDeadlockDetection(self):
         """
         Randomly generate job graphs with various types of cycle in them and
