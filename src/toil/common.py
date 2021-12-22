@@ -852,8 +852,12 @@ class Toil:
         :type: toil.provisioners.abstractProvisioner.AbstractProvisioner
         """
         self._jobCache = dict()
+
+        self._on_exit: Optional[Callable[[...], None]] = None
+
         self._inContextManager = False
-        self._inRestart = False
+
+        self._started = False
 
     def __enter__(self):
         """
@@ -879,8 +883,16 @@ class Toil:
         self._jobStore = jobStore
         self._inContextManager = True
 
-        # This will make sure `self.__exit__()` is called when we get a SIGTERM signal.
-        signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
+        user_handler = signal.getsignal(signal.SIGTERM)
+
+        def signal_handler(signum: int, frame: Any):
+            try:
+                if callable(user_handler):
+                    user_handler(signum, frame)
+            finally:
+                # This will make sure __exit__ gets called when we get a SIGTERM signal.
+                sys.exit(1)
+        signal.signal(signal.SIGTERM, signal_handler)
 
         return self
 
@@ -890,12 +902,19 @@ class Toil:
         Clean up after a workflow invocation. Depending on the configuration, delete the job store.
         """
         try:
+            if callable(self._on_exit):
+                self._on_exit(exc_type, exc_val, exc_tb)
+        except:
+            logger.exception('The following error was raised during custom clean up:')
+
+        try:
             if (exc_type is not None and self.config.clean == "onError" or
                     exc_type is None and self.config.clean == "onSuccess" or
                     self.config.clean == "always"):
 
                 try:
-                    if self.config.restart and not self._inRestart:
+                    if self.config.restart and not self._started:
+                        # If --restart is passed, but we haven't called restart(), do nothing.
                         pass
                     else:
                         self._jobStore.destroy()
@@ -909,7 +928,10 @@ class Toil:
             else:
                 logger.exception('The following error was raised during clean up:')
         self._inContextManager = False
-        self._inRestart = False
+        self._started = False
+
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)  # reset signal handler
+
         return False  # let exceptions through
 
     def start(self, rootJob):
@@ -926,6 +948,7 @@ class Toil:
         if self.config.restart:
             raise ToilRestartException('A Toil workflow can only be started once. Use '
                                        'Toil.restart() to resume it.')
+        self._started = True
 
         self._batchSystem = self.createBatchSystem(self.config)
         self._setupAutoDeployment(rootJob.getUserScript())
@@ -958,12 +981,12 @@ class Toil:
 
         :return: The root job's return value
         """
-        self._inRestart = True
         self._assertContextManagerUsed()
         self.writePIDFile()
         if not self.config.restart:
             raise ToilRestartException('A Toil workflow must be initiated with Toil.start(), '
                                        'not restart().')
+        self._started = True
 
         from toil.job import JobException
         try:
@@ -1211,6 +1234,18 @@ class Toil:
         :param toil.job.JobDescription job: job to be added to current job cache
         """
         self._jobCache[job.jobStoreID] = job
+
+    def on_exit(self, callback: Callable[[int, Any], None]):
+        """
+        Registers a function to be called when the Toil context manager exits.
+        This has to be called before "start()" or "restart()".
+
+        The callback function would also be called if a SIGTERM signal is
+        received while Toil is running.
+        """
+        if self._started:
+            raise RuntimeError("on_exit() has to be called before start() or restart()")
+        self._on_exit = callback
 
     @staticmethod
     def getToilWorkDir(configWorkDir: Optional[str] = None) -> str:
