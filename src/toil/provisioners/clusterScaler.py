@@ -815,6 +815,8 @@ class ClusterScaler:
         :param bool preemptable: If True (False) only (non-)preemptable nodes will be returned.
                If None, all nodes will be returned.
         """
+        if not isinstance(self.leader.batchSystem, AbstractScalableBatchSystem):
+            raise RuntimeError('Non-scalable batch system abusing a scalable-only function.')
         allMesosNodes = self.leader.batchSystem.getNodes(preemptable, timeout=None)
         recentMesosNodes = self.leader.batchSystem.getNodes(preemptable)
         provisionerNodes = self.provisioner.getProvisionedWorkers(preemptable=preemptable)
