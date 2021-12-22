@@ -757,7 +757,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         return self.jobBatchSystemIDToIssuedJob.values()
 
     # AbstractScalableBatchSystem functionality
-    def getNodes(self, preemptable=False, timeout=None):
+    def getNodes(self, preemptable: Optional[bool] = False, timeout: int = 600):
         nodes = dict()
         for node in self.nodesToWorker:
             if node.preemptable == preemptable:

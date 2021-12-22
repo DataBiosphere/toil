@@ -436,7 +436,7 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
     """
 
     @abstractmethod
-    def getNodes(self, preemptable: Optional[bool] = None) -> Dict[str, NodeInfo]:
+    def getNodes(self, preemptable: Optional[bool] = None, timeout: int = 600) -> Dict[str, NodeInfo]:
         """
         Returns a dictionary mapping node identifiers of preemptable or non-preemptable nodes to
         NodeInfo objects, one for each node.

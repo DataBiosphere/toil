@@ -714,13 +714,11 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
         return executor
 
-    def getNodes(self, preemptable=None, timeout=600) -> Dict[str, NodeInfo]:
+    def getNodes(self, preemptable: Optional[bool] = None, timeout: int = 600) -> Dict[str, NodeInfo]:
         timeout = timeout or sys.maxsize
-        return {nodeAddress: executor.nodeInfo
-                for nodeAddress, executor in self.executors.items()
+        return {nodeAddress: executor.nodeInfo for nodeAddress, executor in self.executors.items()
                 if time.time() - executor.lastSeen < timeout
-                and (preemptable is None
-                     or preemptable == (executor.agentId not in self.nonPreemptableNodes))}
+                and (preemptable is None or preemptable == (executor.agentId not in self.nonPreemptableNodes))}
 
     def reregistered(self, driver, masterInfo):
         """

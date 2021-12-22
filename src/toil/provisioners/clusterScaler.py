@@ -817,7 +817,7 @@ class ClusterScaler:
         """
         if not isinstance(self.leader.batchSystem, AbstractScalableBatchSystem):
             raise RuntimeError('Non-scalable batch system abusing a scalable-only function.')
-        allMesosNodes = self.leader.batchSystem.getNodes(preemptable, timeout=None)
+        allMesosNodes = self.leader.batchSystem.getNodes(preemptable, timeout=0)
         recentMesosNodes = self.leader.batchSystem.getNodes(preemptable)
         provisionerNodes = self.provisioner.getProvisionedWorkers(preemptable=preemptable)
 
