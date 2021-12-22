@@ -15,12 +15,10 @@
 from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.leader import FailedJobsException
-from toil.test import ToilTest, slow, travis_test
+from toil.test import ToilTest, slow
 
 
 class CheckpointTest(ToilTest):
-
-    @travis_test
     def testCheckpointNotRetried(self):
         """A checkpoint job should not be retried if the workflow has a retryCount of 0."""
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
