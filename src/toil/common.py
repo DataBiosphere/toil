@@ -193,14 +193,12 @@ class Config:
         """Creates a config object from the options object."""
         OptionType = TypeVar("OptionType")
 
-        def set_option(
-            option_name: str,
-            parsing_function: Optional[Callable[[Any], OptionType]] = None,
-            check_function: Optional[Callable[[OptionType], bool]] = None,
-            default: Optional[OptionType] = None,
-            env: Optional[List[str]] = None,
-            old_names: Optional[List[str]] = None,
-        ) -> None:
+        def set_option(option_name: str,
+                       parsing_function: Optional[Callable[[Any], OptionType]] = None,
+                       check_function: Optional[Callable[[OptionType], Union[None, bool]]] = None,
+                       default: Optional[OptionType] = None,
+                       env: Optional[List[str]] = None,
+                       old_names: Optional[List[str]] = None) -> None:
             """
             Determine the correct value for the given option.
 
@@ -219,7 +217,6 @@ class Config:
             If the option gets a non-None value, sets it as an attribute in
             this Config.
             """
-
             option_value = getattr(options, option_name, default)
 
             if old_names is not None:
@@ -379,11 +376,9 @@ class Config:
         assert not self.writeLogsFromAllJobs or self.writeLogs or self.writeLogsGzip, \
             "To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set."
 
-        def check_sse_key(sse_key: str) -> bool:
+        def check_sse_key(sse_key: str) -> None:
             with open(sse_key) as f:
-                if not len(f.readline().rstrip()) == 32:
-                    raise AssertionError("SSE key appears to be invalid.")
-            return True
+                assert len(f.readline().rstrip()) == 32, 'SSE key appears to be invalid.'
 
         set_option("sseKey", check_function=check_sse_key)
         set_option("servicePollingInterval", float, fC(0.0))
@@ -638,76 +633,27 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
         description="The options to specify default cores/memory requirements (if not specified by the jobs "
                     "themselves), and to limit the total amount of memory/cores requested from the batch system."
     )
-    resource_help_msg = (
-        "The {} amount of {} to request for a job.  "
-        "Only applicable to jobs that do not specify an explicit value for this requirement.  "
-        "{}.  "
-        "Default is {}."
-    )
-    cpu_note = "Fractions of a core (for example 0.1) are supported on some batch systems [mesos, single_machine]"
-    disk_mem_note = "Standard suffixes like K, Ki, M, Mi, G or Gi are supported"
-    resource_options.add_argument(
-        "--defaultMemory",
-        dest="defaultMemory",
-        default=None,
-        metavar="INT",
-        help=resource_help_msg.format(
-            "default", "memory", disk_mem_note, bytes2human(config.defaultMemory)
-        ),
-    )
-    resource_options.add_argument(
-        "--defaultCores",
-        dest="defaultCores",
-        default=None,
-        metavar="FLOAT",
-        help=resource_help_msg.format(
-            "default", "cpu", cpu_note, str(config.defaultCores)
-        ),
-    )
-    resource_options.add_argument(
-        "--defaultDisk",
-        dest="defaultDisk",
-        default=None,
-        metavar="INT",
-        help=resource_help_msg.format(
-            "default", "disk", disk_mem_note, bytes2human(config.defaultDisk)
-        ),
-    )
-    resource_options.add_argument(
-        "--defaultPreemptable",
-        dest="defaultPreemptable",
-        metavar="BOOL",
-        type=bool,
-        nargs="?",
-        const=True,
-        default=False,
-        help="Make all jobs able to run on preemptable (spot) nodes by default.",
-    )
-    resource_options.add_argument(
-        "--maxCores",
-        dest="maxCores",
-        default=None,
-        metavar="INT",
-        help=resource_help_msg.format("max", "cpu", cpu_note, str(config.maxCores)),
-    )
-    resource_options.add_argument(
-        "--maxMemory",
-        dest="maxMemory",
-        default=None,
-        metavar="INT",
-        help=resource_help_msg.format(
-            "max", "memory", disk_mem_note, bytes2human(config.maxMemory)
-        ),
-    )
-    resource_options.add_argument(
-        "--maxDisk",
-        dest="maxDisk",
-        default=None,
-        metavar="INT",
-        help=resource_help_msg.format(
-            "max", "disk", disk_mem_note, bytes2human(config.maxDisk)
-        ),
-    )
+    resource_help_msg = ('The {} amount of {} to request for a job.  '
+                         'Only applicable to jobs that do not specify an explicit value for this requirement.  '
+                         '{}.  '
+                         'Default is {}.')
+    cpu_note = 'Fractions of a core (for example 0.1) are supported on some batch systems [mesos, single_machine]'
+    disk_mem_note = 'Standard suffixes like K, Ki, M, Mi, G or Gi are supported'
+    resource_options.add_argument('--defaultMemory', dest='defaultMemory', default=None, metavar='INT',
+                                  help=resource_help_msg.format('default', 'memory', disk_mem_note, bytes2human(config.defaultMemory)))
+    resource_options.add_argument('--defaultCores', dest='defaultCores', default=None, metavar='FLOAT',
+                                  help=resource_help_msg.format('default', 'cpu', cpu_note, str(config.defaultCores)))
+    resource_options.add_argument('--defaultDisk', dest='defaultDisk', default=None, metavar='INT',
+                                  help=resource_help_msg.format('default', 'disk', disk_mem_note, bytes2human(config.defaultDisk)))
+    resource_options.add_argument('--defaultPreemptable', dest='defaultPreemptable', metavar='BOOL',
+                                  type=bool, nargs='?', const=True, default=False,
+                                  help='Make all jobs able to run on preemptable (spot) nodes by default.')
+    resource_options.add_argument('--maxCores', dest='maxCores', default=None, metavar='INT',
+                                  help=resource_help_msg.format('max', 'cpu', cpu_note, str(config.maxCores)))
+    resource_options.add_argument('--maxMemory', dest='maxMemory', default=None, metavar='INT',
+                                  help=resource_help_msg.format('max', 'memory', disk_mem_note, bytes2human(config.maxMemory)))
+    resource_options.add_argument('--maxDisk', dest='maxDisk', default=None, metavar='INT',
+                                  help=resource_help_msg.format('max', 'disk', disk_mem_note, bytes2human(config.maxDisk)))
 
     # Retrying/rescuing jobs
     job_options = parser.add_argument_group(
@@ -884,7 +830,6 @@ class Toil(ContextManager["Toil"]):
 
     Specifically the batch system, job store, and its configuration.
     """
-
     config: Config
     _jobStore: "AbstractJobStore"
     _batchSystem: "AbstractBatchSystem"
@@ -902,8 +847,8 @@ class Toil(ContextManager["Toil"]):
         super().__init__()
         self.options = options
         self._jobCache: Dict[Union[str, "TemporaryID"], "JobDescription"] = {}
-        self._inContextManager = False
-        self._inRestart = False
+        self._inContextManager: bool = False
+        self._inRestart: bool = False
 
     def __enter__(self) -> "Toil":
         """
@@ -935,7 +880,6 @@ class Toil(ContextManager["Toil"]):
 
         return self
 
-    # noinspection PyUnusedLocal
     def __exit__(
         self,
         exc_type: Optional[Type[BaseException]],
@@ -1094,7 +1038,7 @@ class Toil(ContextManager["Toil"]):
     @staticmethod
     def buildLocator(name: str, rest: str) -> str:
         if ":" in name:
-            raise Exception(f"Can't have a : in the name: {name}.")
+            raise ValueError(f"Can't have a ':' in the name: '{name}'.")
         return f'{name}:{rest}'
 
     @classmethod
@@ -1121,14 +1065,14 @@ class Toil(ContextManager["Toil"]):
 
         try:
             batch_system = BATCH_SYSTEM_FACTORY_REGISTRY[config.batchSystem]()
-        except Exception:
-            raise RuntimeError(f'Unrecognized batch system: {config.batchSystem}')
+        except KeyError:
+            raise RuntimeError(f'Unrecognized batch system: {config.batchSystem}  '
+                               f'(choose from: {BATCH_SYSTEM_FACTORY_REGISTRY.keys()})')
 
         if not config.disableCaching and not batch_system.supportsWorkerCleanup():
             raise RuntimeError(f'{config.batchSystem} currently does not support shared caching, because it '
-                               'does not support cleaning up a worker after the last job '
-                               'finishes. Set the --disableCaching flag if you want to '
-                               'use this batch system.')
+                               'does not support cleaning up a worker after the last job finishes. Set the '
+                               '--disableCaching flag if you want to use this batch system.')
         logger.debug('Using the %s' % re.sub("([a-z])([A-Z])", r"\g<1> \g<2>", batch_system.__name__).lower())
 
         return batch_system(**kwargs)
@@ -1194,7 +1138,7 @@ class Toil(ContextManager["Toil"]):
                     shared_file_name: Optional[str] = None,
                     symlink: bool = False) -> Optional[Union[FileID, str]]:
         """
-        Import the file at the given URL into job store.
+        Import the file at the given URL into the job store.
 
         See :func:`toil.jobStores.abstractJobStore.AbstractJobStore.importFile` for a
         full description
@@ -1397,46 +1341,39 @@ class ToilMetrics:
 
         try:
             self.mtailProc: Optional[subprocess.Popen[bytes]] = subprocess.Popen(
-                [
-                    "docker",
-                    "run",
-                    "--rm",
-                    "--interactive",
-                    "--net=host",
-                    "--name",
-                    "toil_mtail",
-                    "-p",
-                    "3903:3903",
-                    self.mtailImage,
-                ],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-            )
+                ["docker", "run",
+                 "--rm",
+                 "--interactive",
+                 "--net=host",
+                 "--name", "toil_mtail",
+                 "-p", "3903:3903",
+                 self.mtailImage],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         except subprocess.CalledProcessError:
-            logger.warning("Could not start toil metrics server.")
+            logger.warning("Couldn't start toil metrics server.")
             self.mtailProc = None
         except KeyboardInterrupt:
             self.mtailProc.terminate()  # type: ignore[union-attr]
 
         # On single machine, launch a node exporter instance to monitor CPU/RAM usage.
         # On AWS this is handled by the EC2 init script
-        self.nodeExporterProc = None
         if not provisioner:
             try:
-                self.nodeExporterProc = subprocess.Popen(["docker", "run", "--rm",
-                                                          "--net=host",
-                                                          "-p", "9100:9100",
-                                                          "-v", "/proc:/host/proc",
-                                                          "-v", "/sys:/host/sys",
-                                                          "-v", "/:/rootfs",
-                                                          "quay.io/prometheus/node-exporter:0.15.2",
-                                                          "-collector.procfs", "/host/proc",
-                                                          "-collector.sysfs", "/host/sys",
-                                                          "-collector.filesystem.ignored-mount-points",
-                                                          "^/(sys|proc|dev|host|etc)($|/)"])
+                self.nodeExporterProc: Optional[subprocess.Popen[bytes]] = subprocess.Popen(
+                    ["docker", "run",
+                     "--rm",
+                     "--net=host",
+                     "-p", "9100:9100",
+                     "-v", "/proc:/host/proc",
+                     "-v", "/sys:/host/sys",
+                     "-v", "/:/rootfs",
+                     "quay.io/prometheus/node-exporter:0.15.2",
+                     "-collector.procfs", "/host/proc",
+                     "-collector.sysfs", "/host/sys",
+                     "-collector.filesystem.ignored-mount-points",
+                     "^/(sys|proc|dev|host|etc)($|/)"])
             except subprocess.CalledProcessError:
-                logger.warning(
-                    "Couldn't start node exporter, won't get RAM and CPU usage for dashboard.")
+                logger.warning("Couldn't start node exporter, won't get RAM and CPU usage for dashboard.")
                 self.nodeExporterProc = None
             except KeyboardInterrupt:
                 self.nodeExporterProc.terminate()  # type: ignore[union-attr]
@@ -1572,32 +1509,18 @@ def parseSetEnv(l: List[str]) -> Dict[str, Optional[str]]:
 
 
 def iC(minValue: int, maxValue: int = SYS_MAX_SIZE) -> Callable[[int], bool]:
-    """Return function that checks if a given int is in the given half-open interval."""
-    if not (isinstance(minValue, int) and isinstance(maxValue, int)):
-        raise AssertionError
-
-    def func(value: int) -> bool:
-        return minValue <= value < maxValue
-
-    return func
+    """Returns a function that checks if a given int is in the given half-open interval."""
+    assert isinstance(minValue, int) and isinstance(maxValue, int)
+    return lambda x: minValue <= x < maxValue
 
 
 def fC(minValue: float, maxValue: Optional[float] = None) -> Callable[[float], bool]:
-    """Return function that checks if a given float is in the given half-open interval."""
-    if not isinstance(minValue, float):
-        raise AssertionError
+    """Returns a function that checks if a given float is in the given half-open interval."""
+    assert isinstance(minValue, float)
     if maxValue is None:
-
-        def func(value: float) -> bool:
-            return minValue <= value
-    else:
-
-        def func(value: float) -> bool:
-            if not isinstance(maxValue, float):
-                raise AssertionError
-            return minValue <= value < maxValue
-
-    return func
+        return lambda x: minValue <= x
+    assert isinstance(maxValue, float)
+    return lambda x: minValue <= x < maxValue  # type: ignore
 
 
 def cacheDirName(workflowID: str) -> str:
@@ -1647,7 +1570,7 @@ def getFileSystemSize(dirPath: str) -> Tuple[int, int]:
     :return: free space and total size of file system
     """
     if not os.path.exists(dirPath):
-        raise AssertionError()
+        raise RuntimeError(f'Could not find dir size for non-existent path: {dirPath}')
     diskStats = os.statvfs(dirPath)
     freeSpace = diskStats.f_frsize * diskStats.f_bavail
     diskSize = diskStats.f_frsize * diskStats.f_blocks

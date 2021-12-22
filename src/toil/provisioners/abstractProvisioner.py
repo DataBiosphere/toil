@@ -55,7 +55,6 @@ class Shape:
     The memory and disk attributes store the number of bytes required by a job (or provided by a
     node) in RAM or on disk (SSD or HDD), respectively.
     """
-
     def __init__(
         self,
         wallTime: Union[int, float],
@@ -464,9 +463,7 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def getProvisionedWorkers(
-        self, instance_type: Optional[str] = None, preemptable: Optional[bool] = None
-    ) -> List[Node]:
+    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptable: Optional[bool] = None) -> List[Node]:
         """
         Gets all nodes, optionally of the given instance type or
         preemptability, from the provisioner. Includes both static and

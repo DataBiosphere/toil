@@ -111,32 +111,28 @@ class FailedJobsException(Exception):
         return self.msg
 
 
-####################################################
-##Following class represents the leader
-####################################################
-
 class Leader:
-    """Class that encapsulates the logic of the leader."""
-
-    def __init__(
-        self,
-        config: Config,
-        batchSystem: AbstractBatchSystem,
-        provisioner: Optional[AbstractProvisioner],
-        jobStore: AbstractJobStore,
-        rootJob: JobDescription,
-        jobCache: Optional[Dict[Union[str, TemporaryID], JobDescription]] = None,
-    ) -> None:
+    def __init__(self,
+                 config: Config,
+                 batchSystem: AbstractBatchSystem,
+                 provisioner: Optional[AbstractProvisioner],
+                 jobStore: AbstractJobStore,
+                 rootJob: JobDescription,
+                 jobCache: Optional[Dict[Union[str, TemporaryID], JobDescription]] = None) -> None:
         """
-        :param config:
-        :param batchSystem:
-        :param provisioner:
-        :param jobStore:
-        :param rootJob: Root job of the workflow that the leader will run
-
         If jobCache is passed, it must be a dict from job ID to pre-existing
         JobDescription objects. Jobs will be loaded from the cache (which can be
         downloaded from the jobStore in a batch) during the construction of the ToilState object.
+
+        :param config:      A Config object holding the original user options/settings/args.
+        :param batchSystem: The Batch System object containing functions to communicate with the
+                            specific batch system (run jobs, check jobs, etc.).
+        :param provisioner: Only for environments where we need to provision our own compute
+                            resources prior to launching jobs, for example, spin up an AWS instance.
+                            This is a Provisioner object with functions to create/remove resources.
+        :param jobStore:    The Jobstore object for storage, containing functions to talk to a
+                            central location where we store all of our files (jobs, inputs, etc.).
+        :param rootJob:     The first job of the workflow that the leader will run.
         """
         # Object containing parameters for the run
         self.config = config

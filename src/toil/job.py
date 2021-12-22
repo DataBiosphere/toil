@@ -1062,9 +1062,7 @@ class Job:
         # Note that self.__module__ is not necessarily this module, i.e. job.py. It is the module
         # defining the class self is an instance of, which may be a subclass of Job that may be
         # defined in a different module.
-        self.userModule: ModuleDescriptor = ModuleDescriptor.forModule(
-            self.__module__
-        ).globalize()
+        self.userModule: ModuleDescriptor = ModuleDescriptor.forModule(self.__module__).globalize()
         # Maps index paths into composite return values to lists of IDs of files containing
         # promised values for those return value items. An index path is a tuple of indices that
         # traverses a nested data structure of lists, dicts, tuples or any other type supporting

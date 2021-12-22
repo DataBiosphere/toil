@@ -56,13 +56,12 @@ class BinPackedFit:
     :returns: The minimum number of minimal node allocations estimated to be required to run all
               the jobs in jobShapes.
     """
+    nodeReservations: Dict[Shape, List['NodeReservation']]
 
     def __init__(self, nodeShapes: List[Shape], targetTime: float = defaultTargetTime) -> None:
         self.nodeShapes = sorted(nodeShapes)
         self.targetTime = targetTime
-        self.nodeReservations: Dict[Shape, List[NodeReservation]] = {
-            nodeShape: [] for nodeShape in nodeShapes
-        }
+        self.nodeReservations = {nodeShape: [] for nodeShape in nodeShapes}
 
     def binPack(self, jobShapes: List[Shape]) -> None:
         """Pack a list of jobShapes into the fewest nodes reasonable. Can be run multiple times."""
@@ -217,16 +216,12 @@ class NodeReservation:
                 # does the job time fit in the reservation's remaining time?
                 if availableTime >= jobShape.wallTime:
                     timeSlice: float = 0
-                    while (
-                        startingReservation != endingReservation
-                        and startingReservation is not None
-                    ):
+                    while (startingReservation != endingReservation):
                         # removes resources only (NO time) from startingReservation
-                        startingReservation.subtract(jobShape)
+                        startingReservation.subtract(jobShape)  # type: ignore
                         # set aside the timeSlice
-                        timeSlice += startingReservation.shape.wallTime
-                        startingReservation = startingReservation.nReservation
-                    assert startingReservation is not None
+                        timeSlice += startingReservation.shape.wallTime  # type: ignore
+                        startingReservation = startingReservation.nReservation  # type: ignore
                     assert jobShape.wallTime - timeSlice <= startingReservation.shape.wallTime
                     adjustEndingReservationForJob(endingReservation, jobShape, timeSlice)
                     # Packed the job.
@@ -234,10 +229,7 @@ class NodeReservation:
 
                 # If the job would fit, but is longer than the total node allocation
                 # extend the node allocation
-                elif (
-                    endingReservation.nReservation is None
-                    and startingReservation == self
-                ):
+                elif endingReservation.nReservation == None and startingReservation == self:
                     # Extend the node reservation to accommodate jobShape
                     endingReservation.nReservation = NodeReservation(nodeShape)
             # can't run the job with the current resources
@@ -299,12 +291,11 @@ def split(
                                   nodeShape.preemptable)))
 
 
-def binPacking(
-    nodeShapes: List[Shape], jobShapes: List[Shape], goalTime: float
-) -> Dict[Shape, int]:
+def binPacking(nodeShapes: List[Shape], jobShapes: List[Shape], goalTime: float) -> Dict[Shape, int]:
     bpf = BinPackedFit(nodeShapes, goalTime)
     bpf.binPack(jobShapes)
     return bpf.getRequiredNodes()
+
 
 class ClusterScaler:
     def __init__(
@@ -313,8 +304,8 @@ class ClusterScaler:
         """
         Class manages automatically scaling the number of worker nodes.
 
-        :param provisioner: Provisioner instance to scale.
-        :param leader:
+        :param provisioner: Provisioner class with functions to create/remove resources (i.e. AWS).
+        :param leader: Leader class which runs the main workflow loop until complete.
         :param config: Config object from which to draw parameters.
         """
         self.provisioner = provisioner
@@ -359,9 +350,7 @@ class ClusterScaler:
         # max/min nodes) estimates of the number of nodes needed for
         # each node shape. NB: we start with an estimate of 0, so
         # scaling up is smoothed as well.
-        self.previousWeightedEstimate = {
-            nodeShape: 0.0 for nodeShape in self.nodeShapes
-        }
+        self.previousWeightedEstimate = {nodeShape: 0.0 for nodeShape in self.nodeShapes}
 
         assert len(self.nodeShapes) > 0
 
@@ -650,10 +639,7 @@ class ClusterScaler:
                 if delta > 0 and numIgnoredNodes > 0:
                     # We can un-ignore a few nodes to compensate for the additional nodes we want.
                     numNodesToUnignore = min(delta, numIgnoredNodes)
-                    logger.debug(
-                        "Unignoring %i nodes because we want to scale back up again."
-                        % numNodesToUnignore
-                    )
+                    logger.debug('Unignoring %i nodes because we want to scale back up again.' % numNodesToUnignore)
                     delta -= numNodesToUnignore
 
                     for node in ignoredNodes[:numNodesToUnignore]:
@@ -860,6 +846,7 @@ class ClusterScaler:
             instance_type = self.nodeShapeToType[nodeShape]
             self.setNodeCount(instance_type=instance_type, numNodes=0, preemptable=preemptable, force=True)
 
+
 class ScalerThread(ExceptionalThread):
     """
     A thread that automatically scales the number of either preemptable or non-preemptable worker
@@ -875,13 +862,7 @@ class ScalerThread(ExceptionalThread):
     is made, else the size of the cluster is adapted. The beta factor is an inertia parameter
     that prevents continual fluctuations in the number of nodes.
     """
-
-    def __init__(
-        self, provisioner: AbstractProvisioner, leader: "Leader", config: Config
-    ) -> None:
-        """
-        :param ClusterScaler scaler: the parent class
-        """
+    def __init__(self, provisioner: AbstractProvisioner, leader: "Leader", config: Config) -> None:
         super().__init__(name='scaler')
         self.scaler = ClusterScaler(provisioner, leader, config)
 
