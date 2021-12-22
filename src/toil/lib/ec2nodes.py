@@ -197,6 +197,9 @@ def fetchEC2InstanceDict(awsBillingJson: Dict[str, Any], region: str) -> Dict[st
             normal_use = i.get('usagetype').endswith('BoxUsage:' + i['instanceType'])  # not reserved or unused
             if normal_use:
                 disks, disk_capacity = parseStorage(v["attributes"]["storage"])
+
+                # Determines whether the instance type is from an ARM or AMD family
+                # ARM instance names include a digit followed by a 'g' before the instance size
                 architecture = 'arm64' if re.search(".*\dg.*\..*", i["instanceType"]) else 'amd64'
 
                 instance = InstanceType(name=i["instanceType"],
@@ -282,7 +285,7 @@ def updateStaticEC2Instances() -> None:
 
     # write the list of all instances types
     for i in sortedCurrentEC2List:
-        z = "    '{name}': InstanceType(name='{name}', cores={cores}, memory={memory}, disks={disks}, disk_capacity={disk_capacity}), architecture={architecture}" \
+        z = "    '{name}': InstanceType(name='{name}', cores={cores}, memory={memory}, disks={disks}, disk_capacity={disk_capacity}, architecture='{architecture})'," \
             "\n".format(name=i.name, cores=i.cores, memory=i.memory, disks=i.disks, disk_capacity=i.disk_capacity, architecture=i.architecture)
         genString = genString + z
     genString = genString + '}\n\n'
