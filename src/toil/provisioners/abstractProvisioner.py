@@ -779,19 +779,12 @@ class AbstractProvisioner(ABC):
             WantedBy=multi-user.target
             '''))
 
-    @staticmethod
-    def getArchitecture():
-        # https://stackoverflow.com/questions/45125516/possible-values-for-uname-m
-        if platform.machine() in ['arm', 'aarch64_be', 'aarch64', 'armv8b', 'armv8l']:
-            return 'arm64'
-        return 'amd64'
-
-    def getKubernetesValues(self):
+    def getKubernetesValues(self, architecture: str = 'amd64'):
         """
         Returns a dict of Kubernetes component versions and paths for formatting into Kubernetes-related templates.
         """
         return dict(
-            ARCHITECTURE=self.getArchitecture(),
+            ARCHITECTURE=architecture,
             CNI_VERSION="v0.8.2",
             CRICTL_VERSION="v1.17.0",
             CNI_DIR="/opt/cni/bin",
@@ -814,13 +807,13 @@ class AbstractProvisioner(ABC):
             CLOUD_PROVIDER_SPEC=('cloud-provider: ' + self.getKubernetesCloudProvider()) if self.getKubernetesCloudProvider() else ''
         )
 
-    def addKubernetesServices(self, config: InstanceConfiguration):
+    def addKubernetesServices(self, config: InstanceConfiguration, architecture: str = 'amd64'):
         """
         Add installing Kubernetes and Kubeadm and setting up the Kubelet to run when configured to an instance configuration.
         The same process applies to leaders and workers.
         """
 
-        values = self.getKubernetesValues()
+        values = self.getKubernetesValues(architecture)
 
         # We're going to ship the Kubelet service from Kubernetes' release pipeline via cloud-config
         config.addUnit("kubelet.service", contents=textwrap.dedent('''\
@@ -1155,7 +1148,7 @@ class AbstractProvisioner(ABC):
             WantedBy=multi-user.target
             '''))
 
-    def _getIgnitionUserData(self, role, keyPath=None, preemptable=False):
+    def _getIgnitionUserData(self, role, keyPath=None, preemptable=False, architecture='amd64'):
         """
         Return the text (not bytes) user data to pass to a provisioned node.
 
@@ -1171,7 +1164,7 @@ class AbstractProvisioner(ABC):
 
         if self.clusterType == 'kubernetes':
             # Install Kubernetes
-            self.addKubernetesServices(config)
+            self.addKubernetesServices(config, architecture)
 
             if role == 'leader':
                 # Set up the cluster
