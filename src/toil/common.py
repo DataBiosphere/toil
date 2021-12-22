@@ -853,7 +853,11 @@ class Toil:
         """
         self._jobCache = dict()
 
-        self._on_exit: Optional[Callable[[...], None]] = None
+        # TODO: wait for #3975 and update types
+        #         exc_type: Optional[Type[BaseException]],
+        #         exc_val: Optional[BaseException],
+        #         exc_tb: Optional[TracebackType],
+        self._on_exit: Optional[Callable[[Any, Any, Any], None]] = None
 
         self._inContextManager = False
 
@@ -901,11 +905,11 @@ class Toil:
         """
         Clean up after a workflow invocation. Depending on the configuration, delete the job store.
         """
-        try:
-            if callable(self._on_exit):
+        if callable(self._on_exit):
+            try:
                 self._on_exit(exc_type, exc_val, exc_tb)
-        except:
-            logger.exception('The following error was raised during custom clean up:')
+            except Exception:
+                logger.exception('The following error was raised during custom clean up:')
 
         try:
             if (exc_type is not None and self.config.clean == "onError" or
@@ -1235,7 +1239,7 @@ class Toil:
         """
         self._jobCache[job.jobStoreID] = job
 
-    def on_exit(self, callback: Callable[[int, Any], None]):
+    def on_exit(self, callback: Callable[[Any, Any, Any], None]):
         """
         Registers a function to be called when the Toil context manager exits.
         This has to be called before "start()" or "restart()".
