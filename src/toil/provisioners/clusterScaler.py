@@ -634,7 +634,7 @@ class ClusterScaler:
             raise RuntimeError('Non-scalable batch system abusing a scalable-only function.')
         for attempt in old_retry(predicate=self.provisioner.retryPredicate):
             with attempt:
-                nodes = self.getNodes(preemptable=preemptable)
+                nodes = self.getNodes(preemptable)
                 logger.debug("Cluster contains %i instances" % len(nodes))
 
                 nodes = {node: nodes[node] for node in nodes if node.nodeType == instance_type}
@@ -673,11 +673,10 @@ class ClusterScaler:
                                                                    num_nodes=-delta,
                                                                    preemptable=preemptable,
                                                                    force=force)
+                elif force:
+                    logger.debug('Cluster already at desired size of %i. Nothing to do.', numNodes)
                 else:
-                    if not force:
-                        logger.debug('Cluster (minus ignored nodes) already at desired size of %i. Nothing to do.', numNodes)
-                    else:
-                        logger.debug('Cluster already at desired size of %i. Nothing to do.', numNodes)
+                    logger.debug('Cluster (minus ignored nodes) already at desired size of %i. Nothing to do.', numNodes)
         return numNodes
 
     def _addNodes(self, instance_type: str, numNodes: int, preemptable: bool) -> int:
@@ -791,7 +790,7 @@ class ClusterScaler:
             node_nodeInfo[1].workers if node_nodeInfo[1] else 1, node_nodeInfo[0].remainingBillingInterval()))
         return filtered_nodes
 
-    def getNodes(self, preemptable: Optional[bool]) -> Dict["Node", NodeInfo]:
+    def getNodes(self, preemptable: Optional[bool] = None) -> Dict["Node", NodeInfo]:
         """
         Returns a dictionary mapping node identifiers of preemptable or non-preemptable nodes to
         NodeInfo objects, one for each node.
