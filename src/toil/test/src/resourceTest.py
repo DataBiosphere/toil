@@ -25,7 +25,7 @@ from zipfile import ZipFile
 
 from toil import inVirtualEnv
 from toil.resource import ModuleDescriptor, Resource, ResourceException
-from toil.test import ToilTest, travis_test
+from toil.test import ToilTest
 from toil.version import exactPython
 
 
@@ -51,23 +51,16 @@ def tempFileContaining(content, suffix=''):
 
 
 class ResourceTest(ToilTest):
-    """
-    Test module descriptors and resources derived from them.
-    """
-
-    @travis_test
+    """Test module descriptors and resources derived from them."""
     def testStandAlone(self):
-        self._testExternal(moduleName='userScript', pyFiles=('userScript.py',
-                                                             'helper.py'))
+        self._testExternal(moduleName='userScript', pyFiles=('userScript.py', 'helper.py'))
 
-    @travis_test
     def testPackage(self):
         self._testExternal(moduleName='foo.userScript', pyFiles=('foo/__init__.py',
                                                                  'foo/userScript.py',
                                                                  'foo/bar/__init__.py',
                                                                  'foo/bar/helper.py'))
 
-    @travis_test
     def testVirtualEnv(self):
         self._testExternal(moduleName='foo.userScript',
                            virtualenv=True,
@@ -79,7 +72,6 @@ class ResourceTest(ToilTest):
                                     'de/__init__.py',
                                     'de/pen/__init__.py'))
 
-    @travis_test
     def testStandAloneInPackage(self):
         self.assertRaises(ResourceException,
                           self._testExternal,
@@ -125,7 +117,6 @@ class ResourceTest(ToilTest):
             if oldPrefix:
                 sys.prefix = oldPrefix
 
-    @travis_test
     def testBuiltIn(self):
         # Create a ModuleDescriptor for the module containing ModuleDescriptor, i.e. toil.resource
         module_name = ModuleDescriptor.__module__
@@ -208,7 +199,6 @@ class ResourceTest(ToilTest):
         finally:
             Resource.cleanSystem()
 
-    @travis_test
     def testNonPyStandAlone(self):
         """
         Asserts that Toil enforces the user script to have a .py or .pyc extension because that's

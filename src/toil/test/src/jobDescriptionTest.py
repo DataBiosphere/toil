@@ -17,7 +17,7 @@ from argparse import ArgumentParser
 
 from toil.common import Toil
 from toil.job import Job, JobDescription, TemporaryID
-from toil.test import ToilTest, travis_test
+from toil.test import ToilTest
 
 
 class JobDescriptionTest(ToilTest):
@@ -36,7 +36,7 @@ class JobDescriptionTest(ToilTest):
         self.toil._jobStore.destroy()
         self.assertFalse(os.path.exists(self.jobStorePath))
         super().tearDown()
-    @travis_test
+
     def testJobDescription(self):
         """
         Tests the public interface of a JobDescription.
@@ -71,11 +71,8 @@ class JobDescriptionTest(ToilTest):
         j2 = JobDescription(command=command, requirements={"memory": memory, "cores": cores, "disk": disk, "preemptable": preemptable},
                             jobName='testJobGraph', unitName='noName')
         self.assertNotEqual(j, j2)
-
         ###TODO test other functionality
 
-
-    @travis_test
     def testJobDescriptionSequencing(self):
         j = JobDescription(command='command', requirements={},  jobName='unimportant')
 
