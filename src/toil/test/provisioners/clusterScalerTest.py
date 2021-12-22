@@ -271,7 +271,7 @@ class ClusterScalerTest(ToilTest):
         self.config.nodeTypes = [r3_8xlarge, c4_8xlarge_preemptable]
 
         # Set up the mock leader
-        self.leader = MockBatchSystemAndProvisioner(self.config, 1)
+        self.leader = MockBatchSystemAndProvisioner(config=self.config, secondsPerJob=1)
         # It is also a full mock provisioner, so configure it to be that as well
         self.provisioner = self.leader
         # Pretend that Shapes are actually strings we can use for instance type names.
@@ -464,7 +464,7 @@ class ScalerThreadTest(ToilTest):
         # jobs are completed okay, then print the amount of worker time expended and the total
         # number of worker nodes used.
 
-        mock = MockBatchSystemAndProvisioner(config, secondsPerJob=2.0)
+        mock = MockBatchSystemAndProvisioner(config=config, secondsPerJob=2.0)
         mock.setAutoscaledNodeTypes([({t}, None) for t in config.nodeTypes])
         mock.start()
         clusterScaler = ScalerThread(mock, mock, config)
@@ -575,7 +575,7 @@ class ScalerThreadTest(ToilTest):
         config.betaInertia = 0.1
         config.scaleInterval = 3
 
-        mock = MockBatchSystemAndProvisioner(config, secondsPerJob=2.0)
+        mock = MockBatchSystemAndProvisioner(config=config, secondsPerJob=2.0)
         mock.setAutoscaledNodeTypes([({t}, None) for t in config.nodeTypes])
         clusterScaler = ScalerThread(mock, mock, config)
         clusterScaler.start()
@@ -641,11 +641,8 @@ class ScalerThreadTest(ToilTest):
         self._testClusterScaling(config, numJobs=100, numPreemptableJobs=100, jobShape=jobShape)
 
 
-# noinspection PyAbstractClass
 class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisioner):
-    """
-    Mimics a job batcher, provisioner and scalable batch system
-    """
+    """Mimics a job batcher, provisioner and scalable batch system."""
     def __init__(self, config, secondsPerJob):
         super().__init__(clusterName='clusterName', clusterType='mesos')
         # To mimic parallel preemptable and non-preemptable queues
