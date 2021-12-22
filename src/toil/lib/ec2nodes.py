@@ -285,7 +285,7 @@ def updateStaticEC2Instances() -> None:
 
     # write the list of all instances types
     for i in sortedCurrentEC2List:
-        z = "    '{name}': InstanceType(name='{name}', cores={cores}, memory={memory}, disks={disks}, disk_capacity={disk_capacity}, architecture='{architecture})'," \
+        z = "    '{name}': InstanceType(name='{name}', cores={cores}, memory={memory}, disks={disks}, disk_capacity={disk_capacity}, architecture='{architecture}')," \
             "\n".format(name=i.name, cores=i.cores, memory=i.memory, disks=i.disks, disk_capacity=i.disk_capacity, architecture=i.architecture)
         genString = genString + z
     genString = genString + '}\n\n'
