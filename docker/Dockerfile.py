@@ -91,6 +91,8 @@ print(heredoc('''
         > /etc/apt/sources.list.d/nodesource.list \
         && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280
 
+    RUN apt update
+
     RUN add-apt-repository -y ppa:deadsnakes/ppa
 
     RUN apt-get -y update --fix-missing && \
