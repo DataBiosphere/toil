@@ -697,11 +697,6 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     def readClusterSettings(self):
         pass
 
-    @contextmanager
-    def nodeFiltering(self, filter):
-        nodes = self.getProvisionedWorkers()
-        yield nodes
-
     # AbstractProvisioner methods
     def setAutoscaledNodeTypes(self, node_types: List[Tuple[Set[Shape], Optional[float]]]):
         self.node_shapes_for_testing = sorted([it for t in node_types for it in t[0]])

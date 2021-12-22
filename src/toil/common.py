@@ -374,14 +374,10 @@ class Config:
         set_option("statusWait", int)
         set_option("disableProgress")
 
-        if self.writeLogs and self.writeLogsGzip:
-            raise AssertionError(
-                "Cannot use both --writeLogs and --writeLogsGzip at the same time."
-            )
-        if self.writeLogsFromAllJobs or self.writeLogs or self.writeLogsGzip:
-            raise AssertionError(
-                "To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set."
-            )
+        assert not (self.writeLogs and self.writeLogsGzip), \
+            "Cannot use both --writeLogs and --writeLogsGzip at the same time."
+        assert not self.writeLogsFromAllJobs or self.writeLogs or self.writeLogsGzip, \
+            "To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set."
 
         def check_sse_key(sse_key: str) -> bool:
             with open(sse_key) as f:

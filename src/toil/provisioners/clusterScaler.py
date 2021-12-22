@@ -57,9 +57,7 @@ class BinPackedFit:
               the jobs in jobShapes.
     """
 
-    def __init__(
-        self, nodeShapes: List[Shape], targetTime: float = defaultTargetTime
-    ) -> None:
+    def __init__(self, nodeShapes: List[Shape], targetTime: float = defaultTargetTime) -> None:
         self.nodeShapes = sorted(nodeShapes)
         self.targetTime = targetTime
         self.nodeReservations: Dict[Shape, List[NodeReservation]] = {
@@ -386,9 +384,7 @@ class ClusterScaler:
 
         #Node shape to number of currently provisioned nodes
         totalNodes: Dict[Shape, int] = defaultdict(int)
-        if isinstance(leader.batchSystem, AbstractScalableBatchSystem):
-            if leader.provisioner is None:
-                raise AssertionError()
+        if isinstance(leader.batchSystem, AbstractScalableBatchSystem) and leader.provisioner:
             for preemptable in (True, False):
                 nodes: List[Node] = []
                 for nodeShape, instance_type in self.nodeShapeToType.items():
@@ -526,8 +522,7 @@ class ClusterScaler:
         for nodeShape in self.nodeShapes:
             instance_type = self.nodeShapeToType[nodeShape]
 
-            logger.debug("Nodes of type %s to run queued jobs = "
-                        "%s" % (instance_type, nodesToRunQueuedJobs[nodeShape]))
+            logger.debug("Nodes of type %s to run queued jobs: %s" % (instance_type, nodesToRunQueuedJobs[nodeShape]))
             # Actual calculation of the estimated number of nodes required
             estimatedNodeCount = 0 if nodesToRunQueuedJobs[nodeShape] == 0 \
                 else max(1, self._round(nodesToRunQueuedJobs[nodeShape]))
@@ -635,18 +630,19 @@ class ClusterScaler:
                 the `numNodes` argument. It represents the closest possible approximation of the
                 actual cluster size at the time this method returns.
         """
-
+        if not isinstance(self.leader.batchSystem, AbstractScalableBatchSystem):
+            raise RuntimeError('Non-scalable batch system abusing a scalable-only function.')
         for attempt in old_retry(predicate=self.provisioner.retryPredicate):
             with attempt:
-                workerInstances = self.getNodes(preemptable=preemptable)
-                logger.debug("Cluster contains %i instances" % len(workerInstances))
-                # Reduce to nodes of the correct type
-                workerInstances = {node:workerInstances[node] for node in workerInstances if node.nodeType == instance_type}
-                ignoredNodes = [node for node in workerInstances if node.privateIP in self.ignoredNodes]
+                nodes = self.getNodes(preemptable=preemptable)
+                logger.debug("Cluster contains %i instances" % len(nodes))
+
+                nodes = {node: nodes[node] for node in nodes if node.nodeType == instance_type}
+                ignoredNodes = [node for node in nodes if node.privateIP in self.ignoredNodes]
                 numIgnoredNodes = len(ignoredNodes)
-                numCurrentNodes = len(workerInstances)
+                numCurrentNodes = len(nodes)
                 logger.debug("Cluster contains %i instances of type %s (%i ignored and draining jobs until "
-                            "they can be safely terminated)" % (numCurrentNodes, instance_type, numIgnoredNodes))
+                             "they can be safely terminated)" % (numCurrentNodes, instance_type, numIgnoredNodes))
                 if not force:
                     delta = numNodes - (numCurrentNodes - numIgnoredNodes)
                 else:
@@ -659,10 +655,7 @@ class ClusterScaler:
                         % numNodesToUnignore
                     )
                     delta -= numNodesToUnignore
-                    if not isinstance(
-                        self.leader.batchSystem, AbstractScalableBatchSystem
-                    ):
-                        raise AssertionError()
+
                     for node in ignoredNodes[:numNodesToUnignore]:
                         self.ignoredNodes.remove(node.privateIP)
                         self.leader.batchSystem.unignoreNode(node.privateIP)
@@ -675,9 +668,9 @@ class ClusterScaler:
                                                                 preemptable=preemptable)
                 elif delta < 0:
                     logger.info('Removing %i %s nodes to get to desired cluster size of %i.', -delta, 'preemptable' if preemptable else 'non-preemptable', numNodes)
-                    numNodes = numCurrentNodes - self._removeNodes(workerInstances,
-                                                                   instance_type = instance_type,
-                                                                   numNodes=-delta,
+                    numNodes = numCurrentNodes - self._removeNodes(nodes,
+                                                                   instance_type=instance_type,
+                                                                   num_nodes=-delta,
                                                                    preemptable=preemptable,
                                                                    force=force)
                 else:
@@ -692,9 +685,9 @@ class ClusterScaler:
 
     def _removeNodes(
         self,
-        nodeToNodeInfo: Dict["Node", NodeInfo],
+        nodes: Dict["Node", NodeInfo],
         instance_type: str,
-        numNodes: int,
+        num_nodes: int,
         preemptable: bool = False,
         force: bool = False,
     ) -> int:
@@ -706,18 +699,17 @@ class ClusterScaler:
             # terminated already. There can also be instances that the batch system doesn't have
             # nodes for yet. We'll ignore those, too, unless forced.
             # TODO: This ignores/overrides the input arg, do we really want to do that???
-            nodeToNodeInfo = self.getNodes(preemptable)
+            nodes = self.getNodes(preemptable)
             # Filter down to nodes of the correct node type
 
-            nodeToNodeInfo = {node: nodeToNodeInfo[node] for node in nodeToNodeInfo if
-                              node.nodeType == instance_type}
+            nodes = {node: nodes[node] for node in nodes if
+                     node.nodeType == instance_type}
 
-            filtered_nodes = self.chooseNodes(nodeToNodeInfo, preemptable)
-            filtered_nodes = filtered_nodes[:numNodes]
+            filtered_nodes = self.filter_out_static_nodes(nodes, preemptable)
+            filtered_nodes = filtered_nodes[:num_nodes]
 
             # Join nodes and instances on private IP address.
-            logger.debug('Nodes considered to terminate: %s',
-                         ' '.join(map(str, nodeToNodeInfo)))
+            logger.debug('Nodes considered to terminate: %s', ' '.join(map(str, nodes)))
 
             # Tell the batch system to stop sending jobs to these nodes
             for (node, nodeInfo) in filtered_nodes:
@@ -738,8 +730,8 @@ class ClusterScaler:
                     self.leader.batchSystem.unignoreNode(node.privateIP)
         else:
             # Without load info all we can do is sort instances by time left in billing cycle.
-            nodes_to_terminate = sorted(nodeToNodeInfo.keys(), key=lambda x: x.remainingBillingInterval())
-            nodes_to_terminate = nodes_to_terminate[:numNodes]
+            nodes_to_terminate = sorted(nodes.keys(), key=lambda x: x.remainingBillingInterval())
+            nodes_to_terminate = nodes_to_terminate[:num_nodes]
         number_terminated = len(nodes_to_terminate)
         logger.debug('Terminating %i instance(s).', number_terminated)
         for node in nodes_to_terminate:
@@ -754,55 +746,50 @@ class ClusterScaler:
         Terminate straggling nodes designated for termination,
         but which still have workers running.
         """
-        nodeToNodeInfo = self.getNodes(preemptable=None)
-
-        # Remove any nodes that have already been terminated from ignored nodes
-        allNodeIPs = [node.privateIP for node in nodeToNodeInfo]
-        terminatedIPs = {ip for ip in self.ignoredNodes if ip not in allNodeIPs}
-
         if not isinstance(self.leader.batchSystem, AbstractScalableBatchSystem):
             raise RuntimeError('Non-scalable batch system abusing a scalable-only function.')
 
-        for ip in terminatedIPs:
+        # start with a dictionary of all nodes and filter down
+        nodes = self.getNodes()
+
+        # remove any nodes that have already been terminated from ignored nodes
+        all_node_ips = [node.privateIP for node in nodes]
+        terminated_node_ips = {ip for ip in self.ignoredNodes if ip not in all_node_ips}
+
+        # unignore terminated nodes
+        for ip in terminated_node_ips:
             self.ignoredNodes.remove(ip)
             self.leader.batchSystem.unignoreNode(ip)
 
         logger.debug("There are %i nodes being ignored by the batch system, "
                      "checking if they can be terminated" % len(self.ignoredNodes))
-        nodeToNodeInfo = {node: nodeToNodeInfo[node] for node in nodeToNodeInfo
-                          if node.privateIP in self.ignoredNodes}
-        nodeToNodeInfo = {node: nodeToNodeInfo[node] for node in nodeToNodeInfo
-                          if nodeToNodeInfo[node] is not None and nodeToNodeInfo[node].workers < 1}
-        nodes_to_terminate = list(nodeToNodeInfo.keys())
+        nodes = {node: info for node, info in nodes.items() if node.privateIP in self.ignoredNodes}
+        nodes = {node: info for node, info in nodes.items() if info and info.workers < 1}
+        nodes_to_terminate = list(nodes.keys())
 
         for node in nodes_to_terminate:
             self.ignoredNodes.remove(node.privateIP)
             self.leader.batchSystem.unignoreNode(node.privateIP)
         self.provisioner.terminateNodes(nodes_to_terminate)
 
-    def chooseNodes(
+    def filter_out_static_nodes(
             self,
-            nodeToNodeInfo: Dict["Node", NodeInfo],
+            nodes: Dict["Node", NodeInfo],
             preemptable: bool = False) -> List[Tuple["Node", NodeInfo]]:
-        nodesToTerminate = []
-        for node, nodeInfo in list(nodeToNodeInfo.items()):
-            if node is None:
-                logger.debug("Node with info %s was not found in our node list", nodeInfo)
-                continue
-            staticNodes = self.getStaticNodes(preemptable)
-            prefix = 'non-' if not preemptable else ''
-            if node.privateIP in staticNodes:
-                # we don't want to automatically terminate any statically
-                # provisioned nodes
-                logger.debug("Found %s in %spreemptable static nodes", node.privateIP, prefix)
-                continue
-            else:
-                logger.debug("Did not find %s in %spreemptable static nodes", node.privateIP, prefix)
-            nodesToTerminate.append((node, nodeInfo))
+        filtered_nodes = []
+        for node, nodeInfo in nodes.items():
+            if node:
+                non = 'non-' if not preemptable else ''
+                if node.privateIP in self.getStaticNodes(preemptable):
+                    # we don't want to automatically terminate any statically provisioned nodes
+                    logger.debug(f'Found {node.privateIP} in {non}preemptable static nodes')
+                else:
+                    logger.debug(f'Did not find {node.privateIP} in {non}preemptable static nodes')
+                    filtered_nodes.append((node, nodeInfo))
         # Sort nodes by number of workers and time left in billing cycle
-        nodesToTerminate.sort(key=lambda node_nodeInfo: (
+        filtered_nodes.sort(key=lambda node_nodeInfo: (
             node_nodeInfo[1].workers if node_nodeInfo[1] else 1, node_nodeInfo[0].remainingBillingInterval()))
-        return nodesToTerminate
+        return filtered_nodes
 
     def getNodes(self, preemptable: Optional[bool]) -> Dict["Node", NodeInfo]:
         """
@@ -817,27 +804,31 @@ class ClusterScaler:
         """
         if not isinstance(self.leader.batchSystem, AbstractScalableBatchSystem):
             raise RuntimeError('Non-scalable batch system abusing a scalable-only function.')
-        allMesosNodes = self.leader.batchSystem.getNodes(preemptable, timeout=0)
-        recentMesosNodes = self.leader.batchSystem.getNodes(preemptable)
-        provisionerNodes = self.provisioner.getProvisionedWorkers(preemptable=preemptable)
+        # nodes seen within the last 600 seconds (10 minutes)
+        recent_nodes = self.leader.batchSystem.getNodes(preemptable, timeout=600)
+        # all available nodes
+        all_nodes = self.leader.batchSystem.getNodes(preemptable)
+        # nodes that are supposedly doing something
+        provisioned_nodes = self.provisioner.getProvisionedWorkers(preemptable=preemptable)
 
-        if len(recentMesosNodes) != len(provisionerNodes):
+        if len(recent_nodes) != len(provisioned_nodes):
             logger.debug("Consolidating state between mesos and provisioner")
+
         nodeToInfo: Dict["Node", NodeInfo] = {}
         # fixme: what happens if awsFilterImpairedNodes is used?
         # if this assertion is false it means that user-managed nodes are being
         # used that are outside the provisioner's control
         # this would violate many basic assumptions in autoscaling so it currently not allowed
-        for node, ip in ((node, node.privateIP) for node in provisionerNodes):
-            if ip not in recentMesosNodes:
+        for node, ip in ((node, node.privateIP) for node in provisioned_nodes):
+            if ip not in recent_nodes:
                 logger.debug("Worker node at %s is not reporting executor information", ip)
 
                 # get up-to-date information about the node, if available
-                info = allMesosNodes.get(ip)
+                info = all_nodes.get(ip)
 
                 # info was found, but the node is not in use
                 if not self.leader.batchSystem.nodeInUse(ip) and info:
-                    # Node hasn't reported in the last 10 minutes & last we know there weren't
+                    # Node hasn't reported in the last 10 minutes & last we knew there weren't
                     # any tasks running.  We will fake executorInfo with no worker to reflect
                     # this, since otherwise this node will never be considered for termination.
                     info.workers = 0
@@ -858,7 +849,7 @@ class ClusterScaler:
                                     workers=0)
             else:
                 # mesos knows about the ip & we have up-to-date information - easy!
-                info = recentMesosNodes[ip]
+                info = recent_nodes[ip]
             # add info to dict to return
             nodeToInfo[node] = info
         return nodeToInfo
@@ -1028,10 +1019,7 @@ class ClusterStats:
             logger.debug("Starting to gather statistics")
             stats: Dict[str, List[Dict[str, Any]]] = {}
             if not isinstance(self.batchSystem, AbstractScalableBatchSystem):
-                raise AssertionError(
-                    "self.batchSystem should be AbstractScalableBatchSystem "
-                    f"based, is {type(self.batchSystem)}"
-                )
+                raise RuntimeError('Non-scalable batch system abusing a scalable-only function.')
             try:
                 while not self.stop:
                     nodeInfo = self.batchSystem.getNodes(preemptable)

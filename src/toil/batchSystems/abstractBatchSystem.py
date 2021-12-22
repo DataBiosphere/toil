@@ -458,25 +458,6 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
         """
         raise NotImplementedError()
 
-    # TODO: May be unused!
-    @abstractmethod
-    @contextmanager
-    def nodeFiltering(self, filter: Optional[Callable[[NodeInfo], bool]]) -> Iterator[None]:
-        """
-        Used to prevent races in autoscaling where
-        1) nodes have reported to the autoscaler as having no jobs
-        2) scaler decides to terminate these nodes. In parallel the batch system assigns jobs to the same nodes
-        3) scaler terminates nodes, resulting in job failures for all jobs on that node.
-
-        Call this method prior to node termination to ensure that nodes being considered for termination are not
-        assigned new jobs. Call the method again passing None as the filter to disable the filtering
-        after node termination is done.
-
-        :param method: This will be used as a filter on nodes considered when assigning new jobs.
-            After this context manager exits the filter should be removed
-        """
-        raise NotImplementedError()
-
     @abstractmethod
     def ignoreNode(self, nodeAddress: str) -> None:
         """
