@@ -96,6 +96,8 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from schema_salad.avro.schema import Names
 from schema_salad.exceptions import ValidationException
 from schema_salad.sourceline import SourceLine
+from schema_salad.ref_resolver import file_uri, uri_file_path
+
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Config, Toil, addOptions
@@ -1682,6 +1684,17 @@ def toilStageFiles(
 
     # This is all the CWL File and Directory objects we need to export.
     jobfiles = list(_collectDirEntries(cwljob))
+
+    def _realpath(
+        ob: CWLObjectType,
+    ) -> None:  # should be type Union[CWLFile, CWLDirectory]
+
+        location = cast(str, ob["location"])
+        if location.startswith("file:"):
+            ob["location"] = file_uri(os.path.realpath(uri_file_path(location)))
+            logger.debug("realpath %s" % ob["location"])
+
+    visit_class(jobfiles, ("File", "Directory"), _realpath)
 
     # Now we need to save all the output files and directories.
     # We shall use a ToilPathMapper.
