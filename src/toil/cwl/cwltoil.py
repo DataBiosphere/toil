@@ -1563,7 +1563,9 @@ def upload_directory(
         location = directory_metadata["location"] = schema_salad.ref_resolver.file_uri(
             cast(str, directory_metadata["path"])
         )
-    if location.startswith("file://") and not os.path.isdir(location[len("file://") :]):
+    if location.startswith("file://") and not os.path.isdir(
+        schema_salad.ref_resolver.uri_file_path(location)
+    ):
         if skip_broken:
             return
         else:
@@ -1611,7 +1613,7 @@ def upload_file(
             cast(str, file_metadata["path"])
         )
     if location.startswith("file://") and not os.path.isfile(
-        location[len("file://") :]
+        schema_salad.ref_resolver.uri_file_path(location)
     ):
         if skip_broken:
             return
