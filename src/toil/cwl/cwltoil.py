@@ -1687,8 +1687,7 @@ def toilStageFiles(
 
     def _realpath(
         ob: CWLObjectType,
-    ) -> None:  # should be type Union[CWLFile, CWLDirectory]
-
+    ) -> None:
         location = cast(str, ob["location"])
         if location.startswith("file:"):
             ob["location"] = file_uri(os.path.realpath(uri_file_path(location)))
