@@ -38,8 +38,7 @@ from toil.test import (
     needs_cwl,
     needs_docker,
     needs_rsync3,
-    slow,
-    travis_test,
+    slow
 )
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
@@ -262,7 +261,6 @@ class UtilsTest(ToilTest):
         # Delete output file
         os.remove(self.outputFile)
 
-    @travis_test
     def testUnicodeSupport(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.clean = 'always'
@@ -294,7 +292,6 @@ class UtilsTest(ToilTest):
                 s = status_fn(self.toilDir)
                 self.assertEqual(s, status, 'Status took longer than 10 seconds to fetch:  %s' % s)
 
-    @travis_test
     def testGetPIDStatus(self):
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
         wf = subprocess.Popen(self.sort_workflow_cmd)
@@ -307,7 +304,6 @@ class UtilsTest(ToilTest):
         os.remove(os.path.join(self.toilDir, 'files/shared/pid.log'))
         self.check_status('QUEUED', status_fn=ToilStatus.getPIDStatus)
 
-    @travis_test
     def testGetStatusFailedToilWF(self):
         """
         Test that ToilStatus.getStatus() behaves as expected with a failing Toil workflow.

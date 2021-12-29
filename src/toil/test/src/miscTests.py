@@ -23,7 +23,7 @@ from toil.common import getNodeID
 from toil.lib.exceptions import panic, raise_
 from toil.lib.io import AtomicFileCreate, atomic_install, atomic_tmp_file
 from toil.lib.misc import CalledProcessErrorStderr, call_command
-from toil.test import ToilTest, slow, travis_test
+from toil.test import ToilTest, slow
 
 log = logging.getLogger(__name__)
 logging.basicConfig()
@@ -38,7 +38,6 @@ class MiscTests(ToilTest):
         super().setUp()
         self.testDir = self._createTempDir()
 
-    @travis_test
     def testIDStability(self):
         prevNodeID = None
         for i in range(10, 1):
@@ -142,29 +141,24 @@ class MiscTests(ToilTest):
             call_command(["cat", "/dev/Frankenheimer"])
 
 class TestPanic(ToilTest):
-
-    @travis_test
     def test_panic_by_hand(self):
         try:
             self.try_and_panic_by_hand()
         except:
             self.__assert_raised_exception_is_primary()
 
-    @travis_test
     def test_panic(self):
         try:
             self.try_and_panic()
         except:
             self.__assert_raised_exception_is_primary()
 
-    @travis_test
     def test_panic_with_secondary(self):
         try:
             self.try_and_panic_with_secondary()
         except:
             self.__assert_raised_exception_is_primary()
 
-    @travis_test
     def test_nested_panic(self):
         try:
             self.try_and_nested_panic_with_secondary()
