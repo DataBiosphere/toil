@@ -96,6 +96,8 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from schema_salad.avro.schema import Names
 from schema_salad.exceptions import ValidationException
 from schema_salad.sourceline import SourceLine
+from schema_salad.ref_resolver import file_uri, uri_file_path
+
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Config, Toil, addOptions
@@ -852,12 +854,42 @@ class ToilPathMapper(PathMapper):
                     # If we didn't download something that is a toilfile:
                     # reference, we just pass that along.
 
-                    logger.debug(
-                        "ToilPathMapper adding file mapping %s -> %s", deref, tgt
-                    )
-                    self._pathmap[path] = MapperEnt(
-                        deref, tgt, "WritableFile" if copy else "File", staged
-                    )
+                    """Link or copy files to their targets. Create them as needed."""
+                    targets: Dict[str, str] = {}
+                    for _, value in self._pathmap.items():
+                        # If the target already exists in the pathmap, it means we have a conflict.  But we didn't change tgt to reflect new name.
+                        new_target = value.target.rpartition("_")[0]
+                        if value.target == tgt:  # Conflict detected in the pathmap
+                            new_target = tgt
+                        if new_target and new_target == tgt:
+                            i = 2
+                            new_tgt = f"{tgt}_{i}"
+                            while new_tgt in targets:
+                                i += 1
+                                new_tgt = f"{tgt}_{i}"
+                            targets[new_tgt] = new_tgt
+
+                    for _, value_conflict in targets.items():
+                        logger.debug(
+                            "ToilPathMapper adding file mapping for conflict %s -> %s",
+                            deref,
+                            value_conflict,
+                        )
+                        self._pathmap[path] = MapperEnt(
+                            deref,
+                            value_conflict,
+                            "WritableFile" if copy else "File",
+                            staged,
+                        )
+                    # No conflicts detected so we can write out the original name.
+                    if not targets:
+                        logger.debug(
+                            "ToilPathMapper adding file mapping %s -> %s", deref, tgt
+                        )
+
+                        self._pathmap[path] = MapperEnt(
+                            deref, tgt, "WritableFile" if copy else "File", staged
+                        )
 
             # Handle all secondary files that need to be next to this one.
             self.visitlisting(
@@ -1654,6 +1686,16 @@ def toilStageFiles(
 
     # This is all the CWL File and Directory objects we need to export.
     jobfiles = list(_collectDirEntries(cwljob))
+
+    def _realpath(
+        ob: CWLObjectType,
+    ) -> None:
+        location = cast(str, ob["location"])
+        if location.startswith("file:"):
+            ob["location"] = file_uri(os.path.realpath(uri_file_path(location)))
+            logger.debug("realpath %s" % ob["location"])
+
+    visit_class(jobfiles, ("File", "Directory"), _realpath)
 
     # Now we need to save all the output files and directories.
     # We shall use a ToilPathMapper.
