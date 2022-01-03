@@ -56,8 +56,7 @@ from toil.test import (ToilTest,
                        needs_slurm,
                        needs_tes,
                        needs_torque,
-                       slow,
-                       travis_test)
+                       slow)
 from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 
 logger = logging.getLogger(__name__)
@@ -556,7 +555,6 @@ def write_temp_file(s: str, temp_dir: str) -> str:
         os.close(fd)
 
 
-@travis_test
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     """
     Tests against the single-machine batch system
@@ -1015,7 +1013,6 @@ class HTCondorBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
         super().tearDown()
 
 
-@travis_test
 class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
     """
     Tests Toil workflow against the SingleMachine batch system

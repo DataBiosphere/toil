@@ -20,7 +20,7 @@ import toil.test.batchSystems.batchSystemTest as batchSystemTest
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.job import Job, PromisedRequirement
 from toil.lib.retry import retry_flaky_test
-from toil.test import needs_mesos, slow, travis_test
+from toil.test import needs_mesos, slow
 
 log = logging.getLogger(__name__)
 
@@ -33,10 +33,7 @@ class hidden:
     """
 
     class AbstractPromisedRequirementsTest(batchSystemTest.hidden.AbstractBatchSystemJobTest):
-        """
-        An abstract base class for testing Toil workflows with promised requirements.
-        """
-
+        """An abstract base class for testing Toil workflows with promised requirements."""
         @slow
         def testConcurrencyDynamic(self):
             """
@@ -100,11 +97,6 @@ class hidden:
             assert (minValue, maxValue) == (0, 0)
             return counterPath
 
-        @travis_test
-        def testJobConcurrency(self):
-            pass
-
-        @travis_test
         def testPromisesWithJobStoreFileObjects(self, caching=True):
             """
             Check whether FileID objects are being pickled properly when used as return
@@ -125,7 +117,6 @@ class hidden:
 
             Job.Runner.startToil(F1, self.getOptions(self._createTempDir('testFiles'), caching=caching))
 
-        @travis_test
         def testPromisesWithNonCachingFileStore(self):
             self.testPromisesWithJobStoreFileObjects(caching=False)
 
