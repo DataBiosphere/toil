@@ -8,7 +8,7 @@ import unittest
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
-from toil.test import ToilTest, needs_cwl, needs_docker, travis_test
+from toil.test import ToilTest, needs_cwl, needs_docker
 from toil.version import python
 
 
@@ -69,68 +69,54 @@ class ToilDocumentationTest(ToilTest):
     def testCwlexample(self):
         self.checkExitCode("tutorial_cwlexample.py")
 
-    @travis_test
     def testDiscoverfiles(self):
         self.checkExitCode("tutorial_discoverfiles.py")
 
-    @travis_test
     def testDynamic(self):
         self.checkExitCode("tutorial_dynamic.py")
 
-    @travis_test
     def testEncapsulation(self):
         self.checkExitCode("tutorial_encapsulation.py")
 
-    @travis_test
     def testEncapsulation2(self):
         self.checkExitCode("tutorial_encapsulation2.py")
 
-    @travis_test
     def testHelloworld(self):
         self.checkExpectedOut("tutorial_helloworld.py", "Hello, world!, here's a message: You did it!\n")
 
-    @travis_test
     def testInvokeworkflow(self):
         self.checkExpectedOut("tutorial_invokeworkflow.py", "Hello, world!, here's a message: Woot\n")
 
-    @travis_test
     def testInvokeworkflow2(self):
         self.checkExpectedOut("tutorial_invokeworkflow2.py", "Hello, world!, I have a message: Woot!\n")
 
-    @travis_test
     def testJobFunctions(self):
         self.checkExpectedOut("tutorial_jobfunctions.py", "Hello world, I have a message: Woot!\n")
 
-    @travis_test
     def testManaging(self):
         self.checkExitCode("tutorial_managing.py")
 
-    @travis_test
     def testManaging2(self):
         self.checkExitCode("tutorial_managing2.py")
 
-    @travis_test
     def testMultiplejobs(self):
         self.checkExpectedPattern("tutorial_multiplejobs.py",
                                   "Hello world, I have a message: first.*Hello world, I have a message: "
                                   "second or third.*Hello world, I have a message: second or third.*Hello world,"
                                   " I have a message: last")
 
-    @travis_test
     def testMultiplejobs2(self):
         self.checkExpectedPattern("tutorial_multiplejobs2.py",
                                   "Hello world, I have a message: first.*Hello world, I have a message: "
                                   "second or third.*Hello world, I have a message: second or third.*Hello world,"
                                   " I have a message: last")
 
-    @travis_test
     def testMultiplejobs3(self):
         self.checkExpectedPattern("tutorial_multiplejobs3.py",
                                   "Hello world, I have a message: first.*Hello world, I have a message: "
                                   "second or third.*Hello world, I have a message: second or third.*Hello world,"
                                   " I have a message: last")
 
-    @travis_test
     def testPromises2(self):
         self.checkExpectedOut("tutorial_promises2.py",
                               "['00000', '00001', '00010', '00011', '00100', '00101', '00110', '00111',"
@@ -138,15 +124,12 @@ class ToilDocumentationTest(ToilTest):
                               " '10000', '10001', '10010', '10011', '10100', '10101', '10110', '10111',"
                               " '11000', '11001', '11010', '11011', '11100', '11101', '11110', '11111']")
 
-    @travis_test
     def testQuickstart(self):
         self.checkExpectedOut("tutorial_quickstart.py", "Hello, world!, here's a message: Woot\n")
 
-    @travis_test
     def testRequirements(self):
         self.checkExitCode("tutorial_requirements.py")
 
-    @travis_test
     def testArguments(self):
         self.checkExpectedOut("tutorial_arguments.py", "Hello, world!, here's a message: Woot")
 
@@ -154,15 +137,12 @@ class ToilDocumentationTest(ToilTest):
     def testDocker(self):
         self.checkExitCode("tutorial_docker.py")
 
-    @travis_test
     def testPromises(self):
         self.checkExpectedPattern("tutorial_promises.py", "i is: 1.*i is: 2.*i is: 3")
 
-    @travis_test
     def testServices(self):
         self.checkExitCode("tutorial_services.py")
 
-    @travis_test
     def testStaging(self):
         self.checkExitCode("tutorial_staging.py")
 

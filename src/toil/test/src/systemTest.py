@@ -5,15 +5,11 @@ import tempfile
 from functools import partial
 
 from toil.lib.threading import cpu_count
-from toil.test import ToilTest, travis_test
+from toil.test import ToilTest
 
 
 class SystemTest(ToilTest):
-    """
-    Test various assumptions about the operating system's behavior
-    """
-
-    @travis_test
+    """Test various assumptions about the operating system's behavior."""
     def testAtomicityOfNonEmptyDirectoryRenames(self):
         for _ in range(100):
             parent = self._createTempDir(purpose='parent')
