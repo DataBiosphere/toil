@@ -940,9 +940,10 @@ class AWSProvisioner(AbstractProvisioner):
         :return: The AMI ID (a string like 'ami-0a9a5d2b65cce04eb') for Flatcar.
         :rtype: str
         """
-        if self._architecture:
+        try:
             return get_flatcar_ami(self.aws.client(self._region, 'ec2'), self._architecture)
-        return get_flatcar_ami(self.aws.client(self._region, 'ec2'))
+        except:
+            return get_flatcar_ami(self.aws.client(self._region, 'ec2'))
 
     def _toNameSpace(self) -> str:
         assert isinstance(self.clusterName, (str, bytes))
