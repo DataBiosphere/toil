@@ -1,0 +1,4 @@
+input_file:
+ class: File
+ path: whale.txt
+outdir_name: A:Gln2Cys_result
