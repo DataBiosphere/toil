@@ -20,7 +20,7 @@ from collections import Counter
 from tempfile import NamedTemporaryFile
 from typing import Optional, List, Dict, Any, overload, Generator, Tuple
 
-from flask import send_from_directory
+from flask import send_from_directory, redirect
 
 from toil.server.utils import safe_read_file, safe_write_file
 from toil.server.wes.abstract_backend import (WESBackend,
@@ -346,3 +346,20 @@ class ToilBackend(WESBackend):
         """
         self._get_run(run_id, should_exists=True)
         return send_from_directory(self.work_dir, os.path.join(run_id, "stderr"), mimetype="text/plain")
+
+    @handle_errors
+    def get_health(self) -> str:
+        """
+        Return successfully if the server is healthy.
+        """
+        return "OK"
+
+    @handle_errors
+    def get_homepage(self) -> str:
+        """
+        Provide a sensible result for / other than 404.
+        """
+        # For now just go to the service info endpoint
+        return redirect('ga4gh/wes/v1/service-info', code=302)
+
+
