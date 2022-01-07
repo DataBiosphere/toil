@@ -33,6 +33,9 @@ def parser_with_server_options() -> argparse.ArgumentParser:
                         help="The host interface that the Toil server binds on. (default: '127.0.0.1').")
     parser.add_argument("--port", type=int, default=8080,
                         help="The port that the Toil server listens on. (default: 8080).")
+    parser.add_argument("--public_url", type=str, default="",
+                        help="The base URL to use for serving static files including the stdout and stderr logs of "
+                             "the workflows. (default: \"http://{host}:{port}\").")
     parser.add_argument("--swagger_ui", action="store_true", default=False,
                         help="If True, the swagger UI will be enabled and hosted on the "
                              "`{api_base_path}/ui` endpoint. (default: False)")
@@ -75,10 +78,13 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
         from flask_cors import CORS  # type: ignore
         CORS(flask_app.app, resources={r"/ga4gh/*": {"origins": args.cors_origins}})
 
+    if not args.public_url:
+        args.public_url = f"http://{args.host}:{args.port}"
+
     # add workflow execution service (WES) API endpoints
     backend = ToilBackend(work_dir=args.work_dir,
                           options=args.opt,
-                          base_url=f"http://{get_public_ip()}:{args.port}")
+                          public_url=args.public_url)
 
     flask_app.add_api('workflow_execution_service.swagger.yaml',
                       resolver=connexion.Resolver(backend.resolve_operation_id))  # noqa

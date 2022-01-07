@@ -125,10 +125,10 @@ class ToilBackend(WESBackend):
     in the filesystem to store and retrieve data associated with the runs.
     """
 
-    def __init__(self, work_dir: str, options: List[str], base_url: str) -> None:
+    def __init__(self, work_dir: str, options: List[str], public_url: str) -> None:
         super(ToilBackend, self).__init__(options)
-        self.work_dir = work_dir
-        self.base_url = base_url
+        self.work_dir = os.path.abspath(work_dir)
+        self.public_url = public_url
 
         self.supported_versions = {
             "py": ["3.6", "3.7", "3.8", "3.9"],
@@ -270,8 +270,8 @@ class ToilBackend(WESBackend):
         stdout = ""
         stderr = ""
         if os.path.isfile(os.path.join(run.work_dir, 'stdout')):
-            stdout = f"{self.base_url}/toil/wes/v1/logs/{run_id}/stdout"
-            stderr = f"{self.base_url}/toil/wes/v1/logs/{run_id}/stderr"
+            stdout = f"{self.public_url}/toil/wes/v1/logs/{run_id}/stdout"
+            stderr = f"{self.public_url}/toil/wes/v1/logs/{run_id}/stderr"
 
         exit_code = run.fetch("exit_code")
 
