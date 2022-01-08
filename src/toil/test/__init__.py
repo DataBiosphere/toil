@@ -371,13 +371,6 @@ def needs_aws_ec2(test_item: MT) -> MT:
     return test_item
 
 
-def travis_test(test_item: MT) -> MT:
-    test_item = _mark_test('travis', test_item)
-    if os.environ.get('TRAVIS') != 'true':
-        return unittest.skip("Set TRAVIS='true' to include this test.")(test_item)
-    return test_item
-
-
 def needs_google(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if Google is usable."""
     test_item = _mark_test('google', test_item)

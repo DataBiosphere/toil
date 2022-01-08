@@ -76,9 +76,6 @@ wdl_dependency_is_stand_alone:
     - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && make prepare && make develop extras=[wdl]
     - make test tests=src/toil/test/wdl/toilwdlTest.py::ToilWdlIntegrationTest::testMD5sum
 
-# Tests that used to be on Travis
-# The Makefile sets "TRAVIS=true", which is now a misnomer, but we don't need
-# to also do it here.
 quick_test_offline:
   stage: basic_tests
   script:
