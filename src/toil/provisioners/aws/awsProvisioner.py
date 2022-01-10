@@ -15,6 +15,7 @@ import collections
 import json
 import logging
 import os
+import platform
 import socket
 import string
 import textwrap
@@ -255,6 +256,10 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Set up our connections to AWS
         self.aws = AWSConnectionManager()
+
+        # Set our architecture to the current machine architecture
+        # Assume the same architecture unless specified differently in launchCluster()
+        self._architecture = 'amd64' if platform.machine() in ['x86_64', 'amd64'] else 'arm64'
 
         # Call base class constructor, which will call createClusterSettings()
         # or readClusterSettings()
@@ -940,10 +945,7 @@ class AWSProvisioner(AbstractProvisioner):
         :return: The AMI ID (a string like 'ami-0a9a5d2b65cce04eb') for Flatcar.
         :rtype: str
         """
-        try:
-            return get_flatcar_ami(self.aws.client(self._region, 'ec2'), self._architecture)
-        except:
-            return get_flatcar_ami(self.aws.client(self._region, 'ec2'))
+        return get_flatcar_ami(self.aws.client(self._region, 'ec2'), self._architecture)
 
     def _toNameSpace(self) -> str:
         assert isinstance(self.clusterName, (str, bytes))
