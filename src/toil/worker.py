@@ -512,6 +512,17 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             # and it needs to inform its caller.
             failure_exit_code = CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
         AbstractFileStore._terminateEvent.set()
+    finally:
+        try:
+            import cwltool.main
+
+            cwltool.main._terminate_processes()
+        except (ImportError, ModuleNotFoundError):
+            pass
+        except Exception as e:
+            logger.debug("cwltool.main._terminate_processess exception: %s", (e))
+            raise e
+
 
     ##########################################
     #Wait for the asynchronous chain of writes/updates to finish
