@@ -92,12 +92,12 @@ class TESBatchSystem(BatchSystemCleanupSupport):
             job_store_type, job_store_path = Toil.parseLocator(config.jobStore)
             if job_store_type == 'file':
                 # If we have a file job store, we want to mount it at the same path, if we can
-                self.__mount_local_path_if_possible(job_store_path, job_store_path)
+                self._mount_local_path_if_possible(job_store_path, job_store_path)
 
         # If we have AWS credentials, we want to mount them in our home directory if we can.
         aws_credentials_path = os.path.join(os.path.expanduser("~"), '.aws')
         if os.path.isdir(aws_credentials_path):
-            self.__mount_local_path_if_possible(aws_credentials_path, '/root/.aws')
+            self._mount_local_path_if_possible(aws_credentials_path, '/root/.aws')
 
         # We assign job names based on a numerical job ID. This functionality
         # is managed by the BatchSystemLocalSupport.
@@ -112,8 +112,10 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         self.bs_id_to_tes_id: Dict[int, str] = {}
         self.tes_id_to_bs_id: Dict[str, int] = {}
 
-    def __server_can_mount(self, url: str) -> bool:
+    def _server_can_mount(self, url: str) -> bool:
         """
+        Internal function. Should not be called outside this class.
+
         Return true if the given URL is under a supported storage location for
         the TES server, and false otherwise.
         """
@@ -125,15 +127,17 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                 return True
         return False
 
-    def __mount_local_path_if_possible(self, local_path: str, container_path: str) -> None:
+    def _mount_local_path_if_possible(self, local_path: str, container_path: str) -> None:
         """
+        Internal function. Should not be called outside this class.
+
         If a local path is somewhere the server thinks it can access, mount it
         into all the tasks.
         """
         # TODO: We aren't going to work well with linked imports if we're mounting the job store into the container...
 
         path_url = 'file://' + os.path.abspath(local_path)
-        if os.path.exists(local_path) and self.__server_can_mount(path_url):
+        if os.path.exists(local_path) and self._server_can_mount(path_url):
             # We can access this file from the server. Probably.
             self.mounts.append(tes.Input(url=path_url,
                                          path=container_path,
@@ -216,8 +220,10 @@ class TESBatchSystem(BatchSystemCleanupSupport):
 
             return bs_id
 
-    def __get_runtime(self, task: tes.Task) -> Optional[float]:
+    def _get_runtime(self, task: tes.Task) -> Optional[float]:
         """
+        Internal function. Should not be called outside this class.
+
         Get the time that the given job ran/has been running for, in seconds,
         or None if that time is not available. Never returns 0.
         """
@@ -242,8 +248,10 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         # it has been running for.
         return slow_down((end_time - start_time).total_seconds())
 
-    def __get_exit_code(self, task: tes.Task) -> int:
+    def _get_exit_code(self, task: tes.Task) -> int:
         """
+        Internal function. Should not be called outside this class.
+
         Get the exit code of the last executor with a log in the task, or
         EXIT_STATUS_UNAVAILABLE_VALUE if no executor has a log.
         """
@@ -295,13 +303,13 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                     # Otherwise, it stopped running and it wasn't our fault.
 
                     # Record runtime
-                    runtime = self.__get_runtime(task)
+                    runtime = self._get_runtime(task)
 
                     # Determine if it succeeded
                     exit_reason = STATE_TO_EXIT_REASON[task.state]
 
                     # Get its exit code
-                    exit_code = self.__get_exit_code(task)
+                    exit_code = self._get_exit_code(task)
 
                     # Compose a result
                     result = UpdatedBatchJobInfo(jobID=bs_id, exitStatus=exit_code, wallTime=runtime, exitReason=exit_reason)
@@ -331,10 +339,12 @@ class TESBatchSystem(BatchSystemCleanupSupport):
 
         for tes_id in self.tes_id_to_bs_id.keys():
             # Shut down all the TES jobs we issued.
-            self.__try_cancel(tes_id)
+            self._try_cancel(tes_id)
 
-    def __try_cancel(self, tes_id: str) -> None:
+    def _try_cancel(self, tes_id: str) -> None:
         """
+        Internal function. Should not be called outside this class.
+
         Try to cancel a TES job.
 
         Succeed if it can't be canceled because it has stopped,
@@ -372,7 +382,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                 # Docker containers, and we don't want to time out on them in
                 # the tests. But they may not have any runtimes, so it might
                 # not really help.
-                runtime = self.__get_runtime(task)
+                runtime = self._get_runtime(task)
                 if runtime:
                     # We can measure a runtime
                     bs_id_to_runtime[bs_id] = runtime
@@ -389,7 +399,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         for bs_id in job_ids:
             if bs_id in self.bs_id_to_tes_id:
                 # We sent this to TES. So try to cancel it.
-                self.__try_cancel(self.bs_id_to_tes_id[bs_id])
+                self._try_cancel(self.bs_id_to_tes_id[bs_id])
                 # But don't forget the mapping until we actually get the finish
                 # notification for the job.
 

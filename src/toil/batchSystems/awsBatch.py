@@ -159,7 +159,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             # We could add a per-workflow prefix to use with ListTasks, but
             # ListTasks doesn't let us filter for newly done tasks, so it's not
             # actually useful for us over polling each task.
-            job_name = self.__ensafen_name(str(job_desc))
+            job_name = self._ensafen_name(str(job_desc))
 
             # Launch the job on AWS Batch
 
@@ -186,7 +186,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             job_spec = {
                 'jobName': job_name,
                 'jobQueue': self.queue,
-                'jobDefinition': self.__get_or_create_job_definition(),
+                'jobDefinition': self._get_or_create_job_definition(),
                 'containerOverrides': {
                     'command': command_list,
                     'environment': [{'name': k, 'value': v} for k, v in environment.items()],
@@ -214,8 +214,10 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             return bs_id
 
     @staticmethod
-    def __ensafen_name(input_name: str) -> str:
+    def _ensafen_name(input_name: str) -> str:
         """
+        Internal function. Should not be called outside this class.
+
         Make a job name safe for Amazon Batch.
         From the API docs:
 
@@ -235,8 +237,10 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # And re-compose them into a string
         return ''.join(kept_chars)
 
-    def __get_runtime(self, job_detail: Dict[str, Any]) -> Optional[float]:
+    def _get_runtime(self, job_detail: Dict[str, Any]) -> Optional[float]:
         """
+        Internal function. Should not be called outside this class.
+
         Get the time that the given job ran/has been running for, in seconds,
         or None if that time is not available. Never returns 0.
 
@@ -265,8 +269,10 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # Return the time it has been running for.
         return runtime
 
-    def __get_exit_code(self, job_detail: Dict[str, Any]) -> int:
+    def _get_exit_code(self, job_detail: Dict[str, Any]) -> int:
         """
+        Internal function. Should not be called outside this class.
+
         Get the exit code of the given JobDetail, or
         EXIT_STATUS_UNAVAILABLE_VALUE if it cannot be gotten.
         """
@@ -286,7 +292,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                 # are acknowledging and don't care about anymore.
                 acknowledged = []
 
-                for job_detail in self.__describe_jobs_in_batches():
+                for job_detail in self._describe_jobs_in_batches():
                     if job_detail.get('status') in ['SUCCEEDED', 'FAILED']:
                         # This job is done!
                         aws_id = job_detail['jobId']
@@ -303,13 +309,13 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                         # Otherwise, it stopped running and it wasn't our fault.
 
                         # Record runtime
-                        runtime = self.__get_runtime(job_detail)
+                        runtime = self._get_runtime(job_detail)
 
                         # Determine if it succeeded
                         exit_reason = STATE_TO_EXIT_REASON[job_detail['status']]
 
                         # Get its exit code
-                        exit_code = self.__get_exit_code(job_detail)
+                        exit_code = self._get_exit_code(job_detail)
 
                         if job_detail['status'] == 'FAILED' and 'statusReason' in job_detail:
                             # AWS knows why the job failed, so log the error
@@ -343,14 +349,16 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
         for aws_id in self.aws_id_to_bs_id.keys():
             # Shut down all the AWS jobs we issued.
-            self.__try_terminate(aws_id)
+            self._try_terminate(aws_id)
 
         # Get rid of the job definition we are using if we can.
-        self.__destroy_job_definition()
+        self._destroy_job_definition()
 
     @retry(errors=[BotoServerError])
-    def __try_terminate(self, aws_id: str) -> None:
+    def _try_terminate(self, aws_id: str) -> None:
         """
+        Internal function. Should not be called outside this class.
+
         Try to terminate an AWS Batch job.
 
         Succeed if it can't be canceled because it has stopped,
@@ -363,8 +371,10 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         self.client.terminate_job(jobId=aws_id, reason='Killed by Toil')
 
     @retry(errors=[BotoServerError])
-    def __wait_until_stopped(self, aws_id: str) -> None:
+    def _wait_until_stopped(self, aws_id: str) -> None:
         """
+        Internal function. Should not be called outside this class.
+
         Wait for a terminated job to actually stop. The AWS Batch API does not
         guarantee that the status of a job will be SUCCEEDED or FAILED as soon
         as a terminate call succeeds for it, but Toil requires that a job that
@@ -387,8 +397,10 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             time.sleep(2)
 
     @retry(errors=[BotoServerError])
-    def __get_or_create_job_definition(self) -> str:
+    def _get_or_create_job_definition(self) -> str:
         """
+        Internal function. Should not be called outside this class.
+
         Create, if not already created, and return the ARN for the
         JobDefinition for this workflow run.
         """
@@ -427,8 +439,10 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         return self.job_definition
 
     @retry(errors=[BotoServerError])
-    def __destroy_job_definition(self) -> None:
+    def _destroy_job_definition(self) -> None:
         """
+        Internal function. Should not be called outside this class.
+
         Destroy any job definition we have created for this workflow run.
         """
         if self.job_definition is not None:
@@ -439,8 +453,10 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
     def getIssuedBatchJobIDs(self) -> List[int]:
         return self.getIssuedLocalJobIDs() + list(self.bs_id_to_aws_id.keys())
 
-    def __describe_jobs_in_batches(self) -> Iterator[Dict[str, Any]]:
+    def _describe_jobs_in_batches(self) -> Iterator[Dict[str, Any]]:
         """
+        Internal function. Should not be called outside this class.
+
         Describe all the outstanding jobs in batches of a reasonable size.
         Yields each JobDetail.
         """
@@ -464,9 +480,9 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # We need a dict from job_id (integer) to seconds it has been running
         bs_id_to_runtime = {}
 
-        for job_detail in self.__describe_jobs_in_batches():
+        for job_detail in self._describe_jobs_in_batches():
             if job_detail.get('status') == 'RUNNING':
-                runtime = self.__get_runtime(job_detail)
+                runtime = self._get_runtime(job_detail)
                 aws_id = job_detail['jobId']
                 bs_id = self.aws_id_to_bs_id[aws_id]
                 if runtime:
@@ -487,7 +503,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         for bs_id in job_ids:
             if bs_id in self.bs_id_to_aws_id:
                 # We sent this to AWS Batch. So try to cancel it.
-                self.__try_terminate(self.bs_id_to_aws_id[bs_id])
+                self._try_terminate(self.bs_id_to_aws_id[bs_id])
                 # But don't forget the mapping until we actually get the finish
                 # notification for the job.
         for bs_id in job_ids:
@@ -495,7 +511,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                 # Poll each job to make sure it is dead and won't look running,
                 # before we return. TODO: we could do this in batches to save
                 # requests, but we already make O(n) requests to issue the kills.
-                self.__wait_until_stopped(self.bs_id_to_aws_id[bs_id])
+                self._wait_until_stopped(self.bs_id_to_aws_id[bs_id])
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
