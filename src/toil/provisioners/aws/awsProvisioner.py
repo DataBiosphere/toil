@@ -34,9 +34,10 @@ from boto.exception import BotoServerError, EC2ResponseError
 from boto.utils import get_instance_metadata
 from botocore.exceptions import ClientError
 
-from toil.lib.aws import AWSConnectionManager, zone_to_region
+from toil.lib.aws import zone_to_region
 from toil.lib.aws.ami import get_flatcar_ami
 from toil.lib.aws.utils import create_s3_bucket
+from toil.lib.aws.session import AWSConnectionManager
 from toil.lib.conversions import human2bytes
 from toil.lib.ec2 import (a_short_time,
                           create_auto_scaling_group,

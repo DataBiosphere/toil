@@ -9,7 +9,7 @@ from boto.ec2.instance import Instance as Boto2Instance
 from boto.ec2.spotinstancerequest import SpotInstanceRequest
 from botocore.client import BaseClient
 
-from toil.lib.aws import establish_boto3_session
+from toil.lib.aws.session import establish_boto3_session
 from toil.lib.exceptions import panic
 from toil.lib.retry import (
     ErrorCondition,
