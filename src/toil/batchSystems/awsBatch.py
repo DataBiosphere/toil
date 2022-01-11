@@ -415,7 +415,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                     # TODO: Where do the default batch AMIs mount their ephemeral disks, if anywhere?
                     'volumes': [{'name': 'workdir', 'host': {'sourcePath': '/var/lib/toil'}}],
                     'mountPoints': [{'containerPath': self.worker_work_dir, 'sourceVolume': 'workdir'}],
-                    # Requirements will always be overridden but mist be present anyway
+                    # Requirements will always be overridden but must be present anyway
                     'resourceRequirements': [
                         {'type': 'MEMORY', 'value': str(math.ceil(max(4, b_to_mib(self.config.defaultMemory))))},
                         {'type': 'VCPU', 'value': str(math.ceil(self.config.defaultCores))}
