@@ -276,70 +276,65 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
     def getUpdatedBatchJob(self, maxWait: int) -> Optional[UpdatedBatchJobInfo]:
         # Remember when we started, for respecting the timeout
         entry = datetime.datetime.now()
-        # This is the updated job we have found, if any
-        result = None
-        while result is None and ((datetime.datetime.now() - entry).total_seconds() < maxWait or not maxWait):
+        while ((datetime.datetime.now() - entry).total_seconds() < maxWait or not maxWait):
             result = self.getUpdatedLocalJob(0)
-
             if result:
                 return result
 
-            # Collect together the list of AWS and batch system IDs for tasks we
-            # are acknowledging and don't care about anymore.
-            acknowledged = []
+            try:
+                # Collect together the list of AWS and batch system IDs for tasks we
+                # are acknowledging and don't care about anymore.
+                acknowledged = []
 
-            for job_detail in self.__describe_jobs_in_batches():
-                if job_detail.get('status') in ['SUCCEEDED', 'FAILED']:
-                    # This job is done!
-                    aws_id = job_detail['jobId']
-                    bs_id = self.aws_id_to_bs_id[aws_id]
+                for job_detail in self.__describe_jobs_in_batches():
+                    if job_detail.get('status') in ['SUCCEEDED', 'FAILED']:
+                        # This job is done!
+                        aws_id = job_detail['jobId']
+                        bs_id = self.aws_id_to_bs_id[aws_id]
 
-                    # Acknowledge it
-                    acknowledged.append((aws_id, bs_id))
+                        # Acknowledge it
+                        acknowledged.append((aws_id, bs_id))
 
-                    if job_detail['jobId'] in self.killed_job_aws_ids:
-                        # Killed jobs aren't allowed to appear as updated.
-                        logger.debug('Job %s was killed so skipping it', bs_id)
-                        continue
+                        if job_detail['jobId'] in self.killed_job_aws_ids:
+                            # Killed jobs aren't allowed to appear as updated.
+                            logger.debug('Job %s was killed so skipping it', bs_id)
+                            continue
 
-                    # Otherwise, it stopped running and it wasn't our fault.
+                        # Otherwise, it stopped running and it wasn't our fault.
 
-                    # Record runtime
-                    runtime = self.__get_runtime(job_detail)
+                        # Record runtime
+                        runtime = self.__get_runtime(job_detail)
 
-                    # Determine if it succeeded
-                    exit_reason = STATE_TO_EXIT_REASON[job_detail['status']]
+                        # Determine if it succeeded
+                        exit_reason = STATE_TO_EXIT_REASON[job_detail['status']]
 
-                    # Get its exit code
-                    exit_code = self.__get_exit_code(job_detail)
+                        # Get its exit code
+                        exit_code = self.__get_exit_code(job_detail)
 
-                    if job_detail['status'] == 'FAILED' and 'statusReason' in job_detail:
-                        # AWS knows why the job failed, so log the error
-                        logger.error('Job %s failed because: %s', bs_id, job_detail['statusReason'])
+                        if job_detail['status'] == 'FAILED' and 'statusReason' in job_detail:
+                            # AWS knows why the job failed, so log the error
+                            logger.error('Job %s failed because: %s', bs_id, job_detail['statusReason'])
 
-                    # Compose a result
-                    result = UpdatedBatchJobInfo(jobID=bs_id, exitStatus=exit_code, wallTime=runtime, exitReason=exit_reason)
+                        # Compose a result
+                        return UpdatedBatchJobInfo(jobID=bs_id, exitStatus=exit_code, wallTime=runtime, exitReason=exit_reason)
 
-                    # No more iteration needed, we found a result.
-                    break
+            finally:
+                # Drop all the records for tasks we acknowledged
+                for (aws_id, bs_id) in acknowledged:
+                    del self.aws_id_to_bs_id[aws_id]
+                    del self.bs_id_to_aws_id[bs_id]
+                    if aws_id in self.killed_job_aws_ids:
+                        # We don't need to remember that we killed this job anymore.
+                        self.killed_job_aws_ids.remove(aws_id)
 
-            # After the iteration, drop all the records for tasks we acknowledged
-            for (aws_id, bs_id) in acknowledged:
-                del self.aws_id_to_bs_id[aws_id]
-                del self.bs_id_to_aws_id[bs_id]
-                if aws_id in self.killed_job_aws_ids:
-                    # We don't need to remember that we killed this job anymore.
-                    self.killed_job_aws_ids.remove(aws_id)
-
-            if not maxWait:
-                # Don't wait at all
-                break
-            elif result is None:
+            if maxWait:
                 # Wait a bit and poll again
                 time.sleep(min(maxWait/2, 1.0))
-
-        # When we get here we have all the result we can get
-        return result
+            else:
+                # Only poll once
+                break
+        # If we get here we got nothing
+        return None
 
     def shutdown(self) -> None:
 
