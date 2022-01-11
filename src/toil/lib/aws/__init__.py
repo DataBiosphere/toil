@@ -37,41 +37,6 @@ def get_current_aws_region() -> Optional[str]:
     aws_zone = get_current_aws_zone()
     return zone_to_region(aws_zone) if aws_zone else None
 
-ResultType = TypeVar('ResultType')
-def try_providers(functions: List[Callable[..., Optional[ResultType]]], kwargs: Dict[str, Any] = {}) -> Optional[ResultType]:
-    """
-    Call the given list of functions in order, passing any of the given kwargs
-    that each function can accept. If any function returns a non-None answer,
-    stop and return that answer. Otherwise, return None.
-    """
-
-    for callback in functions:
-        # Call all the passed functions in order
-
-        # We need to work out what arguments are accepted and out them all in here
-        call_args: Dict[str, Any] = {}
-        sig = inspect.signature(callback)
-        for param_name, param in sig.parameters:
-            # For each accepted parameter
-            if param.kind in [inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.VAR_POSITIONAL]:
-                # These can't be kwargs, so ignore them.
-                pass
-            elif param.kind == inspect.Parameter.VAR_KEYWORD:
-                # Function can take any kwarg, so dump them all in.
-                call_args.update(kwargs)
-                break
-            elif param_name in kwargs:
-                # This is just one parameter that can be a kwarg, and we have a value for it
-                call_args[param_name] = kwargs[param_name]
-
-        # Now pass the subset of kwargs along to the function
-        result = callback(**call_args)
-        if result is not None:
-            # And return the first non-None result
-            return result
-    # Otherwise return None
-    return None
-
 def get_aws_zone_from_environment() -> Optional[str]:
     """
     Get the AWS zone from TOIL_AWS_ZONE if set.
@@ -122,9 +87,9 @@ def get_current_aws_zone() -> Optional[str]:
 
     Returns None if no method can produce a zone to use.
     """
-    return try_providers([get_aws_zone_from_environment,
-                          get_aws_zone_from_metadata,
-                          get_aws_zone_from_boto])
+    return get_aws_zone_from_environment() or \
+        get_aws_zone_from_metadata() or \
+        get_aws_zone_from_boto()
 
 def zone_to_region(zone: str) -> str:
     """Get a region (e.g. us-west-2) from a zone (e.g. us-west-1c)."""
