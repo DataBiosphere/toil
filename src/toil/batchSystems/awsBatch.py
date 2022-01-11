@@ -49,7 +49,7 @@ from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.common import Config, Toil
 from toil.job import JobDescription
 from toil.lib.aws import establish_boto3_session, get_current_aws_zone, zone_to_region
-from toil.lib.conversions import to_mib, from_mib
+from toil.lib.conversions import b_to_mib, mib_to_b
 from toil.lib.misc import slow_down, utc_now, unix_now_ms
 from toil.lib.retry import retry
 from toil.resource import Resource
@@ -191,7 +191,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                     'command': command_list,
                     'environment': [{'name': k, 'value': v} for k, v in environment.items()],
                     'resourceRequirements': [
-                        {'type': 'MEMORY', 'value': str(math.ceil(max(4, to_mib(job_desc.memory))))},  # A min of 4 is demanded by the API
+                        {'type': 'MEMORY', 'value': str(math.ceil(max(4, b_to_mib(job_desc.memory))))},  # A min of 4 is demanded by the API
                         {'type': 'VCPU', 'value': str(math.ceil(job_desc.cores))}  # Must be at least 1 on EC2, probably can't be 1.5
                     ]
                 }
@@ -409,7 +409,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                     'mountPoints': [{'containerPath': self.worker_work_dir, 'sourceVolume': 'workdir'}],
                     # Requirements will always be overridden but mist be present anyway
                     'resourceRequirements': [
-                        {'type': 'MEMORY', 'value': str(math.ceil(max(4, to_mib(self.config.defaultMemory))))},
+                        {'type': 'MEMORY', 'value': str(math.ceil(max(4, b_to_mib(self.config.defaultMemory))))},
                         {'type': 'VCPU', 'value': str(math.ceil(self.config.defaultCores))}
                     ]
                 },

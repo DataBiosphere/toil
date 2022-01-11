@@ -89,18 +89,18 @@ def bytes2human(n: SupportsInt) -> str:
     value = convert_units(n, "b", unit)
     return f'{value:.1f} {unit}'
     
-def to_mib(n: Union[int, float]) -> float:
+def b_to_mib(n: Union[int, float]) -> float:
     """
     Convert a number from bytes to mibibytes.
     """
-    return n / 1024 / 1024
+    return convert_units(value, 'b', 'mib')
 
 
-def from_mib(n: Union[int, float]) -> float:
+def mib_to_b(n: Union[int, float]) -> float:
     """
     Convert a number from mibibytes to bytes.
     """
-    return n * 1024 * 1024
+    return convert_units(value, 'mib', 'b')
 
 #General Conversions
 

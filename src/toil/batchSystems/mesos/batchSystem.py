@@ -41,7 +41,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.batchSystems.local_support import BatchSystemLocalSupport
 from toil.batchSystems.mesos import JobQueue, MesosShape, TaskData, ToilJob
 from toil.job import JobDescription
-from toil.lib.conversions import to_mib, from_mib
+from toil.lib.conversions import b_to_mib, mib_to_b
 from toil.lib.memoize import strict_bool
 from toil.lib.misc import get_public_ip
 
@@ -468,18 +468,18 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                        # can only run preemptable jobs:
                        and (not offerPreemptable or jobType.preemptable)
                        and remainingCores >= jobType.cores
-                       and remainingDisk >= to_mib(jobType.disk)
-                       and remainingMemory >= to_mib(jobType.memory)):
+                       and remainingDisk >= b_to_mib(jobType.disk)
+                       and remainingMemory >= b_to_mib(jobType.memory)):
                     task = self._prepareToRun(jobType, offer)
                     # TODO: this used to be a conditional but Hannes wanted it changed to an assert
                     # TODO: ... so we can understand why it exists.
                     assert int(task.task_id.value) not in self.runningJobMap
                     runnableTasksOfType.append(task)
                     log.debug("Preparing to launch Mesos task %s with %.2f cores, %.2f MiB memory, and %.2f MiB disk using offer %s ...",
-                              task.task_id.value, jobType.cores, to_mib(jobType.memory), to_mib(jobType.disk), offer.id.value)
+                              task.task_id.value, jobType.cores, b_to_mib(jobType.memory), b_to_mib(jobType.disk), offer.id.value)
                     remainingCores -= jobType.cores
-                    remainingMemory -= to_mib(jobType.memory)
-                    remainingDisk -= to_mib(jobType.disk)
+                    remainingMemory -= b_to_mib(jobType.memory)
+                    remainingDisk -= b_to_mib(jobType.disk)
                     nextToLaunchIndex += 1
                 if not self.jobQueues.typeEmpty(jobType):
                     # report that remaining jobs cannot be run with the current resourcesq:
@@ -489,9 +489,9 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                               dict(offer=offer.id.value,
                                    requirements=jobType.__dict__,
                                    non='' if offerPreemptable else 'non-',
-                                   memory=from_mib(offerMemory),
+                                   memory=mib_to_b(offerMemory),
                                    cores=offerCores,
-                                   disk=from_mib(offerDisk)))
+                                   disk=mib_to_b(offerDisk)))
                 runnableTasks.extend(runnableTasksOfType)
             # Launch all runnable tasks together so we only call launchTasks once per offer
             if runnableTasks:
@@ -564,8 +564,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         disk = task.resources[-1]
         disk.name = 'disk'
         disk.type = 'SCALAR'
-        if to_mib(job.resources.disk) > 1:
-            disk.scalar.value = to_mib(job.resources.disk)
+        if b_to_mib(job.resources.disk) > 1:
+            disk.scalar.value = b_to_mib(job.resources.disk)
         else:
             log.warning("Job %s uses less disk than Mesos requires. Rounding %s up to 1 MiB.",
                         job.jobID, job.resources.disk)
@@ -575,8 +575,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         mem = task.resources[-1]
         mem.name = 'mem'
         mem.type = 'SCALAR'
-        if to_mib(job.resources.memory) > 1:
-            mem.scalar.value = to_mib(job.resources.memory)
+        if b_to_mib(job.resources.memory) > 1:
+            mem.scalar.value = b_to_mib(job.resources.memory)
         else:
             log.warning("Job %s uses less memory than Mesos requires. Rounding %s up to 1 MiB.",
                         job.jobID, job.resources.memory)
