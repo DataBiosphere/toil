@@ -66,6 +66,11 @@ STATE_TO_EXIT_REASON: Dict[str, BatchJobExitReason] = {
 # What's the max polling list size?
 MAX_POLL_COUNT = 100
 
+# AWS batch won't accept API requests asking for less than this much memory.
+MIN_REQUESTABLE_MIB = 4
+# AWS batch won't accept API requests asking for less than this many CPUs.
+MIN_REQUESTABLE_CORES = 1
+
 class AWSBatchBatchSystem(BatchSystemCleanupSupport):
     @classmethod
     def supportsAutoDeployment(cls) -> bool:
@@ -191,8 +196,8 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                     'command': command_list,
                     'environment': [{'name': k, 'value': v} for k, v in environment.items()],
                     'resourceRequirements': [
-                        {'type': 'MEMORY', 'value': str(math.ceil(max(4, b_to_mib(job_desc.memory))))},  # A min of 4 is demanded by the API
-                        {'type': 'VCPU', 'value': str(math.ceil(job_desc.cores))}  # Must be at least 1 on EC2, probably can't be 1.5
+                        {'type': 'MEMORY', 'value': str(max(MIN_REQUESTABLE_MIB, math.ceil(b_to_mib(job_desc.memory))))},
+                        {'type': 'VCPU', 'value': str(max(MIN_REQUESTABLE_CORES, math.ceil(job_desc.cores)))}
                     ]
                 }
             }
@@ -417,8 +422,8 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                     'mountPoints': [{'containerPath': self.worker_work_dir, 'sourceVolume': 'workdir'}],
                     # Requirements will always be overridden but must be present anyway
                     'resourceRequirements': [
-                        {'type': 'MEMORY', 'value': str(math.ceil(max(4, b_to_mib(self.config.defaultMemory))))},
-                        {'type': 'VCPU', 'value': str(math.ceil(self.config.defaultCores))}
+                        {'type': 'MEMORY', 'value': str(max(MIN_REQUESTABLE_MIB, math.ceil(b_to_mib(self.config.defaultMemory))))},
+                        {'type': 'VCPU', 'value': str(max(MIN_REQUESTABLE_CORES, math.ceil(self.config.defaultCores)))}
                     ]
                 },
                 'retryStrategy': {'attempts': 1},
