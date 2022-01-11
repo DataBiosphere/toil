@@ -213,7 +213,8 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
             return bs_id
 
-    def __ensafen_name(self, input_name: str) -> str:
+    @staticmethod
+    def __ensafen_name(input_name: str) -> str:
         """
         Make a job name safe for Amazon Batch.
         From the API docs:
