@@ -23,6 +23,7 @@ Additional containers should be launched with Singularity, not Docker.
 import base64
 import datetime
 import logging
+import math
 import os
 import pickle
 import time
@@ -179,6 +180,12 @@ class TESBatchSystem(BatchSystemCleanupSupport):
             environment = self.environment.copy()
             if job_environment:
                 environment.update(job_environment)
+            if 'TOIL_WORKDIR' not in environment:
+                # The appliance container defaults TOIL_WORKDIR to
+                # /var/lib/toil, but TES doesn't (always?) give us a writable
+                # /, so we need to use the writable space in /tmp by default
+                # instead when running on TES.
+                environment['TOIL_WORKDIR'] = '/tmp'
 
             # Make a job dict to send to the executor.
             # TODO: Factor out executor setup from here and Kubernetes
@@ -206,8 +213,18 @@ class TESBatchSystem(BatchSystemCleanupSupport):
             task_inputs = list(self.mounts)
             # If we had any per-job input files they would come in here.
 
+            # Prepare resource requirements
+            task_resources = tes.Resources(cpu_cores=math.ceil(job_desc.cores),
+                                           ram_gb=job_desc.memory / (1024**3),
+                                           disk_gb=job_desc.disk / (1024**3),
+                                           # TODO: py-tes spells this differently than Toil
+                                           preemptible=job_desc.preemptable)
+
             # Package into a TES Task
-            task = tes.Task(name=job_name, executors=task_executors, inputs=task_inputs)
+            task = tes.Task(name=job_name,
+                            executors=task_executors,
+                            inputs=task_inputs,
+                            resources=task_resources)
 
             # Launch it and get back the TES ID that we can use to poll the task
             tes_id = self.tes.create_task(task)
@@ -269,6 +286,21 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         # If we get here we couldn't find an exit code.
         return EXIT_STATUS_UNAVAILABLE_VALUE
 
+    def __get_log_text(self, task: tes.Task) -> Optional[str]:
+        """
+        Get the log text (standard error) of the last executor with a log in
+        the task, or None.
+        """
+
+        for task_log in reversed(task.logs or []):
+            for executor_log in reversed(task_log.logs or []):
+                if isinstance(executor_log.stderr, str):
+                    # Find the last executor log code that is a string and return it
+                    return executor_log.stderr
+
+        # If we get here we couldn't find a log.
+        return None
+
     def getUpdatedBatchJob(self, maxWait: int) -> Optional[UpdatedBatchJobInfo]:
         # Remember when we started, for respecting the timeout
         entry = datetime.datetime.now()
@@ -288,7 +320,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                 # Immediately poll all the jobs we issued.
                 # TODO: There's no way to acknowledge a finished job, so there's no
                 # faster way to find the newly finished jobs than polling
-                task = self.tes.get_task(tes_id)
+                task = self.tes.get_task(tes_id, view="MINIMAL")
                 if task.state in ["COMPLETE", "CANCELED", "EXECUTOR_ERROR", "SYSTEM_ERROR"]:
                     # This task is done!
                     logger.debug("Found stopped task: %s", task)
@@ -302,6 +334,9 @@ class TESBatchSystem(BatchSystemCleanupSupport):
 
                     # Otherwise, it stopped running and it wasn't our fault.
 
+                    # Fetch the task's full info, including logs.
+                    task = self.tes.get_task(tes_id, view="FULL")
+
                     # Record runtime
                     runtime = self._get_runtime(task)
 
@@ -310,6 +345,10 @@ class TESBatchSystem(BatchSystemCleanupSupport):
 
                     # Get its exit code
                     exit_code = self._get_exit_code(task)
+
+                    if task.state == "EXECUTOR_ERROR":
+                        # The task failed, so report executor logs.
+                        logger.warning('Log from failed executor: %s', self.__get_log_text(task))
 
                     # Compose a result
                     result = UpdatedBatchJobInfo(jobID=bs_id, exitStatus=exit_code, wallTime=runtime, exitReason=exit_reason)
@@ -373,7 +412,8 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         bs_id_to_runtime = {}
 
         for tes_id, bs_id in self.tes_id_to_bs_id.items():
-            # Poll every issued task.
+            # Poll every issued task, and get the runtime info right away in
+            # the default BASIC view.
             # TODO: use list_tasks filtering by name prefix and running state!
             task = self.tes.get_task(tes_id)
             logger.debug("Observed task: %s", task)
@@ -408,7 +448,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         # effect??? That's not implemented.
 
     @classmethod
-    def add_tes_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
         parser.add_argument("--tesEndpoint", dest="tes_endpoint", default=cls.get_default_tes_endpoint(),
                             help="The http(s) URL of the TES server.  (default: %(default)s)")
         parser.add_argument("--tesUser", dest="tes_user", default=None,
