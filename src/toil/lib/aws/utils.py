@@ -13,7 +13,7 @@
 # limitations under the License.
 import logging
 import sys
-from typing import Optional, Union, cast
+from typing import Any, Dict, List, Optional, Union, cast
 
 from toil.lib.aws import session
 from toil.lib.misc import printq
@@ -103,10 +103,16 @@ def delete_s3_bucket(bucket: str, region: Optional[str], quiet: bool = True) -> 
     paginator = s3_client.get_paginator('list_object_versions')
     try:
         for response in paginator.paginate(Bucket=bucket):
-            versions = response.get('Versions', []) + response.get('DeleteMarkers', [])
-            for version in versions:
-                printq(f"    Deleting {version['Key']} version {version['VersionId']}", quiet)
-                s3_client.delete_object(Bucket=bucket, Key=version['Key'], VersionId=version['VersionId'])
+            # Versions and delete markers can both go in here to be deleted.
+            # They both have Key and VersionId, but there's no shared base type
+            # defined for them in the stubs to express that. See
+            # <https://github.com/vemel/mypy_boto3_builder/issues/123>. So we
+            # have to do gymnastics to get them into the same list.
+            to_delete: List[Dict[str, Any]] = cast(List[Dict[str, Any]], response.get('Versions', [])) + \
+                                              cast(List[Dict[str, Any]], response.get('DeleteMarkers', []))
+            for entry in to_delete:
+                printq(f"    Deleting {entry['Key']} version {entry['VersionId']}", quiet)
+                s3_client.delete_object(Bucket=bucket, Key=entry['Key'], VersionId=entry['VersionId'])
         s3_resource.Bucket(bucket).delete()
         printq(f'\n * Deleted s3 bucket successfully: {bucket}\n\n', quiet)
     except s3_client.exceptions.NoSuchBucket:
