@@ -93,14 +93,14 @@ def b_to_mib(n: Union[int, float]) -> float:
     """
     Convert a number from bytes to mibibytes.
     """
-    return convert_units(value, 'b', 'mib')
+    return convert_units(n, 'b', 'mib')
 
 
 def mib_to_b(n: Union[int, float]) -> float:
     """
     Convert a number from mibibytes to bytes.
     """
-    return convert_units(value, 'mib', 'b')
+    return convert_units(n, 'mib', 'b')
 
 #General Conversions
 
