@@ -90,7 +90,7 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
         flask_app.app.add_url_rule(f"{base_url}/logs/<run_id>/stdout", view_func=backend.get_stdout)
         flask_app.app.add_url_rule(f"{base_url}/logs/<run_id>/stderr", view_func=backend.get_stderr)
         # To be a well-behaved AGC engine we can implement the default status check endpoint
-        flask_app.app.add_url_rule("/engine/v1/status", view_func=backend.get_status)
+        flask_app.app.add_url_rule("/engine/v1/status", view_func=backend.get_health)
         # And we can provide lost humans some information on what they are looking at
         flask_app.app.add_url_rule("/", view_func=backend.get_homepage)
 

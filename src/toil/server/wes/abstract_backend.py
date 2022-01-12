@@ -9,7 +9,7 @@ from typing import Optional, List, Dict, Any, Tuple, Callable
 from urllib.parse import urldefrag
 
 import connexion  # type: ignore
-from werkzeug.utils import secure_filename  # type: ignore
+from werkzeug.utils import secure_filename 
 
 logger = logging.getLogger(__name__)
 

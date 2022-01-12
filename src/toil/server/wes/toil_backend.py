@@ -20,7 +20,10 @@ from collections import Counter
 from tempfile import NamedTemporaryFile
 from typing import Optional, List, Dict, Any, overload, Generator, Tuple
 
-from flask import send_from_directory, redirect
+from flask import send_from_directory
+from werkzeug.utils import redirect
+from werkzeug.wrappers.response import Response
+
 
 from toil.server.utils import safe_read_file, safe_write_file
 from toil.server.wes.abstract_backend import (WESBackend,
@@ -355,7 +358,7 @@ class ToilBackend(WESBackend):
         return "OK"
 
     @handle_errors
-    def get_homepage(self) -> str:
+    def get_homepage(self) -> Response:
         """
         Provide a sensible result for / other than 404.
         """
