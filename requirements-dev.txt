@@ -12,7 +12,7 @@ types-setuptools
 types-boto
 types-pytz
 flake8>=3.8.4,<5
-flake8-bugbear>=20.11.1,<21
+flake8-bugbear>=20.11.1,<23
 black
 isort
 pydocstyle
