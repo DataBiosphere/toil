@@ -351,11 +351,11 @@ class ToilBackend(WESBackend):
         return send_from_directory(self.work_dir, os.path.join(run_id, "stderr"), mimetype="text/plain")
 
     @handle_errors
-    def get_health(self) -> str:
+    def get_health(self) -> Response:
         """
         Return successfully if the server is healthy.
         """
-        return "OK"
+        return Response("OK", mimetype="text/plain")
 
     @handle_errors
     def get_homepage(self) -> Response:
