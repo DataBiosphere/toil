@@ -13,7 +13,7 @@
 # limitations under the License.
 import logging
 import sys
-from typing import Optional, Union
+from typing import Optional, Union, cast
 
 from toil.lib.aws import session
 from toil.lib.misc import printq
@@ -26,9 +26,11 @@ else:
 
 try:
     from boto.exception import BotoServerError
-    from mypy_boto3_s3 import S3ServiceResource
+    from mypy_boto3_s3 import S3Client, S3ServiceResource
     from mypy_boto3_s3.literals import BucketLocationConstraintType
     from mypy_boto3_s3.service_resource import Bucket
+    from mypy_boto3_sdb import SimpleDBClient
+    from mypy_boto3_iam import IAMClient, IAMServiceResource
 except ImportError:
     BotoServerError = None  # type: ignore
     # AWS/boto extra is not installed
@@ -41,8 +43,17 @@ def delete_iam_role(
     role_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
     from boto.iam.connection import IAMConnection
-    iam_client = session.client('iam', region_name=region)
-    iam_resource = session.resource('iam', region_name=region)
+    # TODO: the Boto3 type hints are a bit oversealous here; they want hundreds
+    # of overloads of the client-getting methods to exist based on the literal
+    # string passed in, to return exactly the right kind of client or resource.
+    # So we end up having to wrap all the calls in casts, which kind of defeats
+    # the point of a nice fluent method you can call with the name of the thing
+    # you want; we should have been calling iam_client() and so on all along if
+    # we wanted MyPy to be able to understand us. So at some point we should
+    # consider revising our API here to be less annoying to explain to the type
+    # checker.
+    iam_client = cast(IAMClient, session.client('iam', region_name=region))
+    iam_resource = cast(IAMServiceResource, session.resource('iam', region_name=region))
     boto_iam_connection = IAMConnection()
     role = iam_resource.Role(role_name)
     # normal policies
@@ -62,7 +73,7 @@ def delete_iam_role(
 def delete_iam_instance_profile(
     instance_profile_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
-    iam_resource = session.resource("iam", region_name=region)
+    iam_resource = cast(IAMServiceResource, session.resource("iam", region_name=region))
     instance_profile = iam_resource.InstanceProfile(instance_profile_name)
     for role in instance_profile.roles:
         printq(f'Now dissociating role: {role.name} from instance profile {instance_profile_name}', quiet)
@@ -75,7 +86,7 @@ def delete_iam_instance_profile(
 def delete_sdb_domain(
     sdb_domain_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
-    sdb_client = session.client("sdb", region_name=region)
+    sdb_client = cast(SimpleDBClient, session.client("sdb", region_name=region))
     sdb_client.delete_domain(DomainName=sdb_domain_name)
     printq(f'SBD Domain: "{sdb_domain_name}" successfully deleted.', quiet)
 
@@ -83,8 +94,8 @@ def delete_sdb_domain(
 @retry(errors=[BotoServerError])
 def delete_s3_bucket(bucket: str, region: Optional[str], quiet: bool = True) -> None:
     printq(f'Deleting s3 bucket in region "{region}": {bucket}', quiet)
-    s3_client = session.client('s3', region_name=region)
-    s3_resource = session.resource('s3', region_name=region)
+    s3_client = cast(S3Client, session.client('s3', region_name=region))
+    s3_resource = cast(S3ServiceResource, session.resource('s3', region_name=region))
 
     paginator = s3_client.get_paginator('list_object_versions')
     try:
