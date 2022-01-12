@@ -15,7 +15,7 @@ import logging
 import sys
 from typing import Optional, Union
 
-from toil.lib import aws
+from toil.lib.aws import session
 from toil.lib.misc import printq
 from toil.lib.retry import retry
 
@@ -41,8 +41,8 @@ def delete_iam_role(
     role_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
     from boto.iam.connection import IAMConnection
-    iam_client = aws.client('iam', region_name=region)
-    iam_resource = aws.resource('iam', region_name=region)
+    iam_client = session.client('iam', region_name=region)
+    iam_resource = session.resource('iam', region_name=region)
     boto_iam_connection = IAMConnection()
     role = iam_resource.Role(role_name)
     # normal policies
@@ -62,7 +62,7 @@ def delete_iam_role(
 def delete_iam_instance_profile(
     instance_profile_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
-    iam_resource = aws.resource("iam", region_name=region)
+    iam_resource = session.resource("iam", region_name=region)
     instance_profile = iam_resource.InstanceProfile(instance_profile_name)
     for role in instance_profile.roles:
         printq(f'Now dissociating role: {role.name} from instance profile {instance_profile_name}', quiet)
@@ -75,7 +75,7 @@ def delete_iam_instance_profile(
 def delete_sdb_domain(
     sdb_domain_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
-    sdb_client = aws.client("sdb", region_name=region)
+    sdb_client = session.client("sdb", region_name=region)
     sdb_client.delete_domain(DomainName=sdb_domain_name)
     printq(f'SBD Domain: "{sdb_domain_name}" successfully deleted.', quiet)
 
@@ -83,8 +83,8 @@ def delete_sdb_domain(
 @retry(errors=[BotoServerError])
 def delete_s3_bucket(bucket: str, region: Optional[str], quiet: bool = True) -> None:
     printq(f'Deleting s3 bucket in region "{region}": {bucket}', quiet)
-    s3_client = aws.client('s3', region_name=region)
-    s3_resource = aws.resource('s3', region_name=region)
+    s3_client = session.client('s3', region_name=region)
+    s3_resource = session.resource('s3', region_name=region)
 
     paginator = s3_client.get_paginator('list_object_versions')
     try:
