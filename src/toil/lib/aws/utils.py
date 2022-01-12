@@ -61,10 +61,10 @@ def delete_iam_role(
         printq(f'Now dissociating policy: {attached_policy.policy_name} from role {role.name}', quiet)
         role.detach_policy(PolicyArn=attached_policy.arn)
     # inline policies
-    for attached_policy in role.policies.all():
-        printq(f'Deleting inline policy: {attached_policy.policy_name} from role {role.name}', quiet)
+    for inline_policy in role.policies.all():
+        printq(f'Deleting inline policy: {inline_policy.policy_name} from role {role.name}', quiet)
         # couldn't find an easy way to remove inline policies with boto3; use boto
-        boto_iam_connection.delete_role_policy(role.name, attached_policy.policy_name)
+        boto_iam_connection.delete_role_policy(role.name, inline_policy.policy_name)
     iam_client.delete_role(RoleName=role_name)
     printq(f'Role {role_name} successfully deleted.', quiet)
 
