@@ -26,8 +26,9 @@ before_script:
   # where buildx can't use a bearer token from a kube config and falls back to anonymous instead
   # of using the system's service account.
   - KUBECONFIG=/dev/null docker buildx create --use --name toilbuilder --platform=linux/amd64,linux/arm64 --node=buildkit-amd64 --driver=kubernetes --driver-opt="nodeselector=kubernetes.io/arch=amd64"
-  # Dump the builder info
-  - docker buildx inspect --bootstrap || true
+  # Dump the builder info, and make sure it exists.
+  - docker buildx inspect --bootstrap || (echo "Docker builder deployment can't be found in our Kubernetes namespace! Are we on the right Gitlab runner?" && exit 1)
+  # This will hang if we can't talk to the builder
   - (echo "y" | docker buildx prune --keep-storage 80G) || true
   - sudo apt-get update
   - sudo apt-get install -y software-properties-common build-essential virtualenv
