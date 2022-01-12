@@ -22,7 +22,18 @@ from functools import lru_cache
 from urllib.request import urlopen
 from urllib.error import URLError
 
-from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+    cast
+)
 
 import boto3
 import boto3.resources.base
@@ -50,27 +61,33 @@ def establish_boto3_session(region_name: Optional[str] = None) -> Session:
     botocore_session = get_session()
     botocore_session.get_component('credential_provider').get_provider(
         'assume-role').cache = JSONFileCache()
-    return Session(botocore_session=botocore_session, region_name=region_name)
+    # Argument types on here anren't Optionals in the current type stubs but
+    # should be. See <https://github.com/vemel/mypy_boto3_builder/issues/120>.
+    return Session(botocore_session=botocore_session, region_name=region_name) # type: ignore
 
 @lru_cache(maxsize=None)
-def client(service_name: str, *args, region_name: Optional[str] = None, **kwargs):
+def client(service_name: str, *args: List[Any], region_name: Optional[str] = None, **kwargs: Dict[str, Any]) -> botocore.client.BaseClient:
     """
     Get a Boto 3 client for a particular AWS service.
 
     Global alternative to AWSConnectionManager.
     """
     session = establish_boto3_session(region_name=region_name)
-    return session.client(service_name, *args, **kwargs)
+    # MyPy can't understand our argument unpacking. See <https://github.com/vemel/mypy_boto3_builder/issues/121>
+    client: botocore.client.BaseClient = session.client(service_name, *args, **kwargs) # type: ignore
+    return client
 
 @lru_cache(maxsize=None)
-def resource(service_name: str, *args, region_name: Optional[str] = None, **kwargs):
+def resource(service_name: str, *args: List[Any], region_name: Optional[str] = None, **kwargs: Dict[str, Any]) -> boto3.resources.base.ServiceResource:
     """
     Get a Boto 3 resource for a particular AWS service.
 
     Global alternative to AWSConnectionManager.
     """
     session = establish_boto3_session(region_name=region_name)
-    return session.resource(service_name, *args, **kwargs)
+    # MyPy can't understand our argument unpacking. See <https://github.com/vemel/mypy_boto3_builder/issues/121>
+    resource: boto3.resources.base.ServiceResource = session.resource(service_name, *args, **kwargs) # type: ignore
+    return resource
 
 class AWSConnectionManager:
     """
@@ -96,22 +113,22 @@ class AWSConnectionManager:
     # also individually wrap every service we use, but that seems like a good
     # way to generate a lot of boring code.
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Make a new empty AWSConnectionManager.
         """
         # This stores Boto3 sessions in .item of a thread-local storage, by
         # region.
-        self.sessions_by_region = collections.defaultdict(threading.local)
+        self.sessions_by_region: Dict[str, threading.local] = collections.defaultdict(threading.local)
         # This stores Boto3 resources in .item of a thread-local storage, by
         # (region, service name) tuples
-        self.resource_cache = collections.defaultdict(threading.local)
+        self.resource_cache: Dict[Tuple[str, str], threading.local] = collections.defaultdict(threading.local)
         # This stores Boto3 clients in .item of a thread-local storage, by
         # (region, service name) tuples
-        self.client_cache = collections.defaultdict(threading.local)
+        self.client_cache: Dict[Tuple[str, str], threading.local] = collections.defaultdict(threading.local)
         # This stores Boto 2 connections in .item of a thread-local storage, by
         # (region, service name) tuples.
-        self.boto2_cache = collections.defaultdict(threading.local)
+        self.boto2_cache: Dict[Tuple[str, str], threading.local] = collections.defaultdict(threading.local)
 
     def session(self, region: str) -> boto3.session.Session:
         """
@@ -122,7 +139,7 @@ class AWSConnectionManager:
             # This is the first time this thread wants to talk to this region
             # through this manager
             storage.item = establish_boto3_session(region_name=region)
-        return storage.item
+        return cast(boto3.session.Session, storage.item)
 
     def resource(self, region: str, service_name: str) -> boto3.resources.base.ServiceResource:
         """
@@ -131,8 +148,11 @@ class AWSConnectionManager:
         key = (region, service_name)
         storage = self.resource_cache[key]
         if not hasattr(storage, 'item'):
-            storage.item = self.session(region).resource(service_name)
-        return storage.item
+            # The Boto3 stubs are missing an overload for `resource` that takes
+            # a non-literal string. See
+            # <https://github.com/vemel/mypy_boto3_builder/issues/121#issuecomment-1011322636>
+            storage.item = self.session(region).resource(service_name) # type: ignore
+        return cast(boto3.resources.base.ServiceResource, storage.item)
 
     def client(self, region: str, service_name: str) -> botocore.client.BaseClient:
         """
@@ -141,8 +161,10 @@ class AWSConnectionManager:
         key = (region, service_name)
         storage = self.client_cache[key]
         if not hasattr(storage, 'item'):
-            storage.item = self.session(region).client(service_name)
-        return storage.item
+            # The Boto3 stubs are probably missing an overload here too. See:
+            # <https://github.com/vemel/mypy_boto3_builder/issues/121#issuecomment-1011322636>
+            storage.item = self.session(region).client(service_name) # type: ignore
+        return cast(botocore.client.BaseClient , storage.item)
 
     def boto2(self, region: str, service_name: str) -> boto.connection.AWSAuthConnection:
         """
@@ -155,4 +177,4 @@ class AWSConnectionManager:
         storage = self.boto2_cache[key]
         if not hasattr(storage, 'item'):
             storage.item = getattr(boto, service_name).connect_to_region(region)
-        return storage.item
+        return cast(boto.connection.AWSAuthConnection, storage.item)
