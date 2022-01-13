@@ -2197,7 +2197,7 @@ class CWLScatter(Job):
                     tool=self.step.embedded_tool,
                     jobobj=updated_joborder,
                     runtime_context=self.runtime_context,
-                    parent_name=f"{self.parent_name}[{n}]",
+                    parent_name=f"{self.parent_name}.{n}]",
                     conditional=self.conditional,
                 )
                 self.addChild(subjob)
@@ -2227,7 +2227,7 @@ class CWLScatter(Job):
                     tool=self.step.embedded_tool,
                     jobobj=updated_joborder,
                     runtime_context=self.runtime_context,
-                    parent_name=f"{self.parent_name}[{n}]",
+                    parent_name=f"{self.parent_name}.{n}",
                     conditional=self.conditional,
                 )
                 self.addChild(subjob)
@@ -2294,7 +2294,7 @@ class CWLScatter(Job):
                     tool=self.step.embedded_tool,
                     jobobj=copyjob,
                     runtime_context=self.runtime_context,
-                    parent_name=f"{self.parent_name}[{i}]",
+                    parent_name=f"{self.parent_name}.{i}",
                     conditional=self.conditional,
                 )
                 self.addChild(subjob)
