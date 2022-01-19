@@ -25,6 +25,7 @@ from toil.server.celery_app import celery
 from toil.server.utils import (get_iso_time,
                                link_file,
                                download_file_from_internet,
+                               download_file_from_s3,
                                get_file_class,
                                safe_read_file,
                                safe_write_file)
@@ -75,10 +76,12 @@ class ToilWorkflowRunner:
         if src_url.startswith("file://"):
             logger.info("Linking workflow from filesystem.")
             link_file(src=src_url[7:], dest=dest)
-
         elif src_url.startswith(("http://", "https://")):
             logger.info("Downloading workflow_url from the Internet.")
             download_file_from_internet(src=src_url, dest=dest, content_type="text/")
+        elif src_url.startswith("s3://"):
+            logger.info("Downloading workflow_url from Amazon S3.")
+            download_file_from_s3(src=src_url, dest=dest)
         else:
             logger.info("Using workflow from relative URL.")
             dest = os.path.join(self.exec_dir, src_url)

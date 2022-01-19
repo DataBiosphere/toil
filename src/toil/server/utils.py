@@ -15,6 +15,7 @@ import fcntl
 import os
 from datetime import datetime
 from typing import Optional
+from urllib.parse import urlparse
 
 import requests
 
@@ -56,6 +57,19 @@ def download_file_from_internet(src: str, dest: str, content_type: Optional[str]
     with open(dest, "wb") as f:
         f.write(response.content)
 
+def download_file_from_s3(src: str, dest: str, content_type: Optional[str] = None) -> None:
+    """
+    Download a file from Amazon S3 and write it to dest.
+    """
+    try:
+        # Modules to talk to S3 might not always be available so we import things here.
+        from toil.lib.aws.utils import get_object_for_url
+    except ImportError:
+        raise RuntimeError("Cannot access S3 as AWS modules are not available")
+
+    with open(dest, 'wb') as out_stream:
+        obj = get_object_for_url(urlparse(src), existing=True)
+        obj.download_fileobj(out_stream)
 
 def get_file_class(path: str) -> str:
     """
