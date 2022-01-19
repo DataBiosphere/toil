@@ -56,6 +56,18 @@ class ToilWESServerTest(ToilTest):
     def tearDown(self) -> None:
         super(ToilWESServerTest, self).tearDown()
 
+    def test_home(self) -> None:
+        """ Test the homepage endpoint."""
+        with self.app.test_client() as client:
+            rv = client.get("/")
+        self.assertEqual(rv.status_code, 302)
+
+    def test_health(self) -> None:
+        """ Test the health check endpoint."""
+        with self.app.test_client() as client:
+            rv = client.get("/engine/v1/status")
+        self.assertEqual(rv.status_code, 200)
+
     def test_get_service_info(self) -> None:
         """ Test the GET /service-info endpoint."""
         with self.app.test_client() as client:

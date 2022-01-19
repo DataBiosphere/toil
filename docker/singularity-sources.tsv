@@ -1,0 +1,3 @@
+#Architecture	SHA1	URL	URL	...
+amd64	fc019f0df2ca7a3a05c569a7a33bdd615be5d7fa	https://snapshot.debian.org/archive/debian/20191218T025705Z/pool/main/s/singularity-container/singularity-container_3.5.2%2Bds1-1_amd64.deb	https://ipfs.io/ipfs/QmecZcGG7VFHABhRQvy1cP168V9zhan1E9gcUD6jsmpWsT/singularity-container_3.5.2%2Bds1-1_amd64.deb
+arm64	6a82f8e640fcafcb2030f0bcbae7c89a4dc150f9	https://snapshot.debian.org/archive/debian/20191218T085528Z/pool/main/s/singularity-container/singularity-container_3.5.2%2Bds1-1_arm64.deb	https://ipfs.io/ipfs/QmT8NMXU2kzs2sBAc2HbGXjwTRXqLYBawRgx3fcFWxccMB/singularity-container_3.5.2%2Bds1-1_arm64.deb
