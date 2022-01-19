@@ -1871,7 +1871,7 @@ class CWLJob(Job):
                 resources={},
                 mutation_manager=runtime_context.mutation_manager,
                 formatgraph=tool.formatgraph,
-                make_fs_access=runtime_context.make_fs_access,  # type: ignore[arg-type]
+                make_fs_access=runtime_context.make_fs_access,
                 fs_access=runtime_context.make_fs_access(""),
                 job_script_provider=runtime_context.job_script_provider,
                 timeout=runtime_context.eval_timeout,
@@ -2027,7 +2027,7 @@ class CWLJob(Job):
             # Intercept file and directory access and use a virtual filesystem
             # through the Toil FileStore.
 
-            runtime_context.make_fs_access = functools.partial(
+            runtime_context.make_fs_access = functools.partial(  # type: ignore[assignment]
                 ToilFsAccess, file_store=file_store
             )
 
