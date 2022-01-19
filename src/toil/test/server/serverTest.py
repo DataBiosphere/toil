@@ -15,13 +15,14 @@ import json
 import logging
 import os
 import textwrap
+import time
 import unittest
 import zipfile
 from io import BytesIO
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from flask import Flask
+from flask import Flask
+from flask.testing import FlaskClient
 
 from toil.test import ToilTest, needs_server, needs_celery_broker
 
@@ -51,7 +52,7 @@ class ToilWESServerTest(ToilTest):
         parser = parser_with_server_options()
         args = parser.parse_args(["--work_dir", os.path.join(self.temp_dir, "workflows")])
 
-        self.app: "Flask" = create_app(args).app
+        self.app: Flask = create_app(args).app
         self.app.testing = True
 
         self.example_cwl = textwrap.dedent("""
@@ -103,6 +104,68 @@ class ToilWESServerTest(ToilTest):
         self.assertIn("system_state_counts", service_info)
         self.assertIn("tags", service_info)
 
+    def _report_log(self, client: FlaskClient, run_id: str) -> None:
+        """
+        Report the log for the given workflow run.
+        """
+        rv = client.get(f"/ga4gh/wes/v1/runs/{run_id}")
+        self.assertEqual(rv.status_code, 200)
+        self.assertTrue(rv.is_json)
+        self.assertIn("run_log", rv.json)
+        run_log = rv.json.get("run_log")
+        self.assertEqual(type(run_log), dict)
+        self.assertIn("stdout", run_log)
+        stdout = run_log.get("stdout")
+        self.assertEqual(type(stdout), str)
+        self.assertIn("stderr", run_log)
+        stderr = run_log.get("stderr")
+        self.assertEqual(type(stderr), str)
+        logger.info("Got stdout %s and stderr %s", stdout, stderr)
+        self._report_absolute_url(client, stdout)
+        self._report_absolute_url(client, stderr)
+        
+    def _report_absolute_url(self, client: FlaskClient, url: str):
+        """
+        Take a URL that has a hostname and port, relativize it to the test
+        Flask client, and get its contents and log them.
+        """
+        
+        breakpoint = url.find("/toil/")
+        if breakpoint == -1:
+            raise RuntimeError("Could not find place to break URL: " + url)
+        url = url[breakpoint:]
+        logger.info("Fetch %s", url)
+        rv = client.get(url)
+        self.assertEqual(rv.status_code, 200)
+        logger.info("Got %s:\n%s", url, rv.data.decode('utf-8'))
+
+    def _wait_for_success(self, client: FlaskClient, run_id: str) -> None:
+        """
+        Wait for the given workflow run to succeed. If it fails, raise an exception.
+        """
+
+        while True:
+            rv = client.get(f"/ga4gh/wes/v1/runs/{run_id}/status")
+            self.assertEqual(rv.status_code, 200)
+            self.assertTrue(rv.is_json)
+            self.assertIn("run_id", rv.json)
+            self.assertEqual(rv.json.get("run_id"), run_id)
+            self.assertIn("state", rv.json)
+            state = rv.json.get("state")
+            self.assertIn(state, ["UNKNOWN", "QUEUED", "INITIALIZING", "RUNNING",
+                                  "PAUSED", "COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR",
+                                  "CANCELED", "CANCELING"])
+            if state == "COMPLETE":
+                # We're done!
+                logger.info("Workflow reached state %s", state)
+                return
+            if state in ["EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELED"]:
+                logger.error("Workflow run failed")
+                self._report_log(client, run_id)
+                raise RuntimeError("Workflow is in fail state " + state)
+            logger.info("Waiting on workflow in state %s", state)
+            time.sleep(2)
+
     @needs_celery_broker
     def test_run_example_cwl_workflow(self) -> None:
         """
@@ -139,16 +202,18 @@ class ToilWESServerTest(ToilTest):
                 run_id = rv.json.get("run_id")
                 self.assertIsNotNone(run_id)
 
-                # TODO: check outputs
+                # Check status
+                self._wait_for_success(client, run_id)
 
         with self.subTest('Test run example CWL workflow from ZIP.'):
             workdir = self._createTempDir()
-            zip_path = os.path.join(workdir, 'workflow.zip')
-            with ZipFile('zip_path', 'w') as zip_file:
+            zip_path = os.path.abspath(os.path.join(workdir, 'workflow.zip'))
+            with zipfile.ZipFile(zip_path, 'w') as zip_file:
                 zip_file.writestr('example.cwl', self.example_cwl)
+            self.assertTrue(os.path.exists(zip_path))
             with self.app.test_client() as client:
                 rv = client.post("/ga4gh/wes/v1/runs", data={
-                    "workflow_url": "file://" + os.path.abspath(zip_path),
+                    "workflow_url": "file://" + zip_path,
                     "workflow_type": "CWL",
                     "workflow_type_version": "v1.0",
                     "workflow_params": json.dumps({"message": "Hello, world!"})
@@ -159,7 +224,8 @@ class ToilWESServerTest(ToilTest):
                 run_id = rv.json.get("run_id")
                 self.assertIsNotNone(run_id)
 
-                # TODO: check outputs
+                # Check status
+                self._wait_for_success(client, run_id)
 
         with self.subTest('Test run example CWL workflow from the Internet.'):
             with self.app.test_client() as client:
@@ -175,6 +241,9 @@ class ToilWESServerTest(ToilTest):
                 self.assertTrue(rv.is_json)
                 run_id = rv.json.get("run_id")
                 self.assertIsNotNone(run_id)
+
+                # Check status
+                self._wait_for_success(client, run_id)
 
 
 if __name__ == "__main__":

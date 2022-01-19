@@ -35,6 +35,8 @@ def link_file(src: str, dest: str) -> None:
     """
     if os.path.exists(dest):
         raise RuntimeError(f"Destination file '{dest}' already exists.")
+    if not os.path.exists(src):
+        raise RuntimeError(f"Source file '{src}' does not exist.")
     try:
         os.link(src, dest)
     except OSError:
