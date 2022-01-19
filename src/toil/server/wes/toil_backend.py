@@ -239,6 +239,8 @@ class ToilBackend(WESBackend):
             run.clean_up()
             raise
 
+        logger.info("Received workflow run request %s with parameters: %s", run_id, list(request.keys()))
+
         wf_type = request["workflow_type"].lower().strip()
         version = request["workflow_type_version"]
 

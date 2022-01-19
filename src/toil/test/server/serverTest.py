@@ -16,13 +16,14 @@ import logging
 import os
 import textwrap
 import unittest
+import zipfile
 from io import BytesIO
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from flask import Flask
 
-from toil.test import ToilTest, needs_server
+from toil.test import ToilTest, needs_server, needs_celery_broker
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -52,6 +53,21 @@ class ToilWESServerTest(ToilTest):
 
         self.app: "Flask" = create_app(args).app
         self.app.testing = True
+
+        self.example_cwl = textwrap.dedent("""
+            cwlVersion: v1.0
+            class: CommandLineTool
+            baseCommand: echo
+            stdout: output.txt
+            inputs:
+              message:
+                type: string
+                inputBinding:
+                  position: 1
+            outputs:
+              output:
+                type: stdout
+            """)
 
     def tearDown(self) -> None:
         super(ToilWESServerTest, self).tearDown()
@@ -87,6 +103,7 @@ class ToilWESServerTest(ToilTest):
         self.assertIn("system_state_counts", service_info)
         self.assertIn("tags", service_info)
 
+    @needs_celery_broker
     def test_run_example_cwl_workflow(self) -> None:
         """
         Test submitting the example CWL workflow to the WES server and getting
@@ -106,20 +123,6 @@ class ToilWESServerTest(ToilTest):
                 self.assertEqual(rv.json.get("msg"), "Relative 'workflow_url' but missing 'workflow_attachment'")
 
         with self.subTest('Test run example CWL workflow from relative workflow URL.'):
-            example_cwl = textwrap.dedent("""
-            cwlVersion: v1.0
-            class: CommandLineTool
-            baseCommand: echo
-            stdout: output.txt
-            inputs:
-              message:
-                type: string
-                inputBinding:
-                  position: 1
-            outputs:
-              output:
-                type: stdout
-            """)
             with self.app.test_client() as client:
                 rv = client.post("/ga4gh/wes/v1/runs", data={
                     "workflow_url": "example.cwl",
@@ -127,7 +130,7 @@ class ToilWESServerTest(ToilTest):
                     "workflow_type_version": "v1.0",
                     "workflow_params": json.dumps({"message": "Hello, world!"}),
                     "workflow_attachment": [
-                        (BytesIO(example_cwl.encode()), "example.cwl"),
+                        (BytesIO(self.example_cwl.encode()), "example.cwl"),
                     ],
                 })
                 # workflow is submitted successfully
@@ -136,7 +139,27 @@ class ToilWESServerTest(ToilTest):
                 run_id = rv.json.get("run_id")
                 self.assertIsNotNone(run_id)
 
-                # check outputs
+                # TODO: check outputs
+
+        with self.subTest('Test run example CWL workflow from ZIP.'):
+            workdir = self._createTempDir()
+            zip_path = os.path.join(workdir, 'workflow.zip')
+            with ZipFile('zip_path', 'w') as zip_file:
+                zip_file.writestr('example.cwl', self.example_cwl)
+            with self.app.test_client() as client:
+                rv = client.post("/ga4gh/wes/v1/runs", data={
+                    "workflow_url": "file://" + os.path.abspath(zip_path),
+                    "workflow_type": "CWL",
+                    "workflow_type_version": "v1.0",
+                    "workflow_params": json.dumps({"message": "Hello, world!"})
+                })
+                # workflow is submitted successfully
+                self.assertEqual(rv.status_code, 200)
+                self.assertTrue(rv.is_json)
+                run_id = rv.json.get("run_id")
+                self.assertIsNotNone(run_id)
+
+                # TODO: check outputs
 
         with self.subTest('Test run example CWL workflow from the Internet.'):
             with self.app.test_client() as client:
