@@ -44,6 +44,7 @@ from toil.job import Job, JobDescription
 from toil.lib.retry import retry_flaky_test
 from toil.lib.threading import cpu_count
 from toil.test import (ToilTest,
+                       needs_aws_batch,
                        needs_aws_s3,
                        needs_fetchable_appliance,
                        needs_gridengine,
@@ -174,6 +175,13 @@ class hidden:
             self.batchSystem.shutdown()
             super(hidden.AbstractBatchSystemTest, self).tearDown()
 
+        def get_max_startup_seconds(self) -> int:
+            """
+            Get the number of seconds this test ought to wait for the first job to run.
+            Some batch systems may need time to scale up.
+            """
+            return 120
+
         def test_available_cores(self):
             self.assertTrue(cpu_count() >= numCores)
 
@@ -199,7 +207,7 @@ class hidden:
             # getUpdatedBatchJob, and the sleep time is longer than the time we
             # should spend waiting for both to start, so if our cluster can
             # only run one job at a time, we will fail the test.
-            runningJobIDs = self._waitForJobsToStart(2, tries=120)
+            runningJobIDs = self._waitForJobsToStart(2, tries=self.get_max_startup_seconds())
             self.assertEqual(set(runningJobIDs), {job1, job2})
 
             # Killing the jobs instead of allowing them to complete means this test can run very
@@ -465,6 +473,24 @@ class TESBatchSystemTest(hidden.AbstractBatchSystemTest):
         return TESBatchSystem(config=self.config,
                               maxCores=numCores, maxMemory=1e9, maxDisk=2001)
 
+@needs_aws_batch
+@needs_fetchable_appliance
+class AWSBatchBatchSystemTest(hidden.AbstractBatchSystemTest):
+    """
+    Tests against the AWS Batch batch system
+    """
+
+    def supportsWallTime(self):
+        return True
+
+    def createBatchSystem(self):
+        from toil.batchSystems.awsBatch import AWSBatchBatchSystem
+        return AWSBatchBatchSystem(config=self.config,
+                                   maxCores=numCores, maxMemory=1e9, maxDisk=2001)
+
+    def get_max_startup_seconds(self) -> int:
+        # AWS Batch may need to scale out the compute environment.
+        return 300
 
 @slow
 @needs_mesos

@@ -116,7 +116,7 @@ class Config:
 
         # Batch system options
         set_batchsystem_config_defaults(self)
-        
+
         # File store options
         self.disableCaching: bool = False
         self.linkImports: bool = True
@@ -489,7 +489,7 @@ def addOptions(parser: ArgumentParser, config: Config = Config()):
         description="Allows the specification of the batch system."
     )
     add_all_batchsystem_options(batchsystem_options)
-    
+
     # File store options
     file_store_options = parser.add_argument_group(
         title="Toil options for configuring storage.",

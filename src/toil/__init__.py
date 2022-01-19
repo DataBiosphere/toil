@@ -516,7 +516,7 @@ try:
                 # We will backend into a boto3 resolver for getting credentials.
                 # Make sure to enable boto3's own caching, so we can share that
                 # cache with pure boto3 code elsewhere in Toil.
-                # Keep synced with toil.lib.ec2.establish_boto3_session
+                # Keep synced with toil.lib.aws.establish_boto3_session
                 self._boto3_resolver = create_credential_resolver(Session(profile=profile_name), cache=JSONFileCache())
             else:
                 # We will use the normal flow
