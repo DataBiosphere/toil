@@ -103,10 +103,11 @@ print(heredoc('''
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
-    # Install Singularity from a newer Debian.
+    # Install a particular old Debian Sid Singularity from somewhere.
     # The dependencies it thinks it needs aren't really needed and aren't
     # available here.
-    RUN wget https://debian.osuosl.org/debian/pool/main/s/singularity-container/$(curl -sSL 'https://debian.osuosl.org/debian/pool/main/s/singularity-container/' | grep -o "singularity-container_3[^\\"]*$(if [ $TARGETARCH = amd64 ] ; then echo amd64 ; else echo arm64 ; fi).deb" | head -n1) && \
+    ADD singularity-sources.tsv /etc/singularity/singularity-sources.tsv
+    RUN wget "$(cat /etc/singularity/singularity-sources.tsv | grep "^$TARGETARCH" | cut -f3)" && \
         (dpkg -i singularity-container_3*.deb || true) && \
         dpkg --force-depends --configure -a && \
         sed -i 's/containernetworking-plugins, //' /var/lib/dpkg/status && \

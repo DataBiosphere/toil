@@ -17,7 +17,7 @@ import os
 import subprocess
 import sys
 
-from toil.test import ToilTest, slow, travis_test
+from toil.test import ToilTest, slow
 from toil.test.mesos import helloWorld
 
 logging.basicConfig(level=logging.DEBUG)
@@ -62,7 +62,6 @@ class RegularLogTest(ToilTest):
                                               '--logLevel=info'], stderr=subprocess.STDOUT)
         assert helloWorld.childMessage in toilOutput.decode('utf-8')
 
-    @travis_test
     def testWriteLogs(self):
         subprocess.check_call([sys.executable,
                                '-m', helloWorld.__name__,
@@ -91,7 +90,6 @@ class RegularLogTest(ToilTest):
                                               '--logLevel=info'], stderr=subprocess.STDOUT)
         assert helloWorld.parentMessage in toilOutput.decode('utf-8')
 
-    @travis_test
     def testRegularLog(self):
         toilOutput = subprocess.check_output([sys.executable,
                                               '-m', helloWorld.__name__,

@@ -36,7 +36,7 @@ from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.leader import FailedJobsException
 from toil.realtimeLogger import RealtimeLogger
-from toil.test import ToilTest, needs_aws_ec2, needs_google, slow, travis_test
+from toil.test import ToilTest, needs_aws_ec2, needs_google, slow
 
 # Some tests take too long on the AWS jobstore and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.
@@ -101,7 +101,6 @@ class hidden:
             return None
 
         # Sanity test
-        @travis_test
         def testToilIsNotBroken(self):
             """
             Runs a simple DAG to test if if any features other that caching were broken.
@@ -686,7 +685,6 @@ class hidden:
 
         # writeGlobalFile tests
 
-        @travis_test
         def testWriteNonLocalFileToJobStore(self):
             """
             Write a file not in localTempDir to the job store.  Such a file should not be cached.
@@ -697,7 +695,6 @@ class hidden:
                               nonLocalDir=workdir)
             Job.Runner.startToil(A, self.options)
 
-        @travis_test
         def testWriteLocalFileToJobStore(self):
             """
             Write a file from the localTempDir to the job store.  Such a file will be cached by
@@ -708,7 +705,6 @@ class hidden:
 
         # readGlobalFile tests
 
-        @travis_test
         def testReadCacheMissFileFromJobStoreWithoutCachingReadFile(self):
             """
             Read a file from the file store that does not have a corresponding cached copy.  Do not
@@ -716,7 +712,6 @@ class hidden:
             """
             self._testCacheMissFunction(cacheReadFile=False)
 
-        @travis_test
         def testReadCacheMissFileFromJobStoreWithCachingReadFile(self):
             """
             Read a file from the file store that does not have a corresponding cached copy.  Cache
@@ -783,7 +778,6 @@ class hidden:
             else:
                 return outfile
 
-        @travis_test
         def testReadCachHitFileFromJobStore(self):
             """
             Read a file from the file store that has a corresponding cached copy.  Ensure the number
@@ -1209,7 +1203,6 @@ class hidden:
                 else:
                     break
 
-        @travis_test
         def testDeleteLocalFile(self):
             """
             Test the deletion capabilities of deleteLocalFile
@@ -1276,7 +1269,6 @@ class hidden:
             else:
                 raise RuntimeError("Managed to read a non-existent file")
 
-        @travis_test
         def testSimultaneousReadsUncachedStream(self):
             """
             Test many simultaneous read attempts on a file created via a stream
