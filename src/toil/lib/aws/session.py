@@ -61,9 +61,7 @@ def establish_boto3_session(region_name: Optional[str] = None) -> Session:
     botocore_session = get_session()
     botocore_session.get_component('credential_provider').get_provider(
         'assume-role').cache = JSONFileCache()
-    # Argument types on here anren't Optionals in the current type stubs but
-    # should be. See <https://github.com/vemel/mypy_boto3_builder/issues/120>.
-    return Session(botocore_session=botocore_session, region_name=region_name) # type: ignore
+    return Session(botocore_session=botocore_session, region_name=region_name)
 
 @lru_cache(maxsize=None)
 def client(service_name: str, *args: List[Any], region_name: Optional[str] = None, **kwargs: Dict[str, Any]) -> botocore.client.BaseClient:
