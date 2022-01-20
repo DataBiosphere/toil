@@ -14,6 +14,7 @@
 import json
 import logging
 import os
+import platform
 import socket
 import string
 import textwrap
@@ -166,6 +167,10 @@ class AWSProvisioner(AbstractProvisioner):
         # Set up our connections to AWS
         self.aws = AWSConnectionManager()
 
+        # Set our architecture to the current machine architecture
+        # Assume the same architecture unless specified differently in launchCluster()
+        self._architecture = 'amd64' if platform.machine() in ['x86_64', 'amd64'] else 'arm64'
+
         # Call base class constructor, which will call createClusterSettings()
         # or readClusterSettings()
         super().__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
@@ -302,8 +307,8 @@ class AWSProvisioner(AbstractProvisioner):
                 # Kubernetes won't run here.
                 raise RuntimeError('Kubernetes requires 2 or more cores, and %s is too small' %
                                    leaderNodeType)
-
         self._keyName = keyName
+        self._architecture = leader_type.architecture
 
         if vpcSubnet:
             # This is where we put the leader
@@ -317,7 +322,7 @@ class AWSProvisioner(AbstractProvisioner):
         createdSGs = self._createSecurityGroups()
         bdms = self._getBoto3BlockDeviceMappings(leader_type, rootVolSize=leaderStorage)
 
-        userData = self._getIgnitionUserData('leader')
+        userData = self._getIgnitionUserData('leader', architecture=self._architecture)
 
         # Make up the tags
         self._tags = {'Name': self.clusterName,
@@ -752,7 +757,7 @@ class AWSProvisioner(AbstractProvisioner):
             subnet_id = next(iter(self._worker_subnets_by_zone[zone]))
 
         keyPath = self._sseKey if self._sseKey else None
-        userData = self._getIgnitionUserData('worker', keyPath, preemptable)
+        userData = self._getIgnitionUserData('worker', keyPath, preemptable, self._architecture)
         if isinstance(userData, str):
             # Spot-market provisioning requires bytes for user data.
             userData = userData.encode('utf-8')
@@ -850,7 +855,7 @@ class AWSProvisioner(AbstractProvisioner):
         :return: The AMI ID (a string like 'ami-0a9a5d2b65cce04eb') for Flatcar.
         :rtype: str
         """
-        return get_flatcar_ami(self.aws.client(self._region, 'ec2'))
+        return get_flatcar_ami(self.aws.client(self._region, 'ec2'), self._architecture)
 
     def _toNameSpace(self) -> str:
         assert isinstance(self.clusterName, (str, bytes))
@@ -1269,7 +1274,7 @@ class AWSProvisioner(AbstractProvisioner):
         bdms = self._getBoto3BlockDeviceMappings(type_info, rootVolSize=rootVolSize)
 
         keyPath = self._sseKey if self._sseKey else None
-        userData = self._getIgnitionUserData('worker', keyPath, preemptable)
+        userData = self._getIgnitionUserData('worker', keyPath, preemptable, self._architecture)
 
         lt_name = self._name_worker_launch_template(instance_type, preemptable=preemptable)
 
