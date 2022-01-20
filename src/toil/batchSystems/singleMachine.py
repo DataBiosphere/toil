@@ -33,7 +33,7 @@ from toil.common import SYS_MAX_SIZE, Config, Toil, fC
 from toil.job import JobDescription
 from toil.lib.threading import cpu_count
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class SingleMachineBatchSystem(BatchSystemSupport):
@@ -84,12 +84,12 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         if maxCores > self.numCores:
             if maxCores != SYS_MAX_SIZE:
                 # We have an actually specified limit and not the default
-                log.warning('Not enough cores! User limited to %i but we only have %i.', maxCores, self.numCores)
+                logger.warning('Not enough cores! User limited to %i but we only have %i.', maxCores, self.numCores)
             maxCores = self.numCores
         if maxMemory > self.physicalMemory:
             if maxMemory != SYS_MAX_SIZE:
                 # We have an actually specified limit and not the default
-                log.warning('Not enough memory! User limited to %i bytes but we only have %i bytes.', maxMemory, self.physicalMemory)
+                logger.warning('Not enough memory! User limited to %i bytes but we only have %i bytes.', maxMemory, self.physicalMemory)
             maxMemory = self.physicalMemory
 
         workdir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)  # config.workDir may be None; this sets a real directory
@@ -97,7 +97,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         if maxDisk > self.physicalDisk:
             if maxDisk != SYS_MAX_SIZE:
                 # We have an actually specified limit and not the default
-                log.warning('Not enough disk space! User limited to %i bytes but we only have %i bytes.', maxDisk, self.physicalDisk)
+                logger.warning('Not enough disk space! User limited to %i bytes but we only have %i bytes.', maxDisk, self.physicalDisk)
             maxDisk = self.physicalDisk
 
         super().__init__(config, maxCores, maxMemory, maxDisk)
@@ -161,11 +161,11 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.daddyException: Optional[Exception] = None
 
         if self.debugWorker:
-            log.debug('Started batch system %s in worker debug mode.', id(self))
+            logger.debug('Started batch system %s in worker debug mode.', id(self))
         else:
             self.daddyThread = Thread(target=self.daddy, daemon=True)
             self.daddyThread.start()
-            log.debug('Started batch system %s in normal mode.', id(self))
+            logger.debug('Started batch system %s in normal mode.', id(self))
 
     def daddy(self):
         """
@@ -183,7 +183,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """
 
         try:
-            log.debug('Started daddy thread for batch system %s.', id(self))
+            logger.debug('Started daddy thread for batch system %s.', id(self))
 
             while not self.shuttingDown.is_set():
                 # Main loop
@@ -230,16 +230,16 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
 
             # When we get here, we are shutting down.
-            log.debug('Daddy thread cleaning up %d remaining children for batch system %s...', len(self.children), id(self))
+            logger.debug('Daddy thread cleaning up %d remaining children for batch system %s...', len(self.children), id(self))
 
             self._stop_and_wait(self.children.values())
 
-            log.debug('Daddy thread for batch system %s finishing because no children should now exist', id(self))
+            logger.debug('Daddy thread for batch system %s finishing because no children should now exist', id(self))
 
             # Then exit the thread.
             return
         except Exception as e:
-            log.critical('Unhandled exception in daddy thread for batch system %s: %s', id(self), traceback.format_exc())
+            logger.critical('Unhandled exception in daddy thread for batch system %s: %s', id(self), traceback.format_exc())
             # Pass the exception back to the main thread so it can stop the next person who calls into us.
             self.daddyException = e
             raise
@@ -247,7 +247,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     def _checkOnDaddy(self):
         if self.daddyException is not None:
             # The daddy thread broke and we cannot do our job
-            log.critical('Propagating unhandled exception in daddy thread to main thread')
+            logger.critical('Propagating unhandled exception in daddy thread to main thread')
             exc = self.daddyException
             self.daddyException = None
             if isinstance(exc, Exception):
@@ -285,7 +285,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 # The child process really is in its own group, and not ours.
 
                 # Kill the group, which hopefully hasn't been reused
-                log.debug('Send shutdown kill to process group %s known to batch system %s', pgid, id(self))
+                logger.debug('Send shutdown kill to process group %s known to batch system %s', pgid, id(self))
                 try:
                     os.killpg(pgid, signal.SIGKILL)
                     pgids.append(pgid)
@@ -314,7 +314,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             # Wait on all the children
             popen.wait()
 
-            log.debug('Process %s known to batch system %s is stopped; it returned %s', popen.pid, id(self), popen.returncode)
+            logger.debug('Process %s known to batch system %s is stopped; it returned %s', popen.pid, id(self), popen.returncode)
 
         for pgid in pgids:
             try:
@@ -324,7 +324,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 os.killpg(pgid, signal.SIGKILL)
                 # If that worked it is still alive, let user know that we may leave
                 # behind dead but unreaped processes.
-                log.warning('Sent redundant shutdown kill to surviving process group %s known to batch system %s', pgid, id(self))
+                logger.warning('Sent redundant shutdown kill to surviving process group %s known to batch system %s', pgid, id(self))
             except ProcessLookupError:
                 # The group is actually gone now.
                 pass
@@ -383,7 +383,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 if popen.poll() is not None:
                     # Process is done
                     ready.add(pid)
-                    log.debug('Child %d has stopped', pid)
+                    logger.debug('Child %d has stopped', pid)
 
             # Return all the done processes we found
             return ready
@@ -476,7 +476,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                         self.memory.release(jobMemory)
                         self.disk.release(jobDisk)
 
-                        log.error('Could not start job %s: %s', jobID, traceback.format_exc())
+                        logger.error('Could not start job %s: %s', jobID, traceback.format_exc())
 
                         # Report as failed.
                         self.outputQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=EXIT_STATUS_UNAVAILABLE_VALUE, wallTime=0, exitReason=None))
@@ -497,7 +497,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                         info = Info(startTime, popen, (coreFractions, jobMemory, jobDisk), killIntended=False)
                         self.runningJobs[jobID] = info
 
-                        log.debug('Launched job %s as child %d', jobID, popen.pid)
+                        logger.debug('Launched job %s as child %d', jobID, popen.pid)
 
                         # Report success starting the job
                         # Note that if a PID were somehow 0 it would look like False
@@ -560,7 +560,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # See how the child did, and reap it.
         statusCode = popen.wait()
         if statusCode != 0 and not info.killIntended:
-            log.error("Got exit code %i (indicating failure) "
+            logger.error("Got exit code %i (indicating failure) "
                       "from job %s.", statusCode, self.jobs[jobID])
         if not info.killIntended:
             # Report if the job failed and we didn't kill it.
@@ -578,7 +578,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             os.killpg(pid, signal.SIGKILL)
             # If that worked it is still alive, let user know that we may leave
             # behind dead but unreaped processes.
-            log.warning('Sent redundant job completion kill to surviving process group %s known to batch system %s', pid, id(self))
+            logger.warning('Sent redundant job completion kill to surviving process group %s known to batch system %s', pid, id(self))
 
         except ProcessLookupError:
             # It is dead already
@@ -592,7 +592,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.memory.release(jobMemory)
         self.disk.release(jobDisk)
 
-        log.debug('Child %d for job %s succeeded', pid, jobID)
+        logger.debug('Child %d for job %s succeeded', pid, jobID)
 
     def issueBatchJob(self, jobDesc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
         """Adds the command and resources to a queue to be run."""
@@ -607,7 +607,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # The abstract batch system can handle it.
         self.checkResourceRequest(jobDesc.memory, cores, jobDesc.disk, job_name=jobDesc.jobName,
                                   detail=f'Scale is set to {self.scale}.')
-        log.debug(f"Issuing the command: {jobDesc.command} with "
+        logger.debug(f"Issuing the command: {jobDesc.command} with "
                   f"memory: {jobDesc.memory}, cores: {cores}, disk: {jobDesc.disk}")
         with self.jobIndexLock:
             jobID = self.jobIndex
@@ -634,7 +634,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         self._checkOnDaddy()
 
-        log.debug(f'Killing jobs: {jobIDs}')
+        logger.debug(f'Killing jobs: {jobIDs}')
 
         # Collect the popen handles for the jobs we have to stop
         popens: List[subprocess.Popen] = []
@@ -648,7 +648,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 else:
                     # No popen if running in forkless mode currently
                     assert self.debugWorker
-                    log.critical("Can't kill job: %s in debug mode" % jobID)
+                    logger.critical("Can't kill job: %s in debug mode" % jobID)
 
         # Stop them all in a batch. Don't reap, because we need the daddy
         # thread to reap them to mark the jobs as not running anymore.
@@ -693,7 +693,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         except Empty:
             return None
         self.jobs.pop(item.jobID)
-        log.debug("Ran jobID: %s with exit value: %i", item.jobID, item.exitStatus)
+        logger.debug("Ran jobID: %s with exit value: %i", item.jobID, item.exitStatus)
         return item
 
     @classmethod
