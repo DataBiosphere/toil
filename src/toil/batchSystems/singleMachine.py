@@ -325,6 +325,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 # If that worked it is still alive, let user know that we may leave
                 # behind dead but unreaped processes.
                 logger.warning('Sent redundant shutdown kill to surviving process group %s known to batch system %s', pgid, id(self))
+                logger.warning('Make sure your jobs are cleaning up child processes appropriately to avoid zombie '
+                               'processes possibly being left behind.')
+
             except ProcessLookupError:
                 # The group is actually gone now.
                 pass
@@ -579,6 +582,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             # If that worked it is still alive, let user know that we may leave
             # behind dead but unreaped processes.
             logger.warning('Sent redundant job completion kill to surviving process group %s known to batch system %s', pid, id(self))
+            logger.warning('Make sure your jobs are cleaning up child processes appropriately to avoid zombie '
+                           'processes possibly being left behind.')
 
         except ProcessLookupError:
             # It is dead already
