@@ -18,6 +18,7 @@ import os.path
 import subprocess
 import tempfile
 import textwrap
+import platform
 from abc import ABC, abstractmethod
 from functools import total_ordering
 from typing import Dict, List, Optional, Set, Tuple, Union
@@ -761,6 +762,7 @@ class AbstractProvisioner(ABC):
             ExecStart=/usr/bin/docker run \\
                 --entrypoint={entryPoint} \\
                 --net=host \\
+                --init \\
                 -v /var/run/docker.sock:/var/run/docker.sock \\
                 -v /var/lib/mesos:/var/lib/mesos \\
                 -v /var/lib/docker:/var/lib/docker \\
@@ -778,11 +780,12 @@ class AbstractProvisioner(ABC):
             WantedBy=multi-user.target
             '''))
 
-    def getKubernetesValues(self):
+    def getKubernetesValues(self, architecture: str = 'amd64'):
         """
         Returns a dict of Kubernetes component versions and paths for formatting into Kubernetes-related templates.
         """
         return dict(
+            ARCHITECTURE=architecture,
             CNI_VERSION="v0.8.2",
             CRICTL_VERSION="v1.17.0",
             CNI_DIR="/opt/cni/bin",
@@ -805,13 +808,13 @@ class AbstractProvisioner(ABC):
             CLOUD_PROVIDER_SPEC=('cloud-provider: ' + self.getKubernetesCloudProvider()) if self.getKubernetesCloudProvider() else ''
         )
 
-    def addKubernetesServices(self, config: InstanceConfiguration):
+    def addKubernetesServices(self, config: InstanceConfiguration, architecture: str = 'amd64'):
         """
         Add installing Kubernetes and Kubeadm and setting up the Kubelet to run when configured to an instance configuration.
         The same process applies to leaders and workers.
         """
 
-        values = self.getKubernetesValues()
+        values = self.getKubernetesValues(architecture)
 
         # We're going to ship the Kubelet service from Kubernetes' release pipeline via cloud-config
         config.addUnit("kubelet.service", contents=textwrap.dedent('''\
@@ -864,12 +867,12 @@ class AbstractProvisioner(ABC):
             systemctl enable docker.service
 
             mkdir -p {CNI_DIR}
-            curl -L "https://github.com/containernetworking/plugins/releases/download/{CNI_VERSION}/cni-plugins-linux-amd64-{CNI_VERSION}.tgz" | tar -C {CNI_DIR} -xz
+            curl -L "https://github.com/containernetworking/plugins/releases/download/{CNI_VERSION}/cni-plugins-linux-{ARCHITECTURE}-{CNI_VERSION}.tgz" | tar -C {CNI_DIR} -xz
             mkdir -p {DOWNLOAD_DIR}
-            curl -L "https://github.com/kubernetes-sigs/cri-tools/releases/download/{CRICTL_VERSION}/crictl-{CRICTL_VERSION}-linux-amd64.tar.gz" | tar -C {DOWNLOAD_DIR} -xz
+            curl -L "https://github.com/kubernetes-sigs/cri-tools/releases/download/{CRICTL_VERSION}/crictl-{CRICTL_VERSION}-linux-{ARCHITECTURE}.tar.gz" | tar -C {DOWNLOAD_DIR} -xz
 
             cd {DOWNLOAD_DIR}
-            curl -L --remote-name-all https://storage.googleapis.com/kubernetes-release/release/{KUBERNETES_VERSION}/bin/linux/amd64/{{kubeadm,kubelet,kubectl}}
+            curl -L --remote-name-all https://storage.googleapis.com/kubernetes-release/release/{KUBERNETES_VERSION}/bin/linux/{ARCHITECTURE}/{{kubeadm,kubelet,kubectl}}
             chmod +x {{kubeadm,kubelet,kubectl}}
             ''').format(**values))
         config.addUnit("install-kubernetes.service", contents=textwrap.dedent('''\
@@ -1146,7 +1149,7 @@ class AbstractProvisioner(ABC):
             WantedBy=multi-user.target
             '''))
 
-    def _getIgnitionUserData(self, role, keyPath=None, preemptable=False):
+    def _getIgnitionUserData(self, role, keyPath=None, preemptable=False, architecture='amd64'):
         """
         Return the text (not bytes) user data to pass to a provisioned node.
 
@@ -1162,7 +1165,7 @@ class AbstractProvisioner(ABC):
 
         if self.clusterType == 'kubernetes':
             # Install Kubernetes
-            self.addKubernetesServices(config)
+            self.addKubernetesServices(config, architecture)
 
             if role == 'leader':
                 # Set up the cluster
