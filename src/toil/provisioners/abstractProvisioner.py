@@ -762,6 +762,7 @@ class AbstractProvisioner(ABC):
             ExecStart=/usr/bin/docker run \\
                 --entrypoint={entryPoint} \\
                 --net=host \\
+                --init \\
                 -v /var/run/docker.sock:/var/run/docker.sock \\
                 -v /var/lib/mesos:/var/lib/mesos \\
                 -v /var/lib/docker:/var/lib/docker \\
