@@ -38,7 +38,6 @@ import uuid
 from argparse import ArgumentParser, _ArgumentGroup
 from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Union
 
-from requests.exceptions import HTTPError
 from boto.exception import BotoServerError
 
 from toil import applianceSelf
