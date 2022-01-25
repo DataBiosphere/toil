@@ -306,7 +306,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                         # Acknowledge it
                         acknowledged.append((aws_id, bs_id))
 
-                        if job_detail['jobId'] in self.killed_job_aws_ids:
+                        if aws_id in self.killed_job_aws_ids:
                             # Killed jobs aren't allowed to appear as updated.
                             logger.debug('Job %s was killed so skipping it', bs_id)
                             continue
