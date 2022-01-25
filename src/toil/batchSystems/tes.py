@@ -20,7 +20,6 @@ mount the job store.
 
 Additional containers should be launched with Singularity, not Docker.
 """
-import base64
 import datetime
 import logging
 import math
@@ -38,6 +37,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
                                                    BatchJobExitReason,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
+from toil.batchSystems.contained_executor import pack_job
 from toil.common import Config, Toil
 from toil.job import JobDescription
 from toil.lib.misc import get_public_ip, slow_down, utc_now
@@ -187,19 +187,8 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                 # instead when running on TES.
                 environment['TOIL_WORKDIR'] = '/tmp'
 
-            # Make a job dict to send to the executor.
-            # TODO: Factor out executor setup from here and Kubernetes
-            job: Dict[str, Any] = {"command": job_desc.command}
-            if self.user_script is not None:
-                # If there's a user script resource be sure to send it along
-                job['userScript'] = self.user_script
-            # Encode it in a form we can send in a command-line argument. Pickle in
-            # the highest protocol to prevent mixed-Python-version workflows from
-            # trying to work. Make sure it is text so we can ship it to Kubernetes
-            # via JSON.
-            encoded_job = base64.b64encode(pickle.dumps(job, pickle.HIGHEST_PROTOCOL)).decode('utf-8')
-            # Make a command to run it in the exacutor
-            command_list = ['_toil_contained_executor', encoded_job]
+            # Make a command to run it in the executor
+            command_list = pack_job(job_desc, self.user_script)
 
             # Make the sequence of TES containers ("executors") to run.
             # We just run one which is the Toil executor to grab the user

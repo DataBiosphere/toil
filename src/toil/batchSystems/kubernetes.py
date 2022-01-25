@@ -20,12 +20,10 @@ Within non-priveleged Kubernetes containers, additional Docker containers
 cannot yet be launched. That functionality will need to wait for user-mode
 Docker
 """
-import base64
 import datetime
 import getpass
 import logging
 import os
-import pickle
 import string
 import subprocess
 import sys
@@ -45,6 +43,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
                                                    BatchJobExitReason,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
+from toil.batchSystems.contained_executor import pack_job
 from toil.common import Toil
 from toil.job import JobDescription
 from toil.lib.conversions import human2bytes
@@ -389,22 +388,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         if job_environment:
             environment.update(job_environment)
 
-        # Make a job dict to send to the executor.
-        # First just wrap the command and the environment to run it in
-        # TODO: send environment via pod spec
-        job = {'command': jobDesc.command,
-               'environment': environment}
-        # TODO: query customDockerInitCmd to respect TOIL_CUSTOM_DOCKER_INIT_COMMAND
-
-        if self.userScript is not None:
-            # If there's a user script resource be sure to send it along
-            job['userScript'] = self.userScript
-
-        # Encode it in a form we can send in a command-line argument. Pickle in
-        # the highest protocol to prevent mixed-Python-version workflows from
-        # trying to work. Make sure it is text so we can ship it to Kubernetes
-        # via JSON.
-        encodedJob = base64.b64encode(pickle.dumps(job, pickle.HIGHEST_PROTOCOL)).decode('utf-8')
+        # Make a command to run it in the executor
+        command_list = pack_job(job_desc, self.user_script, environment=environment)
 
         # The Kubernetes API makes sense only in terms of the YAML format. Objects
         # represent sections of the YAML files. Except from our point of view, all
@@ -465,7 +450,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             mounts.append(secret_volume_mount)
 
         # Make a container definition
-        container = kubernetes.client.V1Container(command=['_toil_contained_executor', encodedJob],
+        container = kubernetes.client.V1Container(command=command_list,
                                                   image=self.dockerImage,
                                                   name="runner-container",
                                                   resources=resources,
