@@ -2918,6 +2918,12 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     parser.add_argument("--basedir", type=str)  # TODO: Might be hard-coded?
     parser.add_argument("--outdir", type=str, default=os.getcwd())
     parser.add_argument("--version", action="version", version=baseVersion)
+    parser.add_argument(
+        "--log-dir",
+        type=str,
+        default="",
+        help="Log your tools stdout/stderr to this location outside of container",
+    )
     dockergroup = parser.add_mutually_exclusive_group()
     dockergroup.add_argument(
         "--user-space-docker-cmd",
