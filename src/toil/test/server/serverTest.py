@@ -123,13 +123,13 @@ class ToilWESServerTest(ToilTest):
         logger.info("Got stdout %s and stderr %s", stdout, stderr)
         self._report_absolute_url(client, stdout)
         self._report_absolute_url(client, stderr)
-        
+
     def _report_absolute_url(self, client: FlaskClient, url: str):
         """
         Take a URL that has a hostname and port, relativize it to the test
         Flask client, and get its contents and log them.
         """
-        
+
         breakpoint = url.find("/toil/")
         if breakpoint == -1:
             raise RuntimeError("Could not find place to break URL: " + url)
@@ -205,18 +205,17 @@ class ToilWESServerTest(ToilTest):
                 # Check status
                 self._wait_for_success(client, run_id)
 
-        with self.subTest('Test run example CWL workflow from ZIP.'):
-            workdir = self._createTempDir()
-            zip_path = os.path.abspath(os.path.join(workdir, 'workflow.zip'))
-            with zipfile.ZipFile(zip_path, 'w') as zip_file:
-                zip_file.writestr('example.cwl', self.example_cwl)
+        def run_zip_workflow(zip_path: str, include_message: bool = True) -> None:
+            """
+            We have several zip file tests; this submits a zip file and makes sure it ran OK.
+            """
             self.assertTrue(os.path.exists(zip_path))
             with self.app.test_client() as client:
                 rv = client.post("/ga4gh/wes/v1/runs", data={
                     "workflow_url": "file://" + zip_path,
                     "workflow_type": "CWL",
                     "workflow_type_version": "v1.0",
-                    "workflow_params": json.dumps({"message": "Hello, world!"})
+                    "workflow_params": json.dumps({"message": "Hello, world!"} if include_message else {})
                 })
                 # workflow is submitted successfully
                 self.assertEqual(rv.status_code, 200)
@@ -226,6 +225,53 @@ class ToilWESServerTest(ToilTest):
 
                 # Check status
                 self._wait_for_success(client, run_id)
+
+                # TODO: Make sure that the correct message was output!
+
+
+        with self.subTest('Test run example CWL workflow from single-file ZIP.'):
+            workdir = self._createTempDir()
+            zip_path = os.path.abspath(os.path.join(workdir, 'workflow.zip'))
+            with zipfile.ZipFile(zip_path, 'w') as zip_file:
+                zip_file.writestr('example.cwl', self.example_cwl)
+            run_zip_workflow(zip_path)
+
+        with self.subTest('Test run example CWL workflow from multi-file ZIP.'):
+            workdir = self._createTempDir()
+            zip_path = os.path.abspath(os.path.join(workdir, 'workflow.zip'))
+            with zipfile.ZipFile(zip_path, 'w') as zip_file:
+                zip_file.writestr('main.cwl', self.example_cwl)
+                zip_file.writestr('distraction.cwl', "Don't mind me")
+            run_zip_workflow(zip_path)
+
+        with self.subTest('Test run example CWL workflow from ZIP with manifest.'):
+            workdir = self._createTempDir()
+            zip_path = os.path.abspath(os.path.join(workdir, 'workflow.zip'))
+            with zipfile.ZipFile(zip_path, 'w') as zip_file:
+                zip_file.writestr('actual.cwl', self.example_cwl)
+                zip_file.writestr('distraction.cwl', self.example_cwl)
+                zip_file.writestr('MANIFEST.json', json.dumps({"mainWorkflowURL": "actual.cwl"}))
+            run_zip_workflow(zip_path)
+
+        with self.subTest('Test run example CWL workflow from ZIP without manifest but with inputs.'):
+            workdir = self._createTempDir()
+            zip_path = os.path.abspath(os.path.join(workdir, 'workflow.zip'))
+            with zipfile.ZipFile(zip_path, 'w') as zip_file:
+                zip_file.writestr('main.cwl', self.example_cwl)
+                zip_file.writestr('inputs.json', json.dumps({"message": "Hello, world!"}))
+            run_zip_workflow(zip_path, include_message=False)
+            
+        with self.subTest('Test run example CWL workflow from ZIP with manifest and inputs.'):
+            workdir = self._createTempDir()
+            zip_path = os.path.abspath(os.path.join(workdir, 'workflow.zip'))
+            with zipfile.ZipFile(zip_path, 'w') as zip_file:
+                zip_file.writestr('actual.cwl', self.example_cwl)
+                zip_file.writestr('data.json', json.dumps({"message": "Hello, world!"}))
+                zip_file.writestr('MANIFEST.json', json.dumps({"mainWorkflowURL": "actual.cwl", "inputFileURLs": ["data.json"]}))
+            run_zip_workflow(zip_path, include_message=False)
+            
+        # TODO: When we can check the output value, add tests for overriding
+        # packaged inputs.
 
         with self.subTest('Test run example CWL workflow from the Internet.'):
             with self.app.test_client() as client:

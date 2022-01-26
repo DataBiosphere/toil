@@ -39,12 +39,14 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # The license also requires a note that these functions have been modified by us.
 # They needed to be modified to typecheck.
 
+# The official spec we are working with here is: https://aws.github.io/amazon-genomics-cli/docs/concepts/workflows/#multi-file-workflows
+
 class WorkflowPlan(TypedDict):
     """
     These functions pass around dicts of a certain type, with `data` and `files` keys.
     """
-    data: DataDict
-    files: FilesDict
+    data: "DataDict"
+    files: "FilesDict"
 
 class DataDict(TypedDict, total=False):
     """
