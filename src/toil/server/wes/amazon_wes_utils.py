@@ -18,8 +18,14 @@
 # separate adapter. These functions help Toil use the WES semantics that AGC
 # expects.
 
+import json
+import os
+from os import path
+from urllib.parse import urlparse, ParseResult
 import zipfile
-from typing import Optional
+from typing import Any, BinaryIO, Dict, List, Optional, TypedDict
+
+from toil.server.wes.abstract_backend import MalformedRequestException as InvalidRequestError
 
 # These functions are licensed under the same Apache 2.0 license as Toil is,
 # but they come from a repo with a NOTICE file, so we must preserve this notice
@@ -31,75 +37,41 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 """
 
 # The license also requires a note that these functions have been modified by us.
-# We need to adjust them to hook into Toil's ways of talking to AWS.
+# They needed to be modified to typecheck.
 
-def get_workflow_from_s3(s3_uri: str, localpath: str, workflow_type: str):
+class WorkflowPlan(TypedDict):
     """
-    Retrieves a workflow from S3
-
-    :param s3_uri: The S3 URI to the workflow (e.g. s3://bucketname/path/to/workflow.zip)
-    :param localpath: The location on the local filesystem to download the workflow
-    :param workflow_type: Type of workflow to expect (e.g. wdl, cwl, etc)
-
-    :rtype: dict of `data` and `files`
-
-    If the object is a generic file the file is set as `workflowSource`
-
-    If the object is a `workflow.zip` file containing a single file, that file is set as `workflowSource`
-
-    If the object is a `workflow.zip` file containing multiple files with a MANIFEST.json the MANIFEST is expected to have
-      * a mainWorkflowURL property that provides a relative file path in the zip to a workflow file, which will be set as `workflowSource`
-      * optionally, if an inputFileURLs property exists that provides a list of relative file paths in the zip to input.json, it will be used to set `workflowInputs`
-      * optionally, if an optionFileURL property exists that provides a relative file path in the zip to an options.json file, it will be used to set `workflowOptions`
-
-    If the object is a `workflow.zip` file containing multiple files without a MANIFEST.json
-      * a `main` workflow file with an extension matching the workflow_type is expected and will be set as `workflowSource`
-      * optionally, if `inputs*.json` files are found in the root level of the zip, they will be set as `workflowInputs(_\d)*` in the order they are found
-      * optionally, if an `options.json` file is found in the root level of the zip, it will be set as `workflowOptions`
-
-    If the object is a `workflow.zip` file containing multiple files, the `workflow.zip` file is set as `workflowDependencies`
+    These functions pass around dicts of a certain type, with `data` and `files` keys.
     """
-    s3 = boto3.resource("s3")
+    data: DataDict
+    files: FilesDict
 
-    u = urlparse(s3_uri)
-    bucket = s3.Bucket(u.netloc)
-    key = u.path[1:]
+class DataDict(TypedDict, total=False):
+    """
+    Under `data`, there can be:
+    * `workflowUrl` (required if no `workflowSource`): URL to main workflow code.
+    """
+    workflowUrl: str
 
-    data = dict()
-    files = dict()
+class FilesDict(TypedDict, total=False):
+    """
+    Under `files`, there can be:
+    * `workflowSource` (required if no `workflowUrl`): Open binary-mode file for the main workflow code.
+    * `workflowInputFiles`: List of open binary-mode file for input files. Expected to be JSONs.
+    * `workflowOptions`: Open binary-mode file for a JSON of options sent along with the workflow.
+    * `workflowDependencies`: Open binary-mode file for the zip the workflow came in, if any.
+    """
+    workflowSource: BinaryIO
+    workflowInputFiles: List[BinaryIO]
+    workflowOptions: BinaryIO
+    workflowDependencies: BinaryIO
 
-    if not key:
-        raise RuntimeError("invalid or missing S3 object key")
-
-    try:
-        file = path.join(localpath, path.basename(key))
-        bucket.download_file(key, file)
-    except botocore.exceptions.ClientError as e:
-        raise RuntimeError(f"invalid S3 object: {e}")
-
-    if path.basename(file) == "workflow.zip":
-        try:
-            props = parse_workflow_zip_file(file, workflow_type)
-        except Exception as e:
-            raise RuntimeError(f"{s3_uri} is not a valid workflow.zip file: {e}")
-
-        if props.get("data"):
-            data.update(props.get("data"))
-
-        if props.get("files"):
-            files.update(props.get("files"))
-    else:
-        files["workflowSource"] = open(file, "rb")
-
-    return {"data": data, "files": files}
-
-
-def parse_workflow_zip_file(file, workflow_type):
+def parse_workflow_zip_file(file: str, workflow_type: str) -> WorkflowPlan:
     """
     Processes a workflow zip bundle
 
     :param file: String or Path-like path to a workflow.zip file
-    :param workflow_type: String, type of workflow to expect (e.g. "wdl")
+    :param workflow_type: String, extension of workflow to expect (e.g. "wdl")
 
     :rtype: dict of `data` and `files`
 
@@ -115,8 +87,8 @@ def parse_workflow_zip_file(file, workflow_type):
 
     If the zip contains multiple files, the original zip is set as `workflowDependencies`
     """
-    data = dict()
-    files = dict()
+    data: DataDict = dict()
+    files: FilesDict = dict()
 
     wd = path.dirname(file)
     with zipfile.ZipFile(file) as zip:
@@ -136,10 +108,10 @@ def parse_workflow_zip_file(file, workflow_type):
                 props = parse_workflow_manifest_file(path.join(wd, "MANIFEST.json"))
 
                 if props.get("data"):
-                    data.update(props.get("data"))
+                    data.update(props["data"])
 
                 if props.get("files"):
-                    files.update(props.get("files"))
+                    files.update(props["files"])
 
             else:
                 if not f"main.{workflow_type.lower()}" in contents:
@@ -168,7 +140,7 @@ def parse_workflow_zip_file(file, workflow_type):
     return {"data": data, "files": files}
 
 
-def parse_workflow_manifest_file(manifest_file):
+def parse_workflow_manifest_file(manifest_file: str) -> WorkflowPlan:
     """
     Reads a MANIFEST.json file for a workflow zip bundle
 
@@ -198,8 +170,8 @@ def parse_workflow_manifest_file(manifest_file):
     used to set `workflowOptions`.
 
     """
-    data = dict()
-    files = dict()
+    data: DataDict = dict()
+    files: FilesDict = dict()
     with open(manifest_file, "rt") as f:
         manifest = json.loads(f.read())
 
@@ -247,7 +219,10 @@ def parse_workflow_manifest_file(manifest_file):
     return {"data": data, "files": files}
 
 
-def workflow_manifest_url_to_path(url, parent_dir=None):
+def workflow_manifest_url_to_path(url: ParseResult, parent_dir: Optional[str] = None) -> str:
+    """
+    Interpret a possibly-relative parsed URL, relative to the given parent directory.
+    """
     relpath = url.path if not url.path.startswith("/") else url.path[1:]
     if parent_dir:
         return path.join(parent_dir, relpath)
