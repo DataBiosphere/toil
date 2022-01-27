@@ -11,7 +11,7 @@ from toil.lib.retry import retry
 logger = logging.getLogger(__name__)
 
 
-def get_flatcar_ami(ec2_client: BaseClient) -> str:
+def get_flatcar_ami(ec2_client: BaseClient, architecture: str ='amd64') -> str:
     """
     Retrieve the flatcar AMI image to use as the base for all Toil autoscaling instances.
 
@@ -23,14 +23,18 @@ def get_flatcar_ami(ec2_client: BaseClient) -> str:
       3. Search the AWS Marketplace
 
     If all of these sources fail, we raise an error to complain.
+
+    :param ec2_client: Boto3 EC2 Client
+    :param architecture: The architecture type for the new AWS machine. Can be either amd64 or arm64
     """
     # Take a user override
     ami = os.environ.get('TOIL_AWS_AMI')
     if not ami:
         logger.debug("No AMI found in TOIL_AWS_AMI; checking Flatcar release feed")
-        ami = official_flatcar_ami_release(ec2_client=ec2_client)
+        ami = official_flatcar_ami_release(ec2_client=ec2_client, architecture=architecture)
     if not ami:
         logger.warning("No available AMI found in Flatcar release feed; checking marketplace")
+        # TODO: Support architecture
         ami = aws_marketplace_flatcar_ami_search(ec2_client=ec2_client)
     if not ami:
         logger.critical("No available AMI found in marketplace")
@@ -40,12 +44,18 @@ def get_flatcar_ami(ec2_client: BaseClient) -> str:
 
 
 @retry()  # TODO: What errors do we get for timeout, JSON parse failure, etc?
-def official_flatcar_ami_release(ec2_client: BaseClient) -> Optional[str]:
-    """Check stable.release.flatcar-linux.net for the latest flatcar AMI.  Verify it's on AWS."""
+def official_flatcar_ami_release(ec2_client: BaseClient, architecture: str ='amd64') -> Optional[str]:
+    """
+    Check stable.release.flatcar-linux.net for the latest flatcar AMI.  Verify it's on AWS.
+
+    :param ec2_client: Boto3 EC2 Client
+    :param architecture: The architecture type for the new AWS machine. Can be either amd64 or arm64
+    """
     # Flatcar images only live for 9 months.
     # Rather than hardcode a list of AMIs by region that will die, we use
     # their JSON feed of the current ones.
-    JSON_FEED_URL = 'https://stable.release.flatcar-linux.net/amd64-usr/current/flatcar_production_ami_all.json'
+
+    JSON_FEED_URL = f'https://stable.release.flatcar-linux.net/{architecture}-usr/current/flatcar_production_ami_all.json'
     region = ec2_client._client_config.region_name  # type: ignore
     feed = json.loads(urllib.request.urlopen(JSON_FEED_URL).read())
 
