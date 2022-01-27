@@ -1507,7 +1507,7 @@ class Job:
     def prepareForPromiseRegistration(self, jobStore):
         """
         Ensure that a promise by this job (the promissor) can register with the promissor when
-        another job referring to the promise (the promissee) is being serialized. The promissee
+        another job referring to the promise (the promisee) is being serialized. The promisee
         holds the reference to the promise (usually as part of the the job arguments) and when it
         is being pickled, so will the promises it refers to. Pickling a promise triggers it to be
         registered with the promissor.
@@ -2338,7 +2338,7 @@ class Job:
         if not self.checkpoint:
             for jobStoreFileID in Promise.filesToDelete:
                 # Make sure to wrap the job store ID in a FileID object so the file store will accept it
-                # TODO: talk directly to the job sotre here instead.
+                # TODO: talk directly to the job store here instead.
                 fileStore.deleteGlobalFile(FileID(jobStoreFileID, 0))
         else:
             # Else copy them to the job description to delete later
