@@ -499,7 +499,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
         description="Allows the specification of the batch system."
     )
     add_all_batchsystem_options(batchsystem_options)
-    
+
     # File store options
     file_store_options = parser.add_argument_group(
         title="Toil options for configuring storage.",

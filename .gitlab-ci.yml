@@ -8,6 +8,8 @@ variables:
   MAIN_PYTHON_PKG: "python3.9"
 
 before_script:
+  # Log where we are running, in case some Kubernetes hosts are busted. IPs are assigned per host.
+  - ip addr
   # Configure Docker to use a mirror for Docker Hub and restart the daemon
   # Set the registry as insecure because it is probably cluster-internal over plain HTTP.
   - |
