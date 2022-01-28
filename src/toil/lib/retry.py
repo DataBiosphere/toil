@@ -559,10 +559,15 @@ def old_retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: Fals
             try:
                 yield
             except Exception as e:
-                if time.time( ) + delay < expiration and predicate( e ):
-                    logger.info('Got %s, trying again in %is.', e, delay)
-                    time.sleep( delay )
+                if time.time( ) + delay < expiration:
+                    if predicate( e ):
+                        logger.info('Got %s, trying again in %is.', e, delay)
+                        time.sleep( delay )
+                    else:
+                        logger.error('Got a %s: %s which is not retriable according to %s', type(e), e, predicate)
+                        raise
                 else:
+                    logger.error('Got %s and no time is left to retry', e)
                     raise
             else:
                 go.pop( )

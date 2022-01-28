@@ -5,6 +5,7 @@ import random
 import socket
 import subprocess
 import sys
+import time
 import typing
 from contextlib import closing
 from typing import Iterator, List, Optional, Union
@@ -38,6 +39,10 @@ def get_public_ip() -> str:
 def utc_now() -> datetime.datetime:
     """Return a datetime in the UTC timezone corresponding to right now."""
     return datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
+
+def unix_now_ms() -> float:
+    """Return the current time in milliseconds since the Unix epoch."""
+    return time.time() * 1000
 
 def slow_down(seconds: float) -> float:
     """
