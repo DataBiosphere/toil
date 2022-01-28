@@ -26,7 +26,7 @@ from boto.exception import BotoServerError, S3ResponseError, SDBResponseError
 from botocore.exceptions import ClientError
 
 from toil.lib.compatibility import compat_bytes
-from toil.lib.retry import ErrorCondition, get_error_status, old_retry, retry
+from toil.lib.retry import ErrorCondition, get_error_status, get_error_code, old_retry, retry
 
 logger = logging.getLogger(__name__)
 
@@ -421,7 +421,7 @@ def retryable_s3_errors(e):
             or (isinstance(e, BotoServerError) and e.status in (429, 500))
             or (isinstance(e, BotoServerError) and e.code in THROTTLED_ERROR_CODES)
             # boto3 errors
-            or (isinstance(e, S3ResponseError) and e.error_code in THROTTLED_ERROR_CODES)
+            or (isinstance(e, (S3ResponseError, ClientError)) and get_error_code(e) in THROTTLED_ERROR_CODES)
             or (isinstance(e, ClientError) and 'BucketNotEmpty' in str(e))
             or (isinstance(e, ClientError) and e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 409 and 'try again' in str(e))
             or (isinstance(e, ClientError) and e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') in (404, 429, 500, 502, 503, 504)))

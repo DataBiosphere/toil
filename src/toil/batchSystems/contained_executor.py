@@ -21,12 +21,46 @@ import os
 import pickle
 import subprocess
 import sys
+from typing import Any, Dict, List, Optional
 
 from toil.batchSystems.abstractBatchSystem import EXIT_STATUS_UNAVAILABLE_VALUE
+from toil.job import JobDescription
 from toil.resource import Resource
 from toil.statsAndLogging import configure_root_logger, set_log_level
 
 logger = logging.getLogger(__name__)
+
+
+def pack_job(job_desc: JobDescription, user_script: Optional[Resource] = None, environment: Optional[Dict[str, str]] = None) -> List[str]:
+    """
+    Create a command that, when run, will execute the given job.
+
+    :param job_desc: Job description for the job to run.
+    :param user_script: User script that will be loaded before the job is run.
+    :param environment: Environment variable dict that will be applied before
+    the job is run.
+
+    :returns: Command to run the job, as an argument list that can be run
+    inside the Toil appliance container.
+    """
+    # Make a job dict to send to the executor.
+    # TODO: Factor out executor setup from here and Kubernetes and TES
+    job: Dict[str, Any] = {"command": job_desc.command}
+    if user_script is not None:
+        # If there's a user script resource be sure to send it along
+        job['userScript'] = user_script
+    if environment is not None:
+        # We also may have an environment to send.
+        job['environment'] = environment
+    # Encode it in a form we can send in a command-line argument. Pickle in
+    # the highest protocol to prevent mixed-Python-version workflows from
+    # trying to work. Make sure it is text so we can ship it via JSON.
+    encoded_job = base64.b64encode(pickle.dumps(job, pickle.HIGHEST_PROTOCOL)).decode('utf-8')
+    # Make a command to run it in the executor
+    command_list = ['_toil_contained_executor', encoded_job]
+
+    return command_list
+
 
 def executor() -> None:
     """
