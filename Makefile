@@ -83,7 +83,7 @@ tests=src/toil/test
 cov="--cov=toil"
 extras=
 # You can say make develop packages=xxx to install packages in the same Python
-# environemnt as Toil itself without creating dependency conflicts with Toil
+# environment as Toil itself without creating dependency conflicts with Toil
 packages=
 sdist_name:=toil-$(shell python version_template.py distVersion).tar.gz
 
