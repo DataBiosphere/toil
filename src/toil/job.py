@@ -1506,9 +1506,9 @@ class Job:
 
     def prepareForPromiseRegistration(self, jobStore: "AbstractJobStore") -> None:
         """
-        Ensure that a promise by this job (the promissor) can register with the promissor.
-
-        (when another job referring to the promise (the promissee) is being serialized).
+        Prepare this job (the promisor) so that its promises can register
+        themselves with it, when the jobs they are promised to (promisees) are
+        serialized.
 
         The promissee holds the reference to the promise (usually as part of the
         job arguments) and when it is being pickled, so will the promises it refers
