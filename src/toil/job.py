@@ -1506,6 +1506,8 @@ class Job:
 
     def prepareForPromiseRegistration(self, jobStore: "AbstractJobStore") -> None:
         """
+        Set up to allow this job's promises to register themselves.
+
         Prepare this job (the promisor) so that its promises can register
         themselves with it, when the jobs they are promised to (promisees) are
         serialized.
@@ -2272,12 +2274,12 @@ class Job:
         userModule = cls._loadUserModule(userModule)
         pickleFile = commandTokens[1]
 
-        #Loads context manager using file stream 
+        #Loads context manager using file stream
         if pickleFile == "firstJob":
             manager = jobStore.read_shared_file_stream(pickleFile)
         else:
             manager = jobStore.read_file_stream(pickleFile)
-        
+
         #Open and unpickle
         with manager as fileHandle:
 

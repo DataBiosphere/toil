@@ -113,9 +113,10 @@ class FailedJobsException(Exception):
 
 class Leader:
     """
-    Represents the Toil leader. Responsible for determining what jobs are ready
-    to be scheduled, by consulting the job store, and issuing them in the batch
-    system.
+    Represents the Toil leader.
+
+    Responsible for determining what jobs are ready to be scheduled, by
+    consulting the job store, and issuing them in the batch system.
     """
     def __init__(self,
                  config: Config,
