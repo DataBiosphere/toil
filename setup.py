@@ -92,7 +92,7 @@ def run_setup():
           'Topic :: System :: Distributed Computing',
           'Topic :: Utilities'],
         license="Apache License v2.0",
-        python_requires=">=3.6",
+        python_requires=">=3.7",
         install_requires=install_requires,
         extras_require=extras_require,
         package_dir={'': 'src'},
