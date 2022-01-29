@@ -2339,7 +2339,7 @@ class Job:
         if not self.checkpoint:
             for jobStoreFileID in Promise.filesToDelete:
                 # Make sure to wrap the job store ID in a FileID object so the file store will accept it
-                # TODO: talk directly to the job sotre here instead.
+                # TODO: talk directly to the job store here instead.
                 fileStore.deleteGlobalFile(FileID(jobStoreFileID, 0))
         else:
             # Else copy them to the job description to delete later

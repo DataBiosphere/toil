@@ -489,7 +489,7 @@ try:
         respecting the Boto 3 config files, even when parts of the app still use
         Boto 2.
 
-        This class also handles cacheing credentials in multi-process environments
+        This class also handles caching credentials in multi-process environments
         to avoid loads of processes swamping the EC2 metadata service.
         """
 
@@ -675,7 +675,7 @@ try:
                         os.close(fd)
                         fd = None
                         log.debug('Failed to obtain credentials, removing %s.', tmp_path)
-                        # This unblocks the loosers.
+                        # This unblocks the losers.
                         os.unlink(tmp_path)
                         # Bail out. It's too likely to happen repeatedly
                         raise
@@ -686,7 +686,7 @@ try:
                             log.debug('Credentials are not temporary.  Leaving %s empty and renaming it to %s.',
                                       tmp_path, path)
                             # No need to actually cache permanent credentials,
-                            # because we hnow we aren't getting them from the
+                            # because we know we aren't getting them from the
                             # metadata server or by assuming a role. Those both
                             # give temporary credentials.
                         else:

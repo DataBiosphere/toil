@@ -433,7 +433,7 @@ class AbstractProvisioner(ABC):
     def addManagedNodes(self, nodeTypes: Set[str], minNodes, maxNodes, preemptable, spotBid=None) -> None:
         """
         Add a group of managed nodes of the given type, up to the given maximum.
-        The nodes will automatically be launched and termianted depending on cluster load.
+        The nodes will automatically be launched and terminated depending on cluster load.
 
         Raises ManagedNodesNotSupportedException if the provisioner
         implementation or cluster configuration can't have managed nodes.
@@ -493,7 +493,7 @@ class AbstractProvisioner(ABC):
     def destroyCluster(self) -> None:
         """
         Terminates all nodes in the specified cluster and cleans up all resources associated with the
-        cluser.
+        cluster.
         :param clusterName: identifier of the cluster to terminate.
         """
         raise NotImplementedError
@@ -723,7 +723,7 @@ class AbstractProvisioner(ABC):
 
         :param role: Should be 'leader' or 'worker'. Will not work for 'worker' until leader credentials have been collected.
         :param keyPath: path on the node to a server-side encryption key that will be added to the node after it starts. The service will wait until the key is present before starting.
-        :param preemptable: Whether a woeker should identify itself as preemptable or not to the scheduler.
+        :param preemptable: Whether a worker should identify itself as preemptable or not to the scheduler.
         """
 
         # If keys are rsynced, then the mesos-agent needs to be started after the keys have been
@@ -1175,7 +1175,7 @@ class AbstractProvisioner(ABC):
         the worker to the leader.
 
         :param str keyPath: The path of a secret key for the worker to wait for the leader to create on it.
-        :param bool preemptable: Set to true for a worker node to identify itself as preemptible in the cluster.
+        :param bool preemptable: Set to true for a worker node to identify itself as preemptable in the cluster.
         """
 
         # Start with a base config

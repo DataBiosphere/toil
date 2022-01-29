@@ -115,9 +115,9 @@ class WritablePipe(ABC):
         return self.writable
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        # Closeing the writable end will send EOF to the readable and cause the reader thread
+        # Closing the writable end will send EOF to the readable and cause the reader thread
         # to finish.
-        # TODO: Can close() fail? If so, whould we try and clean up after the reader?
+        # TODO: Can close() fail? If so, would we try and clean up after the reader?
         self.writable.close()
         try:
             if self.thread is not None:
@@ -286,7 +286,7 @@ class ReadableTransformingPipe(ReadablePipe):
     The :meth:`.transform` method runs in its own thread, and should move data
     chunk by chunk instead of all at once. It should finish normally if it
     encounters either an EOF on the readable, or a :class:`BrokenPipeError` on
-    the writable. This means tat it should make sure to actually catch a
+    the writable. This means that it should make sure to actually catch a
     :class:`BrokenPipeError` when writing.
 
     See also: :class:`toil.lib.misc.WriteWatchingStream`.
