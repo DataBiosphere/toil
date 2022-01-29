@@ -292,14 +292,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             else:
                 log.debug('Job %s ended naturally before it could be killed.', item.jobID)
 
-    def nodeInUse(self, nodeIP):
+    def nodeInUse(self, nodeIP: str) -> bool:
         return nodeIP in self.hostToJobIDs
-
-    @contextmanager
-    def nodeFiltering(self, filter):
-        self.nodeFilter = [filter]
-        yield
-        self.nodeFilter = []
 
     def getWaitDuration(self):
         """
@@ -715,13 +709,20 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
         return executor
 
-    def getNodes(self, preemptable=None, timeout=600):
-        timeout = timeout or sys.maxsize
-        return {nodeAddress: executor.nodeInfo
-                for nodeAddress, executor in self.executors.items()
-                if time.time() - executor.lastSeen < timeout
-                and (preemptable is None
-                     or preemptable == (executor.agentId not in self.nonPreemptableNodes))}
+    def getNodes(self,
+                 preemptable: Optional[bool] = None,
+                 timeout: Optional[int] = None) -> Dict[str, NodeInfo]:
+        """
+        Return all nodes that match:
+         - preemptable status (None includes all)
+         - timeout period (seen within the last # seconds, or None for all)
+        """
+        nodes = dict()
+        for node_ip, executor in self.executors.items():
+            if preemptable is None or (preemptable == (executor.agentId not in self.nonPreemptableNodes)):
+                if timeout is None or (time.time() - executor.lastSeen < timeout):
+                    nodes[node_ip] = executor.nodeInfo
+        return nodes
 
     def reregistered(self, driver, masterInfo):
         """

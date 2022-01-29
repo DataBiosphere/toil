@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import argparse
 import logging
 from difflib import get_close_matches
 from typing import TYPE_CHECKING, List, Optional, Set, Tuple, Union
@@ -29,7 +30,7 @@ def cluster_factory(
     clusterType: str = "mesos",
     zone: Optional[str] = None,
     nodeStorage: int = 50,
-    nodeStorageOverrides: Optional[str] = None,
+    nodeStorageOverrides: Optional[List[str]] = None,
     sseKey: Optional[str] = None,
 ) -> Union["AWSProvisioner", "GCEProvisioner"]:
     """
@@ -62,7 +63,7 @@ def cluster_factory(
         raise RuntimeError("Invalid provisioner '%s'" % provisioner)
 
 
-def add_provisioner_options(parser):
+def add_provisioner_options(parser: argparse.ArgumentParser) -> None:
     group = parser.add_argument_group("Provisioner Options.")
 
     provisioner_choices = ['aws', 'gce']
@@ -100,7 +101,6 @@ def parse_node_types(node_type_specs: Optional[str]) -> List[Tuple[Set[str], Opt
     :returns: a list of node types, where each type is the set of
               instance types, and the float bid, or None.
     """
-
     # Collect together all the node types
     parsed = []
 
