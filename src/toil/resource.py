@@ -24,6 +24,7 @@ from contextlib import closing
 from io import BytesIO
 from pydoc import locate
 from tempfile import mkdtemp
+from typing import Any
 from urllib.error import HTTPError
 from urllib.request import urlopen
 from zipfile import ZipFile
@@ -39,8 +40,9 @@ logger = logging.getLogger(__name__)
 
 class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash'))):
     """
-    Represents a file or directory that will be deployed to each node before any jobs in the user
-    script are invoked. Each instance is a namedtuple with the following elements:
+    Represents a file or directory that will be deployed to each node before any jobs in the user script are invoked.
+
+    Each instance is a namedtuple with the following elements:
 
     The pathHash element contains the MD5 (in hexdigest form) of the path to the resource on the
     leader node. The path, and therefore its hash is unique within a job store.
@@ -110,9 +112,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
 
     @classmethod
     def cleanSystem(cls) -> None:
-        """
-        Removes all downloaded, localized resources
-        """
+        """Remove all downloaded, localized resources."""
         resourceRootDirPath = os.environ[cls.rootDirPathEnvName]
         os.environ.pop(cls.rootDirPathEnvName)
         shutil.rmtree(resourceRootDirPath)
@@ -121,21 +121,18 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
                 os.environ.pop(k)
 
     def register(self):
-        """
-        Register this resource for later retrieval via lookup(), possibly in a child process.
-        """
+        """Register this resource for later retrieval via lookup(), possibly in a child process."""
         os.environ[self.resourceEnvNamePrefix + self.pathHash] = self.pickle()
 
     @classmethod
-    def lookup(cls, leaderPath):
+    def lookup(cls, leaderPath: str) -> "Resource":
         """
-        Returns a resource object representing a resource created from a file or directory at the
-        given path on the leader. This method should be invoked on the worker. The given path
-        does not need to refer to an existing file or directory on the worker, it only identifies
-        the resource within an instance of toil. This method returns None if no resource for the
-        given path exists.
+        Return a resource object representing a resource created from a file or directory at the given path on the leader.
 
-        :rtype: Resource
+        This method should be invoked on the worker. The given path does not need
+        to refer to an existing file or directory on the worker, it only identifies
+        the resource within an instance of toil. This method returns None if no resource
+        for the given path exists.
         """
         pathHash = cls._pathHash(leaderPath)
         try:
@@ -151,9 +148,10 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
 
     def download(self, callback=None):
         """
-        Downloads this resource from its URL to a file on the local system. This method should
-        only be invoked on a worker node after the node was setup for accessing resources via
-        prepareSystem().
+        Download this resource from its URL to a file on the local system.
+
+        This method should only be invoked on a worker node after the node was setup
+        for accessing resources via prepareSystem().
         """
         dirPath = self.localDirPath
         if not os.path.exists(dirPath):
@@ -175,8 +173,10 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
     @property
     def localPath(self):
         """
-        The path to resource on the worker. The file or directory at the returned path may or may
-        not yet exist. Invoking download() will ensure that it does.
+        Get the path to resource on the worker.
+
+        The file or directory at the returned path may or may not yet exist.
+        Invoking download() will ensure that it does.
         """
         raise NotImplementedError
 
@@ -192,10 +192,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         return self.__class__.__module__ + "." + self.__class__.__name__ + ':' + json.dumps(self)
 
     @classmethod
-    def unpickle(cls, s):
-        """
-        :rtype: Resource
-        """
+    def unpickle(cls, s) -> "Resource":
         className, _json = s.split(':', 1)
         return locate(className)(*json.loads(_json))
 
@@ -243,9 +240,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
 
 
 class FileResource(Resource):
-    """
-    A resource read from a file on the leader.
-    """
+    """A resource read from a file on the leader."""
 
     @classmethod
     def _load(cls, path):
@@ -262,16 +257,15 @@ class FileResource(Resource):
 
 class DirectoryResource(Resource):
     """
-    A resource read from a directory on the leader. The URL will point to a ZIP archive of the
-    directory. All files in that directory (and any subdirectories) will be included. The directory
+    A resource read from a directory on the leader.
+
+    The URL will point to a ZIP archive of the directory. All files in that directory
+    (and any subdirectories) will be included. The directory
     may be a package but it does not need to be.
     """
 
     @classmethod
-    def _load(cls, path):
-        """
-        :type path: str
-        """
+    def _load(cls, path: str) -> BytesIO:
         bytesIO = BytesIO()
         initfile = os.path.join(path, '__init__.py')
         if os.path.isfile(initfile):
@@ -314,14 +308,13 @@ class DirectoryResource(Resource):
 
 class VirtualEnvResource(DirectoryResource):
     """
-    A resource read from a virtualenv on the leader. All modules and packages found in the
-    virtualenv's site-packages directory will be included.
+    A resource read from a virtualenv on the leader.
+
+    All modules and packages found in the virtualenv's site-packages directory will be included.
     """
+
     @classmethod
-    def _load(cls, path):
-        """
-        :type path: str
-        """
+    def _load(cls, path: str) -> BytesIO:
         assert os.path.basename(path) == 'site-packages'
         bytesIO = BytesIO()
         with ZipFile(file=bytesIO, mode='w') as zipFile:
@@ -336,7 +329,7 @@ class VirtualEnvResource(DirectoryResource):
 
 class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromVirtualEnv'))):
     """
-    A path to a Python module decomposed into a namedtuple of three elements, namely
+    A path to a Python module decomposed into a namedtuple of three elements
 
     - dirPath, the path to the directory that should be added to sys.path before importing the
       module,
@@ -376,20 +369,21 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
     """
 
     @classmethod
-    def forModule(cls, name):
+    def forModule(cls, name: str) -> Any:
         """
-        Return an instance of this class representing the module of the given name. If the given
-        module name is "__main__", it will be translated to the actual file name of the top-level
-        script without the .py or .pyc extension. This method assumes that the module with the
-        specified name has already been loaded.
+        Return an instance of this class representing the module of the given name.
+
+        If the given module name is "__main__", it will be translated to the actual
+        file name of the top-level script without the .py or .pyc extension. This
+        method assumes that the module with the specified name has already been loaded.
         """
         module = sys.modules[name]
         filePath = os.path.abspath(module.__file__)
         filePath = filePath.split(os.path.sep)
         filePath[-1], extension = os.path.splitext(filePath[-1])
-        if not extension in ('.py', '.pyc'):
-            raise Exception('The name of a user script/module must end in .py or .pyc.')
-        if name == '__main__':
+        if extension not in (".py", ".pyc"):
+            raise Exception("The name of a user script/module must end in .py or .pyc.")
+        if name == "__main__":
             logger.debug("Discovering real name of module")
             # User script/module was invoked as the main program
             if module.__package__:
@@ -480,13 +474,13 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             raise AssertionError("No such file or directory: '%s'" % self._resourcePath)
         return subcls
 
-    def localize(self):
+    def localize(self) -> Resource:
         """
-        Check if this module was saved as a resource. If it was, return a new module descriptor
-        that points to a local copy of that resource. Should only be called on a worker node. On
-        the leader, this method returns this resource, i.e. self.
+        Check if this module was saved as a resource.
 
-        :rtype: toil.resource.Resource
+        If it was, return a new module descriptor that points to a local copy of
+        that resource. Should only be called on a worker node. On
+        the leader, this method returns this resource, i.e. self.
         """
         if not self._runningOnWorker():
             logger.warning('The localize() method should only be invoked on a worker.')
@@ -524,7 +518,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             workerModuleFiles = ['worker.py', 'worker.pyc', 'worker.pyo', '_toil_worker']  # setuptools entry point
             return mainModuleFile in workerModuleFiles
 
-    def globalize(self):
+    def globalize(self) -> "ModuleDescriptor":
         """
         Reverse the effect of localize().
         """

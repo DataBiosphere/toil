@@ -151,7 +151,7 @@ class ResourceTest(ToilTest):
         # Now it gets a bit complicated: Ensure that the context manager returned by the
         # jobStore's write_shared_file_stream() method is entered and that the file handle yielded
         # by the context manager is written to once with the zipped source tree from which
-        # 'toil.resource' was orginally imported. Keep the zipped tree around such that we can
+        # 'toil.resource' was originally imported. Keep the zipped tree around such that we can
         # mock the download later.
         file_handle = jobStore.write_shared_file_stream.return_value.__enter__.return_value
         # The first 0 index selects the first call of write(), the second 0 selects positional

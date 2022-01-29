@@ -262,7 +262,7 @@ class ClusterScalerTest(ToilTest):
         self.config.nodeTypes = [r3_8xlarge, c4_8xlarge_preemptable]
 
         # Set up the mock leader
-        self.leader = MockBatchSystemAndProvisioner(self.config, 1)
+        self.leader = MockBatchSystemAndProvisioner(config=self.config, secondsPerJob=1)
         # It is also a full mock provisioner, so configure it to be that as well
         self.provisioner = self.leader
         # Pretend that Shapes are actually strings we can use for instance type names.
@@ -448,7 +448,7 @@ class ScalerThreadTest(ToilTest):
         # jobs are completed okay, then print the amount of worker time expended and the total
         # number of worker nodes used.
 
-        mock = MockBatchSystemAndProvisioner(config, secondsPerJob=2.0)
+        mock = MockBatchSystemAndProvisioner(config=config, secondsPerJob=2.0)
         mock.setAutoscaledNodeTypes([({t}, None) for t in config.nodeTypes])
         mock.start()
         clusterScaler = ScalerThread(mock, mock, config)
@@ -559,7 +559,7 @@ class ScalerThreadTest(ToilTest):
         config.betaInertia = 0.1
         config.scaleInterval = 3
 
-        mock = MockBatchSystemAndProvisioner(config, secondsPerJob=2.0)
+        mock = MockBatchSystemAndProvisioner(config=config, secondsPerJob=2.0)
         mock.setAutoscaledNodeTypes([({t}, None) for t in config.nodeTypes])
         clusterScaler = ScalerThread(mock, mock, config)
         clusterScaler.start()
@@ -625,11 +625,8 @@ class ScalerThreadTest(ToilTest):
         self._testClusterScaling(config, numJobs=100, numPreemptableJobs=100, jobShape=jobShape)
 
 
-# noinspection PyAbstractClass
 class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisioner):
-    """
-    Mimics a job batcher, provisioner and scalable batch system
-    """
+    """Mimics a job batcher, provisioner and scalable batch system."""
     def __init__(self, config, secondsPerJob):
         super().__init__(clusterName='clusterName', clusterType='mesos')
         # To mimic parallel preemptable and non-preemptable queues
@@ -684,11 +681,6 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     def readClusterSettings(self):
         pass
 
-    @contextmanager
-    def nodeFiltering(self, filter):
-        nodes = self.getProvisionedWorkers()
-        yield nodes
-
     # AbstractProvisioner methods
     def setAutoscaledNodeTypes(self, node_types: List[Tuple[Set[Shape], Optional[float]]]):
         self.node_shapes_for_testing = sorted([it for t in node_types for it in t[0]])
@@ -712,7 +704,8 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         return results
 
     def terminateNodes(self, nodes):
-        self._removeNodes(nodes)
+        if nodes:
+            self._removeNodes(nodes)
 
     def remainingBillingInterval(self, node):
         pass
@@ -743,7 +736,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         return self.jobBatchSystemIDToIssuedJob.values()
 
     # AbstractScalableBatchSystem functionality
-    def getNodes(self, preemptable=False, timeout=None):
+    def getNodes(self, preemptable: Optional[bool] = False, timeout: int = 600):
         nodes = dict()
         for node in self.nodesToWorker:
             if node.preemptable == preemptable:
@@ -754,7 +747,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         return nodes
 
     # AbstractProvisioner functionality
-    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable):
+    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable) -> int:
         nodeType = next(iter(nodeTypes))
         self._addNodes(numNodes=numNodes, nodeType=nodeType, preemptable=preemptable)
         return self.getNumberOfNodes(nodeType=nodeType, preemptable=preemptable)
@@ -827,10 +820,8 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         self.maxWorkers[nodeShape] = max(self.maxWorkers[nodeShape], len(self.workers[nodeShape]))
 
     def _removeNodes(self, nodes):
-        logger.debug("Removing nodes. %s workers and %s to terminate.", len(self.nodesToWorker),
-                    len(nodes))
+        logger.debug("Removing nodes. %s workers and %s to terminate.", len(self.nodesToWorker), len(nodes))
         for node in nodes:
-            logger.debug("removed node")
             try:
                 nodeShape = self.getNodeShape(node.nodeType, node.preemptable)
                 worker = self.nodesToWorker.pop(node)

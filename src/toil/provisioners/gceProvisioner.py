@@ -237,12 +237,13 @@ class GCEProvisioner(AbstractProvisioner):
         instanceGroup.destroy()
 
     def terminateNodes(self, nodes):
-        nodeNames = [n.name for n in nodes]
-        instances = self._getNodesInCluster()
-        instancesToKill = [i for i in instances if i.name in nodeNames]
-        self._terminateInstances(instancesToKill)
+        if nodes:
+            nodeNames = [n.name for n in nodes]
+            instances = self._getNodesInCluster()
+            instancesToKill = [i for i in instances if i.name in nodeNames]
+            self._terminateInstances(instancesToKill)
 
-    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None):
+    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None) -> int:
         assert self._leaderPrivateIP
 
         # We don't support any balancing here so just pick one of the
