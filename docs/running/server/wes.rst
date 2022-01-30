@@ -101,7 +101,7 @@ Also make sure to run it behind a firewall; it opens up the Toil server on port 
 
 .. literalinclude:: ./docker-compose.yml
    :language: yaml
-   :emphasize-lines: 12,19,22,30,42
+   :emphasize-lines: 15,22,25,33,43,45
 
 Once everything is configured, simply run ``docker-compose up`` to start the containers. Run ``docker-compose down`` to
 stop and remove all containers.
