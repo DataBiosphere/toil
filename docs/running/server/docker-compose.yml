@@ -9,17 +9,20 @@ services:
     image: ${TOIL_APPLIANCE_SELF}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /tmp/toil-workflows:/root/toil-workflows
+      - /var/lib/docker:/var/lib/docker
+      - /var/lib/toil:/var/lib/toil
+      - /var/lib/cwl:/var/lib/cwl
+      - /tmp/toil-workflows:/tmp/toil-workflows
     command: celery --broker=amqp://guest:guest@rabbitmq:5672// -A toil.server.celery_app worker --loglevel=INFO
     depends_on:
       - rabbitmq
   wes-server:
     image: ${TOIL_APPLIANCE_SELF}
     volumes:
-      - /tmp/toil-workflows:/root/toil-workflows
+      - /tmp/toil-workflows:/tmp/toil-workflows
     environment:
       - TOIL_WES_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
-    command: toil server --host 0.0.0.0 --port 8000 --work_dir /root/toil-workflows --public_url http://localhost:8080
+    command: toil server --host 0.0.0.0 --port 8000 --work_dir /tmp/toil-workflows --public_url http://localhost:8080
     expose:
       - 8000
     labels:
