@@ -20,6 +20,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+def aws_batch_batch_system_factory():
+    from toil.batchSystems.awsBatch import AWSBatchBatchSystem
+    return AWSBatchBatchSystem
+
 def gridengine_batch_system_factory():
     from toil.batchSystems.gridengine import GridEngineBatchSystem
     return GridEngineBatchSystem
@@ -68,7 +72,8 @@ def kubernetes_batch_system_factory():
     return KubernetesBatchSystem
 
 
-BATCH_SYSTEM_FACTORY_REGISTRY = {
+BATCH_SYSTEM_FACTORY_REGISTRY: Dict[str, Callable[[], Type["AbstractBatchSystem"]]] = {
+    'aws_batch'      : aws_batch_batch_system_factory,
     'parasol'        : parasol_batch_system_factory,
     'single_machine' : single_machine_batch_system_factory,
     'grid_engine'    : gridengine_batch_system_factory,
