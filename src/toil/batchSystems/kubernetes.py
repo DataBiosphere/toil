@@ -16,7 +16,7 @@ Batch system for running Toil workflows on Kubernetes.
 
 Ony useful with network-based job stores, like AWSJobStore.
 
-Within non-priveleged Kubernetes containers, additional Docker containers
+Within non-privileged Kubernetes containers, additional Docker containers
 cannot yet be launched. That functionality will need to wait for user-mode
 Docker
 """
@@ -769,7 +769,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 jobID = int(jobObject.metadata.name[len(self.job_prefix):])
                 jobObjectListConditions =jobObject.status.conditions
                 totalPods = jobObject.status.active + jobObject.status.finished + jobObject.status.failed
-                # Exit Reason defaults to 'Successfully Finsihed` unless said otherwise
+                # Exit Reason defaults to 'Successfully Finished` unless said otherwise
                 exitReason = BatchJobExitReason.FINISHED
                 exitCode = 0
 
@@ -783,7 +783,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                                                                 jobObject.status.succeeded, jobObject.status.failed, jobObject.status.active)
                     # Get termination information of job
                     termination = jobObjectListConditions[0]
-                    # Log out succeess/failure given a reason
+                    # Log out success/failure given a reason
                     logger.info("%s REASON: %s", termination.type, termination.reason)
 
                     # Log out reason of failure and pod exit code

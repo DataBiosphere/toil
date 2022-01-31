@@ -676,8 +676,9 @@ class AWSProvisioner(AbstractProvisioner):
         if removed:
             print('... Successfully deleted S3 buckets')
 
-    def terminateNodes(self, nodes : List[Node]):
-        self._terminateIDs([x.name for x in nodes])
+    def terminateNodes(self, nodes: List[Node]) -> None:
+        if nodes:
+            self._terminateIDs([x.name for x in nodes])
 
     def _recover_node_type_bid(self, node_type: Set[str], spot_bid: Optional[float]) -> Optional[float]:
         """

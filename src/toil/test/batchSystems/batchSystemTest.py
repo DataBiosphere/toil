@@ -1066,7 +1066,7 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
     def testNestedResourcesDoNotBlock(self):
         """
         Resources are requested in the order Memory > Cpu > Disk.
-        Test that inavailability of cpus for one job that is scheduled does not block another job
+        Test that unavailability of cpus for one job that is scheduled does not block another job
         that can run.
         """
         tempDir = self._createTempDir('testFiles')
