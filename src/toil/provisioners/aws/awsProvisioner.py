@@ -340,6 +340,7 @@ class AWSProvisioner(AbstractProvisioner):
         # Make tags for the leader specifically
         leader_tags = dict(self._tags)
         leader_tags[_TAG_KEY_TOIL_NODE_TYPE] = 'leader'
+        logger.debug('Launching leader with tags: %s', leader_tags)
 
         instances = create_instances(self.aws.resource(self._region, 'ec2'),
                                      image_id=self._discoverAMI(),
@@ -359,6 +360,7 @@ class AWSProvisioner(AbstractProvisioner):
         leader.wait_until_exists()
 
         # Don't go on until the leader is started
+        logger.info('Waiting for leader instance %s to be running', leader)
         leader.wait_until_running()
 
         # Now reload it to make sure all the IPs are set.
