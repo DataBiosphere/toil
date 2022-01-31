@@ -85,7 +85,7 @@ def google_retry(f):
 class GoogleJobStore(AbstractJobStore):
 
     nodeServiceAccountJson = '/root/service_account.json'
-    def __init__(self, locator):
+    def __init__(self, locator: str) -> None:
         super().__init__(locator)
 
         try:
