@@ -22,6 +22,7 @@ from http.client import BadStatusLine
 from io import BytesIO
 from typing import (
     IO,
+    TYPE_CHECKING,
     Any,
     Callable,
     ContextManager,
@@ -55,6 +56,9 @@ from toil.lib.compatibility import deprecated
 from toil.lib.io import WriteWatchingStream
 from toil.lib.memoize import memoize
 from toil.lib.retry import ErrorCondition, retry
+
+if TYPE_CHECKING:
+    from toil.job import TemporaryID
 
 logger = logging.getLogger(__name__)
 
@@ -579,7 +583,7 @@ class AbstractJobStore(ABC):
 
     # Cleanup functions
     def clean(
-        self, jobCache: Optional[Dict[str, JobDescription]] = None
+        self, jobCache: Optional[Dict[Union[str, "TemporaryID"], JobDescription]] = None
     ) -> JobDescription:
         """
         Function to cleanup the state of a job store after a restart.

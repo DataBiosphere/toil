@@ -135,6 +135,17 @@ the logging module:
                         The host and port of the Mesos server separated by a
                         colon. (default: <leader IP>:5050)
 
+  --kubernetesHostPath KUBERNETES_HOST_PATH
+                        A path on Kubernetes hosts that will be mounted as the
+                        Toil work directory in the workers, to allow for shared
+                        caching.
+  --kubernetesOwner KUBERNETES_OWNER
+                        A name prefix for easy identification of Kubernetes
+                        jobs. If not set, Toil will use the current user name.
+  --kubernetesServiceAccount KUBERNETES_SERVICE_ACCOUNT
+                        A service account name to apply when creating
+                        Kubernetes pods.
+
   --tesEndpoint TES_ENDPOINT
                         The http(s) URL of the TES server.
                         (default: http://<leader IP>:8000)
@@ -143,6 +154,20 @@ the logging module:
                         Password to use for basic authentication to TES server.
   --tesBearerToken TES_BEARER_TOKEN
                         Bearer token to use for authentication to TES server.
+
+  --awsBatchRegion AWS_BATCH_REGION
+                        Region to use when using the AWS Batch batch system.
+                        Can often be autodetected from Boto configuration or
+                        the AWS region in which the current machine is running,
+                        if any.
+  --awsBatchQueue AWS_BATCH_QUEUE
+                        Name or ARN of an AWS Batch Queue to use with the AWS
+                        Batch batch system.
+  --awsBatchJobRoleArn AWS_BATCH_JOB_ROLE_ARN
+                        ARN of an IAM role to run AWS Batch jobs as with the
+                        AWS Batch batch system. If the jobs are not run with an
+                        IAM role or on machines that have access to S3 and
+                        SimpleDB, the AWS job store will not be usable.
 
   --scale SCALE         A scaling factor to change the value of all submitted
                         tasks' submitted cores. Used in singleMachine batch

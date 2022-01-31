@@ -8,9 +8,10 @@ class HelloWorld(Job):
         self.message = message
 
     def run(self, fileStore):
-        self.log(f"Hello, world!, I have a message: {self.message}")
+        return f"Hello, world!, I have a message: {self.message}"
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
     options.logLevel = "INFO"
     options.clean = "always"
@@ -18,6 +19,7 @@ if __name__=="__main__":
     with Toil(options) as toil:
         if not toil.options.restart:
             job = HelloWorld("Woot!")
-            toil.start(job)
+            output = toil.start(job)
         else:
-            toil.restart()
+            output = toil.restart()
+    print(output)

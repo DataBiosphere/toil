@@ -83,7 +83,7 @@ tests=src/toil/test
 cov="--cov=toil"
 extras=
 # You can say make develop packages=xxx to install packages in the same Python
-# environemnt as Toil itself without creating dependency conflicts with Toil
+# environment as Toil itself without creating dependency conflicts with Toil
 packages=
 sdist_name:=toil-$(shell python version_template.py distVersion).tar.gz
 
@@ -118,25 +118,21 @@ clean_sdist:
 	- rm -rf dist
 	- rm src/toil/version.py
 
-# We always claim to be Travis, so that local test runs will not skip Travis tests.
 # Setting SET_OWNER_TAG will tag cloud resources so that UCSC's cloud murder bot won't kill them.
 test: check_venv check_build_reqs
-	TRAVIS=true TOIL_OWNER_TAG="shared" \
+	TOIL_OWNER_TAG="shared" \
 	    python -m pytest --durations=0 --log-level DEBUG --log-cli-level INFO -r s $(cov) $(tests)
 
 
 # This target will skip building docker and all docker based tests
-# these are our travis tests; rename?
 test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
-	TRAVIS=true \
 	    python -m pytest -vv --timeout=600 --log-level DEBUG --log-cli-level INFO $(cov) $(tests)
 
 ifdef TOIL_DOCKER_REGISTRY
 
 docker_image:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME)
-
 grafana_image:=$(TOIL_DOCKER_REGISTRY)/toil-grafana
 prometheus_image:=$(TOIL_DOCKER_REGISTRY)/toil-prometheus
 mtail_image:=$(TOIL_DOCKER_REGISTRY)/toil-mtail

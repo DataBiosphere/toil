@@ -339,9 +339,9 @@ def global_mutex(workDir: str, mutex: str) -> Iterator[None]:
         # Holding the lock, make sure we are looking at the same file on disk still.
         fd_stats = os.fstat(fd)
         try:
-            path_stats = os.stat(lock_filename)
+            path_stats: Optional[os.stat_result] = os.stat(lock_filename)
         except FileNotFoundError:
-            path_stats = None # type: ignore
+            path_stats = None
 
         if path_stats is None or fd_stats.st_dev != path_stats.st_dev or fd_stats.st_ino != path_stats.st_ino:
             # The file we have a lock on is not the file linked to the name (if

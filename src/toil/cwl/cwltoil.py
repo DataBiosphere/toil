@@ -96,6 +96,8 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from schema_salad.avro.schema import Names
 from schema_salad.exceptions import ValidationException
 from schema_salad.sourceline import SourceLine
+from schema_salad.ref_resolver import file_uri, uri_file_path
+
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Config, Toil, addOptions
@@ -321,6 +323,7 @@ class ResolveSource:
 
     def resolve(self) -> Any:
         """First apply linkMerge then pickValue if either present."""
+        result: Optional[Any] = None
         if isinstance(self.promise_tuples, list):
             result = self.link_merge(
                 cast(
@@ -329,7 +332,7 @@ class ResolveSource:
             )
         else:
             value = self.promise_tuples
-            result = value[1].get(value[0])  # type: ignore
+            result = cast(Dict[str, Any], value[1]).get(value[0])
 
         result = self.pick_value(result)
         result = filter_skip_null(self.name, result)
@@ -851,12 +854,42 @@ class ToilPathMapper(PathMapper):
                     # If we didn't download something that is a toilfile:
                     # reference, we just pass that along.
 
-                    logger.debug(
-                        "ToilPathMapper adding file mapping %s -> %s", deref, tgt
-                    )
-                    self._pathmap[path] = MapperEnt(
-                        deref, tgt, "WritableFile" if copy else "File", staged
-                    )
+                    """Link or copy files to their targets. Create them as needed."""
+                    targets: Dict[str, str] = {}
+                    for _, value in self._pathmap.items():
+                        # If the target already exists in the pathmap, it means we have a conflict.  But we didn't change tgt to reflect new name.
+                        new_target = value.target.rpartition("_")[0]
+                        if value.target == tgt:  # Conflict detected in the pathmap
+                            new_target = tgt
+                        if new_target and new_target == tgt:
+                            i = 2
+                            new_tgt = f"{tgt}_{i}"
+                            while new_tgt in targets:
+                                i += 1
+                                new_tgt = f"{tgt}_{i}"
+                            targets[new_tgt] = new_tgt
+
+                    for _, value_conflict in targets.items():
+                        logger.debug(
+                            "ToilPathMapper adding file mapping for conflict %s -> %s",
+                            deref,
+                            value_conflict,
+                        )
+                        self._pathmap[path] = MapperEnt(
+                            deref,
+                            value_conflict,
+                            "WritableFile" if copy else "File",
+                            staged,
+                        )
+                    # No conflicts detected so we can write out the original name.
+                    if not targets:
+                        logger.debug(
+                            "ToilPathMapper adding file mapping %s -> %s", deref, tgt
+                        )
+
+                        self._pathmap[path] = MapperEnt(
+                            deref, tgt, "WritableFile" if copy else "File", staged
+                        )
 
             # Handle all secondary files that need to be next to this one.
             self.visitlisting(
@@ -1070,7 +1103,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         return super().open(fn, mode)
 
     def exists(self, path: str) -> bool:
-        """Test for file existance."""
+        """Test for file existence."""
         # toil's _abs() throws errors when files are not found and cwltool's _abs() does not
         try:
             return os.path.exists(self._abs(path))
@@ -1170,7 +1203,7 @@ def toil_get_file(
     :param streaming_allowed: If streaming is allowed
 
     :param pipe_threads: List of threads responsible for streaming the data
-    and open file descriptors corresponding to those files. Caller is resposible
+    and open file descriptors corresponding to those files. Caller is responsible
     to close the file descriptors (to break the pipes) and join the threads
     """
     pipe_threads_real = pipe_threads or []
@@ -1530,7 +1563,9 @@ def upload_directory(
         location = directory_metadata["location"] = schema_salad.ref_resolver.file_uri(
             cast(str, directory_metadata["path"])
         )
-    if location.startswith("file://") and not os.path.isdir(location[len("file://") :]):
+    if location.startswith("file://") and not os.path.isdir(
+        schema_salad.ref_resolver.uri_file_path(location)
+    ):
         if skip_broken:
             return
         else:
@@ -1578,7 +1613,7 @@ def upload_file(
             cast(str, file_metadata["path"])
         )
     if location.startswith("file://") and not os.path.isfile(
-        location[len("file://") :]
+        schema_salad.ref_resolver.uri_file_path(location)
     ):
         if skip_broken:
             return
@@ -1651,6 +1686,16 @@ def toilStageFiles(
 
     # This is all the CWL File and Directory objects we need to export.
     jobfiles = list(_collectDirEntries(cwljob))
+
+    def _realpath(
+        ob: CWLObjectType,
+    ) -> None:
+        location = cast(str, ob["location"])
+        if location.startswith("file:"):
+            ob["location"] = file_uri(os.path.realpath(uri_file_path(location)))
+            logger.debug("realpath %s" % ob["location"])
+
+    visit_class(jobfiles, ("File", "Directory"), _realpath)
 
     # Now we need to save all the output files and directories.
     # We shall use a ToilPathMapper.
@@ -1767,7 +1812,7 @@ class CWLJobWrapper(Job):
         tool: Process,
         cwljob: CWLObjectType,
         runtime_context: cwltool.context.RuntimeContext,
-        workflow_name: str,
+        parent_name: Optional[str],
         conditional: Union[Conditional, None] = None,
     ):
         """Store our context for later evaluation."""
@@ -1776,7 +1821,7 @@ class CWLJobWrapper(Job):
         self.cwljob = cwljob
         self.runtime_context = runtime_context
         self.conditional = conditional
-        self.workflow_name = workflow_name
+        self.parent_name = parent_name
 
     def run(self, file_store: AbstractFileStore) -> Any:
         """Create a child job with the correct resource requirements set."""
@@ -1790,7 +1835,7 @@ class CWLJobWrapper(Job):
             tool=self.cwltool,
             cwljob=cwljob,
             runtime_context=self.runtime_context,
-            workflow_name=self.workflow_name,
+            parent_name=self.parent_name,
             conditional=self.conditional,
         )
         self.addChild(realjob)
@@ -1805,7 +1850,7 @@ class CWLJob(Job):
         tool: Process,
         cwljob: CWLObjectType,
         runtime_context: cwltool.context.RuntimeContext,
-        workflow_name: str,
+        parent_name: Optional[str],
         conditional: Union[Conditional, None] = None,
     ):
         """Store the context for later execution."""
@@ -1826,7 +1871,7 @@ class CWLJob(Job):
                 resources={},
                 mutation_manager=runtime_context.mutation_manager,
                 formatgraph=tool.formatgraph,
-                make_fs_access=runtime_context.make_fs_access,  # type: ignore
+                make_fs_access=runtime_context.make_fs_access,
                 fs_access=runtime_context.make_fs_access(""),
                 job_script_provider=runtime_context.job_script_provider,
                 timeout=runtime_context.eval_timeout,
@@ -1842,16 +1887,11 @@ class CWLJob(Job):
             )
 
         req = tool.evalResources(self.builder, runtime_context)
-        try:
-            displayName: Optional[str] = str(self.cwltool.tool["id"])
-            #Make our job names more descriptive for HPC batch systems.
-            # We know that displayName can't be None right now, since we just
-            # set it, but MyPy doesn't, so inform it.
-            assert displayName is not None
-            unitName: Optional[str] = f"{workflow_name}.{shortname(displayName)}" if workflow_name else f"{shortname(displayName)}"
-        except KeyError:
-            displayName = None
-            unitName = None
+        displayName = cast(str, self.cwltool.tool["id"])
+        # Make our job names more descriptive for HPC batch systems.
+        unitName = shortname(displayName)
+        if parent_name:
+            unitName = f"{parent_name}.{unitName}"
 
         super().__init__(
             cores=req["cores"],
@@ -1861,13 +1901,13 @@ class CWLJob(Job):
                 + (cast(int, req["outdirSize"]) * (2 ** 20))
             ),
             unitName=unitName,
-            displayName=displayName
+            displayName=displayName,
         )
 
         self.cwljob = cwljob
         self.runtime_context = runtime_context
         self.step_inputs = self.cwltool.tool["inputs"]
-        self.workdir = runtime_context.workdir  # type: ignore
+        self.workdir: str = runtime_context.workdir  # type: ignore[attr-defined]
 
     def required_env_vars(self, cwljob: Any) -> Iterator[Tuple[str, str]]:
         """Yield environment variables from EnvVarRequirement."""
@@ -1956,8 +1996,8 @@ class CWLJob(Job):
             functools.partial(remove_empty_listings),
         )
 
-        index = {}  # type: ignore
-        existing = {}  # type: ignore
+        index: Dict[str, str] = {}
+        existing: Dict[str, str] = {}
 
         # Prepare the run instructions for cwltool
         runtime_context = self.runtime_context.copy()
@@ -1987,12 +2027,12 @@ class CWLJob(Job):
             # Intercept file and directory access and use a virtual filesystem
             # through the Toil FileStore.
 
-            runtime_context.make_fs_access = functools.partial(
+            runtime_context.make_fs_access = functools.partial(  # type: ignore[assignment]
                 ToilFsAccess, file_store=file_store
             )
 
         pipe_threads: List[Tuple[Thread, int]] = []
-        runtime_context.toil_get_file = functools.partial(  # type: ignore
+        runtime_context.toil_get_file = functools.partial(  # type: ignore[attr-defined]
             toil_get_file, file_store, index, existing, pipe_threads=pipe_threads
         )
 
@@ -2058,7 +2098,7 @@ def makeJob(
     tool: Process,
     jobobj: CWLObjectType,
     runtime_context: cwltool.context.RuntimeContext,
-    workflow_name: str,
+    parent_name: Optional[str],
     conditional: Union[Conditional, None],
 ) -> Union[
     Tuple["CWLWorkflow", ResolveIndirect],
@@ -2072,7 +2112,7 @@ def makeJob(
 
     :return: "wfjob, followOn" if the input tool is a workflow, and "job, job" otherwise
     """
-    logger.debug("Make job for tool: %s", tool)
+    logger.debug("Make job for tool: %s", tool.tool["id"])
     scan_for_unsupported_requirements(
         tool, bypass_file_store=getattr(runtime_context, "bypass_file_store", False)
     )
@@ -2102,15 +2142,15 @@ def makeJob(
                 r = resourceReq.get(req)
                 if isinstance(r, str) and ("$(" in r or "${" in r):
                     # Found a dynamic resource requirement so use a job wrapper
-                    job = CWLJobWrapper(
+                    job_wrapper = CWLJobWrapper(
                         cast(ToilCommandLineTool, tool),
                         jobobj,
                         runtime_context,
-                        workflow_name=workflow_name,
+                        parent_name=parent_name,
                         conditional=conditional,
                     )
-                    return job, job
-        job = CWLJob(tool, jobobj, runtime_context, workflow_name, conditional)  # type: ignore
+                    return job_wrapper, job_wrapper
+        job = CWLJob(tool, jobobj, runtime_context, parent_name, conditional)
         return job, job
 
 
@@ -2126,7 +2166,7 @@ class CWLScatter(Job):
         step: cwltool.workflow.WorkflowStep,
         cwljob: CWLObjectType,
         runtime_context: cwltool.context.RuntimeContext,
-        workflow_name: str,
+        parent_name: Optional[str],
         conditional: Union[Conditional, None],
     ):
         """Store our context for later execution."""
@@ -2135,7 +2175,7 @@ class CWLScatter(Job):
         self.cwljob = cwljob
         self.runtime_context = runtime_context
         self.conditional = conditional
-        self.workflow_name = workflow_name
+        self.parent_name = parent_name
 
     def flat_crossproduct_scatter(
         self,
@@ -2157,7 +2197,7 @@ class CWLScatter(Job):
                     tool=self.step.embedded_tool,
                     jobobj=updated_joborder,
                     runtime_context=self.runtime_context,
-                    workflow_name=self.workflow_name,
+                    parent_name=f"{self.parent_name}.{n}",
                     conditional=self.conditional,
                 )
                 self.addChild(subjob)
@@ -2187,7 +2227,7 @@ class CWLScatter(Job):
                     tool=self.step.embedded_tool,
                     jobobj=updated_joborder,
                     runtime_context=self.runtime_context,
-                    workflow_name=self.workflow_name,
+                    parent_name=f"{self.parent_name}.{n}",
                     conditional=self.conditional,
                 )
                 self.addChild(subjob)
@@ -2254,7 +2294,7 @@ class CWLScatter(Job):
                     tool=self.step.embedded_tool,
                     jobobj=copyjob,
                     runtime_context=self.runtime_context,
-                    workflow_name=self.workflow_name,
+                    parent_name=f"{self.parent_name}.{i}",
                     conditional=self.conditional,
                 )
                 self.addChild(subjob)
@@ -2416,8 +2456,8 @@ class CWLWorkflow(Job):
         # to: the job that will produce that value.
         promises: Dict[str, Job] = {}
 
-        workflow_name = shortname(self.cwlwf.tool["id"])
-        
+        parent_name = shortname(self.cwlwf.tool["id"])
+
         # `jobs` dict from step id to job that implements that step.
         jobs = {}
 
@@ -2434,36 +2474,37 @@ class CWLWorkflow(Job):
             all_outputs_fulfilled = True
 
             for step in self.cwlwf.steps:
-                if step.tool["id"] not in jobs:
+                step_id = step.tool["id"]
+                if step_id not in jobs:
                     stepinputs_fufilled = True
                     for inp in step.tool["inputs"]:
                         for s in aslist(inp.get("source", [])):
                             if s not in promises:
                                 stepinputs_fufilled = False
                     if stepinputs_fufilled:
-                        logger.debug(
-                            "Ready to make job for workflow step %s", step.tool["id"]
-                        )
-                        jobobj = {}
+                        logger.debug("Ready to make job for workflow step %s", step_id)
+                        jobobj: Dict[
+                            str, Union[ResolveSource, DefaultWithSource, StepValueFrom]
+                        ] = {}
 
                         for inp in step.tool["inputs"]:
                             logger.debug("Takes input: %s", inp["id"])
                             key = shortname(inp["id"])
                             if "source" in inp:
                                 jobobj[key] = ResolveSource(
-                                    name=f'{step.tool["id"]}/{key}',
+                                    name=f"{step_id}/{key}",
                                     input=inp,
                                     source_key="source",
                                     promises=promises,
                                 )
 
                             if "default" in inp:
-                                jobobj[key] = DefaultWithSource(  # type: ignore
+                                jobobj[key] = DefaultWithSource(
                                     copy.copy(inp["default"]), jobobj.get(key)
                                 )
 
                             if "valueFrom" in inp and "scatter" not in step.tool:
-                                jobobj[key] = StepValueFrom(  # type: ignore
+                                jobobj[key] = StepValueFrom(
                                     inp["valueFrom"],
                                     jobobj.get(key, JustAValue(None)),
                                     self.cwlwf.requirements,
@@ -2484,7 +2525,7 @@ class CWLWorkflow(Job):
                                 step,
                                 UnresolvedDict(jobobj),
                                 self.runtime_context,
-                                workflow_name=workflow_name,
+                                parent_name=parent_name,
                                 conditional=conditional,
                             )
                             followOn: Union[
@@ -2501,16 +2542,16 @@ class CWLWorkflow(Job):
                                 tool=step.embedded_tool,
                                 jobobj=UnresolvedDict(jobobj),
                                 runtime_context=self.runtime_context,
-                                workflow_name=workflow_name,
+                                parent_name=f"{parent_name}.{shortname(step_id)}",
                                 conditional=conditional,
                             )
                             logger.debug(
-                                "Is non-scatter with job %s and follow-on %s",
+                                "Is non-scatter with %s and follow-on %s",
                                 wfjob,
                                 followOn,
                             )
 
-                        jobs[step.tool["id"]] = followOn
+                        jobs[step_id] = followOn
 
                         connected = False
                         for inp in step.tool["inputs"]:
@@ -2679,7 +2720,7 @@ def scan_for_unsupported_requirements(
         # If we are using the Toil FileStore we can't do InplaceUpdateRequirement
         req, is_mandatory = tool.get_requirement("InplaceUpdateRequirement")
         if req and is_mandatory:
-            # The tool actualy uses this one, and it isn't just a hint.
+            # The tool actually uses this one, and it isn't just a hint.
             # Complain and explain.
             raise CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION(
                 "Toil cannot support InplaceUpdateRequirement when using the Toil file store. "
@@ -2797,7 +2838,7 @@ def generate_default_job_store(
             from toil.jobStores.aws.jobStore import AWSJobStore  # noqa
 
             # Find a region
-            from toil.provisioners.aws import get_current_aws_region
+            from toil.lib.aws import get_current_aws_region
 
             region = get_current_aws_region()
 
@@ -3190,8 +3231,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     outdir = os.path.abspath(options.outdir)
     tmp_outdir_prefix = os.path.abspath(options.tmp_outdir_prefix)
 
-    fileindex = dict()  # type: ignore
-    existing = dict()  # type: ignore
+    fileindex: Dict[str, str] = {}
+    existing: Dict[str, str] = {}
     conf_file = getattr(options, "beta_dependency_resolvers_configuration", None)
     use_conda_dependencies = getattr(options, "beta_conda_dependencies", None)
     job_script_provider = None
@@ -3205,7 +3246,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     runtime_context.find_default_container = functools.partial(
         find_default_container, options
     )
-    runtime_context.workdir = workdir  # type: ignore
+    runtime_context.workdir = workdir  # type: ignore[attr-defined]
     runtime_context.move_outputs = "leave"
     runtime_context.rm_tmpdir = False
     runtime_context.streaming_allowed = not options.disable_streaming
@@ -3428,13 +3469,13 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 # were required.
                 rm_unprocessed_secondary_files(param_value)
 
-            logger.debug('tool ', tool)
+            logger.debug("tool %s", tool)
             try:
                 wf1, _ = makeJob(
                     tool=tool,
                     jobobj={},
                     runtime_context=runtime_context,
-                    workflow_name='workflow',
+                    parent_name=None,  # toplevel, no name needed
                     conditional=None,
                 )
             except CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION as err:
@@ -3517,7 +3558,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 def find_default_container(
     args: argparse.Namespace, builder: cwltool.builder.Builder
 ) -> Optional[str]:
-    """Find the default constuctor by consulting a Toil.options object."""
+    """Find the default constructor by consulting a Toil.options object."""
     if args.default_container:
         return str(args.default_container)
     if args.beta_use_biocontainers:

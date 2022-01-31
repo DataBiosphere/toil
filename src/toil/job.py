@@ -433,7 +433,7 @@ class JobDescription(Requirer):
         Create a new JobDescription.
 
         :param requirements: Dict from string to number, string, or bool
-            describing the resource requirments of the job. 'cores', 'memory',
+            describing the resource requirements of the job. 'cores', 'memory',
             'disk', and 'preemptable' fields, if set, are parsed and broken out
             into properties. If unset, the relevant property will be
             unspecified, and will be pulled from the assigned Config object if
@@ -872,7 +872,6 @@ class JobDescription(Requirer):
         logger.debug("New job version: %s", self)
 
 
-
 class ServiceJobDescription(JobDescription):
     """
     A description of a job that hosts a service.
@@ -909,6 +908,7 @@ class ServiceJobDescription(JobDescription):
         self.startJobStoreID = jobStore.getEmptyFileStoreID()
         self.terminateJobStoreID = jobStore.getEmptyFileStoreID()
         self.errorJobStoreID = jobStore.getEmptyFileStoreID()
+
 
 class CheckpointJobDescription(JobDescription):
     """
@@ -957,6 +957,7 @@ class CheckpointJobDescription(JobDescription):
                 # If the subtree of successors is not complete restart everything
                 logger.debug("Checkpoint job has unfinished successor jobs, deleting children: %s, followOns: %s, services: %s " %
                              (self.childIDs, self.followOnIDs, self.serviceTree.keys()))
+
                 # Delete everything on the stack, as these represent successors to clean
                 # up as we restart the queue
                 def recursiveDelete(jobDesc):
@@ -979,6 +980,7 @@ class CheckpointJobDescription(JobDescription):
                 # Update again to commit the removal of successors.
                 jobStore.update_job(self)
         return successorsDeleted
+
 
 class Job:
     """
@@ -1026,7 +1028,6 @@ class Job:
         jobName = self.__class__.__name__
         displayName = displayName if displayName else jobName
 
-
         # Build a requirements dict for the description
         requirements = {'memory': memory, 'cores': cores, 'disk': disk,
                         'preemptable': preemptable}
@@ -1061,7 +1062,7 @@ class Job:
         # Note that self.__module__ is not necessarily this module, i.e. job.py. It is the module
         # defining the class self is an instance of, which may be a subclass of Job that may be
         # defined in a different module.
-        self.userModule = ModuleDescriptor.forModule(self.__module__).globalize()
+        self.userModule: ModuleDescriptor = ModuleDescriptor.forModule(self.__module__).globalize()
         # Maps index paths into composite return values to lists of IDs of files containing
         # promised values for those return value items. An index path is a tuple of indices that
         # traverses a nested data structure of lists, dicts, tuples or any other type supporting
@@ -1459,8 +1460,8 @@ class Job:
         return EncapsulatedJob(self, unitName=name)
 
     ####################################################
-    #The following function is used for passing return values between
-    #job run functions
+    # The following function is used for passing return values between
+    # job run functions
     ####################################################
 
     def rv(self, *path) -> Any:
@@ -1503,15 +1504,17 @@ class Job:
         self._rvs[path].append(jobStoreFileID)
         return self._promiseJobStore.config.jobStore, jobStoreFileID
 
-    def prepareForPromiseRegistration(self, jobStore):
+    def prepareForPromiseRegistration(self, jobStore: "AbstractJobStore") -> None:
         """
-        Ensure that a promise by this job (the promissor) can register with the promissor when
-        another job referring to the promise (the promissee) is being serialized. The promissee
-        holds the reference to the promise (usually as part of the the job arguments) and when it
-        is being pickled, so will the promises it refers to. Pickling a promise triggers it to be
-        registered with the promissor.
+        Set up to allow this job's promises to register themselves.
 
-        :return:
+        Prepare this job (the promisor) so that its promises can register
+        themselves with it, when the jobs they are promised to (promisees) are
+        serialized.
+
+        The promissee holds the reference to the promise (usually as part of the
+        job arguments) and when it is being pickled, so will the promises it refers
+        to. Pickling a promise triggers it to be registered with the promissor.
         """
         self._promiseJobStore = jobStore
 
@@ -1525,7 +1528,7 @@ class Job:
         self._promiseJobStore = None
 
     ####################################################
-    #Cycle/connectivity checking
+    # Cycle/connectivity checking
     ####################################################
 
     def checkJobGraphForDeadlocks(self):
@@ -1697,7 +1700,7 @@ class Job:
                     raise JobGraphDeadlockException("New checkpoint job %s is not a leaf in the job graph" % y)
 
     ####################################################
-    #Deferred function system
+    # Deferred function system
     ####################################################
 
     def defer(self, function, *args, **kwargs):
@@ -1912,7 +1915,7 @@ class Job:
 
         return runnable
 
-    def getUserScript(self):
+    def getUserScript(self) -> ModuleDescriptor:
         return self.userModule
 
     def _fulfillPromises(self, returnValues, jobStore):
@@ -2018,7 +2021,7 @@ class Job:
         return ordering
 
     ####################################################
-    #Storing Jobs into the JobStore
+    # Storing Jobs into the JobStore
     ####################################################
 
     def _register(self, jobStore):
@@ -2224,11 +2227,10 @@ class Job:
                 if job != self or saveSelf:
                     jobStore.create_job(job.description)
 
-    def saveAsRootJob(self, jobStore):
+    def saveAsRootJob(self, jobStore: "AbstractJobStore") -> JobDescription:
         """
         Save this job to the given jobStore as the root job of the workflow.
 
-        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore:
         :return: the JobDescription describing this job.
         """
 
@@ -2272,12 +2274,12 @@ class Job:
         userModule = cls._loadUserModule(userModule)
         pickleFile = commandTokens[1]
 
-        #Loads context manager using file stream 
+        #Loads context manager using file stream
         if pickleFile == "firstJob":
             manager = jobStore.read_shared_file_stream(pickleFile)
         else:
             manager = jobStore.read_file_stream(pickleFile)
-        
+
         #Open and unpickle
         with manager as fileHandle:
 
@@ -2337,7 +2339,7 @@ class Job:
         if not self.checkpoint:
             for jobStoreFileID in Promise.filesToDelete:
                 # Make sure to wrap the job store ID in a FileID object so the file store will accept it
-                # TODO: talk directly to the job sotre here instead.
+                # TODO: talk directly to the job store here instead.
                 fileStore.deleteGlobalFile(FileID(jobStoreFileID, 0))
         else:
             # Else copy them to the job description to delete later
@@ -2410,8 +2412,6 @@ class Job:
 
         # That and the new child/follow-on relationships will need to be
         # recorded later by an update() of the JobDescription.
-
-
 
     def _jobName(self):
         """
@@ -2504,7 +2504,7 @@ class FunctionWrappingJob(Job):
         return self.userFunctionModule
 
     def _jobName(self):
-        return ".".join((self.__class__.__name__,self.userFunctionModule.name,self.userFunctionName))
+        return ".".join((self.__class__.__name__, self.userFunctionModule.name, self.userFunctionName))
 
 
 class JobFunctionWrappingJob(FunctionWrappingJob):

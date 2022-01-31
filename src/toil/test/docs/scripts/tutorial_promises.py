@@ -4,9 +4,10 @@ from toil.job import Job
 
 def fn(job, i):
     job.log("i is: %s" % i, level=100)
-    return i+1
+    return i + 1
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
     options.logLevel = "INFO"
     options.clean = "always"

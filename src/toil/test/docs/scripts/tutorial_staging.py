@@ -6,7 +6,7 @@ from toil.job import Job
 
 class HelloWorld(Job):
     def __init__(self, id):
-        Job.__init__(self,  memory="2G", cores=2, disk="3G")
+        Job.__init__(self, memory="2G", cores=2, disk="3G")
         self.inputFileID = id
 
     def run(self, fileStore):
@@ -16,7 +16,7 @@ class HelloWorld(Job):
         return outputFileID
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
     options.logLevel = "INFO"
     options.clean = "always"

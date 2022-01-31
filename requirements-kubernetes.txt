@@ -1,3 +1,3 @@
-kubernetes>=12.0.1, <=19
+kubernetes>=12.0.1, <22
 idna>=2
 # Kubernetes's urllib3 can mange to use idna without really depending on it.

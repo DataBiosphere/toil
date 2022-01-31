@@ -12,15 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from toil.job import Job
-from toil.test import ToilTest, travis_test
+from toil.test import ToilTest
 
 
 class CachedUnpicklingJobStoreTest(ToilTest):
-    """
-    https://github.com/BD2KGenomics/toil/issues/817
-    """
-
-    @travis_test
+    # https://github.com/BD2KGenomics/toil/issues/817
     def test(self):
         """
         Runs two identical Toil workflows with different job store paths
@@ -41,11 +37,7 @@ def child():
 
 
 class ChainedIndexedPromisesTest(ToilTest):
-    """
-    https://github.com/BD2KGenomics/toil/issues/1021
-    """
-
-    @travis_test
+    # https://github.com/BD2KGenomics/toil/issues/1021
     def test(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = 'INFO'
@@ -70,8 +62,6 @@ class PathIndexingPromiseTest(ToilTest):
     Test support for indexing promises of arbitrarily nested data structures of lists, dicts and
     tuples, or any other object supporting the __getitem__() protocol.
     """
-
-    @travis_test
     def test(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = 'INFO'

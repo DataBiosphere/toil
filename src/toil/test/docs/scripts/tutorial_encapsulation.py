@@ -1,7 +1,7 @@
 from toil.common import Toil
 from toil.job import Job
 
-if __name__=="__main__":
+if __name__ == "__main__":
     # A is a job with children and follow-ons, for example:
     A = Job()
     A.addChild(Job())

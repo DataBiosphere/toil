@@ -54,7 +54,7 @@ from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
 from toil.lib.iterables import concat
 from toil.lib.memoize import memoize
 from toil.lib.threading import ExceptionalThread, cpu_count
-from toil.provisioners.aws import running_on_ec2
+from toil.lib.aws import running_on_ec2
 from toil.version import distVersion
 
 logger = logging.getLogger(__name__)
@@ -322,6 +322,16 @@ def get_temp_file(suffix: str = "", rootDir: Optional[str] = None) -> str:
         os.chmod(tmp_file, 0o777)  # Ensure everyone has access to the file.
         return tmp_file
 
+def _require_env(var_name: str, comment: str, test_item: MT) -> MT:
+    """
+    Set a class or method to run only if the given environment variable is set.
+    Not used as a decorator itself.
+
+    Includes a comment saying what the variable should be set to.
+    """
+    if not os.getenv(var_name):
+        return unittest.skip(f"Set {var_name}{' to ' + comment if comment else ''} to include this test.")(test_item)
+    return test_item
 
 def needs_rsync3(test_item: MT) -> MT:
     """
@@ -364,30 +374,46 @@ def needs_aws_ec2(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if AWS EC2 is usable."""
     # Assume we need S3 as well as EC2
     test_item = _mark_test('aws-ec2', needs_aws_s3(test_item))
-    if not os.getenv('TOIL_AWS_KEYNAME'):
-        # In addition to S3 we also need an SSH key to deploy with.
-        # TODO: We assume that if this is set we have EC2 access.
-        return unittest.skip("Set TOIL_AWS_KEYNAME to an AWS-stored SSH key to include this test.")(test_item)
+    # In addition to S3 we also need an SSH key to deploy with.
+    # TODO: We assume that if this is set we have EC2 access.
+    test_item = _require_env('TOIL_AWS_KEYNAME', 'an AWS-stored SSH key', test_item)
     return test_item
 
 
-def travis_test(test_item: MT) -> MT:
-    test_item = _mark_test('travis', test_item)
-    if os.environ.get('TRAVIS') != 'true':
-        return unittest.skip("Set TRAVIS='true' to include this test.")(test_item)
+def needs_aws_batch(test_item: MT) -> MT:
+    """
+    Use as a decorator before test classes or methods to run only if AWS Batch
+    is usable.
+    """
+    # Assume we need S3 as well as Batch
+    test_item = _mark_test('aws-batch', needs_aws_s3(test_item))
+    # Assume we have Batch if the user has set these variables.
+    test_item = _require_env('TOIL_AWS_BATCH_QUEUE', 'an AWS Batch queue name or ARN', test_item)
+    test_item = _require_env('TOIL_AWS_BATCH_JOB_ROLE_ARN', 'an IAM role ARN that grants S3 and SDB access', test_item)
+    try:
+        from toil.lib.aws import get_current_aws_region
+        if get_current_aws_region() is None:
+            # We don't know a region so we need one set.
+            test_item = _require_env('TOIL_AWS_BATCH_REGION', 'an IAM role ARN that grants S3 and SDB access', test_item)
+    except ImportError:
+        return unittest.skip("Install Toil with the 'aws' extra to include this test.")(
+            test_item
+        )
     return test_item
 
 
 def needs_google(test_item: MT) -> MT:
-    """Use as a decorator before test classes or methods to run only if Google is usable."""
+    """
+    Use as a decorator before test classes or methods to run only if Google
+    Cloud is usable.
+    """
     test_item = _mark_test('google', test_item)
     try:
         from google.cloud import storage  # noqa
     except ImportError:
         return unittest.skip("Install Toil with the 'google' extra to include this test.")(test_item)
 
-    if not os.getenv('TOIL_GOOGLE_PROJECTID'):
-        return unittest.skip("Set TOIL_GOOGLE_PROJECTID to include this test.")(test_item)
+    test_item = _require_env('TOIL_GOOGLE_PROJECTID', "a Google project ID", test_item)
     return test_item
 
 
