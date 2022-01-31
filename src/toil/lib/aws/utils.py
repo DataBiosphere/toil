@@ -76,9 +76,7 @@ def delete_iam_instance_profile(
     iam_resource = cast(IAMServiceResource, session.resource("iam", region_name=region))
     instance_profile = iam_resource.InstanceProfile(instance_profile_name)
     if instance_profile.roles is not None:
-        # The type stubs think this is somehow just one role, when it's a
-        # collection. See <https://github.com/vemel/mypy_boto3_builder/issues/122>.
-        for role in instance_profile.roles: #type: ignore
+        for role in instance_profile.roles:
             printq(f'Now dissociating role: {role.name} from instance profile {instance_profile_name}', quiet)
             instance_profile.remove_role(RoleName=role.name)
     instance_profile.delete()
