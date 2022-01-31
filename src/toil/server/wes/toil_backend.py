@@ -129,6 +129,11 @@ class ToilBackend(WESBackend):
     """
 
     def __init__(self, work_dir: str, options: List[str], base_url: str) -> None:
+        for opt in options:
+            if not opt.startswith('-'):
+                # We don't allow a value to be set across multiple arguments
+                # that would need to remain in the same order.
+                raise ValueError(f'Option {opt} does not begin with -')
         super(ToilBackend, self).__init__(options)
         self.work_dir = work_dir
         self.base_url = base_url

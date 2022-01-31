@@ -199,6 +199,10 @@ There are several environment variables that affect the way Toil runs.
 |                                  | unset, ``amqp://guest:guest@localhost:5672//`` is  |
 |                                  | used.                                              |
 +----------------------------------+----------------------------------------------------+
+| TOIL_WES_JOB_STORE_TYPE          | Type of job store to use by default for workflows  |
+|                                  | run via the WES server. Can be ``file``, ``aws``,  |
+|                                  | or ``google``.                                     |
++----------------------------------+----------------------------------------------------+
 | TOIL_OWNER_TAG                   | This will tag cloud resources with a tag reading:  |
 |                                  | "Owner: $TOIL_OWNER_TAG". This is used internally  |
 |                                  | at UCSC to stop a bot we have that terminates      |

@@ -22,6 +22,7 @@ from urllib.parse import urldefrag
 
 from celery.exceptions import SoftTimeLimitExceeded  # type: ignore
 from toil.common import Toil
+from toil.jobStores.utils import generate_locator
 from toil.server.celery_app import celery
 from toil.server.utils import (get_iso_time,
                                link_file,
@@ -54,7 +55,10 @@ class ToilWorkflowRunner:
         self.exec_dir = os.path.join(self.work_dir, "execution")
         self.out_dir = os.path.join(self.work_dir, "outputs")
 
-        self.default_job_store = "file:" + os.path.join(self.work_dir, "toil_job_store")
+        # Compose the right kind of job store to use it the user doesn't specify one.
+        default_type = os.getenv('TOIL_WES_JOB_STORE_TYPE', 'file')
+        self.default_job_store = generate_locator(default_type, local_suggestion=os.path.join(self.work_dir, "toil_job_store"))
+
         self.job_store = self.default_job_store
 
     def write(self, filename: str, contents: str) -> None:
@@ -98,7 +102,7 @@ class ToilWorkflowRunner:
         """
         Sort the command line arguments in the order that can be recognized by
         the workflow execution engine.
-        
+
         :param workflow_engine_parameters: User-specified parameters for this
         particular workflow. Keys are command-line options, and values are
         option arguments, or None for options that are flags.
@@ -117,18 +121,31 @@ class ToilWorkflowRunner:
                 else:
                     options.append(f"{key}={value}")
 
-        # determine job store and set a new default if the user did not set one
-        cloud = False
+        # We want to clean always by default, unless a particular job store or
+        # a clean option was passed.
+        clean = None
+
+        # Parse options and drop options we may need to override.
         for option in options:
             if option.startswith("--jobStore="):
                 self.job_store = option[11:]
                 options.remove(option)
             if option.startswith(("--outdir=", "-o=")):
+                # We need to generate this one ourselves.
                 options.remove(option)
+            if option.startswith("--clean="):
+                clean = option[8:]
 
+        cloud = False
         job_store_type, _ = Toil.parseLocator(self.job_store)
         if job_store_type in ("aws", "google", "azure"):
             cloud = True
+
+        if self.job_store == self.default_job_store and clean is None:
+            # User didn't specify a clean option, and we're on a default,
+            # randomly generated job store, so we should clean it up even if we
+            # crash.
+            options.append("--clean=always")
 
         if self.wf_type in ("cwl", "wdl"):
             if not cloud:
