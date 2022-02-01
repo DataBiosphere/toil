@@ -23,8 +23,12 @@ import os
 from os import path
 from urllib.parse import urlparse, ParseResult
 import zipfile
-from typing import Any, BinaryIO, Dict, List, Optional, TypedDict
-
+from typing import Any, BinaryIO, Dict, List, Optional
+try:
+    from typing import TypedDict
+except ImportError:
+    # 3.7 doesn't have this built in yet.
+    from typing_extensions import TypedDict
 from toil.server.wes.abstract_backend import MalformedRequestException as InvalidRequestError
 
 # These functions are licensed under the same Apache 2.0 license as Toil is,
