@@ -36,11 +36,11 @@ def get_current_aws_region() -> Optional[str]:
     get_current_aws_zone()) is in.
     """
     # Try the region environment variable first
-    aws_regon = os.environ.get('TOIL_AWS_REGION') or \
-                os.environ.get('AWS_REGION') or \
-                os.environ.get('DEFAULT_AWS_REGION')
-    if aws_regon:
-        return aws_regon
+    aws_region = os.environ.get('TOIL_AWS_REGION') or \
+                 os.environ.get('AWS_REGION') or \
+                 os.environ.get('DEFAULT_AWS_REGION')
+    if aws_region:
+        return aws_region
 
 
     # Otherwise try to derive it from the zone.
