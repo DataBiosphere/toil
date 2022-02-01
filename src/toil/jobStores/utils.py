@@ -1,7 +1,10 @@
 import errno
 import logging
 import os
+import tempfile
+import uuid
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from toil.lib.threading import ExceptionalThread
 
@@ -336,7 +339,7 @@ def generate_locator(
     JobStoreUnavailableException if that job store cannot be used.
 
     :param job_store_type: Registry name of the job store to use.
-    :param local_directory: Path to a nonexistent local directory suitable for
+    :param local_suggestion: Path to a nonexistent local directory suitable for
     use as a file job store.
     :param decoration: Extra string to add to the job store locator, if
     convenient.
@@ -374,9 +377,9 @@ def generate_locator(
             # Roll a random name
             return f"aws:{region}:toil{decoration}-{str(uuid.uuid4())}"
         elif job_store_type == "file":
-            if local_directory:
+            if local_suggestion:
                 # Just use the given local directory.
-                return local_directory
+                return local_suggestion
             else:
                 # Pick a temp path
                 return os.path.join(tempfile.gettempdir(), str(uuid.uuid4()) + decoration)
