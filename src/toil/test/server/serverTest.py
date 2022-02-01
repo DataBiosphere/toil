@@ -21,8 +21,13 @@ import zipfile
 from io import BytesIO
 from typing import TYPE_CHECKING
 
-from flask import Flask
-from flask.testing import FlaskClient
+try:
+    from flask import Flask
+    from flask.testing import FlaskClient
+except ImportError:
+    # We need to let pytest collect tests form this file even if the server
+    # extra wasn't installed. We'll then skip them all.
+    pass
 
 from toil.test import ToilTest, needs_server, needs_celery_broker
 
@@ -104,7 +109,7 @@ class ToilWESServerTest(ToilTest):
         self.assertIn("system_state_counts", service_info)
         self.assertIn("tags", service_info)
 
-    def _report_log(self, client: FlaskClient, run_id: str) -> None:
+    def _report_log(self, client: "FlaskClient", run_id: str) -> None:
         """
         Report the log for the given workflow run.
         """
@@ -124,7 +129,7 @@ class ToilWESServerTest(ToilTest):
         self._report_absolute_url(client, stdout)
         self._report_absolute_url(client, stderr)
 
-    def _report_absolute_url(self, client: FlaskClient, url: str):
+    def _report_absolute_url(self, client: "FlaskClient", url: str):
         """
         Take a URL that has a hostname and port, relativize it to the test
         Flask client, and get its contents and log them.
@@ -139,7 +144,7 @@ class ToilWESServerTest(ToilTest):
         self.assertEqual(rv.status_code, 200)
         logger.info("Got %s:\n%s", url, rv.data.decode('utf-8'))
 
-    def _wait_for_success(self, client: FlaskClient, run_id: str) -> None:
+    def _wait_for_success(self, client: "FlaskClient", run_id: str) -> None:
         """
         Wait for the given workflow run to succeed. If it fails, raise an exception.
         """
