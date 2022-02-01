@@ -56,11 +56,18 @@ def get_aws_zone_from_metadata() -> Optional[str]:
     """
     if running_on_ec2():
         try:
+            # Use the EC2 metadata service
             import boto
             from boto.utils import get_instance_metadata
             return get_instance_metadata()['placement']['availability-zone']
         except (KeyError, ImportError):
             pass
+    elif running_on_ecs():
+        # Use the ECS metadata service
+        logger.debug("Fetch AZ from ECS metadata")
+        resp = json.load(urlopen(os.environ['ECS_CONTAINER_METADATA_URI_V4'] + '/task', timeout=1))
+        logger.debug("ECS metadata: %s", resp)
+        return resp.get('AvailabilityZone')
     return None
 
 def get_aws_zone_from_boto() -> Optional[str]:
@@ -125,3 +132,10 @@ def running_on_ec2() -> bool:
         return True
     except (URLError, socket.timeout):
         return False
+
+def running_on_ecs() -> bool:
+    """
+    Return True if we are currently running on Amazon ECS, and false otherwise.
+    """
+    # We only care about relatively current ECS
+    return 'ECS_CONTAINER_METADATA_URI_V4' in os.environ
