@@ -34,6 +34,12 @@ def get_current_aws_region() -> Optional[str]:
     Return the AWS region that the currently configured AWS zone (see
     get_current_aws_zone()) is in.
     """
+    # Try the region environment variable first
+    aws_regon = os.environ.get('TOIL_AWS_REGION')
+    if aws_regon:
+        return aws_regon
+
+    # Otherwise try to derive it from the zone.
     aws_zone = get_current_aws_zone()
     return zone_to_region(aws_zone) if aws_zone else None
 

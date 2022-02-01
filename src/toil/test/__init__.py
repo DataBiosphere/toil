@@ -394,7 +394,8 @@ def needs_aws_batch(test_item: MT) -> MT:
         from toil.lib.aws import get_current_aws_region
         if get_current_aws_region() is None:
             # We don't know a region so we need one set.
-            test_item = _require_env('TOIL_AWS_BATCH_REGION', 'an IAM role ARN that grants S3 and SDB access', test_item)
+            # TODO: It always won't be set if we get here.
+            test_item = _require_env('TOIL_AWS_REGION', 'an AWS region to use with AWS batch', test_item)
     except ImportError:
         return unittest.skip("Install Toil with the 'aws' extra to include this test.")(
             test_item

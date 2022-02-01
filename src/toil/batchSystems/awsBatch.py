@@ -83,13 +83,12 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # TODO: Parse it from a full queue ARN?
         self.region = getattr(config, 'aws_batch_region')
         if self.region is None:
-            zone = get_current_aws_zone()
-            if zone is None:
-                # Can't proceed without a real zone
+            self.region = get_current_aws_region()
+            if self.region is None:
+                # Can't proceed without a real region
                 raise RuntimeError('To use AWS Batch, specify --awsBatchRegion or '
-                                   'TOIL_AWS_BATCH_REGION or TOIL_AWS_ZONE, or configure '
+                                   'TOIL_AWS_REGION or TOIL_AWS_ZONE, or configure '
                                    'a default zone in boto')
-            self.region = zone_to_region(zone)
 
         # Connect to AWS Batch.
         # TODO: Use a global AWSConnectionManager so we can share a client
@@ -519,6 +518,6 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
     @classmethod
     def setOptions(cls, setOption: Callable[..., None]) -> None:
-        setOption("aws_batch_region", default=None, env=["TOIL_AWS_BATCH_REGION"])
+        setOption("aws_batch_region", default=None)
         setOption("aws_batch_queue", default=None, env=["TOIL_AWS_BATCH_QUEUE"])
         setOption("aws_batch_job_role_arn", default=None, env=["TOIL_AWS_BATCH_JOB_ROLE_ARN"])

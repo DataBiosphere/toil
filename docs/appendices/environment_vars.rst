@@ -91,8 +91,9 @@ There are several environment variables that affect the way Toil runs.
 |                                  | used with the Kubernetes batch system, if the      |
 |                                  | credentials allow access to S3 and SimpleDB.       |
 +----------------------------------+----------------------------------------------------+
-| TOIL_AWS_ZONE                    | The EC2 zone to provision nodes in if using        |
-|                                  | Toil's provisioner.                                |
+| TOIL_AWS_ZONE                    | Zone to use when using AWS. Also determines region.|
++----------------------------------+----------------------------------------------------+
+| TOIL_AWS_REGION                  | Region to use when using AWS.                      |
 +----------------------------------+----------------------------------------------------+
 | TOIL_AWS_AMI                     | ID of the AMI to use in node provisioning. If in   |
 |                                  | doubt, don't set this variable.                    |
@@ -106,11 +107,6 @@ There are several environment variables that affect the way Toil runs.
 |                                  | also be left behind by necessity as it cannot be   |
 |                                  | deleted until all associated nodes have been       |
 |                                  | terminated.                                        |
-+----------------------------------+----------------------------------------------------+
-| TOIL_AWS_BATCH_REGION            | Region to use when using the AWS Batch batch       |
-|                                  | system. Can often be autodetected from Boto        |
-|                                  | configuration or the AWS region in which the       |
-|                                  | current machine is running, if any.                |
 +----------------------------------+----------------------------------------------------+
 | TOIL_AWS_BATCH_QUEUE             | Name or ARN of an AWS Batch Queue to use with the  |
 |                                  | AWS Batch batch system.                            |
