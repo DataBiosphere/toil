@@ -40,7 +40,7 @@ from toil.job import Job, JobDescription, TemporaryID
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobException)
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.lib.aws.utils import create_s3_bucket
+from toil.lib.aws.utils import create_s3_bucket, get_object_for_url
 from toil.lib.memoize import memoize
 from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
@@ -1423,7 +1423,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def _hashTestFile(self, url: str) -> str:
         from toil.jobStores.aws.jobStore import AWSJobStore
-        key = AWSJobStore._get_object_for_url(urlparse.urlparse(url), existing=True)
+        key = get_object_for_url(urlparse.urlparse(url), existing=True)
         contents = key.get().get('Body').read()
         return hashlib.md5(contents).hexdigest()
 

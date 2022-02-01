@@ -132,7 +132,18 @@ import time
 import traceback
 import urllib.error
 from contextlib import contextmanager
-from typing import Any, Callable, ContextManager, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    ContextManager,
+    Generator,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 import requests.exceptions
 import urllib3.exceptions
@@ -481,7 +492,11 @@ DEFAULT_TIMEOUT = 300
 # TODO: Replace the use of this with retry()
 #  The aws provisioner and jobstore need a large refactoring to be boto3 compliant, so this is
 #  still used there to avoid the duplication of future work
-def old_retry(delays: Iterable[float] = DEFAULT_DELAYS, timeout: float = DEFAULT_TIMEOUT, predicate: Callable[[Exception], bool] = lambda e: False) -> Iterator[ContextManager[None]]:
+def old_retry(
+    delays: Iterable[float] = DEFAULT_DELAYS,
+    timeout: float = DEFAULT_TIMEOUT,
+    predicate: Callable[[Exception], bool] = lambda e: False,
+) -> Generator[ContextManager, None, None]:
     """
     Deprecated.
 

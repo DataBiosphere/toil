@@ -108,7 +108,7 @@ class AWSJobStore(AbstractJobStore):
     maxNameLen = 10
     nameSeparator = '--'
 
-    def __init__(self, locator, partSize=50 << 20):
+    def __init__(self, locator: str, partSize: int = 50 << 20) -> None:
         """
         Create a new job store in AWS or load an existing one from there.
 
