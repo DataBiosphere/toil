@@ -13,6 +13,7 @@
 # limitations under the License.
 import collections
 import inspect
+import json
 import logging
 import os
 import re
@@ -35,9 +36,12 @@ def get_current_aws_region() -> Optional[str]:
     get_current_aws_zone()) is in.
     """
     # Try the region environment variable first
-    aws_regon = os.environ.get('TOIL_AWS_REGION')
+    aws_regon = os.environ.get('TOIL_AWS_REGION') or \
+                os.environ.get('AWS_REGION') or \
+                os.environ.get('DEFAULT_AWS_REGION')
     if aws_regon:
         return aws_regon
+
 
     # Otherwise try to derive it from the zone.
     aws_zone = get_current_aws_zone()
