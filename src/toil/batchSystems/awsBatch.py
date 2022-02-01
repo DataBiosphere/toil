@@ -46,7 +46,7 @@ from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
 from toil.common import Config, Toil
 from toil.job import JobDescription
-from toil.lib.aws import get_current_aws_zone, zone_to_region
+from toil.lib.aws import get_current_aws_region, zone_to_region
 from toil.lib.aws.session import establish_boto3_session
 from toil.lib.conversions import b_to_mib, mib_to_b
 from toil.lib.misc import slow_down, utc_now, unix_now_ms
