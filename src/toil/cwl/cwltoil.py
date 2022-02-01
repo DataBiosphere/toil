@@ -106,6 +106,7 @@ from toil.cwl.utils import (
     CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
     download_structure,
     visit_cwl_class_and_reduce,
+    build_log_path,
 )
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -2116,6 +2117,9 @@ def makeJob(
     scan_for_unsupported_requirements(
         tool, bypass_file_store=getattr(runtime_context, "bypass_file_store", False)
     )
+    if parent_name:
+        runtime_context.name = parent_name
+        logger.debug("runtime_context name: %s", runtime_context.name)
     if tool.tool["class"] == "Workflow":
         wfjob = CWLWorkflow(
             cast(cwltool.workflow.Workflow, tool),
@@ -3264,8 +3268,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         logger.error("Cannot export outputs to a bucket when bypassing the file store")
         return 1
 
+    runtime_context.debug = options.logLevel.upper() == 'DEBUG'
     loading_context = cwltool.main.setup_loadingContext(None, runtime_context, options)
-
     if options.provenance:
         research_obj = cwltool.provenance.ResearchObject(
             temp_prefix_ro=options.tmp_outdir_prefix,

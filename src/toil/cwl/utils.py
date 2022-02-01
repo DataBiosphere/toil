@@ -193,3 +193,22 @@ def download_structure(
             # TODO: why?
             index[dest_path] = value
             existing[value] = dest_path
+def build_log_path(
+    outdir: str,
+    log_dir: str,
+    subdir_name: str
+) -> str:
+    if log_dir == "":
+         return outdir
+    else:        
+        full_log_path =  log_dir + "/" + subdir_name
+        log_path_exists = os.path.exists(full_log_path)
+        if not log_path_exists:
+            return full_log_path
+        count = 2
+        while(log_path_exists):
+            updated_log_path = full_log_path + f'_{count}'
+            log_path_exists = os.path.exists(updated_log_path)
+            count = count + 1
+
+        
