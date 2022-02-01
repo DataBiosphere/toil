@@ -390,6 +390,9 @@ class AWSProvisioner(AbstractProvisioner):
         :return: None
         """
 
+        #Implement IAM check here
+        
+
         leader_type = E2Instances[leaderNodeType]
 
         if self.clusterType == 'kubernetes':
