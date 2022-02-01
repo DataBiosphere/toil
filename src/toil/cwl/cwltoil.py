@@ -1103,7 +1103,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         return super().open(fn, mode)
 
     def exists(self, path: str) -> bool:
-        """Test for file existance."""
+        """Test for file existence."""
         # toil's _abs() throws errors when files are not found and cwltool's _abs() does not
         try:
             return os.path.exists(self._abs(path))
@@ -1203,7 +1203,7 @@ def toil_get_file(
     :param streaming_allowed: If streaming is allowed
 
     :param pipe_threads: List of threads responsible for streaming the data
-    and open file descriptors corresponding to those files. Caller is resposible
+    and open file descriptors corresponding to those files. Caller is responsible
     to close the file descriptors (to break the pipes) and join the threads
     """
     pipe_threads_real = pipe_threads or []
@@ -1871,7 +1871,7 @@ class CWLJob(Job):
                 resources={},
                 mutation_manager=runtime_context.mutation_manager,
                 formatgraph=tool.formatgraph,
-                make_fs_access=runtime_context.make_fs_access,  # type: ignore[arg-type]
+                make_fs_access=runtime_context.make_fs_access,
                 fs_access=runtime_context.make_fs_access(""),
                 job_script_provider=runtime_context.job_script_provider,
                 timeout=runtime_context.eval_timeout,
@@ -2027,7 +2027,7 @@ class CWLJob(Job):
             # Intercept file and directory access and use a virtual filesystem
             # through the Toil FileStore.
 
-            runtime_context.make_fs_access = functools.partial(
+            runtime_context.make_fs_access = functools.partial(  # type: ignore[assignment]
                 ToilFsAccess, file_store=file_store
             )
 
@@ -2197,7 +2197,7 @@ class CWLScatter(Job):
                     tool=self.step.embedded_tool,
                     jobobj=updated_joborder,
                     runtime_context=self.runtime_context,
-                    parent_name=f"{self.parent_name}[{n}]",
+                    parent_name=f"{self.parent_name}.{n}",
                     conditional=self.conditional,
                 )
                 self.addChild(subjob)
@@ -2227,7 +2227,7 @@ class CWLScatter(Job):
                     tool=self.step.embedded_tool,
                     jobobj=updated_joborder,
                     runtime_context=self.runtime_context,
-                    parent_name=f"{self.parent_name}[{n}]",
+                    parent_name=f"{self.parent_name}.{n}",
                     conditional=self.conditional,
                 )
                 self.addChild(subjob)
@@ -2294,7 +2294,7 @@ class CWLScatter(Job):
                     tool=self.step.embedded_tool,
                     jobobj=copyjob,
                     runtime_context=self.runtime_context,
-                    parent_name=f"{self.parent_name}[{i}]",
+                    parent_name=f"{self.parent_name}.{i}",
                     conditional=self.conditional,
                 )
                 self.addChild(subjob)
@@ -2720,7 +2720,7 @@ def scan_for_unsupported_requirements(
         # If we are using the Toil FileStore we can't do InplaceUpdateRequirement
         req, is_mandatory = tool.get_requirement("InplaceUpdateRequirement")
         if req and is_mandatory:
-            # The tool actualy uses this one, and it isn't just a hint.
+            # The tool actually uses this one, and it isn't just a hint.
             # Complain and explain.
             raise CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION(
                 "Toil cannot support InplaceUpdateRequirement when using the Toil file store. "
@@ -2838,7 +2838,7 @@ def generate_default_job_store(
             from toil.jobStores.aws.jobStore import AWSJobStore  # noqa
 
             # Find a region
-            from toil.provisioners.aws import get_current_aws_region
+            from toil.lib.aws import get_current_aws_region
 
             region = get_current_aws_region()
 
@@ -3558,7 +3558,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 def find_default_container(
     args: argparse.Namespace, builder: cwltool.builder.Builder
 ) -> Optional[str]:
-    """Find the default constuctor by consulting a Toil.options object."""
+    """Find the default constructor by consulting a Toil.options object."""
     if args.default_container:
         return str(args.default_container)
     if args.beta_use_biocontainers:
