@@ -128,7 +128,15 @@ class ToilBackend(WESBackend):
     in the filesystem to store and retrieve data associated with the runs.
     """
 
-    def __init__(self, work_dir: str, options: List[str], base_url: str) -> None:
+    def __init__(self, work_dir: str, options: List[str]) -> None:
+        """
+        Make a new ToilBackend for serving WES.
+
+        :param work_dir: Directory to download and run workflows in.
+
+        :param options: Command-line options to pass along to workflows. Must
+        use = syntax to set values instead of ordering.
+        """
         for opt in options:
             if not opt.startswith('-'):
                 # We don't allow a value to be set across multiple arguments
@@ -136,7 +144,6 @@ class ToilBackend(WESBackend):
                 raise ValueError(f'Option {opt} does not begin with -')
         super(ToilBackend, self).__init__(options)
         self.work_dir = work_dir
-        self.base_url = base_url
 
         self.supported_versions = {
             "py": ["3.6", "3.7", "3.8", "3.9"],
@@ -280,8 +287,14 @@ class ToilBackend(WESBackend):
         stdout = ""
         stderr = ""
         if os.path.isfile(os.path.join(run.work_dir, 'stdout')):
-            stdout = f"{self.base_url}/toil/wes/v1/logs/{run_id}/stdout"
-            stderr = f"{self.base_url}/toil/wes/v1/logs/{run_id}/stderr"
+            # We're at <app root>/ga4gh/wes/v1/runs/{run_id}
+            # We need to get to e.g. <app root>/toil/wes/v1/logs/{run_id}/stdout
+            # Because we don't want to add new endpoints in WES's namespace.
+            # We can't use a /-relative URL because we may be mounted at a path
+            # behind a load balancer, like when we are an AGC engine.
+            # So we use directory traversal to say where we want to go.
+            stdout = f"../../../../toil/wes/v1/logs/{run_id}/stdout"
+            stderr = f"../../../../toil/wes/v1/logs/{run_id}/stderr"
 
         exit_code = run.fetch("exit_code")
 
