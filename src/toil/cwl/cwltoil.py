@@ -1893,6 +1893,8 @@ class CWLJob(Job):
         unitName = shortname(displayName)
         if parent_name:
             unitName = f"{parent_name}.{unitName}"
+        # Store the unitName for use to passing into runtime context before executing the tool
+        self.unitName = unitName
 
         super().__init__(
             cores=req["cores"],
@@ -2044,6 +2046,8 @@ class CWLJob(Job):
 
         logger.debug("Running tool %s with order: %s", self.cwltool, self.cwljob)
 
+
+        runtime_context.name = self.unitName
         output, status = ToilSingleJobExecutor().execute(
             process=self.cwltool,
             job_order_object=cwljob,
@@ -2117,9 +2121,6 @@ def makeJob(
     scan_for_unsupported_requirements(
         tool, bypass_file_store=getattr(runtime_context, "bypass_file_store", False)
     )
-    if parent_name:
-        runtime_context.name = parent_name
-        logger.debug("runtime_context name: %s", runtime_context.name)
     if tool.tool["class"] == "Workflow":
         wfjob = CWLWorkflow(
             cast(cwltool.workflow.Workflow, tool),
