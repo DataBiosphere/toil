@@ -1,1 +1,2 @@
 wdlparse==0.1.0
+miniwdl
