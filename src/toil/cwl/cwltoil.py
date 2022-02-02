@@ -3268,6 +3268,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         return 1
 
     loading_context = cwltool.main.setup_loadingContext(None, runtime_context, options)
+
     if options.provenance:
         research_obj = cwltool.provenance.ResearchObject(
             temp_prefix_ro=options.tmp_outdir_prefix,
