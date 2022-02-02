@@ -187,6 +187,10 @@ exist yet, Toil will create it for you.
   --keyPairName KEYPAIRNAME
                         The name of the AWS or ssh key pair to include on the
                         instance.
+  --owner OWNER
+                        The owner tag for all instances. If not given, the value in
+                        TOIL_OWNER_TAG will be used, or else the value of
+                        --keyPairName.
   --boto BOTOPATH       The path to the boto credentials directory. This is
                         transferred to all nodes in order to access the AWS
                         jobStore from non-AWS instances.

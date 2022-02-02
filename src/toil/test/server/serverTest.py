@@ -80,6 +80,9 @@ class ToilWESServerTest(ToilTest):
         self.assertIn("supported_wes_versions", service_info)
         self.assertIn("supported_filesystem_protocols", service_info)
         self.assertIn("workflow_engine_versions", service_info)
+        engine_versions = service_info["workflow_engine_versions"]
+        self.assertIn("toil", engine_versions)
+        self.assertEqual(type(engine_versions["toil"]), str)
         self.assertIn("default_workflow_engine_parameters", service_info)
         self.assertIn("system_state_counts", service_info)
         self.assertIn("tags", service_info)
