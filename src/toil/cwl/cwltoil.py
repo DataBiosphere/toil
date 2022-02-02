@@ -106,7 +106,6 @@ from toil.cwl.utils import (
     CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
     download_structure,
     visit_cwl_class_and_reduce,
-    build_log_path,
 )
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -2046,7 +2045,6 @@ class CWLJob(Job):
 
         logger.debug("Running tool %s with order: %s", self.cwltool, self.cwljob)
 
-
         runtime_context.name = self.unitName
         output, status = ToilSingleJobExecutor().execute(
             process=self.cwltool,
@@ -3269,7 +3267,6 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         logger.error("Cannot export outputs to a bucket when bypassing the file store")
         return 1
 
-    runtime_context.debug = options.logLevel.upper() == 'DEBUG'
     loading_context = cwltool.main.setup_loadingContext(None, runtime_context, options)
     if options.provenance:
         research_obj = cwltool.provenance.ResearchObject(
