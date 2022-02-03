@@ -57,9 +57,6 @@ Below is a detailed summary of all available options:
             The host interface that the Toil server binds on. (default: "127.0.0.1").
 --port PORT
             The port that the Toil server listens on. (default: 8080).
---public_url PUBLIC_URL
-            The base URL to use for serving static files including the stdout and stderr logs of the workflows.
-            (default: "``http://{host}:{port}``").
 --swagger_ui
             Enable the swagger UI on the ``ga4gh/wes/v1/ui`` endpoint. (default: False).
 --cors
