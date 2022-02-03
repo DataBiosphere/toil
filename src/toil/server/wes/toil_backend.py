@@ -20,7 +20,8 @@ from collections import Counter
 from tempfile import NamedTemporaryFile
 from typing import Optional, List, Dict, Any, overload, Generator, Tuple
 
-from flask import send_from_directory, request as flask_request
+from flask import send_from_directory
+from flask.globals import request as flask_request
 from werkzeug.utils import redirect
 from werkzeug.wrappers.response import Response
 

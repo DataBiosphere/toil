@@ -22,7 +22,7 @@ services:
       - /tmp/toil-workflows:/tmp/toil-workflows
     environment:
       - TOIL_WES_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
-    command: toil server --host 0.0.0.0 --port 8000 --work_dir /tmp/toil-workflows --public_url http://localhost:8080
+    command: toil server --host 0.0.0.0 --port 8000 --work_dir /tmp/toil-workflows
     expose:
       - 8000
     labels:
