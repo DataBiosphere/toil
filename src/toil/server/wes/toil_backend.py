@@ -273,8 +273,8 @@ class ToilBackend(WESBackend):
         stdout = ""
         stderr = ""
         if os.path.isfile(os.path.join(run.work_dir, 'stdout')):
-            stdout = f"{flask_request.base_url}/toil/wes/v1/logs/{run_id}/stdout"
-            stderr = f"{flask_request.base_url}/toil/wes/v1/logs/{run_id}/stderr"
+            stdout = f"{flask_request.host_url}toil/wes/v1/logs/{run_id}/stdout"
+            stderr = f"{flask_request.host_url}toil/wes/v1/logs/{run_id}/stderr"
 
         exit_code = run.fetch("exit_code")
 
