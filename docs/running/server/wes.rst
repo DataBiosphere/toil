@@ -94,11 +94,22 @@ in the yaml file).
 You can also change ``/tmp/toil-workflows`` if you want Toil workflows to live somewhere else, and create the directory
 before starting the server.
 
+In order to run workflows that require Docker, the ``docker.sock`` socket must be mounted as volume for Celery.
+Additionally, the ``TOIL_WORKDIR`` directory (defaults to: ``/var/lib/toil``) and ``/var/lib/cwl`` (if running CWL
+workflows with ``DockerRequirement``) should exist on the host and also be mounted as volumes.
+
+
 Also make sure to run it behind a firewall; it opens up the Toil server on port 8080 to anyone who connects.
 
 .. literalinclude:: ./docker-compose.yml
    :language: yaml
-   :emphasize-lines: 15,22,25,33,43,45
+   :emphasize-lines: 13-15,22,25,33,43,45
+
+
+Further customization can also be made as needed. For example, if you have a domain, you can set up HTTPS with Let's
+Encrypt `as such`_.
+
+.. _`as such`: https://doc.traefik.io/traefik/user-guides/docker-compose/acme-http/
 
 Once everything is configured, simply run ``docker-compose up`` to start the containers. Run ``docker-compose down`` to
 stop and remove all containers.
