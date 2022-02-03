@@ -162,6 +162,11 @@ by Toil:
 | GET /runs/{run_id}/status      | Get the status (overall state) of a workflow run.      |
 +--------------------------------+--------------------------------------------------------+
 
+When running the WES server with the ``docker-compose`` setup above, most endpoints (except ``GET /service-info``) will
+be protected with basic authentication. Make sure to set the **Authorization** header with the correct credentials when
+submitting or retrieving a workflow.
+
+
 .. _WESSubmitWorkflow:
 
 Submitting a Workflow
@@ -191,6 +196,7 @@ As a quick example, we can submit the example CWL workflow from :ref:`cwlquickst
 using cURL::
 
     $ curl --location --request POST 'http://localhost:8080/ga4gh/wes/v1/runs' \
+        --user test:test \
         --form 'workflow_url="example.cwl"' \
         --form 'workflow_type="cwl"' \
         --form 'workflow_type_version="v1.0"' \
@@ -200,6 +206,10 @@ using cURL::
       "run_id": "4deb8beb24894e9eb7c74b0f010305d1"
     }
 
+
+Note that the ``--user`` argument is used to attach the basic authentication credentials along with the request. Make
+sure to change ``test:test`` to the username and password you configured for your WES server. Alternatively, you can
+also set the **Authorization** header manually as ``"Authorization: Basic base64_encoded_auth"``.
 
 If the workflow is submitted successfully, a JSON object containing a ``run_id`` will be returned. The ``run_id`` is a
 unique identifier of your requested workflow, which can be used to monitor or cancel the run.
@@ -256,6 +266,7 @@ parameter multiple times with different files.
 This can be shown by the following example::
 
     $ curl --location --request POST 'http://localhost:8080/ga4gh/wes/v1/runs' \
+        --user test:test \
         --form 'workflow_url="example.cwl"' \
         --form 'workflow_type="cwl"' \
         --form 'workflow_type_version="v1.0"' \
@@ -302,7 +313,7 @@ Checking the state
 
 The ``GET /runs/{run_id}/status`` endpoint can be used to get a simple result with the overall state of your run::
 
-    $ curl http://localhost:8080/ga4gh/wes/v1/runs/4deb8beb24894e9eb7c74b0f010305d1/status
+    $ curl --user test:test http://localhost:8080/ga4gh/wes/v1/runs/4deb8beb24894e9eb7c74b0f010305d1/status
     {
       "run_id": "4deb8beb24894e9eb7c74b0f010305d1",
       "state": "RUNNING"
@@ -317,7 +328,7 @@ Getting the full logs
 
 To get the detailed information about a workflow run, use the ``GET /runs/{run_id}`` endpoint::
 
-    $ curl http://localhost:8080/ga4gh/wes/v1/runs/4deb8beb24894e9eb7c74b0f010305d1
+    $ curl --user test:test http://localhost:8080/ga4gh/wes/v1/runs/4deb8beb24894e9eb7c74b0f010305d1
     {
       "run_id": "4deb8beb24894e9eb7c74b0f010305d1",
       "request": {
@@ -352,7 +363,8 @@ Canceling a run
 
 To cancel a workflow run, use the ``POST /runs/{run_id}/cancel`` endpoint::
 
-    $ curl --location --request POST 'http://localhost:8080/ga4gh/wes/v1/runs/4deb8beb24894e9eb7c74b0f010305d1/cancel'
+    $ curl --location --request POST 'http://localhost:8080/ga4gh/wes/v1/runs/4deb8beb24894e9eb7c74b0f010305d1/cancel' \
+          --user test:test
     {
       "run_id": "4deb8beb24894e9eb7c74b0f010305d1"
     }
