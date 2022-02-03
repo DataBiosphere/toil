@@ -139,6 +139,7 @@ class UtilsTest(ToilTest):
         # TODO: Run these for the other clouds.
         clusterName = f'cluster-utils-test{uuid.uuid4()}'
         keyName = os.getenv('TOIL_AWS_KEYNAME').strip() or 'id_rsa'
+        expected_owner = os.getenv('TOIL_OWNER_TAG') or keyName
 
         try:
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
@@ -155,7 +156,7 @@ class UtilsTest(ToilTest):
             leader = cluster.getLeader()
 
             # check that the leader carries the appropriate tags
-            tags = {'key1': 'value1', 'key2': 'value2', 'key3': 'value3', 'Name': clusterName, 'Owner': keyName}
+            tags = {'key1': 'value1', 'key2': 'value2', 'key3': 'value3', 'Name': clusterName, 'Owner': expected_owner}
             for key in tags:
                 self.assertEqual(leader.tags.get(key), tags[key])
         finally:

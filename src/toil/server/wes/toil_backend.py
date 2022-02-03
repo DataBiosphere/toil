@@ -195,7 +195,7 @@ class ToilBackend(WESBackend):
             },
             "supported_wes_versions": ["1.0.0"],
             "supported_filesystem_protocols": ["file", "http", "https"],
-            "workflow_engine_versions": {"toil": [baseVersion, ]},
+            "workflow_engine_versions": {"toil": baseVersion},
             "default_workflow_engine_parameters": [
                 {
                     "name": key,
