@@ -749,13 +749,14 @@ class CWLv12Test(ToilTest):
         with open(out[out_name]["location"][len("file://") :]) as f:
             self.assertEqual(f.read().strip(), "When is s4 coming out?")
 
+
 @needs_cwl
 class CWLSmallLogDir(ToilTest):
     @classmethod
     def setUpClass(cls):
         """Runs anew before each test to create farm fresh temp dirs."""
         cls.out_dir = f"/tmp/cwl-out-dir-{str(uuid.uuid4())}"
-        cls.log_dir = Path(os.path.join(os.path.dirname(__file__), 'cwl-logs'))
+        cls.log_dir = Path(os.path.join(os.path.dirname(__file__), "cwl-logs"))
         os.makedirs(cls.out_dir)
         os.makedirs(cls.log_dir)
 
@@ -785,6 +786,27 @@ class CWLSmallLogDir(ToilTest):
         out_base = outputs["list_out"][0]
         # This is a test on the scatter functionality and stdout.
         # Each value of scatter should generate a separate file in the output.
+        for index, file in enumerate(out_list):
+            if index > 0:
+                new_file_loc = out_base["location"] + f"_{index + 1}"
+            else:
+                new_file_loc = out_base["location"]
+            assert (
+                new_file_loc == file["location"]
+            ), f"Toil should have detected conflicts for these stdout files {new_file_loc} and {file}"
+
+        assert b"Finished toil run successfully" in stderr
+        assert p.returncode == 0
+
+        assert os.path.exists(self.log_dir)
+        scatter_0 = os.path.join(self.log_dir, "echo-test-scatter.0.scatter")
+        scatter_1 = os.path.join(self.log_dir, "echo-test-scatter.1.scatter")
+        list_0 = os.path.join(self.log_dir, "echo-test-scatter.0.list")
+        list_1 = os.path.join(self.log_dir, "echo-test-scatter.1.list")
+        assert os.path.exists(scatter_0)
+        assert os.path.exists(scatter_1)
+        assert os.path.exists(list_0)
+        assert os.path.exists(list_1)
 
     def test_log_dir_echo_no_output(self) -> None:
 
@@ -800,10 +822,8 @@ class CWLSmallLogDir(ToilTest):
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         tmp_path = self.log_dir
-        log.debug(f'Temp path loc: {str(tmp_path)}')
         assert os.path.exists(tmp_path)
-        log_path = os.path.join(tmp_path, 'echo')
-        log.debug(f'Temp path loc: {str(log_path)}')
+        log_path = os.path.join(tmp_path, "echo")
 
         assert os.path.exists(log_path)
         out_file = os.path.join(log_path, "out.txt")
@@ -827,7 +847,7 @@ class CWLSmallLogDir(ToilTest):
         tmp_path = self.log_dir
 
         assert len(list(tmp_path.iterdir())) == 1
-        
+
         subdir = next(tmp_path.iterdir())
         assert subdir.name == "echo-stderr.cwl"
         assert subdir.is_dir()
@@ -836,6 +856,7 @@ class CWLSmallLogDir(ToilTest):
         assert result.name == "out.txt"
         output = open(result).read()
         assert output == "hello\n"
+
 
 @needs_cwl
 class CWLSmallTests(ToilTest):
@@ -932,7 +953,6 @@ class CWLSmallTests(ToilTest):
 
         assert b"Finished toil run successfully" in stderr
         assert p.returncode == 0
-
 
     def test_visit_top_cwl_class(self):
         structure = {
