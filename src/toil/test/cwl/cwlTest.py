@@ -764,6 +764,9 @@ class CWLSmallLogDir(ToilTest):
         """Clean up outputs."""
         if os.path.exists(self.out_dir):
             shutil.rmtree(self.out_dir)
+        if os.path.exists(self.log_dir):
+            shutil.rmtree(self.log_dir)
+
         unittest.TestCase.tearDown(self)
 
     def test_workflow_echo_string_scatter_stderr_log_dir(self):
@@ -808,7 +811,6 @@ class CWLSmallLogDir(ToilTest):
         assert os.path.exists(list_1)
 
     def test_log_dir_echo_no_output(self) -> None:
-
         toil = "toil-cwl-runner"
         jobstore = f"--jobStore={self.out_dir}"
         option_1 = "--strict-memory-limit"
@@ -820,13 +822,16 @@ class CWLSmallLogDir(ToilTest):
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         tmp_path = self.log_dir
-        assert os.path.exists(tmp_path)
-        log_path = os.path.join(tmp_path, "echo")
 
-        assert os.path.exists(log_path)
-        out_file = os.path.join(log_path, "out.txt")
-        assert os.path.exists(out_file)
-        output = open(out_file).read()
+        assert len(list(tmp_path.iterdir())) == 1
+
+        subdir = next(tmp_path.iterdir())
+        assert subdir.name == "echo"
+        assert subdir.is_dir()
+        assert len(list(subdir.iterdir())) == 1
+        result = next(subdir.iterdir())
+        assert result.name == "out.txt"
+        output = open(result).read()
         assert output == "hello\n"
 
     def test_log_dir_echo_stderr(self) -> None:
