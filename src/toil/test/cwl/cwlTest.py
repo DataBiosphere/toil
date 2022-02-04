@@ -777,7 +777,6 @@ class CWLSmallLogDir(ToilTest):
             os.path.dirname(__file__), "echo_string_scatter_capture_stdout.cwl"
         )
         cmd = [toil, jobstore, option_1, option_2, option_3, option_4, cwl]
-        log.debug(f'Now running: {" ".join(cmd)}')
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         outputs = json.loads(stdout)
@@ -818,7 +817,6 @@ class CWLSmallLogDir(ToilTest):
         option_4 = f"--log-dir={self.log_dir}"
         cwl = os.path.join(os.path.dirname(__file__), "echo-stdout-log-dir.cwl")
         cmd = [toil, jobstore, option_1, option_2, option_3, option_4, cwl]
-        log.debug(f'Now running: {" ".join(cmd)}')
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         tmp_path = self.log_dir
@@ -841,7 +839,6 @@ class CWLSmallLogDir(ToilTest):
         option_4 = f"--log-dir={self.log_dir}"
         cwl = os.path.join(os.path.dirname(__file__), "echo-stderr.cwl")
         cmd = [toil, jobstore, option_1, option_2, option_3, option_4, cwl]
-        log.debug(f'Now running: {" ".join(cmd)}')
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         tmp_path = self.log_dir
@@ -916,7 +913,6 @@ class CWLSmallTests(ToilTest):
         option_3 = "--clean=always"
         cwl = os.path.join(os.path.dirname(__file__), "echo_string.cwl")
         cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
-        log.debug(f'Now running: {" ".join(cmd)}')
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         assert stdout == b"{}", f"Got wrong output: {stdout}\nWith error: {stderr}"
@@ -933,7 +929,6 @@ class CWLSmallTests(ToilTest):
             os.path.dirname(__file__), "echo_string_scatter_capture_stdout.cwl"
         )
         cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
-        log.debug(f'Now running: {" ".join(cmd)}')
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         outputs = json.loads(stdout)
