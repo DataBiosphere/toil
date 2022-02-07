@@ -3,10 +3,12 @@ cwlVersion: v1.0
 class: CommandLineTool
 id: echo
 inputs:
-  - id: inp
+  message:
     type: string
     default: hello
-    inputBinding: {}
 outputs: []
-baseCommand: echo
+baseCommand: bash
+arguments:
+ - "-c"
+ - "echo $(inputs.message) 1>&1"
 stdout: out.txt

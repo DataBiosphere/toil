@@ -770,8 +770,9 @@ class CWLSmallLogDir(ToilTest):
         unittest.TestCase.tearDown(self)
 
     def test_workflow_echo_string_scatter_stderr_log_dir(self):
+        job_store = 'test_workflow_echo_string_scatter_stderr_log_dir'
         toil = "toil-cwl-runner"
-        jobstore = f"--jobStore={self.out_dir}"
+        jobstore = f"--jobStore={job_store}"
         option_1 = "--strict-memory-limit"
         option_2 = "--force-docker-pull"
         option_3 = "--clean=always"
@@ -811,8 +812,9 @@ class CWLSmallLogDir(ToilTest):
         assert os.path.exists(list_1)
 
     def test_log_dir_echo_no_output(self) -> None:
+        job_store  = 'test_log_dir_echo_no_output'
         toil = "toil-cwl-runner"
-        jobstore = f"--jobStore={self.out_dir}"
+        jobstore = f"--jobStore={job_store}"
         option_1 = "--strict-memory-limit"
         option_2 = "--force-docker-pull"
         option_3 = "--clean=always"
@@ -821,8 +823,10 @@ class CWLSmallLogDir(ToilTest):
         cmd = [toil, jobstore, option_1, option_2, option_3, option_4, cwl]
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
+
         tmp_path = self.log_dir
 
+        assert os.path.exists(self.log_dir)
         assert len(list(tmp_path.iterdir())) == 1
 
         subdir = next(tmp_path.iterdir())
@@ -832,12 +836,12 @@ class CWLSmallLogDir(ToilTest):
         result = next(subdir.iterdir())
         assert result.name == "out.txt"
         output = open(result).read()
-        assert output == "hello\n"
-
+        assert "hello" in output
     def test_log_dir_echo_stderr(self) -> None:
 
+        job_store  = 'test_log_dir_echo_stderr'
         toil = "toil-cwl-runner"
-        jobstore = f"--jobStore={self.out_dir}"
+        jobstore = f"--jobStore={job_store}"
         option_1 = "--strict-memory-limit"
         option_2 = "--force-docker-pull"
         option_3 = "--clean=always"
