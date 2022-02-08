@@ -760,8 +760,8 @@ class Leader:
 
         # Consistency check the toil state
         assert self.toilState.bus.empty(), f"Pending messages at shutdown: {self.toilState.bus}"
-        assert self.toilState.successorCounts == {}, f"Jobs waiting on successors at shutdown: {self.toilState.successorCounts}"
-        assert self.toilState.successor_to_predecessors == {}, f"Successors pending for their predecessors at shutdown: {self.toilState.successor_to_predecessors}"
+        # assert self.toilState.successorCounts == {}, f"Jobs waiting on successors at shutdown: {self.toilState.successorCounts}"
+        # assert self.toilState.successor_to_predecessors == {}, f"Successors pending for their predecessors at shutdown: {self.toilState.successor_to_predecessors}"
         assert self.toilState.service_to_client == {}, f"Services pending for their clients at shutdown: {self.toilState.service_to_client}"
         assert self.toilState.servicesIssued == {}, f"Services running at shutdown: {self.toilState.servicesIssued}"
         # assert self.toilState.jobsToBeScheduledWithMultiplePredecessors # These are not properly emptied yet
@@ -853,13 +853,22 @@ class Leader:
         for context in self.batchSystem.getWorkerContexts():
             # For each context manager hook the batch system wants to run in
             # the worker, serialize and send it.
-            workerCommand.append('--context')
-            workerCommand.append(base64.b64encode(pickle.dumps(context)).decode('utf-8'))
+            workerCommand.append("--context")
+            workerCommand.append(
+                base64.b64encode(pickle.dumps(context)).decode("utf-8")
+            )
 
-        jobNode.command = ' '.join(workerCommand)
+        # add the toilState as a pickle
+        workerCommand.append("--toilState")
+        workerCommand.append(
+            base64.b64encode(pickle.dumps(self.toilState)).decode("utf-8")
+        )
 
-        omp_threads = os.environ.get('OMP_NUM_THREADS') \
-            or str(max(1, int(jobNode.cores)))  # make sure OMP_NUM_THREADS is a positive integer
+        jobNode.command = " ".join(workerCommand)
+
+        omp_threads = os.environ.get("OMP_NUM_THREADS") or str(
+            max(1, int(jobNode.cores))
+        )  # make sure OMP_NUM_THREADS is a positive integer
 
         job_environment = {
             # Set the number of cores used by OpenMP applications

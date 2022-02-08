@@ -208,6 +208,7 @@ cwl_v1.2:
     - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv12Test
+    - make test tests=src/toil/test/cwl/cwlTest.py::CWLToilOptimizeTests
 
 cwl_v1.0_kubernetes:
   stage: main_tests
