@@ -91,6 +91,9 @@ Make sure to change the credentials for basic authentication by updating the
 ``traefik.http.middlewares.auth.basicauth.users`` label. (Note that single ``$`` signs need to be replaced with ``$$``
 in the yaml file).
 
+When running on a different host other than ``localhost``, make sure to change the ``Host`` to your
+tartget host in the ``traefik.http.routers.wes.rule`` and ``traefik.http.routers.wespublic.rule`` labels.
+
 You can also change ``/tmp/toil-workflows`` if you want Toil workflows to live somewhere else, and create the directory
 before starting the server.
 
@@ -103,7 +106,7 @@ Also make sure to run it behind a firewall; it opens up the Toil server on port 
 
 .. literalinclude:: ./docker-compose.yml
    :language: yaml
-   :emphasize-lines: 13-15,22,25,33,43,45
+   :emphasize-lines: 13-15, 22,25, 30,33,34, 43,45
 
 
 Further customization can also be made as needed. For example, if you have a domain, you can set up HTTPS with Let's
@@ -299,7 +302,7 @@ On the server, the execution directory would have the following structure from t
 Specify Toil options
 ^^^^^^^^^^^^^^^^^^^^
 
-To pass Toil specific parameters to the workflow, you can include the ``workflow_engine_parameters`` parameter along
+To pass Toil-specific parameters to the workflow, you can include the ``workflow_engine_parameters`` parameter along
 with your request.
 
 For example, to set the logging level to ``INFO``, and change the working directory of the workflow, simply include the
