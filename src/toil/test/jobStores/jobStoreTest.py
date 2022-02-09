@@ -1276,7 +1276,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
         from toil.lib.aws.session import establish_boto3_session
         from toil.jobStores.aws.jobStore import BucketLocationConflictException
-        from toil.jobStores.aws.utils import retry_s3
+        from toil.lib.aws.utils import retry_s3
 
         externalAWSLocation = 'us-west-1'
         for testRegion in 'us-east-1', 'us-west-2':
@@ -1409,7 +1409,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                         self.assertEqual(hashlib.md5(f.read()).hexdigest(), expected_md5)
 
     def _prepareTestFile(self, bucket, size=None):
-        from toil.jobStores.aws.utils import retry_s3
+        from toil.lib.aws.utils import retry_s3
 
         file_name = 'testfile_%s' % uuid.uuid4()
         url = f's3://{bucket.name}/{file_name}'
@@ -1430,7 +1430,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
     def _createExternalStore(self):
         """A S3.Bucket instance is returned"""
         from toil.jobStores.aws.jobStore import establish_boto3_session
-        from toil.jobStores.aws.utils import retry_s3
+        from toil.lib.aws.utils import retry_s3
 
         resource = establish_boto3_session().resource(
             "s3", region_name=self.awsRegion()
