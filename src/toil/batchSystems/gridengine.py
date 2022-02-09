@@ -140,8 +140,10 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                     if arg.startswith(("vf=", "hvmem=", "-pe")):
                         raise ValueError("Unexpected CPU, memory or pe specifications in TOIL_GRIDGENGINE_ARGs: %s" % arg)
                 qsubline.extend(sgeArgs)
-            if os.getenv('TOIL_GRIDENGINE_PE') is not None:
-                peCpu = int(math.ceil(cpu)) if cpu is not None else 1
+            # If cpu == 1 (or None) then don't add PE env variable to the qsub command.
+            #               This will allow for use of the serial queue for these jobs.
+            if (os.getenv('TOIL_GRIDENGINE_PE') is not None) and (cpu is not None) and (cpu > 1) :
+                peCpu = int(math.ceil(cpu))
                 qsubline.extend(['-pe', os.getenv('TOIL_GRIDENGINE_PE'), str(peCpu)])
             elif (cpu is not None) and (cpu > 1):
                 raise RuntimeError("must specify PE in TOIL_GRIDENGINE_PE environment variable when using multiple CPUs. "
