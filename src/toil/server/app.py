@@ -21,6 +21,7 @@ from toil.lib.misc import get_public_ip
 from toil.server.wes.toil_backend import ToilBackend
 from toil.server.wsgi_app import run_app
 from toil.version import version
+from toil.lib.aws import running_on_ec2, running_on_ecs, get_current_aws_region
 
 logger = logging.getLogger(__name__)
 
@@ -98,11 +99,22 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
 
 def start_server(args: argparse.Namespace) -> None:
     """ Start a Toil server."""
+    
+    # Explain a bit about who and where we are
+    logger.info("Toil WES server version %s starting...", version)
+    if running_on_ecs():
+        logger.info("Environment appears to be Amazon ECS")
+    if running_on_ec2():
+        logger.info("Environment appears to be Amazon EC2")
+    aws_region = get_current_aws_region()
+    if aws_region:
+        logger.info("AWS region appears to be: %s", aws_region)
+
     flask_app = create_app(args)
 
     host = args.host
     port = args.port
-
+    
     if args.debug:
         flask_app.run(host=host, port=port)
     else:
