@@ -112,6 +112,8 @@ the logging module:
                         getting too big (set using ``--maxLogFileSize BYTESIZE``).
   --maxLogFileSize BYTESIZE
                         Sets the maximum log file size in bytes (``--rotatingLogging`` must be active).
+  --log-dir DIRPATH
+                        For CWL and local file system only. Log stdout and stderr (if tool requests stdout/stderr) to the DIRPATH.
 
 **Batch System Options**
 

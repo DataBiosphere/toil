@@ -16,6 +16,7 @@ import boto.ec2
 import json
 import logging
 import os
+from pathlib import Path
 import re
 import shutil
 import subprocess
@@ -31,8 +32,6 @@ from urllib.request import urlretrieve
 
 import pytest
 
-#from version_template import exactPython
-
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
@@ -47,26 +46,40 @@ from toil.lib.threading import cpu_count
 from toil.lib.aws import zone_to_region
 from toil.provisioners import cluster_factory
 from toil.provisioners.aws import get_best_aws_zone
-from toil.test import (ToilTest, needs_aws_ec2,
-                       needs_aws_s3,
-                       needs_cwl,
-                       needs_docker, needs_fetchable_appliance,
-                       needs_gridengine,
-                       needs_kubernetes,
-                       needs_lsf,
-                       needs_mesos,
-                       needs_parasol,
-                       needs_slurm,
-                       needs_torque,
-                       slow)
+from toil.test import (
+    ToilTest, 
+    needs_aws_ec2,
+    needs_aws_s3,
+    needs_cwl,
+    needs_docker, 
+    needs_fetchable_appliance,
+    needs_gridengine,
+    needs_kubernetes,
+    needs_lsf,
+    needs_mesos,
+    needs_parasol,
+    needs_slurm,
+    needs_torque,
+    slow,
+)
+
 
 log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 3600
 
 
-def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSystem: str = None,
-    selected_tests: str = None, selected_tags: str = None, skipped_tests: str = None,
-    extra_args: List[str] = [], must_support_all_features: bool = False, junit_file: Optional[str] = None) -> Optional[str]:
+def run_conformance_tests(
+    workDir: str,
+    yml: str,
+    caching: bool = False,
+    batchSystem: str = None,
+    selected_tests: str = None,
+    selected_tags: str = None,
+    skipped_tests: str = None,
+    extra_args: List[str] = [],
+    must_support_all_features: bool = False,
+    junit_file: Optional[str] = None,
+) -> Optional[str]:
     """
     Run the CWL conformance tests.
 
@@ -91,39 +104,45 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
     :param junit_file: JUnit XML file to write test info to.
     """
     try:
-        cmd = ['cwltest',
-               '--tool=toil-cwl-runner',
-               f'--test={yml}',
-               '--timeout=2400',
-               f'--basedir={workDir}']
+        cmd = [
+            "cwltest",
+            "--tool=toil-cwl-runner",
+            f"--test={yml}",
+            "--timeout=2400",
+            f"--basedir={workDir}",
+        ]
         if selected_tests:
-            cmd.append(f'-n={selected_tests}')
+            cmd.append(f"-n={selected_tests}")
         if selected_tags:
-            cmd.append(f'--tags={selected_tags}')
+            cmd.append(f"--tags={selected_tags}")
         if skipped_tests:
-            cmd.append(f'-S{skipped_tests}')
+            cmd.append(f"-S{skipped_tests}")
         if junit_file:
             # Capture output for JUnit
-            cmd.append('--junit-verbose')
-            cmd.append(f'--junit-xml={junit_file}')
+            cmd.append("--junit-verbose")
+            cmd.append(f"--junit-xml={junit_file}")
         else:
             # Otherwise dump all output to our output stream
-            cmd.append('--verbose')
+            cmd.append("--verbose")
 
-        args_passed_directly_to_toil = ['--clean=always',
-                                        '--logDebug',
-                                        '--statusWait=10']
+        args_passed_directly_to_toil = [
+            "--clean=always",
+            "--logDebug",
+            "--statusWait=10",
+        ]
         if not caching:
             # Turn off caching for the run
-            args_passed_directly_to_toil.append('--disableCaching')
+            args_passed_directly_to_toil.append("--disableCaching")
         args_passed_directly_to_toil += extra_args
 
-        if 'SINGULARITY_DOCKER_HUB_MIRROR' in os.environ:
-            args_passed_directly_to_toil.append('--setEnv=SINGULARITY_DOCKER_HUB_MIRROR')
+        if "SINGULARITY_DOCKER_HUB_MIRROR" in os.environ:
+            args_passed_directly_to_toil.append(
+                "--setEnv=SINGULARITY_DOCKER_HUB_MIRROR"
+            )
 
         job_store_override = None
 
-        if batchSystem == 'kubernetes':
+        if batchSystem == "kubernetes":
             # Run tests in parallel on Kubernetes.
             # We can throw a bunch at it at once and let Kubernetes schedule.
             # But we still want a local core for each.
@@ -132,11 +151,11 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
             # Run tests in parallel on the local machine. Don't run too many
             # tests at once; we want at least a couple cores for each.
             parallel_tests = max(int(cpu_count() / 2), 1)
-        cmd.append(f'-j{parallel_tests}')
+        cmd.append(f"-j{parallel_tests}")
 
         if batchSystem:
             args_passed_directly_to_toil.append(f"--batchSystem={batchSystem}")
-        cmd.extend(['--'] + args_passed_directly_to_toil)
+        cmd.extend(["--"] + args_passed_directly_to_toil)
 
         log.info("Running: '%s'", "' '".join(cmd))
         try:
@@ -144,15 +163,17 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
         finally:
             if job_store_override:
                 # Clean up the job store we used for all the tests, if it is still there.
-                subprocess.run(['toil', 'clean', job_store_override])
+                subprocess.run(["toil", "clean", job_store_override])
 
     except subprocess.CalledProcessError as e:
         only_unsupported = False
         # check output -- if we failed but only have unsupported features, we're okay
-        p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
+        p = re.compile(
+            r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features"
+        )
 
-        error_log = e.output.decode('utf-8')
-        for line in error_log.split('\n'):
+        error_log = e.output.decode("utf-8")
+        for line in error_log.split("\n"):
             m = p.search(line)
             if m:
                 if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
@@ -167,21 +188,24 @@ def run_conformance_tests(workDir: str, yml: str, caching: bool = False, batchSy
 class CWLv10Test(ToilTest):
     def setUp(self):
         """Runs anew before each test to create farm fresh temp dirs."""
-        self.outDir = f'/tmp/toil-cwl-test-{str(uuid.uuid4())}'
+        self.outDir = f"/tmp/toil-cwl-test-{str(uuid.uuid4())}"
         os.makedirs(self.outDir)
         self.rootDir = self._projectRootPath()
-        self.cwlSpec = os.path.join(self.rootDir, 'src/toil/test/cwl/spec')
-        self.workDir = os.path.join(self.cwlSpec, 'v1.0')
+        self.cwlSpec = os.path.join(self.rootDir, "src/toil/test/cwl/spec")
+        self.workDir = os.path.join(self.cwlSpec, "v1.0")
         # The latest cwl git commit hash from https://github.com/common-workflow-language/common-workflow-language.
         # Update it to get the latest tests.
-        testhash = '6a955874ade22080b8ef962b4e0d6e408112c1ef'  # Date:   Tue Dec 16 2020 8:43pm PST
-        url = 'https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip' % testhash
+        testhash = "6a955874ade22080b8ef962b4e0d6e408112c1ef"  # Date:   Tue Dec 16 2020 8:43pm PST
+        url = (
+            "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip"
+            % testhash
+        )
         if not os.path.exists(self.cwlSpec):
-            urlretrieve(url, 'spec.zip')
-            with zipfile.ZipFile('spec.zip', 'r') as z:
+            urlretrieve(url, "spec.zip")
+            with zipfile.ZipFile("spec.zip", "r") as z:
                 z.extractall()
-            shutil.move('common-workflow-language-%s' % testhash, self.cwlSpec)
-            os.remove('spec.zip')
+            shutil.move("common-workflow-language-%s" % testhash, self.cwlSpec)
+            os.remove("spec.zip")
 
     def tearDown(self):
         """Clean up outputs."""
@@ -191,10 +215,17 @@ class CWLv10Test(ToilTest):
 
     def _tester(self, cwlfile, jobfile, expect, main_args=[], out_name="output"):
         from toil.cwl import cwltoil
+
         st = StringIO()
         main_args = main_args[:]
-        main_args.extend(['--outdir', self.outDir,
-                          os.path.join(self.rootDir, cwlfile), os.path.join(self.rootDir, jobfile)])
+        main_args.extend(
+            [
+                "--outdir",
+                self.outDir,
+                os.path.join(self.rootDir, cwlfile),
+                os.path.join(self.rootDir, jobfile),
+            ]
+        )
         cwltoil.main(main_args, stdout=st)
         out = json.loads(st.getvalue())
         out[out_name].pop("http://commonwl.org/cwltool#generation", None)
@@ -204,10 +235,18 @@ class CWLv10Test(ToilTest):
 
     def _debug_worker_tester(self, cwlfile, jobfile, expect):
         from toil.cwl import cwltoil
+
         st = StringIO()
-        cwltoil.main(['--debugWorker', '--outdir', self.outDir,
-                     os.path.join(self.rootDir, cwlfile),
-                     os.path.join(self.rootDir, jobfile)], stdout=st)
+        cwltoil.main(
+            [
+                "--debugWorker",
+                "--outdir",
+                self.outDir,
+                os.path.join(self.rootDir, cwlfile),
+                os.path.join(self.rootDir, jobfile),
+            ],
+            stdout=st,
+        )
         out = json.loads(st.getvalue())
         out["output"].pop("http://commonwl.org/cwltool#generation", None)
         out["output"].pop("nameext", None)
@@ -215,18 +254,23 @@ class CWLv10Test(ToilTest):
         self.assertEqual(out, expect)
 
     def revsort(self, cwl_filename, tester_fn):
-        tester_fn('src/toil/test/cwl/' + cwl_filename,
-                  'src/toil/test/cwl/revsort-job.json',
-                  self._expected_revsort_output(self.outDir))
+        tester_fn(
+            "src/toil/test/cwl/" + cwl_filename,
+            "src/toil/test/cwl/revsort-job.json",
+            self._expected_revsort_output(self.outDir),
+        )
 
     def download(self, inputs, tester_fn):
-        input_location = os.path.join('src/toil/test/cwl', inputs)
-        tester_fn('src/toil/test/cwl/download.cwl',
-                  input_location,
-                  self._expected_download_output(self.outDir))
+        input_location = os.path.join("src/toil/test/cwl", inputs)
+        tester_fn(
+            "src/toil/test/cwl/download.cwl",
+            input_location,
+            self._expected_download_output(self.outDir),
+        )
 
     def test_mpi(self):
         from toil.cwl import cwltoil
+
         stdout = StringIO()
         main_args = [
             "--outdir",
@@ -242,7 +286,7 @@ class CWLv10Test(ToilTest):
         cwltoil.main(main_args, stdout=stdout)
         os.environ["PATH"] = path
         out = json.loads(stdout.getvalue())
-        with open(out.get('pids', {}).get('location')[len('file://'):]) as f:
+        with open(out.get("pids", {}).get("location")[len("file://") :]) as f:
             two_pids = [int(i) for i in f.read().split()]
         self.assertEqual(len(two_pids), 2)
         self.assertTrue(isinstance(two_pids[0], int))
@@ -251,25 +295,31 @@ class CWLv10Test(ToilTest):
     @needs_aws_s3
     def test_s3_as_secondary_file(self):
         from toil.cwl import cwltoil
+
         stdout = StringIO()
-        main_args = ['--outdir', self.outDir,
-                     os.path.join(self.rootDir, 'src/toil/test/cwl/s3_secondary_file.cwl'),
-                     os.path.join(self.rootDir, 'src/toil/test/cwl/s3_secondary_file.json')]
+        main_args = [
+            "--outdir",
+            self.outDir,
+            os.path.join(self.rootDir, "src/toil/test/cwl/s3_secondary_file.cwl"),
+            os.path.join(self.rootDir, "src/toil/test/cwl/s3_secondary_file.json"),
+        ]
         cwltoil.main(main_args, stdout=stdout)
         out = json.loads(stdout.getvalue())
-        self.assertEqual(out['output']['checksum'], 'sha1$d14dd02e354918b4776b941d154c18ebc15b9b38')
-        self.assertEqual(out['output']['size'], 24)
-        with open(out['output']['location'][len('file://'):]) as f:
-            self.assertEqual(f.read().strip(), 'When is s4 coming out?')
+        self.assertEqual(
+            out["output"]["checksum"], "sha1$d14dd02e354918b4776b941d154c18ebc15b9b38"
+        )
+        self.assertEqual(out["output"]["size"], 24)
+        with open(out["output"]["location"][len("file://") :]) as f:
+            self.assertEqual(f.read().strip(), "When is s4 coming out?")
 
     def test_run_revsort(self):
-        self.revsort('revsort.cwl', self._tester)
+        self.revsort("revsort.cwl", self._tester)
 
     def test_run_revsort2(self):
-        self.revsort('revsort2.cwl', self._tester)
+        self.revsort("revsort2.cwl", self._tester)
 
     def test_run_revsort_debug_worker(self):
-        self.revsort('revsort.cwl', self._debug_worker_tester)
+        self.revsort("revsort.cwl", self._debug_worker_tester)
 
     def test_run_colon_output(self):
         self._tester(
@@ -281,29 +331,33 @@ class CWLv10Test(ToilTest):
 
     @needs_aws_s3
     def test_run_s3(self):
-        self.download('download_s3.json', self._tester)
+        self.download("download_s3.json", self._tester)
 
     def test_run_http(self):
-        self.download('download_http.json', self._tester)
+        self.download("download_http.json", self._tester)
 
     def test_run_https(self):
-        self.download('download_https.json', self._tester)
+        self.download("download_https.json", self._tester)
 
     @slow
     def test_bioconda(self):
-        self._tester('src/toil/test/cwl/seqtk_seq.cwl',
-                     'src/toil/test/cwl/seqtk_seq_job.json',
-                     self._expected_seqtk_output(self.outDir),
-                     main_args=["--beta-conda-dependencies"],
-                     out_name="output1")
+        self._tester(
+            "src/toil/test/cwl/seqtk_seq.cwl",
+            "src/toil/test/cwl/seqtk_seq_job.json",
+            self._expected_seqtk_output(self.outDir),
+            main_args=["--beta-conda-dependencies"],
+            out_name="output1",
+        )
 
     @needs_docker
     def test_biocontainers(self):
-        self._tester('src/toil/test/cwl/seqtk_seq.cwl',
-                     'src/toil/test/cwl/seqtk_seq_job.json',
-                     self._expected_seqtk_output(self.outDir),
-                     main_args=["--beta-use-biocontainers"],
-                     out_name="output1")
+        self._tester(
+            "src/toil/test/cwl/seqtk_seq.cwl",
+            "src/toil/test/cwl/seqtk_seq_job.json",
+            self._expected_seqtk_output(self.outDir),
+            main_args=["--beta-use-biocontainers"],
+            out_name="output1",
+        )
 
     @slow
     def test_restart(self):
@@ -311,22 +365,34 @@ class CWLv10Test(ToilTest):
         Enable restarts with toil-cwl-runner -- run failing test, re-run correct test.
         Only implemented for single machine.
         """
-        log.info('Running CWL Test Restart.  Expecting failure, then success.')
+        log.info("Running CWL Test Restart.  Expecting failure, then success.")
         from toil.cwl import cwltoil
         from toil.jobStores.abstractJobStore import NoSuchJobStoreException
         from toil.leader import FailedJobsException
+
         outDir = self._createTempDir()
         cwlDir = os.path.join(self._projectRootPath(), "src", "toil", "test", "cwl")
-        cmd = ['--outdir', outDir, '--jobStore', os.path.join(outDir, 'jobStore'), "--no-container",
-               os.path.join(cwlDir, "revsort.cwl"), os.path.join(cwlDir, "revsort-job.json")]
+        cmd = [
+            "--outdir",
+            outDir,
+            "--jobStore",
+            os.path.join(outDir, "jobStore"),
+            "--no-container",
+            os.path.join(cwlDir, "revsort.cwl"),
+            os.path.join(cwlDir, "revsort-job.json"),
+        ]
 
         # create a fake rev bin that actually points to the "date" binary
-        cal_path = [d for d in os.environ["PATH"].split(':') if os.path.exists(os.path.join(d, 'date'))][-1]
-        os.symlink(os.path.join(cal_path, 'date'), f'{os.path.join(outDir, "rev")}')
+        cal_path = [
+            d
+            for d in os.environ["PATH"].split(":")
+            if os.path.exists(os.path.join(d, "date"))
+        ][-1]
+        os.symlink(os.path.join(cal_path, "date"), f'{os.path.join(outDir, "rev")}')
 
         def path_with_bogus_rev():
             # append to the front of the PATH so that we check there first
-            return f'{outDir}:' + os.environ["PATH"]
+            return f"{outDir}:" + os.environ["PATH"]
 
         orig_path = os.environ["PATH"]
         # Force a failure by trying to use an incorrect version of `rev` from the PATH
@@ -353,12 +419,16 @@ class CWLv10Test(ToilTest):
 
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
-    def test_run_conformance(self, batchSystem=None, caching=False, selected_tests=None):
-        run_conformance_tests(workDir=self.workDir,
-                              yml='conformance_test_v1.0.yaml',
-                              caching=caching,
-                              batchSystem=batchSystem,
-                              selected_tests=selected_tests)
+    def test_run_conformance(
+        self, batchSystem=None, caching=False, selected_tests=None
+    ):
+        run_conformance_tests(
+            workDir=self.workDir,
+            yml="conformance_test_v1.0.yaml",
+            caching=caching,
+            batchSystem=batchSystem,
+            selected_tests=selected_tests,
+        )
 
     @slow
     @needs_lsf
@@ -399,12 +469,14 @@ class CWLv10Test(ToilTest):
     @slow
     @needs_kubernetes
     def test_kubernetes_cwl_conformance(self, **kwargs):
-        return self.test_run_conformance(batchSystem="kubernetes",
-                                         # This test doesn't work with
-                                         # Singularity; see
-                                         # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
-                                         skipped_tests="docker_entrypoint",
-                                         **kwargs)
+        return self.test_run_conformance(
+            batchSystem="kubernetes",
+            # This test doesn't work with
+            # Singularity; see
+            # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
+            skipped_tests="docker_entrypoint",
+            **kwargs,
+        )
 
     @slow
     @needs_lsf
@@ -451,40 +523,46 @@ class CWLv10Test(ToilTest):
     def _expected_seqtk_output(outDir):
         # Having unicode string literals isn't necessary for the assertion but
         # makes for a less noisy diff in case the assertion fails.
-        loc = 'file://' + os.path.join(outDir, 'out')
+        loc = "file://" + os.path.join(outDir, "out")
         return {
-            'output1':  {
-                'location': loc,
-                'checksum': 'sha1$322e001e5a99f19abdce9f02ad0f02a17b5066c2',
-                'basename': 'out',
-                'class': 'File',
-                'size': 150}}
+            "output1": {
+                "location": loc,
+                "checksum": "sha1$322e001e5a99f19abdce9f02ad0f02a17b5066c2",
+                "basename": "out",
+                "class": "File",
+                "size": 150,
+            }
+        }
 
     @staticmethod
     def _expected_revsort_output(outDir):
         # Having unicode string literals isn't necessary for the assertion but
         # makes for a less noisy diff in case the assertion fails.
-        loc = 'file://' + os.path.join(outDir, 'output.txt')
+        loc = "file://" + os.path.join(outDir, "output.txt")
         return {
-            'output': {
-                'location': loc,
-                'basename': 'output.txt',
-                'size': 1111,
-                'class': 'File',
-                'checksum': 'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}}
+            "output": {
+                "location": loc,
+                "basename": "output.txt",
+                "size": 1111,
+                "class": "File",
+                "checksum": "sha1$b9214658cc453331b62c2282b772a5c063dbd284",
+            }
+        }
 
     @staticmethod
     def _expected_download_output(outDir):
         # Having unicode string literals isn't necessary for the assertion but
         # makes for a less noisy diff in case the assertion fails.
-        loc = 'file://' + os.path.join(outDir, 'output.txt')
+        loc = "file://" + os.path.join(outDir, "output.txt")
         return {
-            'output': {
-                'location': loc,
-                'basename': 'output.txt',
-                'size': 0,
-                'class': 'File',
-                'checksum': 'sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709'}}
+            "output": {
+                "location": loc,
+                "basename": "output.txt",
+                "size": 0,
+                "class": "File",
+                "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709",
+            }
+        }
 
     @staticmethod
     def _expected_colon_output(outDir):
@@ -514,15 +592,18 @@ class CWLv11Test(ToilTest):
     @classmethod
     def setUpClass(cls):
         """Runs anew before each test to create farm fresh temp dirs."""
-        cls.outDir = f'/tmp/toil-cwl-v1_1-test-{str(uuid.uuid4())}'
+        cls.outDir = f"/tmp/toil-cwl-v1_1-test-{str(uuid.uuid4())}"
         os.makedirs(cls.outDir)
         cls.rootDir = cls._projectRootPath()
-        cls.cwlSpec = os.path.join(cls.rootDir, 'src/toil/test/cwl/spec_v11')
-        cls.test_yaml = os.path.join(cls.cwlSpec, 'conformance_tests.yaml')
+        cls.cwlSpec = os.path.join(cls.rootDir, "src/toil/test/cwl/spec_v11")
+        cls.test_yaml = os.path.join(cls.cwlSpec, "conformance_tests.yaml")
         # TODO: Use a commit zip in case someone decides to rewrite master's history?
-        url = 'https://github.com/common-workflow-language/cwl-v1.1.git'
-        commit = '664835e83eb5e57eee18a04ce7b05fb9d70d77b7'
-        p = subprocess.Popen(f'git clone {url} {cls.cwlSpec} && cd {cls.cwlSpec} && git checkout {commit}', shell=True)
+        url = "https://github.com/common-workflow-language/cwl-v1.1.git"
+        commit = "664835e83eb5e57eee18a04ce7b05fb9d70d77b7"
+        p = subprocess.Popen(
+            f"git clone {url} {cls.cwlSpec} && cd {cls.cwlSpec} && git checkout {commit}",
+            shell=True,
+        )
         p.communicate()
 
     def tearDown(self):
@@ -534,9 +615,7 @@ class CWLv11Test(ToilTest):
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance(self, **kwargs):
-        run_conformance_tests(workDir=self.cwlSpec,
-                              yml=self.test_yaml,
-                              **kwargs)
+        run_conformance_tests(workDir=self.cwlSpec, yml=self.test_yaml, **kwargs)
 
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
@@ -546,12 +625,14 @@ class CWLv11Test(ToilTest):
     @slow
     @needs_kubernetes
     def test_kubernetes_cwl_conformance(self, **kwargs):
-        return self.test_run_conformance(batchSystem="kubernetes",
-                                         # These tests don't work with
-                                         # Singularity; see
-                                         # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
-                                         skipped_tests="docker_entrypoint,stdin_shorcut",
-                                         **kwargs)
+        return self.test_run_conformance(
+            batchSystem="kubernetes",
+            # These tests don't work with
+            # Singularity; see
+            # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
+            skipped_tests="docker_entrypoint,stdin_shorcut",
+            **kwargs,
+        )
 
     @slow
     @needs_kubernetes
@@ -720,15 +801,18 @@ class CWLv12Test(ToilTest):
     @classmethod
     def setUpClass(cls):
         """Runs anew before each test to create farm fresh temp dirs."""
-        cls.outDir = f'/tmp/toil-cwl-v1_2-test-{str(uuid.uuid4())}'
+        cls.outDir = f"/tmp/toil-cwl-v1_2-test-{str(uuid.uuid4())}"
         os.makedirs(cls.outDir)
         cls.rootDir = cls._projectRootPath()
-        cls.cwlSpec = os.path.join(cls.rootDir, 'src/toil/test/cwl/spec_v12')
-        cls.test_yaml = os.path.join(cls.cwlSpec, 'conformance_tests.yaml')
+        cls.cwlSpec = os.path.join(cls.rootDir, "src/toil/test/cwl/spec_v12")
+        cls.test_yaml = os.path.join(cls.cwlSpec, "conformance_tests.yaml")
         # TODO: Use a commit zip in case someone decides to rewrite master's history?
-        url = 'https://github.com/common-workflow-language/cwl-v1.2.git'
-        commit = '8c3fd9d9f0209a51c5efacb1c7bc02a1164688d6'
-        p = subprocess.Popen(f'git clone {url} {cls.cwlSpec} && cd {cls.cwlSpec} && git checkout {commit}', shell=True)
+        url = "https://github.com/common-workflow-language/cwl-v1.2.git"
+        commit = "8c3fd9d9f0209a51c5efacb1c7bc02a1164688d6"
+        p = subprocess.Popen(
+            f"git clone {url} {cls.cwlSpec} && cd {cls.cwlSpec} && git checkout {commit}",
+            shell=True,
+        )
         p.communicate()
 
     def tearDown(self):
@@ -740,9 +824,7 @@ class CWLv12Test(ToilTest):
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance(self, **kwargs):
-        run_conformance_tests(workDir=self.cwlSpec,
-                              yml=self.test_yaml,
-                              **kwargs)
+        run_conformance_tests(workDir=self.cwlSpec, yml=self.test_yaml, **kwargs)
 
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
@@ -757,28 +839,37 @@ class CWLv12Test(ToilTest):
         update on a single node, and that this doesn't break any other
         features.
         """
-        self.test_run_conformance(extra_args=['--bypass-file-store'],
-                                  must_support_all_features=True)
+        self.test_run_conformance(
+            extra_args=["--bypass-file-store"], must_support_all_features=True
+        )
 
     @slow
     @needs_kubernetes
     def test_kubernetes_cwl_conformance(self, **kwargs):
-        if 'junit_file' not in kwargs:
-            kwargs['junit_file'] = os.path.join(self.rootDir, 'kubernetes-conformance.junit.xml')
-        return self.test_run_conformance(batchSystem="kubernetes",
-                                         # This test doesn't work with
-                                         # Singularity; see
-                                         # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
-                                         # and
-                                         # https://github.com/common-workflow-language/cwltool/issues/1441#issuecomment-826747975
-                                         skipped_tests="docker_entrypoint",
-                                         **kwargs)
+        if "junit_file" not in kwargs:
+            kwargs["junit_file"] = os.path.join(
+                self.rootDir, "kubernetes-conformance.junit.xml"
+            )
+        return self.test_run_conformance(
+            batchSystem="kubernetes",
+            # This test doesn't work with
+            # Singularity; see
+            # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
+            # and
+            # https://github.com/common-workflow-language/cwltool/issues/1441#issuecomment-826747975
+            skipped_tests="docker_entrypoint",
+            **kwargs,
+        )
 
     @slow
     @needs_kubernetes
     def test_kubernetes_cwl_conformance_with_caching(self):
-        return self.test_kubernetes_cwl_conformance(caching=True, junit_file=os.path.join(self.rootDir,
-                                                                                          'kubernetes-caching-conformance.junit.xml'))
+        return self.test_kubernetes_cwl_conformance(
+            caching=True,
+            junit_file=os.path.join(
+                self.rootDir, "kubernetes-caching-conformance.junit.xml"
+            ),
+        )
 
     def _expected_streaming_output(self, outDir):
         # Having unicode string literals isn't necessary for the assertion but
@@ -802,7 +893,7 @@ class CWLv12Test(ToilTest):
         cwlfile = "src/toil/test/cwl/stream.cwl"
         jobfile = "src/toil/test/cwl/stream.json"
         out_name = "output"
-        jobstore = f'--jobStore=aws:us-west-1:toil-stream-{uuid.uuid4()}'
+        jobstore = f"--jobStore=aws:us-west-1:toil-stream-{uuid.uuid4()}"
         from toil.cwl import cwltoil
 
         st = StringIO()
@@ -824,54 +915,36 @@ class CWLv12Test(ToilTest):
 
 
 @needs_cwl
-class CWLSmallTests(ToilTest):
-    def test_usage_message(self):
-        """
-        This is purely to ensure a (more) helpful error message is printed if a user does
-        not order their positional args correctly [cwl, cwl-job (json/yml/yaml), jobstore].
-        """
-        toil = 'toil-cwl-runner'
-        cwl = 'test/cwl/revsort.cwl'
-        cwl_job_json = 'test/cwl/revsort-job.json'
-        jobstore = 'delete-test-toil'
-        random_option_1 = '--logInfo'
-        random_option_2 = '--disableChaining'
-        cmd_wrong_ordering_1 = [toil, cwl, cwl_job_json, jobstore, random_option_1, random_option_2]
-        cmd_wrong_ordering_2 = [toil, cwl, jobstore, random_option_1, random_option_2, cwl_job_json]
-        cmd_wrong_ordering_3 = [toil, jobstore, random_option_1, random_option_2, cwl, cwl_job_json]
+class CWLSmallLogDir(ToilTest):
+    @classmethod
+    def setUpClass(cls):
+        """Runs anew before each test to create farm fresh temp dirs."""
+        cls.out_dir = f"/tmp/cwl-out-dir-{str(uuid.uuid4())}"
+        cls.log_dir = Path(os.path.join(os.path.dirname(__file__), "cwl-logs"))
+        os.makedirs(cls.out_dir)
+        os.makedirs(cls.log_dir)
 
-        for cmd in [cmd_wrong_ordering_1, cmd_wrong_ordering_2, cmd_wrong_ordering_3]:
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout, stderr = p.communicate()
-            self.assertIn(b'Usage: toil-cwl-runner [options] example.cwl example-job.yaml', stderr)
-            self.assertIn(b'All positional arguments [cwl, yml_or_json] '
-                          b'must always be specified last for toil-cwl-runner.', stderr)
+    def tearDown(self):
+        """Clean up outputs."""
+        if os.path.exists(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        if os.path.exists(self.log_dir):
+            shutil.rmtree(self.log_dir)
 
-    def test_workflow_echo_string(self):
-        toil = 'toil-cwl-runner'
-        jobstore = f'--jobStore=file:explicit-local-jobstore-{uuid.uuid4()}'
-        option_1 = '--strict-memory-limit'
-        option_2 = '--force-docker-pull'
-        option_3 = '--clean=always'
-        cwl = os.path.join(os.path.dirname(__file__), 'echo_string.cwl')
-        cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
-        log.debug(f'Now running: {" ".join(cmd)}')
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = p.communicate()
-        assert stdout == b'{}', f"Got wrong output: {stdout}\nWith error: {stderr}"
-        assert b'Finished toil run successfully' in stderr
-        assert p.returncode == 0
+        unittest.TestCase.tearDown(self)
 
-
-    def test_workflow_echo_string_scatter_capture_stdout(self):
-        toil = 'toil-cwl-runner'
-        jobstore = f'--jobStore=file:explicit-local-jobstore-{uuid.uuid4()}'
-        option_1 = '--strict-memory-limit'
-        option_2 = '--force-docker-pull'
-        option_3 = '--clean=always'
-        cwl = os.path.join(os.path.dirname(__file__), 'echo_string_scatter_capture_stdout.cwl')
-        cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
-        log.debug(f'Now running: {" ".join(cmd)}')
+    def test_workflow_echo_string_scatter_stderr_log_dir(self):
+        job_store = 'test_workflow_echo_string_scatter_stderr_log_dir'
+        toil = "toil-cwl-runner"
+        jobstore = f"--jobStore={job_store}"
+        option_1 = "--strict-memory-limit"
+        option_2 = "--force-docker-pull"
+        option_3 = "--clean=always"
+        option_4 = f"--log-dir={self.log_dir}"
+        cwl = os.path.join(
+            os.path.dirname(__file__), "echo_string_scatter_capture_stdout.cwl"
+        )
+        cmd = [toil, jobstore, option_1, option_2, option_3, option_4, cwl]
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         outputs = json.loads(stdout)
@@ -882,85 +955,246 @@ class CWLSmallTests(ToilTest):
         # Each value of scatter should generate a separate file in the output.
         for index, file in enumerate(out_list):
             if index > 0:
-                new_file_loc = out_base["location"] + f'_{index + 1}'
+                new_file_loc = out_base["location"] + f"_{index + 1}"
             else:
                 new_file_loc = out_base["location"]
-            assert new_file_loc == file['location'], f"Toil should have detected conflicts for these stdout files {new_file_loc} and {file}"
+            assert (
+                new_file_loc == file["location"]
+            ), f"Toil should have detected conflicts for these stdout files {new_file_loc} and {file}"
 
-        assert b'Finished toil run successfully' in stderr
+        assert b"Finished toil run successfully" in stderr
+        assert p.returncode == 0
+
+        assert os.path.exists(self.log_dir)
+        scatter_0 = os.path.join(self.log_dir, "echo-test-scatter.0.scatter")
+        scatter_1 = os.path.join(self.log_dir, "echo-test-scatter.1.scatter")
+        list_0 = os.path.join(self.log_dir, "echo-test-scatter.0.list")
+        list_1 = os.path.join(self.log_dir, "echo-test-scatter.1.list")
+        assert os.path.exists(scatter_0)
+        assert os.path.exists(scatter_1)
+        assert os.path.exists(list_0)
+        assert os.path.exists(list_1)
+
+    def test_log_dir_echo_no_output(self) -> None:
+        job_store  = 'test_log_dir_echo_no_output'
+        toil = "toil-cwl-runner"
+        jobstore = f"--jobStore={job_store}"
+        option_1 = "--strict-memory-limit"
+        option_2 = "--force-docker-pull"
+        option_3 = "--clean=always"
+        option_4 = f"--log-dir={self.log_dir}"
+        cwl = os.path.join(os.path.dirname(__file__), "echo-stdout-log-dir.cwl")
+        cmd = [toil, jobstore, option_1, option_2, option_3, option_4, cwl]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = p.communicate()
+
+        tmp_path = self.log_dir
+
+        assert os.path.exists(self.log_dir)
+        assert len(list(tmp_path.iterdir())) == 1
+
+        subdir = next(tmp_path.iterdir())
+        assert subdir.name == "echo"
+        assert subdir.is_dir()
+        assert len(list(subdir.iterdir())) == 1
+        result = next(subdir.iterdir())
+        assert result.name == "out.txt"
+        output = open(result).read()
+        assert "hello" in output
+    def test_log_dir_echo_stderr(self) -> None:
+
+        job_store  = 'test_log_dir_echo_stderr'
+        toil = "toil-cwl-runner"
+        jobstore = f"--jobStore={job_store}"
+        option_1 = "--strict-memory-limit"
+        option_2 = "--force-docker-pull"
+        option_3 = "--clean=always"
+        option_4 = f"--log-dir={self.log_dir}"
+        cwl = os.path.join(os.path.dirname(__file__), "echo-stderr.cwl")
+        cmd = [toil, jobstore, option_1, option_2, option_3, option_4, cwl]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = p.communicate()
+        tmp_path = self.log_dir
+
+        assert len(list(tmp_path.iterdir())) == 1
+
+        subdir = next(tmp_path.iterdir())
+        assert subdir.name == "echo-stderr.cwl"
+        assert subdir.is_dir()
+        assert len(list(subdir.iterdir())) == 1
+        result = next(subdir.iterdir())
+        assert result.name == "out.txt"
+        output = open(result).read()
+        assert output == "hello\n"
+
+
+@needs_cwl
+class CWLSmallTests(ToilTest):
+    def test_usage_message(self):
+        """
+        This is purely to ensure a (more) helpful error message is printed if a user does
+        not order their positional args correctly [cwl, cwl-job (json/yml/yaml), jobstore].
+        """
+        toil = "toil-cwl-runner"
+        cwl = "test/cwl/revsort.cwl"
+        cwl_job_json = "test/cwl/revsort-job.json"
+        jobstore = "delete-test-toil"
+        random_option_1 = "--logInfo"
+        random_option_2 = "--disableChaining"
+        cmd_wrong_ordering_1 = [
+            toil,
+            cwl,
+            cwl_job_json,
+            jobstore,
+            random_option_1,
+            random_option_2,
+        ]
+        cmd_wrong_ordering_2 = [
+            toil,
+            cwl,
+            jobstore,
+            random_option_1,
+            random_option_2,
+            cwl_job_json,
+        ]
+        cmd_wrong_ordering_3 = [
+            toil,
+            jobstore,
+            random_option_1,
+            random_option_2,
+            cwl,
+            cwl_job_json,
+        ]
+
+        for cmd in [cmd_wrong_ordering_1, cmd_wrong_ordering_2, cmd_wrong_ordering_3]:
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = p.communicate()
+            self.assertIn(
+                b"Usage: toil-cwl-runner [options] example.cwl example-job.yaml", stderr
+            )
+            self.assertIn(
+                b"All positional arguments [cwl, yml_or_json] "
+                b"must always be specified last for toil-cwl-runner.",
+                stderr,
+            )
+
+    def test_workflow_echo_string(self):
+        toil = "toil-cwl-runner"
+        jobstore = f"--jobStore=file:explicit-local-jobstore-{uuid.uuid4()}"
+        option_1 = "--strict-memory-limit"
+        option_2 = "--force-docker-pull"
+        option_3 = "--clean=always"
+        cwl = os.path.join(os.path.dirname(__file__), "echo_string.cwl")
+        cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = p.communicate()
+        assert stdout == b"{}", f"Got wrong output: {stdout}\nWith error: {stderr}"
+        assert b"Finished toil run successfully" in stderr
+        assert p.returncode == 0
+
+    def test_workflow_echo_string_scatter_capture_stdout(self):
+        toil = "toil-cwl-runner"
+        jobstore = f"--jobStore=file:explicit-local-jobstore-{uuid.uuid4()}"
+        option_1 = "--strict-memory-limit"
+        option_2 = "--force-docker-pull"
+        option_3 = "--clean=always"
+        cwl = os.path.join(
+            os.path.dirname(__file__), "echo_string_scatter_capture_stdout.cwl"
+        )
+        cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = p.communicate()
+        outputs = json.loads(stdout)
+        out_list = outputs["list_out"]
+        assert len(out_list) == 2, f"outList shoud have two file elements {out_list}"
+        out_base = outputs["list_out"][0]
+        # This is a test on the scatter functionality and stdout.
+        # Each value of scatter should generate a separate file in the output.
+        for index, file in enumerate(out_list):
+            if index > 0:
+                new_file_loc = out_base["location"] + f"_{index + 1}"
+            else:
+                new_file_loc = out_base["location"]
+            assert (
+                new_file_loc == file["location"]
+            ), f"Toil should have detected conflicts for these stdout files {new_file_loc} and {file}"
+
+        assert b"Finished toil run successfully" in stderr
         assert p.returncode == 0
 
     def test_visit_top_cwl_class(self):
         structure = {
-            'class': 'Directory',
-            'listing': [
+            "class": "Directory",
+            "listing": [
                 {
-                    'class': 'Directory',
-                    'listing': [
-                        {'class': 'File'},
+                    "class": "Directory",
+                    "listing": [
+                        {"class": "File"},
                         {
-                            'class': 'File',
-                            'secondaryFiles': [
-                                {'class': 'Directory'},
-                                {'class': 'File'},
-                                {'cruft'}
-                            ]
-                        }
-                    ]
+                            "class": "File",
+                            "secondaryFiles": [
+                                {"class": "Directory"},
+                                {"class": "File"},
+                                {"cruft"},
+                            ],
+                        },
+                    ],
                 },
-                {'some garbage': 'yep'},
+                {"some garbage": "yep"},
                 [],
-                None
-            ]
+                None,
+            ],
         }
 
         self.counter = 0
+
         def increment(thing: Dict) -> None:
             """
             Make sure we are at something CWL object like, and count it.
             """
-            self.assertIn('class', thing)
+            self.assertIn("class", thing)
             self.counter += 1
 
         # We should stop at the root when looking for a Directory
-        visit_top_cwl_class(structure, ('Directory',), increment)
+        visit_top_cwl_class(structure, ("Directory",), increment)
         self.assertEqual(self.counter, 1)
 
         # We should see the top-level files when looking for a file
         self.counter = 0
-        visit_top_cwl_class(structure, ('File',), increment)
+        visit_top_cwl_class(structure, ("File",), increment)
         self.assertEqual(self.counter, 2)
 
         # When looking for a file or a directory we should stop at the first match to either.
         self.counter = 0
-        visit_top_cwl_class(structure, ('File', 'Directory'), increment)
+        visit_top_cwl_class(structure, ("File", "Directory"), increment)
         self.assertEqual(self.counter, 1)
 
     def test_visit_cwl_class_and_reduce(self):
         structure = {
-            'class': 'Directory',
-            'listing': [
+            "class": "Directory",
+            "listing": [
                 {
-                    'class': 'Directory',
-                    'listing': [
-                        {'class': 'File'},
+                    "class": "Directory",
+                    "listing": [
+                        {"class": "File"},
                         {
-                            'class': 'File',
-                            'secondaryFiles': [
-                                {'class': 'Directory'},
-                                {'class': 'File'},
-                                {'cruft'}
-                            ]
-                        }
-                    ]
+                            "class": "File",
+                            "secondaryFiles": [
+                                {"class": "Directory"},
+                                {"class": "File"},
+                                {"cruft"},
+                            ],
+                        },
+                    ],
                 },
-                {'some garbage': 'yep'},
+                {"some garbage": "yep"},
                 [],
-                None
-            ]
+                None,
+            ],
         }
 
         self.down_count = 0
+
         def op_down(thing: MutableMapping) -> int:
             """
             Grab the ID of the thing we are at, and count what we visit going
@@ -971,7 +1205,10 @@ class CWLSmallTests(ToilTest):
 
         self.up_count = 0
         self.up_child_count = 0
-        def op_up(thing: MutableMapping, down_value: int, child_results: List[str]) -> str:
+
+        def op_up(
+            thing: MutableMapping, down_value: int, child_results: List[str]
+        ) -> str:
             """
             Check the down return value and the up return values, and count
             what we visit going up and what child relationships we have.
@@ -983,8 +1220,7 @@ class CWLSmallTests(ToilTest):
             self.up_count += 1
             return "Sentinel value!"
 
-
-        visit_cwl_class_and_reduce(structure, ('Directory',), op_down, op_up)
+        visit_cwl_class_and_reduce(structure, ("Directory",), op_down, op_up)
         self.assertEqual(self.down_count, 3)
         self.assertEqual(self.up_count, 3)
         # Only 2 child relationships
@@ -996,20 +1232,20 @@ class CWLSmallTests(ToilTest):
         """
 
         # Define what we would download
-        fid1 = FileID('afile', 10, False)
-        fid2 = FileID('adifferentfile', 1000, True)
+        fid1 = FileID("afile", 10, False)
+        fid2 = FileID("adifferentfile", 1000, True)
 
         # And what directory structure it would be in
         structure = {
-            'dir1': {
-                'dir2': {
-                    'f1': 'toilfile:' + fid1.pack(),
-                    'f1again': 'toilfile:' + fid1.pack(),
-                    'dir2sub': {}
+            "dir1": {
+                "dir2": {
+                    "f1": "toilfile:" + fid1.pack(),
+                    "f1again": "toilfile:" + fid1.pack(),
+                    "dir2sub": {},
                 },
-                'dir3': {}
+                "dir3": {},
             },
-            'anotherfile': 'toilfile:' + fid2.pack()
+            "anotherfile": "toilfile:" + fid2.pack(),
         }
 
         # Say where to put it on the filesystem
@@ -1035,30 +1271,46 @@ class CWLSmallTests(ToilTest):
         self.assertEqual(len(existing), 2)
 
         # Make sure that the index contents (path to URI) are correct
-        self.assertIn(os.path.join(to_dir, 'dir1/dir2/f1'), index)
-        self.assertIn(os.path.join(to_dir, 'dir1/dir2/f1again'), index)
-        self.assertIn(os.path.join(to_dir, 'anotherfile'), index)
-        self.assertEqual(index[os.path.join(to_dir, 'dir1/dir2/f1')], structure['dir1']['dir2']['f1'])
-        self.assertEqual(index[os.path.join(to_dir, 'dir1/dir2/f1again')], structure['dir1']['dir2']['f1again'])
-        self.assertEqual(index[os.path.join(to_dir, 'anotherfile')], structure['anotherfile'])
+        self.assertIn(os.path.join(to_dir, "dir1/dir2/f1"), index)
+        self.assertIn(os.path.join(to_dir, "dir1/dir2/f1again"), index)
+        self.assertIn(os.path.join(to_dir, "anotherfile"), index)
+        self.assertEqual(
+            index[os.path.join(to_dir, "dir1/dir2/f1")], structure["dir1"]["dir2"]["f1"]
+        )
+        self.assertEqual(
+            index[os.path.join(to_dir, "dir1/dir2/f1again")],
+            structure["dir1"]["dir2"]["f1again"],
+        )
+        self.assertEqual(
+            index[os.path.join(to_dir, "anotherfile")], structure["anotherfile"]
+        )
 
         # And the existing contents (URI to path)
-        self.assertIn('toilfile:' + fid1.pack(), existing)
-        self.assertIn('toilfile:' + fid2.pack(), existing)
-        self.assertIn(existing['toilfile:' + fid1.pack()], [os.path.join(to_dir, 'dir1/dir2/f1'), os.path.join(to_dir, 'dir1/dir2/f1again')])
-        self.assertEqual(existing['toilfile:' + fid2.pack()], os.path.join(to_dir, 'anotherfile'))
+        self.assertIn("toilfile:" + fid1.pack(), existing)
+        self.assertIn("toilfile:" + fid2.pack(), existing)
+        self.assertIn(
+            existing["toilfile:" + fid1.pack()],
+            [
+                os.path.join(to_dir, "dir1/dir2/f1"),
+                os.path.join(to_dir, "dir1/dir2/f1again"),
+            ],
+        )
+        self.assertEqual(
+            existing["toilfile:" + fid2.pack()], os.path.join(to_dir, "anotherfile")
+        )
 
         # The directory structure should be created for real
-        self.assertTrue(os.path.isdir(os.path.join(to_dir, 'dir1')))
-        self.assertTrue(os.path.isdir(os.path.join(to_dir, 'dir1/dir2')))
-        self.assertTrue(os.path.isdir(os.path.join(to_dir, 'dir1/dir2/dir2sub')))
-        self.assertTrue(os.path.isdir(os.path.join(to_dir, 'dir1/dir3')))
+        self.assertTrue(os.path.isdir(os.path.join(to_dir, "dir1")))
+        self.assertTrue(os.path.isdir(os.path.join(to_dir, "dir1/dir2")))
+        self.assertTrue(os.path.isdir(os.path.join(to_dir, "dir1/dir2/dir2sub")))
+        self.assertTrue(os.path.isdir(os.path.join(to_dir, "dir1/dir3")))
 
         # The file store should have been asked to do the download
-        file_store.readGlobalFile.assert_has_calls([call(fid1, os.path.join(to_dir, 'dir1/dir2/f1'), symlink=True),
-                                                    call(fid1, os.path.join(to_dir, 'dir1/dir2/f1again'), symlink=True),
-                                                    call(fid2, os.path.join(to_dir, 'anotherfile'), symlink=True)], any_order=True)
-
-
-
-
+        file_store.readGlobalFile.assert_has_calls(
+            [
+                call(fid1, os.path.join(to_dir, "dir1/dir2/f1"), symlink=True),
+                call(fid1, os.path.join(to_dir, "dir1/dir2/f1again"), symlink=True),
+                call(fid2, os.path.join(to_dir, "anotherfile"), symlink=True),
+            ],
+            any_order=True,
+        )
