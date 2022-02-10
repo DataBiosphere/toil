@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import boto.ec2
 import json
 import logging
 import os
@@ -19,6 +20,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import unittest
 import uuid
 import zipfile
@@ -28,6 +30,8 @@ from unittest.mock import Mock, call
 from urllib.request import urlretrieve
 
 import pytest
+
+#from version_template import exactPython
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
@@ -40,10 +44,13 @@ from toil.cwl.utils import (
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.threading import cpu_count
-from toil.test import (ToilTest,
+from toil.lib.aws import zone_to_region
+from toil.provisioners import cluster_factory
+from toil.provisioners.aws import get_best_aws_zone
+from toil.test import (ToilTest, needs_aws_ec2,
                        needs_aws_s3,
                        needs_cwl,
-                       needs_docker,
+                       needs_docker, needs_fetchable_appliance,
                        needs_gridengine,
                        needs_kubernetes,
                        needs_lsf,
@@ -551,6 +558,162 @@ class CWLv11Test(ToilTest):
     def test_kubernetes_cwl_conformance_with_caching(self):
         return self.test_kubernetes_cwl_conformance(caching=True)
 
+@needs_aws_ec2
+@needs_fetchable_appliance
+@slow
+class CWLOnARMTest(ToilTest):
+    def __init__(self, methodName):
+        super().__init__(methodName=methodName)
+        self.keyName = os.environ.get('TOIL_AWS_KEYNAME', 'id_rsa')
+        self.instanceTypes = ["t4g.large"]
+        self.clusterName = 'cwl-test-' + str(uuid.uuid4())
+        self.numWorkers = ['2']
+        self.numSamples = 2
+        self.spotBid = 0.15
+        self.zone = get_best_aws_zone()
+        assert self.zone is not None, "Could not determine AWS availability zone to test in; is TOIL_AWS_ZONE set?"
+        # We need a boto2 connection to EC2 to check on the cluster
+        self.boto2_ec2 = boto.ec2.connect_to_region(zone_to_region(self.zone))
+
+        # Where should we put our virtualenv?
+        self.venvDir = '/tmp/venv'
+        # Where should we put our data to work on?
+        # Must exist in the Toil container; the leader will try to rsync to it
+        # (for the SSE key) and not create it.
+        self.dataDir = '/tmp'
+
+    def destroyCluster(self) -> None:
+        """
+        Destroy the cluster we built, if it exists.
+
+        Succeeds if the cluster does not currently exist.
+        """
+        subprocess.check_call(['toil', 'destroy-cluster', '-p=aws', '-z', self.zone, self.clusterName])
+
+    def setUp(self):
+        """
+        Set up for the test.
+        Must be overridden to call this method and set self.jobStore.
+        """
+        super().setUp()
+        # Make sure that destroy works before we create any clusters.
+        # If this fails, no tests will run.
+        self.destroyCluster()
+
+    def tearDown(self):
+        # Note that teardown will run even if the test crashes.
+        super().tearDown()
+        self.destroyCluster()
+        subprocess.check_call(['toil', 'clean', self.jobStore])
+
+    def sshUtil(self, command):
+        """
+        Run the given command on the cluster.
+        Raise subprocess.CalledProcessError if it fails.
+        """
+
+        cmd = ['toil', 'ssh-cluster', '--insecure', '-p=aws', '-z', self.zone, self.clusterName] + command
+        log.info("Running %s.", str(cmd))
+        p = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        # Put in non-blocking mode. See https://stackoverflow.com/a/59291466
+        os.set_blocking(p.stdout.fileno(), False)
+        os.set_blocking(p.stderr.fileno(), False)
+
+        out_buffer = b''
+        err_buffer = b''
+
+        loops_since_line = 0
+
+        running = True
+        while running:
+            # While the process is running, see if it stopped
+            running = (p.poll() is None)
+
+            # Also collect its output
+            out_data = p.stdout.read()
+            if out_data:
+                out_buffer += out_data
+
+            while out_buffer.find(b'\n') != -1:
+                # And log every full line
+                cut = out_buffer.find(b'\n')
+                log.info('STDOUT: %s', out_buffer[0:cut].decode('utf-8', errors='ignore'))
+                loops_since_line = 0
+                out_buffer = out_buffer[cut+1:]
+
+            # Same for the error
+            err_data = p.stderr.read()
+            if err_data:
+                err_buffer += err_data
+
+            while err_buffer.find(b'\n') != -1:
+                cut = err_buffer.find(b'\n')
+                log.info('STDERR: %s', err_buffer[0:cut].decode('utf-8', errors='ignore'))
+                loops_since_line = 0
+                err_buffer = err_buffer[cut+1:]
+
+            loops_since_line += 1
+            if loops_since_line > 60:
+                log.debug('...waiting...')
+                loops_since_line = 0
+
+            time.sleep(1)
+
+        # At the end, log the last lines
+        if out_buffer:
+            log.info('STDOUT: %s', out_buffer.decode('utf-8', errors='ignore'))
+        if err_buffer:
+            log.info('STDERR: %s', err_buffer.decode('utf-8', errors='ignore'))
+
+        if p.returncode != 0:
+            # It failed
+            log.error("Failed to run %s.", str(cmd))
+            raise subprocess.CalledProcessError(p.returncode, ' '.join(cmd))
+
+    def createClusterUtil(self, args=None):
+        args = [] if args is None else args
+
+        command = ['toil', 'launch-cluster', '-p=aws', '-z', self.zone, f'--keyPairName={self.keyName}',
+                   '--leaderNodeType=t4g.medium', '-T', 'kubernetes', '--logDebug', self.clusterName] + args
+
+        log.debug('Launching cluster: %s', command)
+
+        # Try creating the cluster
+        subprocess.check_call(command)
+        # If we fail, tearDown will destroy the cluster.
+
+    def launchCluster(self):
+        self.createClusterUtil()
+
+    def testCWLOnARM(self, preemptableJobs=False):
+        """Does the work of the testing.  Many features' tests are thrown in here in no particular order."""
+        # Make a cluster
+        self.launchCluster()
+        # get the leader so we know the IP address - we don't need to wait since create cluster
+        # already insures the leader is running
+        self.cluster = cluster_factory(provisioner='aws', zone=self.zone, clusterName=self.clusterName)
+        self.leader = self.cluster.getLeader()
+
+        # Clone Toil repo
+        # We retrieve the Toil version needed to run the CWL tests
+        # Use either a git command, CI_COMMIT_SHA, or with version.py to find the version
+        # After finding the correct commit and checkout
+        # Activate the virtualenv
+        # In the commit we run the tests using pytest
+
+        commit = os.environ['CI_COMMIT_SHA']
+        # Clone Toil repo
+        self.sshUtil(['git', 'clone', 'https://github.com/DataBiosphere/toil.git'])
+        self.sshUtil(['bash', '-c', f'cd toil && git checkout {commit}'])
+        # --never-download prevents silent upgrades to pip, wheel and setuptools
+        # Activate the virtualenv
+        venv_command = ['virtualenv', '--system-site-packages', '--never-download', self.venvDir]
+        self.sshUtil(venv_command)
+        self.sshUtil(['bash', '-c', 'pwd && ls && cd toil && ls && pwd'])
+        self.sshUtil(['bash', '-c', f'. .{self.venvDir}/bin/activate && cd toil && make prepare && make develop extras=[all]'])
+        # Runs the CWLv12Test on an ARM instance
+        self.sshUtil(['bash', '-c', f'. .{self.venvDir}/bin/activate && ls ./sys/fs/cgroup && cd toil && pytest --log-cli-level DEBUG -r s src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance'])
+        self.cluster.destroyCluster()
 
 @needs_cwl
 class CWLv12Test(ToilTest):
