@@ -1,5 +1,6 @@
 cwlVersion: v1.2
 class: Workflow
+id: echo-test-scatter
 
 inputs:
   - id: arrayS
@@ -9,11 +10,14 @@ inputs:
 steps:
   hello:
     run:
+      id: scatter
       class: CommandLineTool
       inputs:
         s: string
       baseCommand: [echo]
       arguments: [ $(inputs.s)]
+      stdout: scatter.out
+      stderr: scatter.err
       outputs:
         out: stdout
         err: stderr
@@ -29,11 +33,13 @@ steps:
   list:
     run:
       class: CommandLineTool
+      id: list
       inputs:
        file: File
       baseCommand: [ ls , -lh]
       arguments: [ $(inputs.file) ]
       stdout: "list.out"
+      stderr: "list.err"
       outputs: 
         list_out: stdout
     in:
