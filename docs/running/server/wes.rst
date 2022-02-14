@@ -88,8 +88,11 @@ Instead of manually setting up the server components (``toil server``, RabbitMQ,
 ``docker-compose.yml`` file to orchestrate and link them together.
 
 Make sure to change the credentials for basic authentication by updating the
-``traefik.http.middlewares.auth.basicauth.users`` label. (Note that single ``$`` signs need to be replaced with ``$$``
-in the yaml file).
+``traefik.http.middlewares.auth.basicauth.users`` label. The passwords can be generated with tools like ``htpasswd``
+`like this`_. (Note that single ``$`` signs need to be replaced with ``$$`` in the yaml file).
+
+.. _`like this`: https://doc.traefik.io/traefik/v2.0/middlewares/basicauth/#configuration-examples
+
 
 When running on a different host other than ``localhost``, make sure to change the ``Host`` to your
 tartget host in the ``traefik.http.routers.wes.rule`` and ``traefik.http.routers.wespublic.rule`` labels.
@@ -109,10 +112,10 @@ Also make sure to run it behind a firewall; it opens up the Toil server on port 
    :emphasize-lines: 13-15, 22,25, 30,33,34, 43,45
 
 
-Further customization can also be made as needed. For example, if you have a domain, you can set up HTTPS with Let's
-Encrypt `as such`_.
+Further customization can also be made as needed. For example, if you have a domain, you can
+`set up HTTPS with Let's Encrypt`_.
 
-.. _`as such`: https://doc.traefik.io/traefik/user-guides/docker-compose/acme-http/
+.. _`set up HTTPs with Let's Encrypt`: https://doc.traefik.io/traefik/user-guides/docker-compose/acme-http/
 
 Once everything is configured, simply run ``docker-compose up`` to start the containers. Run ``docker-compose down`` to
 stop and remove all containers.
@@ -129,8 +132,7 @@ To run the server on a Toil leader instance on EC2:
 
 #. Launch a Toil cluster with the ``toil launch-cluster`` command with the AWS provisioner
 
-#. SSH into your cluster with the ``--sshOption=-L8080:localhost:8080`` option to forward port ``8080`` to
-   ``localhost:8080``
+#. SSH into your cluster with the ``--sshOption=-L8080:localhost:8080`` option to forward port ``8080``
 
 #. Install Docker Compose by running the following commands from the `Docker docs`_::
 
