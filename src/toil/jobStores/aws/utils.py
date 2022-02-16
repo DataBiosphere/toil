@@ -25,6 +25,7 @@ from botocore.exceptions import ClientError
 
 from toil.lib.compatibility import compat_bytes
 from toil.lib.retry import ErrorCondition, get_error_status, get_error_code, old_retry, retry, DEFAULT_DELAYS, DEFAULT_TIMEOUT
+from toil.lib.aws.utils import connection_reset
 
 logger = logging.getLogger(__name__)
 
