@@ -5,29 +5,43 @@ services:
   rabbitmq:
     image: rabbitmq:3.9.5
     hostname: rabbitmq
-    container_name: rabbitmq
-  celery-worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: celery-worker
+  celery:
+    image: ${TOIL_APPLIANCE_SELF}
     volumes:
-      - /tmp/toil-workflows:/app/toil-workflows
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker:/var/lib/docker
+      - /var/lib/toil:/var/lib/toil
+      - /var/lib/cwl:/var/lib/cwl
+      - /tmp/toil-workflows:/tmp/toil-workflows
     command: celery --broker=amqp://guest:guest@rabbitmq:5672// -A toil.server.celery_app worker --loglevel=INFO
     depends_on:
       - rabbitmq
   wes-server:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: wes-server
+    image: ${TOIL_APPLIANCE_SELF}
     volumes:
-      - /tmp/toil-workflows:/app/toil-workflows
+      - /tmp/toil-workflows:/tmp/toil-workflows
     environment:
       - TOIL_WES_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
-    command: toil server --host 0.0.0.0
-    ports:
-      - "127.0.0.1:8080:8080"
+    command: toil server --host 0.0.0.0 --port 8000 --work_dir /tmp/toil-workflows
+    expose:
+      - 8000
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.wes.rule=Host(`localhost`)"
+      - "traefik.http.routers.wes.entrypoints=web"
+      - "traefik.http.routers.wes.middlewares=auth"
+      - "traefik.http.middlewares.auth.basicauth.users=test:$$2y$$12$$ci.4U63YX83CwkyUrjqxAucnmi2xXOIlEF6T/KdP9824f1Rf1iyNG"
+      - "traefik.http.routers.wespublic.rule=Host(`localhost`) && Path(`/ga4gh/wes/v1/service-info`)"
     depends_on:
       - rabbitmq
-      - celery-worker
+      - celery
+  traefik:
+    image: traefik:v2.2
+    command:
+      - "--providers.docker"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:8080"
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

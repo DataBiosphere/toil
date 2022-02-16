@@ -21,6 +21,7 @@ from tempfile import NamedTemporaryFile
 from typing import Optional, List, Dict, Any, overload, Generator, Tuple
 
 from flask import send_from_directory
+from flask.globals import request as flask_request
 from werkzeug.utils import redirect
 from werkzeug.wrappers.response import Response
 
@@ -143,7 +144,7 @@ class ToilBackend(WESBackend):
                 # that would need to remain in the same order.
                 raise ValueError(f'Option {opt} does not begin with -')
         super(ToilBackend, self).__init__(options)
-        self.work_dir = work_dir
+        self.work_dir = os.path.abspath(work_dir)
 
         self.supported_versions = {
             "py": ["3.6", "3.7", "3.8", "3.9"],
@@ -287,14 +288,8 @@ class ToilBackend(WESBackend):
         stdout = ""
         stderr = ""
         if os.path.isfile(os.path.join(run.work_dir, 'stdout')):
-            # We're at <app root>/ga4gh/wes/v1/runs/{run_id}
-            # We need to get to e.g. <app root>/toil/wes/v1/logs/{run_id}/stdout
-            # Because we don't want to add new endpoints in WES's namespace.
-            # We can't use a /-relative URL because we may be mounted at a path
-            # behind a load balancer, like when we are an AGC engine.
-            # So we use directory traversal to say where we want to go.
-            stdout = f"../../../../toil/wes/v1/logs/{run_id}/stdout"
-            stderr = f"../../../../toil/wes/v1/logs/{run_id}/stderr"
+            stdout = f"{flask_request.host_url}toil/wes/v1/logs/{run_id}/stdout"
+            stderr = f"{flask_request.host_url}toil/wes/v1/logs/{run_id}/stderr"
 
         exit_code = run.fetch("exit_code")
 
