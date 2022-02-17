@@ -24,7 +24,7 @@ import unittest
 import uuid
 import zipfile
 from io import StringIO
-from typing import Dict, List, MutableMapping, Optional
+from typing import Dict, List, MutableMapping, Optional, Union
 from unittest.mock import Mock, call
 from urllib.request import urlretrieve
 
@@ -53,6 +53,7 @@ from toil.test import (
     needs_parasol,
     needs_slurm,
     needs_torque,
+    needs_server,
     slow,
 )
 
@@ -63,21 +64,24 @@ CONFORMANCE_TEST_TIMEOUT = 3600
 def run_conformance_tests(
     workDir: str,
     yml: str,
+    runner: Optional[Union[str, List[str]]] = None,
     caching: bool = False,
     batchSystem: str = None,
     selected_tests: str = None,
     selected_tags: str = None,
     skipped_tests: str = None,
-    extra_args: List[str] = [],
+    extra_args: Optional[List[str]] = None,
     must_support_all_features: bool = False,
     junit_file: Optional[str] = None,
-) -> Optional[str]:
+):
     """
     Run the CWL conformance tests.
 
     :param workDir: Directory to run tests in.
 
     :param yml: CWL test list YML to run tests from.
+
+    :param runner: If set, use this cwl runner instead of the default toil-cwl-runner.
 
     :param caching: If True, use Toil file store caching.
 
@@ -89,16 +93,22 @@ def run_conformance_tests(
 
     :param skipped_tests: Comma-separated string labels of tests to skip.
 
-    :param extra_args: Provide these extra arguments to toil-cwl-runner for each test.
+    :param extra_args: Provide these extra arguments to runner for each test.
 
     :param must_support_all_features: If set, fail if some CWL optional features are unsupported.
 
     :param junit_file: JUnit XML file to write test info to.
     """
     try:
+        # For runners that require multiple arguments (e.g.: `python cwl-runner.py`),
+        # we pass the first argument as the tool and append the rest as its arguments.
+        runner_args = []
+        if isinstance(runner, list):
+            runner, *runner_args = runner
+
         cmd = [
             "cwltest",
-            "--tool=toil-cwl-runner",
+            f"--tool={runner or 'toil-cwl-runner'}",
             f"--test={yml}",
             "--timeout=2400",
             f"--basedir={workDir}",
@@ -118,6 +128,7 @@ def run_conformance_tests(
             cmd.append("--verbose")
 
         args_passed_directly_to_toil = [
+            *runner_args,
             "--clean=always",
             "--logDebug",
             "--statusWait=10",
@@ -125,7 +136,8 @@ def run_conformance_tests(
         if not caching:
             # Turn off caching for the run
             args_passed_directly_to_toil.append("--disableCaching")
-        args_passed_directly_to_toil += extra_args
+        if extra_args:
+            args_passed_directly_to_toil += extra_args
 
         if "SINGULARITY_DOCKER_HUB_MIRROR" in os.environ:
             args_passed_directly_to_toil.append(
@@ -705,6 +717,17 @@ class CWLv12Test(ToilTest):
             junit_file=os.path.join(
                 self.rootDir, "kubernetes-caching-conformance.junit.xml"
             ),
+        )
+
+    @slow
+    @needs_server
+    @unittest.skip
+    def test_wes_server_cwl_conformance(self):
+        self.test_run_conformance(
+            runner=["python", "src/toil/test/server/wes_cwl_runner.py"],
+            extra_args=[
+                # TODO: pass auth info
+            ]
         )
 
     def _expected_streaming_output(self, outDir):
