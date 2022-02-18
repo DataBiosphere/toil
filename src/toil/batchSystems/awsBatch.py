@@ -397,21 +397,42 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         JobDefinition for this workflow run.
         """
         if self.job_definition is None:
+            # First work out what volume mounts to make, because the type
+            # system is happiest this way
+            volumes: List[Dict[str, Dict[str, str]]] = []
+            mount_points: List[Dict[str, str]] = []
+            for i, shared_path in enumerate(set([
+                '/var/lib/toil',
+                '/var/lib/docker',
+                '/var/lib/cwl',
+                '/var/run/docker.sock',
+                '/tmp',
+                self.worker_work_dir
+            ])):
+                # For every path we want to be the same on the host and the
+                # container, choose a name
+                vol_name = f'mnt{i}'
+                # Make a volume for that path
+                volumes.append({'name': vol_name, 'host': {'sourcePath': shared_path}})
+                # Mount the volume at that path
+                mount_points.append({'containerPath': shared_path, 'sourceVolume': vol_name})
+
             job_def_spec = {
                 'jobDefinitionName': 'toil-' + str(uuid.uuid4()),
                 'type': 'container',
                 'containerProperties': {
                     'image': self.docker_image,
-                    # Unlike the Kubernetes batch system we always mount the Toil
-                    # workDir onto the host. Hopefully it has its ephemeral disks mounted there.
-                    # TODO: Where do the default batch AMIs mount their ephemeral disks, if anywhere?
-                    'volumes': [{'name': 'workdir', 'host': {'sourcePath': '/var/lib/toil'}}],
-                    'mountPoints': [{'containerPath': self.worker_work_dir, 'sourceVolume': 'workdir'}],
+                    'volumes': volumes,
+                    'mountPoints': mount_points,
                     # Requirements will always be overridden but must be present anyway
                     'resourceRequirements': [
                         {'type': 'MEMORY', 'value': str(max(MIN_REQUESTABLE_MIB, math.ceil(b_to_mib(self.config.defaultMemory))))},
                         {'type': 'VCPU', 'value': str(max(MIN_REQUESTABLE_CORES, math.ceil(self.config.defaultCores)))}
-                    ]
+                    ],
+                    # Be privileged because we can. And we'd like Singularity
+                    # to work even if we do have the Docker socket. See
+                    # <https://github.com/moby/moby/issues/42441>.
+                    'privileged': True
                 },
                 'retryStrategy': {'attempts': 1},
                 'propagateTags': True  # This will propagate to ECS task but not to job!
