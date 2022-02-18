@@ -57,6 +57,9 @@ def parser_with_server_options() -> argparse.ArgumentParser:
                         help="Specify the default parameters to be sent to the workflow engine for each "
                              "run. Options taking arguments must use = syntax. Accepts multiple values.\n"
                              "Example: '--opt=--logLevel=CRITICAL --opt=--workDir=/tmp'.")
+    parser.add_argument("--dest_bucket_base", type=str, default=None,
+                        help="Direct CWL workflows to save output files to dynamically generated "
+                             "unique paths under the given URL.")
     parser.add_argument("--version", action='version', version=version)
     return parser
 
@@ -77,7 +80,7 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
         CORS(flask_app.app, resources={r"/ga4gh/*": {"origins": args.cors_origins}})
 
     # add workflow execution service (WES) API endpoints
-    backend = ToilBackend(work_dir=args.work_dir, options=args.opt)
+    backend = ToilBackend(work_dir=args.work_dir, options=args.opt, dest_bucket_base=options.dest_bucket_base)
 
     flask_app.add_api('workflow_execution_service.swagger.yaml',
                       resolver=connexion.Resolver(backend.resolve_operation_id))  # noqa
