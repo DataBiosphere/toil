@@ -399,7 +399,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         if self.job_definition is None:
             # First work out what volume mounts to make, because the type
             # system is happiest this way
-            volumes: List[Dict[str, Dict[str, str]]] = []
+            volumes: List[Dict[str, Union[str, Dict[str, str]]]] = []
             mount_points: List[Dict[str, str]] = []
             for i, shared_path in enumerate(set([
                 '/var/lib/toil',
