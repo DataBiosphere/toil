@@ -266,8 +266,12 @@ class ToilBackend(WESBackend):
             run.clean_up()
             raise VersionNotImplementedException(wf_type, version, supported_versions)
 
+        # Compute run-specific option defaults, filling placeholders.
+        # TODO: Use a real templating system where we could escape placeholders?
+        run_options = {k: v if not isinstance(v, str) else v.replace("<<TOIL_RUN_ID>>", run_id) for k, v in self.options.items()}
+
         logger.info(f"Putting workflow {run_id} into the queue. Waiting to be picked up...")
-        run.queue_run(request, options=self.options)
+        run.queue_run(request, options=run_options)
 
         return {
             "run_id": run_id

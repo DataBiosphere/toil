@@ -56,6 +56,7 @@ def parser_with_server_options() -> argparse.ArgumentParser:
     parser.add_argument("--opt", "-o", type=str, action="append",
                         help="Specify the default parameters to be sent to the workflow engine for each "
                              "run. Options taking arguments must use = syntax. Accepts multiple values.\n"
+                             "<<TOIL_RUN_ID>> in values will be replaced with a unique workflow ID.\n"
                              "Example: '--opt=--logLevel=CRITICAL --opt=--workDir=/tmp'.")
     parser.add_argument("--version", action='version', version=version)
     return parser
