@@ -602,6 +602,22 @@ def needs_server(test_item: MT) -> MT:
         return test_item
 
 
+def needs_wes(test_item: MT) -> MT:
+    """Use as a decorator before test classes or methods to run only if WES is available."""
+    test_item = _mark_test('wes', test_item)
+
+    wes_url = os.environ.get('TOIL_WES_ENDPOINT')
+    if not wes_url:
+        return unittest.skip(f"Set TOIL_WES_ENDPOINT to include this test")(test_item)
+
+    try:
+        urlopen(f"{wes_url}/ga4gh/wes/v1/service-info")
+    except (HTTPError, URLError) as e:
+        return unittest.skip(f"Run a WES server on {wes_url} to include this test")(test_item)
+
+    return test_item
+
+
 def needs_local_appliance(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to only run them if

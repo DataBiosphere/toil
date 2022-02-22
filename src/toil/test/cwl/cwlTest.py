@@ -53,7 +53,7 @@ from toil.test import (
     needs_parasol,
     needs_slurm,
     needs_torque,
-    needs_server,
+    needs_wes,
     slow,
 )
 
@@ -70,6 +70,7 @@ def run_conformance_tests(
     selected_tests: str = None,
     selected_tags: str = None,
     skipped_tests: str = None,
+    skipped_test_ids: str = None,  # TODO: remove
     extra_args: Optional[List[str]] = None,
     must_support_all_features: bool = False,
     junit_file: Optional[str] = None,
@@ -92,6 +93,8 @@ def run_conformance_tests(
     :param selected_tags: As an alternative to selected_tests, run tests with the given tags.
 
     :param skipped_tests: Comma-separated string labels of tests to skip.
+
+    :param skipped_test_ids: Comma-separated test numbers of tests to skip.
 
     :param extra_args: Provide these extra arguments to runner for each test.
 
@@ -119,6 +122,11 @@ def run_conformance_tests(
             cmd.append(f"--tags={selected_tags}")
         if skipped_tests:
             cmd.append(f"-S{skipped_tests}")
+        if skipped_test_ids:
+            # TODO: remove this
+            #   test 306 and 307 don't have labels so we can't skip with -S,
+            #   but for portability we don't want to skip by numbers
+            cmd.append(f"-N{skipped_test_ids}")
         if junit_file:
             # Capture output for JUnit
             cmd.append("--junit-verbose")
@@ -720,14 +728,37 @@ class CWLv12Test(ToilTest):
         )
 
     @slow
-    @needs_server
-    @unittest.skip
+    @needs_wes
     def test_wes_server_cwl_conformance(self):
-        self.test_run_conformance(
-            runner=["python", "src/toil/test/server/wes_cwl_runner.py"],
-            extra_args=[
-                # TODO: pass auth info
-            ]
+        """
+        Run the CWL conformance tests via WES.
+        TOIL_WES_ENDPOINT must be specified. If the WES server requires
+        authentication, set TOIL_WES_USER and TOIL_WES_PASSWORD.
+
+        To run manually:
+
+        TOIL_WES_ENDPOINT=http://localhost:8080 \
+        TOIL_WES_USER=test \
+        TOIL_WES_PASSWORD=password \
+        python -m pytest src/toil/test/cwl/cwlTest.py::CWLv12Test::test_wes_server_cwl_conformance -vv --log-level INFO --log-cli-level INFO
+        """
+        endpoint = os.environ.get("TOIL_WES_ENDPOINT")
+        user = os.environ.get("TOIL_WES_USER")
+        password = os.environ.get("TOIL_WES_PASSWORD")
+
+        extra_args = [f"--wes_endpoint={endpoint}"]
+        if user and password:
+            # TODO: if we run this on the CI, make sure we don't log this...
+            #  we output the entire command before we run, and cwltest logs the command if a test fails.
+            extra_args.extend([
+                f"--wes_user={user}",
+                f"--wes_password={password}"
+            ])
+
+        return self.test_run_conformance(
+            runner=["python", os.path.abspath("src/toil/test/server/wes_cwl_runner.py")],
+            skipped_test_ids="306,307,310,311,312,331,332",  # These are the ones that currently fail.
+            extra_args=extra_args
         )
 
     def _expected_streaming_output(self, outDir):
