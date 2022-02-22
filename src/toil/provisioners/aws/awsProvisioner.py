@@ -93,7 +93,41 @@ _S3_BUCKET_MAX_NAME_LEN = 63
 # The suffix of the S3 bucket associated with the cluster
 _S3_BUCKET_INTERNAL_SUFFIX = '--internal'
 
+_INSTANCE_PERMISSIONS = ["ec2:AuthorizeSecurityGroupIngress",
+              "ec2:CancelSpotInstanceRequests",
+              "ec2:CreateSecurityGroup",
+              "ec2:CreateTags",
+              "ec2:DeleteSecurityGroup",
+              "ec2:DescribeAvailabilityZones",
+              "ec2:DescribeImages",
+              "ec2:DescribeInstances",
+              "ec2:DescribeInstanceStatus",
+              "ec2:DescribeKeyPairs",
+              "ec2:DescribeSecurityGroups",
+              "ec2:DescribeSpotInstanceRequests",
+              "ec2:DescribeSpotPriceHistory",
+              "ec2:DescribeVolumes",
+              "ec2:ModifyInstanceAttribute",
+              "ec2:RequestSpotInstances",
+              "ec2:RunInstances",
+              "ec2:StartInstances",
+              "ec2:StopInstances",
+              "ec2:TerminateInstances",
+              "iam:PassRole"]
 
+_CLUSTER_LAUNCHING_PERMISSIONS = ["iam:CreateRole",
+                                  "iam:CreateInstanceProfile",
+                                  "iam:TagInstanceProfile",
+                                  "iam:DeleteRole",
+                                  "iam:DeleteRoleProfile",
+                                  "iam:ListAttatchedRolePolicies",
+                                  "iam:ListPolicies",
+                                  "iam:ListRoleTags",
+                                  "iam:PutRolePolicy",
+                                  "iam:RemoveRoleFromInstanceProfile",
+                                  "iam:TagRole",
+                                  ]
+#test if creating with permissions fucks everything up or not
 def awsRetryPredicate(e):
     if isinstance(e, socket.gaierror):
         # Could be a DNS outage:
@@ -391,6 +425,8 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         #Implement IAM check here
+        #Test if user can create roles or not
+        #If awsEc2ProfileArn provided test on that,
         
 
         leader_type = E2Instances[leaderNodeType]
@@ -1797,3 +1833,44 @@ class AWSProvisioner(AbstractProvisioner):
 
         return profile_arn
 
+    def permission_warning_check(self, existing_profile_arn: Optional[str]) -> None:
+        """
+        Test whether a user has the required permissions for launching a cluster,
+        errors if the user does not have the permissions. Tests if user can create instances.
+
+        :param existing_profile_arn: ARN for preexisting instance profile for a role to be used as specified by user
+                                     If defined, test that actions cluster needs to perform are allowed
+                                     Else tests that the user can create roles, policies
+
+        """
+        client_sts = self.aws.client(self._region, 'sts')
+        identity = client_sts.get_caller_identity()['Arn']
+        if(existing_profile_arn == None):
+
+            #sim on user creating pclient = self.aws.client(self._region, 'iam')rofile or no
+
+            self.check_policy_warnings(identity, ["actions for creating roles, policies"])
+
+        else:
+            self.check_policy_warnings(existing_profile_arn, ["Action things eventually"])
+
+        self.permission_warning_check(identity, ["Actions for creating instances"])
+
+        return None
+
+    def check_policy_warnings(self, principal_arn: str, actions: list[str]) -> None:
+        """
+        Test whether ARN associated policies permit specific actions, errors if not.
+
+        :param principal_arn: ARN for user or role
+        :param actions: Actions that need to be done by user or role
+        """
+        client = self.aws.client(self._region, 'iam')
+        for eval_res in self._pager(client.simulate_principal_policy, 'EvaluationResults',
+                                    PolicySourceArn=principal_arn, ActionNames=actions):
+            if (eval_res['EvalDecision'] != 'allowed'):
+                raise RuntimeError("Missing some sorta permissions for aws")  # add specifics eventually
+
+            for resource_spec in eval_res['ResourceSpecificResults']:
+                if (resource_spec['EvalResourceDecision'] != "allowed"):
+                    raise RuntimeError("Missing some sorta permissions for aws")  # add specifics eventually
