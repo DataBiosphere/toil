@@ -2,15 +2,15 @@
 # https://github.com/common-workflow-language/workflow-service/blob/main/LICENSE
 import json
 import os
-from io import BytesIO
-from typing import List, Optional, Tuple
-from urllib.parse import urldefrag
-
-import ruamel.yaml
 import requests
 import logging
+import ruamel.yaml
 
+from io import BytesIO
 from toil.wdl.utils import get_version as get_wdl_version
+from typing import List, Optional, Tuple, Dict, Any
+from urllib.parse import urldefrag, urlparse
+from werkzeug.utils import secure_filename
 
 
 def get_version(extension: str, workflow_file: str):
@@ -25,6 +25,28 @@ def get_version(extension: str, workflow_file: str):
             return get_wdl_version(f)
     else:
         raise RuntimeError(f"Invalid workflow extension: {extension}.")
+
+
+def parse_params(workflow_params: Dict[str, Any]) -> None:
+    """
+    Loop through files in the input workflow parameters json and make sure
+    the paths do not include relative paths to parent directories.
+    """
+
+    def secure_path(path: str) -> str:
+        return os.path.join(*[str(secure_filename(p)) for p in path.split("/") if p not in ("", ".", "..")])
+
+    def replace_paths(obj: Any) -> None:
+        for file in obj:
+            if isinstance(file, dict) and "location" in file:
+                loc = file.get("location")
+                if isinstance(loc, str) and urlparse(loc).scheme in ("file", ""):
+                    file["location"] = secure_path(loc)
+
+                if "secondaryFiles" in file:
+                    replace_paths(file.get("secondaryFiles"))
+
+    replace_paths(workflow_params.values())
 
 
 def build_wes_request(workflow_url: str,
@@ -43,6 +65,7 @@ def build_wes_request(workflow_url: str,
                 raise ValueError(f"Unsupported file type for workflow_params: '{os.path.basename(workflow_params_url)}'")
     else:
         workflow_params = {}
+    parse_params(workflow_params)
 
     # Initialize the basic parameters for the run request
     wf_url, frag = urldefrag(workflow_url)

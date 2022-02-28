@@ -70,7 +70,6 @@ def run_conformance_tests(
     selected_tests: str = None,
     selected_tags: str = None,
     skipped_tests: str = None,
-    skipped_test_ids: str = None,  # TODO: remove
     extra_args: Optional[List[str]] = None,
     must_support_all_features: bool = False,
     junit_file: Optional[str] = None,
@@ -94,8 +93,6 @@ def run_conformance_tests(
 
     :param skipped_tests: Comma-separated string labels of tests to skip.
 
-    :param skipped_test_ids: Comma-separated test numbers of tests to skip.
-
     :param extra_args: Provide these extra arguments to runner for each test.
 
     :param must_support_all_features: If set, fail if some CWL optional features are unsupported.
@@ -106,12 +103,14 @@ def run_conformance_tests(
         # For runners that require multiple arguments (e.g.: `python cwl-runner.py`),
         # we pass the first argument as the tool and append the rest as its arguments.
         runner_args = []
-        if isinstance(runner, list):
+        if runner is None:
+            runner = 'toil-cwl-runner'
+        elif isinstance(runner, list):
             runner, *runner_args = runner
 
         cmd = [
             "cwltest",
-            f"--tool={runner or 'toil-cwl-runner'}",
+            f"--tool={runner}",
             f"--test={yml}",
             "--timeout=2400",
             f"--basedir={workDir}",
@@ -122,11 +121,6 @@ def run_conformance_tests(
             cmd.append(f"--tags={selected_tags}")
         if skipped_tests:
             cmd.append(f"-S{skipped_tests}")
-        if skipped_test_ids:
-            # TODO: remove this
-            #   test 306 and 307 don't have labels so we can't skip with -S,
-            #   but for portability we don't want to skip by numbers
-            cmd.append(f"-N{skipped_test_ids}")
         if junit_file:
             # Capture output for JUnit
             cmd.append("--junit-verbose")
@@ -731,9 +725,9 @@ class CWLv12Test(ToilTest):
     @needs_wes
     def test_wes_server_cwl_conformance(self):
         """
-        Run the CWL conformance tests via WES.
-        TOIL_WES_ENDPOINT must be specified. If the WES server requires
-        authentication, set TOIL_WES_USER and TOIL_WES_PASSWORD.
+        Run the CWL conformance tests via WES. TOIL_WES_ENDPOINT must be
+        specified. If the WES server requires authentication, set TOIL_WES_USER
+        and TOIL_WES_PASSWORD.
 
         To run manually:
 
@@ -757,7 +751,13 @@ class CWLv12Test(ToilTest):
 
         return self.test_run_conformance(
             runner=["python", os.path.abspath("src/toil/test/server/wes_cwl_runner.py")],
-            skipped_test_ids="306,307,310,311,312,331,332",  # These are the ones that currently fail.
+            # These are the ones that currently fail:
+            #   - 310: mixed_version_v10_wf
+            #   - 311: mixed_version_v11_wf
+            #   - 312: mixed_version_v12_wf
+            #   - 331: iwd-fileobjs1
+            #   - 332: iwd-fileobjs2
+            selected_tests="0-309,313-330,333-337",
             extra_args=extra_args
         )
 

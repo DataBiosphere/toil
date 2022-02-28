@@ -207,7 +207,7 @@ class WESBackend:
         """
         if not temp_dir:
             temp_dir = tempfile.mkdtemp()
-        body = {}
+        body: Dict[str, Any] = {}
         has_attachments = False
         for key, ls in connexion.request.files.lists():
             try:
@@ -255,7 +255,11 @@ class WESBackend:
             self.log_for_run(run_id, "Using workflow_url '%s'" % body.get("workflow_url"))
         else:
             raise MalformedRequestException("Missing 'workflow_url' in submission")
+
         if "workflow_params" not in body:
             raise MalformedRequestException("Missing 'workflow_params' in submission")
+        # TODO: make sure workflow_url and body["workflow_params"] does not access files outside of its own
+        #  workflow directory.
+        # this is hard for WDL files especially, unless we interpret every string to be a path
 
         return temp_dir, body
