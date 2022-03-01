@@ -323,7 +323,7 @@ class ToilBackend(WESBackend):
                 "end_time": end_time,
                 "stdout": stdout,
                 "stderr": stderr,
-                "exit_code": str(int(exit_code)) if exit_code is not None else None,
+                "exit_code": int(exit_code) if exit_code is not None else None,
             },
             "task_logs": [
             ],
