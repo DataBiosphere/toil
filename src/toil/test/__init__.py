@@ -414,8 +414,7 @@ def needs_google(test_item: MT) -> MT:
     except ImportError:
         return unittest.skip("Install Toil with the 'google' extra to include this test.")(test_item)
 
-    test_item = needs_env_var('TOIL_GOOGLE_PROJECTID', "a Google project ID", test_item)
-    needs_env_var('TOIL_GOOGLE_PROJECTID')(test_item)
+    test_item = needs_env_var('TOIL_GOOGLE_PROJECTID', "a Google project ID")(test_item)
     return test_item
 
 

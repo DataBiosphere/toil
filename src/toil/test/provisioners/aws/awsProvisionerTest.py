@@ -16,17 +16,13 @@ import os
 import subprocess
 import tempfile
 import time
+import pytest
 from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent
 from uuid import uuid4
 
-import boto.ec2
-import pytest
-
-from toil.lib.aws import zone_to_region
 from toil.provisioners import cluster_factory
-from toil.provisioners.aws import get_best_aws_zone
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from toil.test import (
     ToilTest,
@@ -101,19 +97,6 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
         # What filename should we use for our script (without path)?
         # Can be changed by derived tests.
         self.scriptName = 'test_script.py'
-        super.__init__(self)
-
-    def python(self):
-        """
-        Return the full path to the venv Python on the leader.
-        """
-        super().python()
-
-    def pip(self):
-        """
-        Return the full path to the venv pip on the leader.
-        """
-        super().pip()
 
     def script(self):
         """
@@ -127,40 +110,8 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
         """
         return os.path.join(self.dataDir, filename)
 
-    def destroyCluster(self) -> None:
-        """
-        Destroy the cluster we built, if it exists.
-
-        Succeeds if the cluster does not currently exist.
-        """
-        super().destroyCluster()
-
-    def setUp(self):
-        """
-        Set up for the test.
-        Must be overridden to call this method and set self.jobStore.
-        """
-        super().setUp()
-
-    def tearDown(self):
-        # Note that teardown will run even if the test crashes.
-        super().tearDown()
-
-    def sshUtil(self, command):
-        """
-        Run the given command on the cluster.
-        Raise subprocess.CalledProcessError if it fails.
-        """
-        super().sshUtil()
-
     def rsyncUtil(self, src, dest):
         subprocess.check_call(['toil', 'rsync-cluster', '--insecure', '-p=aws', '-z', self.zone, self.clusterName] + [src, dest])
-
-    def createClusterUtil(self, args=None):
-        super().createClusterUtil()
-
-    def launchCluster(self):
-        super().launchCluster()
 
     def getRootVolID(self):
         instances = self.cluster._getNodesInCluster(both=True)
