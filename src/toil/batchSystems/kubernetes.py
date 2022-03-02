@@ -332,48 +332,101 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.user_script = userScript
 
     # setEnv is provided by BatchSystemSupport, updates self.environment
-
-    def _create_affinity(self, preemptable: bool) -> kubernetes.client.V1Affinity:
+    
+    @staticmethod
+    def _apply_placement_constraints(preemptable: bool, pod_spec: kubernetes.client.V1PodSpec) -> None:
         """
-        Make a V1Affinity that places pods appropriately depending on if they
-        tolerate preemptable nodes or not.
+        Set .affinity and/or .tolerations on the given pod spec, so that it
+        runs on the right kind of nodes, according to whether it is allowed to
+        be preempted.
+
+        Preemptable jobs will be able to run on preemptable or non-preemptable
+        nodes, and will prefer preemptable nodes if available.
+
+        Non-preemptable jobs will not be allowed to run on nodes that are
+        marked as preemptable.
+
+        Understands the labeling scheme used by EKS, and the taint scheme used
+        by GCE. The Toil-managed Kubernetes setup will mimic at least one of
+        these.
         """
 
-        # Describe preemptable nodes
+        # We consider nodes preemptable if they have any of these label or taint values.
+        # We tolerate all effects of specified taints.
+        # Amazon just uses a label, while Google
+        # <https://cloud.google.com/kubernetes-engine/docs/how-to/preemptible-vms>
+        # uses a label and a taint.
+        PREEMPTABLE_SCHEMES = {'labels': [('eks.amazonaws.com/capacityType', ['SPOT']),
+                                          ('cloud.google.com/gke-preemptible', ['true'])],
+                               'taints': [('cloud.google.com/gke-preemptible', ['true'])]}
 
-        # There's no labeling standard for knowing which nodes are
-        # preemptable across different cloud providers/Kubernetes clusters,
-        # so we use the labels that EKS uses. Toil-managed Kubernetes
-        # clusters also use this label. If we come to support more kinds of
-        # preemptable nodes, we will need to add more labels to avoid here.
-        preemptable_label = "eks.amazonaws.com/capacityType"
-        preemptable_value = "SPOT"
-
-        non_spot = [kubernetes.client.V1NodeSelectorRequirement(key=preemptable_label,
-                                                                operator='NotIn',
-                                                                values=[preemptable_value])]
-        unspecified = [kubernetes.client.V1NodeSelectorRequirement(key=preemptable_label,
-                                                                   operator='DoesNotExist')]
-        # These are OR'd
-        node_selector_terms = [kubernetes.client.V1NodeSelectorTerm(match_expressions=non_spot),
-                               kubernetes.client.V1NodeSelectorTerm(match_expressions=unspecified)]
-        node_selector = kubernetes.client.V1NodeSelector(node_selector_terms=node_selector_terms)
-
+        # We will compose a node selector with these requirements to require or prefer.
+        # These requirements will be AND-ed and turn into a single term.
+        node_selector_requirements: List[kubernetes.client.V1NodeSelectorRequirement] = []
+        # These terms will be OR'd, along with a term made of those ANDed requirements
+        node_selector_terms: List[kubernetes.client.V1NodeSelectorTerm] = []
+        # And this list of tolerations to apply
+        tolerations: List[kubernetes.client.V1Toleration] = []
 
         if preemptable:
-            # We can put this job anywhere. But we would be smart to prefer
-            # preemptable nodes first, if available, so we don't block any
-            # non-preemptable jobs.
-            node_preference = kubernetes.client.V1PreferredSchedulingTerm(weight=1, preference=node_selector)
-
-            node_affinity = kubernetes.client.V1NodeAffinity(preferred_during_scheduling_ignored_during_execution=[node_preference])
+            # We want to seek preemptable labels and tolerate preemptable taints.
+            for label, values in PREEMPTABLE_SCHEMES['labels']:
+                is_spot = kubernetes.client.V1NodeSelectorRequirement(key=label,
+                                                                      operator='In',
+                                                                      values=values)
+                # We want to OR all the labels, so they all need to become separate terms.
+                node_selector_terms.append(kubernetes.client.V1NodeSelectorTerm(
+                    match_expressions=[is_spot]
+                ))
+            for taint, values in PREEMPTABLE_SCHEMES['taints']:
+                for value in values:
+                    # Each toleration can tolerate one value
+                    spot_ok = kubernetes.client.V1Toleration(key=taint,
+                                                             value=value)
+                    tolerations.append(spot_ok)
         else:
-            # We need to add some selector stuff to keep the job off of
-            # nodes that might be preempted.
-            node_affinity = kubernetes.client.V1NodeAffinity(required_during_scheduling_ignored_during_execution=node_selector)
+            # We want to prohibit preemptable labels
+            for label, values in PREEMPTABLE_SCHEMES['labels']:
+                # So we need to say that each preemptable label either doesn't
+                # have any of the preemptable values, or doesn't exist.
+                # Although the docs don't really say so, NotIn also matches
+                # cases where the label doesn't exist. This is suggested by
+                # <https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#set-based-requirement>
+                # So we create a NotIn for each preemptable label and AND them
+                # all together.
+                not_spot = kubernetes.client.V1NodeSelectorRequirement(key=label,
+                                                                       operator='NotIn',
+                                                                       values=values)
+                node_selector_requirements.append(not_spot)
 
-        # Make the node affinity into an overall affinity
-        return kubernetes.client.V1Affinity(node_affinity=node_affinity)
+        # Now combine everything
+        if node_selector_requirements:
+            # We have requirements that want to be a term
+            node_selector_terms.append(kubernetes.client.V1NodeSelectorTerm(
+                match_expressions=node_selector_requirements
+            ))
+
+        if node_selector_terms:
+            # Make the terms into a node selector
+            node_selector = kubernetes.client.V1NodeSelector(node_selector_terms=node_selector_terms)
+            if preemptable:
+                # Node selector sense is a preference, so we wrap it
+                node_preference = kubernetes.client.V1PreferredSchedulingTerm(weight=1, preference=node_selector)
+                # And make an affinity around a preference
+                node_affinity = kubernetes.client.V1NodeAffinity(
+                    preferred_during_scheduling_ignored_during_execution=[node_preference]
+                )
+            else:
+                # Node selector sense is a requirement, so make an affinity around a requirement
+                node_affinity = kubernetes.client.V1NodeAffinity(
+                    required_during_scheduling_ignored_during_execution=node_selector
+                )
+            # Apply the affinity
+            pod_spec.affinity = node_affinity
+
+        if tolerations:
+            # Apply the tolerations
+            pod_spec.tolerations = tolerations
 
     def _create_pod_spec(
             self,
@@ -460,7 +513,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                                                volumes=volumes,
                                                restart_policy="Never")
         # Tell the spec where to land
-        pod_spec.affinity = self._create_affinity(job_desc.preemptable)
+        self._apply_placement_constraints(job_desc.preemptable, pod_spec)
 
         if self.service_account:
             # Apply service account if set
