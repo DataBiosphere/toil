@@ -10,7 +10,6 @@ from io import BytesIO
 from toil.wdl.utils import get_version as get_wdl_version
 from typing import List, Optional, Tuple, Dict, Any
 from urllib.parse import urldefrag, urlparse
-from werkzeug.utils import secure_filename
 
 
 def get_version(extension: str, workflow_file: str):
@@ -32,6 +31,7 @@ def parse_params(workflow_params: Dict[str, Any]) -> None:
     Loop through files in the input workflow parameters json and make sure
     the paths do not include relative paths to parent directories.
     """
+    from werkzeug.utils import secure_filename
 
     def secure_path(path: str) -> str:
         return os.path.join(*[str(secure_filename(p)) for p in path.split("/") if p not in ("", ".", "..")])
