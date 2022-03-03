@@ -33,6 +33,7 @@ class AbstractClusterTest(ToilTest):
         super().__init__(methodName=methodName)
         self.keyName = os.environ.get('TOIL_AWS_KEYNAME', 'id_rsa')
         self.clusterName = 'aws-provisioner-test-' + str(uuid4())
+        self.leaderNodeType = 't2.medium'
         self.zone = get_best_aws_zone()
         assert self.zone is not None, "Could not determine AWS availability zone to test in; is TOIL_AWS_ZONE set?"
         # We need a boto2 connection to EC2 to check on the cluster
@@ -144,7 +145,7 @@ class AbstractClusterTest(ToilTest):
         args = [] if args is None else args
 
         command = ['toil', 'launch-cluster', '-p=aws', '-z', self.zone, f'--keyPairName={self.keyName}',
-                   '--leaderNodeType=t2.medium', '--logDebug', self.clusterName] + args
+                   f'--leaderNodeType={self.leaderNodeType}', '--logDebug', self.clusterName] + args
 
         log.debug('Launching cluster: %s', command)
 

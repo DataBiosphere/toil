@@ -766,6 +766,7 @@ class CWLOnARMTest(AbstractClusterTest):
     def __init__(self, methodName):
         super().__init__(methodName=methodName)
         self.clusterName = 'cwl-test-' + str(uuid.uuid4())
+        self.leaderNodeType = 't4g.medium'
 
     @needs_env_var('CI_COMMIT_SHA', 'a git commit sha')
     def test_cwl_on_arm(self):
