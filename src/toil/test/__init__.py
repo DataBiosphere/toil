@@ -458,9 +458,18 @@ def needs_tes(test_item: MT) -> MT:
     return test_item
 
 
-def needs_kubernetes(test_item: MT) -> MT:
+def needs_kubernetes_installed(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if Kubernetes is installed."""
     test_item = _mark_test('kubernetes', test_item)
+    try:
+        import kubernetes
+    except ImportError:
+        return unittest.skip("Install Toil with the 'kubernetes' extra to include this test.")(test_item)
+    return test_item
+
+def needs_kubernetes(test_item: MT) -> MT:
+    """Use as a decorator before test classes or methods to run only if Kubernetes is installed and configured."""
+    test_item = needs_kubernetes_installed(test_item)
     try:
         import kubernetes
         try:
@@ -472,7 +481,8 @@ def needs_kubernetes(test_item: MT) -> MT:
                 return unittest.skip("Configure Kubernetes (~/.kube/config, $KUBECONFIG, "
                                      "or current pod) to include this test.")(test_item)
     except ImportError:
-        return unittest.skip("Install Toil with the 'kubernetes' extra to include this test.")(test_item)
+        # We should already be skipping this test
+        pass
     return test_item
 
 

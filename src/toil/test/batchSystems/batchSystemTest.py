@@ -18,6 +18,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
 from abc import ABCMeta, abstractmethod
 from fractions import Fraction
@@ -49,6 +50,7 @@ from toil.test import (ToilTest,
                        needs_fetchable_appliance,
                        needs_gridengine,
                        needs_htcondor,
+                       needs_kubernetes_installed,
                        needs_kubernetes,
                        needs_lsf,
                        needs_mesos,
@@ -455,6 +457,60 @@ class KubernetesBatchSystemTest(hidden.AbstractBatchSystemTest):
         from toil.batchSystems.kubernetes import KubernetesBatchSystem
         return KubernetesBatchSystem(config=self.config,
                                      maxCores=numCores, maxMemory=1e9, maxDisk=2001)
+
+@needs_kubernetes_installed
+class KubernetesBatchSystemBenchTest(ToilTest):
+    """
+    Kubernetes batch system unit tests that don't need to actually talk to a cluster.
+    """
+
+    def test_preemptability_constraints(self):
+        """
+        Make sure we generate the right preemptability constraints.
+        """
+
+        # Make sure we can print diffs of these long strings
+        self.maxDiff = 10000
+
+        from kubernetes.client import V1PodSpec
+        from toil.batchSystems.kubernetes import KubernetesBatchSystem
+
+        normal_spec = V1PodSpec(containers=[])
+        KubernetesBatchSystem._apply_placement_constraints(False, normal_spec)
+        self.assertEqual(str(normal_spec.affinity), textwrap.dedent("""
+        {'preferred_during_scheduling_ignored_during_execution': None,
+         'required_during_scheduling_ignored_during_execution': {'node_selector_terms': [{'match_expressions': [{'key': 'eks.amazonaws.com/capacityType',
+                                                                                                                 'operator': 'NotIn',
+                                                                                                                 'values': ['SPOT']},
+                                                                                                                {'key': 'cloud.google.com/gke-preemptible',
+                                                                                                                 'operator': 'NotIn',
+                                                                                                                 'values': ['true']}],
+                                                                                          'match_fields': None}]}}
+        """).strip())
+        self.assertEqual(str(normal_spec.tolerations), "None")
+
+        spot_spec = V1PodSpec(containers=[])
+        KubernetesBatchSystem._apply_placement_constraints(True, spot_spec)
+        self.assertEqual(str(spot_spec.affinity), textwrap.dedent("""
+        {'preferred_during_scheduling_ignored_during_execution': [{'preference': {'node_selector_terms': [{'match_expressions': [{'key': 'eks.amazonaws.com/capacityType',
+                                                                                                                                  'operator': 'In',
+                                                                                                                                  'values': ['SPOT']}],
+                                                                                                           'match_fields': None},
+                                                                                                          {'match_expressions': [{'key': 'cloud.google.com/gke-preemptible',
+                                                                                                                                  'operator': 'In',
+                                                                                                                                  'values': ['true']}],
+                                                                                                           'match_fields': None}]},
+                                                                   'weight': 1}],
+         'required_during_scheduling_ignored_during_execution': None}
+        """).strip())
+        self.assertEqual(str(spot_spec.tolerations), textwrap.dedent("""
+        [{'effect': None,
+         'key': 'cloud.google.com/gke-preemptible',
+         'operator': None,
+         'toleration_seconds': None,
+         'value': 'true'}]
+        """).strip())
+
 
 @needs_tes
 @needs_fetchable_appliance
