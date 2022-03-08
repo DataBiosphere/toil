@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 class AbstractClusterTest(ToilTest):
     def __init__(self, methodName):
         super().__init__(methodName=methodName)
-        self.keyName = os.environ.get('TOIL_AWS_KEYNAME', 'id_rsa')
+        self.keyName = os.getenv('TOIL_AWS_KEYNAME').strip() or 'id_rsa'
         self.clusterName = 'aws-provisioner-test-' + str(uuid4())
         self.leaderNodeType = 't2.medium'
         self.zone = get_best_aws_zone()

@@ -768,6 +768,10 @@ class CWLOnARMTest(AbstractClusterTest):
         self.clusterName = 'cwl-test-' + str(uuid.uuid4())
         self.leaderNodeType = 't4g.medium'
 
+    def setUp(self):
+        super().setUp()
+        self.jobStore = f'aws:{self.awsRegion()}:cluster-{uuid.uuid4()}'
+
     @needs_env_var('CI_COMMIT_SHA', 'a git commit sha')
     def test_cwl_on_arm(self):
         # Make a cluster
@@ -791,7 +795,7 @@ class CWLOnARMTest(AbstractClusterTest):
 
         # Runs the CWLv12Test on an ARM instance
         self.sshUtil(['bash', '-c', f'. .{self.venvDir}/bin/activate && cd toil && pytest --log-cli-level DEBUG -r s src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance'])
-        self.cluster.destroyCluster()
+        self.tearDown()
 
 
 @needs_cwl
