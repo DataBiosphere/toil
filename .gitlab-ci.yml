@@ -215,6 +215,9 @@ cwl_on_arm:
     - pwd
     - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
+    # This reads GITLAB_SECRET_FILE_SSH_KEYS
+    - python setup_gitlab_ssh.py
+    - chmod 400 /root/.ssh/id_rsa
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLOnARMTest
 
 cwl_v1.0_kubernetes:
