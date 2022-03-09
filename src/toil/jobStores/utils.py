@@ -382,7 +382,7 @@ def generate_locator(
                 return local_suggestion
             else:
                 # Pick a temp path
-                return os.path.join(tempfile.gettempdir(), str(uuid.uuid4()) + decoration)
+                return os.path.join(tempfile.gettempdir(), 'toil-' + str(uuid.uuid4()) + decoration)
         else:
             raise JobStoreUnavailableException(f"{job_store_type} job store isn't known")
     except ImportError:
