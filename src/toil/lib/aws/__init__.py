@@ -35,15 +35,7 @@ def get_current_aws_region() -> Optional[str]:
     Return the AWS region that the currently configured AWS zone (see
     get_current_aws_zone()) is in.
     """
-    # Try the region environment variable first
-    aws_region = os.environ.get('TOIL_AWS_REGION') or \
-                 os.environ.get('AWS_REGION') or \
-                 os.environ.get('DEFAULT_AWS_REGION')
-    if aws_region:
-        return aws_region
-
-
-    # Otherwise try to derive it from the zone.
+    # Try to derive it from the zone.
     aws_zone = get_current_aws_zone()
     return zone_to_region(aws_zone) if aws_zone else None
 
@@ -56,7 +48,7 @@ def get_aws_zone_from_environment() -> Optional[str]:
 def get_aws_zone_from_metadata() -> Optional[str]:
     """
     Get the AWS zone from instance metadata, if on EC2 and the boto module is
-    available.
+    available. Otherwise, gets the AWS zone from ECS task metadata, if on ECS.
     """
     if running_on_ec2():
         try:
@@ -69,15 +61,20 @@ def get_aws_zone_from_metadata() -> Optional[str]:
     elif running_on_ecs():
         # Use the ECS metadata service
         logger.debug("Fetch AZ from ECS metadata")
-        resp = json.load(urlopen(os.environ['ECS_CONTAINER_METADATA_URI_V4'] + '/task', timeout=1))
-        logger.debug("ECS metadata: %s", resp)
-        return resp.get('AvailabilityZone')
+        try:
+            resp = json.load(urlopen(os.environ['ECS_CONTAINER_METADATA_URI_V4'] + '/task', timeout=1))
+            logger.debug("ECS metadata: %s", resp)
+            if isinstance(resp, dict):
+                return resp.get('AvailabilityZone')
+        except (json.decoder.JSONDecodeError, KeyError, URLError) as e:
+            logger.debug("Skipping ECS metadata due to error: %s", e)
+            pass
     return None
 
 def get_aws_zone_from_boto() -> Optional[str]:
     """
     Get the AWS zone from the Boto config file, if it is configured and the
-    boto module is avbailable.
+    boto module is available.
     """
     try:
         import boto
@@ -89,6 +86,16 @@ def get_aws_zone_from_boto() -> Optional[str]:
         pass
     return None
 
+def get_aws_zone_from_environment_region() -> Optional[str]:
+    """
+    Pick an AWS zone in the region defined by TOIL_AWS_REGION, if it is set.
+    """
+    aws_region = os.environ.get('TOIL_AWS_REGION')
+    if aws_region is not None:
+        # If a region is specified, use the first zone in the region.
+        return aws_region + 'a'
+    # Otherwise, don't pick a region and let us fall back on the next method.
+    return None
 
 def get_current_aws_zone() -> Optional[str]:
     """
@@ -96,8 +103,11 @@ def get_current_aws_zone() -> Optional[str]:
 
     Reports the TOIL_AWS_ZONE environment variable if set.
 
-    Otherwise, if we have boto and are running on EC2, reports the zone we are
-    running in.
+    Otherwise, if we have boto and are running on EC2, or if we are on ECS,
+    reports the zone we are running in.
+
+    Otherwise, if we have the TOIL_AWS_REGION variable set, chooses a zone in
+    that region.
 
     Finally, if we have boto2, and a default region is configured in Boto 2,
     chooses a zone in that region.
@@ -106,6 +116,7 @@ def get_current_aws_zone() -> Optional[str]:
     """
     return get_aws_zone_from_environment() or \
         get_aws_zone_from_metadata() or \
+        get_aws_zone_from_environment_region() or \
         get_aws_zone_from_boto()
 
 def zone_to_region(zone: str) -> str:

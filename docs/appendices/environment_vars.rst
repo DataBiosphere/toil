@@ -92,9 +92,9 @@ There are several environment variables that affect the way Toil runs.
 |                                  | credentials allow access to S3 and SimpleDB.       |
 +----------------------------------+----------------------------------------------------+
 | TOIL_AWS_ZONE                    | Zone to use when using AWS. Also determines region.|
+|                                  | Overrides TOIL_AWS_REGION.                         |
 +----------------------------------+----------------------------------------------------+
-| TOIL_AWS_REGION, AWS_REGION,     |                                                    |
-| DEFAULT_AWS_REGION               | Region to use when using AWS.                      |
+| TOIL_AWS_REGION                  | Region to use when using AWS.                      |
 +----------------------------------+----------------------------------------------------+
 | TOIL_AWS_AMI                     | ID of the AMI to use in node provisioning. If in   |
 |                                  | doubt, don't set this variable.                    |
