@@ -392,10 +392,8 @@ class BatchSystemSupport(AbstractBatchSystem):
         DeferredFunctionManager.cleanupWorker(workflowDir)
         workflowDirContents = os.listdir(workflowDir)
         AbstractFileStore.shutdownFileStore(info.workflowID, info.workDir)
-        if (info.cleanWorkDir == 'always'
-            or info.cleanWorkDir in ('onSuccess', 'onError'):
-
-            if workflowDirContents in ([], [cacheDirName(info.workflowID)])):
+        if info.cleanWorkDir == 'always' or info.cleanWorkDir in ('onSuccess', 'onError'):
+            if workflowDirContents in ([], [cacheDirName(info.workflowID)]):
                 shutil.rmtree(workflowDir, ignore_errors=True)
             if coordination_dir != workflowDir:
                 # No more coordination to do here either.

@@ -782,6 +782,7 @@ class AbstractProvisioner(ABC):
                 --net=host \\
                 --init \\
                 -v /var/run/docker.sock:/var/run/docker.sock \\
+                -v /var/run/user:/var/run/user \\
                 -v /var/lib/mesos:/var/lib/mesos \\
                 -v /var/lib/docker:/var/lib/docker \\
                 -v /var/lib/toil:/var/lib/toil \\

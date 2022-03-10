@@ -1227,6 +1227,34 @@ class Toil(ContextManager["Toil"]):
         if not os.path.exists(workDir):
             raise RuntimeError(f'The directory specified by --workDir or TOIL_WORKDIR ({workDir}) does not exist.')
         return workDir
+        
+    @classmethod
+    def get_toil_coordination_dir(cls, configWorkDir: Optional[str] = None) -> str:
+        """
+        Return a path to a writable directory, which will be in memory if
+        convenient. Ought to be used for file locking and coordination.
+
+        :param configWorkDir: Value passed to the program using the --workDir flag
+        :return: Path to the Toil coordination directory.
+        """
+        
+        # Get our user ID
+        user_id = os.getuid()
+        in_memory_base = os.path.join('/var/run/user', str(user_id), 'toil')
+        if os.path.exists(in_memory_base):
+            # We have an in-memory directory to use
+            return in_memory_base
+        else:
+            try:
+                # Try to make it opportunistically.
+                os.makedirs(in_memory_base, exist_ok=True)
+                return in_memory_base
+            except:
+                pass
+        
+        # Otherwise use the on-disk one.
+        return cls.getToilWorkDir(configWorkDir)
+
 
     @staticmethod
     def _get_workflow_path_component(workflow_id: str) -> str:
@@ -1288,23 +1316,16 @@ class Toil(ContextManager["Toil"]):
         machine.
         """
         
-        # Get our user ID
-        user_id = os.getuid()
+        # Start with the base coordination or work dir
+        base = cls.get_toil_coordination_dir(config_work_dir)
         
-        in_memory_base = os.path.join('/var/run/user', str(user_id))
-        
-        if os.path.exists(in_memory_base):
-            # Looks like we have a place to put stuff in memory.
-            # Find one for this workflow
-            in_memory_workflow_dir = os.path.join(in_memory_base, 'toil', cls._get_workflow_path_component(workflow_id))
-            # Make it exist
-            os.makedirs(in_memory_workflow_dir, exists_ok=True)
-            # Return it
-            return in_memory_workflow_dir
-        else:
-            # We don't have an in-memory place to work.
-            # Work on disk instead.
-            return cls.getLocalWorkflowDir(workflow_id, config_work_dir)
+        # Make a per-workflow and node subdirectory
+        subdir = os.path.join(base, cls._get_workflow_path_component(workflow_id))
+        # Make it exist
+        os.makedirs(subdir, exist_ok=True)
+        # TODO: May interfere with workflow directory creation logging if it's the same directory.
+        # Return it
+        return subdir
             
                 
 
