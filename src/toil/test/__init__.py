@@ -619,7 +619,7 @@ def needs_celery_broker(test_item: MT) -> MT:
     Use as a decorator before test classes or methods to run only if RabbitMQ is set up to take Celery jobs.
     """
     test_item = _mark_test('celery', test_item)
-    test_item = _require_env('TOIL_WES_BROKER_URL', "a URL to a RabbitMQ broker for Celery", test_item)
+    test_item = needs_env_var('TOIL_WES_BROKER_URL', "a URL to a RabbitMQ broker for Celery")(test_item)
     return test_item
 
 def needs_local_appliance(test_item: MT) -> MT:
