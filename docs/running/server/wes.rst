@@ -75,9 +75,14 @@ Below is a detailed summary of all available options:
             Specify the default parameters to be sent to the workflow engine for each run.  Accepts multiple values.
 
             Example: ``toil server --opt=--logLevel=CRITICAL --opt=--workDir=/tmp``.
+--dest_bucket_base DEST_BUCKET_BASE
+            Direct CWL workflows to save output files to dynamically generated unique paths under the given URL.
+            Supports AWS S3.
 
 .. _GA4GH docs on CORS: https://w3id.org/ga4gh/product-approval-support/cors
 
+
+.. _WESRunWithDockerCompose:
 
 Running the Server with `docker-compose`
 ----------------------------------------
@@ -85,22 +90,43 @@ Running the Server with `docker-compose`
 Instead of manually setting up the server components (``toil server``, RabbitMQ, and Celery), you can use the following
 ``docker-compose.yml`` file to orchestrate and link them together.
 
-Make sure to change ``/tmp/toil-workflows`` if you want Toil workflows to live somewhere else, and create the directory
+Make sure to change the credentials for basic authentication by updating the
+``traefik.http.middlewares.auth.basicauth.users`` label. The passwords can be generated with tools like ``htpasswd``
+`like this`_. (Note that single ``$`` signs need to be replaced with ``$$`` in the yaml file).
+
+.. _`like this`: https://doc.traefik.io/traefik/v2.0/middlewares/basicauth/#configuration-examples
+
+
+When running on a different host other than ``localhost``, make sure to change the ``Host`` to your
+tartget host in the ``traefik.http.routers.wes.rule`` and ``traefik.http.routers.wespublic.rule`` labels.
+
+You can also change ``/tmp/toil-workflows`` if you want Toil workflows to live somewhere else, and create the directory
 before starting the server.
+
+In order to run workflows that require Docker, the ``docker.sock`` socket must be mounted as volume for Celery.
+Additionally, the ``TOIL_WORKDIR`` directory (defaults to: ``/var/lib/toil``) and ``/var/lib/cwl`` (if running CWL
+workflows with ``DockerRequirement``) should exist on the host and also be mounted as volumes.
+
 
 Also make sure to run it behind a firewall; it opens up the Toil server on port 8080 to anyone who connects.
 
-.. literalinclude:: ./Dockerfile
-   :language: yaml
-
 .. literalinclude:: ./docker-compose.yml
    :language: yaml
-   :emphasize-lines: 15,25,30
+   :emphasize-lines: 13-15, 22,25, 30,33,34, 43,45
 
-Once everything is configured, simply run ``docker compose up`` to start the containers. Run ``docker compose down`` to
+
+Further customization can also be made as needed. For example, if you have a domain, you can
+`set up HTTPS with Let's Encrypt`_.
+
+.. _`set up HTTPs with Let's Encrypt`: https://doc.traefik.io/traefik/user-guides/docker-compose/acme-http/
+
+Once everything is configured, simply run ``docker-compose up`` to start the containers. Run ``docker-compose down`` to
 stop and remove all containers.
 
-Note that this method only works if ``docker-compose`` is installed, which does not work on the Toil appliance.
+.. note::
+    ``docker-compose`` is not installed on the Toil appliance by default. See the following section to set up the WES
+    server on a Toil cluster.
+
 
 Running on a Toil cluster
 -------------------------
@@ -111,12 +137,25 @@ To run the server on a Toil leader instance on EC2:
 
 #. SSH into your cluster with the ``--sshOption=-L8080:localhost:8080`` option to forward port ``8080``
 
-#. Set up Celery workers required to run WES workflows (:ref:`WESPrepareEnvironment`)
+#. Install Docker Compose by running the following commands from the `Docker docs`_::
 
-#. Now, you can run the WES server with ``toil server`` on the Toil appliance.
+        curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+        chmod +x /usr/local/bin/docker-compose
 
-.. note::
-    To run the server in the background, run "``nohup toil server &``".
+        # check installation
+        docker-compose --version
+
+   or, install a different version of Docker Compose by changing ``"1.29.2"`` to another version.
+
+#. Copy the ``docker-compose.yml`` file from (:ref:`WESRunWithDockerCompose`) to an empty directory, and modify the
+   configuration as needed.
+
+#. Now, run ``docker-compose up -d`` to start the WES server in detach mode on the Toil appliance.
+
+#. To stop the server, run ``docker-compose down``.
+
+
+.. _Docker docs: https://docs.docker.com/compose/install/#install-compose
 
 
 .. _WESEndpointsOverview:
@@ -141,6 +180,11 @@ by Toil:
 +--------------------------------+--------------------------------------------------------+
 | GET /runs/{run_id}/status      | Get the status (overall state) of a workflow run.      |
 +--------------------------------+--------------------------------------------------------+
+
+When running the WES server with the ``docker-compose`` setup above, most endpoints (except ``GET /service-info``) will
+be protected with basic authentication. Make sure to set the **Authorization** header with the correct credentials when
+submitting or retrieving a workflow.
+
 
 .. _WESSubmitWorkflow:
 
@@ -171,6 +215,7 @@ As a quick example, we can submit the example CWL workflow from :ref:`cwlquickst
 using cURL::
 
     $ curl --location --request POST 'http://localhost:8080/ga4gh/wes/v1/runs' \
+        --user test:test \
         --form 'workflow_url="example.cwl"' \
         --form 'workflow_type="cwl"' \
         --form 'workflow_type_version="v1.0"' \
@@ -180,6 +225,10 @@ using cURL::
       "run_id": "4deb8beb24894e9eb7c74b0f010305d1"
     }
 
+
+Note that the ``--user`` argument is used to attach the basic authentication credentials along with the request. Make
+sure to change ``test:test`` to the username and password you configured for your WES server. Alternatively, you can
+also set the **Authorization** header manually as ``"Authorization: Basic base64_encoded_auth"``.
 
 If the workflow is submitted successfully, a JSON object containing a ``run_id`` will be returned. The ``run_id`` is a
 unique identifier of your requested workflow, which can be used to monitor or cancel the run.
@@ -236,6 +285,7 @@ parameter multiple times with different files.
 This can be shown by the following example::
 
     $ curl --location --request POST 'http://localhost:8080/ga4gh/wes/v1/runs' \
+        --user test:test \
         --form 'workflow_url="example.cwl"' \
         --form 'workflow_type="cwl"' \
         --form 'workflow_type_version="v1.0"' \
@@ -257,7 +307,7 @@ On the server, the execution directory would have the following structure from t
 Specify Toil options
 ^^^^^^^^^^^^^^^^^^^^
 
-To pass Toil specific parameters to the workflow, you can include the ``workflow_engine_parameters`` parameter along
+To pass Toil-specific parameters to the workflow, you can include the ``workflow_engine_parameters`` parameter along
 with your request.
 
 For example, to set the logging level to ``INFO``, and change the working directory of the workflow, simply include the
@@ -282,7 +332,7 @@ Checking the state
 
 The ``GET /runs/{run_id}/status`` endpoint can be used to get a simple result with the overall state of your run::
 
-    $ curl http://localhost:8080/ga4gh/wes/v1/runs/4deb8beb24894e9eb7c74b0f010305d1/status
+    $ curl --user test:test http://localhost:8080/ga4gh/wes/v1/runs/4deb8beb24894e9eb7c74b0f010305d1/status
     {
       "run_id": "4deb8beb24894e9eb7c74b0f010305d1",
       "state": "RUNNING"
@@ -297,7 +347,7 @@ Getting the full logs
 
 To get the detailed information about a workflow run, use the ``GET /runs/{run_id}`` endpoint::
 
-    $ curl http://localhost:8080/ga4gh/wes/v1/runs/4deb8beb24894e9eb7c74b0f010305d1
+    $ curl --user test:test http://localhost:8080/ga4gh/wes/v1/runs/4deb8beb24894e9eb7c74b0f010305d1
     {
       "run_id": "4deb8beb24894e9eb7c74b0f010305d1",
       "request": {
@@ -332,7 +382,8 @@ Canceling a run
 
 To cancel a workflow run, use the ``POST /runs/{run_id}/cancel`` endpoint::
 
-    $ curl --location --request POST 'http://localhost:8080/ga4gh/wes/v1/runs/4deb8beb24894e9eb7c74b0f010305d1/cancel'
+    $ curl --location --request POST 'http://localhost:8080/ga4gh/wes/v1/runs/4deb8beb24894e9eb7c74b0f010305d1/cancel' \
+          --user test:test
     {
       "run_id": "4deb8beb24894e9eb7c74b0f010305d1"
     }

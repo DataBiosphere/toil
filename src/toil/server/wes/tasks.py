@@ -16,18 +16,22 @@ import json
 import logging
 import os
 import subprocess
-from typing import Dict, Any, List, Union
+import zipfile
+from typing import Dict, Any, List, Optional, Union
 from urllib.parse import urldefrag
 
 from celery.exceptions import SoftTimeLimitExceeded  # type: ignore
 from toil.common import Toil
+from toil.jobStores.utils import generate_locator
 from toil.server.celery_app import celery
 from toil.server.utils import (get_iso_time,
                                link_file,
                                download_file_from_internet,
+                               download_file_from_s3,
                                get_file_class,
                                safe_read_file,
                                safe_write_file)
+import toil.server.wes.amazon_wes_utils as amazon_wes_utils
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +55,10 @@ class ToilWorkflowRunner:
         self.exec_dir = os.path.join(self.work_dir, "execution")
         self.out_dir = os.path.join(self.work_dir, "outputs")
 
-        self.default_job_store = "file:" + os.path.join(self.work_dir, "toil_job_store")
+        # Compose the right kind of job store to use it the user doesn't specify one.
+        default_type = os.getenv('TOIL_WES_JOB_STORE_TYPE', 'file')
+        self.default_job_store = generate_locator(default_type, local_suggestion=os.path.join(self.work_dir, "toil_job_store"))
+
         self.job_store = self.default_job_store
 
     def write(self, filename: str, contents: str) -> None:
@@ -75,10 +82,12 @@ class ToilWorkflowRunner:
         if src_url.startswith("file://"):
             logger.info("Linking workflow from filesystem.")
             link_file(src=src_url[7:], dest=dest)
-
         elif src_url.startswith(("http://", "https://")):
             logger.info("Downloading workflow_url from the Internet.")
             download_file_from_internet(src=src_url, dest=dest, content_type="text/")
+        elif src_url.startswith("s3://"):
+            logger.info("Downloading workflow_url from Amazon S3.")
+            download_file_from_s3(src=src_url, dest=dest)
         else:
             logger.info("Using workflow from relative URL.")
             dest = os.path.join(self.exec_dir, src_url)
@@ -89,35 +98,54 @@ class ToilWorkflowRunner:
 
         return dest
 
-    def sort_options(self) -> List[str]:
+    def sort_options(self, workflow_engine_parameters: Optional[Dict[str, Optional[str]]] = None) -> List[str]:
         """
         Sort the command line arguments in the order that can be recognized by
         the workflow execution engine.
+
+        :param workflow_engine_parameters: User-specified parameters for this
+        particular workflow. Keys are command-line options, and values are
+        option arguments, or None for options that are flags.
         """
         options = []
 
         # First, we pass the default engine parameters
         options.extend(self.engine_options)
 
-        # Then, we pass the user options specific for this workflow run. This should override the default
-        for key, value in self.request.get("workflow_engine_parameters", {}).items():
-            if value is None:  # flags
-                options.append(key)
-            else:
-                options.append(f"{key}={value}")
+        if workflow_engine_parameters:
+            # Then, we pass the user options specific for this workflow run.
+            # This should override the default
+            for key, value in workflow_engine_parameters.items():
+                if value is None:  # flags
+                    options.append(key)
+                else:
+                    options.append(f"{key}={value}")
 
-        # determine job store and set a new default if the user did not set one
-        cloud = False
+        # We want to clean always by default, unless a particular job store or
+        # a clean option was passed.
+        clean = None
+
+        # Parse options and drop options we may need to override.
         for option in options:
             if option.startswith("--jobStore="):
                 self.job_store = option[11:]
                 options.remove(option)
             if option.startswith(("--outdir=", "-o=")):
+                # We need to generate this one ourselves.
                 options.remove(option)
+            if option.startswith("--clean="):
+                clean = option[8:]
 
+        cloud = False
         job_store_type, _ = Toil.parseLocator(self.job_store)
         if job_store_type in ("aws", "google", "azure"):
             cloud = True
+
+        if self.job_store == self.default_job_store and clean is None:
+            # User didn't specify a clean option, and we're on a default,
+            # randomly generated job store, so we should clean it up even if we
+            # crash.
+            options.append("--clean=always")
 
         if self.wf_type in ("cwl", "wdl"):
             if not cloud:
@@ -137,20 +165,83 @@ class ToilWorkflowRunner:
         to be executed. Return that list of shell commands that should be
         executed in order to complete this workflow run.
         """
-        # write main workflow file and its secondary input file
-        workflow_url = self.write_workflow(src_url=self.request["workflow_url"])
-        input_json = os.path.join(self.exec_dir, "wes_inputs.json")
+        # Obtain CWL-style workflow parameters from the request.
+        workflow_params = self.request["workflow_params"]
 
-        # write input file as JSON
+        # And any workflow engine parameters the user specified.
+        workflow_engine_parameters = self.request.get("workflow_engine_parameters", {})
+
+        # Obtain main workflow file to a path (no-scheme file URL).
+        workflow_url = self.write_workflow(src_url=self.request["workflow_url"])
+
+        if os.path.basename(workflow_url) == "workflow.zip" and zipfile.is_zipfile(workflow_url):
+            # We've been sent a zip file. We should interpret this as an Amazon Genomics CLI-style zip file.
+            # Extract everything next to the zip and find and open relvant files.
+            logger.info("Extracting and parsing Amazon-style workflow bundle...")
+            zip_info = amazon_wes_utils.parse_workflow_zip_file(workflow_url, self.wf_type)
+
+            # Now parse Amazon's internal format into our own.
+
+            # Find the real workflow source for the entrypoint file
+            if 'workflowSource' in zip_info['files']:
+                # They sent a file, which has been opened, so grab its path
+                workflow_url = zip_info['files']['workflowSource'].name
+                logger.info("Workflow source file: '%s'", workflow_url)
+            elif 'workflowUrl' in zip_info['data']:
+                # They are pointing to another URL.
+                # TODO: What does Amazon expect this to mean? Are we supposed to recurse?
+                # For now just forward it.
+                workflow_url = zip_info['data']['workflowUrl']
+                logger.info("Workflow reference URL: '%s'", workflow_url)
+            else:
+                # The parser is supposed to throw so we can't get here
+                raise RuntimeError("Parser could not find workflow source or URL in zip")
+
+            if 'workflowInputFiles' in zip_info['files'] and len(zip_info['files']['workflowInputFiles']) > 0:
+                # The bundle contains a list of input files.
+                # We interpret these as JSON, and layer them on top of each
+                # other, and then apply workflow_params from the request.
+                logger.info("Workflow came with %d bundled inputs files; coalescing final parameters",
+                            len(zip_info['files']['workflowInputFiles']))
+
+                coalesced_parameters = {}
+                for binary_file in zip_info['files']['workflowInputFiles']:
+                    try:
+                        # Read each input file as a JSON
+                        loaded_parameters = json.load(binary_file)
+                    except json.JSONDecodeError as e:
+                        raise RuntimeError(f"Could not parse inputs JSON {os.path.basename(binary_file.name)}: {e}")
+                    # And merge them together in order
+                    coalesced_parameters.update(loaded_parameters)
+                # Then apply and replace the parameters that came with the request
+                coalesced_parameters.update(workflow_params)
+                workflow_params = coalesced_parameters
+
+            if 'workflowOptions' in zip_info['files']:
+                # The bundle contains an options JSON. We interpret these as
+                # defaults for workflow_engine_parameters.
+                logger.info(f"Workflow came with bundled options JSON")
+                try:
+                    # Read as a JSON
+                    loaded_options = json.load(zip_info['files']['workflowOptions'])
+                except json.JSONDecodeError as e:
+                    raise RuntimeError(f"Could not parse options JSON: {e}")
+                # Apply and replace the engine parameters that came with the
+                # request.
+                loaded_options.update(workflow_engine_parameters)
+                workflow_engine_parameters = loaded_options
+
+        # Write out CWL-style input file
+        input_json = os.path.join(self.exec_dir, "wes_inputs.json")
         with open(input_json, "w") as f:
-            json.dump(self.request["workflow_params"], f)
+            json.dump(workflow_params, f)
 
         # create output directory
         if not os.path.exists(self.out_dir):
             os.makedirs(self.out_dir)
 
         # sort commands
-        options = self.sort_options()
+        options = self.sort_options(workflow_engine_parameters)
 
         # construct and return the command to run
         if self.wf_type == "cwl":
@@ -273,7 +364,7 @@ class ToilWorkflowRunner:
         self.write("outputs.json", json.dumps(output_obj))
 
 
-@celery.task(name="run_wes")
+@celery.task(name="run_wes") # type: ignore
 def run_wes(work_dir: str, request: Dict[str, Any], engine_options: List[str]) -> str:
     """
     A celery task to run a requested workflow.

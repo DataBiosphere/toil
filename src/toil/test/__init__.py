@@ -394,7 +394,8 @@ def needs_aws_batch(test_item: MT) -> MT:
         from toil.lib.aws import get_current_aws_region
         if get_current_aws_region() is None:
             # We don't know a region so we need one set.
-            test_item = _require_env('TOIL_AWS_BATCH_REGION', 'an IAM role ARN that grants S3 and SDB access', test_item)
+            # TODO: It always won't be set if we get here.
+            test_item = _require_env('TOIL_AWS_REGION', 'an AWS region to use with AWS batch', test_item)
     except ImportError:
         return unittest.skip("Install Toil with the 'aws' extra to include this test.")(
             test_item
@@ -458,9 +459,18 @@ def needs_tes(test_item: MT) -> MT:
     return test_item
 
 
-def needs_kubernetes(test_item: MT) -> MT:
+def needs_kubernetes_installed(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if Kubernetes is installed."""
     test_item = _mark_test('kubernetes', test_item)
+    try:
+        import kubernetes
+    except ImportError:
+        return unittest.skip("Install Toil with the 'kubernetes' extra to include this test.")(test_item)
+    return test_item
+
+def needs_kubernetes(test_item: MT) -> MT:
+    """Use as a decorator before test classes or methods to run only if Kubernetes is installed and configured."""
+    test_item = needs_kubernetes_installed(test_item)
     try:
         import kubernetes
         try:
@@ -472,7 +482,8 @@ def needs_kubernetes(test_item: MT) -> MT:
                 return unittest.skip("Configure Kubernetes (~/.kube/config, $KUBECONFIG, "
                                      "or current pod) to include this test.")(test_item)
     except ImportError:
-        return unittest.skip("Install Toil with the 'kubernetes' extra to include this test.")(test_item)
+        # We should already be skipping this test
+        pass
     return test_item
 
 
@@ -601,6 +612,13 @@ def needs_server(test_item: MT) -> MT:
     else:
         return test_item
 
+def needs_celery_broker(test_item: MT) -> MT:
+    """
+    Use as a decorator before test classes or methods to run only if RabbitMQ is set up to take Celery jobs.
+    """
+    test_item = _mark_test('celery', test_item)
+    test_item = _require_env('TOIL_WES_BROKER_URL', "a URL to a RabbitMQ broker for Celery", test_item)
+    return test_item
 
 def needs_local_appliance(test_item: MT) -> MT:
     """

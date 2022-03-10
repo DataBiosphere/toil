@@ -486,13 +486,15 @@ def error_meets_conditions(e, error_conditions):
                     condition_met = True
     return condition_met
 
+DEFAULT_DELAYS = (0, 1, 1, 4, 16, 64)
+DEFAULT_TIMEOUT = 300
 
 # TODO: Replace the use of this with retry()
 #  The aws provisioner and jobstore need a large refactoring to be boto3 compliant, so this is
 #  still used there to avoid the duplication of future work
 def old_retry(
-    delays: Iterable[float] = (0, 1, 1, 4, 16, 64),
-    timeout: float = 300,
+    delays: Iterable[float] = DEFAULT_DELAYS,
+    timeout: float = DEFAULT_TIMEOUT,
     predicate: Callable[[Exception], bool] = lambda e: False,
 ) -> Generator[ContextManager, None, None]:
     """
