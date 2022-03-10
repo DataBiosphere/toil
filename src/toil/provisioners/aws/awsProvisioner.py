@@ -61,7 +61,7 @@ from toil.lib.retry import (
     old_retry,
     retry,
 )
-from toil.provisioners import NoSuchClusterException
+from toil.provisioners import NoSuchClusterException, ClusterCombinationNotSupportedException
 from toil.provisioners.abstractProvisioner import (
     AbstractProvisioner,
     ManagedNodesNotSupportedException,
@@ -309,6 +309,12 @@ class AWSProvisioner(AbstractProvisioner):
                                    leaderNodeType)
         self._keyName = keyName
         self._architecture = leader_type.architecture
+
+        if self.clusterType == 'mesos' and self._architecture != 'amd64':
+            # Mesos images aren't currently available for this architecture, so we can't start a Mesos cluster.
+            # Complain about this before we create anything.
+            raise ClusterCombinationNotSupportedException(type(self), self.clusterType, self._architecture,
+                                                          reason="Mesos is only available for amd64.")
 
         if vpcSubnet:
             # This is where we put the leader
