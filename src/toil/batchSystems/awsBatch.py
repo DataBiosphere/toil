@@ -46,7 +46,7 @@ from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
 from toil.common import Config, Toil
 from toil.job import JobDescription
-from toil.lib.aws import get_current_aws_zone, zone_to_region
+from toil.lib.aws import get_current_aws_region, zone_to_region
 from toil.lib.aws.session import establish_boto3_session
 from toil.lib.conversions import b_to_mib, mib_to_b
 from toil.lib.misc import slow_down, utc_now, unix_now_ms
@@ -83,13 +83,12 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # TODO: Parse it from a full queue ARN?
         self.region = getattr(config, 'aws_batch_region')
         if self.region is None:
-            zone = get_current_aws_zone()
-            if zone is None:
-                # Can't proceed without a real zone
+            self.region = get_current_aws_region()
+            if self.region is None:
+                # Can't proceed without a real region
                 raise RuntimeError('To use AWS Batch, specify --awsBatchRegion or '
-                                   'TOIL_AWS_BATCH_REGION or TOIL_AWS_ZONE, or configure '
+                                   'TOIL_AWS_REGION or TOIL_AWS_ZONE, or configure '
                                    'a default zone in boto')
-            self.region = zone_to_region(zone)
 
         # Connect to AWS Batch.
         # TODO: Use a global AWSConnectionManager so we can share a client
@@ -398,21 +397,42 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         JobDefinition for this workflow run.
         """
         if self.job_definition is None:
+            # First work out what volume mounts to make, because the type
+            # system is happiest this way
+            volumes: List[Dict[str, Union[str, Dict[str, str]]]] = []
+            mount_points: List[Dict[str, str]] = []
+            for i, shared_path in enumerate(set([
+                '/var/lib/toil',
+                '/var/lib/docker',
+                '/var/lib/cwl',
+                '/var/run/docker.sock',
+                '/tmp',
+                self.worker_work_dir
+            ])):
+                # For every path we want to be the same on the host and the
+                # container, choose a name
+                vol_name = f'mnt{i}'
+                # Make a volume for that path
+                volumes.append({'name': vol_name, 'host': {'sourcePath': shared_path}})
+                # Mount the volume at that path
+                mount_points.append({'containerPath': shared_path, 'sourceVolume': vol_name})
+
             job_def_spec = {
                 'jobDefinitionName': 'toil-' + str(uuid.uuid4()),
                 'type': 'container',
                 'containerProperties': {
                     'image': self.docker_image,
-                    # Unlike the Kubernetes batch system we always mount the Toil
-                    # workDir onto the host. Hopefully it has its ephemeral disks mounted there.
-                    # TODO: Where do the default batch AMIs mount their ephemeral disks, if anywhere?
-                    'volumes': [{'name': 'workdir', 'host': {'sourcePath': '/var/lib/toil'}}],
-                    'mountPoints': [{'containerPath': self.worker_work_dir, 'sourceVolume': 'workdir'}],
+                    'volumes': volumes,
+                    'mountPoints': mount_points,
                     # Requirements will always be overridden but must be present anyway
                     'resourceRequirements': [
                         {'type': 'MEMORY', 'value': str(max(MIN_REQUESTABLE_MIB, math.ceil(b_to_mib(self.config.defaultMemory))))},
                         {'type': 'VCPU', 'value': str(max(MIN_REQUESTABLE_CORES, math.ceil(self.config.defaultCores)))}
-                    ]
+                    ],
+                    # Be privileged because we can. And we'd like Singularity
+                    # to work even if we do have the Docker socket. See
+                    # <https://github.com/moby/moby/issues/42441>.
+                    'privileged': True
                 },
                 'retryStrategy': {'attempts': 1},
                 'propagateTags': True  # This will propagate to ECS task but not to job!
@@ -519,6 +539,6 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
     @classmethod
     def setOptions(cls, setOption: Callable[..., None]) -> None:
-        setOption("aws_batch_region", default=None, env=["TOIL_AWS_BATCH_REGION"])
+        setOption("aws_batch_region", default=None)
         setOption("aws_batch_queue", default=None, env=["TOIL_AWS_BATCH_QUEUE"])
         setOption("aws_batch_job_role_arn", default=None, env=["TOIL_AWS_BATCH_JOB_ROLE_ARN"])

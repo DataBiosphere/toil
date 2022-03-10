@@ -394,7 +394,8 @@ def needs_aws_batch(test_item: MT) -> MT:
         from toil.lib.aws import get_current_aws_region
         if get_current_aws_region() is None:
             # We don't know a region so we need one set.
-            test_item = _require_env('TOIL_AWS_BATCH_REGION', 'an IAM role ARN that grants S3 and SDB access', test_item)
+            # TODO: It always won't be set if we get here.
+            test_item = _require_env('TOIL_AWS_REGION', 'an AWS region to use with AWS batch', test_item)
     except ImportError:
         return unittest.skip("Install Toil with the 'aws' extra to include this test.")(
             test_item
@@ -611,6 +612,13 @@ def needs_server(test_item: MT) -> MT:
     else:
         return test_item
 
+def needs_celery_broker(test_item: MT) -> MT:
+    """
+    Use as a decorator before test classes or methods to run only if RabbitMQ is set up to take Celery jobs.
+    """
+    test_item = _mark_test('celery', test_item)
+    test_item = _require_env('TOIL_WES_BROKER_URL', "a URL to a RabbitMQ broker for Celery", test_item)
+    return test_item
 
 def needs_local_appliance(test_item: MT) -> MT:
     """

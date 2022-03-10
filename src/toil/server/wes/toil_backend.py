@@ -129,9 +129,26 @@ class ToilBackend(WESBackend):
     in the filesystem to store and retrieve data associated with the runs.
     """
 
-    def __init__(self, work_dir: str, options: List[str]) -> None:
+    def __init__(self, work_dir: str, options: List[str], dest_bucket_base: Optional[str]) -> None:
+        """
+        Make a new ToilBackend for serving WES.
+
+        :param work_dir: Directory to download and run workflows in.
+
+        :param options: Command-line options to pass along to workflows. Must
+        use = syntax to set values instead of ordering.
+
+        :param dest_bucket_base: If specified, direct CWL workflows to use
+        paths under the given URL for storing output files.
+        """
+        for opt in options:
+            if not opt.startswith('-'):
+                # We don't allow a value to be set across multiple arguments
+                # that would need to remain in the same order.
+                raise ValueError(f'Option {opt} does not begin with -')
         super(ToilBackend, self).__init__(options)
         self.work_dir = os.path.abspath(work_dir)
+        self.dest_bucket_base = dest_bucket_base
 
         self.supported_versions = {
             "py": ["3.6", "3.7", "3.8", "3.9"],
@@ -197,6 +214,8 @@ class ToilBackend(WESBackend):
             "supported_wes_versions": ["1.0.0"],
             "supported_filesystem_protocols": ["file", "http", "https"],
             "workflow_engine_versions": {"toil": baseVersion},
+            # TODO: How can we report --destBucket here, since we pass it only
+            # for CWL workflows?
             "default_workflow_engine_parameters": [
                 {
                     "name": key,
@@ -239,6 +258,8 @@ class ToilBackend(WESBackend):
             run.clean_up()
             raise
 
+        logger.info("Received workflow run request %s with parameters: %s", run_id, list(request.keys()))
+
         wf_type = request["workflow_type"].lower().strip()
         version = request["workflow_type_version"]
 
@@ -251,8 +272,14 @@ class ToilBackend(WESBackend):
             run.clean_up()
             raise VersionNotImplementedException(wf_type, version, supported_versions)
 
+        # Generate workflow options
+        workflow_options = list(self.options)
+        if wf_type == "cwl" and self.dest_bucket_base:
+            # Output to a directory under out base destination bucket URL.
+            workflow_options.append('--destBucket=' + os.path.join(self.dest_bucket_base, run_id))
+
         logger.info(f"Putting workflow {run_id} into the queue. Waiting to be picked up...")
-        run.queue_run(request, options=self.options)
+        run.queue_run(request, options=workflow_options)
 
         return {
             "run_id": run_id
@@ -273,8 +300,12 @@ class ToilBackend(WESBackend):
         stdout = ""
         stderr = ""
         if os.path.isfile(os.path.join(run.work_dir, 'stdout')):
-            stdout = f"{flask_request.host_url}toil/wes/v1/logs/{run_id}/stdout"
-            stderr = f"{flask_request.host_url}toil/wes/v1/logs/{run_id}/stderr"
+            # We can't use flask_request.host_url here because that's just the
+            # hostname, and we need to work mounted at a proxy hostname *and*
+            # path under that hostname. So we need to use a relative URL to the
+            # logs.
+            stdout = f"../../../../toil/wes/v1/logs/{run_id}/stdout"
+            stderr = f"../../../../toil/wes/v1/logs/{run_id}/stderr"
 
         exit_code = run.fetch("exit_code")
 

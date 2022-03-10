@@ -21,6 +21,7 @@ from toil.lib.misc import get_public_ip
 from toil.server.wes.toil_backend import ToilBackend
 from toil.server.wsgi_app import run_app
 from toil.version import version
+from toil.lib.aws import running_on_ec2, running_on_ecs, get_current_aws_region
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +55,11 @@ def parser_with_server_options() -> argparse.ArgumentParser:
                              "empty or only contain previous workflows. (default: './workflows').")
     parser.add_argument("--opt", "-o", type=str, action="append",
                         help="Specify the default parameters to be sent to the workflow engine for each "
-                             "run.  Accepts multiple values.\n"
+                             "run. Options taking arguments must use = syntax. Accepts multiple values.\n"
                              "Example: '--opt=--logLevel=CRITICAL --opt=--workDir=/tmp'.")
+    parser.add_argument("--dest_bucket_base", type=str, default=None,
+                        help="Direct CWL workflows to save output files to dynamically generated "
+                             "unique paths under the given URL. Supports AWS S3.")
     parser.add_argument("--version", action='version', version=version)
     return parser
 
@@ -76,7 +80,7 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
         CORS(flask_app.app, resources={r"/ga4gh/*": {"origins": args.cors_origins}})
 
     # add workflow execution service (WES) API endpoints
-    backend = ToilBackend(work_dir=args.work_dir, options=args.opt)
+    backend = ToilBackend(work_dir=args.work_dir, options=args.opt, dest_bucket_base=args.dest_bucket_base)
 
     flask_app.add_api('workflow_execution_service.swagger.yaml',
                       resolver=connexion.Resolver(backend.resolve_operation_id))  # noqa
@@ -97,11 +101,22 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
 
 def start_server(args: argparse.Namespace) -> None:
     """ Start a Toil server."""
+    
+    # Explain a bit about who and where we are
+    logger.info("Toil WES server version %s starting...", version)
+    if running_on_ecs():
+        logger.info("Environment appears to be Amazon ECS")
+    if running_on_ec2():
+        logger.info("Environment appears to be Amazon EC2")
+    aws_region = get_current_aws_region()
+    if aws_region:
+        logger.info("AWS region appears to be: %s", aws_region)
+
     flask_app = create_app(args)
 
     host = args.host
     port = args.port
-
+    
     if args.debug:
         flask_app.run(host=host, port=port)
     else:
