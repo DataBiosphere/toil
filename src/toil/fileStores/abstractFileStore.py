@@ -38,7 +38,7 @@ from typing import (
 
 import dill
 
-from toil.common import cacheDirName
+from toil.common import cacheDirName, Toil
 from toil.fileStores import FileID
 from toil.job import Job, JobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore
@@ -85,7 +85,7 @@ class AbstractFileStore(ABC):
         self,
         jobStore: AbstractJobStore,
         jobDesc: JobDescription,
-        localTempDir: str,
+        file_store_dir: str,
         waitForPreviousCommit: Callable[[], Any],
     ) -> None:
         """
@@ -94,9 +94,10 @@ class AbstractFileStore(ABC):
         :param jobStore: the job store in use for the current Toil run.
         :param jobDesc: the JobDescription object for the currently
                running job.
-        :param localTempDir: the per-worker local temporary directory, under which
-               per-job directories will be created. Assumed to be inside the
-               workflow directory, which is assumed to be inside the work directory.
+        
+        :param file_store_dir: the per-worker local temporary directory where
+               the file store should store local files. Per-job directories will be
+               created under here by the file store.
 
         :param waitForPreviousCommit: the waitForCommit method of the previous job's
                file store, when jobs are running in sequence on the same worker. Used to
@@ -107,9 +108,10 @@ class AbstractFileStore(ABC):
         """
         self.jobStore = jobStore
         self.jobDesc = jobDesc
-        self.localTempDir: str = os.path.abspath(localTempDir)
-        self.workFlowDir = os.path.dirname(self.localTempDir)
-        self.workDir: str = os.path.dirname(self.localTempDir)
+        # This gets replaced with a subdirectory of itself on open()
+        self.localTempDir: str = os.path.abspath(file_store_dir)
+        self.workflow_dir: str = Toil.getLocalWorkflowDir(self.jobStore.config.workflowID, self.jobStore.config.workDir)
+        self.coordination_dir: str =Toil.get_local_workflow_coordination_dir(self.jobStore.config.workflowID, self.jobStore.config.workDir)
         self.jobName: str = (
             self.jobDesc.command.split()[1] if self.jobDesc.command else ""
         )
@@ -132,7 +134,7 @@ class AbstractFileStore(ABC):
     def createFileStore(
         jobStore: AbstractJobStore,
         jobDesc: JobDescription,
-        localTempDir: str,
+        file_store_dir: str,
         waitForPreviousCommit: Callable[[], Any],
         caching: bool,
     ) -> Union["NonCachingFileStore", "CachingFileStore"]:
@@ -144,10 +146,10 @@ class AbstractFileStore(ABC):
         fileStoreCls: Union[Type["CachingFileStore"], Type["NonCachingFileStore"]] = (
             CachingFileStore if caching else NonCachingFileStore
         )
-        return fileStoreCls(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
+        return fileStoreCls(jobStore, jobDesc, file_store_dir, waitForPreviousCommit)
 
     @staticmethod
-    def shutdownFileStore(workflowDir: str, workflowID: str) -> None:
+    def shutdownFileStore(workflowID: str, config_work_dir: str) -> None:
         """
         Carry out any necessary filestore-specific cleanup.
 
@@ -158,22 +160,24 @@ class AbstractFileStore(ABC):
         This is the intended to be the last call to the file store in a Toil run,
         called by the batch system cleanup function upon batch system shutdown.
 
-        :param workflowDir: The path to the cache directory
         :param workflowID: The workflow ID for this invocation of the workflow
+        :param config_work_dir: The path to the work directory in the Toil Config.
         """
         # Defer these imports until runtime, since these classes depend on our file
         from toil.fileStores.cachingFileStore import CachingFileStore
         from toil.fileStores.nonCachingFileStore import NonCachingFileStore
 
+        workflowDir = Toil.getLocalWorkflowDir(workflowID, config_work_dir)
+        coordination_dir = Toil.get_local_workflow_coordination_dir(workflowID, config_work_dir)
         cacheDir = os.path.join(workflowDir, cacheDirName(workflowID))
         if os.path.exists(cacheDir):
             # The presence of the cacheDir suggests this was a cached run. We don't need
             # the cache lock for any of this since this is the final cleanup of a job
             # and there should be  no other conflicting processes using the cache.
-            CachingFileStore.shutdown(cacheDir)
+            CachingFileStore.shutdown((coordination_dir, cacheDir))
         else:
             # This absence of cacheDir suggests otherwise.
-            NonCachingFileStore.shutdown(workflowDir)
+            NonCachingFileStore.shutdown(coordination_dir)
 
     @contextmanager
     def open(self, job: Job) -> Generator[None, None, None]:
@@ -606,14 +610,14 @@ class AbstractFileStore(ABC):
 
     @classmethod
     @abstractmethod
-    def shutdown(cls, dir_: str) -> None:
+    def shutdown(cls, shutdown_info: Any) -> None:
         """
         Shutdown the filestore on this node.
 
         This is intended to be called on batch system shutdown.
 
-        :param dir_: The implementation-specific directory containing the required
-            information for shutting down the file store and removing all its state
-            and all job local temp directories from the node.
+        :param shutdown_info: The implementation-specific shutdown information,
+              for shutting down the file store and removing all its state and all job
+              local temp directories from the node.
         """
         raise NotImplementedError()

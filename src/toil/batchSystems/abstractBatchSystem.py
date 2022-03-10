@@ -388,13 +388,18 @@ class BatchSystemSupport(AbstractBatchSystem):
         """
         assert isinstance(info, WorkerCleanupInfo)
         workflowDir = Toil.getLocalWorkflowDir(info.workflowID, info.workDir)
+        coordination_dir = Toil.get_local_workflow_coordination_dir(info.workflowID, info.workDir)
         DeferredFunctionManager.cleanupWorker(workflowDir)
         workflowDirContents = os.listdir(workflowDir)
-        AbstractFileStore.shutdownFileStore(workflowDir, info.workflowID)
+        AbstractFileStore.shutdownFileStore(info.workflowID, info.workDir)
         if (info.cleanWorkDir == 'always'
-            or info.cleanWorkDir in ('onSuccess', 'onError')
-            and workflowDirContents in ([], [cacheDirName(info.workflowID)])):
-            shutil.rmtree(workflowDir, ignore_errors=True)
+            or info.cleanWorkDir in ('onSuccess', 'onError'):
+
+            if workflowDirContents in ([], [cacheDirName(info.workflowID)])):
+                shutil.rmtree(workflowDir, ignore_errors=True)
+            if coordination_dir != workflowDir:
+                # No more coordination to do here either.
+                shutil.rmtree(coordination_dir, ignore_errors=True)
 
 class NodeInfo:
     """
