@@ -3,7 +3,7 @@ kind: CronJob
 metadata:
   name: pod-murder-bot
 spec:
-  schedule: "0 0 * * 0" #Weekly schedule
+  schedule: "@weekly" #Weekly schedule
   jobTemplate:
     spec: 
       template:
@@ -12,7 +12,7 @@ spec:
           - name: murder-bot
             image: quay.io/vgteam/vg_ci_prebake:latest
             imagePullPolicy: Always
-            args:
+            command:
             - /bin/bash
             - -c
             - |
@@ -25,6 +25,7 @@ spec:
                 then
                   if [[ "$NAME" == "toiltest-toil"* || "$NAME" == "runner-"* ]];
                     then
+                      echo deleting pod $NAME
                       kubectl delete pod $NAME --namespace "toil"
                   fi
                 fi
