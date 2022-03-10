@@ -1886,7 +1886,7 @@ class CachingFileStore(AbstractFileStore):
                     # This is caching-related.
                     all_db_files.append(dbCandidate)
                     attempt_number = int(match.group(1))
-                    if attempt_number > dbAttempt and dbCandidate == f"cache-{}.db":
+                    if attempt_number > dbAttempt and dbCandidate == f"cache-{attempt_number}.db":
                         # This is a main database, and the newest we have seen.
                         dbFilename = dbCandidate
                         dbAttempt = attempt_number

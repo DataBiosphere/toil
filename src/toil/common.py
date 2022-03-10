@@ -1266,7 +1266,7 @@ class Toil(ContextManager["Toil"]):
         
         :param workflow_id: THe ID of the current Toil workflow.
         """
-        return str(uuid.uuid5(uuid.uuid(getNodeID()), workflow_id)).replace('-', '')
+        return str(uuid.uuid5(uuid.UUID(getNodeID()), workflow_id)).replace('-', '')
 
     @classmethod
     def getLocalWorkflowDir(
@@ -1297,7 +1297,7 @@ class Toil(ContextManager["Toil"]):
         
     @classmethod
     def get_local_workflow_coordination_dir(
-        cls, workflow_id: str, config_work_dir: str
+        cls, workflow_id: str, config_work_dir: Optional[str] = None
     ) -> str:
         """
         Return the directory where coordination files should be locared for

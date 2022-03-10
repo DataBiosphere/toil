@@ -110,6 +110,7 @@ class AbstractFileStore(ABC):
         self.jobDesc = jobDesc
         # This gets replaced with a subdirectory of itself on open()
         self.localTempDir: str = os.path.abspath(file_store_dir)
+        assert self.jobStore.config.workflowID is not None
         self.workflow_dir: str = Toil.getLocalWorkflowDir(self.jobStore.config.workflowID, self.jobStore.config.workDir)
         self.coordination_dir: str =Toil.get_local_workflow_coordination_dir(self.jobStore.config.workflowID, self.jobStore.config.workDir)
         self.jobName: str = (
@@ -149,7 +150,7 @@ class AbstractFileStore(ABC):
         return fileStoreCls(jobStore, jobDesc, file_store_dir, waitForPreviousCommit)
 
     @staticmethod
-    def shutdownFileStore(workflowID: str, config_work_dir: str) -> None:
+    def shutdownFileStore(workflowID: str, config_work_dir: Optional[str]) -> None:
         """
         Carry out any necessary filestore-specific cleanup.
 

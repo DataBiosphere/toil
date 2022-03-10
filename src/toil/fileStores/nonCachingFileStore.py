@@ -15,6 +15,7 @@ import errno
 import fcntl
 import logging
 import os
+import tempfile
 from collections import defaultdict
 from contextlib import contextmanager
 from typing import (
@@ -292,4 +293,4 @@ class NonCachingFileStore(AbstractFileStore):
         """
         :param shutdown_info: The coordination directory.
         """
-        cls._removeDeadJobs(dir_, batchSystemShutdown=True)
+        cls._removeDeadJobs(shutdown_info, batchSystemShutdown=True)

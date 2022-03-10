@@ -387,6 +387,7 @@ class BatchSystemSupport(AbstractBatchSystem):
                for cleaning up the worker.
         """
         assert isinstance(info, WorkerCleanupInfo)
+        assert info.workflowID is not None
         workflowDir = Toil.getLocalWorkflowDir(info.workflowID, info.workDir)
         coordination_dir = Toil.get_local_workflow_coordination_dir(info.workflowID, info.workDir)
         DeferredFunctionManager.cleanupWorker(workflowDir)

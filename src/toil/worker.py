@@ -224,7 +224,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
     #Setup the temporary directories.
     ##########################################
     # Dir to put all this worker's temp files in.
-    assert config.workflowID
+    assert config.workflowID is not None
     toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
     # Dir to put lock files in, ideally not on NFS.
     toil_coordination_dir = Toil.get_local_workflow_coordination_dir(config.workflowID, config.workDir)
