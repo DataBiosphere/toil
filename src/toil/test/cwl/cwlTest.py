@@ -767,6 +767,7 @@ class CWLOnARMTest(AbstractClusterTest):
         super().__init__(methodName=methodName)
         self.clusterName = 'cwl-test-' + str(uuid.uuid4())
         self.leaderNodeType = 't4g.medium'
+        self.clusterType = 'kubernetes'
 
     def setUp(self):
         super().setUp()
@@ -777,7 +778,7 @@ class CWLOnARMTest(AbstractClusterTest):
         # Make a cluster
         self.launchCluster()
         # get the leader so we know the IP address - we don't need to wait since create cluster
-        # already insures the leader is running
+        # already ensures the leader is running
         self.cluster = cluster_factory(provisioner='aws', zone=self.zone, clusterName=self.clusterName)
         self.leader = self.cluster.getLeader()
 
@@ -795,7 +796,6 @@ class CWLOnARMTest(AbstractClusterTest):
 
         # Runs the CWLv12Test on an ARM instance
         self.sshUtil(['bash', '-c', f'. .{self.venvDir}/bin/activate && cd toil && pytest --log-cli-level DEBUG -r s src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance'])
-        self.tearDown()
 
 
 @needs_cwl
