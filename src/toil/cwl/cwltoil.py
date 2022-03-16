@@ -1669,6 +1669,9 @@ def toilStageFiles(
 ) -> None:
     """
     Copy input files out of the global file store and update location and path.
+
+    :param destBucket: If set, export to this base URL instead of to the local
+           filesystem.
     """
 
     def _collectDirEntries(
@@ -1789,9 +1792,21 @@ def toilStageFiles(
                         n.write(p.resolved.encode("utf-8"))
 
     def _check_adjust(f: CWLObjectType) -> CWLObjectType:
-        f["location"] = schema_salad.ref_resolver.file_uri(
-            pm.mapper(cast(str, f["location"]))[1]
-        )
+        # Figure out where the path mapper put this
+        mapped_location: MapperEnt = pm.mapper(cast(str, f["location"]))
+        if destBucket:
+            # Make the location point to the destination bucket.
+            # Reconstruct the path we exported to.
+            base_name = mapped_location.target[len(outdir) :]
+            dest_url = "/".join(s.strip("/") for s in [destBucket, base_name])
+            # And apply it
+            f["location"] = dest_url
+        else:
+            # Make the location point to the place we put this thing on the
+            # local filesystem.
+            f["location"] = schema_salad.ref_resolver.file_uri(
+                mapped_location.target
+            )
 
         if "contents" in f:
             del f["contents"]
