@@ -258,8 +258,5 @@ class WESBackend:
 
         if "workflow_params" not in body:
             raise MalformedRequestException("Missing 'workflow_params' in submission")
-        # TODO: make sure workflow_url and body["workflow_params"] does not access files outside of its own
-        #  workflow directory.
-        # this is hard for WDL files especially, unless we interpret every string to be a path
 
         return temp_dir, body
