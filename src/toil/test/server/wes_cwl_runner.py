@@ -36,14 +36,16 @@ cwltest --verbose \
 logger = logging.getLogger(__name__)
 
 
-def get_deps_from_cwltool(cwl_file, input_file, input_deps: bool = False):
+def get_deps_from_cwltool(cwl_file: str, input_file: Optional[str] = None):
     """
     Return a list of dependencies of the given workflow from cwltool.
-    """
-    if input_deps and not input_file:
-        raise ValueError("Must provide an input_file if input_deps = True.")
 
-    option = '--print-input-deps' if input_deps else '--print-deps'
+    :param cwl_file: The CWL file.
+    :param input_file: Omit to get the dependencies from the CWL file. If set,
+                       this returns the dependencies from the input file.
+    """
+
+    option = '--print-input-deps' if input_file else '--print-deps'
 
     args = ['cwltool', option, '--relative-deps', 'cwd', cwl_file]
     if input_file:
@@ -92,7 +94,7 @@ def submit_run(client: WESClient,
     attachments = get_deps_from_cwltool(cwl_file, input_file)
 
     if input_file:
-        attachments.extend(get_deps_from_cwltool(cwl_file, input_file, input_deps=True))
+        attachments.extend(get_deps_from_cwltool(cwl_file, input_file))
 
     # logging.warning(f"Files to import: {attachments}")
 
