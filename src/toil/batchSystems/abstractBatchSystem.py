@@ -390,7 +390,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         assert info.workflowID is not None
         workflowDir = Toil.getLocalWorkflowDir(info.workflowID, info.workDir)
         coordination_dir = Toil.get_local_workflow_coordination_dir(info.workflowID, info.workDir)
-        DeferredFunctionManager.cleanupWorker(workflowDir)
+        DeferredFunctionManager.cleanupWorker(coordination_dir)
         workflowDirContents = os.listdir(workflowDir)
         AbstractFileStore.shutdownFileStore(info.workflowID, info.workDir)
         if info.cleanWorkDir == 'always' or info.cleanWorkDir in ('onSuccess', 'onError'):
