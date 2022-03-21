@@ -612,8 +612,11 @@ def needs_server(test_item: MT) -> MT:
         return test_item
 
 
-def needs_wes(test_item: MT) -> MT:
-    """Use as a decorator before test classes or methods to run only if WES is available."""
+def needs_wes_server(test_item: MT) -> MT:
+    """
+    Use as a decorator before test classes or methods to run only if a WES
+    server is available to run against.
+    """
     test_item = _mark_test('wes', test_item)
 
     wes_url = os.environ.get('TOIL_WES_ENDPOINT')

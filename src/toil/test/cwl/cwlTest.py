@@ -53,7 +53,7 @@ from toil.test import (
     needs_parasol,
     needs_slurm,
     needs_torque,
-    needs_wes,
+    needs_wes_server,
     slow,
 )
 
@@ -722,7 +722,7 @@ class CWLv12Test(ToilTest):
         )
 
     @slow
-    @needs_wes
+    @needs_wes_server
     def test_wes_server_cwl_conformance(self):
         """
         Run the CWL conformance tests via WES. TOIL_WES_ENDPOINT must be
