@@ -125,9 +125,9 @@ _CLUSTER_LAUNCHING_PERMISSIONS = ["iam:CreateRole",
                                   "iam:ListRoleTags",
                                   "iam:PutRolePolicy",
                                   "iam:RemoveRoleFromInstanceProfile",
-                                  "iam:TagRole",
+                                  "iam:TagRole"
                                   ]
-#test if creating with permissions fucks everything up or not
+
 def awsRetryPredicate(e):
     if isinstance(e, socket.gaierror):
         # Could be a DNS outage:
@@ -1830,7 +1830,6 @@ class AWSProvisioner(AbstractProvisioner):
                 iam.add_role_to_instance_profile(profile.instance_profile_name, iamRoleName)
                 logger.debug("Associated role %s with profile", iamRoleName)
 
-
         return profile_arn
 
     def permission_warning_check(self, existing_profile_arn: Optional[str]) -> None:
@@ -1845,7 +1844,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
         client_sts = self.aws.client(self._region, 'sts')
         identity = client_sts.get_caller_identity()['Arn']
-        if(existing_profile_arn == None):
+        if existing_profile_arn is None:
 
             #sim on user creating pclient = self.aws.client(self._region, 'iam')rofile or no
 
@@ -1868,9 +1867,9 @@ class AWSProvisioner(AbstractProvisioner):
         client = self.aws.client(self._region, 'iam')
         for eval_res in self._pager(client.simulate_principal_policy, 'EvaluationResults',
                                     PolicySourceArn=principal_arn, ActionNames=actions):
-            if (eval_res['EvalDecision'] != 'allowed'):
+            if eval_res['EvalDecision'] != 'allowed':
                 raise RuntimeError("Missing some sorta permissions for aws")  # add specifics eventually
 
             for resource_spec in eval_res['ResourceSpecificResults']:
-                if (resource_spec['EvalResourceDecision'] != "allowed"):
+                if resource_spec['EvalResourceDecision'] != "allowed":
                     raise RuntimeError("Missing some sorta permissions for aws")  # add specifics eventually
