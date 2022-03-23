@@ -50,25 +50,37 @@ def get_aws_zone_from_metadata() -> Optional[str]:
     Get the AWS zone from instance metadata, if on EC2 and the boto module is
     available. Otherwise, gets the AWS zone from ECS task metadata, if on ECS.
     """
-    if running_on_ec2():
-        try:
-            # Use the EC2 metadata service
-            import boto
-            from boto.utils import get_instance_metadata
-            return get_instance_metadata()['placement']['availability-zone']
-        except (KeyError, ImportError):
-            pass
-    elif running_on_ecs():
+
+    # When running on ECS, we also appear to be running on EC2, but the EC2
+    # metadata service doesn't seem to be contactable. So we check ECS first.
+
+    if running_on_ecs():
         # Use the ECS metadata service
         logger.debug("Fetch AZ from ECS metadata")
         try:
             resp = json.load(urlopen(os.environ['ECS_CONTAINER_METADATA_URI_V4'] + '/task', timeout=1))
             logger.debug("ECS metadata: %s", resp)
             if isinstance(resp, dict):
+                # We found something. Go with that.
                 return resp.get('AvailabilityZone')
         except (json.decoder.JSONDecodeError, KeyError, URLError) as e:
-            logger.debug("Skipping ECS metadata due to error: %s", e)
-            pass
+            # We're on ECS but can't get the metadata. That's odd.
+            logger.warning("Skipping ECS metadata due to error: %s", e)
+    if running_on_ec2():
+        # On EC2 alone, or on ECS but we couldn't get ahold of the ECS
+        # metadata.
+        try:
+            # Use the EC2 metadata service
+            import boto
+            from boto.utils import get_instance_metadata
+            logger.debug("Fetch AZ from EC2 metadata")
+            return get_instance_metadata()['placement']['availability-zone']
+        except ImportError:
+            # This is expected to happen a lot
+            logger.debug("No boto to fetch ECS metadata")
+        except (KeyError, URLError) as e:
+            # We're on EC2 but can't get the metadata. That's odd.
+            logger.warning("Skipping EC2 metadata due to error: %s", e)
     return None
 
 def get_aws_zone_from_boto() -> Optional[str]:
