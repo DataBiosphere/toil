@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import datetime
 import logging
 import math
 import os
@@ -302,10 +303,10 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         return pgids
 
-    def _stop_and_wait(self, popens: Sequence[subprocess.Popen]) -> None:
+    def _stop_and_wait(self, popens: Sequence[subprocess.Popen], timeout: int = 5) -> None:
         """
         Stop the given child processes and all their children. Blocks until the
-        processes are gone.
+        processes are gone or timeout is passed.
         """
 
         pgids = self._stop_now(popens)
@@ -313,27 +314,50 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         for popen in popens:
             # Wait on all the children
             popen.wait()
+            logger.debug('Process %s known to batch system %s is stopped; it returned %s',
+                         popen.pid, id(self), popen.returncode)
 
-            logger.debug('Process %s known to batch system %s is stopped; it returned %s', popen.pid, id(self), popen.returncode)
+        # Make sure all child processes have received their kill signal
+        self._wait_for_death(pgids, timeout)
 
-        for pgid in pgids:
-            try:
-                # Send a kill to the group again, to see if anything in it
-                # is still alive. Our first kill might not have been
-                # delivered yet.
-                os.killpg(pgid, signal.SIGKILL)
-                # If that worked it is still alive, let user know that we may leave
-                # behind dead but unreaped processes.
-                logger.warning('Sent redundant shutdown kill to surviving process group %s known to batch system %s', pgid, id(self))
-                logger.warning('Make sure your jobs are cleaning up child processes appropriately to avoid zombie '
-                               'processes possibly being left behind.')
+    def _wait_for_death(self, pgids: List[int], timeout: int = 5):
+        """
+        Wait for the list of process groups to be killed. Blocks until the
+        processes are gone or timeout is passed.
+        """
+        # TODO: this opens a PGID reuse risk; someone else might've reaped the
+        #  process and its PGID may have been re-used.
 
-            except ProcessLookupError:
-                # The group is actually gone now.
-                pass
-            except PermissionError:
-                # The group is not only gone but reused
-                pass
+        start = datetime.datetime.now()
+        while len(pgids) > 0 and (datetime.datetime.now() - start).total_seconds() < timeout:
+            new_pgids: List[int] = []
+            for pgid in pgids:
+                try:
+                    # Send a kill to the group again, to see if anything in it
+                    # is still alive. Our first kill might not have been
+                    # delivered yet.
+                    os.killpg(pgid, signal.SIGKILL)
+
+                    # If we reach here, something in the process group still
+                    # exists.
+                    new_pgids.append(pgid)
+                except ProcessLookupError:
+                    # The group is actually gone now.
+                    pass
+                except PermissionError:
+                    # The group is not only gone but reused
+                    pass
+
+            pgids = new_pgids
+            if len(pgids) > 0:
+                time.sleep(0.1)
+
+        if len(pgids) > 0:
+            # If any processes are still alive, let user know that we may leave
+            # behind dead but unreaped processes.
+            logger.warning("Process groups %s were not reaped.", str(pgids))
+            logger.warning('Make sure your jobs are cleaning up child processes appropriately to avoid zombie '
+                           'processes possibly being left behind.')
 
     def _pollForDoneChildrenIn(self, pid_to_popen):
         """
@@ -550,7 +574,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             # Before we reap it (if possible), kill its PID as a PGID to make sure
             # it isn't leaving children behind.
             # TODO: This is a PGID re-use risk on Mac because the process is
-            # reaped already and the PGID may have been reused.
+            #  reaped already and the PGID may have been reused.
             try:
                 os.killpg(pid, signal.SIGKILL)
             except ProcessLookupError:
@@ -572,25 +596,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         # Last attempt to make sure all processes in the group have received
         # their kill signals.
-        # TODO: this opens a PGID reuse risk; we reaped the process and its
-        #  PGID may have been re-used.
-        try:
-            # Send a kill to the group again, to see if anything in it
-            # is still alive. Our first kill might not have been
-            # delivered yet.
-            os.killpg(pid, signal.SIGKILL)
-            # If that worked it is still alive, let user know that we may leave
-            # behind dead but unreaped processes.
-            logger.warning('Sent redundant job completion kill to surviving process group %s known to batch system %s', pid, id(self))
-            logger.warning('Make sure your jobs are cleaning up child processes appropriately to avoid zombie '
-                           'processes possibly being left behind.')
-
-        except ProcessLookupError:
-            # It is dead already
-            pass
-        except PermissionError:
-            # It isn't ours actually. Ours is dead.
-            pass
+        self._wait_for_death([pid])
 
         # Free up the job's resources.
         self.coreFractions.release(coreFractions)
