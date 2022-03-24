@@ -307,6 +307,10 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """
         Stop the given child processes and all their children. Blocks until the
         processes are gone or timeout is passed.
+
+        :param popens: The processes to stop and wait on.
+        :param timeout: The number of seconds to wait for all process groups to
+                        be gone.
         """
 
         pgids = self._stop_now(popens)
@@ -322,8 +326,12 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
     def _wait_for_death(self, pgids: List[int], timeout: int = 5):
         """
-        Wait for the list of process groups to be killed. Blocks until the
-        processes are gone or timeout is passed.
+        Wait for the process groups to be killed. Blocks until the processes
+        are gone or timeout is passed.
+
+        :param pgids: The list of process group ids.
+        :param timeout: The number of seconds to wait for all process groups to
+                        be gone.
         """
         # TODO: this opens a PGID reuse risk; someone else might've reaped the
         #  process and its PGID may have been re-used.
@@ -355,7 +363,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         if len(pgids) > 0:
             # If any processes are still alive, let user know that we may leave
             # behind dead but unreaped processes.
-            logger.warning("Process groups %s were not reaped.", str(pgids))
+            logger.warning('Process groups %s were not reaped.', str(pgids))
             logger.warning('Make sure your jobs are cleaning up child processes appropriately to avoid zombie '
                            'processes possibly being left behind.')
 
