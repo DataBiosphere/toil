@@ -1310,10 +1310,10 @@ class Toil(ContextManager["Toil"]):
         
         :param workflow_id: Unique ID of the current workflow.
         :param config_work_dir: Value used for the work directory in the
-        current Toil Config.
+               current Toil Config.
         
         :return: Path to the local workflow coordination directory on this
-        machine.
+                 machine.
         """
         
         # Start with the base coordination or work dir

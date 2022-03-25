@@ -182,7 +182,8 @@ the logging module:
                         As long as caching is enabled Toil will protect the
                         file automatically by changing the permissions to
                         read-only.
-  --coalesceStatusCalls Coalese status calls to prevent the batch system from
+  --coalesceStatusCalls
+                        Coalese status calls to prevent the batch system from
                         being overloaded. Currently only supported for LSF.
 
 **Autoscaling Options**
@@ -197,6 +198,7 @@ the logging module:
                         bid set off by a colon, making the node type preemptable. Instance
                         types may appear in multiple node types, and the same node type
                         may appear as both preemptable and non-preemptable.
+                        
                         Valid argument specifying two node types:
                             c5.4xlarge/c5a.4xlarge:0.42,t2.large
                         Node types:
