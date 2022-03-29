@@ -173,7 +173,7 @@ class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
         function to delete the file and then kills its worker.
 
         Assert that the file is missing after the pipeline fails, because we're
-        using a single-machien batch system and the leader's batch system
+        using a single-machine batch system and the leader's batch system
         cleanup will find and run the deferred function.
         """
 

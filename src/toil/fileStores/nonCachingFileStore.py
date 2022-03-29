@@ -283,7 +283,7 @@ class NonCachingFileStore(AbstractFileStore):
             # Write data
             dill.dump(jobState, fH)
         # Drop suffix
-        jobStateFile = jobStateFile[:-4]
+        jobStateFile = jobStateFile[:-len('.tmp')]
         # Put in place
         os.rename(jobStateFile + '.tmp', jobStateFile)
         return jobStateFile

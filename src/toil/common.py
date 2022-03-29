@@ -1300,8 +1300,8 @@ class Toil(ContextManager["Toil"]):
         cls, workflow_id: str, config_work_dir: Optional[str] = None
     ) -> str:
         """
-        Return the directory where coordination files should be locared for
-        this workflow on this machine. THese include internal Toil databases
+        Return the directory where coordination files should be located for
+        this workflow on this machine. These include internal Toil databases
         and lock files for the machine.
         
         If an in-memory filesystem is available, it is used. Otherwise, the
