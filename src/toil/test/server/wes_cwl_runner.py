@@ -58,7 +58,6 @@ def get_deps_from_cwltool(cwl_file: str, input_file: Optional[str] = None):
         return []
 
     json_result: Dict[str, Any] = json.loads(result)
-
     deps = []
 
     def get_deps(obj: Any):
@@ -90,13 +89,15 @@ def submit_run(client: WESClient,
                cwl_file: str,
                input_file: Optional[str] = None,
                engine_options: Optional[List[str]] = None) -> str:
+    """
+    Given a CWL file, its input files, and an optional list of engine options,
+    submit the CWL workflow to the WES server via the WES client.
+    """
     # First, get the list of files to attach to this workflow
     attachments = get_deps_from_cwltool(cwl_file, input_file)
 
     if input_file:
         attachments.extend(get_deps_from_cwltool(cwl_file, input_file))
-
-    # logging.warning(f"Files to import: {attachments}")
 
     run_result: Dict[str, Any] = client.run(cwl_file, input_file,
                                             attachments=attachments,
@@ -112,8 +113,15 @@ def poll_run(client: WESClient, run_id: str) -> bool:
     return state in ("COMPLETE", "CANCELING", "CANCELED", "EXECUTOR_ERROR", "SYSTEM_ERROR")
 
 
-def print_logs_and_exit(client: WESClient, run_id: str) -> None:
-    # cwltest checks for stdout, stderr, and return code
+def print_logs_and_exit(client: WESClient, run_id: str, download_files: bool = False) -> None:
+    """
+    Fetch the workflow logs from the WES server and print the results.
+
+    :param client: The WES client.
+    :param run_id: The run_id of the target workflow.
+    :param download_files: If True, download the output files to the local
+                           filesystem.
+    """
     data = client.get_run_log(run_id)
 
     outputs = json.dumps(data.get("outputs", {}), indent=4)
@@ -124,17 +132,14 @@ def print_logs_and_exit(client: WESClient, run_id: str) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    # first two positional arguments are passed in by cwltest
+    parser = argparse.ArgumentParser(description="A CWL runner that runs workflows through WES.")
+
+    # the first two positional arguments are the CWL file and its input file
     parser.add_argument("cwl_file", type=str)
     parser.add_argument("input_file", type=str, nargs="?", default=None)
-    # a few arguments useful for the WES runner
-    parser.add_argument("--wes_endpoint", default="http://localhost:8080",
+    # arguments used by the WES runner
+    parser.add_argument("--wes_endpoint", default=os.environ.get("TOIL_WES_ENDPOINT", "http://localhost:8080"),
                         help="The http(s) URL of the WES server.  (default: %(default)s)")
-    parser.add_argument("--wes_user", default=None,
-                        help="Username to use for basic authentication to the WES server.")
-    parser.add_argument("--wes_password", default=None,
-                        help="Password to use for basic authentication to the WES server.")
     # the rest of the arguments are passed as engine options to the WES server
     options, rest = parser.parse_known_args()
 
@@ -143,17 +148,14 @@ def main():
 
     # Initialize client and run the workflow
     endpoint = options.wes_endpoint
-    # logger.warning(f"Using WES endpoint: {endpoint.scheme}://{endpoint.netloc}")
+    wes_user = os.environ.get("TOIL_WES_USER", None)
+    wes_password = os.environ.get("TOIL_WES_USER", None)
 
-    wes_user = options.wes_user
-    wes_password = options.wes_password
     client = WESClient(base_url=endpoint,
                        auth=(wes_user, wes_password) if wes_user and wes_password else None)
 
     run_id = submit_run(client, cwl_file, input_file, engine_options=rest)
     assert run_id
-
-    # logger.warning(f"Submitted run. Waiting for {run_id} to finish...")
 
     done = False
     while not done:

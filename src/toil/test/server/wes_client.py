@@ -1,5 +1,9 @@
-# Modified from wes-service under Apache License, Version 2.0.
+# This file is modified from wes-service under Apache License, Version 2.0.
 # https://github.com/common-workflow-language/workflow-service/blob/main/LICENSE
+# TODO: remove once the following two points are addressed:
+#   1. import from wes-service once it can install correctly
+#   2. additional changes (e.g.: engine_parameters) are merged back upstream
+# See: https://github.com/DataBiosphere/toil/pull/4052#discussion_r833542155
 import json
 import os
 import requests
