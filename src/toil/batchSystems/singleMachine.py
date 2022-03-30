@@ -363,7 +363,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         if len(pgids) > 0:
             # If any processes are still alive, let user know that we may leave
             # behind dead but unreaped processes.
-            logger.warning('Process groups %s were not reaped.', str(pgids))
+            logger.warning('Processes were not reaped in groups: %s.', str(pgids))
             logger.warning('Make sure your jobs are cleaning up child processes appropriately to avoid zombie '
                            'processes possibly being left behind.')
 
