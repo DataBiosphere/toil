@@ -1847,8 +1847,8 @@ class AWSProvisioner(AbstractProvisioner):
         if existing_profile_arn is None:
 
             #sim on user creating pclient = self.aws.client(self._region, 'iam')rofile or no
-
-            self.check_policy_warnings(identity, ["actions for creating roles, policies"])
+            raise RuntimeError("I hate everything")
+            self.check_policy_warnings(identity, ["iam:CreateRole"])
 
         else:
             self.check_policy_warnings(existing_profile_arn, ["Action things eventually"])

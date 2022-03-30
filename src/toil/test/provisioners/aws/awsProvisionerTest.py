@@ -369,7 +369,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
 
     def launchCluster(self):
         # add arguments to test that we can specify leader storage
-        self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage)])
+        self.createClusterUtil(apassrgs=['--leaderStorage', str(self.requestedLeaderStorage)])
 
     def getRootVolID(self):
         """
