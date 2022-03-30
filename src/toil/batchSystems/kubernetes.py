@@ -470,17 +470,24 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Collect volumes and mounts
         volumes = []
         mounts = []
+        
+        def mount_host_path(volume_name: str, host_path: str, mount_path: str) -> None:
+            """
+            Add a host path volume with the given name to mount the given path.
+            """
+            # Use type='Directory' to fail if the host directory doesn't exist already.
+            volume_source = kubernetes.client.V1HostPathVolumeSource(path=host_path, type='Directory')
+            volume = kubernetes.client.V1Volume(name=volume_name,
+                                                host_path=volume_source)
+            volumes.append(volume)
+            volume_mount = kubernetes.client.V1VolumeMount(mount_path=mount_path, name=volume_name)
+            mounts.append(volume_mount)
 
         if self.host_path is not None:
             # Provision Toil WorkDir from a HostPath volume, to share with other pods
-            host_path_volume_name = 'workdir'
-            # Use type='Directory' to fail if the host directory doesn't exist already.
-            host_path_volume_source = kubernetes.client.V1HostPathVolumeSource(path=self.host_path, type='Directory')
-            host_path_volume = kubernetes.client.V1Volume(name=host_path_volume_name,
-                                                         host_path=host_path_volume_source)
-            volumes.append(host_path_volume)
-            host_path_volume_mount = kubernetes.client.V1VolumeMount(mount_path=self.worker_work_dir, name=host_path_volume_name)
-            mounts.append(host_path_volume_mount)
+            mount_host_path('workdir', self.host_path, self.worker_work_dir)
+            # We also need to mount across /var/run/user, where we will put per-node coordiantion info.
+            mount_host_path('coordination', '/var/run/user', '/var/run/user')
         else:
             # Provision Toil WorkDir as an ephemeral volume
             ephemeral_volume_name = 'workdir'
@@ -490,6 +497,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             volumes.append(ephemeral_volume)
             ephemeral_volume_mount = kubernetes.client.V1VolumeMount(mount_path=self.worker_work_dir, name=ephemeral_volume_name)
             mounts.append(ephemeral_volume_mount)
+            # And don't share coordination directory
 
         if self.aws_secret_name is not None:
             # Also mount an AWS secret, if provided.
