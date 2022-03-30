@@ -1227,6 +1227,46 @@ class Toil(ContextManager["Toil"]):
         if not os.path.exists(workDir):
             raise RuntimeError(f'The directory specified by --workDir or TOIL_WORKDIR ({workDir}) does not exist.')
         return workDir
+        
+    @classmethod
+    def get_toil_coordination_dir(cls, configWorkDir: Optional[str] = None) -> str:
+        """
+        Return a path to a writable directory, which will be in memory if
+        convenient. Ought to be used for file locking and coordination.
+
+        :param configWorkDir: Value passed to the program using the --workDir flag
+        :return: Path to the Toil coordination directory.
+        """
+        
+        # Get our user ID
+        user_id = os.getuid()
+        in_memory_base = os.path.join('/var/run/user', str(user_id), 'toil')
+        if os.path.exists(in_memory_base):
+            # We have an in-memory directory to use
+            return in_memory_base
+        else:
+            try:
+                # Try to make it opportunistically.
+                os.makedirs(in_memory_base, exist_ok=True)
+                return in_memory_base
+            except:
+                pass
+        
+        # Otherwise use the on-disk one.
+        return cls.getToilWorkDir(configWorkDir)
+
+
+    @staticmethod
+    def _get_workflow_path_component(workflow_id: str) -> str:
+        """
+        Get a safe filesystem path component for a workflow.
+        
+        Will be consistent for all processes on a given machine, and different
+        for all processes on different machines.
+        
+        :param workflow_id: THe ID of the current Toil workflow.
+        """
+        return str(uuid.uuid5(uuid.UUID(getNodeID()), workflow_id)).replace('-', '')
 
     @classmethod
     def getLocalWorkflowDir(
@@ -1243,7 +1283,7 @@ class Toil(ContextManager["Toil"]):
 
         # Create a directory unique to each host in case workDir is on a shared FS.
         # This prevents workers on different nodes from erasing each other's directories.
-        workflowDir: str = os.path.join(base, str(uuid.uuid5(uuid.UUID(getNodeID()), workflowID)).replace('-', ''))
+        workflowDir: str = os.path.join(base, cls._get_workflow_path_component(workflowID))
         try:
             # Directory creation is atomic
             os.mkdir(workflowDir)
@@ -1254,6 +1294,40 @@ class Toil(ContextManager["Toil"]):
         else:
             logger.debug('Created the workflow directory for this machine at %s' % workflowDir)
         return workflowDir
+        
+    @classmethod
+    def get_local_workflow_coordination_dir(
+        cls, workflow_id: str, config_work_dir: Optional[str] = None
+    ) -> str:
+        """
+        Return the directory where coordination files should be located for
+        this workflow on this machine. These include internal Toil databases
+        and lock files for the machine.
+        
+        If an in-memory filesystem is available, it is used. Otherwise, the
+        local workflow directory, which may be on a shared network filesystem,
+        is used.
+        
+        :param workflow_id: Unique ID of the current workflow.
+        :param config_work_dir: Value used for the work directory in the
+               current Toil Config.
+        
+        :return: Path to the local workflow coordination directory on this
+                 machine.
+        """
+        
+        # Start with the base coordination or work dir
+        base = cls.get_toil_coordination_dir(config_work_dir)
+        
+        # Make a per-workflow and node subdirectory
+        subdir = os.path.join(base, cls._get_workflow_path_component(workflow_id))
+        # Make it exist
+        os.makedirs(subdir, exist_ok=True)
+        # TODO: May interfere with workflow directory creation logging if it's the same directory.
+        # Return it
+        return subdir
+            
+                
 
     def _runMainLoop(self, rootJob: "JobDescription") -> Any:
         """

@@ -23,7 +23,7 @@ import tempfile
 import threading
 import time
 from contextlib import contextmanager
-from typing import Any, Callable, Generator, Optional
+from typing import Any, Callable, Generator, Optional, Tuple
 
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.fileStores import FileID
@@ -176,10 +176,10 @@ class CachingFileStore(AbstractFileStore):
         self,
         jobStore: AbstractJobStore,
         jobDesc: JobDescription,
-        localTempDir: str,
+        file_store_dir: str,
         waitForPreviousCommit: Callable[[], Any],
     ) -> None:
-        super().__init__(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
+        super().__init__(jobStore, jobDesc, file_store_dir, waitForPreviousCommit)
 
         # For testing, we have the ability to force caching to be non-free, by never linking from the file store
         self.forceNonFreeCaching = False
@@ -196,11 +196,9 @@ class CachingFileStore(AbstractFileStore):
         self.contentionBackoff = 15
 
         # Variables related to caching
-        # Decide where the cache directory will be. We put it next to the
-        # local temp dirs for all of the jobs run on this machine.
-        # At this point in worker startup, when we are setting up caching,
-        # localTempDir is the worker directory, not the job directory.
-        self.localCacheDir = os.path.join(os.path.dirname(localTempDir), cacheDirName(self.jobStore.config.workflowID))
+        # Decide where the cache directory will be. We put it in the local
+        # workflow directory.
+        self.localCacheDir = os.path.join(self.workflow_dir, cacheDirName(self.jobStore.config.workflowID))
 
         # Since each worker has it's own unique CachingFileStore instance, and only one Job can run
         # at a time on a worker, we can track some stuff about the running job in ourselves.
@@ -222,7 +220,7 @@ class CachingFileStore(AbstractFileStore):
         # the workflow left one behind without cleaning up properly; we need to
         # be able to tell that from showing up on a machine where a cache has
         # already been created.
-        self.dbPath = os.path.join(self.localCacheDir, f'cache-{self.workflowAttemptNumber}.db')
+        self.dbPath = os.path.join(self.coordination_dir, f'cache-{self.workflowAttemptNumber}.db')
         # We need to hold onto both a connection (to commit) and a cursor (to actually use the database)
         self.con = sqlite3.connect(self.dbPath, timeout=SQLITE_TIMEOUT_SECS)
         self.cur = self.con.cursor()
@@ -626,7 +624,7 @@ class CachingFileStore(AbstractFileStore):
         We don't actually process them here. We take action based on the states of files we own later.
         """
 
-        me = get_process_name(self.workDir)
+        me = get_process_name(self.coordination_dir)
 
         # Get a list of all file owner processes on this node.
         # Exclude NULL because it comes out as 0 and we can't look for PID 0.
@@ -637,7 +635,7 @@ class CachingFileStore(AbstractFileStore):
         # Work out which of them have died.
         deadOwners = []
         for owner in owners:
-            if not process_name_exists(self.workDir, owner):
+            if not process_name_exists(self.coordination_dir, owner):
                 logger.debug('Owner %s is dead', owner)
                 deadOwners.append(owner)
             else:
@@ -670,7 +668,7 @@ class CachingFileStore(AbstractFileStore):
             logger.debug('Tried to adopt file operations from dead worker %s to ourselves as %s', owner, me)
 
     @classmethod
-    def _executePendingDeletions(cls, workDir, con, cur):
+    def _executePendingDeletions(cls, coordination_dir, con, cur):
         """
         Delete all the files that are registered in the database as in the
         process of being deleted from the cache by us.
@@ -681,12 +679,12 @@ class CachingFileStore(AbstractFileStore):
         appropriate to its thread without any chance of getting at the main
         thread's connection and cursor in self.
 
-        :param str workDir: The Toil work directory.
+        :param str coordination_dir: The coordination directory.
         :param sqlite3.Connection con: Connection to the cache database.
         :param sqlite3.Cursor cur: Cursor in the cache database.
         """
 
-        me = get_process_name(workDir)
+        me = get_process_name(coordination_dir)
 
         # Remember the file IDs we are deleting
         deletedFiles = []
@@ -730,7 +728,7 @@ class CachingFileStore(AbstractFileStore):
         """
 
         # Work out who we are
-        me = get_process_name(self.workDir)
+        me = get_process_name(self.coordination_dir)
 
         # Record how many files we upload
         uploadedCount = 0
@@ -793,7 +791,7 @@ class CachingFileStore(AbstractFileStore):
         # This will take up space for us and potentially make the cache over-full.
         # But we won't actually let the job run and use any of this space until
         # the cache has been successfully cleared out.
-        me = get_process_name(self.workDir)
+        me = get_process_name(self.coordination_dir)
         self._write([('INSERT INTO jobs VALUES (?, ?, ?, ?)', (self.jobID, self.localTempDir, newJobReqs, me))])
 
         # Now we need to make sure that we can fit all currently cached files,
@@ -867,12 +865,12 @@ class CachingFileStore(AbstractFileStore):
 
         # First we want to make sure that dead jobs aren't holding
         # references to files and keeping them from looking unused.
-        self._removeDeadJobs(self.workDir, self.con)
+        self._removeDeadJobs(self.coordination_dir, self.con)
 
         # Adopt work from any dead workers
         self._stealWorkFromTheDead()
 
-        if self._executePendingDeletions(self.workDir, self.con, self.cur) > 0:
+        if self._executePendingDeletions(self.coordination_dir, self.con, self.cur) > 0:
             # We actually had something to delete, which we deleted.
             # Maybe there is space now
             logger.debug('Successfully executed pending deletions to free space')
@@ -907,7 +905,7 @@ class CachingFileStore(AbstractFileStore):
         fileID = row[0]
 
         # Work out who we are
-        me = get_process_name(self.workDir)
+        me = get_process_name(self.coordination_dir)
 
         # Try and grab it for deletion, subject to the condition that nothing has started reading it
         self._write([("""
@@ -921,7 +919,7 @@ class CachingFileStore(AbstractFileStore):
         logger.debug('Evicting file %s', fileID)
 
         # Whether we actually got it or not, try deleting everything we have to delete
-        if self._executePendingDeletions(self.workDir, self.con, self.cur) > 0:
+        if self._executePendingDeletions(self.coordination_dir, self.con, self.cur) > 0:
             # We deleted something
             logger.debug('Successfully executed pending deletions to free space')
             return True
@@ -980,7 +978,7 @@ class CachingFileStore(AbstractFileStore):
         self.localTempDir = make_public_dir(in_directory=self.localTempDir)
         # Check the status of all jobs on this node. If there are jobs that started and died before
         # cleaning up their presence from the database, clean them up ourselves.
-        self._removeDeadJobs(self.workDir, self.con)
+        self._removeDeadJobs(self.coordination_dir, self.con)
         # Get the requirements for the job.
         self.jobDiskBytes = job.disk
 
@@ -1037,7 +1035,7 @@ class CachingFileStore(AbstractFileStore):
         # TODO: this empty file could leak if we die now...
         fileID = self.jobStore.getEmptyFileStoreID(creatorID, cleanup, os.path.basename(localFileName))
         # Work out who we are
-        me = get_process_name(self.workDir)
+        me = get_process_name(self.coordination_dir)
 
         # Work out where the file ought to go in the cache
         cachePath = self._getNewCachingPath(fileID)
@@ -1238,7 +1236,7 @@ class CachingFileStore(AbstractFileStore):
         """
 
         # Work out who we are
-        me = get_process_name(self.workDir)
+        me = get_process_name(self.coordination_dir)
 
         # Work out where to cache the file if it isn't cached already
         cachedPath = self._getNewCachingPath(fileStoreID)
@@ -1356,9 +1354,9 @@ class CachingFileStore(AbstractFileStore):
             # from dead workers and loop again.
             # We may have to wait for someone else's download or delete to
             # finish. If they die, we will notice.
-            self._removeDeadJobs(self.workDir, self.con)
+            self._removeDeadJobs(self.coordination_dir, self.con)
             self._stealWorkFromTheDead()
-            self._executePendingDeletions(self.workDir, self.con, self.cur)
+            self._executePendingDeletions(self.coordination_dir, self.con, self.cur)
 
             # Wait for other people's downloads to progress before re-polling.
             time.sleep(self.contentionBackoff)
@@ -1421,7 +1419,7 @@ class CachingFileStore(AbstractFileStore):
         """
 
         # Work out who we are
-        me = get_process_name(self.workDir)
+        me = get_process_name(self.coordination_dir)
 
         # See if we actually own this file and can giove it away
         self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?',
@@ -1492,7 +1490,7 @@ class CachingFileStore(AbstractFileStore):
         # Now we know to use the cache, and that we don't require a mutable copy.
 
         # Work out who we are
-        me = get_process_name(self.workDir)
+        me = get_process_name(self.coordination_dir)
 
         # Work out where to cache the file if it isn't cached already
         cachedPath = self._getNewCachingPath(fileStoreID)
@@ -1585,12 +1583,12 @@ class CachingFileStore(AbstractFileStore):
                     # If we didn't get a download or a reference, adopt and do work from dead workers and loop again.
                     # We may have to wait for someone else's download or delete to
                     # finish. If they die, we will notice.
-                    self._removeDeadJobs(self.workDir, self.con)
+                    self._removeDeadJobs(self.coordination_dir, self.con)
                     self._stealWorkFromTheDead()
                     # We may have acquired ownership of partially-downloaded
                     # files, now in deleting state, that we need to delete
                     # before we can download them.
-                    self._executePendingDeletions(self.workDir, self.con, self.cur)
+                    self._executePendingDeletions(self.coordination_dir, self.con, self.cur)
 
                     # Wait for other people's downloads to progress.
                     time.sleep(self.contentionBackoff)
@@ -1734,7 +1732,7 @@ class CachingFileStore(AbstractFileStore):
                 raise
 
         # Work out who we are
-        me = get_process_name(self.workDir)
+        me = get_process_name(self.coordination_dir)
 
         # Make sure nobody else has references to it
         for row in self.cur.execute('SELECT job_id FROM refs WHERE file_id = ? AND state != ?', (fileStoreID, 'mutable')):
@@ -1746,7 +1744,7 @@ class CachingFileStore(AbstractFileStore):
         self._write([('UPDATE files SET state = ?, owner = ? WHERE id = ?', ('deleting', me, fileStoreID))])
 
         # Finish the delete if the file is present
-        self._executePendingDeletions(self.workDir, self.con, self.cur)
+        self._executePendingDeletions(self.coordination_dir, self.con, self.cur)
 
         # Add the file to the list of files to be deleted from the job store
         # once the run method completes.
@@ -1820,7 +1818,7 @@ class CachingFileStore(AbstractFileStore):
             # Finish all uploads
             self._executePendingUploads(con, cur)
             # Finish all deletions out of the cache (not from the job store)
-            self._executePendingDeletions(self.workDir, con, cur)
+            self._executePendingDeletions(self.coordination_dir, con, cur)
 
             if jobState:
                 # Do all the things that make this job not redoable
@@ -1848,17 +1846,19 @@ class CachingFileStore(AbstractFileStore):
 
 
     @classmethod
-    def shutdown(cls, dir_: str) -> None:
+    def shutdown(cls, shutdown_info: Tuple[str, str]) -> None:
         """
-        :param dir_: The workflow diorectory for the node, which is used as the
-                     cache directory, containing cache state database. Job
-                     local temp directories will be removed due to their
-                     appearance in the database.
+        :param shutdown_info: Tuple of the coordination directory (where the
+               cache database is) and the cache directory (where the cached data is). 
+                     
+        Job local temp directories will be removed due to their appearance in
+        the database.
         """
-
-        if os.path.isdir(dir_):
+        
+        coordination_dir, cache_dir = shutdown_info
+        
+        if os.path.isdir(cache_dir):
             # There is a directory to clean up
-
 
             # We need the database for the most recent workflow attempt so we
             # can clean up job temp directories.
@@ -1874,23 +1874,29 @@ class CachingFileStore(AbstractFileStore):
             # and use that.
             dbFilename = None
             dbAttempt = float('-inf')
+            
+            # We also need to remember all the plausible database files and
+            # journals
+            all_db_files = []
 
-            for dbCandidate in os.listdir(dir_):
-                # For each thing in the directory
-                match = re.match('^cache-([0-9]+).db$', dbCandidate)
-                if match and int(match.group(1)) > dbAttempt:
-                    # If it looks like a caching database (and not a journal
-                    # file itself) and it has a higher number than any other
-                    # one we have seen, use it.
-                    dbFilename = dbCandidate
-                    dbAttempt = int(match.group(1))
+            for dbCandidate in os.listdir(coordination_dir):
+                # For each thing in the coordination directory, see if it starts like a database file.
+                match = re.match('^cache-([0-9]+).db.*', dbCandidate)
+                if match:
+                    # This is caching-related.
+                    all_db_files.append(dbCandidate)
+                    attempt_number = int(match.group(1))
+                    if attempt_number > dbAttempt and dbCandidate == f"cache-{attempt_number}.db":
+                        # This is a main database, and the newest we have seen.
+                        dbFilename = dbCandidate
+                        dbAttempt = attempt_number
 
             if dbFilename is not None:
                 # We found a caching database
 
                 logger.debug('Connecting to latest caching database %s for cleanup', dbFilename)
 
-                dbPath = os.path.join(dir_, dbFilename)
+                dbPath = os.path.join(coordination_dir, dbFilename)
 
                 if os.path.exists(dbPath):
                     try:
@@ -1908,16 +1914,19 @@ class CachingFileStore(AbstractFileStore):
 
                         # Remove dead jobs and their job directories (not under the
                         # cache)
-                        cls._removeDeadJobs(dir_, con)
+                        cls._removeDeadJobs(coordination_dir, con)
 
                         con.close()
             else:
                 logger.debug('No caching database found in %s', dir_)
 
             # Whether or not we found a database, we need to clean up the cache
-            # directory. Delete the state DB if any and everything cached.
-            robust_rmtree(dir_)
-
+            # directory. Delete everything cached.
+            robust_rmtree(cache_dir)
+            for filename in all_db_files:
+                # And delete everything related to the caching database
+                robust_rmtree(filename)
+                
     def __del__(self):
         """
         Cleanup function that is run when destroying the class instance that ensures that all the
@@ -1927,12 +1936,12 @@ class CachingFileStore(AbstractFileStore):
         self.waitForCommit()
 
     @classmethod
-    def _removeDeadJobs(cls, workDir, con):
+    def _removeDeadJobs(cls, coordination_dir, con):
         """
         Look at the state of all jobs registered in the database, and handle them
         (clean up the disk)
 
-        :param str workDir: Toil work directory.
+        :param str coordination_dir: Toil coordination directory for the node.
         :param sqlite3.Connection con: Connection to the cache database.
         """
 
@@ -1940,7 +1949,7 @@ class CachingFileStore(AbstractFileStore):
         cur = con.cursor()
 
         # Work out our process name for taking ownership of jobs
-        me = get_process_name(workDir)
+        me = get_process_name(coordination_dir)
 
         # Get all the dead worker PIDs
         workers = []
@@ -1951,7 +1960,7 @@ class CachingFileStore(AbstractFileStore):
         # TODO: account for PID reuse somehow.
         deadWorkers = []
         for worker in workers:
-            if not process_name_exists(workDir, worker):
+            if not process_name_exists(coordination_dir, worker):
                 deadWorkers.append(worker)
 
         # Now we know which workers are dead.
