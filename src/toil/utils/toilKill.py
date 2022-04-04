@@ -46,7 +46,7 @@ def main() -> None:
 
     try:
         os.kill(pid_to_kill, signal.SIGTERM)
-        logger.info(f"Toil process %i successfully terminated.", pid_to_kill)
+        logger.info("Toil process %i successfully terminated.", pid_to_kill)
     except OSError:
-        logger.error(f"Toil process %i could not be terminated.", pid_to_kill)
+        logger.error("Toil process %i could not be terminated.", pid_to_kill)
         raise
