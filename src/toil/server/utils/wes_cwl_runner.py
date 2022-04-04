@@ -7,7 +7,7 @@ import sys
 import time
 from typing import Optional, Dict, Any, List
 
-from toil.test.server.wes_client import WESClient
+from toil.server.utils.wes_client import WESClient
 
 """
 A CWL runner that submits a workflow to a WES server, waits for it to finish,

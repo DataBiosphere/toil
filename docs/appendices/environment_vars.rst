@@ -199,6 +199,15 @@ There are several environment variables that affect the way Toil runs.
 |                                  | unset, ``amqp://guest:guest@localhost:5672//`` is  |
 |                                  | used.                                              |
 +----------------------------------+----------------------------------------------------+
+| TOIL_WES_ENDPOINT                | URL to the WES server to use for the WES-based CWL |
+|                                  | runner ("toil-wes-cwl-runner") and tests.          |
++----------------------------------+----------------------------------------------------+
+| TOIL_WES_USER                    | Username to use with HTTP Basic Authentication to  |
+|                                  | log into the WES server.                           |
++----------------------------------+----------------------------------------------------+
+| TOIL_WES_PASSWORD                | Password to use with HTTP Basic Authentication to  |
+|                                  | log into the WES server.                           |
++----------------------------------+----------------------------------------------------+
 | TOIL_OWNER_TAG                   | This will tag cloud resources with a tag reading:  |
 |                                  | "Owner: $TOIL_OWNER_TAG". This is used internally  |
 |                                  | at UCSC to stop a bot we have that terminates      |

@@ -64,7 +64,7 @@ CONFORMANCE_TEST_TIMEOUT = 3600
 def run_conformance_tests(
     workDir: str,
     yml: str,
-    runner: Optional[Union[str, List[str]]] = None,
+    runner: Optional[str] = None,
     caching: bool = False,
     batchSystem: str = None,
     selected_tests: str = None,
@@ -100,14 +100,8 @@ def run_conformance_tests(
     :param junit_file: JUnit XML file to write test info to.
     """
     try:
-        # For runners that require multiple arguments (e.g.: `python cwl-runner.py`),
-        # we pass the first argument as the tool and append the rest as its arguments.
-        runner_args = []
         if runner is None:
-            runner = 'toil-cwl-runner'
-        elif isinstance(runner, list):
-            runner, *runner_args = runner
-
+            runner = "toil-cwl-runner"
         cmd = [
             "cwltest",
             f"--tool={runner}",
@@ -130,7 +124,6 @@ def run_conformance_tests(
             cmd.append("--verbose")
 
         args_passed_directly_to_toil = [
-            *runner_args,
             "--clean=always",
             "--logDebug",
             "--statusWait=10",
@@ -737,17 +730,7 @@ class CWLv12Test(ToilTest):
         python -m pytest src/toil/test/cwl/cwlTest.py::CWLv12Test::test_wes_server_cwl_conformance -vv --log-level INFO --log-cli-level INFO
         """
         endpoint = os.environ.get("TOIL_WES_ENDPOINT")
-        user = os.environ.get("TOIL_WES_USER")
-        password = os.environ.get("TOIL_WES_PASSWORD")
-
         extra_args = [f"--wes_endpoint={endpoint}"]
-        if user and password:
-            # TODO: if we run this on the CI, make sure we don't log this...
-            #  we output the entire command before we run, and cwltest logs the command if a test fails.
-            extra_args.extend([
-                f"--wes_user={user}",
-                f"--wes_password={password}"
-            ])
 
         # These are the ones that currently fail:
         #   - 310: mixed_version_v10_wf
@@ -763,7 +746,7 @@ class CWLv12Test(ToilTest):
         #    e.g.: https://github.com/common-workflow-language/cwl-v1.2/blob/1.2.1_proposed/tests/iwd/iwd-fileobjs1.cwl#L7-L11
 
         return self.test_run_conformance(
-            runner=["python", os.path.abspath("src/toil/test/server/wes_cwl_runner.py")],
+            runner="toil-wes-cwl-runner",
             selected_tests="0-309,313-330,333-337",
             extra_args=extra_args
         )
