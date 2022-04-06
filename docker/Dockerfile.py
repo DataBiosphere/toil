@@ -53,7 +53,11 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'cryptsetup',
                          'less',
                          'vim',
-                         'git'])
+                         'git',
+                         # Dependencies for Mesos which the deb doesn't actually list
+                         'libsvn1',
+                         'libcurl4-nss-dev',
+                         'libapr1'])
 
 
 def heredoc(s):
@@ -94,11 +98,12 @@ print(heredoc('''
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
     
-    # Install a Mesos build from somewhere
+    # Install a Mesos build from somewhere and test it
     RUN if [ $TARGETARCH = amd64 ] ; then \
         wget https://rpm.aventer.biz/Ubuntu/dists/focal/binary-amd64/mesos-1.11.x.deb && \
         dpkg -i mesos-1.11.x.deb && \
-        rm mesos-1.11.x.deb; \
+        rm mesos-1.11.x.deb && \
+        mesos-agent --help >/dev/null ; \
         fi
     
     # Install a particular old Debian Sid Singularity from somewhere.
