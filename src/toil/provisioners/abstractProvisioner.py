@@ -734,7 +734,7 @@ class AbstractProvisioner(ABC):
         LEADER_DOCKER_ARGS = '--webui_dir=/share/mesos/webui --registry=in_memory --cluster={name}'
         # --no-systemd_enable_support is necessary in Ubuntu 16.04 (otherwise,
         # Mesos attempts to contact systemd but can't find its run file)
-        WORKER_DOCKER_ARGS = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} --no-hostname_lookup --no-systemd_enable_support'
+        WORKER_DOCKER_ARGS = '--launcher_dir=/libexec/mesos --work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} --no-hostname_lookup --no-systemd_enable_support'
 
         if self.clusterType == 'mesos':
             if role == 'leader':
