@@ -70,7 +70,7 @@ motd = heredoc('''
     Run toil <workflow>.py --help to see all options for running your workflow.
     For more information see http://toil.readthedocs.io/en/latest/
 
-    Copyright (C) 2015-2020 Regents of the University of California
+    Copyright (C) 2015-2022 Regents of the University of California
 
     Version: {applianceSelf}
 
@@ -149,9 +149,6 @@ print(heredoc('''
         | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ \
         && chmod u+x /usr/local/bin/docker \
         && /usr/local/bin/docker -v
-
-    # Fix for Mesos interface dependency missing on ubuntu
-    RUN {pip} install protobuf==3.0.0
 
     # Fix for https://issues.apache.org/jira/browse/MESOS-3793
     ENV MESOS_LAUNCHER=posix
