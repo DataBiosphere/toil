@@ -39,7 +39,6 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          "nodejs",  # CWL support for javascript expressions
                          'rsync',
                          'screen',
-                         'build-essential',  # We need a build environment to build Singularity 3.
                          'libarchive13',
                          'libc6',
                          'libseccomp2',
@@ -56,7 +55,9 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          # Dependencies for Mesos which the deb doesn't actually list
                          'libsvn1',
                          'libcurl4-nss-dev',
-                         'libapr1'])
+                         'libapr1',
+                         # Dependencies for singularity
+                         'containernetworking-plugins'])
 
 
 def heredoc(s):
@@ -100,20 +101,16 @@ print(heredoc('''
     # Install a Mesos build from somewhere and test it.
     # This is /ipfs/QmRCNmVVrWPPQiEw2PrFLmb8ps6oETQvtKv8dLVN8ZRwFz/mesos-1.11.x.deb
     RUN if [ $TARGETARCH = amd64 ] ; then \
-        wget https://rpm.aventer.biz/Ubuntu/dists/focal/binary-amd64/mesos-1.11.x.deb && \
+        wget -q https://rpm.aventer.biz/Ubuntu/dists/focal/binary-amd64/mesos-1.11.x.deb && \
         dpkg -i mesos-1.11.x.deb && \
         rm mesos-1.11.x.deb && \
         mesos-agent --help >/dev/null ; \
         fi
     
     # Install a particular old Debian Sid Singularity from somewhere.
-    # The dependencies it thinks it needs aren't really needed and aren't
-    # available here.
     ADD singularity-sources.tsv /etc/singularity/singularity-sources.tsv
-    RUN wget "$(cat /etc/singularity/singularity-sources.tsv | grep "^$TARGETARCH" | cut -f3)" && \
-        (dpkg -i singularity-container_3*.deb || true) && \
-        dpkg --force-depends --configure -a && \
-        sed -i 's/containernetworking-plugins, //' /var/lib/dpkg/status && \
+    RUN wget -q "$(cat /etc/singularity/singularity-sources.tsv | grep "^$TARGETARCH" | cut -f3)" && \
+        dpkg -i singularity-container_3*.deb && \
         sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf && \
         mkdir -p /usr/local/libexec/toil && \
         mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real \
