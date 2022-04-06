@@ -169,7 +169,7 @@ print(heredoc('''
     env PATH /opt/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     # We want to pick the right Python when the user runs it
-    RUN rm /usr/bin/python3 && rm /usr/bin/python && \
+    RUN rm -f /usr/bin/python3 && rm -f /usr/bin/python && \
         ln -s /usr/bin/{python} /usr/bin/python3 && \
         ln -s /usr/bin/python3 /usr/bin/python
 
