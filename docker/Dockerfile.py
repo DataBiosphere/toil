@@ -32,7 +32,6 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'python3.9-distutils' if python == 'python3.9' else '',
                          # 'python3.9-venv' if python == 'python3.9' else '',
                          'python3-pip',
-                         'libcurl4-openssl-dev',
                          'libssl-dev',
                          'wget',
                          'curl',
@@ -98,7 +97,8 @@ print(heredoc('''
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
     
-    # Install a Mesos build from somewhere and test it
+    # Install a Mesos build from somewhere and test it.
+    # This is /ipfs/QmRCNmVVrWPPQiEw2PrFLmb8ps6oETQvtKv8dLVN8ZRwFz/mesos-1.11.x.deb
     RUN if [ $TARGETARCH = amd64 ] ; then \
         wget https://rpm.aventer.biz/Ubuntu/dists/focal/binary-amd64/mesos-1.11.x.deb && \
         dpkg -i mesos-1.11.x.deb && \
