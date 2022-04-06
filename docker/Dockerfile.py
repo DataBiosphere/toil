@@ -77,8 +77,7 @@ motd = heredoc('''
 motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 
 print(heredoc('''
-    # We can't use a newer Ubuntu until we no longer need Mesos
-    FROM ubuntu:16.04
+    FROM ubuntu:20.04
 
     ARG TARGETARCH
 
@@ -87,22 +86,21 @@ print(heredoc('''
 
     RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install apt-transport-https ca-certificates software-properties-common && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-    RUN echo "deb http://repos.mesosphere.io/ubuntu/ xenial main" \
-        > /etc/apt/sources.list.d/mesosphere.list \
-        && apt-key adv --keyserver keyserver.ubuntu.com --recv E56151BF \
-        && echo "deb http://deb.nodesource.com/node_6.x xenial main" \
-        > /etc/apt/sources.list.d/nodesource.list \
-        && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280
-
     RUN add-apt-repository -y ppa:deadsnakes/ppa
 
     RUN apt-get -y update --fix-missing && \
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
         DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
-        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos=1.0.1-2.0.94.ubuntu1604 ; fi && \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
-
+    
+    # Install a Mesos build from somewhere
+    RUN if [ $TARGETARCH = amd64 ] ; then \
+        wget https://rpm.aventer.biz/Ubuntu/dists/focal/binary-amd64/mesos-1.11.x.deb && \
+        dpkg -i mesos-1.11.x.deb && \
+        rm mesos-1.11.x.deb; \
+        fi
+    
     # Install a particular old Debian Sid Singularity from somewhere.
     # The dependencies it thinks it needs aren't really needed and aren't
     # available here.
@@ -126,9 +124,6 @@ print(heredoc('''
     ADD singularity-wrapper.sh /usr/local/bin/singularity
 
     RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/local/bin/singularity
-
-    # fixes an incompatibility updating pip on Ubuntu 16 w/ python3.8
-    RUN sed -i "s/platform.linux_distribution()/('Ubuntu', '16.04', 'xenial')/g" /usr/lib/python3/dist-packages/pip/download.py
 
     # The stock pip is too old and can't install from sdist with extras
     RUN {pip} install --upgrade pip==21.3.1
