@@ -49,6 +49,7 @@ class AWSProvisionerBenchTest(ToilTest):
     """
     def main(self):
         provisioner = AWSProvisioner('fakename', 'mesos', "us-west-2a", 10000, None, None)
+        raise RuntimeError("Just crash this pls")
         provisioner.check_policy_warnings()
 
 
