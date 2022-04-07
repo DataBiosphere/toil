@@ -41,7 +41,7 @@ class UserNameUnvailableTest(ToilTest):
 
     def setUp(self):
         super().setUp()
-        # Monkey pathch getpass.getuser to fail
+        # Monkey patch getpass.getuser to fail
         self.original_getuser = getpass.getuser
         def fake_getuser():
             raise KeyError('Fake key error')
@@ -65,7 +65,7 @@ class UserNameVeryBrokenTest(ToilTest):
 
     def setUp(self):
         super().setUp()
-        # Monkey pathch getpass.getuser to fail
+        # Monkey patch getpass.getuser to fail
         self.original_getuser = getpass.getuser
         def fake_getuser():
             raise RuntimeError('Fake error that we did not anticipate')
