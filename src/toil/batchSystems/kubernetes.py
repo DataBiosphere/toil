@@ -21,7 +21,6 @@ cannot yet be launched. That functionality will need to wait for user-mode
 Docker
 """
 import datetime
-import getpass
 import logging
 import os
 import string
@@ -47,7 +46,7 @@ from toil.batchSystems.contained_executor import pack_job
 from toil.common import Toil
 from toil.job import JobDescription
 from toil.lib.conversions import human2bytes
-from toil.lib.misc import slow_down, utc_now
+from toil.lib.misc import slow_down, utc_now, get_user_name
 from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
 from toil.statsAndLogging import configure_root_logger, set_log_level
@@ -1246,7 +1245,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # and all lowercase letters, numbers, or - or .
         acceptable_chars = set(string.ascii_lowercase + string.digits + '-.')
 
-        return ''.join([c for c in getpass.getuser().lower() if c in acceptable_chars])[:100]
+        return ''.join([c for c in get_user_name().lower() if c in acceptable_chars])[:100]
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:

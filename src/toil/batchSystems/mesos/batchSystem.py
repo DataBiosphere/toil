@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import ast
-import getpass
 import json
 import logging
 import os
@@ -43,7 +42,7 @@ from toil.batchSystems.mesos import JobQueue, MesosShape, TaskData, ToilJob
 from toil.job import JobDescription
 from toil.lib.conversions import b_to_mib, mib_to_b
 from toil.lib.memoize import strict_bool
-from toil.lib.misc import get_public_ip
+from toil.lib.misc import get_public_ip, get_user_name
 
 log = logging.getLogger(__name__)
 
@@ -319,7 +318,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         The Mesos driver thread which handles the scheduler's communication with the Mesos master
         """
         framework = addict.Dict()
-        framework.user = getpass.getuser()  # We must determine the user name ourselves with pymesos
+        framework.user = get_user_name()  # We must determine the user name ourselves with pymesos
         framework.name = "toil"
         framework.principal = framework.name
         # Make the driver which implements most of the scheduler logic and calls back to us for the user-defined parts.
