@@ -768,6 +768,8 @@ class CWLOnARMTest(AbstractClusterTest):
         self.clusterName = 'cwl-test-' + str(uuid.uuid4())
         self.leaderNodeType = 't4g.medium'
         self.clusterType = 'kubernetes'
+        # We need to be running in a directory which Flatcar and the Toil Appliance both have
+        self.cwl_test_dir = '/tmp/toil/cwlTests'
 
     def setUp(self):
         super().setUp()
@@ -783,19 +785,17 @@ class CWLOnARMTest(AbstractClusterTest):
         self.leader = self.cluster.getLeader()
 
         commit = os.environ['CI_COMMIT_SHA']
-        self.sshUtil(['git', 'clone', 'https://github.com/DataBiosphere/toil.git'])
+        self.sshUtil(['bash', '-c', f'mkdir -p {self.cwl_test_dir} && cd {self.cwl_test_dir} && git clone https://github.com/DataBiosphere/toil.git'])
 
         # We use CI_COMMIT_SHA to retrieve the Toil version needed to run the CWL tests
-        self.sshUtil(['bash', '-c', f'cd toil && git checkout {commit}'])
+        self.sshUtil(['bash', '-c', f'cd {self.cwl_test_dir}/toil && git checkout {commit}'])
 
         # --never-download prevents silent upgrades to pip, wheel and setuptools
-        venv_command = ['virtualenv', '--system-site-packages', '--never-download', self.venvDir]
-        self.sshUtil(venv_command)
-        self.sshUtil(['bash', '-c', 'pwd && ls && cd toil && ls && pwd'])
-        self.sshUtil(['bash', '-c', f'. .{self.venvDir}/bin/activate && cd toil && make prepare && make develop extras=[all]'])
+        self.sshUtil(['bash', '-c', f'virtualenv --system-site-packages --never-download {self.venvDir}'])
+        self.sshUtil(['bash', '-c', f'. .{self.venvDir}/bin/activate && cd {self.cwl_test_dir}/toil && make prepare && make develop extras=[all]'])
 
         # Runs the CWLv12Test on an ARM instance
-        self.sshUtil(['bash', '-c', f'. .{self.venvDir}/bin/activate && cd toil && pytest --log-cli-level DEBUG -r s src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance'])
+        self.sshUtil(['bash', '-c', f'. .{self.venvDir}/bin/activate && cd {self.cwl_test_dir}/toil && pytest --log-cli-level DEBUG -r s src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance'])
 
 
 @needs_cwl
