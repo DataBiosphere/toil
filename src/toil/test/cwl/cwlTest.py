@@ -30,7 +30,7 @@ from urllib.request import urlretrieve
 
 import pytest
 
-pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  # noqa
+pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
 from toil.cwl.utils import (
@@ -41,11 +41,19 @@ from toil.cwl.utils import (
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.threading import cpu_count
+from toil.lib.aws import zone_to_region
+from toil.provisioners import cluster_factory
+from toil.provisioners.aws import get_best_aws_zone
+from toil.test.provisioners.aws.awsProvisionerTest import AbstractAWSAutoscaleTest
+from toil.test.provisioners.clusterTest import AbstractClusterTest
 from toil.test import (
-    ToilTest,
+    ToilTest, 
+    needs_aws_ec2,
     needs_aws_s3,
     needs_cwl,
     needs_docker,
+    needs_env_var,
+    needs_fetchable_appliance,
     needs_gridengine,
     needs_kubernetes,
     needs_lsf,
@@ -55,6 +63,7 @@ from toil.test import (
     needs_torque,
     slow,
 )
+
 
 log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 3600
@@ -748,6 +757,45 @@ class CWLv12Test(ToilTest):
         self.assertEqual(out, self._expected_streaming_output(self.outDir))
         with open(out[out_name]["location"][len("file://") :]) as f:
             self.assertEqual(f.read().strip(), "When is s4 coming out?")
+
+
+@needs_aws_ec2
+@needs_fetchable_appliance
+@slow
+class CWLOnARMTest(AbstractClusterTest):
+    def __init__(self, methodName):
+        super().__init__(methodName=methodName)
+        self.clusterName = 'cwl-test-' + str(uuid.uuid4())
+        self.leaderNodeType = 't4g.2xlarge'
+        self.clusterType = 'kubernetes'
+        # We need to be running in a directory which Flatcar and the Toil Appliance both have
+        self.cwl_test_dir = '/tmp/toil/cwlTests'
+
+    def setUp(self):
+        super().setUp()
+        self.jobStore = f'aws:{self.awsRegion()}:cluster-{uuid.uuid4()}'
+
+    @needs_env_var('CI_COMMIT_SHA', 'a git commit sha')
+    def test_cwl_on_arm(self):
+        # Make a cluster
+        self.launchCluster()
+        # get the leader so we know the IP address - we don't need to wait since create cluster
+        # already ensures the leader is running
+        self.cluster = cluster_factory(provisioner='aws', zone=self.zone, clusterName=self.clusterName)
+        self.leader = self.cluster.getLeader()
+
+        commit = os.environ['CI_COMMIT_SHA']
+        self.sshUtil(['bash', '-c', f'mkdir -p {self.cwl_test_dir} && cd {self.cwl_test_dir} && git clone https://github.com/DataBiosphere/toil.git'])
+
+        # We use CI_COMMIT_SHA to retrieve the Toil version needed to run the CWL tests
+        self.sshUtil(['bash', '-c', f'cd {self.cwl_test_dir}/toil && git checkout {commit}'])
+
+        # --never-download prevents silent upgrades to pip, wheel and setuptools
+        self.sshUtil(['bash', '-c', f'virtualenv --system-site-packages --never-download {self.venvDir}'])
+        self.sshUtil(['bash', '-c', f'. .{self.venvDir}/bin/activate && cd {self.cwl_test_dir}/toil && make prepare && make develop extras=[all]'])
+
+        # Runs the CWLv12Test on an ARM instance
+        self.sshUtil(['bash', '-c', f'. .{self.venvDir}/bin/activate && cd {self.cwl_test_dir}/toil && pytest --log-cli-level DEBUG -r s src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance'])
 
 
 @needs_cwl
