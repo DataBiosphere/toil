@@ -158,8 +158,8 @@ def cpu_count() -> Any:
 # your name and poll others' names (or your own). So we don't have
 # distinguishing prefixes or WIP suffixes to allow for enumeration.
 
-# We keep one name per unique Toil workDir (i.e. /tmp or whatever existing
-# directory Toil tries to put its workflow directory under.)
+# We keep one name per unique base directory (probably a Toil coordination
+# directory).
 
 # We have a global lock to control looking things up
 current_process_name_lock = threading.Lock()
@@ -178,16 +178,16 @@ def collect_process_name_garbage() -> None:
 
     global current_process_name_for
 
-    # Collect the workDirs of the missing names to delete them after iterating.
+    # Collect the base_dirs of the missing names to delete them after iterating.
     missing = []
 
-    for workDir, name in current_process_name_for.items():
-        if not os.path.exists(os.path.join(workDir, name)):
+    for base_dir, name in current_process_name_for.items():
+        if not os.path.exists(os.path.join(base_dir, name)):
             # The name file is gone, probably because the work dir is gone.
-            missing.append(workDir)
+            missing.append(base_dir)
 
-    for workDir in missing:
-        del current_process_name_for[workDir]
+    for base_dir in missing:
+        del current_process_name_for[base_dir]
 
 def destroy_all_process_names() -> None:
     """
@@ -200,18 +200,18 @@ def destroy_all_process_names() -> None:
 
     global current_process_name_for
 
-    for workDir, name in current_process_name_for.items():
-        robust_rmtree(os.path.join(workDir, name))
+    for base_dir, name in current_process_name_for.items():
+        robust_rmtree(os.path.join(base_dir, name))
 
 # Run the cleanup at exit
 atexit.register(destroy_all_process_names)
 
-def get_process_name(workDir: str) -> str:
+def get_process_name(base_dir: str) -> str:
     """
     Return the name of the current process. Like a PID but visible between
     containers on what to Toil appears to be a node.
 
-    :param str workDir: The Toil work directory. Defines the shared namespace.
+    :param str base_dir: Base directory to work in. Defines the shared namespace.
     :return: Process's assigned name
     :rtype: str
     """
@@ -222,15 +222,15 @@ def get_process_name(workDir: str) -> str:
     with current_process_name_lock:
 
         # Make sure all the names still exist.
-        # TODO: a bit O(n^2) in the number of workDirs in flight at any one time.
+        # TODO: a bit O(n^2) in the number of base_dirs in flight at any one time.
         collect_process_name_garbage()
 
-        if workDir in current_process_name_for:
+        if base_dir in current_process_name_for:
             # If we already gave ourselves a name, return that.
-            return current_process_name_for[workDir]
+            return current_process_name_for[base_dir]
 
         # We need to get a name file.
-        nameFD, nameFileName = tempfile.mkstemp(dir=workDir)
+        nameFD, nameFileName = tempfile.mkstemp(dir=base_dir)
 
         # Lock the file. The lock will automatically go away if our process does.
         try:
@@ -240,22 +240,22 @@ def get_process_name(workDir: str) -> str:
             raise RuntimeError("Could not lock process name file {}: {}".format(nameFileName, str(e)))
 
         # Save the basename
-        current_process_name_for[workDir] = os.path.basename(nameFileName)
+        current_process_name_for[base_dir] = os.path.basename(nameFileName)
 
         # Return the basename
-        return current_process_name_for[workDir]
+        return current_process_name_for[base_dir]
 
         # TODO: we leave the file open forever. We might need that in order for
         # it to stay locked while we are alive.
 
 
-def process_name_exists(workDir: str, name: str) -> bool:
+def process_name_exists(base_dir: str, name: str) -> bool:
     """
     Return true if the process named by the given name (from process_name) exists, and false otherwise.
 
     Can see across container boundaries using the given node workflow directory.
 
-    :param str workDir: The Toil work directory. Defines the shared namespace.
+    :param str base_dir: Base directory to work in. Defines the shared namespace.
     :param str name: Process's name to poll
     :return: True if the named process is still alive, and False otherwise.
     :rtype: bool
@@ -265,12 +265,12 @@ def process_name_exists(workDir: str, name: str) -> bool:
     global current_process_name_for
 
     with current_process_name_lock:
-        if current_process_name_for.get(workDir, None) == name:
+        if current_process_name_for.get(base_dir, None) == name:
             # We are asking about ourselves. We are alive.
             return True
 
     # Work out what the corresponding file name is
-    nameFileName = os.path.join(workDir, name)
+    nameFileName = os.path.join(base_dir, name)
     if not os.path.exists(nameFileName):
         # If the file is gone, the process can't exist.
         return False
@@ -307,7 +307,7 @@ def process_name_exists(workDir: str, name: str) -> bool:
 # Similar to the process naming system above, we define a global mutex system
 # for critical sections, based just around file locks.
 @contextmanager
-def global_mutex(workDir: str, mutex: str) -> Iterator[None]:
+def global_mutex(base_dir: str, mutex: str) -> Iterator[None]:
     """
     Context manager that locks a mutex. The mutex is identified by the given
     name, and scoped to the given directory. Works across all containers that
@@ -316,12 +316,12 @@ def global_mutex(workDir: str, mutex: str) -> Iterator[None]:
 
     Only works between processes, NOT between threads.
 
-    :param str workDir: The Toil work directory. Defines the shared namespace.
+    :param str base_dir: Base directory to work in. Defines the shared namespace.
     :param str mutex: Mutex to lock. Must be a permissible path component.
     """
 
     # Define a filename
-    lock_filename = os.path.join(workDir, 'toil-mutex-' + mutex)
+    lock_filename = os.path.join(base_dir, 'toil-mutex-' + mutex)
 
     logger.debug('PID %d acquiring mutex %s', os.getpid(), lock_filename)
 
@@ -389,21 +389,21 @@ class LastProcessStandingArena:
     Consider using a try/finally; this class is not a context manager.
     """
 
-    def __init__(self, workDir: str, name: str) -> None:
+    def __init__(self, base_dir: str, name: str) -> None:
         """
-        Connect to the arena specified by the given workDir and name.
+        Connect to the arena specified by the given base_dir and name.
 
-        Any process that can access workDir, in any container, can connect to
+        Any process that can access base_dir, in any container, can connect to
         the arena. Many arenas can be active with different names.
 
         Doesn't enter or leave the arena.
 
-        :param str workDir: The Toil work directory. Defines the shared namespace.
+        :param str base_dir: Base directory to work in. Defines the shared namespace.
         :param str name: Name of the arena. Must be a permissible path component.
         """
 
-        # Save the workDir which namespaces everything
-        self.workDir = workDir
+        # Save the base_dir which namespaces everything
+        self.base_dir = base_dir
 
         # We need a mutex name to allow only one process to be entering or
         # leaving at a time.
@@ -413,7 +413,7 @@ class LastProcessStandingArena:
         # So everybody gets a locked file (again).
         # TODO: deduplicate with the similar logic for process names, and also
         # deferred functions.
-        self.lockfileDir = os.path.join(workDir, name + '-arena-members')
+        self.lockfileDir = os.path.join(base_dir, name + '-arena-members')
 
         # When we enter the arena, we fill this in with the FD of the locked
         # file that represents our presence.
@@ -435,7 +435,7 @@ class LastProcessStandingArena:
         assert self.lockfileName is None
         assert self.lockfileFD is None
 
-        with global_mutex(self.workDir, self.mutex):
+        with global_mutex(self.base_dir, self.mutex):
             # Now nobody else should also be trying to join or leave.
 
             try:
@@ -473,7 +473,7 @@ class LastProcessStandingArena:
 
         logger.debug('Leaving arena %s', self.lockfileDir)
 
-        with global_mutex(self.workDir, self.mutex):
+        with global_mutex(self.base_dir, self.mutex):
             # Now nobody else should also be trying to join or leave.
 
             # Take ourselves out.
