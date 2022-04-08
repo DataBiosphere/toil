@@ -766,7 +766,7 @@ class CWLOnARMTest(AbstractClusterTest):
     def __init__(self, methodName):
         super().__init__(methodName=methodName)
         self.clusterName = 'cwl-test-' + str(uuid.uuid4())
-        self.leaderNodeType = 't4g.medium'
+        self.leaderNodeType = 't4g.2xlarge'
         self.clusterType = 'kubernetes'
         # We need to be running in a directory which Flatcar and the Toil Appliance both have
         self.cwl_test_dir = '/tmp/toil/cwlTests'
