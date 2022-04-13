@@ -1876,7 +1876,36 @@ class AWSProvisioner(AbstractProvisioner):
             else:
                 allowed_by_arn[permissions["Resource"]] = allowed_by_arn[permissions["Resource"]] + permissions["Action"]
 
-        if (actions - set(allowed_by_arn[["*"]])) is not None:
-            raise RuntimeError("User is missing permissions")
+        permissions = _CLUSTER_LAUNCHING_PERMISSIONS
+
+        permissions = [x for x in _CLUSTER_LAUNCHING_PERMISSIONS if self.helper(x, allowed_by_arn[["*"]])]
+
+        permissions = permissions - _CLUSTER_LAUNCHING_PERMISSIONS
+
+        if permissions is not []:
+            raise RuntimeError("Missing permissions", permissions)
 
         return None
+
+    def helper(self, perm, list_perms):
+        flag = False
+        for allowed in list_perms:
+            if allowed[0] == "*":
+                if perm.endswith(allowed[1:]):
+                    flag = True
+
+            if allowed[0] == "*" and allowed[-1] == "*":
+                if allowed in perm:
+                    flag = True
+
+            if allowed[-1] == "*":
+                if perm.startswith(allowed[:-1]):
+                    flag = True
+
+            if allowed == perm:
+                flag = True
+
+        if not flag:
+            return False
+        else:
+            return True
