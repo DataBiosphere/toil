@@ -38,19 +38,52 @@ from toil.test import (
 )
 from toil.version import exactPython
 
+import botocore
+from boto3 import Session
+from botocore.credentials import JSONFileCache
+from botocore.session import get_session
+import boto.connection
+
+
 #from toil.provisioners.aws.awsProvisioner import _CLUSTER_LAUNCHING_PERMISSIONS
+_CLUSTER_LAUNCHING_PERMISSIONS = ["iam:CreateRole",
+                                  "iam:CreateInstanceProfile",
+                                  "iam:TagInstanceProfile",
+                                  "iam:DeleteRole",
+                                  "iam:DeleteRoleProfile",
+                                  "iam:ListAttatchedRolePolicies",
+                                  "iam:ListPolicies",
+                                  "iam:ListRoleTags",
+                                  "iam:PutRolePolicy",
+                                  "iam:RemoveRoleFromInstanceProfile",
+                                  "iam:TagRole"
+                                  ]
 log = logging.getLogger(__name__)
 
 
 @pytest.mark.timeout(1800)
-class AWSProvisionerBenchTest(ToilTest):
-    """
-    Tests for the AWS provisioner that don't actually provision anything.
-    """
-    def main(self):
-        provisioner = AWSProvisioner('fakename', 'mesos', "us-west-2a", 10000, None, None)
-        raise RuntimeError("Just crash this pls")
-        provisioner.check_policy_warnings()
+def test_policy_warnings():
+    provisioner = AWSProvisioner('fakename', 'mesos', "us-west-2a", 10000, None, None)
+
+    assert provisioner.permission_warning_check(None) == True
+
+@pytest.mark.timeout(1800)
+def test_list_policies():
+    from boto.iam.connection import IAMConnection
+
+    provisioner = AWSProvisioner('fakename', 'mesos', "us-west-2a", 10000, None, None)
 
 
 
+    botocore_session = get_session()
+    botocore_session.get_component('credential_provider').get_provider(
+        'assume-role').cache = JSONFileCache()
+    session = Session(botocore_session=botocore_session)
+
+    client = session.client('iam')
+
+    attatchedPolicies = client.list_attached_role_policies(RoleName="developer")
+    print(attatchedPolicies)
+
+
+test_list_policies()

@@ -1832,6 +1832,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         return profile_arn
 
+
     def permission_warning_check(self, existing_profile_arn: Optional[str]) -> None:
         """
         Test whether a user has the required permissions for launching a cluster,
@@ -1842,34 +1843,40 @@ class AWSProvisioner(AbstractProvisioner):
                                      Else tests that the user can create roles, policies
 
         """
-        client_sts = self.aws.client(self._region, 'sts')
-        identity = client_sts.get_caller_identity()['Arn']
+
+        iam = boto3.client('iam')
+
         if existing_profile_arn is None:
 
             #sim on user creating pclient = self.aws.client(self._region, 'iam')rofile or no
-            raise RuntimeError("I hate everything")
-            self.check_policy_warnings(identity, ["iam:CreateRole"])
+            generated_arn = self._createProfileArn()
+            policy = iam.get_policy(PolicyArn=generated_arn)
+            policy_version = iam.get_policy_version(PolicyArn = generated_arn, VersionId = policy['Policy']['DefaultVersionId'])
 
         else:
-            self.check_policy_warnings(existing_profile_arn, ["Action things eventually"])
+            policy = iam.get_policy(PolicyArn=existing_profile_arn)
+            policy_version = iam.get_policy_version(PolicyArn=existing_profile_arn,
+                                                    VersionId=policy['Policy']['DefaultVersionId'])
 
-        self.permission_warning_check(identity, ["Actions for creating instances"])
+        self.check_policy_warnings(policy_version['PolicyVersion']['Document']['Statement'], None)
 
         return None
 
-    def check_policy_warnings(self, principal_arn: str, actions: list[str]) -> None:
+    def check_policy_warnings(self, policy: list[dict], actions: list[str]) -> None:
         """
-        Test whether ARN associated policies permit specific actions, errors if not.
+        Check whether necessary permissions are permitted
 
-        :param principal_arn: ARN for user or role
+        :param policy: dictionary which contains list of permitted actions for given ARN
         :param actions: Actions that need to be done by user or role
         """
-        client = self.aws.client(self._region, 'iam')
-        for eval_res in self._pager(client.simulate_principal_policy, 'EvaluationResults',
-                                    PolicySourceArn=principal_arn, ActionNames=actions):
-            if eval_res['EvalDecision'] != 'allowed':
-                raise RuntimeError("Missing some sorta permissions for aws")  # add specifics eventually
+        allowed_by_arn = {}
+        for permissions in policy:
+            if permissions["Resource"] not in allowed_by_arn.keys():
+                allowed_by_arn[permissions["Resource"]] = permissions["Action"]
+            else:
+                allowed_by_arn[permissions["Resource"]] = allowed_by_arn[permissions["Resource"]] + permissions["Action"]
 
-            for resource_spec in eval_res['ResourceSpecificResults']:
-                if resource_spec['EvalResourceDecision'] != "allowed":
-                    raise RuntimeError("Missing some sorta permissions for aws")  # add specifics eventually
+        if (actions - set(allowed_by_arn[["*"]])) is not None:
+            raise RuntimeError("User is missing permissions")
+
+        return None
