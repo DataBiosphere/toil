@@ -37,7 +37,8 @@ from toil.server.wes.abstract_backend import (WESBackend,
                                               OperationForbidden)
 from toil.server.wes.tasks import run_wes, cancel_run
 
-from toil.common import getNodeID
+from toil.lib.threading import global_mutex
+from toil.lib.io import AtomicFileCreate
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
@@ -76,21 +77,6 @@ class ToilWorkflow:
         # And use a state machine over that to look at workflow state
         self.state_machine = WorkflowStateMachine(self.store)
 
-        # Do a little fixup of workflows that were queued from other machines.
-        # We assume that only one server can be running on a state store at a
-        # time, so anything another server queued must be old and dead.
-        # TODO: Implement multiple servers working together.
-        queueing_node = self.store.get("server_node")
-        apparent_state = self.state_machine.get_current_state()
-        if (apparent_state not in ("UNKNOWN", "COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELED") and
-            queueing_node != getNodeID()):
-
-            # This workflow is in a state that suggests it is doing something
-            # but the server node for it is gone and therefore so is its
-            # leader. Fail it.
-            self.state_machine.send_system_error()
-
-
     @overload
     def fetch_state(self, key: str, default: str) -> str: ...
     @overload
@@ -128,9 +114,6 @@ class ToilWorkflow:
 
     def set_up_run(self) -> None:
         """ Set up necessary directories for the run."""
-        # Remember the server node responsible for the workflow
-        self.store.set("server_node", getNodeID())
-
         # Go to queued state
         self.state_machine.send_enqueue()
 
@@ -186,10 +169,10 @@ class ToilBackend(WESBackend):
         :param work_dir: Directory to download and run workflows in.
 
         :param options: Command-line options to pass along to workflows. Must
-        use = syntax to set values instead of ordering.
+               use = syntax to set values instead of ordering.
 
         :param dest_bucket_base: If specified, direct CWL workflows to use
-        paths under the given URL for storing output files.
+               paths under the given URL for storing output files.
         """
         for opt in options:
             if not opt.startswith('-'):
@@ -197,12 +180,63 @@ class ToilBackend(WESBackend):
                 # that would need to remain in the same order.
                 raise ValueError(f'Option {opt} does not begin with -')
         super(ToilBackend, self).__init__(options)
-        self.work_dir = os.path.abspath(work_dir)
+
         self.dest_bucket_base = dest_bucket_base
+        self.work_dir = os.path.abspath(work_dir)
 
         # Where should we talk to the Celery tasks about workflow state?
-        # For now just do it in a dedicated directory of the work_dir (so we don't forget workflows when we clean them up).
+        # For now just do it in a dedicated directory of the work_dir (so we
+        # don't forget workflows when we clean them up).
         self.state_store_url = os.path.join(self.work_dir, 'state_store')
+
+        # Determine a server identity, so we can guess if a workflow in the
+        # possibly-persistent state store is QUEUED, INITIALIZING, or RUNNING
+        # on a Celery that no longer exists. Ideally we would ask Celery what
+        # Celery cluster it is, or we would reconcile with the tasks that exist
+        # in the Celery cluster, but Celery doesn't seem to have a cluster
+        # identity and doesn't let you poll for task existence:
+        # <https://stackoverflow.com/questions/9824172>
+
+        # Grab an ID for the current kernel boot, if we happen to be Linux.
+        # TODO: Deal with multiple servers in front of the same state store and
+        # file system but on different machines?
+        boot_id = None
+        boot_id_file = "/proc/sys/kernel/random/boot_id"
+        if os.path.exists(boot_id_file):
+            try:
+                with open(boot_id_file) as f:
+                    boot_id = f.readline().strip()
+            except OSError:
+                pass
+        # Assign an ID to the work directory storage.
+        work_dir_id = None
+        work_dir_id_file = os.path.join(self.work_dir, 'id.txt')
+        if os.path.exists(work_dir_id_file):
+            # An ID is assigned already
+            with open(work_dir_id_file) as f:
+                work_dir_id = uuid.UUID(f.readline().strip())
+        else:
+            # We need to try and assign an ID.
+            with global_mutex(self.work_dir, 'id-assignment'):
+                # We need to synchronize with other processes starting up to
+                # make sure we agree on an ID.
+                if os.path.exists(work_dir_id_file):
+                    # An ID is assigned already
+                    with open(work_dir_id_file) as f:
+                        work_dir_id = uuid.UUID(f.readline().strip())
+                else:
+                    work_dir_id = uuid.uuid4()
+                    with AtomicFileCreate(work_dir_id_file) as temp_file:
+                        # Still need to be atomic here or people not locking
+                        # will see an incomplete file.
+                        with open(temp_file) as f:
+                            f.write(str(work_dir_id))
+        # Now combine into one ID
+        if boot_id is not None:
+            self.server_id = str(uuid.uuid5(work_dir_id, boot_id))
+        else:
+            self.server_id = str(work_dir_id)
+
 
         self.supported_versions = {
             "py": ["3.6", "3.7", "3.8", "3.9"],
@@ -224,6 +258,24 @@ class ToilBackend(WESBackend):
             raise WorkflowNotFoundException
         if should_exists is False and run.exists():
             raise WorkflowConflictException(run_id)
+
+        # Do a little fixup of orphaned/Martian workflows that were running
+        # before the server bounced and can't be running now.
+        # Sadly we can't just ask Celery if it has heard of them.
+        # TODO: Implement multiple servers working together.
+        owning_server = run.fetch_state("server_id")
+        apparent_state = run.get_state()
+        if (apparent_state not in ("UNKNOWN", "COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELED") and
+            owning_server != self.server_id):
+
+            # This workflow is in a state that suggests it is doing something
+            # but it appears to belong to a previous incarnation of the server,
+            # and so its celery is probably gone. Put it into system error
+            # state if possible.
+            logger.warning("Run %s in state %s appears to belong to server %s and not us, server %s. "
+                           "Its server is probably gone. Failing the workflow!",
+                           run_id, apparent_state, owning_server, self.server_id)
+            run.state_machine.send_system_error()
 
         return run
 
@@ -300,6 +352,9 @@ class ToilBackend(WESBackend):
         """ Run a workflow."""
         run_id = uuid.uuid4().hex
         run = self._get_run(run_id, should_exists=False)
+
+        # Claim ownership of the run
+        run.store.set("server_id", self.server_id)
 
         # set up necessary directories for the run
         run.set_up_run()

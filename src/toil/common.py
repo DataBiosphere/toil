@@ -1269,7 +1269,7 @@ class Toil(ContextManager["Toil"]):
         Will be consistent for all processes on a given machine, and different
         for all processes on different machines.
 
-        :param workflow_id: THe ID of the current Toil workflow.
+        :param workflow_id: The ID of the current Toil workflow.
         """
         return str(uuid.uuid5(uuid.UUID(getNodeID()), workflow_id)).replace('-', '')
 
