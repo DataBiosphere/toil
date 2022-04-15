@@ -101,7 +101,7 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
 
 def start_server(args: argparse.Namespace) -> None:
     """ Start a Toil server."""
-    
+
     # Explain a bit about who and where we are
     logger.info("Toil WES server version %s starting...", version)
     if running_on_ecs():
@@ -116,7 +116,7 @@ def start_server(args: argparse.Namespace) -> None:
 
     host = args.host
     port = args.port
-    
+
     if args.debug:
         flask_app.run(host=host, port=port)
     else:

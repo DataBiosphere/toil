@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import functools
 import logging
 import os
 import pickle
@@ -766,7 +765,7 @@ def parseBool(val: str) -> bool:
     else:
         raise RuntimeError("Could not interpret \"%s\" as a boolean value" % val)
 
-@functools.cache
+_cached_node_id: Optional[str] = None
 def getNodeID() -> str:
     """
     Return unique ID of the current node (host). The resulting string will be convertable to a uuid.UUID.
@@ -779,6 +778,10 @@ def getNodeID() -> str:
     /proc/sys/kernel/random/boot_id will be tried prior to that. If uuid.getnode() is reached, it will be called twice,
     and exception raised if the values are not identical.
     """
+    global _cached_node_id
+    if _cached_node_id is not None:
+        return _cached_node_id
+
     for idSourceFile in ["/var/lib/dbus/machine-id", "/proc/sys/kernel/random/boot_id"]:
         if os.path.exists(idSourceFile):
             try:
@@ -822,6 +825,7 @@ def getNodeID() -> str:
         num_repeats = UUID_LENGTH // len(nodeID) + 1
         nodeID = nodeID * num_repeats
         nodeID = nodeID[:UUID_LENGTH]
+    _cached_node_id = nodeID
     return nodeID
 
 
@@ -1228,7 +1232,7 @@ class Toil(ContextManager["Toil"]):
         if not os.path.exists(workDir):
             raise RuntimeError(f'The directory specified by --workDir or TOIL_WORKDIR ({workDir}) does not exist.')
         return workDir
-        
+
     @classmethod
     def get_toil_coordination_dir(cls, configWorkDir: Optional[str] = None) -> str:
         """
@@ -1238,7 +1242,7 @@ class Toil(ContextManager["Toil"]):
         :param configWorkDir: Value passed to the program using the --workDir flag
         :return: Path to the Toil coordination directory.
         """
-        
+
         # Get our user ID
         user_id = os.getuid()
         in_memory_base = os.path.join('/var/run/user', str(user_id), 'toil')
@@ -1252,7 +1256,7 @@ class Toil(ContextManager["Toil"]):
                 return in_memory_base
             except:
                 pass
-        
+
         # Otherwise use the on-disk one.
         return cls.getToilWorkDir(configWorkDir)
 
@@ -1261,10 +1265,10 @@ class Toil(ContextManager["Toil"]):
     def _get_workflow_path_component(workflow_id: str) -> str:
         """
         Get a safe filesystem path component for a workflow.
-        
+
         Will be consistent for all processes on a given machine, and different
         for all processes on different machines.
-        
+
         :param workflow_id: THe ID of the current Toil workflow.
         """
         return str(uuid.uuid5(uuid.UUID(getNodeID()), workflow_id)).replace('-', '')
@@ -1295,7 +1299,7 @@ class Toil(ContextManager["Toil"]):
         else:
             logger.debug('Created the workflow directory for this machine at %s' % workflowDir)
         return workflowDir
-        
+
     @classmethod
     def get_local_workflow_coordination_dir(
         cls, workflow_id: str, config_work_dir: Optional[str] = None
@@ -1304,22 +1308,22 @@ class Toil(ContextManager["Toil"]):
         Return the directory where coordination files should be located for
         this workflow on this machine. These include internal Toil databases
         and lock files for the machine.
-        
+
         If an in-memory filesystem is available, it is used. Otherwise, the
         local workflow directory, which may be on a shared network filesystem,
         is used.
-        
+
         :param workflow_id: Unique ID of the current workflow.
         :param config_work_dir: Value used for the work directory in the
                current Toil Config.
-        
+
         :return: Path to the local workflow coordination directory on this
                  machine.
         """
-        
+
         # Start with the base coordination or work dir
         base = cls.get_toil_coordination_dir(config_work_dir)
-        
+
         # Make a per-workflow and node subdirectory
         subdir = os.path.join(base, cls._get_workflow_path_component(workflow_id))
         # Make it exist
@@ -1327,8 +1331,8 @@ class Toil(ContextManager["Toil"]):
         # TODO: May interfere with workflow directory creation logging if it's the same directory.
         # Return it
         return subdir
-            
-                
+
+
 
     def _runMainLoop(self, rootJob: "JobDescription") -> Any:
         """

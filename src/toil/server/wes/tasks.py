@@ -48,7 +48,7 @@ class ToilWorkflowRunner:
         """
         Make a new ToilWorkflowRunner to actually run a workflow leader based
         on a WES request.
-        
+
         :param base_scratch_dir: Base work directory. Workflow scratch directory
                will be in here under the workflow ID.
         :param state_store_url: URL to the state store through which we will
@@ -57,15 +57,15 @@ class ToilWorkflowRunner:
         :param request: WES request information.
         :param engine_options: Extra options to pass to Toil.
         """
-        
+
         # Find the scratch directory inside the base scratch directory
         self.scratch_dir = os.path.join(base_scratch_dir, workflow_id)
-        
+
         # Connect to the workflow state store
         self.store = connect_to_workflow_state_store(state_store_url, workflow_id)
         # And use a state machine over that to look at workflow state
         self.state_machine = WorkflowStateMachine(self.store)
-        
+
         self.request = request
         self.engine_options = engine_options
 
@@ -305,16 +305,14 @@ class ToilWorkflowRunner:
         commands = self.initialize_run()
 
         # store the job store location
-        self.workflow_state.set("job_store", self.job_store)
-        with open(os.path.join(self.work_dir, "job_store"), "w") as f:
-            f.write(self.job_store)
+        self.store.set("job_store", self.job_store)
 
         # Check if we are supposed to cancel
         state = self.get_state()
         if state in ("CANCELING", "CANCELED"):
             logger.info("Workflow canceled.")
             return
-            
+
         # Otherwise start to run
         self.state_machine.send_run()
         process = self.call_cmd(cmd=commands, cwd=self.exec_dir)
@@ -356,7 +354,7 @@ class ToilWorkflowRunner:
         # For CWL workflows, the stdout should be a JSON object containing the outputs
         if self.wf_type == "cwl":
             try:
-                with open(os.path.join(self.work_dir, "stdout")) as f:
+                with open(os.path.join(self.scratch_dir, "stdout")) as f:
                     output_obj = json.load(f)
             except Exception as e:
                 logger.warning("Failed to read outputs object from stdout:", exc_info=e)
@@ -379,11 +377,11 @@ class ToilWorkflowRunner:
 def run_wes(base_scratch_dir: str, state_store_url: str, workflow_id: str, request: Dict[str, Any], engine_options: List[str]) -> str:
     """
     A celery task to run a requested workflow.
-    
+
     :param base_scratch_dir: Directory where the workflow's scratch dir will live, under the workflow's ID.
-    
+
     :param state_store_url: URL/path at which the server and Celery task communicate about workflow state.
-    
+
     :param workflow_id: ID of the workflow run.
     """
     runner = ToilWorkflowRunner(base_scratch_dir, state_store_url, workflow_id,
