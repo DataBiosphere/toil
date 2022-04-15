@@ -144,7 +144,7 @@ class FileStateStore(AbstractStateStore):
         """
         Get a key value from the filesystem.
         """
-        return safe_read_file(os.path.join(self._base_dir, workflow_id, key)
+        return safe_read_file(os.path.join(self._base_dir, workflow_id, key))
     
     def set(self, workflow_id: str, key: str, value: Optional[str]) -> None:
         """
@@ -301,19 +301,19 @@ class WorkflowStateMachine:
         """
         self._set_flag_state("CANCELED")
         
-    def send_complete(self) -> None
+    def send_complete(self) -> None:
         """
         Send a complete message that would move from RUNNING to COMPLETE.
         """
         self._set_flag_state("COMPLETE")
         
-    def send_executor_error(self) -> None
+    def send_executor_error(self) -> None:
         """
         Send an executor_error message that would move from QUERUED, INITIALIZING, or RUNNING to EXECUTOR_ERROR.
         """
         self._set_flag_state("EXECUTOR_ERROR")
         
-    def send_system_error(self) -> None
+    def send_system_error(self) -> None:
         """
         Send a system_error message that would move from QUERUED, INITIALIZING, or RUNNING to SYSTEM_ERROR.
         """
