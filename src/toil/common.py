@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import functools
 import logging
 import os
 import pickle
@@ -765,7 +766,7 @@ def parseBool(val: str) -> bool:
     else:
         raise RuntimeError("Could not interpret \"%s\" as a boolean value" % val)
 
-
+@functools.cache
 def getNodeID() -> str:
     """
     Return unique ID of the current node (host). The resulting string will be convertable to a uuid.UUID.

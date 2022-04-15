@@ -85,7 +85,289 @@ def get_file_class(path: str) -> str:
         return "Directory"
     return "Unknown"
 
-
+class AbstractStateStore:
+    """
+    A place for the WES server to keep its state: the set of workflows that
+    exist and whether they are done or not.
+    
+    This is a key-value store, with keys namespaced by workflow ID. Concurrent
+    access from multiple threads or processes is safe and globally consistent.
+    
+    Key values are either a string, or None if the key is not set.
+    
+    Workflow existence isn't a thing; nonexistent workflows just have None for
+    all keys.
+    
+    Note that we don't yet have a cleanup operation: things are stored
+    permanently. Even clearing all the keys may leave data behind.
+    
+    TODO: Can we replace this with just using a JobStore eventually, when
+    AWSJobStore no longer needs SimpleDB?
+    """
+    
+    @absractmethod
+    def get(self, workflow_id: str, key: str) -> Optional[str]:
+        """
+        Get the value of the given key for the given workflow, or None if the
+        key is not set for the workflow.
+        """
+        raise NotImplementedError
+        
+    @abstractmethod
+    def set(self, workflow_id: str, key: str, value: Optional[str]) -> None:
+        """
+        Set the value of the given key for the given workflow. If the value is
+        None, clear the key.
+        """
+        raise NotImplementedError
+        
+class FileStateStore(AbstractStateStore):
+    """
+    A place to store workflow state that uses a POSIX-compatible file system.
+    """
+    
+    def __init__(self, url: str) -> None:
+        """
+        Connect to the state store in the given local directory.
+        
+        :param url: Local state store path. Must be a path, not a file:// URL.
+        """
+        if url.startswith('file:') or url.startswith('s3:'):
+            # We want to catch if we get the wrong argument.
+            raise RuntimeError(f"{url} doesn't look like a local path")
+        if not os.path.exists(url):
+            # We need this directory to exist.
+            os.makedirs(url, exist_ok=True)
+        self._base_dir = url
+    
+    def get(self, workflow_id: str, key: str) -> Optional[str]:
+        """
+        Get a key value from the filesystem.
+        """
+        return safe_read_file(os.path.join(self._base_dir, workflow_id, key)
+    
+    def set(self, workflow_id: str, key: str, value: Optional[str]) -> None:
+        """
+        Set or clear a key value on the filesystem.
+        """
+        # Make sure the directory we need exists.
+        workflow_dir = os.path.join(self._base_dir, workflow_id)
+        os.makedirs(workflow_dir, exist_ok=True)
+        file_path = os.path.join(workflow_dir, key)
+        if value is None:
+            # Delete the file
+            try:
+                os.unlink(file_path)
+            except FileNotFoundError:
+                # It wasn't there to start with
+                pass
+        else:
+            # Set the value in the file
+            safe_write_file(file_path, value)
+            
+class WorkflowStateStore:
+    """
+    Slice of a state store for the state of a particular workflow.
+    """
+    
+    def __init__(self, state_store: AbstractStateStore, workflow_id: str) -> None:
+        """
+        Wrap the given state store for access to the given workflow's state.
+        """
+        
+        # TODO: We could just use functools.partial on the state store methods
+        # to make ours dynamically but that might upset MyPy.
+        self._state_store = state_store
+        self._workflow_id = workflow_id
+        
+    def get(key: str) -> Optional[str]:
+        """
+        Get the given item of workflow state.
+        """
+        return self._state_store.get(self._workflow_id, key)
+        
+    def set(key: str, value: Optional[str]) -> Optional[str]:
+        """
+        Set the given item of workflow state.
+        """
+        self._state_store.set(self._workflow_id, key, value)
+        
+class WorkflowStateMachine:
+    """
+    Class for managing the WES workflow state machine and ensuring only allowed
+    transitions happen.
+    
+    This is the authority on the WES "state" of a workflow. You need one to
+    read or change the state.
+    
+    The state machine is read-your-own-writes consistent and never allows you
+    to observe prohibited transitions. Talking to other writers outside of the
+    state machine may cause you to disagree on the current state.
+    
+    State can be:
+    
+    "UNKNOWN"
+    "QUEUED"
+    "INITIALIZING"
+    "RUNNING"
+    "PAUSED"
+    "COMPLETE"
+    "EXECUTOR_ERROR"
+    "SYSTEM_ERROR"
+    "CANCELED"
+    "CANCELING"
+    """
+    
+    # Some states are just last write wins
+    BASE_STATES = ["UNKNOWN", "QUEUED", "INITIALIZING", "RUNNING", "PAUSED"]
+    # Some states are flags. These flags are in priority order.
+    # The first of these that is set will win over all others and over any base state.
+    # TODO: do we need to ban e.g. CANCELING -> COMPLETE transitions? If so revise this order.
+    FLAG_STATES_IN_ORDER = ["COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELED", "CANCELING"]
+    
+    def __init__(self, store: WorkflowStateStore) -> None:
+        """
+        Make a new state machine over the given state store slice for the
+        workflow.
+        """
+        self._store = store
+        
+    def _set_base_state(self, state: str) -> None:
+        """
+        Set the base state (lowest priority) to the given state.
+        """
+        
+        if state not in BASE_STATES:
+            raise ValueError(f"Base state {state} is not in {BASE_STATES}")
+        
+        self._store.set("state", state)
+        
+    def _get_base_state(self, state: str) -> str:
+        """
+        Get the base state (lowest priority), which would be overridden by any
+        flag state.
+        """
+        
+        return self._store.get("state") or "UNKNOWN"
+        
+    def _set_flag_state(self, state: str) -> None:
+        """
+        Set a flag state. Overrides base state but not higher-priority flag
+        states.
+        """
+        
+        if state not in FLAG_STATES_IN_ORDER:
+            raise ValueError(f"Flag state {state} is not in {FLAG_STATES_IN_ORDER}")
+        
+        self._store.set("state_" + state, "")
+        
+    def _get_flag_state(self, state: str) -> bool:
+        """
+        Return True if the flag for the given flag state is set.
+        """
+        
+        if state not in FLAG_STATES_IN_ORDER:
+            raise ValueError(f"Flag state {state} is not in {FLAG_STATES_IN_ORDER}")
+        
+        return self._store.get("state_" + state) is not None
+        
+    def send_enqueue(self) -> None:
+        """
+        Send an enqueue message that would move from UNKNOWN to QUEUED.
+        """
+        self._set_base_state("QUEUED")
+        
+    def send_initialize(self) -> None:
+        """
+        Send an initialize message that would move from QUEUED to INITIALIZING.
+        """
+        self._set_base_state("INITIALIZING")
+        
+    def send_run(self) -> None:
+        """
+        Send a run message that would move from INITIALIZING to RUNNING.
+        """
+        self._set_base_state("RUNNING")
+        
+    def send_cancel(self) -> None:
+        """
+        Send a cancel message that would move to CANCELING from any non-terminal state.
+        """
+        self._set_flag_state("CANCELING")
+        
+    def send_canceled(self) -> None:
+        """
+        Send a canceled message that would move to CANCELED from CANCELLING.
+        """
+        self._set_flag_state("CANCELED")
+        
+    def send_complete(self) -> None
+        """
+        Send a complete message that would move from RUNNING to COMPLETE.
+        """
+        self._set_flag_state("COMPLETE")
+        
+    def send_executor_error(self) -> None
+        """
+        Send an executor_error message that would move from QUERUED, INITIALIZING, or RUNNING to EXECUTOR_ERROR.
+        """
+        self._set_flag_state("EXECUTOR_ERROR")
+        
+    def send_system_error(self) -> None
+        """
+        Send a system_error message that would move from QUERUED, INITIALIZING, or RUNNING to SYSTEM_ERROR.
+        """
+        self._set_flag_state("SYSTEM_ERROR")
+    
+    def get_current_state(self) -> str:
+        """
+        Get the current state of the workflow.
+        """
+        
+        # We need to ensure only certain state transitions are observable, even
+        # though all our writing is last-write-wins with no campare-and-swap.
+        
+        # So we have a priority of states.
+        
+        # First we need to check the lowest-priority base state
+        observed_state = self._get_base_state()
+        
+        # Then we need to check the flags for each flag state in reverse
+        # priority order, so the highest-priority thing is checked last.
+        # Otherwise, we could observe a lower-priority state that was set after
+        # a higher-priority state.
+        
+        for flag_state in reversed(FLAG_STATES_IN_ORDER):
+            if self._get_flag_state(flag_state):
+                # This flag is set
+                observed_state = flag_state
+                # But higher priority flags might still be set.
+        
+        # Now we know the state to report
+        return observed_state
+        
+            
+def connect_to_state_store(url: str) -> AbstractStateStore:
+    """
+    Connect to a place to store state for workflows, defined by a URL.
+    
+    URL may be a local file path or (currently) an S3 URL.
+    """
+    
+    # If it's not anything else, treat it as a local path.
+    return FileStateStore(url)
+    
+def connect_to_workflow_state_store(url: str, workflow_id: str) -> WorkflowStateStore:
+    """
+    Connect to a place to store state for the given workflow, in the state
+    store defined by the given URL.
+    
+    :param url: A URL that can be used for connect_to_state_store()
+    """
+    
+    # If it's not anything else, treat it as a local path.
+    return FileStateStore(url)
+    
 @retry(errors=[OSError, BlockingIOError])
 def safe_read_file(file: str) -> Optional[str]:
     """
