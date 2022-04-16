@@ -15,6 +15,8 @@ import argparse
 import logging
 import os
 
+from typing import Type
+
 import connexion  # type: ignore
 
 from toil.lib.misc import get_public_ip
@@ -53,7 +55,7 @@ def parser_with_server_options() -> argparse.ArgumentParser:
     parser.add_argument("--work_dir", type=str, default=os.path.join(os.getcwd(), "workflows"),
                         help="The directory where workflows should be stored. This directory should be "
                              "empty or only contain previous workflows. (default: './workflows').")
-    parser.add_argument("--opt", "-o", type=str, action="append",
+    parser.add_argument("--opt", "-o", type=str, action="append", default=[],
                         help="Specify the default parameters to be sent to the workflow engine for each "
                              "run. Options taking arguments must use = syntax. Accepts multiple values.\n"
                              "Example: '--opt=--logLevel=CRITICAL --opt=--workDir=/tmp'.")
@@ -95,6 +97,9 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
         flask_app.app.add_url_rule("/engine/v1/status", view_func=backend.get_health)
         # And we can provide lost humans some information on what they are looking at
         flask_app.app.add_url_rule("/", view_func=backend.get_homepage)
+        
+    # Hide the backend in the app for testing
+    setattr(flask_app, 'backend', backend)
 
     return flask_app
 

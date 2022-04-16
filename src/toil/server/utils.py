@@ -13,14 +13,18 @@
 # limitations under the License.
 import fcntl
 import os
+from abc import abstractmethod
 from datetime import datetime
 from typing import Optional
 from urllib.parse import urlparse
 
+import logging
 import requests
 
 from toil.lib.retry import retry
+from toil.lib.io import AtomicFileCreate
 
+logger = logging.getLogger(__name__)
 
 def get_iso_time() -> str:
     """
@@ -114,21 +118,33 @@ def safe_write_file(file: str, s: str) -> None:
     Safely write to a file by acquiring an exclusive lock to prevent other
     processes from reading and writing to it while writing.
     """
-    # Open in read and update mode, so we don't modify the file before we acquire a lock
-    file_obj = open(file, "r+")
-
-    try:
-        # acquire an exclusive lock
-        fcntl.flock(file_obj.fileno(), fcntl.LOCK_EX)
+    
+    if os.path.exists(file):
+        # Going to overwrite without anyone else being able to see ths
+        # intermediate state.
+    
+        # Open in read and update mode, so we don't modify the file before we acquire a lock
+        file_obj = open(file, "r+")
 
         try:
-            file_obj.seek(0)
-            file_obj.write(s)
-            file_obj.truncate()
+            # acquire an exclusive lock
+            fcntl.flock(file_obj.fileno(), fcntl.LOCK_EX)
+
+            try:
+                file_obj.seek(0)
+                file_obj.write(s)
+                file_obj.truncate()
+            finally:
+                fcntl.flock(file_obj.fileno(), fcntl.LOCK_UN)
         finally:
-            fcntl.flock(file_obj.fileno(), fcntl.LOCK_UN)
-    finally:
-        file_obj.close()
+            file_obj.close()
+    else:
+        # Contend with everyone else to create the file. Last write will win
+        # but it will be atomic because of the filesystem.
+        with AtomicFileCreate(file) as temp_name:
+            with open(temp_name, "w") as file_obj:
+                file_obj.write(s)
+        
 
 class AbstractStateStore:
     """
@@ -150,7 +166,7 @@ class AbstractStateStore:
     AWSJobStore no longer needs SimpleDB?
     """
 
-    @absractmethod
+    @abstractmethod
     def get(self, workflow_id: str, key: str) -> Optional[str]:
         """
         Get the value of the given key for the given workflow, or None if the
@@ -183,6 +199,7 @@ class FileStateStore(AbstractStateStore):
         if not os.path.exists(url):
             # We need this directory to exist.
             os.makedirs(url, exist_ok=True)
+        logger.debug("Connected to FileStateStore at %s", url)
         self._base_dir = url
 
     def get(self, workflow_id: str, key: str) -> Optional[str]:
@@ -255,8 +272,14 @@ def connect_to_workflow_state_store(url: str, workflow_id: str) -> WorkflowState
     :param url: A URL that can be used for connect_to_state_store()
     """
 
-    # If it's not anything else, treat it as a local path.
-    return FileStateStore(url)
+    return WorkflowStateStore(connect_to_state_store(url), workflow_id)
+
+# Some states are just last write wins
+BASE_STATES = ["UNKNOWN", "QUEUED", "INITIALIZING", "RUNNING", "PAUSED"]
+# Some states are flags. These flags are in priority order.
+# The first of these that is set will win over all others and over any base state.
+# TODO: do we need to ban e.g. CANCELING -> COMPLETE transitions? If so revise this order.
+FLAG_STATES_IN_ORDER = ["COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELED", "CANCELING"]
 
 class WorkflowStateMachine:
     """
@@ -284,13 +307,6 @@ class WorkflowStateMachine:
     "CANCELING"
     """
 
-    # Some states are just last write wins
-    BASE_STATES = ["UNKNOWN", "QUEUED", "INITIALIZING", "RUNNING", "PAUSED"]
-    # Some states are flags. These flags are in priority order.
-    # The first of these that is set will win over all others and over any base state.
-    # TODO: do we need to ban e.g. CANCELING -> COMPLETE transitions? If so revise this order.
-    FLAG_STATES_IN_ORDER = ["COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELED", "CANCELING"]
-
     def __init__(self, store: WorkflowStateStore) -> None:
         """
         Make a new state machine over the given state store slice for the
@@ -308,7 +324,7 @@ class WorkflowStateMachine:
 
         self._store.set("state", state)
 
-    def _get_base_state(self, state: str) -> str:
+    def _get_base_state(self) -> str:
         """
         Get the base state (lowest priority), which would be overridden by any
         flag state.

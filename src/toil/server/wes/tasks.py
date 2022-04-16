@@ -17,7 +17,7 @@ import logging
 import os
 import subprocess
 import zipfile
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Optional, Tuple, Union
 from urllib.parse import urldefrag
 
 from celery.exceptions import SoftTimeLimitExceeded  # type: ignore
@@ -372,11 +372,9 @@ class ToilWorkflowRunner:
 
         self.write_scratch_file("outputs.json", json.dumps(output_obj))
 
-
-@celery.task(name="run_wes") # type: ignore
-def run_wes(base_scratch_dir: str, state_store_url: str, workflow_id: str, request: Dict[str, Any], engine_options: List[str]) -> str:
+def run_wes_task(base_scratch_dir: str, state_store_url: str, workflow_id: str, request: Dict[str, Any], engine_options: List[str]) -> str:
     """
-    A celery task to run a requested workflow.
+    Run a requested workflow.
 
     :param base_scratch_dir: Directory where the workflow's scratch dir will live, under the workflow's ID.
 
@@ -406,9 +404,37 @@ def run_wes(base_scratch_dir: str, state_store_url: str, workflow_id: str, reque
 
     return runner.get_state()
 
+# Wrap the task function as a Celery task
+run_wes = celery.task(name="run_wes")(run_wes_task)
 
 def cancel_run(task_id: str) -> None:
     """
     Send a SIGTERM signal to the process that is running task_id.
     """
     celery.control.terminate(task_id, signal='SIGUSR1')
+
+class TaskRunner:
+    """
+    Abstraction over the Celery API. Runs our run_wes task and allows canceling it.
+    
+    We can swap this out in the server to allow testing without Celery.
+    """
+    
+    @staticmethod
+    def run(args: Tuple[str, str, str, Dict[str, Any], List[str]], task_id: str) -> None:
+        """
+        Run the given task args with the given ID on Celery.
+        """
+        run_wes.apply_async(args=args,
+                            task_id=task_id,
+                            ignore_result=True)
+                            
+    @staticmethod
+    def cancel(task_id: str) -> None:
+        """
+        Cancel the task with the given ID on Celery.
+        """
+        cancel_run(task_id)
+                            
+
+

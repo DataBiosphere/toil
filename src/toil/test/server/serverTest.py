@@ -19,7 +19,7 @@ import time
 import unittest
 import zipfile
 from io import BytesIO
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 try:
     from flask import Flask
@@ -34,6 +34,35 @@ from toil.test import ToilTest, needs_server, needs_celery_broker
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
+# We want to be able to mock Celery for testing.
+_id_to_process = {}
+class MultiprocessingTaskRunner:
+    """
+    Fake TaskRunner that just runs tasks with Multiprocessing.
+    """
+    
+    @staticmethod
+    def run(args: Tuple[str, str, str, Dict[str, Any], List[str]], task_id: str):
+        """
+        Run the given task args with the given ID.
+        """
+        from multiprocessing import Process
+        from toil.server.wes.tasks import run_wes_task
+        logger.info("Starting task %s in a process", task_id)
+        _id_to_process[task_id] = Process(target=run_wes_task, args=args)
+        _id_to_process[task_id].start()
+        
+    @staticmethod
+    def cancel(task_id: str):
+        """
+        Cancel the task with the given ID.
+        """
+        if task_id in _id_to_process:
+            logger.info("Stopping process for task %s", task_id)
+            _id_to_process[tadk_id].terminate()
+        else:
+            logger.error("Tried to kill nonexistent task %s", task_id)
+
 
 @needs_server
 class ToilServerUtilsTest(ToilTest):
@@ -41,23 +70,39 @@ class ToilServerUtilsTest(ToilTest):
     Tests for the utility functions used by the Toil server.
     """
 
-
 @needs_server
-class ToilWESServerTest(ToilTest):
+class AbstractToilWESServerTest(ToilTest):
     """
-    Tests for Toil's Workflow Execution Service API support using Flask's
-    builtin test client.
+    Class for server tests that provides a self.app in testing mode.
     """
-
+    
+    def __init__(self, *args, **kwargs):
+        """
+        Set up default settings for test classes based on this one.
+        """
+        super().__init__(*args, **kwargs)
+        
+        # Default to the local testing task runner instead of Celery for when
+        # we run workflows.
+        self.task_runner = MultiprocessingTaskRunner
+    
     def setUp(self) -> None:
-        super(ToilWESServerTest, self).setUp()
+        super().setUp()
         self.temp_dir = self._createTempDir()
 
         from toil.server.app import create_app, parser_with_server_options
         parser = parser_with_server_options()
         args = parser.parse_args(["--work_dir", os.path.join(self.temp_dir, "workflows")])
-
-        self.app: Flask = create_app(args).app
+        
+        # Make the FlaskApp
+        server_app = create_app(args)
+        
+        # We hid the backend in there. Replace the task runner on it so we
+        # don't always have to use Celery.
+        getattr(server_app, 'backend').task_runner = self.task_runner
+        
+        # Fish out the actual Flask
+        self.app: Flask = server_app.app
         self.app.testing = True
 
         self.example_cwl = textwrap.dedent("""
@@ -76,39 +121,8 @@ class ToilWESServerTest(ToilTest):
             """)
 
     def tearDown(self) -> None:
-        super(ToilWESServerTest, self).tearDown()
-
-    def test_home(self) -> None:
-        """ Test the homepage endpoint."""
-        with self.app.test_client() as client:
-            rv = client.get("/")
-        self.assertEqual(rv.status_code, 302)
-
-    def test_health(self) -> None:
-        """ Test the health check endpoint."""
-        with self.app.test_client() as client:
-            rv = client.get("/engine/v1/status")
-        self.assertEqual(rv.status_code, 200)
-
-    def test_get_service_info(self) -> None:
-        """ Test the GET /service-info endpoint."""
-        with self.app.test_client() as client:
-            rv = client.get("/ga4gh/wes/v1/service-info")
-        self.assertEqual(rv.status_code, 200)
-        service_info = json.loads(rv.data)
-
-        self.assertIn("version", service_info)
-        self.assertIn("workflow_type_versions", service_info)
-        self.assertIn("supported_wes_versions", service_info)
-        self.assertIn("supported_filesystem_protocols", service_info)
-        self.assertIn("workflow_engine_versions", service_info)
-        engine_versions = service_info["workflow_engine_versions"]
-        self.assertIn("toil", engine_versions)
-        self.assertEqual(type(engine_versions["toil"]), str)
-        self.assertIn("default_workflow_engine_parameters", service_info)
-        self.assertIn("system_state_counts", service_info)
-        self.assertIn("tags", service_info)
-
+        super().tearDown()
+        
     def _report_log(self, client: "FlaskClient", run_id: str) -> None:
         """
         Report the log for the given workflow run.
@@ -170,131 +184,191 @@ class ToilWESServerTest(ToilTest):
                 raise RuntimeError("Workflow is in fail state " + state)
             logger.info("Waiting on workflow in state %s", state)
             time.sleep(2)
-
-    @needs_celery_broker
-    def test_run_example_cwl_workflow(self) -> None:
-        """
-        Test submitting the example CWL workflow to the WES server and getting
-        the run status.
-        """
-
-        with self.subTest('Test run example CWL workflow from relative workflow URL but with no attachments.'):
-            with self.app.test_client() as client:
-                rv = client.post("/ga4gh/wes/v1/runs", data={
-                    "workflow_url": "example.cwl",
-                    "workflow_type": "CWL",
-                    "workflow_type_version": "v1.0",
-                    "workflow_params": "{}"
-                })
-                self.assertEqual(rv.status_code, 400)
-                self.assertTrue(rv.is_json)
-                self.assertEqual(rv.json.get("msg"), "Relative 'workflow_url' but missing 'workflow_attachment'")
-
-        with self.subTest('Test run example CWL workflow from relative workflow URL.'):
-            with self.app.test_client() as client:
-                rv = client.post("/ga4gh/wes/v1/runs", data={
-                    "workflow_url": "example.cwl",
-                    "workflow_type": "CWL",
-                    "workflow_type_version": "v1.0",
-                    "workflow_params": json.dumps({"message": "Hello, world!"}),
-                    "workflow_attachment": [
-                        (BytesIO(self.example_cwl.encode()), "example.cwl"),
-                    ],
-                })
-                # workflow is submitted successfully
-                self.assertEqual(rv.status_code, 200)
-                self.assertTrue(rv.is_json)
-                run_id = rv.json.get("run_id")
-                self.assertIsNotNone(run_id)
-
-                # Check status
-                self._wait_for_success(client, run_id)
-
-        def run_zip_workflow(zip_path: str, include_message: bool = True) -> None:
-            """
-            We have several zip file tests; this submits a zip file and makes sure it ran OK.
-            """
-            self.assertTrue(os.path.exists(zip_path))
-            with self.app.test_client() as client:
-                rv = client.post("/ga4gh/wes/v1/runs", data={
-                    "workflow_url": "file://" + zip_path,
-                    "workflow_type": "CWL",
-                    "workflow_type_version": "v1.0",
-                    "workflow_params": json.dumps({"message": "Hello, world!"} if include_message else {})
-                })
-                # workflow is submitted successfully
-                self.assertEqual(rv.status_code, 200)
-                self.assertTrue(rv.is_json)
-                run_id = rv.json.get("run_id")
-                self.assertIsNotNone(run_id)
-
-                # Check status
-                self._wait_for_success(client, run_id)
-
-                # TODO: Make sure that the correct message was output!
-
-
-        with self.subTest('Test run example CWL workflow from single-file ZIP.'):
-            workdir = self._createTempDir()
-            zip_path = os.path.abspath(os.path.join(workdir, 'workflow.zip'))
-            with zipfile.ZipFile(zip_path, 'w') as zip_file:
-                zip_file.writestr('example.cwl', self.example_cwl)
-            run_zip_workflow(zip_path)
-
-        with self.subTest('Test run example CWL workflow from multi-file ZIP.'):
-            workdir = self._createTempDir()
-            zip_path = os.path.abspath(os.path.join(workdir, 'workflow.zip'))
-            with zipfile.ZipFile(zip_path, 'w') as zip_file:
-                zip_file.writestr('main.cwl', self.example_cwl)
-                zip_file.writestr('distraction.cwl', "Don't mind me")
-            run_zip_workflow(zip_path)
-
-        with self.subTest('Test run example CWL workflow from ZIP with manifest.'):
-            workdir = self._createTempDir()
-            zip_path = os.path.abspath(os.path.join(workdir, 'workflow.zip'))
-            with zipfile.ZipFile(zip_path, 'w') as zip_file:
-                zip_file.writestr('actual.cwl', self.example_cwl)
-                zip_file.writestr('distraction.cwl', self.example_cwl)
-                zip_file.writestr('MANIFEST.json', json.dumps({"mainWorkflowURL": "actual.cwl"}))
-            run_zip_workflow(zip_path)
-
-        with self.subTest('Test run example CWL workflow from ZIP without manifest but with inputs.'):
-            workdir = self._createTempDir()
-            zip_path = os.path.abspath(os.path.join(workdir, 'workflow.zip'))
-            with zipfile.ZipFile(zip_path, 'w') as zip_file:
-                zip_file.writestr('main.cwl', self.example_cwl)
-                zip_file.writestr('inputs.json', json.dumps({"message": "Hello, world!"}))
-            run_zip_workflow(zip_path, include_message=False)
             
-        with self.subTest('Test run example CWL workflow from ZIP with manifest and inputs.'):
-            workdir = self._createTempDir()
-            zip_path = os.path.abspath(os.path.join(workdir, 'workflow.zip'))
-            with zipfile.ZipFile(zip_path, 'w') as zip_file:
-                zip_file.writestr('actual.cwl', self.example_cwl)
-                zip_file.writestr('data.json', json.dumps({"message": "Hello, world!"}))
-                zip_file.writestr('MANIFEST.json', json.dumps({"mainWorkflowURL": "actual.cwl", "inputFileURLs": ["data.json"]}))
-            run_zip_workflow(zip_path, include_message=False)
+
+class ToilWESServerBenchTest(AbstractToilWESServerTest):
+    """
+    Tests for Toil's Workflow Execution Service API that don't run workflows.
+    """
+
+    def test_home(self) -> None:
+        """ Test the homepage endpoint."""
+        with self.app.test_client() as client:
+            rv = client.get("/")
+        self.assertEqual(rv.status_code, 302)
+
+    def test_health(self) -> None:
+        """ Test the health check endpoint."""
+        with self.app.test_client() as client:
+            rv = client.get("/engine/v1/status")
+        self.assertEqual(rv.status_code, 200)
+
+    def test_get_service_info(self) -> None:
+        """ Test the GET /service-info endpoint."""
+        with self.app.test_client() as client:
+            rv = client.get("/ga4gh/wes/v1/service-info")
+        self.assertEqual(rv.status_code, 200)
+        service_info = json.loads(rv.data)
+
+        self.assertIn("version", service_info)
+        self.assertIn("workflow_type_versions", service_info)
+        self.assertIn("supported_wes_versions", service_info)
+        self.assertIn("supported_filesystem_protocols", service_info)
+        self.assertIn("workflow_engine_versions", service_info)
+        engine_versions = service_info["workflow_engine_versions"]
+        self.assertIn("toil", engine_versions)
+        self.assertEqual(type(engine_versions["toil"]), str)
+        self.assertIn("default_workflow_engine_parameters", service_info)
+        self.assertIn("system_state_counts", service_info)
+        self.assertIn("tags", service_info)
+
+class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
+    """
+    Tests of the WES server running workflows.
+    """
+    
+    def run_zip_workflow(self, zip_path: str, include_message: bool = True) -> None:
+        """
+        We have several zip file tests; this submits a zip file and makes sure it ran OK.
+        """
+        self.assertTrue(os.path.exists(zip_path))
+        with self.app.test_client() as client:
+            rv = client.post("/ga4gh/wes/v1/runs", data={
+                "workflow_url": "file://" + zip_path,
+                "workflow_type": "CWL",
+                "workflow_type_version": "v1.0",
+                "workflow_params": json.dumps({"message": "Hello, world!"} if include_message else {})
+            })
+            # workflow is submitted successfully
+            self.assertEqual(rv.status_code, 200)
+            self.assertTrue(rv.is_json)
+            run_id = rv.json.get("run_id")
+            self.assertIsNotNone(run_id)
+
+            # Check status
+            self._wait_for_success(client, run_id)
+
+            # TODO: Make sure that the correct message was output!
+    
+    def test_run_workflow_relative_url_no_attachments_fails(self) -> None:
+        """Test run example CWL workflow from relative workflow URL but with no attachments."""
+        with self.app.test_client() as client:
+            rv = client.post("/ga4gh/wes/v1/runs", data={
+                "workflow_url": "example.cwl",
+                "workflow_type": "CWL",
+                "workflow_type_version": "v1.0",
+                "workflow_params": "{}"
+            })
+            self.assertEqual(rv.status_code, 400)
+            self.assertTrue(rv.is_json)
+            self.assertEqual(rv.json.get("msg"), "Relative 'workflow_url' but missing 'workflow_attachment'")
+
+    def test_run_workflow_relative_url(self) -> None:
+        """Test run example CWL workflow from relative workflow URL."""
+        with self.app.test_client() as client:
+            rv = client.post("/ga4gh/wes/v1/runs", data={
+                "workflow_url": "example.cwl",
+                "workflow_type": "CWL",
+                "workflow_type_version": "v1.0",
+                "workflow_params": json.dumps({"message": "Hello, world!"}),
+                "workflow_attachment": [
+                    (BytesIO(self.example_cwl.encode()), "example.cwl"),
+                ],
+            })
+            # workflow is submitted successfully
+            self.assertEqual(rv.status_code, 200)
+            self.assertTrue(rv.is_json)
+            run_id = rv.json.get("run_id")
+            self.assertIsNotNone(run_id)
+
+            # Check status
+            self._wait_for_success(client, run_id)
             
-        # TODO: When we can check the output value, add tests for overriding
-        # packaged inputs.
+    def test_run_workflow_https_url(self) -> None:
+        """Test run example CWL workflow from the Internet."""
+        with self.app.test_client() as client:
+            rv = client.post("/ga4gh/wes/v1/runs", data={
+                "workflow_url": "https://raw.githubusercontent.com/DataBiosphere/toil/releases/5.4.x/src/toil"
+                                "/test/docs/scripts/cwlExampleFiles/hello.cwl",
+                "workflow_type": "CWL",
+                "workflow_type_version": "v1.0",
+                "workflow_params": json.dumps({"message": "Hello, world!"}),
+            })
+            # workflow is submitted successfully
+            self.assertEqual(rv.status_code, 200)
+            self.assertTrue(rv.is_json)
+            run_id = rv.json.get("run_id")
+            self.assertIsNotNone(run_id)
 
-        with self.subTest('Test run example CWL workflow from the Internet.'):
-            with self.app.test_client() as client:
-                rv = client.post("/ga4gh/wes/v1/runs", data={
-                    "workflow_url": "https://raw.githubusercontent.com/DataBiosphere/toil/releases/5.4.x/src/toil"
-                                    "/test/docs/scripts/cwlExampleFiles/hello.cwl",
-                    "workflow_type": "CWL",
-                    "workflow_type_version": "v1.0",
-                    "workflow_params": json.dumps({"message": "Hello, world!"}),
-                })
-                # workflow is submitted successfully
-                self.assertEqual(rv.status_code, 200)
-                self.assertTrue(rv.is_json)
-                run_id = rv.json.get("run_id")
-                self.assertIsNotNone(run_id)
+            # Check status
+            self._wait_for_success(client, run_id)
 
-                # Check status
-                self._wait_for_success(client, run_id)
+    def test_run_workflow_single_file_zip(self) -> None:
+        """Test run example CWL workflow from single-file ZIP."""
+        workdir = self._createTempDir()
+        zip_path = os.path.abspath(os.path.join(workdir, 'workflow.zip'))
+        with zipfile.ZipFile(zip_path, 'w') as zip_file:
+            zip_file.writestr('example.cwl', self.example_cwl)
+        self.run_zip_workflow(zip_path)
+
+    def test_run_workflow_multi_file_zip(self) -> None:
+        """Test run example CWL workflow from multi-file ZIP."""
+        workdir = self._createTempDir()
+        zip_path = os.path.abspath(os.path.join(workdir, 'workflow.zip'))
+        with zipfile.ZipFile(zip_path, 'w') as zip_file:
+            zip_file.writestr('main.cwl', self.example_cwl)
+            zip_file.writestr('distraction.cwl', "Don't mind me")
+        self.run_zip_workflow(zip_path)
+
+    def test_run_workflow_manifest_zip(self) -> None:
+        """Test run example CWL workflow from ZIP with manifest."""
+        workdir = self._createTempDir()
+        zip_path = os.path.abspath(os.path.join(workdir, 'workflow.zip'))
+        with zipfile.ZipFile(zip_path, 'w') as zip_file:
+            zip_file.writestr('actual.cwl', self.example_cwl)
+            zip_file.writestr('distraction.cwl', self.example_cwl)
+            zip_file.writestr('MANIFEST.json', json.dumps({"mainWorkflowURL": "actual.cwl"}))
+        self.run_zip_workflow(zip_path)
+
+        
+    def test_run_workflow_inputs_zip(self) -> None:
+        """Test run example CWL workflow from ZIP without manifest but with inputs."""
+        workdir = self._createTempDir()
+        zip_path = os.path.abspath(os.path.join(workdir, 'workflow.zip'))
+        with zipfile.ZipFile(zip_path, 'w') as zip_file:
+            zip_file.writestr('main.cwl', self.example_cwl)
+            zip_file.writestr('inputs.json', json.dumps({"message": "Hello, world!"}))
+        self.run_zip_workflow(zip_path, include_message=False)
+            
+    def test_run_workflow_manifest_and_inputs_zip(self) -> None:
+        """Test run example CWL workflow from ZIP with manifest and inputs."""
+        workdir = self._createTempDir()
+        zip_path = os.path.abspath(os.path.join(workdir, 'workflow.zip'))
+        with zipfile.ZipFile(zip_path, 'w') as zip_file:
+            zip_file.writestr('actual.cwl', self.example_cwl)
+            zip_file.writestr('data.json', json.dumps({"message": "Hello, world!"}))
+            zip_file.writestr('MANIFEST.json', json.dumps({"mainWorkflowURL": "actual.cwl", "inputFileURLs": ["data.json"]}))
+        self.run_zip_workflow(zip_path, include_message=False)
+            
+    # TODO: When we can check the output value, add tests for overriding
+    # packaged inputs.
+        
+@needs_celery_broker
+class ToilWESServerCeleryWorkflowTest(ToilWESServerWorkflowTest):
+    """
+    End-to-end workflow-running tests against Celery.
+    """
+
+    def __init__(self, *args, **kwargs):
+        """
+        Set the task runner back to Celery.
+        """
+        super().__init__(*args, **kwargs)
+        
+        
+        from toil.server.wes.tasks import TaskRunner
+        self.task_runner = TaskRunner
+    
 
 
 if __name__ == "__main__":
