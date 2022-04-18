@@ -180,6 +180,8 @@ class Config:
         self.statusWait: int = 3600
         self.disableProgress: bool = False
 
+        self.kill_polling_interval: int = 5
+
         # Debug options
         self.debugWorker: bool = False
         self.disableWorkerOutputCapture: bool = False
