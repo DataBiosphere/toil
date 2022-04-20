@@ -970,7 +970,7 @@ class Leader:
         # batch system, it will show up here as waiting to run.
         return f"{running_job_count} jobs are running, {issued_job_count - running_job_count} jobs are issued and waiting to run"
 
-    def _reportWorkflowStatus(self):
+    def _reportWorkflowStatus(self) -> None:
         """
         Report the current status of the workflow to the user.
         """
@@ -980,14 +980,14 @@ class Leader:
         # bar/status line.
         logger.info(self._getStatusHint())
 
-    def _write_kill_flag_file(self):
+    def _write_kill_flag_file(self) -> None:
         """
         Write a file inside the job store that serves as a kill flag.
         """
         with self.jobStore.write_shared_file_stream("_toil_kill_flag") as f:
             f.write("NO".encode('utf-8'))
 
-    def _check_kill_flag_file(self):
+    def _check_kill_flag_file(self) -> None:
         """
         Check the kill flag inside the job store to see if we have been killed.
 
