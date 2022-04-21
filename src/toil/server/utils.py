@@ -24,6 +24,14 @@ import requests
 from toil.lib.retry import retry
 from toil.lib.io import AtomicFileCreate
 
+try:
+    from toil.lib.aws import get_current_aws_region
+    from toil.lib.aws.session import client
+    from toil.lib.aws.utils import retry_s3
+    HAVE_S3 = True
+except ImportError:
+    HAVE_S3 = False
+
 logger = logging.getLogger(__name__)
 
 def get_iso_time() -> str:
@@ -118,11 +126,11 @@ def safe_write_file(file: str, s: str) -> None:
     Safely write to a file by acquiring an exclusive lock to prevent other
     processes from reading and writing to it while writing.
     """
-    
+
     if os.path.exists(file):
         # Going to overwrite without anyone else being able to see ths
         # intermediate state.
-    
+
         # Open in read and update mode, so we don't modify the file before we acquire a lock
         file_obj = open(file, "r+")
 
@@ -144,7 +152,7 @@ def safe_write_file(file: str, s: str) -> None:
         with AtomicFileCreate(file) as temp_name:
             with open(temp_name, "w") as file_obj:
                 file_obj.write(s)
-        
+
 
 class AbstractStateStore:
     """
@@ -191,9 +199,9 @@ class FileStateStore(AbstractStateStore):
         """
         Connect to the state store in the given local directory.
 
-        :param url: Local state store path. Must be a path, not a file:// URL.
+        :param url: Local state store path. Must be a path, not a file: URL.
         """
-        if url.startswith('file:') or url.startswith('s3:'):
+        if url.startswith('file:') or url.startswith('s3://'):
             # We want to catch if we get the wrong argument.
             raise RuntimeError(f"{url} doesn't look like a local path")
         if not os.path.exists(url):
@@ -227,6 +235,88 @@ class FileStateStore(AbstractStateStore):
             # Set the value in the file
             safe_write_file(file_path, value)
 
+if HAVE_S3:
+    class S3StateStore(AbstractStateStore):
+        """
+        A place to store workflow state that uses an S3-compatible object store.
+        """
+
+        def __init__(self, url: str) -> None:
+            """
+            Connect to the state store in the given S3 URL.
+
+            :param url: An S3 URL to a prefix.
+            """
+
+            self._scheme = 's3://'
+
+            if not url.startswith(self._scheme):
+                # We want to catch if we get the wrong argument.
+                raise RuntimeError(f"{url} doesn't look like an S3 URL")
+
+            self._base_url = url
+            self._client = client('s3', region_name=get_current_aws_region())
+
+            logger.debug("Connected to S3StateStore at %s", url)
+
+        def _get_bucket_and_path(self, workflow_id: str, key: str) -> Tuple[str, str]:
+            """
+            Get the bucket and path in the bucket at which a key value belongs.
+            """
+            full_url = os.path.join(self._base_url, workflow_id, key)
+            parts = full_url[len(self._scheme):].split('/', 1)
+            bucket = parts[0]
+            path = parts[1]
+            return bucket, path
+
+        @retry_s3
+        def get(self, workflow_id: str, key: str) -> Optional[str]:
+            """
+            Get a key value from S3.
+            """
+            bucket, path = self._get_bucket_and_path(workflow_id, key)
+            try:
+                response = self._client.get_object(Bucket=bucket, Key=path)
+                return response['Body'].read().decode('utf-8')
+            except self._client.exceptions.NoSuchKey:
+                return None
+
+
+        @retry_s3
+        def set(self, workflow_id: str, key: str, value: Optional[str]) -> None:
+            """
+            Set or clear a key value on S3.
+            """
+            bucket, path = self._get_bucket_and_path(workflow_id, key)
+            if value is None:
+                # Get rid of it.
+                self._client.delete_object(Bucket=bucket, Key=path)
+            else:
+                # Store it, clobbering anything there already.
+                self._client.put_object(Bucket=bucket, Key=path,
+                                        Body=value.encode('utf-8'))
+
+def connect_to_state_store(url: str) -> AbstractStateStore:
+    """
+    Connect to a place to store state for workflows, defined by a URL.
+
+    URL may be a local file path or an S3 URL.
+    """
+
+    if url.startswith('s3://'):
+        # It's an S3 URL
+        if HAVE_S3:
+            # And we can use S3, so make the right implementation for S3.
+            return S3StateStore(url)
+        else:
+            # We can't actually use S3, so complain.
+            raise RuntimeError(f'Cannot connect to {url} because Toil AWS '
+                               f'dependencies are not available. Did you '
+                               f'install Toil with the [aws] extra?')
+
+    # If it's not anything else, treat it as a local path.
+    return FileStateStore(url)
+
 class WorkflowStateStore:
     """
     Slice of a state store for the state of a particular workflow.
@@ -253,16 +343,6 @@ class WorkflowStateStore:
         Set the given item of workflow state.
         """
         self._state_store.set(self._workflow_id, key, value)
-
-def connect_to_state_store(url: str) -> AbstractStateStore:
-    """
-    Connect to a place to store state for workflows, defined by a URL.
-
-    URL may be a local file path or (currently) an S3 URL.
-    """
-
-    # If it's not anything else, treat it as a local path.
-    return FileStateStore(url)
 
 def connect_to_workflow_state_store(url: str, workflow_id: str) -> WorkflowStateStore:
     """
