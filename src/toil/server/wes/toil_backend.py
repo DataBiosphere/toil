@@ -158,11 +158,13 @@ class ToilBackend(WESBackend):
     class is responsible for validating and executing submitted workflows.
     """
 
-    def __init__(self, work_dir: str, options: List[str], dest_bucket_base: Optional[str]) -> None:
+    def __init__(self, work_dir: str, state_store: Optional[str], options: List[str], dest_bucket_base: Optional[str]) -> None:
         """
         Make a new ToilBackend for serving WES.
 
         :param work_dir: Directory to download and run workflows in.
+        
+        :param state_store: Path or URL to store workflow state at.
 
         :param options: Command-line options to pass along to workflows. Must
                use = syntax to set values instead of ordering.
@@ -186,10 +188,14 @@ class ToilBackend(WESBackend):
         os.makedirs(self.work_dir, exist_ok=True)
 
         # Where should we talk to the tasks about workflow state?
-        # For now just do it in a dedicated directory of the work_dir (so we
-        # don't forget workflows when we clean them up).
-        self.state_store_url = os.path.join(self.work_dir, 'state_store')
-
+        
+        if state_store is None:
+            # Store workflow metadata under the work_dir.
+            self.state_store_url = os.path.join(self.work_dir, 'state_store')
+        else:
+            # Use the provided value
+            self.state_store_url = state_store
+        
         # Determine a server identity, so we can guess if a workflow in the
         # possibly-persistent state store is QUEUED, INITIALIZING, or RUNNING
         # on a Celery that no longer exists. Ideally we would ask Celery what

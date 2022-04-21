@@ -55,6 +55,9 @@ def parser_with_server_options() -> argparse.ArgumentParser:
     parser.add_argument("--work_dir", type=str, default=os.path.join(os.getcwd(), "workflows"),
                         help="The directory where workflows should be stored. This directory should be "
                              "empty or only contain previous workflows. (default: './workflows').")
+    parser.add_argument("--state_store", type=str, default=None,
+                        help="The local path or S3 URL where workflow state metadata should be stored. "
+                             "(default: in --work_dir)")
     parser.add_argument("--opt", "-o", type=str, action="append", default=[],
                         help="Specify the default parameters to be sent to the workflow engine for each "
                              "run. Options taking arguments must use = syntax. Accepts multiple values.\n"
@@ -82,7 +85,10 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
         CORS(flask_app.app, resources={r"/ga4gh/*": {"origins": args.cors_origins}})
 
     # add workflow execution service (WES) API endpoints
-    backend = ToilBackend(work_dir=args.work_dir, options=args.opt, dest_bucket_base=args.dest_bucket_base)
+    backend = ToilBackend(work_dir=args.work_dir,
+                          state_store=args.state_store,
+                          options=args.opt,
+                          dest_bucket_base=args.dest_bucket_base)
 
     flask_app.add_api('workflow_execution_service.swagger.yaml',
                       resolver=connexion.Resolver(backend.resolve_operation_id))  # noqa
