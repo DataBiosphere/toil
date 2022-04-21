@@ -35,7 +35,7 @@ from toil.server.wes.abstract_backend import (WESBackend,
                                               VersionNotImplementedException,
                                               WorkflowExecutionException,
                                               OperationForbidden)
-from toil.server.wes.tasks import TaskRunner
+from toil.server.wes.tasks import TaskRunner, MultiprocessingTaskRunner
 
 from toil.lib.threading import global_mutex
 from toil.lib.io import AtomicFileCreate
@@ -59,7 +59,7 @@ class ToilWorkflow:
         :param state_store_url: URL or file path at which we communicate with
                                 running workflows.
 
-        :param run_id: A uuid string.  Used to name the folder that contains
+        :param run_id: A unique per-run string.  Used to name the folder that contains
                        all of the files containing this particular workflow
                        instance's information.
         """
@@ -158,12 +158,12 @@ class ToilBackend(WESBackend):
     class is responsible for validating and executing submitted workflows.
     """
 
-    def __init__(self, work_dir: str, state_store: Optional[str], options: List[str], dest_bucket_base: Optional[str]) -> None:
+    def __init__(self, work_dir: str, state_store: Optional[str], options: List[str], dest_bucket_base: Optional[str], bypass_celery=False) -> None:
         """
         Make a new ToilBackend for serving WES.
 
         :param work_dir: Directory to download and run workflows in.
-        
+
         :param state_store: Path or URL to store workflow state at.
 
         :param options: Command-line options to pass along to workflows. Must
@@ -171,7 +171,10 @@ class ToilBackend(WESBackend):
 
         :param dest_bucket_base: If specified, direct CWL workflows to use
                paths under the given URL for storing output files.
-        
+
+        :param bypass_celery: Can be set to True to bypass Celery and the
+               message broker and invoke workflow-running tasks without them.
+
         """
         for opt in options:
             if not opt.startswith('-'):
@@ -179,23 +182,28 @@ class ToilBackend(WESBackend):
                 # that would need to remain in the same order.
                 raise ValueError(f'Option {opt} does not begin with -')
         super(ToilBackend, self).__init__(options)
-        
-        # Use this to run Celery tasks so we can swap it out in the tests. 
-        self.task_runner = TaskRunner
+
+        # How should we generate run IDs? We apply a prefix so that we can tell
+        # what things in our work directory suggest that runs exist and what
+        # things don't.
+        self.run_id_prefix = 'run-'
+
+        # Use this to run Celery tasks so we can swap it out for testing.
+        self.task_runner = TaskRunner if not bypass_celery else MultiprocessingTaskRunner
 
         self.dest_bucket_base = dest_bucket_base
         self.work_dir = os.path.abspath(work_dir)
         os.makedirs(self.work_dir, exist_ok=True)
 
         # Where should we talk to the tasks about workflow state?
-        
+
         if state_store is None:
             # Store workflow metadata under the work_dir.
             self.state_store_url = os.path.join(self.work_dir, 'state_store')
         else:
             # Use the provided value
             self.state_store_url = state_store
-        
+
         # Determine a server identity, so we can guess if a workflow in the
         # possibly-persistent state store is QUEUED, INITIALIZING, or RUNNING
         # on a Celery that no longer exists. Ideally we would ask Celery what
@@ -292,6 +300,8 @@ class ToilBackend(WESBackend):
             return
 
         for run_id in os.listdir(self.work_dir):
+            if not run_id.startswith(self.run_id_prefix):
+                continue
             run = self._get_run(run_id)
             if run.exists():
                 yield run_id, run.get_state()
@@ -357,13 +367,11 @@ class ToilBackend(WESBackend):
     @handle_errors
     def run_workflow(self) -> Dict[str, str]:
         """ Run a workflow."""
-        run_id = uuid.uuid4().hex
+        run_id = self.run_id_prefix + uuid.uuid4().hex
         run = self._get_run(run_id, should_exists=False)
 
-        # Claim ownership of the run
-        run.store.set("server_id", self.server_id)
-
-        # set up necessary directories for the run
+        # set up necessary directories for the run. We need to do this because
+        # we need to save attachments before we can get ahold of the request.
         run.set_up_run()
 
         # stage the uploaded files to the execution directory, so that we can run the workflow file directly
@@ -387,6 +395,11 @@ class ToilBackend(WESBackend):
         if version not in supported_versions:
             run.clean_up()
             raise VersionNotImplementedException(wf_type, version, supported_versions)
+
+        # Now we are actually going to try and do the run.
+
+        # Claim ownership of the run
+        run.store.set("server_id", self.server_id)
 
         # Generate workflow options
         workflow_options = list(self.options)

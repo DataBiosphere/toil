@@ -32,6 +32,9 @@ def parser_with_server_options() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Toil server mode.")
 
     parser.add_argument("--debug", action="store_true", default=False)
+    parser.add_argument("--bypass_celery", action="store_true", default=False,
+                        help="Skip sending workflows to Celery and just run them under the"
+                             "server. For testing.")
     parser.add_argument("--host", type=str, default="127.0.0.1",
                         help="The host interface that the Toil server binds on. (default: '127.0.0.1').")
     parser.add_argument("--port", type=int, default=8080,
@@ -88,7 +91,8 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
     backend = ToilBackend(work_dir=args.work_dir,
                           state_store=args.state_store,
                           options=args.opt,
-                          dest_bucket_base=args.dest_bucket_base)
+                          dest_bucket_base=args.dest_bucket_base,
+                          bypass_celery=args.bypass_celery)
 
     flask_app.add_api('workflow_execution_service.swagger.yaml',
                       resolver=connexion.Resolver(backend.resolve_operation_id))  # noqa
@@ -104,9 +108,6 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
         # And we can provide lost humans some information on what they are looking at
         flask_app.app.add_url_rule("/", view_func=backend.get_homepage)
         
-    # Hide the backend in the app for testing
-    setattr(flask_app, 'backend', backend)
-
     return flask_app
 
 

@@ -34,36 +34,6 @@ from toil.test import ToilTest, needs_server, needs_celery_broker
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# We want to be able to mock Celery for testing.
-_id_to_process = {}
-class MultiprocessingTaskRunner:
-    """
-    Fake TaskRunner that just runs tasks with Multiprocessing.
-    """
-    
-    @staticmethod
-    def run(args: Tuple[str, str, str, Dict[str, Any], List[str]], task_id: str):
-        """
-        Run the given task args with the given ID.
-        """
-        from multiprocessing import Process
-        from toil.server.wes.tasks import run_wes_task
-        logger.info("Starting task %s in a process", task_id)
-        _id_to_process[task_id] = Process(target=run_wes_task, args=args)
-        _id_to_process[task_id].start()
-        
-    @staticmethod
-    def cancel(task_id: str):
-        """
-        Cancel the task with the given ID.
-        """
-        if task_id in _id_to_process:
-            logger.info("Stopping process for task %s", task_id)
-            _id_to_process[tadk_id].terminate()
-        else:
-            logger.error("Tried to kill nonexistent task %s", task_id)
-
-
 @needs_server
 class ToilServerUtilsTest(ToilTest):
     """
@@ -84,7 +54,7 @@ class AbstractToilWESServerTest(ToilTest):
         
         # Default to the local testing task runner instead of Celery for when
         # we run workflows.
-        self.task_runner = MultiprocessingTaskRunner
+        self._server_args = ["--bypass_celery"]
     
     def setUp(self) -> None:
         super().setUp()
@@ -92,14 +62,10 @@ class AbstractToilWESServerTest(ToilTest):
 
         from toil.server.app import create_app, parser_with_server_options
         parser = parser_with_server_options()
-        args = parser.parse_args(["--work_dir", os.path.join(self.temp_dir, "workflows")])
+        args = parser.parse_args(self._server_args + ["--work_dir", os.path.join(self.temp_dir, "workflows")])
         
         # Make the FlaskApp
         server_app = create_app(args)
-        
-        # We hid the backend in there. Replace the task runner on it so we
-        # don't always have to use Celery.
-        getattr(server_app, 'backend').task_runner = self.task_runner
         
         # Fish out the actual Flask
         self.app: Flask = server_app.app
@@ -364,10 +330,7 @@ class ToilWESServerCeleryWorkflowTest(ToilWESServerWorkflowTest):
         Set the task runner back to Celery.
         """
         super().__init__(*args, **kwargs)
-        
-        
-        from toil.server.wes.tasks import TaskRunner
-        self.task_runner = TaskRunner
+        self._server_args = []
     
 
 

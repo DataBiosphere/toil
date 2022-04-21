@@ -15,7 +15,7 @@ import fcntl
 import os
 from abc import abstractmethod
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Tuple
 from urllib.parse import urlparse
 
 import logging
@@ -269,32 +269,37 @@ if HAVE_S3:
             path = parts[1]
             return bucket, path
 
-        @retry_s3
         def get(self, workflow_id: str, key: str) -> Optional[str]:
             """
             Get a key value from S3.
             """
             bucket, path = self._get_bucket_and_path(workflow_id, key)
-            try:
-                response = self._client.get_object(Bucket=bucket, Key=path)
-                return response['Body'].read().decode('utf-8')
-            except self._client.exceptions.NoSuchKey:
-                return None
+            for attempt in retry_s3():
+                try:
+                    logger.debug('Fetch %s path %s', bucket, path) 
+                    response = self._client.get_object(Bucket=bucket, Key=path)
+                    return response['Body'].read().decode('utf-8')
+                except self._client.exceptions.NoSuchKey:
+                    return None
 
 
-        @retry_s3
         def set(self, workflow_id: str, key: str, value: Optional[str]) -> None:
             """
             Set or clear a key value on S3.
             """
             bucket, path = self._get_bucket_and_path(workflow_id, key)
-            if value is None:
-                # Get rid of it.
-                self._client.delete_object(Bucket=bucket, Key=path)
-            else:
-                # Store it, clobbering anything there already.
-                self._client.put_object(Bucket=bucket, Key=path,
-                                        Body=value.encode('utf-8'))
+            for attempt in retry_s3():
+                if value is None:
+                    # Get rid of it.
+                    logger.debug('Clear %s path %s', bucket, path)
+                    self._client.delete_object(Bucket=bucket, Key=path)
+                    return
+                else:
+                    # Store it, clobbering anything there already.
+                    logger.debug('Set %s path %s', bucket, path)
+                    self._client.put_object(Bucket=bucket, Key=path,
+                                            Body=value.encode('utf-8'))
+                    return
 
 def connect_to_state_store(url: str) -> AbstractStateStore:
     """

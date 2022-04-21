@@ -14,6 +14,7 @@
 import fcntl
 import json
 import logging
+import multiprocessing
 import os
 import subprocess
 import zipfile
@@ -435,6 +436,36 @@ class TaskRunner:
         Cancel the task with the given ID on Celery.
         """
         cancel_run(task_id)
+        
+
+# If Celery can't be set up, we can just use this fake version instead.
+
+_id_to_process = {}
+class MultiprocessingTaskRunner:
+    """
+    Fake TaskRunner that just runs tasks with Multiprocessing.
+    """
+    
+    @staticmethod
+    def run(args: Tuple[str, str, str, Dict[str, Any], List[str]], task_id: str):
+        """
+        Run the given task args with the given ID.
+        """
+        logger.info("Starting task %s in a process", task_id)
+        _id_to_process[task_id] = multiprocessing.Process(target=run_wes_task, args=args)
+        _id_to_process[task_id].start()
+        
+    @staticmethod
+    def cancel(task_id: str):
+        """
+        Cancel the task with the given ID.
+        """
+        if task_id in _id_to_process:
+            logger.info("Stopping process for task %s", task_id)
+            _id_to_process[tadk_id].terminate()
+        else:
+            logger.error("Tried to kill nonexistent task %s", task_id)
+
                             
 
 
