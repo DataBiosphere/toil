@@ -170,9 +170,22 @@ class AbstractStateStore:
     Note that we don't yet have a cleanup operation: things are stored
     permanently. Even clearing all the keys may leave data behind.
 
+    Also handles storage for a local cache, with a separate key namespace (not
+    a read/write-through cache).
+
     TODO: Can we replace this with just using a JobStore eventually, when
     AWSJobStore no longer needs SimpleDB?
     """
+
+    def __init__(self):
+        """
+        Set up the AbstractStateStore and its cache.
+        """
+        
+        # We maintain a local cache here.
+        # TODO: Upgrade to an LRU cache wehn we finally learn to paginate
+        # workflow status
+        self._cache: Dict[Tuple[str, str], str] = {}
 
     @abstractmethod
     def get(self, workflow_id: str, key: str) -> Optional[str]:
@@ -189,6 +202,27 @@ class AbstractStateStore:
         None, clear the key.
         """
         raise NotImplementedError
+    
+    def read_cache(self, workflow_id: str, key: str) -> Optional[str]:
+        """
+        Read a value from a local cache, without checking the actual backend.
+        """
+        
+        return self._cache.get((workflow_id, key))
+        
+    def write_cache(self, workflow_id: str, key: str, value: Optional[str]) -> None:
+        """
+        Write a value to a local cache, without modifying the actual backend.
+        """
+        if value is None:
+            try:
+                del self._cache[(workflow_id, key)]
+            except KeyError:
+                pass
+        else:
+            self._cache[(workflow_id, key)] = value
+        
+        
 
 class FileStateStore(AbstractStateStore):
     """
@@ -201,6 +235,7 @@ class FileStateStore(AbstractStateStore):
 
         :param url: Local state store path. Must be a path, not a file: URL.
         """
+        super().__init__()
         if url.startswith('file:') or url.startswith('s3://'):
             # We want to catch if we get the wrong argument.
             raise RuntimeError(f"{url} doesn't look like a local path")
@@ -248,6 +283,8 @@ if HAVE_S3:
             :param url: An S3 URL to a prefix.
             """
 
+            super().__init__()
+
             self._scheme = 's3://'
 
             if not url.startswith(self._scheme):
@@ -276,7 +313,7 @@ if HAVE_S3:
             bucket, path = self._get_bucket_and_path(workflow_id, key)
             for attempt in retry_s3():
                 try:
-                    logger.debug('Fetch %s path %s', bucket, path) 
+                    logger.debug('Fetch %s path %s', bucket, path)
                     response = self._client.get_object(Bucket=bucket, Key=path)
                     return response['Body'].read().decode('utf-8')
                 except self._client.exceptions.NoSuchKey:
@@ -301,6 +338,9 @@ if HAVE_S3:
                                             Body=value.encode('utf-8'))
                     return
 
+# We want to memoize state stores so we can cache on them.
+state_store_cache: Dict[str, AbstractStateStore] = {}
+
 def connect_to_state_store(url: str) -> AbstractStateStore:
     """
     Connect to a place to store state for workflows, defined by a URL.
@@ -308,19 +348,23 @@ def connect_to_state_store(url: str) -> AbstractStateStore:
     URL may be a local file path or an S3 URL.
     """
 
-    if url.startswith('s3://'):
-        # It's an S3 URL
-        if HAVE_S3:
-            # And we can use S3, so make the right implementation for S3.
-            return S3StateStore(url)
+    if url not in state_store_cache:
+        # We need to actually make the state store
+        if url.startswith('s3://'):
+            # It's an S3 URL
+            if HAVE_S3:
+                # And we can use S3, so make the right implementation for S3.
+                state_store_cache[url] = S3StateStore(url)
+            else:
+                # We can't actually use S3, so complain.
+                raise RuntimeError(f'Cannot connect to {url} because Toil AWS '
+                                   f'dependencies are not available. Did you '
+                                   f'install Toil with the [aws] extra?')
         else:
-            # We can't actually use S3, so complain.
-            raise RuntimeError(f'Cannot connect to {url} because Toil AWS '
-                               f'dependencies are not available. Did you '
-                               f'install Toil with the [aws] extra?')
+            # If it's not anything else, treat it as a local path.
+            state_store_cache[url] = FileStateStore(url)
 
-    # If it's not anything else, treat it as a local path.
-    return FileStateStore(url)
+    return state_store_cache[url]
 
 class WorkflowStateStore:
     """
@@ -348,6 +392,21 @@ class WorkflowStateStore:
         Set the given item of workflow state.
         """
         self._state_store.set(self._workflow_id, key, value)
+        
+     def read_cache(self, key: str) -> Optional[str]:
+        """
+        Read a value from a local cache, without checking the actual backend.
+        """
+        
+        return self._state_store.read_cache(self._workflow_id, key)
+        
+    def write_cache(self, key: str, value: Optional[str]) -> None:
+        """
+        Write a value to a local cache, without modifying the actual backend.
+        """
+        
+        self._state_store.write_cache(self._workflow_id, key, value)
+        
 
 def connect_to_workflow_state_store(url: str, workflow_id: str) -> WorkflowStateStore:
     """
@@ -390,6 +449,9 @@ class WorkflowStateMachine:
     "SYSTEM_ERROR"
     "CANCELED"
     "CANCELING"
+    
+    Uses the state store's local cache to prevent needing to read flags we've
+    seen already.
     """
 
     def __init__(self, store: WorkflowStateStore) -> None:
@@ -405,6 +467,7 @@ class WorkflowStateMachine:
         """
 
         if state not in BASE_STATES:
+            # These need to be set with _set_flag_state instead.
             raise ValueError(f"Base state {state} is not in {BASE_STATES}")
 
         self._store.set("state", state)
@@ -426,7 +489,11 @@ class WorkflowStateMachine:
         if state not in FLAG_STATES_IN_ORDER:
             raise ValueError(f"Flag state {state} is not in {FLAG_STATES_IN_ORDER}")
 
+        # Set the flag first.
         self._store.set("state_" + state, "")
+        # Also set the main stored state so that we won't have to check
+        # lower-priority flags.
+        self._store.set("state", state)
 
     def _get_flag_state(self, state: str) -> bool:
         """
@@ -495,23 +562,44 @@ class WorkflowStateMachine:
         # though all our writing is last-write-wins with no campare-and-swap.
 
         # So we have a priority of states.
+        
+        # First, check if we have a cached state value we have observed already.
+        cached_state = self._store.read_cache("state")
+        
+        if cached_state is not None and cached_state in FLAG_STATES_IN_ORDER:
+            # Once we observe a flag state we never need to look at the base
+            # state again.
+            observed_state = cached_state
+        else:
+            # First we need to check the lowest-priority base state
+            observed_state = self._get_base_state()
+        
+        # Then we need to check the flags for each flag state of a higher
+        # priority (i.e. before this in the flag state list).
+        try:
+            # Work out what flag this is in the order.
+            flag_index = FLAG_STATES_IN_ORDER.index(observed_state)
+        except ValueError:
+            flag_index = len(FLAG_STATES_IN_ORDER)
+        
+        # We check in reverse priority order, so the highest-priority thing is
+        # checked last. Otherwise, we could observe a lower-priority state that
+        # was set after a higher-priority state.
 
-        # First we need to check the lowest-priority base state
-        observed_state = self._get_base_state()
-
-        # Then we need to check the flags for each flag state in reverse
-        # priority order, so the highest-priority thing is checked last.
-        # Otherwise, we could observe a lower-priority state that was set after
-        # a higher-priority state.
-
-        for flag_state in reversed(FLAG_STATES_IN_ORDER):
+        for flag_state in reversed(FLAG_STATES_IN_ORDER[:flag_index]):
             if self._get_flag_state(flag_state):
                 # This flag is set
                 observed_state = flag_state
                 # But higher priority flags might still be set.
 
         # Now we know the state to report
+        
+        if observed_state is not None:
+            # Save it to the local cache so we can avoid checking for states we
+            # can never go back to.
+            self._store.write_cache("state", observed_state)
+            
         return observed_state
-
+        
 
 
