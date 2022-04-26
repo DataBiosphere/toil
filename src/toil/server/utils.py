@@ -15,7 +15,7 @@ import fcntl
 import os
 from abc import abstractmethod
 from datetime import datetime
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 from urllib.parse import urlparse
 
 import logging
@@ -577,6 +577,10 @@ class WorkflowStateMachine:
         if state in TERMINAL_STATES:
             # We can cache this state forever
             self._store.write_cache("state", state)
+            
+        if state is None:
+            # Make sure we fill in if we couldn't fetch a stored state.
+            state = "UNKNOWN"
         
         return state
 
