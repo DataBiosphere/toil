@@ -158,7 +158,8 @@ class ToilBackend(WESBackend):
     class is responsible for validating and executing submitted workflows.
     """
 
-    def __init__(self, work_dir: str, state_store: Optional[str], options: List[str], dest_bucket_base: Optional[str], bypass_celery=False) -> None:
+    def __init__(self, work_dir: str, state_store: Optional[str], options: List[str],
+                 dest_bucket_base: Optional[str], bypass_celery: bool = False) -> None:
         """
         Make a new ToilBackend for serving WES.
 

@@ -441,13 +441,13 @@ class TaskRunner:
 # If Celery can't be set up, we can just use this fake version instead.
 
 _id_to_process = {}
-class MultiprocessingTaskRunner:
+class MultiprocessingTaskRunner(TaskRunner):
     """
-    Fake TaskRunner that just runs tasks with Multiprocessing.
+    Version of TaskRunner that just runs tasks with Multiprocessing.
     """
     
     @staticmethod
-    def run(args: Tuple[str, str, str, Dict[str, Any], List[str]], task_id: str):
+    def run(args: Tuple[str, str, str, Dict[str, Any], List[str]], task_id: str) -> None:
         """
         Run the given task args with the given ID.
         """
@@ -456,13 +456,13 @@ class MultiprocessingTaskRunner:
         _id_to_process[task_id].start()
         
     @staticmethod
-    def cancel(task_id: str):
+    def cancel(task_id: str) -> None:
         """
         Cancel the task with the given ID.
         """
         if task_id in _id_to_process:
             logger.info("Stopping process for task %s", task_id)
-            _id_to_process[tadk_id].terminate()
+            _id_to_process[task_id].terminate()
         else:
             logger.error("Tried to kill nonexistent task %s", task_id)
 

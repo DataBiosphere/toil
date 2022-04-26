@@ -393,7 +393,7 @@ class WorkflowStateStore:
         """
         self._state_store.set(self._workflow_id, key, value)
         
-     def read_cache(self, key: str) -> Optional[str]:
+    def read_cache(self, key: str) -> Optional[str]:
         """
         Read a value from a local cache, without checking the actual backend.
         """
