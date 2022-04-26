@@ -38,7 +38,7 @@ def get_iso_time() -> str:
     """
     Return the current time in ISO 8601 format.
     """
-    return datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now().isoformat()
 
 
 def link_file(src: str, dest: str) -> None:
@@ -418,24 +418,27 @@ def connect_to_workflow_state_store(url: str, workflow_id: str) -> WorkflowState
 
     return WorkflowStateStore(connect_to_state_store(url), workflow_id)
 
-# Some states are just last write wins
-BASE_STATES = ["UNKNOWN", "QUEUED", "INITIALIZING", "RUNNING", "PAUSED"]
-# Some states are flags. These flags are in priority order.
-# The first of these that is set will win over all others and over any base state.
-# TODO: do we need to ban e.g. CANCELING -> COMPLETE transitions? If so revise this order.
-FLAG_STATES_IN_ORDER = ["COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELED", "CANCELING"]
+# When we see one of these terminal states, we stay there forever.
+TERMINAL_STATES = {"COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELED"}
+
+# How long can a workflow be in CANCELING state before we conclude that the
+# workflow running task is gone and move it to CANCELED?
+MAX_CANCELING_SECONDS = 600
 
 class WorkflowStateMachine:
     """
-    Class for managing the WES workflow state machine and ensuring only allowed
-    transitions happen.
+    Class for managing the WES workflow state machine.
 
     This is the authority on the WES "state" of a workflow. You need one to
     read or change the state.
 
-    The state machine is read-your-own-writes consistent and never allows you
-    to observe prohibited transitions. Talking to other writers outside of the
-    state machine may cause you to disagree on the current state.
+    Guaranteeing that only certain transitions can be observed is possible but
+    not worth it. Instead, we just let updates clobber each other and grab and
+    cache the first terminal state we see forever. If it becomes important that
+    clients never see e.g. CANCELED -> COMPLETE or COMPLETE -> SYSTEM_ERROR, we
+    can implement a real distributed state machine here.
+    
+    We do handle making sure that tasks don't get stuck in CANCELING.
 
     State can be:
 
@@ -450,8 +453,8 @@ class WorkflowStateMachine:
     "CANCELED"
     "CANCELING"
     
-    Uses the state store's local cache to prevent needing to read flags we've
-    seen already.
+    Uses the state store's local cache to prevent needing to read things we've
+    seen already. 
     """
 
     def __init__(self, store: WorkflowStateStore) -> None:
@@ -461,145 +464,120 @@ class WorkflowStateMachine:
         """
         self._store = store
 
-    def _set_base_state(self, state: str) -> None:
+    def _set_state(self, state: str) -> None:
         """
-        Set the base state (lowest priority) to the given state.
+        Set the state to the given value, if a read does not show a terminal
+        state already.
+        We still might miss and clobber transitions to terminal states between
+        the read and the write.
+        This is not really consistent but also not worth protecting against.
         """
-
-        if state not in BASE_STATES:
-            # These need to be set with _set_flag_state instead.
-            raise ValueError(f"Base state {state} is not in {BASE_STATES}")
-
-        self._store.set("state", state)
-
-    def _get_base_state(self) -> str:
-        """
-        Get the base state (lowest priority), which would be overridden by any
-        flag state.
-        """
-
-        return self._store.get("state") or "UNKNOWN"
-
-    def _set_flag_state(self, state: str) -> None:
-        """
-        Set a flag state. Overrides base state but not higher-priority flag
-        states.
-        """
-
-        if state not in FLAG_STATES_IN_ORDER:
-            raise ValueError(f"Flag state {state} is not in {FLAG_STATES_IN_ORDER}")
-
-        # Set the flag first.
-        self._store.set("state_" + state, "")
-        # Also set the main stored state so that we won't have to check
-        # lower-priority flags.
-        self._store.set("state", state)
-
-    def _get_flag_state(self, state: str) -> bool:
-        """
-        Return True if the flag for the given flag state is set.
-        """
-
-        if state not in FLAG_STATES_IN_ORDER:
-            raise ValueError(f"Flag state {state} is not in {FLAG_STATES_IN_ORDER}")
-
-        return self._store.get("state_" + state) is not None
+        
+        if self.get_current_state() not in TERMINAL_STATES:
+            self._store.set("state", state)
 
     def send_enqueue(self) -> None:
         """
         Send an enqueue message that would move from UNKNOWN to QUEUED.
         """
-        self._set_base_state("QUEUED")
+        self._set_state("QUEUED")
 
     def send_initialize(self) -> None:
         """
         Send an initialize message that would move from QUEUED to INITIALIZING.
         """
-        self._set_base_state("INITIALIZING")
+        self._set_state("INITIALIZING")
 
     def send_run(self) -> None:
         """
         Send a run message that would move from INITIALIZING to RUNNING.
         """
-        self._set_base_state("RUNNING")
+        self._set_state("RUNNING")
 
     def send_cancel(self) -> None:
         """
-        Send a cancel message that would move to CANCELING from any non-terminal state.
+        Send a cancel message that would move to CANCELING from any
+        non-terminal state.
         """
-        self._set_flag_state("CANCELING")
+        
+        state = self.get_current_state()
+        if state != "CANCELING" and state not in TERMINAL_STATES:
+            # If it's not obvious we shouldn't cancel, cancel.
+            
+            # If we end up in CANCELING but the workflow runner task isn't around,
+            # or we signal it at the wrong time, we will stay there forever,
+            # because it's responsible for setting the state to anything else.
+            # So, we save a timestamp, and if we see a CANCELING status and an old
+            # timestamp, we move on. 
+            self._store.set("cancel_time", get_iso_time())
+            # Set state after time, because having the state but no time is an error.
+            self._store.set("state", "CANCELING")
 
     def send_canceled(self) -> None:
         """
         Send a canceled message that would move to CANCELED from CANCELLING.
         """
-        self._set_flag_state("CANCELED")
+        self._set_state("CANCELED")
 
     def send_complete(self) -> None:
         """
         Send a complete message that would move from RUNNING to COMPLETE.
         """
-        self._set_flag_state("COMPLETE")
+        self._set_state("COMPLETE")
 
     def send_executor_error(self) -> None:
         """
-        Send an executor_error message that would move from QUERUED, INITIALIZING, or RUNNING to EXECUTOR_ERROR.
+        Send an executor_error message that would move from QUERUED,
+        INITIALIZING, or RUNNING to EXECUTOR_ERROR.
         """
-        self._set_flag_state("EXECUTOR_ERROR")
+        self._set_state("EXECUTOR_ERROR")
 
     def send_system_error(self) -> None:
         """
-        Send a system_error message that would move from QUERUED, INITIALIZING, or RUNNING to SYSTEM_ERROR.
+        Send a system_error message that would move from QUERUED, INITIALIZING,
+            or RUNNING to SYSTEM_ERROR.
         """
-        self._set_flag_state("SYSTEM_ERROR")
+        self._set_state("SYSTEM_ERROR")
 
     def get_current_state(self) -> str:
         """
         Get the current state of the workflow.
         """
-
-        # We need to ensure only certain state transitions are observable, even
-        # though all our writing is last-write-wins with no campare-and-swap.
-
-        # So we have a priority of states.
         
-        # First, check if we have a cached state value we have observed already.
-        cached_state = self._store.read_cache("state")
+        state = self._store.read_cache("state")
+        if state is not None:
+            # We permanently cached a terminal state
+            return state
         
-        if cached_state is not None and cached_state in FLAG_STATES_IN_ORDER:
-            # Once we observe a flag state we never need to look at the base
-            # state again.
-            observed_state = cached_state
-        else:
-            # First we need to check the lowest-priority base state
-            observed_state = self._get_base_state()
-        
-        # Then we need to check the flags for each flag state of a higher
-        # priority (i.e. before this in the flag state list).
-        try:
-            # Work out what flag this is in the order.
-            flag_index = FLAG_STATES_IN_ORDER.index(observed_state)
-        except ValueError:
-            flag_index = len(FLAG_STATES_IN_ORDER)
-        
-        # We check in reverse priority order, so the highest-priority thing is
-        # checked last. Otherwise, we could observe a lower-priority state that
-        # was set after a higher-priority state.
-
-        for flag_state in reversed(FLAG_STATES_IN_ORDER[:flag_index]):
-            if self._get_flag_state(flag_state):
-                # This flag is set
-                observed_state = flag_state
-                # But higher priority flags might still be set.
-
-        # Now we know the state to report
-        
-        if observed_state is not None:
-            # Save it to the local cache so we can avoid checking for states we
-            # can never go back to.
-            self._store.write_cache("state", observed_state)
+        # Otherwise do an actual read from backing storage.
+        state = self._store.get("state")
             
-        return observed_state
+        if state == "CANCELING":
+            # Make sure it hasn't been CANCELING for too long.
+            # We can get stuck in CANCELING if the workflow-running task goes
+            # away or is stopped while reporting back, because it is
+            # repsonsible for posting back that it has been successfully
+            # canceled.
+            canceled_at = self_store.get("cancel_time")
+            if canceled_at is None:
+                # If there's no timestamp but it's supposedly canceling, put it
+                # into SYSTEM_ERROR, because we didn;t move to CANCELING properly.
+                state = "SYSTEM_ERROR"
+                self._store.set("state", state)
+            else:
+                # See if it has been stuck canceling for too long
+                canceled_at = datetime.fromisoformat(canceled_at)
+                canceling_seconds = (datetime.now() - canceled_at).total_seconds()
+                if canceling_seconds > MAX_CANCELING_SECONDS:
+                    # If it has, go to CANCELED instead, because the task is
+                    # nonresponsive and thus not running.
+                    state = "CANCELED"
+                    self._store.set("state", state)
+            
+        if state in TERMINAL_STATES:
+            # We can cache this state forever
+            self._store.write_cache("state", state)
         
+        return state
 
 
