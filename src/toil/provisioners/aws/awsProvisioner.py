@@ -115,18 +115,6 @@ _INSTANCE_PERMISSIONS = ["ec2:AuthorizeSecurityGroupIngress",
               "ec2:TerminateInstances",
               "iam:PassRole"]
 
-_CLUSTER_LAUNCHING_PERMISSIONS = ["iam:CreateRole",
-                                  "iam:CreateInstanceProfile",
-                                  "iam:TagInstanceProfile",
-                                  "iam:DeleteRole",
-                                  "iam:DeleteRoleProfile",
-                                  "iam:ListAttatchedRolePolicies",
-                                  "iam:ListPolicies",
-                                  "iam:ListRoleTags",
-                                  "iam:PutRolePolicy",
-                                  "iam:RemoveRoleFromInstanceProfile",
-                                  "iam:TagRole"
-                                  ]
 
 def awsRetryPredicate(e):
     if isinstance(e, socket.gaierror):
@@ -1831,81 +1819,3 @@ class AWSProvisioner(AbstractProvisioner):
                 logger.debug("Associated role %s with profile", iamRoleName)
 
         return profile_arn
-
-
-    def permission_warning_check(self, existing_profile_arn: Optional[str]) -> None:
-        """
-        Test whether a user has the required permissions for launching a cluster,
-        errors if the user does not have the permissions. Tests if user can create instances.
-
-        :param existing_profile_arn: ARN for preexisting instance profile for a role to be used as specified by user
-                                     If defined, test that actions cluster needs to perform are allowed
-                                     Else tests that the user can create roles, policies
-
-        """
-
-        iam = boto3.client('iam')
-
-        if existing_profile_arn is None:
-
-            #sim on user creating pclient = self.aws.client(self._region, 'iam')rofile or no
-            generated_arn = self._createProfileArn()
-            policy = iam.get_policy(PolicyArn=generated_arn)
-            policy_version = iam.get_policy_version(PolicyArn = generated_arn, VersionId = policy['Policy']['DefaultVersionId'])
-
-        else:
-            policy = iam.get_policy(PolicyArn=existing_profile_arn)
-            policy_version = iam.get_policy_version(PolicyArn=existing_profile_arn,
-                                                    VersionId=policy['Policy']['DefaultVersionId'])
-
-        self.check_policy_warnings(policy_version['PolicyVersion']['Document']['Statement'], None)
-
-        return None
-
-    def check_policy_warnings(self, policy: list[dict], actions: list[str]) -> None:
-        """
-        Check whether necessary permissions are permitted
-
-        :param policy: dictionary which contains list of permitted actions for given ARN
-        :param actions: Actions that need to be done by user or role
-        """
-        allowed_by_arn = {}
-        for permissions in policy:
-            if permissions["Resource"] not in allowed_by_arn.keys():
-                allowed_by_arn[permissions["Resource"]] = permissions["Action"]
-            else:
-                allowed_by_arn[permissions["Resource"]] = allowed_by_arn[permissions["Resource"]] + permissions["Action"]
-
-        permissions = _CLUSTER_LAUNCHING_PERMISSIONS
-
-        permissions = [x for x in _CLUSTER_LAUNCHING_PERMISSIONS if self.helper(x, allowed_by_arn[["*"]])]
-
-        permissions = permissions - _CLUSTER_LAUNCHING_PERMISSIONS
-
-        if permissions is not []:
-            raise RuntimeError("Missing permissions", permissions)
-
-        return None
-
-    def helper(self, perm, list_perms):
-        flag = False
-        for allowed in list_perms:
-            if allowed[0] == "*":
-                if perm.endswith(allowed[1:]):
-                    flag = True
-
-            if allowed[0] == "*" and allowed[-1] == "*":
-                if allowed in perm:
-                    flag = True
-
-            if allowed[-1] == "*":
-                if perm.startswith(allowed[:-1]):
-                    flag = True
-
-            if allowed == perm:
-                flag = True
-
-        if not flag:
-            return False
-        else:
-            return True

@@ -151,6 +151,8 @@ def main() -> None:
 
     logger.info('Creating cluster %s...', options.clusterName)
 
+    #TODO Add permission warning check for AWS
+
     cluster = cluster_factory(provisioner=options.provisioner,
                               clusterName=options.clusterName,
                               clusterType=options.clusterType,
