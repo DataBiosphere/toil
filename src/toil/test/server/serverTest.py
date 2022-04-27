@@ -17,7 +17,9 @@ import os
 import textwrap
 import time
 import unittest
+import uuid
 import zipfile
+from abc import abstractmethod
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -29,7 +31,7 @@ except ImportError:
     # extra wasn't installed. We'll then skip them all.
     pass
 
-from toil.test import ToilTest, needs_server, needs_celery_broker
+from toil.test import ToilTest, needs_server, needs_celery_broker, needs_aws_s3
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -63,6 +65,144 @@ class ToilServerUtilsTest(ToilTest):
         
         # Make sure it is now CANCELED due to timeout
         self.assertEqual(state_machine.get_current_state(), "CANCELED")
+
+class hidden:
+    # Hide abstract tests from the test loader
+
+    @needs_server
+    class AbstractStateStoreTest(ToilTest):
+        """
+        Basic tests for state stores.
+        """
+        
+        from toil.server.utils import AbstractStateStore
+        
+        @abstractmethod
+        def get_state_store(self) -> AbstractStateStore:
+            """
+            Make a state store to test, on a single fixed URL.
+            """
+            
+            raise NotImplementedError()
+            
+        
+        def test_state_store(self) -> None:
+            """
+            Make sure that the state store under test can store and load keys.
+            """
+            
+            store = self.get_state_store()
+            
+            # Should start None
+            self.assertEqual(store.get('id1', 'key1'), None)
+            
+            # Should hold a value
+            store.set('id1', 'key1', 'value1')
+            self.assertEqual(store.get('id1', 'key1'), 'value1')
+            
+            # Should distinguish by ID and key
+            self.assertEqual(store.get('id2', 'key1'), None)
+            self.assertEqual(store.get('id1', 'key2'), None)
+            
+            store.set('id2', 'key1', 'value2')
+            store.set('id1', 'key2', 'value3')
+            self.assertEqual(store.get('id1', 'key1'), 'value1')
+            self.assertEqual(store.get('id2', 'key1'), 'value2')
+            self.assertEqual(store.get('id1', 'key2'), 'value3')
+            
+            # Should allow replacement
+            store.set('id1', 'key1', 'value4')
+            self.assertEqual(store.get('id1', 'key1'), 'value4')
+            self.assertEqual(store.get('id2', 'key1'), 'value2')
+            self.assertEqual(store.get('id1', 'key2'), 'value3')
+            
+            # Should show up in another state store
+            store2 = self.get_state_store()
+            self.assertEqual(store2.get('id1', 'key1'), 'value4')
+            self.assertEqual(store2.get('id2', 'key1'), 'value2')
+            self.assertEqual(store2.get('id1', 'key2'), 'value3')
+            
+            # Should allow clearing
+            store.set('id1', 'key1', None)
+            self.assertEqual(store.get('id1', 'key1'), None)
+            self.assertEqual(store.get('id2', 'key1'), 'value2')
+            self.assertEqual(store.get('id1', 'key2'), 'value3')
+            
+            store.set('id2', 'key1', None)
+            store.set('id1', 'key2', None)
+            self.assertEqual(store.get('id1', 'key1'), None)
+            self.assertEqual(store.get('id2', 'key1'), None)
+            self.assertEqual(store.get('id1', 'key2'), None)
+
+class FileStateStoreTest(hidden.AbstractStateStoreTest):
+    """
+    Test file-based state storage.
+    """
+
+    from toil.server.utils import AbstractStateStore
+    
+    def setUp(self) -> None:
+        super().setUp()
+        self.state_store_dir = self._createTempDir()
+
+    def get_state_store(self) -> AbstractStateStore:
+        """
+        Make a state store to test, on a single fixed URL.
+        """
+        
+        from toil.server.utils import FileStateStore
+        
+        return FileStateStore(self.state_store_dir)
+
+@needs_aws_s3
+class AWSStateStoreTest(hidden.AbstractStateStoreTest):
+    """
+    Test AWS-based state storage.
+    """
+
+    from toil.server.utils import AbstractStateStore
+
+    from mypy_boto3_s3 import S3ServiceResource
+    from mypy_boto3_s3.service_resource import Bucket
+    from toil.jobStores.aws.jobStore import AWSJobStore
+    from toil.lib.aws import get_current_aws_region
+    from toil.lib.aws.utils import create_s3_bucket, delete_s3_bucket
+    from toil.lib.aws import session
+
+    region: Optional[str]
+    s3_resource: Optional[S3ServiceResource]
+    bucket: Optional[Bucket]
+    bucket_name: Optional[str]
+    
+    @classmethod
+    def setUpClass(cls) -> None:
+        """
+        Set up the class with a single pre-existing AWS bucket for all tests.
+        """
+        super().setUpClass()
+        
+        cls.region = get_current_aws_region()
+        cls.s3_resource = session.resource("s3", region_name=cls.region)
+        
+        cls.bucket_name = f"toil-test-{uuid.uuid4()}"
+        cls.bucket = create_s3_bucket(s3_resource, bucket_name, cls.region)
+        cls.bucket.wait_until_exists()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        if cls.bucket_name:
+            delete_s3_bucket(cls.s3_resource, cls.bucket_name, cls.region)
+        super().tearDownClass()
+        
+    def get_state_store(self) -> AbstractStateStore:
+        """
+        Make a state store to test, on a single fixed URL.
+        """
+        
+        from toil.server.utils import S3StateStore
+        
+        return S3StateStore('s3://' + self.bucket_name)
+        
         
 @needs_server
 class AbstractToilWESServerTest(ToilTest):
