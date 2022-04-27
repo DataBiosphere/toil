@@ -91,8 +91,10 @@ There are several environment variables that affect the way Toil runs.
 |                                  | used with the Kubernetes batch system, if the      |
 |                                  | credentials allow access to S3 and SimpleDB.       |
 +----------------------------------+----------------------------------------------------+
-| TOIL_AWS_ZONE                    | The EC2 zone to provision nodes in if using        |
-|                                  | Toil's provisioner.                                |
+| TOIL_AWS_ZONE                    | Zone to use when using AWS. Also determines region.|
+|                                  | Overrides TOIL_AWS_REGION.                         |
++----------------------------------+----------------------------------------------------+
+| TOIL_AWS_REGION                  | Region to use when using AWS.                      |
 +----------------------------------+----------------------------------------------------+
 | TOIL_AWS_AMI                     | ID of the AMI to use in node provisioning. If in   |
 |                                  | doubt, don't set this variable.                    |
@@ -106,6 +108,15 @@ There are several environment variables that affect the way Toil runs.
 |                                  | also be left behind by necessity as it cannot be   |
 |                                  | deleted until all associated nodes have been       |
 |                                  | terminated.                                        |
++----------------------------------+----------------------------------------------------+
+| TOIL_AWS_BATCH_QUEUE             | Name or ARN of an AWS Batch Queue to use with the  |
+|                                  | AWS Batch batch system.                            |
++----------------------------------+----------------------------------------------------+
+| TOIL_AWS_BATCH_JOB_ROLE_ARN      | ARN of an IAM role to run AWS Batch jobs as with   |
+|                                  | the AWS Batch batch system. If the jobs are not    |
+|                                  | run with an IAM role or on machines that have      |
+|                                  | access to S3 and SimpleDB, the AWS job store will  |
+|                                  | not be usable.                                     |
 +----------------------------------+----------------------------------------------------+
 | TOIL_GOOGLE_PROJECTID            | The Google project ID to use when generating       |
 |                                  | Google job store names for tests or CWL workflows. |
@@ -184,6 +195,10 @@ There are several environment variables that affect the way Toil runs.
 |                                  | between the WES server and Celery task queue. If   |
 |                                  | unset, ``amqp://guest:guest@localhost:5672//`` is  |
 |                                  | used.                                              |
++----------------------------------+----------------------------------------------------+
+| TOIL_WES_JOB_STORE_TYPE          | Type of job store to use by default for workflows  |
+|                                  | run via the WES server. Can be ``file``, ``aws``,  |
+|                                  | or ``google``.                                     |
 +----------------------------------+----------------------------------------------------+
 | TOIL_OWNER_TAG                   | This will tag cloud resources with a tag reading:  |
 |                                  | "Owner: $TOIL_OWNER_TAG". This is used internally  |

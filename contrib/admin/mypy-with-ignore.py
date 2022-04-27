@@ -28,7 +28,6 @@ def main():
         'docs/vendor/sphinxcontrib/__init__.py',
         'src/toil/job.py',
         'src/toil/leader.py',
-        'src/toil/common.py',
         'src/toil/__init__.py',
         'src/toil/resource.py',
         'src/toil/deferred.py',
@@ -41,7 +40,6 @@ def main():
         'src/toil/wdl/versions/draft2.py',
         'src/toil/wdl/versions/v1.py',
         'src/toil/wdl/versions/dev.py',
-        'src/toil/provisioners/clusterScaler.py',
         'src/toil/provisioners/abstractProvisioner.py',
         'src/toil/provisioners/gceProvisioner.py',
         'src/toil/provisioners/__init__.py',
@@ -94,7 +92,6 @@ def main():
         'src/toil/lib/encryption/__init__.py',
         'src/toil/lib/aws/__init__.py',
         'src/toil/server/utils.py',
-        'src/toil/server/wes/tasks.py',
         'src/toil/utils/toilStats.py'
     ]]
 

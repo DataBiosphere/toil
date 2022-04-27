@@ -1,10 +1,12 @@
 import datetime
+import getpass
 import logging
 import os
 import random
 import socket
 import subprocess
 import sys
+import time
 import typing
 from contextlib import closing
 from typing import Iterator, List, Optional, Union
@@ -35,9 +37,30 @@ def get_public_ip() -> str:
         # to provide a default argument
         return '127.0.0.1'
 
+def get_user_name() -> str:
+    """
+    Get the current user name, or a suitable substitute string if the user name
+    is not available.
+    """
+    try:
+        try:
+            return getpass.getuser()
+        except KeyError:
+            # This is expected if the user isn't in /etc/passwd, such as in a
+            # Docker container when running as a weird UID. Make something up.
+            return 'UnknownUser' + str(os.getuid())
+    except Exception as e:
+        # We can't get the UID, or something weird has gone wrong.
+        logger.error('Unexpected error getting user name: %s', e)
+        return 'UnknownUser'
+
 def utc_now() -> datetime.datetime:
     """Return a datetime in the UTC timezone corresponding to right now."""
     return datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
+
+def unix_now_ms() -> float:
+    """Return the current time in milliseconds since the Unix epoch."""
+    return time.time() * 1000
 
 def slow_down(seconds: float) -> float:
     """

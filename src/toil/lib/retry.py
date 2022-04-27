@@ -132,7 +132,18 @@ import time
 import traceback
 import urllib.error
 from contextlib import contextmanager
-from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    ContextManager,
+    Generator,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 import requests.exceptions
 import urllib3.exceptions
@@ -475,11 +486,17 @@ def error_meets_conditions(e, error_conditions):
                     condition_met = True
     return condition_met
 
+DEFAULT_DELAYS = (0, 1, 1, 4, 16, 64)
+DEFAULT_TIMEOUT = 300
 
 # TODO: Replace the use of this with retry()
 #  The aws provisioner and jobstore need a large refactoring to be boto3 compliant, so this is
 #  still used there to avoid the duplication of future work
-def old_retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: False):
+def old_retry(
+    delays: Iterable[float] = DEFAULT_DELAYS,
+    timeout: float = DEFAULT_TIMEOUT,
+    predicate: Callable[[Exception], bool] = lambda e: False,
+) -> Generator[ContextManager, None, None]:
     """
     Deprecated.
 
@@ -559,10 +576,15 @@ def old_retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: Fals
             try:
                 yield
             except Exception as e:
-                if time.time( ) + delay < expiration and predicate( e ):
-                    logger.info('Got %s, trying again in %is.', e, delay)
-                    time.sleep( delay )
+                if time.time( ) + delay < expiration:
+                    if predicate( e ):
+                        logger.info('Got %s, trying again in %is.', e, delay)
+                        time.sleep( delay )
+                    else:
+                        logger.error('Got a %s: %s which is not retriable according to %s', type(e), e, predicate)
+                        raise
                 else:
+                    logger.error('Got %s and no time is left to retry', e)
                     raise
             else:
                 go.pop( )

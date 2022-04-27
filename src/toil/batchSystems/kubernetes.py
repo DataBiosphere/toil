@@ -16,16 +16,13 @@ Batch system for running Toil workflows on Kubernetes.
 
 Ony useful with network-based job stores, like AWSJobStore.
 
-Within non-priveleged Kubernetes containers, additional Docker containers
+Within non-privileged Kubernetes containers, additional Docker containers
 cannot yet be launched. That functionality will need to wait for user-mode
 Docker
 """
-import base64
 import datetime
-import getpass
 import logging
 import os
-import pickle
 import string
 import subprocess
 import sys
@@ -45,10 +42,11 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
                                                    BatchJobExitReason,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
+from toil.batchSystems.contained_executor import pack_job
 from toil.common import Toil
 from toil.job import JobDescription
 from toil.lib.conversions import human2bytes
-from toil.lib.misc import slow_down, utc_now
+from toil.lib.misc import slow_down, utc_now, get_user_name
 from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
 from toil.statsAndLogging import configure_root_logger, set_log_level
@@ -103,10 +101,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Get the username to mark jobs with
         username = config.kubernetes_owner
         # And a unique ID for the run
-        self.uniqueID = uuid.uuid4()
+        self.unique_id = uuid.uuid4()
 
         # Create a prefix for jobs, starting with our username
-        self.jobPrefix = f'{username}-toil-{self.uniqueID}-'
+        self.job_prefix = f'{username}-toil-{self.unique_id}-'
         # Instead of letting Kubernetes assign unique job names, we assign our
         # own based on a numerical job ID. This functionality is managed by the
         # BatchSystemLocalSupport.
@@ -122,31 +120,31 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.finished_job_ttl = 3600  # seconds
 
         # Here is where we will store the user script resource object if we get one.
-        self.userScript = None
+        self.user_script: Optional[Resource] = None
 
         # Ge the image to deploy from Toil's configuration
-        self.dockerImage = applianceSelf()
+        self.docker_image = applianceSelf()
 
         # Try and guess what Toil work dir the workers will use.
         # We need to be able to provision (possibly shared) space there.
-        self.workerWorkDir = Toil.getToilWorkDir(config.workDir)
+        self.worker_work_dir = Toil.getToilWorkDir(config.workDir)
         if (config.workDir is None and
             os.getenv('TOIL_WORKDIR') is None and
-            self.workerWorkDir == tempfile.gettempdir()):
+            self.worker_work_dir == tempfile.gettempdir()):
 
             # We defaulted to the system temp directory. But we think the
             # worker Dockerfiles will make them use /var/lib/toil instead.
             # TODO: Keep this in sync with the Dockerfile.
-            self.workerWorkDir = '/var/lib/toil'
+            self.worker_work_dir = '/var/lib/toil'
 
         # Get the name of the AWS secret, if any, to mount in containers.
-        self.awsSecretName = os.environ.get("TOIL_AWS_SECRET_NAME", None)
+        self.aws_secret_name = os.environ.get("TOIL_AWS_SECRET_NAME", None)
 
         # Set this to True to enable the experimental wait-for-job-update code
-        self.enableWatching = os.environ.get("KUBE_WATCH_ENABLED", False)
+        self.enable_watching = os.environ.get("KUBE_WATCH_ENABLED", False)
 
         # This will be a label to select all our jobs.
-        self.runID = f'toil-{self.uniqueID}'
+        self.run_id = f'toil-{self.unique_id}'
 
     def _pretty_print(self, kubernetes_object: Any) -> str:
         """
@@ -330,55 +328,108 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
     def setUserScript(self, userScript):
         logger.info(f'Setting user script for deployment: {userScript}')
-        self.userScript = userScript
+        self.user_script = userScript
 
     # setEnv is provided by BatchSystemSupport, updates self.environment
-
-    def _create_affinity(self, preemptable: bool) -> kubernetes.client.V1Affinity:
+    
+    @staticmethod
+    def _apply_placement_constraints(preemptable: bool, pod_spec: kubernetes.client.V1PodSpec) -> None:
         """
-        Make a V1Affinity that places pods appropriately depending on if they
-        tolerate preemptable nodes or not.
+        Set .affinity and/or .tolerations on the given pod spec, so that it
+        runs on the right kind of nodes, according to whether it is allowed to
+        be preempted.
+
+        Preemptable jobs will be able to run on preemptable or non-preemptable
+        nodes, and will prefer preemptable nodes if available.
+
+        Non-preemptable jobs will not be allowed to run on nodes that are
+        marked as preemptable.
+
+        Understands the labeling scheme used by EKS, and the taint scheme used
+        by GCE. The Toil-managed Kubernetes setup will mimic at least one of
+        these.
         """
 
-        # Describe preemptable nodes
+        # We consider nodes preemptable if they have any of these label or taint values.
+        # We tolerate all effects of specified taints.
+        # Amazon just uses a label, while Google
+        # <https://cloud.google.com/kubernetes-engine/docs/how-to/preemptible-vms>
+        # uses a label and a taint.
+        PREEMPTABLE_SCHEMES = {'labels': [('eks.amazonaws.com/capacityType', ['SPOT']),
+                                          ('cloud.google.com/gke-preemptible', ['true'])],
+                               'taints': [('cloud.google.com/gke-preemptible', ['true'])]}
 
-        # There's no labeling standard for knowing which nodes are
-        # preemptable across different cloud providers/Kubernetes clusters,
-        # so we use the labels that EKS uses. Toil-managed Kubernetes
-        # clusters also use this label. If we come to support more kinds of
-        # preemptable nodes, we will need to add more labels to avoid here.
-        preemptable_label = "eks.amazonaws.com/capacityType"
-        preemptable_value = "SPOT"
-
-        non_spot = [kubernetes.client.V1NodeSelectorRequirement(key=preemptable_label,
-                                                                operator='NotIn',
-                                                                values=[preemptable_value])]
-        unspecified = [kubernetes.client.V1NodeSelectorRequirement(key=preemptable_label,
-                                                                   operator='DoesNotExist')]
-        # These are OR'd
-        node_selector_terms = [kubernetes.client.V1NodeSelectorTerm(match_expressions=non_spot),
-                               kubernetes.client.V1NodeSelectorTerm(match_expressions=unspecified)]
-        node_selector = kubernetes.client.V1NodeSelector(node_selector_terms=node_selector_terms)
-
+        # We will compose a node selector with these requirements to require or prefer.
+        # These requirements will be AND-ed and turn into a single term.
+        node_selector_requirements: List[kubernetes.client.V1NodeSelectorRequirement] = []
+        # These terms will be OR'd, along with a term made of those ANDed requirements
+        node_selector_terms: List[kubernetes.client.V1NodeSelectorTerm] = []
+        # And this list of tolerations to apply
+        tolerations: List[kubernetes.client.V1Toleration] = []
 
         if preemptable:
-            # We can put this job anywhere. But we would be smart to prefer
-            # preemptable nodes first, if available, so we don't block any
-            # non-preemptable jobs.
-            node_preference = kubernetes.client.V1PreferredSchedulingTerm(weight=1, preference=node_selector)
-
-            node_affinity = kubernetes.client.V1NodeAffinity(preferred_during_scheduling_ignored_during_execution=[node_preference])
+            # We want to seek preemptable labels and tolerate preemptable taints.
+            for label, values in PREEMPTABLE_SCHEMES['labels']:
+                is_spot = kubernetes.client.V1NodeSelectorRequirement(key=label,
+                                                                      operator='In',
+                                                                      values=values)
+                # We want to OR all the labels, so they all need to become separate terms.
+                node_selector_terms.append(kubernetes.client.V1NodeSelectorTerm(
+                    match_expressions=[is_spot]
+                ))
+            for taint, values in PREEMPTABLE_SCHEMES['taints']:
+                for value in values:
+                    # Each toleration can tolerate one value
+                    spot_ok = kubernetes.client.V1Toleration(key=taint,
+                                                             value=value)
+                    tolerations.append(spot_ok)
         else:
-            # We need to add some selector stuff to keep the job off of
-            # nodes that might be preempted.
-            node_affinity = kubernetes.client.V1NodeAffinity(required_during_scheduling_ignored_during_execution=node_selector)
+            # We want to prohibit preemptable labels
+            for label, values in PREEMPTABLE_SCHEMES['labels']:
+                # So we need to say that each preemptable label either doesn't
+                # have any of the preemptable values, or doesn't exist.
+                # Although the docs don't really say so, NotIn also matches
+                # cases where the label doesn't exist. This is suggested by
+                # <https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#set-based-requirement>
+                # So we create a NotIn for each preemptable label and AND them
+                # all together.
+                not_spot = kubernetes.client.V1NodeSelectorRequirement(key=label,
+                                                                       operator='NotIn',
+                                                                       values=values)
+                node_selector_requirements.append(not_spot)
 
-        # Make the node affinity into an overall affinity
-        return kubernetes.client.V1Affinity(node_affinity=node_affinity)
+        # Now combine everything
+        if node_selector_requirements:
+            # We have requirements that want to be a term
+            node_selector_terms.append(kubernetes.client.V1NodeSelectorTerm(
+                match_expressions=node_selector_requirements
+            ))
+
+        if node_selector_terms:
+            # Make the terms into a node selector
+            node_selector = kubernetes.client.V1NodeSelector(node_selector_terms=node_selector_terms)
+            if preemptable:
+                # Node selector sense is a preference, so we wrap it
+                node_preference = kubernetes.client.V1PreferredSchedulingTerm(weight=1, preference=node_selector)
+                # And make an affinity around a preference
+                node_affinity = kubernetes.client.V1NodeAffinity(
+                    preferred_during_scheduling_ignored_during_execution=[node_preference]
+                )
+            else:
+                # Node selector sense is a requirement, so make an affinity around a requirement
+                node_affinity = kubernetes.client.V1NodeAffinity(
+                    required_during_scheduling_ignored_during_execution=node_selector
+                )
+            # Apply the affinity
+            pod_spec.affinity = node_affinity
+
+        if tolerations:
+            # Apply the tolerations
+            pod_spec.tolerations = tolerations
 
     def _create_pod_spec(
             self,
-            jobDesc: JobDescription,
+            job_desc: JobDescription,
             job_environment: Optional[Dict[str, str]] = None
     ) -> kubernetes.client.V1PodSpec:
         """
@@ -389,22 +440,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         if job_environment:
             environment.update(job_environment)
 
-        # Make a job dict to send to the executor.
-        # First just wrap the command and the environment to run it in
-        # TODO: send environment via pod spec
-        job = {'command': jobDesc.command,
-               'environment': environment}
-        # TODO: query customDockerInitCmd to respect TOIL_CUSTOM_DOCKER_INIT_COMMAND
-
-        if self.userScript is not None:
-            # If there's a user script resource be sure to send it along
-            job['userScript'] = self.userScript
-
-        # Encode it in a form we can send in a command-line argument. Pickle in
-        # the highest protocol to prevent mixed-Python-version workflows from
-        # trying to work. Make sure it is text so we can ship it to Kubernetes
-        # via JSON.
-        encodedJob = base64.b64encode(pickle.dumps(job, pickle.HIGHEST_PROTOCOL)).decode('utf-8')
+        # Make a command to run it in the executor
+        command_list = pack_job(job_desc, self.user_script, environment=environment)
 
         # The Kubernetes API makes sense only in terms of the YAML format. Objects
         # represent sections of the YAML files. Except from our point of view, all
@@ -419,10 +456,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Kubernetes needs some lower limit of memory to run the pod at all without
         # OOMing. We also want to provision some extra space so that when
         # we test _isPodStuckOOM we never get True unless the job has
-        # exceeded jobDesc.memory.
-        requirements_dict = {'cpu': jobDesc.cores,
-                             'memory': jobDesc.memory + 1024 * 1024 * 512,
-                             'ephemeral-storage': jobDesc.disk + 1024 * 1024 * 512}
+        # exceeded job_desc.memory.
+        requirements_dict = {'cpu': job_desc.cores,
+                             'memory': job_desc.memory + 1024 * 1024 * 512,
+                             'ephemeral-storage': job_desc.disk + 1024 * 1024 * 512}
         # Use the requirements as the limits, for predictable behavior, and because
         # the UCSC Kubernetes admins want it that way.
         limits_dict = requirements_dict
@@ -432,17 +469,24 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Collect volumes and mounts
         volumes = []
         mounts = []
+        
+        def mount_host_path(volume_name: str, host_path: str, mount_path: str) -> None:
+            """
+            Add a host path volume with the given name to mount the given path.
+            """
+            # Use type='Directory' to fail if the host directory doesn't exist already.
+            volume_source = kubernetes.client.V1HostPathVolumeSource(path=host_path, type='Directory')
+            volume = kubernetes.client.V1Volume(name=volume_name,
+                                                host_path=volume_source)
+            volumes.append(volume)
+            volume_mount = kubernetes.client.V1VolumeMount(mount_path=mount_path, name=volume_name)
+            mounts.append(volume_mount)
 
         if self.host_path is not None:
             # Provision Toil WorkDir from a HostPath volume, to share with other pods
-            host_path_volume_name = 'workdir'
-            # Use type='Directory' to fail if the host directory doesn't exist already.
-            host_path_volume_source = kubernetes.client.V1HostPathVolumeSource(path=self.host_path, type='Directory')
-            host_path_volume = kubernetes.client.V1Volume(name=host_path_volume_name,
-                                                         host_path=host_path_volume_source)
-            volumes.append(host_path_volume)
-            host_path_volume_mount = kubernetes.client.V1VolumeMount(mount_path=self.workerWorkDir, name=host_path_volume_name)
-            mounts.append(host_path_volume_mount)
+            mount_host_path('workdir', self.host_path, self.worker_work_dir)
+            # We also need to mount across /var/run/user, where we will put per-node coordiantion info.
+            mount_host_path('coordination', '/var/run/user', '/var/run/user')
         else:
             # Provision Toil WorkDir as an ephemeral volume
             ephemeral_volume_name = 'workdir'
@@ -450,14 +494,15 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             ephemeral_volume = kubernetes.client.V1Volume(name=ephemeral_volume_name,
                                                           empty_dir=ephemeral_volume_source)
             volumes.append(ephemeral_volume)
-            ephemeral_volume_mount = kubernetes.client.V1VolumeMount(mount_path=self.workerWorkDir, name=ephemeral_volume_name)
+            ephemeral_volume_mount = kubernetes.client.V1VolumeMount(mount_path=self.worker_work_dir, name=ephemeral_volume_name)
             mounts.append(ephemeral_volume_mount)
+            # And don't share coordination directory
 
-        if self.awsSecretName is not None:
+        if self.aws_secret_name is not None:
             # Also mount an AWS secret, if provided.
             # TODO: make this generic somehow
             secret_volume_name = 's3-credentials'
-            secret_volume_source = kubernetes.client.V1SecretVolumeSource(secret_name=self.awsSecretName)
+            secret_volume_source = kubernetes.client.V1SecretVolumeSource(secret_name=self.aws_secret_name)
             secret_volume = kubernetes.client.V1Volume(name=secret_volume_name,
                                                        secret=secret_volume_source)
             volumes.append(secret_volume)
@@ -465,8 +510,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             mounts.append(secret_volume_mount)
 
         # Make a container definition
-        container = kubernetes.client.V1Container(command=['_toil_contained_executor', encodedJob],
-                                                  image=self.dockerImage,
+        container = kubernetes.client.V1Container(command=command_list,
+                                                  image=self.docker_image,
                                                   name="runner-container",
                                                   resources=resources,
                                                   volume_mounts=mounts)
@@ -475,7 +520,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                                                volumes=volumes,
                                                restart_policy="Never")
         # Tell the spec where to land
-        pod_spec.affinity = self._create_affinity(jobDesc.preemptable)
+        self._apply_placement_constraints(job_desc.preemptable, pod_spec)
 
         if self.service_account:
             # Apply service account if set
@@ -483,12 +528,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         return pod_spec
 
-    def issueBatchJob(self, jobDesc, job_environment: Optional[Dict[str, str]] = None):
+    def issueBatchJob(self, job_desc, job_environment: Optional[Dict[str, str]] = None):
         # TODO: get a sensible self.maxCores, etc. so we can checkResourceRequest.
         # How do we know if the cluster will autoscale?
 
         # Try the job as local
-        localID = self.handleLocalJob(jobDesc)
+        localID = self.handleLocalJob(job_desc)
         if localID is not None:
             # It is a local job
             return localID
@@ -496,20 +541,20 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # We actually want to send to the cluster
 
             # Check resource requirements (managed by BatchSystemSupport)
-            self.checkResourceRequest(jobDesc.memory, jobDesc.cores, jobDesc.disk)
+            self.checkResourceRequest(job_desc.memory, job_desc.cores, job_desc.disk)
 
             # Make a pod that describes running the job
-            pod_spec = self._create_pod_spec(jobDesc, job_environment=job_environment)
+            pod_spec = self._create_pod_spec(job_desc, job_environment=job_environment)
 
             # Make a batch system scope job ID
             jobID = self.getNextJobID()
             # Make a unique name
-            jobName = self.jobPrefix + str(jobID)
+            jobName = self.job_prefix + str(jobID)
 
             # Make metadata to label the job/pod with info.
             # Don't let the cluster autoscaler evict any Toil jobs.
             metadata = kubernetes.client.V1ObjectMeta(name=jobName,
-                                                      labels={"toil_run": self.runID},
+                                                      labels={"toil_run": self.run_id},
                                                       annotations={"cluster-autoscaler.kubernetes.io/safe-to-evict": "false"})
 
             # Wrap the spec in a template
@@ -570,10 +615,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
             if onlySucceeded:
                 results =  self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace,
-                                                label_selector=f"toil_run={self.runID}", field_selector="status.successful==1", **kwargs)
+                                                label_selector=f"toil_run={self.run_id}", field_selector="status.successful==1", **kwargs)
             else:
                 results = self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace,
-                                                label_selector=f"toil_run={self.runID}", **kwargs)
+                                                label_selector=f"toil_run={self.run_id}", **kwargs)
             yield from results.items  # These jobs belong to us
 
             # Remember the continuation token, if any
@@ -601,7 +646,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             if token is not None:
                 kwargs['_continue'] = token
 
-            results = self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, label_selector=f"toil_run={self.runID}", **kwargs)
+            results = self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, label_selector=f"toil_run={self.run_id}", **kwargs)
 
             yield from results.items
             # Remember the continuation token, if any
@@ -761,7 +806,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         :rtype: int
         """
 
-        return int(jobObject.metadata.name[len(self.jobPrefix):])
+        return int(jobObject.metadata.name[len(self.job_prefix):])
 
 
     def getUpdatedBatchJob(self, maxWait):
@@ -775,16 +820,16 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             return result
 
         # Otherwise we need to maybe wait.
-        if self.enableWatching:
+        if self.enable_watching:
             for event in self._try_kubernetes_stream(self._api('batch').list_namespaced_job, self.namespace,
-                                                        label_selector=f"toil_run={self.runID}",
+                                                        label_selector=f"toil_run={self.run_id}",
                                                         timeout_seconds=maxWait):
                 # Grab the metadata data, ID, the list of conditions of the current job, and the total pods
                 jobObject = event['object']
-                jobID = int(jobObject.metadata.name[len(self.jobPrefix):])
+                jobID = int(jobObject.metadata.name[len(self.job_prefix):])
                 jobObjectListConditions =jobObject.status.conditions
                 totalPods = jobObject.status.active + jobObject.status.finished + jobObject.status.failed
-                # Exit Reason defaults to 'Successfully Finsihed` unless said otherwise
+                # Exit Reason defaults to 'Successfully Finished` unless said otherwise
                 exitReason = BatchJobExitReason.FINISHED
                 exitCode = 0
 
@@ -798,7 +843,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                                                                 jobObject.status.succeeded, jobObject.status.failed, jobObject.status.active)
                     # Get termination information of job
                     termination = jobObjectListConditions[0]
-                    # Log out succeess/failure given a reason
+                    # Log out success/failure given a reason
                     logger.info("%s REASON: %s", termination.type, termination.reason)
 
                     # Log out reason of failure and pod exit code
@@ -940,7 +985,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Otherwise we got something.
 
         # Work out what the job's ID was (whatever came after our name prefix)
-        jobID = int(jobObject.metadata.name[len(self.jobPrefix):])
+        jobID = int(jobObject.metadata.name[len(self.job_prefix):])
 
         # Work out when the job was submitted. If the pod fails before actually
         # running, this is the basis for our runtime.
@@ -1081,10 +1126,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Kill all of our jobs and clean up pods that are associated with those jobs
         try:
-            logger.debug('Deleting all Kubernetes jobs for toil_run=%s', self.runID)
+            logger.debug('Deleting all Kubernetes jobs for toil_run=%s', self.run_id)
             self._try_kubernetes_expecting_gone(self._api('batch').delete_collection_namespaced_job,
                                                             self.namespace,
-                                                            label_selector=f"toil_run={self.runID}",
+                                                            label_selector=f"toil_run={self.run_id}",
                                                             propagation_policy='Background')
             logger.debug('Killed jobs with delete_collection_namespaced_job; cleaned up')
         except ApiException as e:
@@ -1171,7 +1216,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # looked), so we can't kill it on Kubernetes.
                 continue
             # Work out what the job would be named
-            jobName = self.jobPrefix + str(jobID)
+            jobName = self.job_prefix + str(jobID)
 
             # Delete the requested job in the foreground.
             # This doesn't block, but it does delete expeditiously.
@@ -1185,7 +1230,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Now we need to wait for all the jobs we killed to be gone.
 
             # Work out what the job would be named
-            jobName = self.jobPrefix + str(jobID)
+            jobName = self.job_prefix + str(jobID)
 
             # Block until it doesn't exist
             self._waitForJobDeath(jobName)
@@ -1200,7 +1245,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # and all lowercase letters, numbers, or - or .
         acceptable_chars = set(string.ascii_lowercase + string.digits + '-.')
 
-        return ''.join([c for c in getpass.getuser().lower() if c in acceptable_chars])[:100]
+        return ''.join([c for c in get_user_name().lower() if c in acceptable_chars])[:100]
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:

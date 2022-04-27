@@ -112,6 +112,8 @@ the logging module:
                         getting too big (set using ``--maxLogFileSize BYTESIZE``).
   --maxLogFileSize BYTESIZE
                         Sets the maximum log file size in bytes (``--rotatingLogging`` must be active).
+  --log-dir DIRPATH
+                        For CWL and local file system only. Log stdout and stderr (if tool requests stdout/stderr) to the DIRPATH.
 
 **Batch System Options**
 
@@ -155,6 +157,20 @@ the logging module:
   --tesBearerToken TES_BEARER_TOKEN
                         Bearer token to use for authentication to TES server.
 
+  --awsBatchRegion AWS_BATCH_REGION
+                        Region to use when using the AWS Batch batch system.
+                        Can often be autodetected from Boto configuration or
+                        the AWS region in which the current machine is running,
+                        if any.
+  --awsBatchQueue AWS_BATCH_QUEUE
+                        Name or ARN of an AWS Batch Queue to use with the AWS
+                        Batch batch system.
+  --awsBatchJobRoleArn AWS_BATCH_JOB_ROLE_ARN
+                        ARN of an IAM role to run AWS Batch jobs as with the
+                        AWS Batch batch system. If the jobs are not run with an
+                        IAM role or on machines that have access to S3 and
+                        SimpleDB, the AWS job store will not be usable.
+
   --scale SCALE         A scaling factor to change the value of all submitted
                         tasks' submitted cores. Used in singleMachine batch
                         system. Useful for running workflows on smaller
@@ -166,7 +182,8 @@ the logging module:
                         As long as caching is enabled Toil will protect the
                         file automatically by changing the permissions to
                         read-only.
-  --coalesceStatusCalls Coalese status calls to prevent the batch system from
+  --coalesceStatusCalls
+                        Coalese status calls to prevent the batch system from
                         being overloaded. Currently only supported for LSF.
 
 **Autoscaling Options**
@@ -181,6 +198,7 @@ the logging module:
                         bid set off by a colon, making the node type preemptable. Instance
                         types may appear in multiple node types, and the same node type
                         may appear as both preemptable and non-preemptable.
+                        
                         Valid argument specifying two node types:
                             c5.4xlarge/c5a.4xlarge:0.42,t2.large
                         Node types:

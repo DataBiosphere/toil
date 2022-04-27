@@ -245,8 +245,8 @@ other jobs in a simple way.
 
 The basic pattern provided by toil is as follows:
 
-1. You have a job running on your cluster which requires further parallelisation.
-2. You create a list of jobs to perform this parallelisation. These are the 'child' jobs of your process, we call them collectively the 'children'.
+1. You have a job running on your cluster which requires further parallelization.
+2. You create a list of jobs to perform this parallelization. These are the 'child' jobs of your process, we call them collectively the 'children'.
 3. You create a 'follow-on' job, to be performed after all the children have successfully completed. This job is responsible for cleaning up the input files created for the children and doing any further processing. Children should not cleanup files created by parents, in case of a batch system failure which requires the child to be re-run (see 'Atomicity' below).
 4. You end your current job successfully.
 5. The batch system runs the children. These jobs may in turn have children and follow-on jobs.
@@ -312,7 +312,7 @@ Job.makeJobFnJob(setup, (fileToSort, N))
 
 Notice that the child and follow-on jobs have also been refactored as functions, hence the methods **[addChildJobFn](https://github.com/benedictpaten/toil/blob/development/scriptTree/job.py#L82)** and **[setFollowOnFn](https://github.com/benedictpaten/toil/blob/development/scriptTree/job.py#L67)**, which take functions as opposed to Job objects.
 
-Note, there are two types of functions you can wrap - **job functions**, whose first argument must be the wrapping job object (the setup function above is an excample of a job function), and plain functions that do not have a reference to the wrapping job.
+Note, there are two types of functions you can wrap - **job functions**, whose first argument must be the wrapping job object (the setup function above is an example of a job function), and plain functions that do not have a reference to the wrapping job.
 
 ##Creating a scriptTree script:
 
@@ -392,7 +392,7 @@ toil replicates the environment in which toil or scriptTree is invoked and provi
 
     Toil checkpoints its state on disk, so that it or the job manager can be wiped out and restarted. There is some gnarly test code to show how this works, it will keep crashing everything, at random points, but eventually everything will complete okay. As a user you needn't worry about any of this, but your child jobs must be atomic (as with all batch systems), and must follow the convention regarding input files.
 
-* _How scaleable?_
+* _How scalable?_
 
     We have tested having 1000 concurrent jobs running on our cluster. This will depend on the underlying batch system being used.
 

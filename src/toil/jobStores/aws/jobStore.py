@@ -45,28 +45,31 @@ from toil.jobStores.abstractJobStore import (
 )
 from toil.jobStores.aws.utils import (
     SDBHelper,
-    bucket_location_to_region,
     copyKeyMultipart,
     fileSizeAndTime,
     monkeyPatchSdbConnection,
     no_such_sdb_domain,
-    retry_s3,
     retry_sdb,
-    retryable_s3_errors,
     sdb_unavailable,
     uploadFile,
     uploadFromPath,
 )
 from toil.jobStores.utils import ReadablePipe, ReadableTransformingPipe, WritablePipe
-from toil.lib.aws.utils import create_s3_bucket
+from toil.lib.aws.utils import (
+    create_s3_bucket,
+    get_bucket_region,
+    get_object_for_url,
+    retry_s3,
+    retryable_s3_errors
+)
 from toil.lib.compatibility import compat_bytes
-from toil.lib.ec2 import establish_boto3_session
+from toil.lib.aws.session import establish_boto3_session
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.exceptions import panic
 from toil.lib.io import AtomicFileCreate
 from toil.lib.memoize import strict_bool
 from toil.lib.objects import InnerClass
-from toil.lib.retry import retry
+from toil.lib.retry import retry, get_error_status, get_error_code
 
 boto3_session = establish_boto3_session()
 s3_boto3_resource = boto3_session.resource('s3')
@@ -105,7 +108,7 @@ class AWSJobStore(AbstractJobStore):
     maxNameLen = 10
     nameSeparator = '--'
 
-    def __init__(self, locator, partSize=50 << 20):
+    def __init__(self, locator: str, partSize: int = 50 << 20) -> None:
         """
         Create a new job store in AWS or load an existing one from there.
 
@@ -254,12 +257,12 @@ class AWSJobStore(AbstractJobStore):
     def _checkItem(self, item, enforce: bool = True):
         """
         Make sure that the given SimpleDB item actually has the attributes we think it should.
-        
+
         Throw otherwise.
-        
+
         If enforce is false, log but don't throw.
         """
-        
+
         if "overlargeID" not in item:
             logger.error("overlargeID attribute isn't present: either SimpleDB entry is "
                          "corrupt or jobstore is from an extremely old Toil: %s", item)
@@ -428,7 +431,7 @@ class AWSJobStore(AbstractJobStore):
 
     def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=False):
         if issubclass(otherCls, AWSJobStore):
-            srcObj = self._get_object_for_url(uri, existing=True)
+            srcObj = get_object_for_url(uri, existing=True)
             size = srcObj.content_length
             if shared_file_name is None:
                 info = self.FileInfo.create(srcObj.key)
@@ -446,7 +449,7 @@ class AWSJobStore(AbstractJobStore):
 
     def _export_file(self, otherCls, file_id, uri):
         if issubclass(otherCls, AWSJobStore):
-            dstObj = self._get_object_for_url(uri)
+            dstObj = get_object_for_url(uri)
             info = self.FileInfo.loadOrFail(file_id)
             info.copyTo(dstObj)
         else:
@@ -454,11 +457,11 @@ class AWSJobStore(AbstractJobStore):
 
     @classmethod
     def get_size(cls, url):
-        return cls._get_object_for_url(url, existing=True).content_length
+        return get_object_for_url(url, existing=True).content_length
 
     @classmethod
     def _read_from_url(cls, url, writable):
-        srcObj = cls._get_object_for_url(url, existing=True)
+        srcObj = get_object_for_url(url, existing=True)
         srcObj.download_fileobj(writable)
         return (
             srcObj.content_length,
@@ -467,7 +470,7 @@ class AWSJobStore(AbstractJobStore):
 
     @classmethod
     def _write_to_url(cls, readable, url, executable=False):
-        dstObj = cls._get_object_for_url(url)
+        dstObj = get_object_for_url(url)
 
         logger.debug("Uploading %s", dstObj.key)
         # uploadFile takes care of using multipart upload if the file is larger than partSize (default to 5MB)
@@ -476,54 +479,6 @@ class AWSJobStore(AbstractJobStore):
                    bucketName=dstObj.bucket_name,
                    fileID=dstObj.key,
                    partSize=5 * 1000 * 1000)
-
-    @staticmethod
-    def _get_object_for_url(url, existing: Optional[bool] = None):
-        """
-        Extracts a key (object) from a given s3:// URL.
-
-        :param bool existing: If True, key is expected to exist. If False, key is expected not to
-               exists and it will be created. If None, the key will be created if it doesn't exist.
-
-        :rtype: S3.Object
-        """
-        keyName = url.path[1:]
-        bucketName = url.netloc
-
-        botoargs = {}
-        host = os.environ.get('TOIL_S3_HOST', None)
-        port = os.environ.get('TOIL_S3_PORT', None)
-        protocol = 'https'
-        if os.environ.get('TOIL_S3_USE_SSL', True) == 'False':
-            protocol = 'http'
-        if host:
-            botoargs['endpoint_url'] = f'{protocol}://{host}' + f':{port}' if port else ''
-
-        # TODO: OrdinaryCallingFormat equivalent in boto3?
-        # if botoargs:
-        #     botoargs['calling_format'] = boto.s3.connection.OrdinaryCallingFormat()
-
-        # Get the bucket's region to avoid a redirect per request
-        region = AWSJobStore.getBucketRegion(bucketName)
-        s3 = boto3_session.resource('s3', region_name=region, **botoargs)
-        obj = s3.Object(bucketName, keyName)
-        objExists = True
-
-        try:
-            obj.load()
-        except ClientError as e:
-            if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
-                objExists = False
-            else:
-                raise
-        if existing is True and not objExists:
-            raise RuntimeError(f"Key '{keyName}' does not exist in bucket '{bucketName}'.")
-        elif existing is False and objExists:
-            raise RuntimeError(f"Key '{keyName}' exists in bucket '{bucketName}'.")
-
-        if not objExists:
-            obj.put()  # write an empty file
-        return obj
 
     @classmethod
     def _supports_url(cls, url, export=False):
@@ -718,19 +673,31 @@ class AWSJobStore(AbstractJobStore):
         assert self.bucketNameRe.match(bucket_name)
         logger.debug("Binding to job store bucket '%s'.", bucket_name)
 
-        def bucket_creation_pending(error):
-            # https://github.com/BD2KGenomics/toil/issues/955
-            # https://github.com/BD2KGenomics/toil/issues/995
-            # https://github.com/BD2KGenomics/toil/issues/1093
+        def bucket_retry_predicate(error):
+            """
+            Decide, given an error, whether we should retry binding the bucket.
+            """
 
-            # BucketAlreadyOwnedByYou == 409
-            # OperationAborted == 409
-            # NoSuchBucket == 404
-            return (isinstance(error, ClientError) and
-                    error.response.get('ResponseMetadata', {}).get('HTTPStatusCode') in (404, 409))
+            if (isinstance(error, ClientError) and
+                get_error_status(error) in (404, 409)):
+                # Handle cases where the bucket creation is in a weird state that might let us proceed.
+                # https://github.com/BD2KGenomics/toil/issues/955
+                # https://github.com/BD2KGenomics/toil/issues/995
+                # https://github.com/BD2KGenomics/toil/issues/1093
+
+                # BucketAlreadyOwnedByYou == 409
+                # OperationAborted == 409
+                # NoSuchBucket == 404
+                return True
+            if get_error_code(error) == 'SlowDown':
+                # We may get told to SlowDown by AWS when we try to create our
+                # bucket. In that case, we should retry and use the exponential
+                # backoff.
+                return True
+            return False
 
         bucketExisted = True
-        for attempt in retry_s3(predicate=bucket_creation_pending):
+        for attempt in retry_s3(predicate=bucket_retry_predicate):
             with attempt:
                 try:
                     # the head_bucket() call makes sure that the bucket exists and the user can access it
@@ -738,8 +705,8 @@ class AWSJobStore(AbstractJobStore):
 
                     bucket = self.s3_resource.Bucket(bucket_name)
                 except ClientError as e:
-                    error_code = e.response.get('ResponseMetadata', {}).get('HTTPStatusCode')
-                    if error_code == 404:
+                    error_http_status = get_error_status(e)
+                    if error_http_status == 404:
                         bucketExisted = False
                         logger.debug("Bucket '%s' does not exist.", bucket_name)
                         if create:
@@ -755,8 +722,8 @@ class AWSJobStore(AbstractJobStore):
                             # NoSuchBucket. We let that kick us back up to the
                             # main retry loop.
                             assert (
-                                self.getBucketRegion(bucket_name) == self.region
-                            ), f"bucket_name: {bucket_name}, {self.getBucketRegion(bucket_name)} != {self.region}"
+                                get_bucket_region(bucket_name) == self.region
+                            ), f"bucket_name: {bucket_name}, {get_bucket_region(bucket_name)} != {self.region}"
 
                             owner_tag = os.environ.get('TOIL_OWNER_TAG')
                             if owner_tag:
@@ -766,15 +733,15 @@ class AWSJobStore(AbstractJobStore):
                             raise
                         else:
                             return None
-                    elif error_code == 301:
+                    elif error_http_status == 301:
                         # This is raised if the user attempts to get a bucket in a region outside
                         # the specified one, if the specified one is not `us-east-1`.  The us-east-1
                         # server allows a user to use buckets from any region.
-                        raise BucketLocationConflictException(self.getBucketRegion(bucket_name))
+                        raise BucketLocationConflictException(get_bucket_region(bucket_name))
                     else:
                         raise
                 else:
-                    bucketRegion = self.getBucketRegion(bucket_name)
+                    bucketRegion = get_bucket_region(bucket_name)
                     if bucketRegion != self.region:
                         raise BucketLocationConflictException(bucketRegion)
 
@@ -1599,13 +1566,6 @@ class AWSJobStore(AbstractJobStore):
                 status = self.s3_resource.BucketVersioning(bucket_name).status
                 return self.versionings.get(status) if status else False
 
-    @staticmethod
-    def getBucketRegion(bucket_name: str):
-        for attempt in retry_s3():
-            with attempt:
-                loc = s3_boto3_client.get_bucket_location(Bucket=bucket_name)
-                return bucket_location_to_region(loc.get('LocationConstraint', None))
-
     # TODO: Make this retry more specific?
     #  example: https://github.com/DataBiosphere/toil/issues/3378
     @retry()
@@ -1661,7 +1621,7 @@ class AWSJobStore(AbstractJobStore):
                 except s3_boto3_client.exceptions.NoSuchBucket:
                     pass
                 except ClientError as e:
-                    if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') != 404:
+                    if get_error_status(e) != 404:
                         raise
 
 

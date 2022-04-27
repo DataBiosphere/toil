@@ -8,6 +8,8 @@ variables:
   MAIN_PYTHON_PKG: "python3.9"
 
 before_script:
+  # Log where we are running, in case some Kubernetes hosts are busted. IPs are assigned per host.
+  - ip addr
   # Configure Docker to use a mirror for Docker Hub and restart the daemon
   # Set the registry as insecure because it is probably cluster-internal over plain HTTP.
   - |
@@ -26,8 +28,9 @@ before_script:
   # where buildx can't use a bearer token from a kube config and falls back to anonymous instead
   # of using the system's service account.
   - KUBECONFIG=/dev/null docker buildx create --use --name toilbuilder --platform=linux/amd64,linux/arm64 --node=buildkit-amd64 --driver=kubernetes --driver-opt="nodeselector=kubernetes.io/arch=amd64"
-  # Dump the builder info
-  - docker buildx inspect --bootstrap || true
+  # Dump the builder info, and make sure it exists.
+  - docker buildx inspect --bootstrap || (echo "Docker builder deployment can't be found in our Kubernetes namespace! Are we on the right Gitlab runner?" && exit 1)
+  # This will hang if we can't talk to the builder
   - (echo "y" | docker buildx prune --keep-storage 80G) || true
   - sudo apt-get update
   - sudo apt-get install -y software-properties-common build-essential virtualenv
@@ -94,9 +97,7 @@ py37_main:
     - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor awscli'
     - make test tests=src/toil/test/src
     - make test tests=src/toil/test/utils
-    - make test tests=src/toil/test/lib/test_ec2.py
-    - make test tests=src/toil/test/lib/aws
-    - make test tests=src/toil/test/lib/test_conversions.py
+    - TOIL_SKIP_DOCKER=true make test tests=src/toil/test/lib
 
 py37_appliance_build:
   stage: basic_tests
@@ -115,9 +116,7 @@ py38_main:
     - virtualenv -p python3.8 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor awscli'
     - make test tests=src/toil/test/src
     - make test tests=src/toil/test/utils
-    - make test tests=src/toil/test/lib/test_ec2.py
-    - make test tests=src/toil/test/lib/aws
-    - make test tests=src/toil/test/lib/test_conversions.py
+    - TOIL_SKIP_DOCKER=true make test tests=src/toil/test/lib
 
 py38_appliance_build:
   stage: basic_tests
@@ -136,6 +135,7 @@ py39_main:
     - virtualenv -p python3.9 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages=htcondor
     - make test tests=src/toil/test/src
     - make test tests=src/toil/test/utils
+    - TOIL_SKIP_DOCKER=true make test tests=src/toil/test/lib
 
 py39_appliance_build:
   stage: basic_tests
@@ -205,6 +205,17 @@ cwl_v1.2:
     - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv12Test
+
+cwl_on_arm:
+  stage: main_tests
+  script:
+    - pwd
+    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
+    - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
+    # This reads GITLAB_SECRET_FILE_SSH_KEYS
+    - python setup_gitlab_ssh.py
+    - chmod 400 /root/.ssh/id_rsa
+    - make test tests=src/toil/test/cwl/cwlTest.py::CWLOnARMTest
 
 cwl_v1.0_kubernetes:
   stage: main_tests

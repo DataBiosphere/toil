@@ -1,4 +1,6 @@
 boto>=2.48.0, <3
-boto3>=1.17, <2
-boto3-stubs[s3]>=1.17, <2
-futures>=3.1.1, <4
+boto3>=1.20.46, <2
+boto3-stubs[s3,sdb,iam]>=1.20.46.post1, <2
+mypy-boto3-s3>=1.20.46.post1, <2
+mypy-boto3-sdb>=1.20.46.post1, <2
+mypy-boto3-iam>=1.20.46.post1, <2

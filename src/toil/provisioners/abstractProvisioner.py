@@ -21,7 +21,7 @@ import textwrap
 import platform
 from abc import ABC, abstractmethod
 from functools import total_ordering
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -56,22 +56,28 @@ class Shape:
     The memory and disk attributes store the number of bytes required by a job (or provided by a
     node) in RAM or on disk (SSD or HDD), respectively.
     """
-
-    def __init__(self, wallTime, memory, cores, disk, preemptable):
+    def __init__(
+        self,
+        wallTime: Union[int, float],
+        memory: int,
+        cores: Union[int, float],
+        disk: int,
+        preemptable: bool,
+    ) -> None:
         self.wallTime = wallTime
         self.memory = memory
         self.cores = cores
         self.disk = disk
         self.preemptable = preemptable
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         return (self.wallTime == other.wallTime and
                 self.memory == other.memory and
                 self.cores == other.cores and
                 self.disk == other.disk and
                 self.preemptable == other.preemptable)
 
-    def greater_than(self, other):
+    def greater_than(self, other: Any) -> bool:
         if self.preemptable < other.preemptable:
             return True
         elif self.preemptable > other.preemptable:
@@ -95,10 +101,10 @@ class Shape:
         else:
             return False
 
-    def __gt__(self, other):
+    def __gt__(self, other: Any) -> bool:
         return self.greater_than(other)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "Shape(wallTime=%s, memory=%s, cores=%s, disk=%s, preemptable=%s)" % \
                (self.wallTime,
                 self.memory,
@@ -106,10 +112,10 @@ class Shape:
                 self.disk,
                 self.preemptable)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.__repr__()
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         # Since we replaced __eq__ we need to replace __hash__ as well.
         return hash(
             (self.wallTime,
@@ -120,13 +126,19 @@ class Shape:
 
 
 class AbstractProvisioner(ABC):
-    """
-    An abstract base class to represent the interface for provisioning worker nodes to use in a
-    Toil cluster.
-    """
-    LEADER_HOME_DIR = '/root/'  # home directory in the Toil appliance on an instance
+    """Interface for provisioning worker nodes to use in a Toil cluster."""
 
-    def __init__(self, clusterName=None, clusterType='mesos', zone=None, nodeStorage=50, nodeStorageOverrides=None):
+    LEADER_HOME_DIR = '/root/'  # home directory in the Toil appliance on an instance
+    cloud: str = None
+
+    def __init__(
+        self,
+        clusterName: Optional[str] = None,
+        clusterType: Optional[str] = "mesos",
+        zone: Optional[str] = None,
+        nodeStorage: int = 50,
+        nodeStorageOverrides: Optional[List[str]] = None,
+    ) -> None:
         """
         Initialize provisioner.
 
@@ -401,7 +413,13 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None):
+    def addNodes(
+        self,
+        nodeTypes: Set[str],
+        numNodes: int,
+        preemptable: bool,
+        spotBid: Optional[float] = None,
+    ) -> int:
         """
         Used to add worker nodes to the cluster
 
@@ -415,7 +433,7 @@ class AbstractProvisioner(ABC):
     def addManagedNodes(self, nodeTypes: Set[str], minNodes, maxNodes, preemptable, spotBid=None) -> None:
         """
         Add a group of managed nodes of the given type, up to the given maximum.
-        The nodes will automatically be launched and termianted depending on cluster load.
+        The nodes will automatically be launched and terminated depending on cluster load.
 
         Raises ManagedNodesNotSupportedException if the provisioner
         implementation or cluster configuration can't have managed nodes.
@@ -430,7 +448,7 @@ class AbstractProvisioner(ABC):
         raise ManagedNodesNotSupportedException("Managed nodes not supported by this provisioner")
 
     @abstractmethod
-    def terminateNodes(self, nodes):
+    def terminateNodes(self, nodes: List[Node]) -> None:
         """
         Terminate the nodes represented by given Node objects
 
@@ -446,7 +464,7 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptable: Optional[bool] = None):
+    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptable: Optional[bool] = None) -> List[Node]:
         """
         Gets all nodes, optionally of the given instance type or
         preemptability, from the provisioner. Includes both static and
@@ -475,7 +493,7 @@ class AbstractProvisioner(ABC):
     def destroyCluster(self) -> None:
         """
         Terminates all nodes in the specified cluster and cleans up all resources associated with the
-        cluser.
+        cluster.
         :param clusterName: identifier of the cluster to terminate.
         """
         raise NotImplementedError
@@ -705,7 +723,7 @@ class AbstractProvisioner(ABC):
 
         :param role: Should be 'leader' or 'worker'. Will not work for 'worker' until leader credentials have been collected.
         :param keyPath: path on the node to a server-side encryption key that will be added to the node after it starts. The service will wait until the key is present before starting.
-        :param preemptable: Whether a woeker should identify itself as preemptable or not to the scheduler.
+        :param preemptable: Whether a worker should identify itself as preemptable or not to the scheduler.
         """
 
         # If keys are rsynced, then the mesos-agent needs to be started after the keys have been
@@ -713,10 +731,10 @@ class AbstractProvisioner(ABC):
         # mesos-agent. If there are multiple keys to be transferred, then the last one to be transferred must be
         # set to keyPath.
         MESOS_LOG_DIR = '--log_dir=/var/lib/mesos '
-        LEADER_DOCKER_ARGS = '--registry=in_memory --cluster={name}'
+        LEADER_DOCKER_ARGS = '--webui_dir=/share/mesos/webui --registry=in_memory --cluster={name}'
         # --no-systemd_enable_support is necessary in Ubuntu 16.04 (otherwise,
         # Mesos attempts to contact systemd but can't find its run file)
-        WORKER_DOCKER_ARGS = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} --no-hostname_lookup --no-systemd_enable_support'
+        WORKER_DOCKER_ARGS = '--launcher_dir=/libexec/mesos --work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} --no-hostname_lookup --no-systemd_enable_support'
 
         if self.clusterType == 'mesos':
             if role == 'leader':
@@ -764,6 +782,7 @@ class AbstractProvisioner(ABC):
                 --net=host \\
                 --init \\
                 -v /var/run/docker.sock:/var/run/docker.sock \\
+                -v /var/run/user:/var/run/user \\
                 -v /var/lib/mesos:/var/lib/mesos \\
                 -v /var/lib/docker:/var/lib/docker \\
                 -v /var/lib/toil:/var/lib/toil \\
@@ -1157,7 +1176,7 @@ class AbstractProvisioner(ABC):
         the worker to the leader.
 
         :param str keyPath: The path of a secret key for the worker to wait for the leader to create on it.
-        :param bool preemptable: Set to true for a worker node to identify itself as preemptible in the cluster.
+        :param bool preemptable: Set to true for a worker node to identify itself as preemptable in the cluster.
         """
 
         # Start with a base config
