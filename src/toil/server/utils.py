@@ -153,6 +153,37 @@ def safe_write_file(file: str, s: str) -> None:
             with open(temp_name, "w") as file_obj:
                 file_obj.write(s)
 
+class MemoryStateCache:
+    """
+    An in-memory place to store workflow state.
+    """
+    
+    def __init__(self) -> None:
+        """
+        Make a new in-memory state cache.
+        """
+        
+        super().__init__()
+        self._data: Dict[Tuple[str, str], Optional[str]] = {}
+    
+    def get(self, workflow_id: str, key: str) -> Optional[str]:
+        """
+        Get a key value from memory.
+        """
+        return self._data.get((workflow_id, key))
+
+    def set(self, workflow_id: str, key: str, value: Optional[str]) -> None:
+        """
+        Set or clear a key value in memory.
+        """
+        
+        if value is None:
+            try:
+                del self._data[(workflow_id, key)]
+            except KeyError:
+                pass
+        else:
+            self._data[(workflow_id, key)] = value
 
 class AbstractStateStore:
     """
@@ -185,7 +216,7 @@ class AbstractStateStore:
         # We maintain a local cache here.
         # TODO: Upgrade to an LRU cache wehn we finally learn to paginate
         # workflow status
-        self._cache: Dict[Tuple[str, str], str] = {}
+        self._cache = MemoryStateCache()
 
     @abstractmethod
     def get(self, workflow_id: str, key: str) -> Optional[str]:
@@ -208,21 +239,24 @@ class AbstractStateStore:
         Read a value from a local cache, without checking the actual backend.
         """
         
-        return self._cache.get((workflow_id, key))
+        return self._cache.get(workflow_id, key)
         
     def write_cache(self, workflow_id: str, key: str, value: Optional[str]) -> None:
         """
         Write a value to a local cache, without modifying the actual backend.
         """
-        if value is None:
-            try:
-                del self._cache[(workflow_id, key)]
-            except KeyError:
-                pass
-        else:
-            self._cache[(workflow_id, key)] = value
-        
-        
+        self._cache.set(workflow_id, key, value)
+            
+class MemoryStateStore(MemoryStateCache, AbstractStateStore):
+    """
+    An in-memory place to store workflow state, for testing.
+    
+    Inherits from MemoryStateCache first to provide implementations for
+    AbstractStateStore.
+    """
+    
+    def __init__(self):
+        super().__init__()
 
 class FileStateStore(AbstractStateStore):
     """

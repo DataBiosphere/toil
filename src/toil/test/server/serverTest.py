@@ -39,7 +39,31 @@ class ToilServerUtilsTest(ToilTest):
     """
     Tests for the utility functions used by the Toil server.
     """
-
+    
+    def test_workflow_canceling_recovery(self):
+        """
+        Make sure that a workflow in CANCELING state will be recovered to a
+        terminal state eventually even if the workflow runner Celery task goes
+        away without flipping the state.
+        """
+        
+        from toil.server.utils import WorkflowStateMachine, WorkflowStateStore, MemoryStateStore
+        
+        store = WorkflowStateStore(MemoryStateStore(), "test-workflow")
+        
+        state_machine = WorkflowStateMachine(store)
+        
+        # Cancel a workflow
+        state_machine.send_cancel()
+        # Make sure it worked.
+        self.assertEqual(state_machine.get_current_state(), "CANCELING")
+        
+        # Back-date the time of cancelation to something really old
+        store.set("cancel_time", "2011-11-04 00:05:23.283")
+        
+        # Make sure it is now CANCELED due to timeout
+        self.assertEqual(state_machine.get_current_state(), "CANCELED")
+        
 @needs_server
 class AbstractToilWESServerTest(ToilTest):
     """
