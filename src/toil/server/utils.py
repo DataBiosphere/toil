@@ -558,7 +558,7 @@ class WorkflowStateMachine:
             # away or is stopped while reporting back, because it is
             # repsonsible for posting back that it has been successfully
             # canceled.
-            canceled_at = self_store.get("cancel_time")
+            canceled_at = self._store.get("cancel_time")
             if canceled_at is None:
                 # If there's no timestamp but it's supposedly canceling, put it
                 # into SYSTEM_ERROR, because we didn;t move to CANCELING properly.
