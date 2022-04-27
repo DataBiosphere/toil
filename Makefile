@@ -187,9 +187,9 @@ clean_docker:
 push_docker: docker
 	# Weird if logic is so we fail if all the pushes fail
 	cd docker ; for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker buildx build --platform $(arch) --push --tag=$(docker_image):$(TOIL_DOCKER_TAG) -f Dockerfile . && break || sleep 60; done
-	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker buildx build --platform $(arch) --push --tag=$(grafana_image):$(TOIL_DOCKER_TAG) -f Dockerfile . && break || sleep 60; done
-	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker buildx build --platform $(arch) --push --tag=$(prometheus_image):$(TOIL_DOCKER_TAG) -f Dockerfile . && break || sleep 60; done
-	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker buildx build --platform $(arch) --push --tag=$(mtail_image):$(TOIL_DOCKER_TAG) -f Dockerfile . && break || sleep 60; done
+	cd docker ; for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker buildx build --platform $(arch) --push --tag=$(grafana_image):$(TOIL_DOCKER_TAG) -f Dockerfile . && break || sleep 60; done
+	cd docker ; for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker buildx build --platform $(arch) --push --tag=$(prometheus_image):$(TOIL_DOCKER_TAG) -f Dockerfile . && break || sleep 60; done
+	cd docker ; for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker buildx build --platform $(arch) --push --tag=$(mtail_image):$(TOIL_DOCKER_TAG) -f Dockerfile . && break || sleep 60; done
 
 else
 
