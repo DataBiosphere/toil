@@ -766,7 +766,7 @@ def parseBool(val: str) -> bool:
     else:
         raise RuntimeError("Could not interpret \"%s\" as a boolean value" % val)
 
-@lru_cache
+@lru_cache(maxsize=None)
 def getNodeID() -> str:
     """
     Return unique ID of the current node (host). The resulting string will be convertable to a uuid.UUID.
