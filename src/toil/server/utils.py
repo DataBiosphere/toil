@@ -157,15 +157,15 @@ class MemoryStateCache:
     """
     An in-memory place to store workflow state.
     """
-    
+
     def __init__(self) -> None:
         """
         Make a new in-memory state cache.
         """
-        
+
         super().__init__()
         self._data: Dict[Tuple[str, str], Optional[str]] = {}
-    
+
     def get(self, workflow_id: str, key: str) -> Optional[str]:
         """
         Get a key value from memory.
@@ -176,7 +176,7 @@ class MemoryStateCache:
         """
         Set or clear a key value in memory.
         """
-        
+
         if value is None:
             try:
                 del self._data[(workflow_id, key)]
@@ -192,6 +192,9 @@ class AbstractStateStore:
 
     This is a key-value store, with keys namespaced by workflow ID. Concurrent
     access from multiple threads or processes is safe and globally consistent.
+
+    Keys and workflow IDs are restricted to [-a-zA-Z0-9_], because backends may
+    use them as path or URL components.
 
     Key values are either a string, or None if the key is not set.
 
@@ -212,7 +215,7 @@ class AbstractStateStore:
         """
         Set up the AbstractStateStore and its cache.
         """
-        
+
         # We maintain a local cache here.
         # TODO: Upgrade to an LRU cache wehn we finally learn to paginate
         # workflow status
@@ -233,28 +236,28 @@ class AbstractStateStore:
         None, clear the key.
         """
         raise NotImplementedError
-    
+
     def read_cache(self, workflow_id: str, key: str) -> Optional[str]:
         """
         Read a value from a local cache, without checking the actual backend.
         """
-        
+
         return self._cache.get(workflow_id, key)
-        
+
     def write_cache(self, workflow_id: str, key: str, value: Optional[str]) -> None:
         """
         Write a value to a local cache, without modifying the actual backend.
         """
         self._cache.set(workflow_id, key, value)
-            
+
 class MemoryStateStore(MemoryStateCache, AbstractStateStore):
     """
     An in-memory place to store workflow state, for testing.
-    
+
     Inherits from MemoryStateCache first to provide implementations for
     AbstractStateStore.
     """
-    
+
     def __init__(self):
         super().__init__()
 
@@ -327,7 +330,7 @@ if HAVE_S3:
             if parse.scheme.lower() != 's3':
                 # We want to catch if we get the wrong argument.
                 raise RuntimeError(f"{url} doesn't look like an S3 URL")
-                
+
             self._bucket = parse.netloc
             self._base_path = parse.path
             self._client = client('s3', region_name=get_current_aws_region())
@@ -433,21 +436,21 @@ class WorkflowStateStore:
         Set the given item of workflow state.
         """
         self._state_store.set(self._workflow_id, key, value)
-        
+
     def read_cache(self, key: str) -> Optional[str]:
         """
         Read a value from a local cache, without checking the actual backend.
         """
-        
+
         return self._state_store.read_cache(self._workflow_id, key)
-        
+
     def write_cache(self, key: str, value: Optional[str]) -> None:
         """
         Write a value to a local cache, without modifying the actual backend.
         """
-        
+
         self._state_store.write_cache(self._workflow_id, key, value)
-        
+
 
 def connect_to_workflow_state_store(url: str, workflow_id: str) -> WorkflowStateStore:
     """
@@ -478,7 +481,7 @@ class WorkflowStateMachine:
     cache the first terminal state we see forever. If it becomes important that
     clients never see e.g. CANCELED -> COMPLETE or COMPLETE -> SYSTEM_ERROR, we
     can implement a real distributed state machine here.
-    
+
     We do handle making sure that tasks don't get stuck in CANCELING.
 
     State can be:
@@ -493,9 +496,9 @@ class WorkflowStateMachine:
     "SYSTEM_ERROR"
     "CANCELED"
     "CANCELING"
-    
+
     Uses the state store's local cache to prevent needing to read things we've
-    seen already. 
+    seen already.
     """
 
     def __init__(self, store: WorkflowStateStore) -> None:
@@ -513,7 +516,7 @@ class WorkflowStateMachine:
         the read and the write.
         This is not really consistent but also not worth protecting against.
         """
-        
+
         if self.get_current_state() not in TERMINAL_STATES:
             self._store.set("state", state)
 
@@ -540,16 +543,16 @@ class WorkflowStateMachine:
         Send a cancel message that would move to CANCELING from any
         non-terminal state.
         """
-        
+
         state = self.get_current_state()
         if state != "CANCELING" and state not in TERMINAL_STATES:
             # If it's not obvious we shouldn't cancel, cancel.
-            
+
             # If we end up in CANCELING but the workflow runner task isn't around,
             # or we signal it at the wrong time, we will stay there forever,
             # because it's responsible for setting the state to anything else.
             # So, we save a timestamp, and if we see a CANCELING status and an old
-            # timestamp, we move on. 
+            # timestamp, we move on.
             self._store.set("cancel_time", get_iso_time())
             # Set state after time, because having the state but no time is an error.
             self._store.set("state", "CANCELING")
@@ -584,15 +587,15 @@ class WorkflowStateMachine:
         """
         Get the current state of the workflow.
         """
-        
+
         state = self._store.read_cache("state")
         if state is not None:
             # We permanently cached a terminal state
             return state
-        
+
         # Otherwise do an actual read from backing storage.
         state = self._store.get("state")
-            
+
         if state == "CANCELING":
             # Make sure it hasn't been CANCELING for too long.
             # We can get stuck in CANCELING if the workflow-running task goes
@@ -614,15 +617,15 @@ class WorkflowStateMachine:
                     # nonresponsive and thus not running.
                     state = "CANCELED"
                     self._store.set("state", state)
-            
+
         if state in TERMINAL_STATES:
             # We can cache this state forever
             self._store.write_cache("state", state)
-            
+
         if state is None:
             # Make sure we fill in if we couldn't fetch a stored state.
             state = "UNKNOWN"
-        
+
         return state
 
 

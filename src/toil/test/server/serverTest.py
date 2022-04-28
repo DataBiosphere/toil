@@ -41,28 +41,28 @@ class ToilServerUtilsTest(ToilTest):
     """
     Tests for the utility functions used by the Toil server.
     """
-    
+
     def test_workflow_canceling_recovery(self):
         """
         Make sure that a workflow in CANCELING state will be recovered to a
         terminal state eventually even if the workflow runner Celery task goes
         away without flipping the state.
         """
-        
+
         from toil.server.utils import WorkflowStateMachine, WorkflowStateStore, MemoryStateStore
-        
+
         store = WorkflowStateStore(MemoryStateStore(), "test-workflow")
-        
+
         state_machine = WorkflowStateMachine(store)
-        
+
         # Cancel a workflow
         state_machine.send_cancel()
         # Make sure it worked.
         self.assertEqual(state_machine.get_current_state(), "CANCELING")
-        
+
         # Back-date the time of cancelation to something really old
         store.set("cancel_time", "2011-11-04 00:05:23.283")
-        
+
         # Make sure it is now CANCELED due to timeout
         self.assertEqual(state_machine.get_current_state(), "CANCELED")
 
@@ -74,60 +74,60 @@ class hidden:
         """
         Basic tests for state stores.
         """
-        
+
         from toil.server.utils import AbstractStateStore
-        
+
         @abstractmethod
         def get_state_store(self) -> AbstractStateStore:
             """
             Make a state store to test, on a single fixed URL.
             """
-            
+
             raise NotImplementedError()
-            
-        
+
+
         def test_state_store(self) -> None:
             """
             Make sure that the state store under test can store and load keys.
             """
-            
+
             store = self.get_state_store()
-            
+
             # Should start None
             self.assertEqual(store.get('id1', 'key1'), None)
-            
+
             # Should hold a value
             store.set('id1', 'key1', 'value1')
             self.assertEqual(store.get('id1', 'key1'), 'value1')
-            
+
             # Should distinguish by ID and key
             self.assertEqual(store.get('id2', 'key1'), None)
             self.assertEqual(store.get('id1', 'key2'), None)
-            
+
             store.set('id2', 'key1', 'value2')
             store.set('id1', 'key2', 'value3')
             self.assertEqual(store.get('id1', 'key1'), 'value1')
             self.assertEqual(store.get('id2', 'key1'), 'value2')
             self.assertEqual(store.get('id1', 'key2'), 'value3')
-            
+
             # Should allow replacement
             store.set('id1', 'key1', 'value4')
             self.assertEqual(store.get('id1', 'key1'), 'value4')
             self.assertEqual(store.get('id2', 'key1'), 'value2')
             self.assertEqual(store.get('id1', 'key2'), 'value3')
-            
+
             # Should show up in another state store
             store2 = self.get_state_store()
             self.assertEqual(store2.get('id1', 'key1'), 'value4')
             self.assertEqual(store2.get('id2', 'key1'), 'value2')
             self.assertEqual(store2.get('id1', 'key2'), 'value3')
-            
+
             # Should allow clearing
             store.set('id1', 'key1', None)
             self.assertEqual(store.get('id1', 'key1'), None)
             self.assertEqual(store.get('id2', 'key1'), 'value2')
             self.assertEqual(store.get('id1', 'key2'), 'value3')
-            
+
             store.set('id2', 'key1', None)
             store.set('id1', 'key2', None)
             self.assertEqual(store.get('id1', 'key1'), None)
@@ -140,27 +140,27 @@ class FileStateStoreTest(hidden.AbstractStateStoreTest):
     """
 
     from toil.server.utils import AbstractStateStore
-    
+
     def setUp(self) -> None:
         super().setUp()
         self.state_store_dir = self._createTempDir()
 
     def get_state_store(self) -> AbstractStateStore:
         """
-        Make a state store to test, on a single fixed URL.
+        Make a state store to test, on a single fixed local path.
         """
-        
+
         from toil.server.utils import FileStateStore
-        
+
         return FileStateStore(self.state_store_dir)
-        
+
 class FileStateStoreURLTest(hidden.AbstractStateStoreTest):
     """
     Test file-based state storage using URLs instead of local paths.
     """
 
     from toil.server.utils import AbstractStateStore
-    
+
     def setUp(self) -> None:
         super().setUp()
         self.state_store_dir = 'file://' + self._createTempDir()
@@ -169,9 +169,9 @@ class FileStateStoreURLTest(hidden.AbstractStateStoreTest):
         """
         Make a state store to test, on a single fixed URL.
         """
-        
+
         from toil.server.utils import FileStateStore
-        
+
         return FileStateStore(self.state_store_dir)
 
 @needs_aws_s3
@@ -193,17 +193,17 @@ class AWSStateStoreTest(hidden.AbstractStateStoreTest):
     s3_resource: Optional[S3ServiceResource]
     bucket: Optional[Bucket]
     bucket_name: Optional[str]
-    
+
     @classmethod
     def setUpClass(cls) -> None:
         """
         Set up the class with a single pre-existing AWS bucket for all tests.
         """
         super().setUpClass()
-        
+
         cls.region = get_current_aws_region()
         cls.s3_resource = session.resource("s3", region_name=cls.region)
-        
+
         cls.bucket_name = f"toil-test-{uuid.uuid4()}"
         cls.bucket = create_s3_bucket(s3_resource, bucket_name, cls.region)
         cls.bucket.wait_until_exists()
@@ -213,33 +213,33 @@ class AWSStateStoreTest(hidden.AbstractStateStoreTest):
         if cls.bucket_name:
             delete_s3_bucket(cls.s3_resource, cls.bucket_name, cls.region)
         super().tearDownClass()
-        
+
     def get_state_store(self) -> AbstractStateStore:
         """
         Make a state store to test, on a single fixed URL.
         """
-        
+
         from toil.server.utils import S3StateStore
-        
+
         return S3StateStore('s3://' + self.bucket_name)
-        
-        
+
+
 @needs_server
 class AbstractToilWESServerTest(ToilTest):
     """
     Class for server tests that provides a self.app in testing mode.
     """
-    
+
     def __init__(self, *args, **kwargs):
         """
         Set up default settings for test classes based on this one.
         """
         super().__init__(*args, **kwargs)
-        
+
         # Default to the local testing task runner instead of Celery for when
         # we run workflows.
         self._server_args = ["--bypass_celery"]
-    
+
     def setUp(self) -> None:
         super().setUp()
         self.temp_dir = self._createTempDir()
@@ -247,10 +247,10 @@ class AbstractToilWESServerTest(ToilTest):
         from toil.server.app import create_app, parser_with_server_options
         parser = parser_with_server_options()
         args = parser.parse_args(self._server_args + ["--work_dir", os.path.join(self.temp_dir, "workflows")])
-        
+
         # Make the FlaskApp
         server_app = create_app(args)
-        
+
         # Fish out the actual Flask
         self.app: Flask = server_app.app
         self.app.testing = True
@@ -272,7 +272,7 @@ class AbstractToilWESServerTest(ToilTest):
 
     def tearDown(self) -> None:
         super().tearDown()
-        
+
     def _report_log(self, client: "FlaskClient", run_id: str) -> None:
         """
         Report the log for the given workflow run.
@@ -334,7 +334,7 @@ class AbstractToilWESServerTest(ToilTest):
                 raise RuntimeError("Workflow is in fail state " + state)
             logger.info("Waiting on workflow in state %s", state)
             time.sleep(2)
-            
+
 
 class ToilWESServerBenchTest(AbstractToilWESServerTest):
     """
@@ -376,7 +376,7 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
     """
     Tests of the WES server running workflows.
     """
-    
+
     def run_zip_workflow(self, zip_path: str, include_message: bool = True) -> None:
         """
         We have several zip file tests; this submits a zip file and makes sure it ran OK.
@@ -399,7 +399,7 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
             self._wait_for_success(client, run_id)
 
             # TODO: Make sure that the correct message was output!
-    
+
     def test_run_workflow_relative_url_no_attachments_fails(self) -> None:
         """Test run example CWL workflow from relative workflow URL but with no attachments."""
         with self.app.test_client() as client:
@@ -433,7 +433,7 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
 
             # Check status
             self._wait_for_success(client, run_id)
-            
+
     def test_run_workflow_https_url(self) -> None:
         """Test run example CWL workflow from the Internet."""
         with self.app.test_client() as client:
@@ -480,7 +480,7 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
             zip_file.writestr('MANIFEST.json', json.dumps({"mainWorkflowURL": "actual.cwl"}))
         self.run_zip_workflow(zip_path)
 
-        
+
     def test_run_workflow_inputs_zip(self) -> None:
         """Test run example CWL workflow from ZIP without manifest but with inputs."""
         workdir = self._createTempDir()
@@ -489,7 +489,7 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
             zip_file.writestr('main.cwl', self.example_cwl)
             zip_file.writestr('inputs.json', json.dumps({"message": "Hello, world!"}))
         self.run_zip_workflow(zip_path, include_message=False)
-            
+
     def test_run_workflow_manifest_and_inputs_zip(self) -> None:
         """Test run example CWL workflow from ZIP with manifest and inputs."""
         workdir = self._createTempDir()
@@ -499,10 +499,10 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
             zip_file.writestr('data.json', json.dumps({"message": "Hello, world!"}))
             zip_file.writestr('MANIFEST.json', json.dumps({"mainWorkflowURL": "actual.cwl", "inputFileURLs": ["data.json"]}))
         self.run_zip_workflow(zip_path, include_message=False)
-            
+
     # TODO: When we can check the output value, add tests for overriding
     # packaged inputs.
-        
+
 @needs_celery_broker
 class ToilWESServerCeleryWorkflowTest(ToilWESServerWorkflowTest):
     """
@@ -515,7 +515,7 @@ class ToilWESServerCeleryWorkflowTest(ToilWESServerWorkflowTest):
         """
         super().__init__(*args, **kwargs)
         self._server_args = []
-    
+
 
 
 if __name__ == "__main__":
