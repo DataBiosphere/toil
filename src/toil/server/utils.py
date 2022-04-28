@@ -341,8 +341,6 @@ if HAVE_S3:
             """
             Get the bucket and path in the bucket at which a key value belongs.
             """
-            # We don't compose a full URL here and then parse it because then ?
-            # and # wouldn't be able to be in keys.
             path = os.path.join(self._base_path, workflow_id, key)
             return self._bucket, path
 
