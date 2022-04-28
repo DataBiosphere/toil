@@ -267,17 +267,19 @@ class FileStateStore(AbstractStateStore):
         """
         Connect to the state store in the given local directory.
 
-        :param url: Local state store path. Must be a path, not a file: URL.
+        :param url: Local state store path. Interpreted as a URL, so can't
+                    contain ? or #.
         """
         super().__init__()
-        if url.startswith('file:') or url.startswith('s3://'):
+        parse = urlparse(url)
+        if parse.scheme.lower() not in ['file', '']:
             # We want to catch if we get the wrong argument.
             raise RuntimeError(f"{url} doesn't look like a local path")
-        if not os.path.exists(url):
+        if not os.path.exists(parse.path):
             # We need this directory to exist.
-            os.makedirs(url, exist_ok=True)
+            os.makedirs(parse.path, exist_ok=True)
         logger.debug("Connected to FileStateStore at %s", url)
-        self._base_dir = url
+        self._base_dir = parse.path
 
     def get(self, workflow_id: str, key: str) -> Optional[str]:
         """
@@ -314,18 +316,20 @@ if HAVE_S3:
             """
             Connect to the state store in the given S3 URL.
 
-            :param url: An S3 URL to a prefix.
+            :param url: An S3 URL to a prefix. Interpreted as a URL, so can't
+                        contain ? or #.
             """
 
             super().__init__()
 
-            self._scheme = 's3://'
+            parse = urlparse(url)
 
-            if not url.startswith(self._scheme):
+            if parse.scheme.lower() != 's3':
                 # We want to catch if we get the wrong argument.
                 raise RuntimeError(f"{url} doesn't look like an S3 URL")
-
-            self._base_url = url
+                
+            self._bucket = parse.netloc
+            self._base_path = parse.path
             self._client = client('s3', region_name=get_current_aws_region())
 
             logger.debug("Connected to S3StateStore at %s", url)
@@ -334,11 +338,10 @@ if HAVE_S3:
             """
             Get the bucket and path in the bucket at which a key value belongs.
             """
-            full_url = os.path.join(self._base_url, workflow_id, key)
-            parts = full_url[len(self._scheme):].split('/', 1)
-            bucket = parts[0]
-            path = parts[1]
-            return bucket, path
+            # We don't compose a full URL here and then parse it because then ?
+            # and # wouldn't be able to be in keys.
+            path = os.path.join(self._base_path, workflow_id, key)
+            return self._bucket, path
 
         def get(self, workflow_id: str, key: str) -> Optional[str]:
             """
@@ -379,12 +382,13 @@ def connect_to_state_store(url: str) -> AbstractStateStore:
     """
     Connect to a place to store state for workflows, defined by a URL.
 
-    URL may be a local file path or an S3 URL.
+    URL may be a local file path or URL or an S3 URL.
     """
 
     if url not in state_store_cache:
         # We need to actually make the state store
-        if url.startswith('s3://'):
+        parse = urlparse(url)
+        if parse.scheme.lower() == 's3':
             # It's an S3 URL
             if HAVE_S3:
                 # And we can use S3, so make the right implementation for S3.
@@ -394,9 +398,12 @@ def connect_to_state_store(url: str) -> AbstractStateStore:
                 raise RuntimeError(f'Cannot connect to {url} because Toil AWS '
                                    f'dependencies are not available. Did you '
                                    f'install Toil with the [aws] extra?')
-        else:
-            # If it's not anything else, treat it as a local path.
+        elif parse.scheme.lower() in ['file', '']:
+            # It's a file URL or path
             state_store_cache[url] = FileStateStore(url)
+        else:
+            raise RuntimeError(f'Cannot connect to {url} because we do not '
+                               f'implement its URL scheme')
 
     return state_store_cache[url]
 
