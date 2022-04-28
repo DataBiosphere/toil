@@ -153,6 +153,26 @@ class FileStateStoreTest(hidden.AbstractStateStoreTest):
         from toil.server.utils import FileStateStore
         
         return FileStateStore(self.state_store_dir)
+        
+class FileStateStoreURLTest(hidden.AbstractStateStoreTest):
+    """
+    Test file-based state storage using URLs instead of local paths.
+    """
+
+    from toil.server.utils import AbstractStateStore
+    
+    def setUp(self) -> None:
+        super().setUp()
+        self.state_store_dir = 'file://' + self._createTempDir()
+
+    def get_state_store(self) -> AbstractStateStore:
+        """
+        Make a state store to test, on a single fixed URL.
+        """
+        
+        from toil.server.utils import FileStateStore
+        
+        return FileStateStore(self.state_store_dir)
 
 @needs_aws_s3
 class AWSStateStoreTest(hidden.AbstractStateStoreTest):
