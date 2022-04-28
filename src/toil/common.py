@@ -28,6 +28,7 @@ from argparse import (
     Namespace,
     _ArgumentGroup,
 )
+from functools import lru_cache
 from types import TracebackType
 from typing import (
     IO,
@@ -765,7 +766,7 @@ def parseBool(val: str) -> bool:
     else:
         raise RuntimeError("Could not interpret \"%s\" as a boolean value" % val)
 
-_cached_node_id: Optional[str] = None
+@lru_cache
 def getNodeID() -> str:
     """
     Return unique ID of the current node (host). The resulting string will be convertable to a uuid.UUID.
@@ -778,10 +779,6 @@ def getNodeID() -> str:
     /proc/sys/kernel/random/boot_id will be tried prior to that. If uuid.getnode() is reached, it will be called twice,
     and exception raised if the values are not identical.
     """
-    global _cached_node_id
-    if _cached_node_id is not None:
-        return _cached_node_id
-
     for idSourceFile in ["/var/lib/dbus/machine-id", "/proc/sys/kernel/random/boot_id"]:
         if os.path.exists(idSourceFile):
             try:
@@ -825,7 +822,6 @@ def getNodeID() -> str:
         num_repeats = UUID_LENGTH // len(nodeID) + 1
         nodeID = nodeID * num_repeats
         nodeID = nodeID[:UUID_LENGTH]
-    _cached_node_id = nodeID
     return nodeID
 
 
