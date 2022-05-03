@@ -54,7 +54,7 @@ from toil.batchSystems.options import (add_all_batchsystem_options,
                                        set_batchsystem_config_defaults,
                                        set_batchsystem_options)
 from toil.fileStores import FileID
-from toil.lib.aws import zone_to_region
+from toil.lib.aws.util import zone_to_region
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.retry import retry

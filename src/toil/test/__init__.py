@@ -54,7 +54,7 @@ from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
 from toil.lib.iterables import concat
 from toil.lib.memoize import memoize
 from toil.lib.threading import ExceptionalThread, cpu_count
-from toil.lib.aws import running_on_ec2
+from toil.lib.aws.ec2 import running_on_ec2
 from toil.version import distVersion
 
 logger = logging.getLogger(__name__)
@@ -392,7 +392,7 @@ def needs_aws_batch(test_item: MT) -> MT:
     test_item = needs_env_var('TOIL_AWS_BATCH_QUEUE', 'an AWS Batch queue name or ARN')(test_item)
     test_item = needs_env_var('TOIL_AWS_BATCH_JOB_ROLE_ARN', 'an IAM role ARN that grants S3 and SDB access')(test_item)
     try:
-        from toil.lib.aws import get_current_aws_region
+        from toil.lib.aws.util import get_current_aws_region
         if get_current_aws_region() is None:
             # We don't know a region so we need one set.
             # TODO: It always won't be set if we get here.

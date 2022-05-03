@@ -180,7 +180,7 @@ class ErrorCondition:
                  error: Optional[Any] = None,
                  error_codes: List[int] = None,
                  boto_error_codes: List[str] = None,
-                 error_message_must_include: str = None,
+                 error_message_must_include: List[str] = None,
                  retry_on_this_condition: bool = True):
         """
         Initialize this ErrorCondition.
@@ -193,7 +193,7 @@ class ErrorCondition:
                                  (e.g. "BucketNotFound", "ClientError", etc.) that are
                                  specific to Boto 3 and must match to be retried
                                  (optional; defaults to not checking).
-        :param error_message_must_include: A string that must be in the error message
+        :param error_message_must_include: A list of strings, one of which must be in the error message
                to be retried (optional; defaults to not checking)
         :param retry_on_this_condition: This can be set to False to always error on
                                         this condition.
@@ -209,7 +209,7 @@ class ErrorCondition:
         self.error = error
         self.error_codes = error_codes
         self.boto_error_codes = boto_error_codes
-        self.error_message_must_include = error_message_must_include
+        self.error_message_must_include = error_message_must_include or []
         self.retry_on_this_condition = retry_on_this_condition
 
         if self.error_codes:
@@ -477,7 +477,11 @@ def error_meets_conditions(e, error_conditions):
     for error in error_conditions:
         if isinstance(e, error.error):
             if error.error_codes or error.boto_error_codes or error.error_message_must_include:
-                error_message_condition_met = meets_error_message_condition(e, error.error_message_must_include)
+                error_message_condition_met = False
+                for error_message_keyword in error.error_message_must_include:
+                    error_message_condition_met = meets_error_message_condition(e, error_message_keyword)
+                    if error_message_condition_met:
+                        break
                 error_code_condition_met = meets_error_code_condition(e, error.error_codes)
                 boto_error_code_condition_met = meets_boto_error_code_condition(e, error.boto_error_codes)
                 if error_message_condition_met and error_code_condition_met and boto_error_code_condition_met:

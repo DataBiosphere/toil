@@ -41,7 +41,7 @@ from toil.cwl.utils import (
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.threading import cpu_count
-from toil.lib.aws import zone_to_region
+from toil.lib.aws.util import zone_to_region
 from toil.provisioners import cluster_factory
 from toil.provisioners.aws import get_best_aws_zone
 from toil.test.provisioners.aws.awsProvisionerTest import AbstractAWSAutoscaleTest

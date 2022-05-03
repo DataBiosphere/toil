@@ -366,7 +366,7 @@ def generate_locator(
             from toil.jobStores.aws.jobStore import AWSJobStore  # noqa
 
             # Find a region
-            from toil.lib.aws import get_current_aws_region
+            from toil.lib.aws.util import get_current_aws_region
 
             region = get_current_aws_region()
 

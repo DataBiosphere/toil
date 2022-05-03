@@ -2,9 +2,10 @@
 Conversion utilities for mapping memory, disk, core declarations from strings to numbers and vice versa.
 Also contains general conversion functions
 """
-
 import math
+
 from typing import SupportsInt, Tuple, Union
+from toil.lib.units import KIB, MIB, GIB, TIB, PIB, EIB, KB, MB, GB, TB, PB, EB
 
 # See https://en.wikipedia.org/wiki/Binary_prefix
 BINARY_PREFIXES = ['ki', 'mi', 'gi', 'ti', 'pi', 'ei', 'kib', 'mib', 'gib', 'tib', 'pib', 'eib']
@@ -15,30 +16,30 @@ VALID_PREFIXES = BINARY_PREFIXES + DECIMAL_PREFIXES
 def bytes_in_unit(unit: str = 'B') -> int:
     num_bytes = 1
     if unit.lower() in ['ki', 'kib']:
-        num_bytes = 1 << 10
+        num_bytes = KIB
     if unit.lower() in ['mi', 'mib']:
-        num_bytes = 1 << 20
+        num_bytes = MIB
     if unit.lower() in ['gi', 'gib']:
-        num_bytes = 1 << 30
+        num_bytes = GIB
     if unit.lower() in ['ti', 'tib']:
-        num_bytes = 1 << 40
+        num_bytes = TIB
     if unit.lower() in ['pi', 'pib']:
-        num_bytes = 1 << 50
+        num_bytes = PIB
     if unit.lower() in ['ei', 'eib']:
-        num_bytes = 1 << 60
+        num_bytes = EIB
 
     if unit.lower() in ['k', 'kb']:
-        num_bytes = 1000
+        num_bytes = KB
     if unit.lower() in ['m', 'mb']:
-        num_bytes = 1000 ** 2
+        num_bytes = MB
     if unit.lower() in ['g', 'gb']:
-        num_bytes = 1000 ** 3
+        num_bytes = GB
     if unit.lower() in ['t', 'tb']:
-        num_bytes = 1000 ** 4
+        num_bytes = TB
     if unit.lower() in ['p', 'pb']:
-        num_bytes = 1000 ** 5
+        num_bytes = PB
     if unit.lower() in ['e', 'eb']:
-        num_bytes = 1000 ** 6
+        num_bytes = EB
     return num_bytes
 
 
@@ -82,7 +83,7 @@ def bytes2human(n: SupportsInt) -> str:
     elif n < 1:
         return '0 b'
 
-    power_level = math.floor(math.log(n, 1024))
+    power_level = math.floor(math.log(n, KB))
     units = ('b', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei')
 
     unit = units[power_level if power_level < len(units) else -1]

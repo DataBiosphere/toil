@@ -19,17 +19,18 @@ from operator import attrgetter
 from statistics import mean, stdev
 from typing import List, Optional, Any
 
-from toil.lib.aws import (get_aws_zone_from_environment,
-                          get_aws_zone_from_metadata,
-                          get_aws_zone_from_environment_region,
-                          get_aws_zone_from_boto,
-                          running_on_ec2,
-                          zone_to_region)
+from toil.lib.aws.ec2 import running_on_ec2
+from toil.lib.aws.util import (get_aws_zone_from_environment,
+                               get_aws_zone_from_metadata,
+                               get_aws_zone_from_environment_region,
+                               get_aws_zone_from_boto,
+                               zone_to_region)
 
 
 logger = logging.getLogger(__name__)
 
 ZoneTuple = namedtuple('ZoneTuple', ['name', 'price_deviation'])
+
 
 def get_aws_zone_from_spot_market(spotBid: Optional[float], nodeType: Optional[str],
                                   boto2_ec2: Optional["boto.connection.AWSAuthConnection"], zone_options: Optional[List[str]]) -> Optional[str]:

@@ -21,7 +21,10 @@ from toil.lib.misc import get_public_ip
 from toil.server.wes.toil_backend import ToilBackend
 from toil.server.wsgi_app import run_app
 from toil.version import version
-from toil.lib.aws import running_on_ec2, running_on_ecs, get_current_aws_region
+
+from toil.lib.aws.ec2 import running_on_ec2
+from toil.lib.aws.ecs import running_on_ecs
+from toil.lib.aws.util import get_current_aws_region
 
 logger = logging.getLogger(__name__)
 

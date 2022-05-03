@@ -146,13 +146,29 @@ def retryable_s3_errors(e: Exception) -> bool:
             or (isinstance(e, ClientError) and e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') in (404, 429, 500, 502, 503, 504)))
 
 
-def retry_s3(delays: Iterable[float] = DEFAULT_DELAYS, timeout: float = DEFAULT_TIMEOUT, predicate: Callable[[Exception], bool] = retryable_s3_errors) -> Iterator[ContextManager[None]]:
+def retry_s3(delays: Iterable[float] = (0, 1, 1, 4, 16, 64),
+             timeout: float = 300,
+             predicate: Callable[[Exception], bool] = retryable_s3_errors) -> Iterator[ContextManager[None]]:
     """
     Retry iterator of context managers specifically for S3 operations.
     """
     return old_retry(delays=delays, timeout=timeout, predicate=predicate)
 
-@retry(errors=[BotoServerError])
+
+@retry(
+    errors=[
+        ErrorCondition(
+            error=BotoServerError,
+            error_codes=[404, 429, 500, 502, 503, 504]),
+        ErrorCondition(
+            error=ClientError,
+            error_message_must_include='BucketNotEmpty'),
+        ErrorCondition(
+            error=ClientError,
+            error_codes=[404, 429, 500, 502, 503, 504]
+        ),
+    ]
+)
 def delete_s3_bucket(bucket: str, region: Optional[str], quiet: bool = True) -> None:
     """
     Delete the given S3 bucket.
