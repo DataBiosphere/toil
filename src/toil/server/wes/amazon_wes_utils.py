@@ -24,10 +24,9 @@ from os import path
 from urllib.parse import urlparse, ParseResult
 import zipfile
 from typing import Any, BinaryIO, Dict, List, Optional
-try:
+if sys.version_info >= (3, 8):
     from typing import TypedDict
-except ImportError:
-    # 3.7 doesn't have this built in yet.
+else:
     from typing_extensions import TypedDict
 from toil.server.wes.abstract_backend import MalformedRequestException as InvalidRequestError
 
