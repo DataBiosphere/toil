@@ -983,6 +983,13 @@ class Leader:
     def _write_kill_flag_file(self) -> None:
         """
         Write a file inside the job store that serves as a kill flag.
+
+        The initialized file contains the characters "NO". This should only be
+        changed when the user runs the "toil kill" command.
+
+        Removing this file or changing this file to a "YES" triggers a kill of
+        the leader process. The workers are expected to be cleaned up by the
+        leader.
         """
         with self.jobStore.write_shared_file_stream("_toil_kill_flag") as f:
             f.write("NO".encode('utf-8'))
