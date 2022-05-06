@@ -384,8 +384,6 @@ def run_wes_task(base_scratch_dir: str, state_store_url: str, workflow_id: str, 
     :param workflow_id: ID of the workflow run.
     """
     
-    print("Started task")
-    
     runner = ToilWorkflowRunner(base_scratch_dir, state_store_url, workflow_id,
                                 request=request, engine_options=engine_options)
 
@@ -468,7 +466,3 @@ class MultiprocessingTaskRunner(TaskRunner):
             _id_to_process[task_id].terminate()
         else:
             logger.error("Tried to kill nonexistent task %s", task_id)
-
-                            
-
-

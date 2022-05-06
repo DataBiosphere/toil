@@ -128,7 +128,7 @@ def safe_write_file(file: str, s: str) -> None:
     """
 
     if os.path.exists(file):
-        # Going to overwrite without anyone else being able to see ths
+        # Going to overwrite without anyone else being able to see this
         # intermediate state.
 
         # Open in read and update mode, so we don't modify the file before we acquire a lock
@@ -429,7 +429,7 @@ class WorkflowStateStore:
         """
         return self._state_store.get(self._workflow_id, key)
 
-    def set(self, key: str, value: Optional[str]) -> Optional[str]:
+    def set(self, key: str, value: Optional[str]) -> None:
         """
         Set the given item of workflow state.
         """
@@ -569,14 +569,14 @@ class WorkflowStateMachine:
 
     def send_executor_error(self) -> None:
         """
-        Send an executor_error message that would move from QUERUED,
+        Send an executor_error message that would move from QUEUED,
         INITIALIZING, or RUNNING to EXECUTOR_ERROR.
         """
         self._set_state("EXECUTOR_ERROR")
 
     def send_system_error(self) -> None:
         """
-        Send a system_error message that would move from QUERUED, INITIALIZING,
+        Send a system_error message that would move from QUEUED, INITIALIZING,
             or RUNNING to SYSTEM_ERROR.
         """
         self._set_state("SYSTEM_ERROR")

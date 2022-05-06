@@ -303,7 +303,10 @@ integration:
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
     - chmod 400 /root/.ssh/id_rsa
+    # Test integration with job stores
     - make test tests=src/toil/test/jobStores/jobStoreTest.py
+    # Test server and its integration with AWS
+    - make test tests=src/toil/test/server
 
 provisioner_integration:
   stage: integration

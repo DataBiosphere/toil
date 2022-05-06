@@ -181,13 +181,8 @@ class AWSStateStoreTest(hidden.AbstractStateStoreTest):
     """
 
     from toil.server.utils import AbstractStateStore
-
     from mypy_boto3_s3 import S3ServiceResource
     from mypy_boto3_s3.service_resource import Bucket
-    from toil.jobStores.aws.jobStore import AWSJobStore
-    from toil.lib.aws import get_current_aws_region
-    from toil.lib.aws.utils import create_s3_bucket, delete_s3_bucket
-    from toil.lib.aws import session
 
     region: Optional[str]
     s3_resource: Optional[S3ServiceResource]
@@ -201,15 +196,19 @@ class AWSStateStoreTest(hidden.AbstractStateStoreTest):
         """
         super().setUpClass()
 
+        from toil.lib.aws import get_current_aws_region, session
+        from toil.lib.aws.utils import create_s3_bucket
+
         cls.region = get_current_aws_region()
         cls.s3_resource = session.resource("s3", region_name=cls.region)
 
         cls.bucket_name = f"toil-test-{uuid.uuid4()}"
-        cls.bucket = create_s3_bucket(s3_resource, bucket_name, cls.region)
+        cls.bucket = create_s3_bucket(cls.s3_resource, cls.bucket_name, cls.region)
         cls.bucket.wait_until_exists()
 
     @classmethod
     def tearDownClass(cls) -> None:
+        from toil.lib.aws.utils import delete_s3_bucket
         if cls.bucket_name:
             delete_s3_bucket(cls.s3_resource, cls.bucket_name, cls.region)
         super().tearDownClass()

@@ -279,7 +279,7 @@ def main(argv):
                 if response.lower() in ('y', 'yes'):
                     print('\nOkay, now deleting...')
                     for bucket, region in buckets.items():
-                        s3_resource = session.client('s3', region_name=region)
+                        s3_resource = session.resource('s3', region_name=region)
                         delete_s3_bucket(s3_resource, bucket)
                     print('S3 Bucket Deletions Successful.')
 
