@@ -20,14 +20,16 @@
 
 import json
 import os
-from os import path
-from urllib.parse import urlparse, ParseResult
+import sys
 import zipfile
+from os import path
 from typing import Any, BinaryIO, Dict, List, Optional
 if sys.version_info >= (3, 8):
     from typing import TypedDict
 else:
     from typing_extensions import TypedDict
+from urllib.parse import urlparse, ParseResult
+
 from toil.server.wes.abstract_backend import MalformedRequestException as InvalidRequestError
 
 # These functions are licensed under the same Apache 2.0 license as Toil is,
