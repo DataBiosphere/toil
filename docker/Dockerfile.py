@@ -88,24 +88,22 @@ print(heredoc('''
     # make sure we don't use too new a version of setuptools (which can get out of sync with poetry and break things)
     ENV SETUPTOOLS_USE_DISTUTILS=stdlib
 
-    RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install apt-transport-https ca-certificates software-properties-common && apt-get clean && rm -rf /var/lib/apt/lists/*
+    RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install apt-transport-https ca-certificates software-properties-common curl && apt-get clean && rm -rf /var/lib/apt/lists/*
 
     RUN add-apt-repository -y ppa:deadsnakes/ppa
+
+    # Find a repo with a Mesos build.
+    # See https://rpm.aventer.biz/README.txt
+    RUN echo "deb https://rpm.aventer.biz/Ubuntu focal main" \
+        > /etc/apt/sources.list.d/mesos.list \
+        && curl https://www.aventer.biz/assets/support_aventer.asc | apt-key add -
 
     RUN apt-get -y update --fix-missing && \
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
         DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
+        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos ; mesos-agent --help >/dev/null ; fi && \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
-    
-    # Install a Mesos build from somewhere and test it.
-    # This is /ipfs/QmRCNmVVrWPPQiEw2PrFLmb8ps6oETQvtKv8dLVN8ZRwFz/mesos-1.11.x.deb
-    RUN if [ $TARGETARCH = amd64 ] ; then \
-        wget -q https://rpm.aventer.biz/Ubuntu/dists/focal/binary-amd64/mesos-1.11.x.deb && \
-        dpkg -i mesos-1.11.x.deb && \
-        rm mesos-1.11.x.deb && \
-        mesos-agent --help >/dev/null ; \
-        fi
     
     # Install a particular old Debian Sid Singularity from somewhere.
     ADD singularity-sources.tsv /etc/singularity/singularity-sources.tsv
