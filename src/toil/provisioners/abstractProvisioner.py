@@ -704,7 +704,7 @@ class AbstractProvisioner(ABC):
                 -v /:/rootfs \\
                 --name node-exporter \\
                 --restart always \\
-                quay.io/prometheus/node-exporter:v0.15.2 \\
+                quay.io/prometheus/node-exporter:v1.3.1 \\
                 --path.procfs /host/proc \\
                 --path.sysfs /host/sys \\
                 --collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
