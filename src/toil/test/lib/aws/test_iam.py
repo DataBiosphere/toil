@@ -54,3 +54,6 @@ class IAMTest(ToilTest):
             iam.check_policy_warnings(launch_tester)
         except RuntimeError:
             pass
+
+    def test_allowed_actions(self):
+        iam.get_allowed_actions()

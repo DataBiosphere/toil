@@ -4,8 +4,13 @@ import os
 import urllib.request
 from typing import Dict, Optional
 import boto3
+from toil.lib.aws import zone_to_region
+from toil.provisioners.aws import get_best_aws_zone
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from functools import lru_cache
+
+from toil.lib.aws.session import AWSConnectionManager
+
 
 from botocore.client import BaseClient
 
@@ -75,7 +80,11 @@ def test_dummy_perms():
 
 
 def get_allowed_actions():
-    iam = boto3.client('iam')
+    aws = AWSConnectionManager()
+
+    region = zone_to_region(get_best_aws_zone()) or "us-west-2"
+
+    iam = aws.client(region, 'iam')
 
     response = iam.get_instance_profile(InstanceProfileName="fakename_toil")
 
@@ -85,7 +94,7 @@ def get_allowed_actions():
 
     account_num = boto3.client('sts').get_caller_identity().get('Account')
 
-    allowed_actions = {}
+
 
     str_arn = f"arn:aws:iam::{account_num}:role/{role_name}"
 
