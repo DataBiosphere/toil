@@ -171,7 +171,7 @@ class Leader:
         # this is used limit the number of services issued to the batch system
         self.serviceJobsIssued = 0
         self.serviceJobsToBeIssued: List[str] = [] # A queue of IDs of service jobs that await scheduling
-        #Equivalents for service jobs to be run on preemptible nodes
+        # Equivalents for service jobs to be run on preemptible nodes
         self.preemptableServiceJobsIssued = 0
         self.preemptableServiceJobsToBeIssued: List[str] = []
 
@@ -243,7 +243,7 @@ class Leader:
 
         :return: The return value of the root job's run function.
         """
-        self._write_kill_flag_file()
+        self.jobStore.write_kill_flag(kill=False)
 
         with enlighten.get_manager(stream=sys.stderr, enabled=not self.config.disableProgress) as manager:
             # Set up the fancy console UI if desirable
@@ -762,7 +762,9 @@ class Leader:
                 self._reportWorkflowStatus()
 
             if self.kill_throttler.throttle(wait=False):
-                self._check_kill_flag_file()
+                if self.jobStore.read_kill_flag():
+                    logger.warning("Received kill via job store. Shutting down.")
+                    raise KeyboardInterrupt("killed via job store")
 
             # Make sure to keep elapsed time and ETA up to date even when no jobs come in
             self.progress_overall.update(incr=0)
@@ -979,36 +981,6 @@ class Leader:
         # TODO: make this update fast enough to put it in the progress
         # bar/status line.
         logger.info(self._getStatusHint())
-
-    def _write_kill_flag_file(self) -> None:
-        """
-        Write a file inside the job store that serves as a kill flag.
-
-        The initialized file contains the characters "NO". This should only be
-        changed when the user runs the "toil kill" command.
-
-        Removing this file or changing this file to a "YES" triggers a kill of
-        the leader process. The workers are expected to be cleaned up by the
-        leader.
-        """
-        with self.jobStore.write_shared_file_stream("_toil_kill_flag") as f:
-            f.write("NO".encode('utf-8'))
-
-    def _check_kill_flag_file(self) -> None:
-        """
-        Check the kill flag inside the job store to see if we have been killed.
-
-        :raises: KeyboardInterrupt if we have been killed.
-        """
-        try:
-            with self.jobStore.read_shared_file_stream("_toil_kill_flag") as f:
-                killed = f.read().decode() == "YES"
-        except NoSuchFileException:
-            # deletion of the flag can also signal kill.
-            killed = True
-        if killed:
-            logger.warning("Received kill via job store. Shutting down.")
-            raise KeyboardInterrupt("killed via job store")
 
     def removeJob(self, jobBatchSystemID: int) -> JobDescription:
         """

@@ -45,8 +45,7 @@ def main() -> None:
         pid_to_kill = int(f.read().strip())
 
     # Check if the leader is on the same machine
-    with job_store.read_shared_file_stream("leader_node_id.log") as f:
-        leader_node_id = f.read().decode('utf-8').strip()
+    leader_node_id = job_store.read_leader_node_id()
     local_leader = leader_node_id == getNodeID()
 
     if local_leader:
@@ -67,6 +66,5 @@ def main() -> None:
             sys.exit(1)
     else:
         # Flip the flag inside the job store to signal kill
-        with job_store.write_shared_file_stream("_toil_kill_flag") as f:
-            f.write("YES".encode('utf-8'))
+        job_store.write_kill_flag(kill=True)
         logger.info("Asked the leader to terminate.")

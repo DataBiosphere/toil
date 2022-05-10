@@ -928,8 +928,11 @@ class Toil(ContextManager["Toil"]):
         :return: The root job's return value
         """
         self._assertContextManagerUsed()
+
+        # Write shared files to the job store
         self.writePIDFile()
-        self.write_node_id_file()
+        self._jobStore.write_leader_node_id()
+
         if self.config.restart:
             raise ToilRestartException('A Toil workflow can only be started once. Use '
                                        'Toil.restart() to resume it.')
@@ -967,8 +970,11 @@ class Toil(ContextManager["Toil"]):
         """
         self._inRestart = True
         self._assertContextManagerUsed()
+
+        # Write shared files to the job store
         self.writePIDFile()
-        self.write_node_id_file()
+        self._jobStore.write_leader_node_id()
+
         if not self.config.restart:
             raise ToilRestartException('A Toil workflow must be initiated with Toil.start(), '
                                        'not restart().')
@@ -1330,8 +1336,6 @@ class Toil(ContextManager["Toil"]):
         # TODO: May interfere with workflow directory creation logging if it's the same directory.
         # Return it
         return subdir
-            
-                
 
     def _runMainLoop(self, rootJob: "JobDescription") -> Any:
         """
@@ -1374,13 +1378,6 @@ class Toil(ContextManager["Toil"]):
         """
         with self._jobStore.write_shared_file_stream('pid.log') as f:
             f.write(str(os.getpid()).encode('utf-8'))
-
-    def write_node_id_file(self) -> None:
-        """
-        Write the leader node id in the job store.
-        """
-        with self._jobStore.write_shared_file_stream('leader_node_id.log') as f:
-            f.write(getNodeID().encode('utf-8'))
 
 
 class ToilRestartException(Exception):

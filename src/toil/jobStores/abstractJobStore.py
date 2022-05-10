@@ -44,7 +44,7 @@ from uuid import uuid4
 from requests.exceptions import HTTPError
 from typing_extensions import Literal, overload
 
-from toil.common import Config, safeUnpickleFromStream
+from toil.common import Config, safeUnpickleFromStream, getNodeID
 from toil.fileStores import FileID
 from toil.job import (
     CheckpointJobDescription,
@@ -1448,6 +1448,50 @@ class AbstractJobStore(ABC):
         :rtype: int
         """
         raise NotImplementedError()
+
+    # A few shared files useful to Toil, but probably less useful to the users.
+
+    def write_leader_node_id(self) -> None:
+        """
+        Write the leader node id to the job store. This should only be called
+        by the leader.
+        """
+        with self.write_shared_file_stream("leader_node_id.log") as f:
+            f.write(getNodeID().encode('utf-8'))
+
+    def read_leader_node_id(self) -> str:
+        """
+        Read the leader node id stored in the job store.
+        """
+        with self.read_shared_file_stream("leader_node_id.log") as f:
+            return f.read().decode('utf-8').strip()
+
+    def write_kill_flag(self, kill: bool = False) -> None:
+        """
+        Write a file inside the job store that serves as a kill flag.
+
+        The initialized file contains the characters "NO". This should only be
+        changed when the user runs the "toil kill" command.
+
+        Removing this file or changing this file to a "YES" triggers a kill of
+        the leader process. The workers are expected to be cleaned up by the
+        leader.
+        """
+        with self.write_shared_file_stream("_toil_kill_flag") as f:
+            f.write(("YES" if kill else "NO").encode('utf-8'))
+
+    def read_kill_flag(self) -> bool:
+        """
+        Read the kill flag from the job store, and return True if the leader
+        has been killed. False otherwise.
+        """
+        try:
+            with self.read_shared_file_stream("_toil_kill_flag") as f:
+                killed = f.read().decode() == "YES"
+        except NoSuchFileException:
+            # Deletion of the flag can also signal kill.
+            killed = True
+        return killed
 
     # Helper methods for subclasses
 
