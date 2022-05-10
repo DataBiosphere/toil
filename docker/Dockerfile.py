@@ -28,6 +28,7 @@ pip = f'{python} -m pip'
 dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras with PyNACL
                          python,
                          f'{python}-dev',
+                         'python3.7-distutils' if python == 'python3.7' else '',
                          'python3.8-distutils' if python == 'python3.8' else '',
                          'python3.9-distutils' if python == 'python3.9' else '',
                          # 'python3.9-venv' if python == 'python3.9' else '',
