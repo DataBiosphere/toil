@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import os
 import pickle
 import re
 import shutil
@@ -1451,6 +1452,26 @@ class AbstractJobStore(ABC):
 
     # A few shared files useful to Toil, but probably less useful to the users.
 
+    def write_leader_pid_file(self) -> None:
+        """
+        Write the pid of this process to a file in the job store.
+
+        Overwriting the current contents of pid.log is a feature, not a bug of
+        this method. Other methods will rely on always having the most current
+        pid available. So far there is no reason to store any old pids.
+        """
+        with self.write_shared_file_stream('pid.log') as f:
+            f.write(str(os.getpid()).encode('utf-8'))
+
+    def read_leader_pid_file(self) -> int:
+        """
+        Read the pid of the leader process to a file in the job store.
+
+        :raise NoSuchFileException: If the PID file doesn't exist.
+        """
+        with self.read_shared_file_stream('pid.log') as f:
+            return int(f.read().strip())
+
     def write_leader_node_id(self) -> None:
         """
         Write the leader node id to the job store. This should only be called
@@ -1462,6 +1483,8 @@ class AbstractJobStore(ABC):
     def read_leader_node_id(self) -> str:
         """
         Read the leader node id stored in the job store.
+
+        :raise NoSuchFileException: If the node ID file doesn't exist.
         """
         with self.read_shared_file_stream("leader_node_id.log") as f:
             return f.read().decode('utf-8').strip()
@@ -1473,9 +1496,8 @@ class AbstractJobStore(ABC):
         The initialized file contains the characters "NO". This should only be
         changed when the user runs the "toil kill" command.
 
-        Removing this file or changing this file to a "YES" triggers a kill of
-        the leader process. The workers are expected to be cleaned up by the
-        leader.
+        Changing this file to a "YES" triggers a kill of the leader process. The
+        workers are expected to be cleaned up by the leader.
         """
         with self.write_shared_file_stream("_toil_kill_flag") as f:
             f.write(("YES" if kill else "NO").encode('utf-8'))
@@ -1489,8 +1511,8 @@ class AbstractJobStore(ABC):
             with self.read_shared_file_stream("_toil_kill_flag") as f:
                 killed = f.read().decode() == "YES"
         except NoSuchFileException:
-            # Deletion of the flag can also signal kill.
-            killed = True
+            # The kill flag file doesn't exist yet.
+            killed = False
         return killed
 
     # Helper methods for subclasses

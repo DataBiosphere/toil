@@ -930,7 +930,7 @@ class Toil(ContextManager["Toil"]):
         self._assertContextManagerUsed()
 
         # Write shared files to the job store
-        self.writePIDFile()
+        self._jobStore.write_leader_pid_file()
         self._jobStore.write_leader_node_id()
 
         if self.config.restart:
@@ -972,7 +972,7 @@ class Toil(ContextManager["Toil"]):
         self._assertContextManagerUsed()
 
         # Write shared files to the job store
-        self.writePIDFile()
+        self._jobStore.write_leader_pid_file()
         self._jobStore.write_leader_node_id()
 
         if not self.config.restart:
@@ -1367,17 +1367,6 @@ class Toil(ContextManager["Toil"]):
     def _assertContextManagerUsed(self) -> None:
         if not self._inContextManager:
             raise ToilContextManagerException()
-
-    def writePIDFile(self) -> None:
-        """
-        Write a the pid of this process to a file in the jobstore.
-
-        Overwriting the current contents of pid.log is a feature, not a bug of this method.
-        Other methods will rely on always having the most current pid available.
-        So far there is no reason to store any old pids.
-        """
-        with self._jobStore.write_shared_file_stream('pid.log') as f:
-            f.write(str(os.getpid()).encode('utf-8'))
 
 
 class ToilRestartException(Exception):

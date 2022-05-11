@@ -40,9 +40,12 @@ def main() -> None:
         logger.error("The job store %s does not exist.", config.jobStore)
         return
 
+    # NOTE: the kill will not work if the leader is still initializing at this
+    #  point. Changes to the kill flag will be ignored until the leader sets the
+    #  kill flag.
+
     # Get the leader PID
-    with job_store.read_shared_file_stream("pid.log") as f:
-        pid_to_kill = int(f.read().strip())
+    pid_to_kill = job_store.read_leader_pid_file()
 
     # Check if the leader is on the same machine
     leader_node_id = job_store.read_leader_node_id()

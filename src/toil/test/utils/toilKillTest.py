@@ -64,11 +64,14 @@ class ToilKillTest(ToilTest):
         while True:
             try:
                 job_store = Toil.resumeJobStore(self.job_store)
-                with job_store.read_shared_file_stream("pid.log") as _:
-                    pass
-                break
+                job_store.read_leader_pid_file()
+                # pid file exists, now wait for the kill flag to exist
+                if not job_store.read_kill_flag():
+                    # kill flag exists to be deleted to kill the leader
+                    break
             except (NoSuchJobStoreException, NoSuchFileException):
-                time.sleep(2)
+                pass
+            time.sleep(2)
 
         # run toil kill
         subprocess.check_call(kill_cmd)

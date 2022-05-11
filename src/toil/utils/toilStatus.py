@@ -174,14 +174,13 @@ class ToilStatus:
             return 'QUEUED'
 
         try:
-            with jobstore.read_shared_file_stream('pid.log') as pidFile:
-                pid = int(pidFile.read())
-                try:
-                    os.kill(pid, 0)  # Does not kill process when 0 is passed.
-                except OSError:  # Process not found, must be done.
-                    return 'COMPLETED'
-                else:
-                    return 'RUNNING'
+            pid = jobstore.read_leader_pid_file()
+            try:
+                os.kill(pid, 0)  # Does not kill process when 0 is passed.
+            except OSError:  # Process not found, must be done.
+                return 'COMPLETED'
+            else:
+                return 'RUNNING'
         except NoSuchFileException:
             pass
         return 'QUEUED'
