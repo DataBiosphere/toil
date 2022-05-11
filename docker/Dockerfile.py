@@ -93,29 +93,29 @@ print(heredoc('''
 
     # Try to avoid "Failed to fetch ...  Undetermined Error" from apt
     # See <https://stackoverflow.com/a/66523384>
-    # Note that Acquire::BrokenProxy has done nothing since 2006.
-    RUN printf 'Acquire::http::Pipeline-Depth "0";\\nAcquire::http::No-Cache=True;\\n' >/etc/apt/apt.conf.d/99fixbadproxy
+    RUN printf 'Acquire::http::Pipeline-Depth "0";\\nAcquire::http::No-Cache=True;\\nAcquire::BrokenProxy=true;\\n' >/etc/apt/apt.conf.d/99fixbadproxy
 
     RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install apt-transport-https ca-certificates software-properties-common curl && apt-get clean && rm -rf /var/lib/apt/lists/*
 
     RUN add-apt-repository -y ppa:deadsnakes/ppa
 
+    # Find a repo with a Mesos build.
+    # See https://rpm.aventer.biz/README.txt
+    # A working snapshot is https://ipfs.io/ipfs/QmfTy9sXhHsgyWwosCJDfYR4fChTosA8HhoaMgmeJ5LSmS/
+    # As archived with:
+    # mkdir mesos-repo && cd mesos-repo
+    # wget --recursive --restrict-file-names=windows -k --convert-links --no-parent --page-requisites https://rpm.aventer.biz/Ubuntu/ https://www.aventer.biz/assets/support_aventer.asc https://rpm.aventer.biz/README.txt
+    # ipfs add -r .
+    RUN echo "deb https://rpm.aventer.biz/Ubuntu focal main" \
+        > /etc/apt/sources.list.d/mesos.list \
+        && curl https://www.aventer.biz/assets/support_aventer.asc | apt-key add -
+
     RUN apt-get -y update --fix-missing && \
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
         DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
+        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos ; mesos-agent --help >/dev/null ; fi && \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
-    
-    # Install a particular old Mesos 1.11 from somewhere.
-    # We ought to be able to follow https://rpm.aventer.biz/README.txt, but the
-    # Mesos installed from there as of 5/11/22 kills our tasks as soon as they
-    # start. So we use an old snapshotted version until we can debug that.
-    RUN if [ $TARGETARCH = amd64 ] ; then \
-        wget -q "https://ipfs.io/ipfs/QmRCNmVVrWPPQiEw2PrFLmb8ps6oETQvtKv8dLVN8ZRwFz/mesos-1.11.x.deb" && \
-        dpkg -i mesos-1.11.x.deb && \
-        rm mesos-1.11.x.deb && \
-        mesos-agent --help >/dev/null ; \
-        fi
     
     # Install a particular old Debian Sid Singularity from somewhere.
     ADD singularity-sources.tsv /etc/singularity/singularity-sources.tsv
