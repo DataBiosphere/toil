@@ -153,15 +153,17 @@ def retry_s3(delays: Iterable[float] = DEFAULT_DELAYS, timeout: float = DEFAULT_
     return old_retry(delays=delays, timeout=timeout, predicate=predicate)
 
 @retry(errors=[BotoServerError])
-def delete_s3_bucket(bucket: str, region: Optional[str], quiet: bool = True) -> None:
+def delete_s3_bucket(
+    s3_resource: "S3ServiceResource",
+    bucket: str,
+    quiet: bool = True
+) -> None:
     """
     Delete the given S3 bucket.
     """
-    printq(f'Deleting s3 bucket in region "{region}": {bucket}', quiet)
-    s3_client = cast(S3Client, session.client('s3', region_name=region))
-    s3_resource = cast(S3ServiceResource, session.resource('s3', region_name=region))
+    printq(f'Deleting s3 bucket: {bucket}', quiet)
 
-    paginator = s3_client.get_paginator('list_object_versions')
+    paginator = s3_resource.meta.client.get_paginator('list_object_versions')
     try:
         for response in paginator.paginate(Bucket=bucket):
             # Versions and delete markers can both go in here to be deleted.
@@ -173,15 +175,15 @@ def delete_s3_bucket(bucket: str, region: Optional[str], quiet: bool = True) -> 
                                               cast(List[Dict[str, Any]], response.get('DeleteMarkers', []))
             for entry in to_delete:
                 printq(f"    Deleting {entry['Key']} version {entry['VersionId']}", quiet)
-                s3_client.delete_object(Bucket=bucket, Key=entry['Key'], VersionId=entry['VersionId'])
+                s3_resource.meta.client.delete_object(Bucket=bucket, Key=entry['Key'], VersionId=entry['VersionId'])
         s3_resource.Bucket(bucket).delete()
         printq(f'\n * Deleted s3 bucket successfully: {bucket}\n\n', quiet)
-    except s3_client.exceptions.NoSuchBucket:
+    except s3_resource.meta.client.exceptions.NoSuchBucket:
         printq(f'\n * S3 bucket no longer exists: {bucket}\n\n', quiet)
 
 
 def create_s3_bucket(
-    s3_session: "S3ServiceResource",
+    s3_resource: "S3ServiceResource",
     bucket_name: str,
     region: Union["BucketLocationConstraintType", Literal["us-east-1"]],
 ) -> "Bucket":
@@ -195,9 +197,9 @@ def create_s3_bucket(
     """
     logger.debug("Creating bucket '%s' in region %s.", bucket_name, region)
     if region == "us-east-1":  # see https://github.com/boto/boto3/issues/125
-        bucket = s3_session.create_bucket(Bucket=bucket_name)
+        bucket = s3_resource.create_bucket(Bucket=bucket_name)
     else:
-        bucket = s3_session.create_bucket(
+        bucket = s3_resource.create_bucket(
             Bucket=bucket_name,
             CreateBucketConfiguration={"LocationConstraint": region},
         )

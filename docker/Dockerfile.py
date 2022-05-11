@@ -28,6 +28,7 @@ pip = f'{python} -m pip'
 dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras with PyNACL
                          python,
                          f'{python}-dev',
+                         'python3.7-distutils' if python == 'python3.7' else '',
                          'python3.8-distutils' if python == 'python3.8' else '',
                          'python3.9-distutils' if python == 'python3.9' else '',
                          # 'python3.9-venv' if python == 'python3.9' else '',
@@ -85,32 +86,42 @@ print(heredoc('''
 
     ARG TARGETARCH
 
+    RUN if [ -z "$TARGETARCH" ] ; then echo "Specify a TARGETARCH argument to build this container"; exit 1; fi
+
     # make sure we don't use too new a version of setuptools (which can get out of sync with poetry and break things)
     ENV SETUPTOOLS_USE_DISTUTILS=stdlib
 
-    RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install apt-transport-https ca-certificates software-properties-common && apt-get clean && rm -rf /var/lib/apt/lists/*
+    # Try to avoid "Failed to fetch ...  Undetermined Error" from apt
+    # See <https://stackoverflow.com/a/66523384>
+    RUN printf 'Acquire::http::Pipeline-Depth "0";\\nAcquire::http::No-Cache=True;\\nAcquire::BrokenProxy=true;\\n' >/etc/apt/apt.conf.d/99fixbadproxy
+
+    RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install apt-transport-https ca-certificates software-properties-common curl && apt-get clean && rm -rf /var/lib/apt/lists/*
 
     RUN add-apt-repository -y ppa:deadsnakes/ppa
+
+    # Find a repo with a Mesos build.
+    # See https://rpm.aventer.biz/README.txt
+    # A working snapshot is https://ipfs.io/ipfs/QmfTy9sXhHsgyWwosCJDfYR4fChTosA8HhoaMgmeJ5LSmS/
+    # As archived with:
+    # mkdir mesos-repo && cd mesos-repo
+    # wget --recursive --restrict-file-names=windows -k --convert-links --no-parent --page-requisites https://rpm.aventer.biz/Ubuntu/ https://www.aventer.biz/assets/support_aventer.asc https://rpm.aventer.biz/README.txt
+    # ipfs add -r .
+    RUN echo "deb https://rpm.aventer.biz/Ubuntu focal main" \
+        > /etc/apt/sources.list.d/mesos.list \
+        && curl https://www.aventer.biz/assets/support_aventer.asc | apt-key add -
 
     RUN apt-get -y update --fix-missing && \
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
         DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
+        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos ; mesos-agent --help >/dev/null ; fi && \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
-    
-    # Install a Mesos build from somewhere and test it.
-    # This is /ipfs/QmRCNmVVrWPPQiEw2PrFLmb8ps6oETQvtKv8dLVN8ZRwFz/mesos-1.11.x.deb
-    RUN if [ $TARGETARCH = amd64 ] ; then \
-        wget -q https://rpm.aventer.biz/Ubuntu/dists/focal/binary-amd64/mesos-1.11.x.deb && \
-        dpkg -i mesos-1.11.x.deb && \
-        rm mesos-1.11.x.deb && \
-        mesos-agent --help >/dev/null ; \
-        fi
     
     # Install a particular old Debian Sid Singularity from somewhere.
     ADD singularity-sources.tsv /etc/singularity/singularity-sources.tsv
     RUN wget -q "$(cat /etc/singularity/singularity-sources.tsv | grep "^$TARGETARCH" | cut -f3)" && \
         dpkg -i singularity-container_3*.deb && \
+        rm singularity-container_3*.deb && \
         sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf && \
         mkdir -p /usr/local/libexec/toil && \
         mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real \
