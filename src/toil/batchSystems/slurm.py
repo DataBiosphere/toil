@@ -281,6 +281,10 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
                 sbatch_line.append('--export=' + ','.join(argList))
 
+            parallel_env = os.getenv('TOIL_SLURM_PE')
+            if cpu and cpu > 1 and parallel_env:
+                sbatch_line.append(f'--partition={parallel_env}')
+
             if mem is not None and self.boss.config.allocate_mem:
                 # memory passed in is in bytes, but slurm expects megabytes
                 sbatch_line.append(f'--mem={math.ceil(mem / 2 ** 20)}')
