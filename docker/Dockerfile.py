@@ -99,23 +99,28 @@ print(heredoc('''
 
     RUN add-apt-repository -y ppa:deadsnakes/ppa
 
-    # Find a repo with a Mesos build.
-    # See https://rpm.aventer.biz/README.txt
-    RUN echo "deb https://rpm.aventer.biz/Ubuntu focal main" \
-        > /etc/apt/sources.list.d/mesos.list \
-        && curl https://www.aventer.biz/assets/support_aventer.asc | apt-key add -
-
     RUN apt-get -y update --fix-missing && \
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
         DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
-        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos ; mesos-agent --help >/dev/null ; fi && \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
+    
+    # Install a particular old Mesos 1.11 from somewhere.
+    # We ought to be able to follow https://rpm.aventer.biz/README.txt, but the
+    # Mesos installed from there as of 5/11/22 kills our tasks as soon as they
+    # start. So we use an old snapshotted version until we can debug that.
+    RUN if [ $TARGETARCH = amd64 ] ; then \
+        wget -q "https://ipfs.io/ipfs/QmRCNmVVrWPPQiEw2PrFLmb8ps6oETQvtKv8dLVN8ZRwFz/mesos-1.11.x.deb" && \
+        dpkg -i mesos-1.11.x.deb && \
+        rm mesos-1.11.x.deb && \
+        mesos-agent --help >/dev/null ; \
+        fi
     
     # Install a particular old Debian Sid Singularity from somewhere.
     ADD singularity-sources.tsv /etc/singularity/singularity-sources.tsv
     RUN wget -q "$(cat /etc/singularity/singularity-sources.tsv | grep "^$TARGETARCH" | cut -f3)" && \
         dpkg -i singularity-container_3*.deb && \
+        rm singularity-container_3*.deb && \
         sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf && \
         mkdir -p /usr/local/libexec/toil && \
         mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real \
