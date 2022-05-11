@@ -296,10 +296,9 @@ class AbstractJobStore(ABC):
         with self.read_shared_file_stream('rootJobReturnValue') as fH:
             return safeUnpickleFromStream(fH)
 
-    # due to https://github.com/python/mypy/issues/1362
-    @property  # type: ignore
+    @staticmethod
     @memoize
-    def _jobStoreClasses(self) -> List['AbstractJobStore']:
+    def _get_job_store_classes() -> List['AbstractJobStore']:
         """
         A list of concrete AbstractJobStore implementations whose dependencies are installed.
 
@@ -323,8 +322,9 @@ class AbstractJobStore(ABC):
                 jobStoreClass = getattr(module, className)
                 jobStoreClasses.append(jobStoreClass)
         return jobStoreClasses
-
-    def _findJobStoreForUrl(self, url: ParseResult, export: bool = False) -> 'AbstractJobStore':
+    
+    @classmethod
+    def _findJobStoreForUrl(cls, url: ParseResult, export: bool = False) -> 'AbstractJobStore':
         """
         Returns the AbstractJobStore subclass that supports the given URL.
 
@@ -334,9 +334,9 @@ class AbstractJobStore(ABC):
 
         :rtype: toil.jobStore.AbstractJobStore
         """
-        for jobStoreCls in self._jobStoreClasses:
-            if jobStoreCls._supports_url(url, export):
-                return jobStoreCls
+        for implementation in cls._get_job_store_classes():
+            if implementation._supports_url(url, export):
+                return implementation
         raise RuntimeError("No job store implementation supports %sporting for URL '%s'" %
                            ('ex' if export else 'im', url.geturl()))
 
@@ -483,6 +483,39 @@ class AbstractJobStore(ABC):
             if getattr(jobStoreFileID, 'executable', False):
                 executable = jobStoreFileID.executable
             otherCls._write_to_url(readable, url, executable)
+            
+    @classmethod
+    def list_url(cls, src_uri: str) -> List[str]:
+        """
+        List the directory at the given URL. Returned path components can be
+        joined with '/' onto the passed URL to form new URLs. Those that end in
+        '/' correspond to directories.
+        
+        Currently supported schemes are:
+
+            - 's3' for objects in Amazon S3
+                e.g. s3://bucket/prefix/
+
+            - 'file' for local files
+                e.g. file:///local/dir/path/
+
+        :param str src_uri: URL that points to a directory or prefix in the storage mechanism of a
+                supported URL scheme e.g. a prefix in an AWS s3 bucket.
+
+        :return: A list of URL components in the given directory.
+        """
+        parseResult = urlparse(src_uri)
+        otherCls = cls._findJobStoreForUrl(parseResult)
+        return otherCls._list_url(parseResult)
+    
+    @classmethod
+    def read_from_url(cls, src_uri: str, writable: BytesIO) -> None:
+        """
+        Read the given URL and write its content into the given writable stream.
+        """
+        parseResult = urlparse(src_uri)
+        otherCls = cls._findJobStoreForUrl(parseResult)
+        return otherCls._read_from_url(parseResult, writable)
 
     @classmethod
     @deprecated(new_function_name='get_size')
@@ -534,6 +567,25 @@ class AbstractJobStore(ABC):
                mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
 
         :param bool executable: determines if the file has executable permissions
+        """
+        raise NotImplementedError()
+        
+    @classmethod
+    @abstractmethod
+    def _list_url(cls, url: ParseResult) -> List[str]:
+        """
+        List the contents of the given URL, which must end in '/'
+        
+        Returns a list of URL components. Those that end in '/' are meant to be
+        directories, while those that do not are meant to be files.
+
+        Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
+
+        :param ParseResult url: URL that points to a directory or prefix in the
+        storage mechanism of a supported URL scheme e.g. a prefix in an AWS s3
+        bucket.
+
+        :return: The children of the given URL.
         """
         raise NotImplementedError()
 

@@ -20,6 +20,8 @@ import uuid
 from contextlib import contextmanager
 from functools import wraps
 from io import BytesIO
+from urllib.parse import ParseResult
+from typing import List
 
 from google.api_core.exceptions import (GoogleAPICallError,
                                         InternalServerError,
@@ -375,6 +377,10 @@ class GoogleJobStore(AbstractJobStore):
     def _write_to_url(cls, readable: bytes, url: str, executable: bool = False) -> None:
         blob = cls._get_blob_from_url(url)
         blob.upload_from_file(readable)
+        
+    @classmethod
+    def _list_url(cls, url: ParseResult) -> List[str]:
+        raise NotImplementedError("Listing files in Google buckets is not yet implemented!")
 
     @google_retry
     def write_logs(self, msg: bytes) -> None:

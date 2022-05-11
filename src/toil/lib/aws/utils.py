@@ -270,3 +270,38 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> Obj
         if not objExists:
             obj.put()  # write an empty file
         return obj
+        
+
+@retry(errors=[BotoServerError])
+def list_objects_for_url(url: ParseResult) -> List[str]:
+        """
+        Extracts a key (object) from a given parsed s3:// URL.
+
+        :param bool existing: If True, key is expected to exist. If False, key is expected not to
+               exists and it will be created. If None, the key will be created if it doesn't exist.
+        """
+        keyName = url.path[1:]
+        bucketName = url.netloc
+        
+        # Decide if we need to override Boto's built-in URL here.
+        # TODO: Decuplicate with get_object_for_url, or push down into session module
+        endpoint_url: Optional[str] = None
+        host = os.environ.get('TOIL_S3_HOST', None)
+        port = os.environ.get('TOIL_S3_PORT', None)
+        protocol = 'https'
+        if os.environ.get('TOIL_S3_USE_SSL', True) == 'False':
+            protocol = 'http'
+        if host:
+            endpoint_url = f'{protocol}://{host}' + f':{port}' if port else ''
+            
+        client = cast(S3Client, session.client('s3', endpoint_url=endpoint_url))
+        
+        listing = []
+        
+        paginator = client.get_paginator('list_objects_v2')
+        result = paginator.paginate(Bucket=bucketName, Prefix=keyName, Delimiter='/')
+        for prefix in result.search('CommonPrefixes'):
+            listing.append(prefix.get('Prefix')[len(keyName):])
+        
+        return listing
+        

@@ -26,7 +26,7 @@ import urllib.request
 import uuid
 from contextlib import contextmanager
 from io import BytesIO
-from typing import Optional
+from typing import Optional, List
 
 import boto.s3.connection
 import boto.sdb
@@ -59,6 +59,7 @@ from toil.lib.aws.utils import (
     create_s3_bucket,
     get_bucket_region,
     get_object_for_url,
+    list_objects_for_url,
     retry_s3,
     retryable_s3_errors
 )
@@ -479,6 +480,10 @@ class AWSJobStore(AbstractJobStore):
                    bucketName=dstObj.bucket_name,
                    fileID=dstObj.key,
                    partSize=5 * 1000 * 1000)
+    
+    @classmethod
+    def _list_url(cls, url: urllib.parse.ParseResult) -> List[str]:
+        return list_objects_for_url(url)
 
     @classmethod
     def _supports_url(cls, url, export=False):

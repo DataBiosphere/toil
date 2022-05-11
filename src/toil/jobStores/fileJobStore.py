@@ -23,8 +23,8 @@ import tempfile
 import time
 import uuid
 from contextlib import contextmanager
-from typing import BinaryIO, Iterator, Optional, TextIO, Union, overload
-
+from urllib.parse import ParseResult
+from typing import BinaryIO, Iterator, List, Optional, TextIO, Union, overload
 from typing_extensions import Literal
 
 from toil.fileStores import FileID
@@ -364,6 +364,12 @@ class FileJobStore(AbstractJobStore):
                        cls._extract_path_from_url(url),
                        length=cls.BUFFER_SIZE,
                        executable=executable)
+                       
+    @classmethod
+    def _list_url(cls, url: ParseResult) -> List[str]:
+        path = cls._extract_path_from_url(url)
+        # Return directories with trailing skashes and files without
+        return [((p + '/') if os.path.isdir(os.path.join(path, p)) else p) for p in os.listdir(path)]
 
     @staticmethod
     def _extract_path_from_url(url):

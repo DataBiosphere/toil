@@ -52,7 +52,7 @@ from typing import (
     Union,
     cast,
 )
-from urllib import parse as urlparse
+from urllib.parse import urlparse, ParseResult
 
 import cwltool.builder
 import cwltool.command_line_tool
@@ -110,7 +110,7 @@ from toil.cwl.utils import (
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job, Promise
-from toil.jobStores.abstractJobStore import NoSuchFileException
+from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchFileException
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
 from toil.lib.threading import ExceptionalThread
@@ -1015,9 +1015,11 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
     Normal file paths will be resolved relative to basedir, but 'toilfile:' and
     'toildir:' URIs will be fulfilled from the Toil file store.
+    
+    Also supports URLs supported by Toil job store implementations. 
     """
 
-    def __init__(self, basedir: str, file_store: AbstractFileStore) -> None:
+    def __init__(self, basedir: str, file_store: Optional[AbstractFileStore]) -> None:
         """Create a FsAccess object for the given Toil Filestore and basedir."""
         self.file_store = file_store
 
@@ -1025,6 +1027,8 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         # don't constantly redownload them.
         # Assumes nobody will touch our files via realpath, or that if they do
         # they know what will happen.
+        # Also maps files and directories from external URLs to downloaded
+        # locations.
         self.dir_to_download: Dict[str, str] = {}
 
         super().__init__(basedir)
@@ -1043,8 +1047,14 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         # cwltool.stdfsaccess.StdFsAccess, (among other things) so this should
         # not error on missing files.
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43  # noqa B950
-        if path.startswith("toilfile:"):
+        
+        parse = urlparse(path)
+        if parse.scheme == "toilfile":
             # Is a Toil file
+            
+            if self.file_store is None:
+                raise RuntimeError("URL requires a file store:" + path)
+            
             destination = self.file_store.readGlobalFile(
                 FileID.unpack(path[len("toilfile:") :]), symlink=True
             )
@@ -1053,8 +1063,11 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
                 raise RuntimeError(
                     f"{destination} does not exist after filestore read."
                 )
-        elif path.startswith("toildir:"):
+        elif parse.scheme == "toildir":
             # Is a directory or relative to it
+
+            if self.file_store is None:
+                raise RuntimeError("URL requires a file store:" + path)
 
             # We will download the whole directory and then look inside it
 
@@ -1086,9 +1099,44 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             else:
                 # Navigate to the right subdirectory
                 destination = self.dir_to_download[cache_key] + "/" + subpath
-        else:
-            # This is just a local file
+        elif parse.scheme == 'file':
+            # This is a File URL
+            destination = parse.path
+        elif parse.scheme == '':
+            # This is just a local file and not a URL
             destination = path
+        else:
+            # The destination is something else.
+            if parse.path.endswith('/'):
+                # Treat this as a directory
+                if path not in self.dir_to_download:
+                    logger.debug("ToilFsAccess fetching directory %s from a JobStore", path)
+                    dest_dir = tempfile.mkdtemp()
+                    # Recursively fetch all the files in the directory.
+                    def download_to(url, dest):
+                        if url.endswith('/'):
+                            os.mkdir(dest)
+                            for part in AbstractJobStore.list_url(url):
+                                download_to(url + part, os.path.join(dest, part))
+                        else:
+                            AbstractJobStore.read_from_url(url, open(dest, 'wb'))
+                    download_to(path, dest_dir)
+                    self.dir_to_download[path] = dest_dir
+                
+                destination = self.dir_to_download[path]
+            else:
+                # Treat this as a file.
+                if path not in self.dir_to_download:
+                    logger.debug("ToilFsAccess fetching file %s from a JobStore", path)
+                    # Try to grab it with a jobstore implementation, and save it
+                    # somewhere arbitrary.
+                    dest_file = tempfile.NamedTemporaryFile(delete=False)
+                    AbstractJobStore.read_from_url(path, dest_file)
+                    dest_file.close()
+                    self.dir_to_download[path] = dest_file.name
+                destination = self.dir_to_download[path]
+            logger.debug("ToilFsAccess has JobStore-supported URL %s at %s", path, destination)
+            
 
         # Now destination is a local file, so make sure we really do have an
         # absolute path
@@ -1100,6 +1148,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         return super().glob(pattern)
 
     def open(self, fn: str, mode: str) -> IO[Any]:
+        # TODO: Also implement JobStore-suppoeted URLs through JobStore methods.
         # We know this falls back on _abs
         return super().open(fn, mode)
 
@@ -1107,6 +1156,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         """Test for file existence."""
         # toil's _abs() throws errors when files are not found and cwltool's _abs() does not
         try:
+            # TODO: Also implement JobStore-suppoeted URLs through JobStore methods.
             return os.path.exists(self._abs(path))
         except NoSuchFileException:
             return False
@@ -1139,19 +1189,34 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
             return self.size(here)
         else:
+            # TODO: Also implement JobStore-suppoeted URLs through JobStore methods.
             # We know this falls back on _abs
             return super().size(path)
 
     def isfile(self, fn: str) -> bool:
-        # We know this falls back on _abs
-        return super().isfile(fn)
+        parse = urlparse(fn)
+        if parse.scheme in ['toilfile', 'toildir', 'file', '']:
+            # We know this falls back on _abs
+            return super().isfile(fn)
+        else:
+            # This would be fulfilled by a JobStore. We insist that directories
+            # end in / so we don't need to fetch.
+            return not fn.endswith('/')
 
     def isdir(self, fn: str) -> bool:
-        # We know this falls back on _abs
-        return super().isdir(fn)
+        parse = urlparse(fn)
+        if parse.scheme in ['toilfile', 'toildir', 'file', '']:
+            # We know this falls back on _abs
+            return super().isdir(fn)
+        else:
+            # This would be fulfilled by a JobStore. We insist that directories
+            # end in / so we don't need to fetch.
+            return fn.endswith('/')
 
     def listdir(self, fn: str) -> List[str]:
         logger.debug("ToilFsAccess listing %s", fn)
+        
+        # TODO: Implement without downloading if possible.
 
         # Download the file or directory to a local path
         directory = self._abs(fn)
@@ -1167,12 +1232,13 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         return super().join(path, *paths)
 
     def realpath(self, path: str) -> str:
-        if path.startswith("toilfile:"):
-            # import the file and make it available locally if it exists
+        parse = urlparse(fn)
+        if parse.scheme != '':
+            # This isn't jsut a filename.
+            # Import this file or directory somewhere, or get its existing
+            # filesystem location, by falling back on _abs.
             path = self._abs(path)
-        elif path.startswith("toildir:"):
-            # Import the whole directory
-            path = self._abs(path)
+        # Turn our file path into a real path
         return os.path.realpath(path)
 
 
@@ -1320,7 +1386,7 @@ def write_file(
     else:
         file_uri = existing.get(file_uri, file_uri)
         if file_uri not in index:
-            if not urlparse.urlparse(file_uri).scheme:
+            if not urlparse(file_uri).scheme:
                 rp = os.path.realpath(file_uri)
             else:
                 rp = file_uri
@@ -1372,11 +1438,11 @@ def import_files(
 
     Also does some miscelaneous normalization.
 
-    :param import_function: The function used to upload a file:// URI and get a
+    :param import_function: The function used to upload a URI and get a
     Toil FileID for it.
 
     :param fs_access: the CWL FS access object we use to access the filesystem
-    to find files to import.
+    to find files to import. Needs to support the URI schemes used.
 
     :param fileindex: Forward map to fill in from file URI to Toil storage
     location, used by write_file to deduplicate writes.
@@ -3394,7 +3460,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     )
                 raise
 
-            fs_access = cwltool.stdfsaccess.StdFsAccess(options.basedir)
+            # We need to forge a Toil FileStore to use the ToilFsAccess off of the leader, because the ToilFsAccess 
+            fs_access = ToilFsAccess(options.basedir, toil._jobStore)
             fill_in_defaults(tool.tool["inputs"], initialized_job_order, fs_access)
 
             for inp in tool.tool["inputs"]:
