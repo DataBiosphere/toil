@@ -1,20 +1,12 @@
-import json
+
 import logging
-import os
-import urllib.request
-from typing import Dict, Optional
 import boto3
 from toil.lib.aws import zone_to_region
 from toil.provisioners.aws import get_best_aws_zone
-from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from functools import lru_cache
 
 from toil.lib.aws.session import AWSConnectionManager
 
-
-from botocore.client import BaseClient
-
-from toil.lib.retry import retry
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +32,6 @@ def check_policy_warnings(allowed_actions: dict, launching_perms = _CLUSTER_LAUN
     """
     permissions = [x for x in launching_perms if helper_permission_check(x, allowed_actions["*"])]
 
-    # permissions = set(permissions) - _CLUSTER_LAUNCHING_PERMISSIONS
     if not launching_perms.issubset(set(permissions)):
         raise RuntimeError("Missing permissions", permissions)
 
@@ -64,7 +55,6 @@ def helper_permission_check(perm, list_perms):
 
         if allowed == perm:
             flag = True
-    print(perm, " ", flag)
     if not flag:
 
         return False
@@ -82,7 +72,7 @@ def test_dummy_perms():
 def get_allowed_actions():
     aws = AWSConnectionManager()
 
-    region = zone_to_region(get_best_aws_zone()) or "us-west-2"
+    region = zone_to_region(get_best_aws_zone() or "us-west-2a" )
 
     iam = aws.client(region, 'iam')
 
@@ -93,8 +83,6 @@ def get_allowed_actions():
     list_policies = iam.list_role_policies(RoleName=role_name)
 
     account_num = boto3.client('sts').get_caller_identity().get('Account')
-
-
 
     str_arn = f"arn:aws:iam::{account_num}:role/{role_name}"
 
@@ -122,31 +110,7 @@ def get_allowed_actions():
                 response["PolicyDocument"]["Statement"][0]["Action"])
 
     check_policy_warnings(allowed_actions)
-    #print(allowed_actions)
-
-# allowed_user_actions = {}
-#
-# paginator = iam.get_paginator('list_users')
-# for user in paginator.paginate():
-#     user_name = user["Users"][0]["UserName"]
-#     inline_user_policies = iam.list_user_policies(UserName=user_name)
-#     print(inline_user_policies)
-#     for policy_name in inline_user_policies['PolicyNames']:
-#
-#         response = iam.get_user_policy(
-#             UserName=user_name,
-#             PolicyName=policy_name
-#         )
-#         if response["PolicyDocument"]["Statement"][0]["Effect"] == "Allow":
-#
-#             if response["PolicyDocument"]["Statement"][0]["Resource"] not in allowed_user_actions.keys():
-#                 allowed_user_actions[response["PolicyDocument"]["Statement"][0]["Resource"]] = []
-#
-#         allowed_user_actions[response["PolicyDocument"]["Statement"][0]["Resource"]].append(
-#             response["PolicyDocument"]["Statement"][0]["Action"])
-#
-# print(allowed_user_actions)
-
+    return allowed_actions
 
 @lru_cache
 def get_aws_account_num():

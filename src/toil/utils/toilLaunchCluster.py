@@ -12,11 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Launches a toil leader instance with the specified provisioner."""
+
 import logging
 import os
 from typing import Dict, List, Tuple, Union
 
 from toil import applianceSelf
+from toil.lib.aws.iam import get_allowed_actions, check_policy_warnings
 from toil.common import parser_with_common_options
 from toil.provisioners import check_valid_node_types, cluster_factory, parse_node_types
 from toil.statsAndLogging import set_logging_from_options
@@ -106,6 +108,10 @@ def main() -> None:
                              "the extra security groups do not have the same name as the cluster name.")
     options = parser.parse_args()
     set_logging_from_options(options)
+
+    #TODO implement permission check aws
+    check_policy_warnings(get_allowed_actions())
+
     tags = create_tags_dict(options.tags) if options.tags else dict()
 
     # Get worker node types

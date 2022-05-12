@@ -56,4 +56,7 @@ class IAMTest(ToilTest):
             pass
 
     def test_allowed_actions(self):
-        iam.get_allowed_actions()
+        allowed = iam.get_allowed_actions()
+        for action in allowed:
+            logger.info("allowed %s", action)
+        #logger.info(allowed)

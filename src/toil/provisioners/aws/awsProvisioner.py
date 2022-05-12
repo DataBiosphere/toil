@@ -35,6 +35,8 @@ from boto.exception import BotoServerError, EC2ResponseError
 from boto.utils import get_instance_metadata
 from botocore.exceptions import ClientError
 
+from toil.lib.aws.iam import (check_policy_warnings,
+                              get_allowed_actions)
 from toil.lib.aws import zone_to_region
 from toil.lib.aws.ami import get_flatcar_ami
 from toil.lib.aws.utils import create_s3_bucket
