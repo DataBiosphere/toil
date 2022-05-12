@@ -4,4 +4,4 @@ EXPOSE 3903
 
 COPY ./toil.mtail /home/toil.mtail
 
-CMD ["-progs", "/home/", "-logfds", "0"]
+CMD ["-progs", "/home/", "-logs", "/dev/stdin"]
