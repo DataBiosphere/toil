@@ -249,9 +249,15 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> Obj
         # if botoargs:
         #     botoargs['calling_format'] = boto.s3.connection.OrdinaryCallingFormat()
 
-        # Get the bucket's region to avoid a redirect per request
-        region = get_bucket_region(bucket_name, endpoint_url=endpoint_url)
-        s3 = cast(S3ServiceResource, session.resource('s3', region_name=region, endpoint_url=endpoint_url))
+        try:
+            # Get the bucket's region to avoid a redirect per request
+            region = get_bucket_region(bucket_name, endpoint_url=endpoint_url)
+            s3 = cast(S3ServiceResource, session.resource('s3', region_name=region, endpoint_url=endpoint_url))
+        except ClientError:
+            # Probably don't have permission.
+            # TODO: check if it is that
+            s3 = cast(S3ServiceResource, session.resource('s3', endpoint_url=endpoint_url))
+        
         obj = s3.Object(bucket_name, key_name)
         objExists = True
 
@@ -305,12 +311,13 @@ def list_objects_for_url(url: ParseResult) -> List[str]:
         result = paginator.paginate(Bucket=bucket_name, Prefix=key_name, Delimiter='/')
         for page in result:
             if 'CommonPrefixes' in page:
-                for prefix in page['CommonPrefixes']:
-                    listing.append(prefix[len(key_name):])
+                for item in page['CommonPrefixes']:
+                    listing.append(item['Prefix'][len(key_name):])
             if 'Contents' in page:
                 for item in page['Contents']:
                     listing.append(item['Key'][len(key_name):])
 
+        logger.debug('Found in %s items: %s', url, listing)
         return listing
 
 

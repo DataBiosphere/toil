@@ -983,6 +983,19 @@ def toil_make_tool(
     return cwltool.workflow.default_make_tool(toolpath_object, loadingContext)
 
 
+def detect_corrupted_directory(
+    contents: Tuple[Dict[str, Union[str, Dict[str, Any]]], Optional[str], str]
+) -> None:
+    """
+    Make sure a decoded directory structure makes sense. Throws an error otherwise.
+    """
+
+    for name, item in contents.items():
+        if name == '':
+            raise RuntimeError('Found nameless entry in directory: ' + str(contents))
+        if isinstance(item, dict):
+            detect_corrupted_directory(item)
+
 def decode_directory(
     dir_path: str,
 ) -> Tuple[Dict[str, Union[str, Dict[str, Any]]], Optional[str], str]:
@@ -1012,6 +1025,8 @@ def decode_directory(
         base64.urlsafe_b64decode(dir_data.encode("utf-8")).decode("utf-8")
     )
 
+    detect_corrupted_directory(contents)
+
     if len(parts) == 1 or parts[1] == "/":
         # We didn't have any subdirectory
         return contents, None, dir_data
@@ -1019,6 +1034,21 @@ def decode_directory(
         # We have a path below this
         return contents, parts[1], dir_data
 
+def encode_directory(
+    contents: Tuple[Dict[str, Union[str, Dict[str, Any]]], Optional[str], str]
+) -> str:
+    """
+    Encode a directory from a "toildir:" path to a directory (or a file in it).
+
+    Takes the directory dict, which is a dict from name to URI for a file or
+    dict for a subdirectory.
+    """
+
+    detect_corrupted_directory(contents)
+
+    return "toildir:" + base64.urlsafe_b64encode(
+        json.dumps(contents).encode("utf-8")
+    ).decode("utf-8")
 
 class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
     """
@@ -1030,7 +1060,10 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
     Also supports URLs supported by Toil job store implementations.
     """
 
-    def __init__(self, basedir: str, file_store: Optional[AbstractFileStore]) -> None:
+    def __init__(
+        self, basedir: str, 
+        file_store: Optional[AbstractFileStore] = None,
+    ) -> None:
         """Create a FsAccess object for the given Toil Filestore and basedir."""
         self.file_store = file_store
 
@@ -1085,6 +1118,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             # Decode its contents, the path inside it to the file (if any), and
             # the key to use for caching the directory.
             contents, subpath, cache_key = decode_directory(path)
+            logger.debug("Decoded directory contents: %s", contents)
 
             if cache_key not in self.dir_to_download:
                 # Download to a temp directory.
@@ -1118,17 +1152,17 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             destination = path
         else:
             # The destination is something else.
-            if parse.path.endswith('/'):
+            if AbstractJobStore.get_is_directory(path):
                 # Treat this as a directory
                 if path not in self.dir_to_download:
                     logger.debug("ToilFsAccess fetching directory %s from a JobStore", path)
                     dest_dir = tempfile.mkdtemp()
                     # Recursively fetch all the files in the directory.
                     def download_to(url, dest):
-                        if url.endswith('/'):
+                        if AbstractJobStore.get_is_directory(url):
                             os.mkdir(dest)
                             for part in AbstractJobStore.list_url(url):
-                                download_to(url + part, os.path.join(dest, part))
+                                download_to(os.path.join(url, part), os.path.join(dest, part))
                         else:
                             AbstractJobStore.read_from_url(url, open(dest, 'wb'))
                     download_to(path, dest_dir)
@@ -1221,7 +1255,8 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             return AbstractJobStore.get_is_directory(fn)
 
     def listdir(self, fn: str) -> List[str]:
-        # This needs to return full URLs for everything in the directory
+        # This needs to return full URLs for everything in the directory.
+        # URLs are not allowed to end in '/', even for subdirectories.
         logger.debug("ToilFsAccess listing %s", fn)
 
         parse = urlsplit(fn)
@@ -1235,10 +1270,8 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
                 for entry in os.listdir(directory)
             ]
         else:
-            if fn != '' and not fn.endswith('/'):
-                fn = fn + '/'
             return [
-                (fn + entry) for entry in AbstractJobStore.list_url(fn)
+                os.path.join(fn, entry.rstrip('/')) for entry in AbstractJobStore.list_url(fn)
             ]
 
     def join(self, path, *paths):  # type: (str, *str) -> str
@@ -1666,9 +1699,7 @@ def upload_directory(
 
     # Say that the directory location is just its dumped contents.
     # TODO: store these listings as files in the filestore instead?
-    directory_metadata["location"] = "toildir:" + base64.urlsafe_b64encode(
-        json.dumps(directory_contents).encode("utf-8")
-    ).decode("utf-8")
+    directory_metadata["location"] = encode_directory(directory_contents)
 
 
 def upload_file(
@@ -3490,8 +3521,9 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     )
                 raise
 
-            # We need to forge a Toil FileStore to use the ToilFsAccess off of the leader, because the ToilFsAccess
-            fs_access = ToilFsAccess(options.basedir, toil._jobStore)
+            # We make a ToilFSAccess to access URLs with, but it has no
+            # FileStore so it can't do toildir: and toilfile:
+            fs_access = ToilFsAccess(options.basedir)
             fill_in_defaults(tool.tool["inputs"], initialized_job_order, fs_access)
 
             for inp in tool.tool["inputs"]:
