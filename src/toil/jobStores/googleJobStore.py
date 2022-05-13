@@ -160,12 +160,12 @@ class GoogleJobStore(AbstractJobStore):
         except exceptions.NotFound:
             # just return if not connect to physical storage. Needed for idempotency
             return
-        
+
         try:
             self.bucket.delete(force=True)
             # throws ValueError if bucket has more than 256 objects. Then we must delete manually
         except ValueError:
-            # use google batching to delete. Improved efficiency compared to deleting sequentially 
+            # use google batching to delete. Improved efficiency compared to deleting sequentially
             blobs_to_delete = self.bucket.list_blobs()
             count = 0
             while count < len(blobs_to_delete):
@@ -377,10 +377,14 @@ class GoogleJobStore(AbstractJobStore):
     def _write_to_url(cls, readable: bytes, url: str, executable: bool = False) -> None:
         blob = cls._get_blob_from_url(url)
         blob.upload_from_file(readable)
-        
+
     @classmethod
     def _list_url(cls, url: ParseResult) -> List[str]:
         raise NotImplementedError("Listing files in Google buckets is not yet implemented!")
+
+    @classmethod
+    def _get_is_directory(cls, url: ParseResult) -> bool:
+        raise NotImplementedError("Checking directory status in Google buckets is not yet implemented!")
 
     @google_retry
     def write_logs(self, msg: bytes) -> None:

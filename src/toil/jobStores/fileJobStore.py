@@ -23,7 +23,7 @@ import tempfile
 import time
 import uuid
 from contextlib import contextmanager
-from urllib.parse import ParseResult
+from urllib.parse import quote, unquote, ParseResult
 from typing import BinaryIO, Iterator, List, Optional, TextIO, Union, overload
 from typing_extensions import Literal
 
@@ -364,12 +364,22 @@ class FileJobStore(AbstractJobStore):
                        cls._extract_path_from_url(url),
                        length=cls.BUFFER_SIZE,
                        executable=executable)
-                       
+
     @classmethod
     def _list_url(cls, url: ParseResult) -> List[str]:
         path = cls._extract_path_from_url(url)
-        # Return directories with trailing skashes and files without
-        return [((p + '/') if os.path.isdir(os.path.join(path, p)) else p) for p in os.listdir(path)]
+        listing = []
+        for p in os.listdir(path):
+            # We know there are no slashes in these
+            component = quote(p)
+            # Return directories with trailing slashes and files without
+            listing.append((component + '/') if os.path.isdir(os.path.join(path, p)) else component)
+        return listing
+
+    @classmethod
+    def _get_is_directory(cls, url: ParseResult) -> bool:
+        path = cls._extract_path_from_url(url)
+        return os.path.isdir(path)
 
     @staticmethod
     def _extract_path_from_url(url):
@@ -378,7 +388,7 @@ class FileJobStore(AbstractJobStore):
         """
         if url.netloc != '' and url.netloc != 'localhost':
             raise RuntimeError("The URL '%s' is invalid" % url.geturl())
-        return url.netloc + url.path
+        return unquote(url.path)
 
     @classmethod
     def _supports_url(cls, url, export=False):

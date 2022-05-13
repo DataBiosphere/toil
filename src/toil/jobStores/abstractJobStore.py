@@ -37,7 +37,7 @@ from typing import (
     ValuesView,
     cast,
 )
-from urllib.parse import ParseResult, urlparse
+from urllib.parse import ParseResult, urlsplit
 from urllib.request import urlopen
 from uuid import uuid4
 
@@ -322,7 +322,7 @@ class AbstractJobStore(ABC):
                 jobStoreClass = getattr(module, className)
                 jobStoreClasses.append(jobStoreClass)
         return jobStoreClasses
-    
+
     @classmethod
     def _findJobStoreForUrl(cls, url: ParseResult, export: bool = False) -> 'AbstractJobStore':
         """
@@ -385,7 +385,7 @@ class AbstractJobStore(ABC):
         # destination (which is the current job store in this case). To implement any
         # optimizations that circumvent this, the _import_file method should be overridden by
         # subclasses of AbstractJobStore.
-        parseResult = urlparse(src_uri)
+        parseResult = urlsplit(src_uri)
         otherCls = self._findJobStoreForUrl(parseResult)
         return self._import_file(otherCls,
                                  parseResult,
@@ -446,7 +446,7 @@ class AbstractJobStore(ABC):
         :param str dst_uri: URL that points to a file or object in the storage mechanism of a
                 supported URL scheme e.g. a blob in an AWS s3 bucket.
         """
-        parseResult = urlparse(dst_uri)
+        parseResult = urlsplit(dst_uri)
         otherCls = self._findJobStoreForUrl(parseResult, export=True)
         self._export_file(otherCls, file_id, parseResult)
 
@@ -483,14 +483,15 @@ class AbstractJobStore(ABC):
             if getattr(jobStoreFileID, 'executable', False):
                 executable = jobStoreFileID.executable
             otherCls._write_to_url(readable, url, executable)
-            
+
     @classmethod
     def list_url(cls, src_uri: str) -> List[str]:
         """
         List the directory at the given URL. Returned path components can be
         joined with '/' onto the passed URL to form new URLs. Those that end in
-        '/' correspond to directories.
-        
+        '/' correspond to directories. The provided URL may or may not end with
+        '/'.
+
         Currently supported schemes are:
 
             - 's3' for objects in Amazon S3
@@ -502,18 +503,42 @@ class AbstractJobStore(ABC):
         :param str src_uri: URL that points to a directory or prefix in the storage mechanism of a
                 supported URL scheme e.g. a prefix in an AWS s3 bucket.
 
-        :return: A list of URL components in the given directory.
+        :return: A list of URL components in the given directory, already URL-encoded.
         """
-        parseResult = urlparse(src_uri)
+        parseResult = urlsplit(src_uri)
         otherCls = cls._findJobStoreForUrl(parseResult)
         return otherCls._list_url(parseResult)
-    
+
+    @classmethod
+    def get_is_directory(cls, src_uri: str) -> True:
+        """
+        Return True if the thing at the given URL is a directory, and False if
+        it is a file. The URL may or may not end in '/'.
+        """
+        parseResult = urlsplit(src_uri)
+        otherCls = cls._findJobStoreForUrl(parseResult)
+        return otherCls._get_is_directory(parseResult)
+
+    @classmethod
+    @abstractmethod
+    def _get_is_directory(cls, url: ParseResult) -> bool:
+        """
+        Return True if the thing at the given URL is a directory, and False if
+        it is a file or it is known not to exist. The URL may or may not end in
+        '/'.
+
+        :param url: URL that points to a file or object, or directory or prefix,
+               in the storage mechanism of a supported URL scheme e.g. a blob
+               in an AWS s3 bucket.
+        """
+        raise NotImplementedError
+
     @classmethod
     def read_from_url(cls, src_uri: str, writable: BytesIO) -> None:
         """
         Read the given URL and write its content into the given writable stream.
         """
-        parseResult = urlparse(src_uri)
+        parseResult = urlsplit(src_uri)
         otherCls = cls._findJobStoreForUrl(parseResult)
         return otherCls._read_from_url(parseResult, writable)
 
@@ -524,14 +549,15 @@ class AbstractJobStore(ABC):
 
     @classmethod
     @abstractmethod
-    def get_size(cls, url: ParseResult) -> None:
+    def get_size(cls, src_uri: ParseResult) -> None:
         """
         Get the size in bytes of the file at the given URL, or None if it cannot be obtained.
 
-        :param ParseResult url: URL that points to a file or object in the storage
+        :param src_uri: URL that points to a file or object in the storage
                mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
         """
         raise NotImplementedError
+
 
     @classmethod
     @abstractmethod
@@ -569,13 +595,13 @@ class AbstractJobStore(ABC):
         :param bool executable: determines if the file has executable permissions
         """
         raise NotImplementedError()
-        
+
     @classmethod
     @abstractmethod
     def _list_url(cls, url: ParseResult) -> List[str]:
         """
-        List the contents of the given URL, which must end in '/'
-        
+        List the contents of the given URL, which may or may not end in '/'
+
         Returns a list of URL components. Those that end in '/' are meant to be
         directories, while those that do not are meant to be files.
 
@@ -585,7 +611,7 @@ class AbstractJobStore(ABC):
         storage mechanism of a supported URL scheme e.g. a prefix in an AWS s3
         bucket.
 
-        :return: The children of the given URL.
+        :return: The children of the given URL, already URL-encoded.
         """
         raise NotImplementedError()
 

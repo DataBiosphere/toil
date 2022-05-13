@@ -208,7 +208,7 @@ def create_s3_bucket(
 def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None) -> str:
     """
     Get the AWS region name associated with the given S3 bucket.
-    
+
     Takes an optional S3 API URL override.
     """
     s3_client = cast(S3Client, session.client('s3', endpoint_url=endpoint_url))
@@ -216,7 +216,7 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None) -> s
         with attempt:
             loc = s3_client.get_bucket_location(Bucket=bucket_name)
             return bucket_location_to_region(loc.get('LocationConstraint', None))
-            
+
 def region_to_bucket_location(region: str) -> str:
     return '' if region == 'us-east-1' else region
 
@@ -232,9 +232,9 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> Obj
         """
         s3_resource = cast(S3ServiceResource, session.resource('s3'))
 
-        keyName = url.path[1:]
-        bucketName = url.netloc
-        
+        key_name = url.path[1:]
+        bucket_name = url.netloc
+
         # Decide if we need to override Boto's built-in URL here.
         endpoint_url: Optional[str] = None
         host = os.environ.get('TOIL_S3_HOST', None)
@@ -250,9 +250,9 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> Obj
         #     botoargs['calling_format'] = boto.s3.connection.OrdinaryCallingFormat()
 
         # Get the bucket's region to avoid a redirect per request
-        region = get_bucket_region(bucketName, endpoint_url=endpoint_url)
+        region = get_bucket_region(bucket_name, endpoint_url=endpoint_url)
         s3 = cast(S3ServiceResource, session.resource('s3', region_name=region, endpoint_url=endpoint_url))
-        obj = s3.Object(bucketName, keyName)
+        obj = s3.Object(bucket_name, key_name)
         objExists = True
 
         try:
@@ -263,26 +263,29 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> Obj
             else:
                 raise
         if existing is True and not objExists:
-            raise RuntimeError(f"Key '{keyName}' does not exist in bucket '{bucketName}'.")
+            raise RuntimeError(f"Key '{key_name}' does not exist in bucket '{bucket_name}'.")
         elif existing is False and objExists:
-            raise RuntimeError(f"Key '{keyName}' exists in bucket '{bucketName}'.")
+            raise RuntimeError(f"Key '{key_name}' exists in bucket '{bucket_name}'.")
 
         if not objExists:
             obj.put()  # write an empty file
         return obj
-        
+
 
 @retry(errors=[BotoServerError])
 def list_objects_for_url(url: ParseResult) -> List[str]:
         """
-        Extracts a key (object) from a given parsed s3:// URL.
-
-        :param bool existing: If True, key is expected to exist. If False, key is expected not to
-               exists and it will be created. If None, the key will be created if it doesn't exist.
+        Extracts a key (object) from a given parsed s3:// URL. The URL will be
+        supplemented with a trailing slash if it is missing.
         """
-        keyName = url.path[1:]
-        bucketName = url.netloc
-        
+        key_name = url.path[1:]
+        bucket_name = url.netloc
+
+        if key_name != '' and not key_name.endswith('/'):
+            # Make sure to put the trailing slash on the key, or else we'll see
+            # a prefix of just it.
+            key_name = key_name + '/'
+
         # Decide if we need to override Boto's built-in URL here.
         # TODO: Decuplicate with get_object_for_url, or push down into session module
         endpoint_url: Optional[str] = None
@@ -293,15 +296,21 @@ def list_objects_for_url(url: ParseResult) -> List[str]:
             protocol = 'http'
         if host:
             endpoint_url = f'{protocol}://{host}' + f':{port}' if port else ''
-            
+
         client = cast(S3Client, session.client('s3', endpoint_url=endpoint_url))
-        
+
         listing = []
-        
+
         paginator = client.get_paginator('list_objects_v2')
-        result = paginator.paginate(Bucket=bucketName, Prefix=keyName, Delimiter='/')
-        for prefix in result.search('CommonPrefixes'):
-            listing.append(prefix.get('Prefix')[len(keyName):])
-        
+        result = paginator.paginate(Bucket=bucket_name, Prefix=key_name, Delimiter='/')
+        for page in result:
+            if 'CommonPrefixes' in page:
+                for prefix in page['CommonPrefixes']:
+                    listing.append(prefix[len(key_name):])
+            if 'Contents' in page:
+                for item in page['Contents']:
+                    listing.append(item['Key'][len(key_name):])
+
         return listing
-        
+
+

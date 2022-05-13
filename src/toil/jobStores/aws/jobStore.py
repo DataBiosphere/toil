@@ -21,12 +21,12 @@ import reprlib
 import stat
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 import uuid
 from contextlib import contextmanager
 from io import BytesIO
 from typing import Optional, List
+from urllib.parse import ParseResult, urlsplit, urlunsplit, urlencode, parse_qs
 
 import boto.s3.connection
 import boto.sdb
@@ -480,10 +480,16 @@ class AWSJobStore(AbstractJobStore):
                    bucketName=dstObj.bucket_name,
                    fileID=dstObj.key,
                    partSize=5 * 1000 * 1000)
-    
+
     @classmethod
-    def _list_url(cls, url: urllib.parse.ParseResult) -> List[str]:
+    def _list_url(cls, url: ParseResult) -> List[str]:
         return list_objects_for_url(url)
+
+    @classmethod
+    def _get_is_directory(cls, url: ParseResult) -> bool:
+        # We consider it a directory if anything is in it.
+        # TODO: Can we just get the first item and not the whole list?
+        return len(list_objects_for_url(url)) > 0
 
     @classmethod
     def _supports_url(cls, url, export=False):
@@ -627,16 +633,16 @@ class AWSJobStore(AbstractJobStore):
         # query_auth is False when using an IAM role (see issue #2043). Including the
         # x-amz-security-token parameter without the access key results in a 403,
         # even if the resource is public, so we need to remove it.
-        scheme, netloc, path, query, fragment = urllib.parse.urlsplit(url)
-        params = urllib.parse.parse_qs(query)
+        scheme, netloc, path, query, fragment = urlsplit(url)
+        params = parse_qs(query)
         if 'x-amz-security-token' in params:
             del params['x-amz-security-token']
         if 'AWSAccessKeyId' in params:
             del params['AWSAccessKeyId']
         if 'Signature' in params:
             del params['Signature']
-        query = urllib.parse.urlencode(params, doseq=True)
-        url = urllib.parse.urlunsplit((scheme, netloc, path, query, fragment))
+        query = urlencode(params, doseq=True)
+        url = urlunsplit((scheme, netloc, path, query, fragment))
         return url
 
     def get_shared_public_url(self, shared_file_name):

@@ -52,7 +52,7 @@ from typing import (
     Union,
     cast,
 )
-from urllib.parse import urlparse, ParseResult
+from urllib.parse import urlsplit, ParseResult
 
 import cwltool.builder
 import cwltool.command_line_tool
@@ -615,6 +615,10 @@ class ToilPathMapper(PathMapper):
         self.stage_listing = stage_listing
         self.streaming_allowed = streaming_allowed
 
+        logger.debug(
+            "Making ToilPathMapper for base %s stage %s for files: %s", basedir, stagedir, referenced_files
+        )
+
         super().__init__(referenced_files, basedir, stagedir, separateDirs=separateDirs)
 
     def visit(
@@ -922,9 +926,8 @@ class ToilSingleJobExecutor(cwltool.executors.SingleJobExecutor):
         runtime_context.toplevel = False
         return super().run_jobs(process, job_order_object, logger, runtime_context)
 
-
-class ToilCommandLineTool(cwltool.command_line_tool.CommandLineTool):
-    """Subclass the cwltool command line tool to provide the custom Toil.PathMapper."""
+class ToilTool:
+    """Mixin to hook Toil into a cwltool tool type."""
 
     def make_path_mapper(
         self,
@@ -946,14 +949,22 @@ class ToilCommandLineTool(cwltool.command_line_tool.CommandLineTool):
                 runtimeContext.basedir,
                 stagedir,
                 separateDirs,
-                getattr(runtimeContext, "toil_get_file", None),
+                get_file=getattr(runtimeContext, "toil_get_file", None),
                 streaming_allowed=runtimeContext.streaming_allowed,
             )
 
     def __str__(self) -> str:
-        """Return string representation of this ToilCommandLineTool."""
-        return f'ToilCommandLineTool({repr(self.tool.get("id", "???"))})'
+        """Return string representation of this tool type."""
+        return f'{self.__class__.__name__}({repr(self.tool.get("id", "???"))})'
 
+
+class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
+    """Subclass the cwltool command line tool to provide the custom ToilPathMapper."""
+    pass
+
+class ToilExpressionTool(ToilTool, cwltool.command_line_tool.ExpressionTool):
+    """Subclass the cwltool expression tool to provide the custom ToilPathMapper."""
+    pass
 
 def toil_make_tool(
     toolpath_object: CommentedMap,
@@ -964,11 +975,11 @@ def toil_make_tool(
 
     This factory function is meant to be passed to cwltool.load_tool().
     """
-    if (
-        isinstance(toolpath_object, Mapping)
-        and toolpath_object.get("class") == "CommandLineTool"
-    ):
-        return ToilCommandLineTool(toolpath_object, loadingContext)
+    if isinstance(toolpath_object, Mapping):
+        if toolpath_object.get("class") == "CommandLineTool":
+            return ToilCommandLineTool(toolpath_object, loadingContext)
+        elif toolpath_object.get("class") == "ExpressionTool":
+            return ToilExpressionTool(toolpath_object, loadingContext)
     return cwltool.workflow.default_make_tool(toolpath_object, loadingContext)
 
 
@@ -1015,8 +1026,8 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
     Normal file paths will be resolved relative to basedir, but 'toilfile:' and
     'toildir:' URIs will be fulfilled from the Toil file store.
-    
-    Also supports URLs supported by Toil job store implementations. 
+
+    Also supports URLs supported by Toil job store implementations.
     """
 
     def __init__(self, basedir: str, file_store: Optional[AbstractFileStore]) -> None:
@@ -1047,14 +1058,14 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         # cwltool.stdfsaccess.StdFsAccess, (among other things) so this should
         # not error on missing files.
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43  # noqa B950
-        
-        parse = urlparse(path)
+
+        parse = urlsplit(path)
         if parse.scheme == "toilfile":
             # Is a Toil file
-            
+
             if self.file_store is None:
                 raise RuntimeError("URL requires a file store:" + path)
-            
+
             destination = self.file_store.readGlobalFile(
                 FileID.unpack(path[len("toilfile:") :]), symlink=True
             )
@@ -1122,7 +1133,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
                             AbstractJobStore.read_from_url(url, open(dest, 'wb'))
                     download_to(path, dest_dir)
                     self.dir_to_download[path] = dest_dir
-                
+
                 destination = self.dir_to_download[path]
             else:
                 # Treat this as a file.
@@ -1136,7 +1147,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
                     self.dir_to_download[path] = dest_file.name
                 destination = self.dir_to_download[path]
             logger.debug("ToilFsAccess has JobStore-supported URL %s at %s", path, destination)
-            
+
 
         # Now destination is a local file, so make sure we really do have an
         # absolute path
@@ -1194,53 +1205,51 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             return super().size(path)
 
     def isfile(self, fn: str) -> bool:
-        parse = urlparse(fn)
+        parse = urlsplit(fn)
         if parse.scheme in ['toilfile', 'toildir', 'file', '']:
             # We know this falls back on _abs
             return super().isfile(fn)
         else:
-            # This would be fulfilled by a JobStore. We insist that directories
-            # end in / so we don't need to fetch.
-            return not fn.endswith('/')
+            return not AbstractJobStore.get_is_directory(fn)
 
     def isdir(self, fn: str) -> bool:
-        parse = urlparse(fn)
+        parse = urlsplit(fn)
         if parse.scheme in ['toilfile', 'toildir', 'file', '']:
             # We know this falls back on _abs
             return super().isdir(fn)
         else:
-            # This would be fulfilled by a JobStore. We insist that directories
-            # end in / so we don't need to fetch.
-            return fn.endswith('/')
+            return AbstractJobStore.get_is_directory(fn)
 
     def listdir(self, fn: str) -> List[str]:
+        # This needs to return full URLs for everything in the directory
         logger.debug("ToilFsAccess listing %s", fn)
-        
-        # TODO: Implement without downloading if possible.
 
-        # Download the file or directory to a local path
-        directory = self._abs(fn)
+        parse = urlsplit(fn)
+        if parse.scheme in ['toilfile', 'toildir', 'file', '']:
+            # Download the file or directory to a local path
+            directory = self._abs(fn)
 
-        # Now list it (it is probably a directory)
-        return [
-            cwltool.stdfsaccess.abspath(urllib.parse.quote(entry), fn)
-            for entry in os.listdir(directory)
-        ]
+            # Now list it (it is probably a directory)
+            return [
+                cwltool.stdfsaccess.abspath(urllib.parse.quote(entry), fn)
+                for entry in os.listdir(directory)
+            ]
+        else:
+            if fn != '' and not fn.endswith('/'):
+                fn = fn + '/'
+            return [
+                (fn + entry) for entry in AbstractJobStore.list_url(fn)
+            ]
 
     def join(self, path, *paths):  # type: (str, *str) -> str
         # This falls back on os.path.join
         return super().join(path, *paths)
 
-    def realpath(self, path: str) -> str:
-        parse = urlparse(fn)
-        if parse.scheme != '':
-            # This isn't jsut a filename.
-            # Import this file or directory somewhere, or get its existing
-            # filesystem location, by falling back on _abs.
-            path = self._abs(path)
-        # Turn our file path into a real path
-        return os.path.realpath(path)
-
+    def realpath(self, fn: str) -> str:
+        # This also needs to be able to handle URLs, when cwltool uses it in
+        # relocateOutputs and some of the outputs didn't come from a local file
+        # but were passed through from inputs.
+        return super().realpath(self._abs(fn))
 
 def toil_get_file(
     file_store: AbstractFileStore,
@@ -1255,7 +1264,9 @@ def toil_get_file(
     Set up the given file or directory from the Toil jobstore at a file URI
     where it can be accessed locally.
 
-    Run as part of the ToilCommandLineTool setup, inside jobs on the workers.
+    Run as part of the tool setup, inside jobs on the workers.
+    Also used as part of reorganizing files to get them uploaded at the end of
+    a tool.
 
     :param file_store: The Toil file store to download from.
 
@@ -1354,6 +1365,13 @@ def toil_get_file(
         # Someone is asking us for an empty temp directory.
         dest_path = file_store.getLocalTempDir()
         return schema_salad.ref_resolver.file_uri(dest_path)
+    elif file_store_id.startswith("file:"):
+        # We need to support file: URIs, because we might be involved in moving
+        # files around on the local disk when uploading things after a job. We
+        # might want to catch cases where a leader filesystem file URI leaks in
+        # here, but we can't, so we just rely on the rest of the code to be
+        # correct.
+        return file_store_id
     else:
         raise RuntimeError(
             f"Cannot obtain file {file_store_id} from host "
@@ -1386,7 +1404,7 @@ def write_file(
     else:
         file_uri = existing.get(file_uri, file_uri)
         if file_uri not in index:
-            if not urlparse(file_uri).scheme:
+            if not urlsplit(file_uri).scheme:
                 rp = os.path.realpath(file_uri)
             else:
                 rp = file_uri
@@ -2089,6 +2107,15 @@ class CWLJob(Job):
         runtime_context.basedir = os.getcwd()
         runtime_context.preserve_environment = required_env_vars
 
+        # When the tool makes its own PathMappers with make_path_mapper, they
+        # will come and grab this function for fetching files from the Toil
+        # file store. pipe_threads is used for keeping track of separate
+        # threads launched to stream files around.
+        pipe_threads: List[Tuple[Thread, int]] = []
+        runtime_context.toil_get_file = functools.partial(  # type: ignore[attr-defined]
+            toil_get_file, file_store, index, existing, pipe_threads=pipe_threads
+        )
+
         if not getattr(runtime_context, "bypass_file_store", False):
             # Exports temporary directory for batch systems that reset TMPDIR
             os.environ["TMPDIR"] = os.path.realpath(file_store.getLocalTempDir())
@@ -2108,17 +2135,20 @@ class CWLJob(Job):
 
             runtime_context.tmpdir_prefix = file_store.getLocalTempDir()
 
-            # Intercept file and directory access and use a virtual filesystem
-            # through the Toil FileStore.
+            # Intercept file and directory access not already done through the
+            # tool's make_path_mapper(), and support the URIs we define for
+            # stuff in Toil's FileStore. We need to plug in a make_fs_access
+            # function and a path_mapper type or factory function.
 
             runtime_context.make_fs_access = functools.partial(  # type: ignore[assignment]
                 ToilFsAccess, file_store=file_store
             )
 
-        pipe_threads: List[Tuple[Thread, int]] = []
-        runtime_context.toil_get_file = functools.partial(  # type: ignore[attr-defined]
-            toil_get_file, file_store, index, existing, pipe_threads=pipe_threads
-        )
+            runtime_context.path_mapper = functools.partial(  # type: ignore[assignment]
+                ToilPathMapper,
+                get_file=runtime_context.toil_get_file,
+                streaming_allowed=runtime_context.streaming_allowed,
+            )
 
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
@@ -3460,7 +3490,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     )
                 raise
 
-            # We need to forge a Toil FileStore to use the ToilFsAccess off of the leader, because the ToilFsAccess 
+            # We need to forge a Toil FileStore to use the ToilFsAccess off of the leader, because the ToilFsAccess
             fs_access = ToilFsAccess(options.basedir, toil._jobStore)
             fill_in_defaults(tool.tool["inputs"], initialized_job_order, fs_access)
 
