@@ -311,11 +311,11 @@ def list_objects_for_url(url: ParseResult) -> List[str]:
         result = paginator.paginate(Bucket=bucket_name, Prefix=key_name, Delimiter='/')
         for page in result:
             if 'CommonPrefixes' in page:
-                for item in page['CommonPrefixes']:
-                    listing.append(item['Prefix'][len(key_name):])
+                for prefix_item in page['CommonPrefixes']:
+                    listing.append(prefix_item['Prefix'][len(key_name):])
             if 'Contents' in page:
-                for item in page['Contents']:
-                    listing.append(item['Key'][len(key_name):])
+                for content_item in page['Contents']:
+                    listing.append(content_item['Key'][len(key_name):])
 
         logger.debug('Found in %s items: %s', url, listing)
         return listing

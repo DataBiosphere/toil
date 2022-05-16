@@ -52,7 +52,7 @@ from typing import (
     Union,
     cast,
 )
-from urllib.parse import urlsplit, ParseResult
+from urllib.parse import urlparse, ParseResult
 
 import cwltool.builder
 import cwltool.command_line_tool
@@ -841,9 +841,9 @@ class ToilPathMapper(PathMapper):
 
                     if deref.startswith("file:"):
                         deref = schema_salad.ref_resolver.uri_file_path(deref)
-                    if urllib.parse.urlsplit(deref).scheme in ["http", "https"]:
+                    if urllib.parse.urlparse(deref).scheme in ["http", "https"]:
                         deref = downloadHttpFile(path)
-                    elif urllib.parse.urlsplit(deref).scheme != "toilfile":
+                    elif urllib.parse.urlparse(deref).scheme != "toilfile":
                         # Dereference symbolic links
                         st = os.lstat(deref)
                         while stat.S_ISLNK(st.st_mode):
@@ -955,7 +955,7 @@ class ToilTool:
 
     def __str__(self) -> str:
         """Return string representation of this tool type."""
-        return f'{self.__class__.__name__}({repr(self.tool.get("id", "???"))})'
+        return f'{self.__class__.__name__}({repr(getattr(self, "tool", {}).get("id", "???"))})'
 
 
 class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
@@ -983,22 +983,30 @@ def toil_make_tool(
     return cwltool.workflow.default_make_tool(toolpath_object, loadingContext)
 
 
-def detect_corrupted_directory(
-    contents: Tuple[Dict[str, Union[str, Dict[str, Any]]], Optional[str], str]
+# This should really be Dict[str, Union[str, "DirectoryContents"]], but we
+# can't say that until https://github.com/python/mypy/issues/731 is fixed
+# because it's recursive.
+DirectoryContents = Dict[str, Union[str, Dict[str, Any]]]
+
+def check_directory_dict_invariants(
+    contents: DirectoryContents
 ) -> None:
     """
-    Make sure a decoded directory structure makes sense. Throws an error otherwise.
+    Make sure a directory structure dict makes sense. Throws an error
+    otherwise.
+    
+    Currently just checks to make sure no empty-string keys exist.
     """
 
     for name, item in contents.items():
         if name == '':
             raise RuntimeError('Found nameless entry in directory: ' + str(contents))
         if isinstance(item, dict):
-            detect_corrupted_directory(item)
+            check_directory_dict_invariants(item)
 
 def decode_directory(
     dir_path: str,
-) -> Tuple[Dict[str, Union[str, Dict[str, Any]]], Optional[str], str]:
+) -> Tuple[DirectoryContents, Optional[str], str]:
     """
     Decode a directory from a "toildir:" path to a directory (or a file in it).
 
@@ -1025,7 +1033,7 @@ def decode_directory(
         base64.urlsafe_b64decode(dir_data.encode("utf-8")).decode("utf-8")
     )
 
-    detect_corrupted_directory(contents)
+    check_directory_dict_invariants(contents)
 
     if len(parts) == 1 or parts[1] == "/":
         # We didn't have any subdirectory
@@ -1035,7 +1043,7 @@ def decode_directory(
         return contents, parts[1], dir_data
 
 def encode_directory(
-    contents: Tuple[Dict[str, Union[str, Dict[str, Any]]], Optional[str], str]
+    contents: DirectoryContents
 ) -> str:
     """
     Encode a directory from a "toildir:" path to a directory (or a file in it).
@@ -1044,7 +1052,7 @@ def encode_directory(
     dict for a subdirectory.
     """
 
-    detect_corrupted_directory(contents)
+    check_directory_dict_invariants(contents)
 
     return "toildir:" + base64.urlsafe_b64encode(
         json.dumps(contents).encode("utf-8")
@@ -1092,7 +1100,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         # not error on missing files.
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43  # noqa B950
 
-        parse = urlsplit(path)
+        parse = urlparse(path)
         if parse.scheme == "toilfile":
             # Is a Toil file
 
@@ -1158,7 +1166,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
                     logger.debug("ToilFsAccess fetching directory %s from a JobStore", path)
                     dest_dir = tempfile.mkdtemp()
                     # Recursively fetch all the files in the directory.
-                    def download_to(url, dest):
+                    def download_to(url: str, dest: str) -> None:
                         if AbstractJobStore.get_is_directory(url):
                             os.mkdir(dest)
                             for part in AbstractJobStore.list_url(url):
@@ -1176,7 +1184,11 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
                     # Try to grab it with a jobstore implementation, and save it
                     # somewhere arbitrary.
                     dest_file = tempfile.NamedTemporaryFile(delete=False)
-                    AbstractJobStore.read_from_url(path, dest_file)
+                    # MyPy/Typeshed bug: https://github.com/python/typeshed/issues/7843
+                    # MyPy doesn't think dest_file is a BinaryIO, but we know
+                    # it is a binary-mode file-like object, which is what that
+                    # means.
+                    AbstractJobStore.read_from_url(path, dest_file)  # type: ignore
                     dest_file.close()
                     self.dir_to_download[path] = dest_file.name
                 destination = self.dir_to_download[path]
@@ -1211,6 +1223,8 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         # prevent multiple downloads as in
         # https://github.com/DataBiosphere/toil/issues/3665
         if path.startswith("toilfile:"):
+            if self.file_store is None:
+                raise RuntimeError("URL requires a file store:" + path)
             return self.file_store.getGlobalFileSize(
                 FileID.unpack(path[len("toilfile:") :])
             )
@@ -1224,7 +1238,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
             for part in subpath.split("/"):
                 # Follow the path inside the directory contents.
-                here = cast(Dict[str, Union[str, Dict[str, Any]]], here[part])
+                here = cast(DirectoryContents, here[part])
 
             # We ought to end up with a toilfile: URI.
             assert isinstance(here, str), f"Did not find a file at {path}"
@@ -1239,7 +1253,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             return super().size(path)
 
     def isfile(self, fn: str) -> bool:
-        parse = urlsplit(fn)
+        parse = urlparse(fn)
         if parse.scheme in ['toilfile', 'toildir', 'file', '']:
             # We know this falls back on _abs
             return super().isfile(fn)
@@ -1247,7 +1261,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             return not AbstractJobStore.get_is_directory(fn)
 
     def isdir(self, fn: str) -> bool:
-        parse = urlsplit(fn)
+        parse = urlparse(fn)
         if parse.scheme in ['toilfile', 'toildir', 'file', '']:
             # We know this falls back on _abs
             return super().isdir(fn)
@@ -1259,7 +1273,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         # URLs are not allowed to end in '/', even for subdirectories.
         logger.debug("ToilFsAccess listing %s", fn)
 
-        parse = urlsplit(fn)
+        parse = urlparse(fn)
         if parse.scheme in ['toilfile', 'toildir', 'file', '']:
             # Download the file or directory to a local path
             directory = self._abs(fn)
@@ -1437,7 +1451,7 @@ def write_file(
     else:
         file_uri = existing.get(file_uri, file_uri)
         if file_uri not in index:
-            if not urlsplit(file_uri).scheme:
+            if not urlparse(file_uri).scheme:
                 rp = os.path.realpath(file_uri)
             else:
                 rp = file_uri
@@ -1578,8 +1592,8 @@ def import_files(
     def visit_file_or_directory_up(
         rec: CWLObjectType,
         down_result: Optional[List[CWLObjectType]],
-        child_results: List[Dict[str, CWLObjectType]],
-    ) -> Dict[str, CWLObjectType]:
+        child_results: List[DirectoryContents],
+    ) -> DirectoryContents:
         """
         For a CWL File or Directory, make sure it is uploaded and it has a
         location that describes its contents as visible to fs_access.
@@ -1599,7 +1613,7 @@ def import_files(
         if rec.get("class", None) == "File":
             # This is a CWL File
 
-            result: Dict[str, CWLObjectType] = {}
+            result: DirectoryContents = {}
 
             # Upload the file itself, which will adjust its location.
             upload_file(
@@ -1607,7 +1621,7 @@ def import_files(
             )
 
             # Make a record for this file under its name
-            result[cast(str, rec["basename"])] = cast(CWLObjectType, rec["location"])
+            result[cast(str, rec["basename"])] = cast(str, rec["location"])
 
             for secondary_file_result in child_results:
                 # Glom in the secondary files, if any
@@ -1625,7 +1639,7 @@ def import_files(
 
             # We know we have child results from a fully recursive listing.
             # Build them into a contents dict.
-            contents: Dict[str, CWLObjectType] = {}
+            contents: DirectoryContents = {}
             for child_result in child_results:
                 # Keep each child file or directory or child file's secondary
                 # file under its name
@@ -1635,7 +1649,7 @@ def import_files(
             upload_directory(rec, contents, skip_broken=skip_broken)
 
             # Show those contents as being under our name in our parent.
-            return {cast(str, rec["basename"]): cast(CWLObjectType, contents)}
+            return {cast(str, rec["basename"]): contents}
 
         else:
             raise RuntimeError("Got unexpected class of object: " + str(rec))
@@ -1651,7 +1665,7 @@ def import_files(
 
 def upload_directory(
     directory_metadata: CWLObjectType,
-    directory_contents: Dict[str, CWLObjectType],
+    directory_contents: DirectoryContents,
     skip_broken: bool = False,
 ) -> None:
     """
@@ -1863,9 +1877,7 @@ def toilStageFiles(
                         here, subpath, _ = decode_directory(file_id_or_contents)
                         if subpath is not None:
                             for part in subpath.split("/"):
-                                here = cast(
-                                    Dict[str, Union[str, Dict[str, Any]]], here[part]
-                                )
+                                here = cast(DirectoryContents, here[part])
                         # At the end we should get a direct toilfile: URI
                         file_id_or_contents = cast(str, here)
 
@@ -2143,9 +2155,9 @@ class CWLJob(Job):
         # file store. pipe_threads is used for keeping track of separate
         # threads launched to stream files around.
         pipe_threads: List[Tuple[Thread, int]] = []
-        runtime_context.toil_get_file = functools.partial(  # type: ignore[attr-defined]
+        setattr(runtime_context, 'toil_get_file', functools.partial(
             toil_get_file, file_store, index, existing, pipe_threads=pipe_threads
-        )
+        ))
 
         if not getattr(runtime_context, "bypass_file_store", False):
             # Exports temporary directory for batch systems that reset TMPDIR
@@ -2177,7 +2189,7 @@ class CWLJob(Job):
 
             runtime_context.path_mapper = functools.partial(  # type: ignore[assignment]
                 ToilPathMapper,
-                get_file=runtime_context.toil_get_file,
+                get_file=getattr(runtime_context, 'toil_get_file'),
                 streaming_allowed=runtime_context.streaming_allowed,
             )
 
