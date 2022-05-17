@@ -15,6 +15,7 @@ import logging
 import pickle
 import re
 import shutil
+import sys
 from abc import ABC, ABCMeta, abstractmethod
 from contextlib import closing, contextmanager
 from datetime import timedelta
@@ -36,13 +37,16 @@ from typing import (
     Union,
     ValuesView,
     cast,
+    overload
 )
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 from urllib.parse import ParseResult, urlparse
 from urllib.request import urlopen
 from uuid import uuid4
-
 from requests.exceptions import HTTPError
-from typing_extensions import Literal, overload
 
 from toil.common import Config, safeUnpickleFromStream
 from toil.fileStores import FileID
