@@ -615,10 +615,6 @@ class ToilPathMapper(PathMapper):
         self.stage_listing = stage_listing
         self.streaming_allowed = streaming_allowed
 
-        logger.debug(
-            "Making ToilPathMapper for base %s stage %s for files: %s", basedir, stagedir, referenced_files
-        )
-
         super().__init__(referenced_files, basedir, stagedir, separateDirs=separateDirs)
 
     def visit(
@@ -994,7 +990,7 @@ def check_directory_dict_invariants(
     """
     Make sure a directory structure dict makes sense. Throws an error
     otherwise.
-    
+
     Currently just checks to make sure no empty-string keys exist.
     """
 
@@ -1069,7 +1065,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
     """
 
     def __init__(
-        self, basedir: str, 
+        self, basedir: str,
         file_store: Optional[AbstractFileStore] = None,
     ) -> None:
         """Create a FsAccess object for the given Toil Filestore and basedir."""
@@ -1184,7 +1180,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
                     # Try to grab it with a jobstore implementation, and save it
                     # somewhere arbitrary.
                     dest_file = tempfile.NamedTemporaryFile(delete=False)
-                    AbstractJobStore.read_from_url(path, dest_file) 
+                    AbstractJobStore.read_from_url(path, dest_file)
                     dest_file.close()
                     self.dir_to_download[path] = dest_file.name
                 destination = self.dir_to_download[path]
