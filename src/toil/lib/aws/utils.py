@@ -211,11 +211,77 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None) -> s
 
     Takes an optional S3 API URL override.
     """
+
     s3_client = cast(S3Client, session.client('s3', endpoint_url=endpoint_url))
+
+    def attempt_get_bucket_location() -> Optional[str]:
+        """
+        Try and get the bucket location from the normal API call.
+        """
+        return s3_client.get_bucket_location(Bucket=bucket_name).get('LocationConstraint', None)
+
+    def attempt_get_bucket_location_from_us_east_1() -> Optional[str]:
+        """
+        Try and get the bucket location from the normal API call, but against us-east-1
+        """
+        # Sometimes we aren't allowed to GetBucketLocation. At least some of
+        # the time, that's only true when we talk to whatever S3 API servers we
+        # usually use, and we can get around this lack of permission by talking
+        # to us-east-1 instead. We've been told that this is because us-east-1
+        # is special and will answer the question when other regions won't.
+        # See:
+        # <https://ucsc-gi.slack.com/archives/C027D41M6UA/p1652819831740169?thread_ts=1652817377.594539&cid=C027D41M6UA>
+        # It could also be because AWS open data buckets (which we tend to
+        # encounter this problem for) tend to actually themselves be in
+        # us-east-1.
+        backup_s3_client = cast(S3Client, session.client('s3', region_name='us-east-1'))
+        return backup_s3_client.get_bucket_location(Bucket=bucket_name).get('LocationConstraint', None)
+
+    def attempt_head_bucket() -> Optional[str]:
+        """
+        Try and get the bucket location from calling HeadBucket and inspecting
+        the headers.
+        """
+        # If that also doesn't work, we can try HEAD-ing the bucket and looking
+        # for an 'x-amz-bucket-region' header on the response, which can tell
+        # us where the bucket is. See
+        # <https://github.com/aws/aws-sdk-cpp/issues/844#issuecomment-383747871>
+        # This won't typecheck until https://github.com/youtype/mypy_boto3_builder/issues/147 is fixed.
+        info = s3_client.head_bucket(Bucket=bucket_name)  # type: ignore
+        return cast(str, info['ResponseMetadata']['HTTPHeaders']['x-amz-bucket-region'])
+
+    # Compose a list of strategise we want to try in order, which may work.
+    # None is an acceptable return type that actually means something.
+    strategies: List[Callable[[], Optional[str]]] = []
+    strategies.append(attempt_get_bucket_location)
+    if not endpoint_url:
+        # We should only try to talk to us-east-1 if we don't have a custom
+        # URL.
+        strategies.append(attempt_get_bucket_location_from_us_east_1)
+    strategies.append(attempt_head_bucket)
+
     for attempt in retry_s3():
         with attempt:
-            loc = s3_client.get_bucket_location(Bucket=bucket_name)
-            return bucket_location_to_region(loc.get('LocationConstraint', None))
+            for strategy in strategies:
+                try:
+                    return bucket_location_to_region(strategy())
+                except ClientError as e:
+                    if get_error_code(e) == 'AccessDenied' and not endpoint_url:
+                        logger.warning('Could not get bucket location: %s', e)
+                        last_error: Exception = e
+                        # We were blocked with this strategy. Move on to the
+                        # next strategy which might work.
+                        continue
+                    else:
+                        raise
+                except KeyError as e:
+                    # If we get a weird head response we will have a KeyError
+                    logger.warning('Could not get bucket location: %s', e)
+                    last_error = e
+    # If we get here we ran out of attempts. Raise whatever the last problem was.
+    raise last_error
+
+
 
 def region_to_bucket_location(region: str) -> str:
     return '' if region == 'us-east-1' else region
@@ -257,7 +323,7 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> Obj
             # Probably don't have permission.
             # TODO: check if it is that
             s3 = cast(S3ServiceResource, session.resource('s3', endpoint_url=endpoint_url))
-        
+
         obj = s3.Object(bucket_name, key_name)
         objExists = True
 

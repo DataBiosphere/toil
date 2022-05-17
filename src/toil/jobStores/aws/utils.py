@@ -17,15 +17,26 @@ import logging
 import os
 import types
 from ssl import SSLError
-from typing import Optional
+from typing import cast, Optional
 
 from boto3.s3.transfer import TransferConfig
 from boto.exception import BotoServerError, S3ResponseError, SDBResponseError
 from botocore.exceptions import ClientError
+from mypy_boto3_s3 import S3Client, S3ServiceResource
 
 from toil.lib.compatibility import compat_bytes
-from toil.lib.retry import ErrorCondition, get_error_status, get_error_code, old_retry, retry, DEFAULT_DELAYS, DEFAULT_TIMEOUT
-from toil.lib.aws.utils import connection_reset
+from toil.lib.retry import (
+    ErrorCondition,
+    get_error_status,
+    get_error_code,
+    get_error_message,
+    old_retry,
+    retry,
+    DEFAULT_DELAYS,
+    DEFAULT_TIMEOUT
+)
+from toil.lib.aws import session
+from toil.lib.aws.utils import connection_reset, get_bucket_region
 
 logger = logging.getLogger(__name__)
 
@@ -264,7 +275,7 @@ def uploadFile(readable,
     error=ClientError,
     error_codes=[404, 500, 502, 503, 504]
 )])
-def copyKeyMultipart(resource,
+def copyKeyMultipart(resource: S3ServiceResource,
                      srcBucketName: str,
                      srcKeyName: str,
                      srcKeyVersion: str,
@@ -279,7 +290,7 @@ def copyKeyMultipart(resource,
     destination key exists it will be overwritten implicitly, and if it does not exist a new
     key will be created. If the destination bucket does not exist an error will be raised.
 
-    :param S3.Resource resource: boto3 resource
+    :param resource: boto3 resource
     :param str srcBucketName: The name of the bucket to be copied from.
     :param str srcKeyName: The name of the key to be copied from.
     :param str srcKeyVersion: The version of the key to be copied from.
@@ -299,6 +310,12 @@ def copyKeyMultipart(resource,
     if srcKeyVersion is not None:
         copySource['VersionId'] = compat_bytes(srcKeyVersion)
 
+    # Get a client to the source region, which may not be the same as the one
+    # this resource is connected to. We should probably talk to it for source
+    # object metadata.
+    source_region = get_bucket_region(srcBucketName)
+    source_client = cast(S3Client, session.client('s3', region_name=source_region))
+
     # The boto3 functions don't allow passing parameters as None to
     # indicate they weren't provided. So we have to do a bit of work
     # to ensure we only provide the parameters when they are actually
@@ -313,7 +330,26 @@ def copyKeyMultipart(resource,
                                    'CopySourceSSECustomerKey': copySourceSseKey})
     copyEncryptionArgs.update(destEncryptionArgs)
 
-    dstObject.copy(copySource, ExtraArgs=copyEncryptionArgs)
+    try:
+        # Kick off a server-side copy operation
+        dstObject.copy(copySource, SourceClient=source_client, ExtraArgs=copyEncryptionArgs)
+    except ClientError as e:
+        if get_error_code(e) == 'AccessDenied' and 'cross-region' in get_error_message(e):
+            # We have this problem: <https://aws.amazon.com/premiumsupport/knowledge-center/s3-troubleshoot-copy-between-buckets/#Cross-Region_request_issues_with_VPC_endpoints_for_Amazon_S3>
+            # The Internet and AWS docs say that we just can't do a
+            # cross-region CopyObject from inside a VPC with an endpoint. But
+            # the AGC team suggested we try doing the copy by talking to the
+            # source region instead.
+            source_resource = cast(S3ServiceResource, session.resource('s3', region_name=source_region))
+            # Remake everything against the other resource.
+            dstBucket = source_resource.Bucket(compat_bytes(dstBucketName))
+            dstObject = dstBucket.Object(compat_bytes(dstKeyName))
+            # And redo the copy
+            dstObject.copy(copySource, SourceClient=source_client, ExtraArgs=copyEncryptionArgs)
+        else:
+            # Some other ClientError happened
+            raise
+
 
     # Wait until the object exists before calling head_object
     object_summary = resource.ObjectSummary(dstObject.bucket_name, dstObject.key)
