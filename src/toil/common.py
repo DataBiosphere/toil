@@ -48,7 +48,10 @@ from typing import (
 from urllib.parse import urlparse
 
 import requests
-from typing_extensions import Literal
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import (add_all_batchsystem_options,
