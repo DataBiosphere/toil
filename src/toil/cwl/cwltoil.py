@@ -52,7 +52,7 @@ from typing import (
     Union,
     cast,
 )
-from urllib.parse import urlparse, ParseResult
+from urllib.parse import urlparse, urlsplit, ParseResult
 
 import cwltool.builder
 import cwltool.command_line_tool
@@ -841,9 +841,9 @@ class ToilPathMapper(PathMapper):
 
                     if deref.startswith("file:"):
                         deref = schema_salad.ref_resolver.uri_file_path(deref)
-                    if urllib.parse.urlparse(deref).scheme in ["http", "https"]:
+                    if urllib.parse.urlsplit(deref).scheme in ["http", "https"]:
                         deref = downloadHttpFile(path)
-                    elif urllib.parse.urlparse(deref).scheme != "toilfile":
+                    elif urllib.parse.urlsplit(deref).scheme != "toilfile":
                         # Dereference symbolic links
                         st = os.lstat(deref)
                         while stat.S_ISLNK(st.st_mode):

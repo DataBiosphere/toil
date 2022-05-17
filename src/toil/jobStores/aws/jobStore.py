@@ -26,7 +26,7 @@ import uuid
 from contextlib import contextmanager
 from io import BytesIO
 from typing import Optional, List
-from urllib.parse import ParseResult, urlparse, urlunparse, urlencode, parse_qs
+from urllib.parse import ParseResult, urlparse, urlunsplit, urlencode, parse_qs
 
 import boto.s3.connection
 import boto.sdb
@@ -633,7 +633,7 @@ class AWSJobStore(AbstractJobStore):
         # query_auth is False when using an IAM role (see issue #2043). Including the
         # x-amz-security-token parameter without the access key results in a 403,
         # even if the resource is public, so we need to remove it.
-        scheme, netloc, path, query, fragment = urlparse(url)
+        scheme, netloc, path, query, fragment = urlsplit(url)
         params = parse_qs(query)
         if 'x-amz-security-token' in params:
             del params['x-amz-security-token']
@@ -642,7 +642,7 @@ class AWSJobStore(AbstractJobStore):
         if 'Signature' in params:
             del params['Signature']
         query = urlencode(params, doseq=True)
-        url = urlunparse((scheme, netloc, path, query, fragment))
+        url = urlunsplit((scheme, netloc, path, query, fragment))
         return url
 
     def get_shared_public_url(self, shared_file_name):
