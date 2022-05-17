@@ -16,7 +16,7 @@ import logging
 import os
 import socket
 import sys
-from typing import Any, Callable, ContextManager, Dict, Hashable, Iterable, Iterator, List, Optional, Union, cast
+from typing import Any, Callable, ContextManager, Dict, Hashable, Iterable, Iterator, List, Optional, Set, Union, cast
 from urllib.parse import ParseResult
 
 from toil.lib.aws import session
@@ -205,11 +205,13 @@ def create_s3_bucket(
         )
     return bucket
 
-def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None) -> str:
+def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only_strategies: Optional[Set[int]] = None) -> str:
     """
     Get the AWS region name associated with the given S3 bucket.
 
     Takes an optional S3 API URL override.
+
+    :param only_strategies: For testing, use only strategies with 1-based numbers in this set.
     """
 
     s3_client = cast(S3Client, session.client('s3', endpoint_url=endpoint_url))
@@ -262,12 +264,15 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None) -> s
 
     for attempt in retry_s3():
         with attempt:
-            for strategy in strategies:
+            for i, strategy in enumerate(strategies):
+                if only_strategies is not None and i+1 not in only_strategies:
+                    # We want to test running without this strategy.
+                    continue
                 try:
                     return bucket_location_to_region(strategy())
                 except ClientError as e:
                     if get_error_code(e) == 'AccessDenied' and not endpoint_url:
-                        logger.warning('Could not get bucket location: %s', e)
+                        logger.warning('Strategy %d to get bucket location did not work: %s', i + 1, e)
                         last_error: Exception = e
                         # We were blocked with this strategy. Move on to the
                         # next strategy which might work.
@@ -276,7 +281,7 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None) -> s
                         raise
                 except KeyError as e:
                     # If we get a weird head response we will have a KeyError
-                    logger.warning('Could not get bucket location: %s', e)
+                    logger.warning('Strategy %d to get bucket location did not work: %s', i + 1, e)
                     last_error = e
     # If we get here we ran out of attempts. Raise whatever the last problem was.
     raise last_error
