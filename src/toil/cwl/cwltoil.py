@@ -1184,11 +1184,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
                     # Try to grab it with a jobstore implementation, and save it
                     # somewhere arbitrary.
                     dest_file = tempfile.NamedTemporaryFile(delete=False)
-                    # MyPy/Typeshed bug: https://github.com/python/typeshed/issues/7843
-                    # MyPy doesn't think dest_file is a BinaryIO, but we know
-                    # it is a binary-mode file-like object, which is what that
-                    # means.
-                    AbstractJobStore.read_from_url(path, dest_file)  # type: ignore
+                    AbstractJobStore.read_from_url(path, dest_file) 
                     dest_file.close()
                     self.dir_to_download[path] = dest_file.name
                 destination = self.dir_to_download[path]

@@ -24,7 +24,6 @@ from typing import (
     IO,
     TYPE_CHECKING,
     Any,
-    BinaryIO,
     Callable,
     ContextManager,
     Dict,
@@ -32,7 +31,6 @@ from typing import (
     List,
     Optional,
     Set,
-    TextIO,
     Tuple,
     Union,
     ValuesView,
@@ -538,7 +536,7 @@ class AbstractJobStore(ABC):
         raise NotImplementedError
 
     @classmethod
-    def read_from_url(cls, src_uri: str, writable: BinaryIO) -> Tuple[int, bool]:
+    def read_from_url(cls, src_uri: str, writable: IO[bytes]) -> Tuple[int, bool]:
         """
         Read the given URL and write its content into the given writable stream.
         
@@ -587,14 +585,14 @@ class AbstractJobStore(ABC):
 
     @classmethod
     @abstractmethod
-    def _write_to_url(cls, readable: Union[BinaryIO, TextIO], url: ParseResult, executable: bool = False) -> None:
+    def _write_to_url(cls, readable: Union[IO[bytes], IO[str]], url: ParseResult, executable: bool = False) -> None:
         """
         Reads the contents of the given readable stream and writes it to the object at the
         specified location.
 
         Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
 
-        :param Union[BinaryIO, TextIO] readable: a readable stream
+        :param Union[IO[bytes], IO[str]] readable: a readable stream
 
         :param ParseResult url: URL that points to a file or object in the storage
                mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
@@ -935,7 +933,7 @@ class AbstractJobStore(ABC):
         logger.debug("Discarding old statistics and logs...")
         # We have to manually discard the stream to avoid getting
         # stuck on a blocking write from the job store.
-        def discardStream(stream: Union[BinaryIO, TextIO]) -> None:
+        def discardStream(stream: Union[IO[bytes], IO[str]]) -> None:
             """Read the stream 4K at a time until EOF, discarding all input."""
             while len(stream.read(4096)) != 0:
                 pass
@@ -1274,7 +1272,7 @@ class AbstractJobStore(ABC):
         jobStoreFileID: str,
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
-    ) -> Union[ContextManager[BinaryIO], ContextManager[TextIO]]:
+    ) -> Union[ContextManager[IO[bytes]], ContextManager[IO[str]]]:
         return self.read_file_stream(jobStoreFileID, encoding, errors)
 
     @overload
@@ -1283,13 +1281,13 @@ class AbstractJobStore(ABC):
         file_id: Union[FileID, str],
         encoding: Literal[None] = None,
         errors: Optional[str] = None,
-    ) -> ContextManager[BinaryIO]:
+    ) -> ContextManager[IO[bytes]]:
         ...
 
     @overload
     def read_file_stream(
         self, file_id: Union[FileID, str], encoding: str, errors: Optional[str] = None
-    ) -> ContextManager[TextIO]:
+    ) -> ContextManager[IO[str]]:
         ...
 
     @abstractmethod
@@ -1298,7 +1296,7 @@ class AbstractJobStore(ABC):
         file_id: Union[FileID, str],
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
-    ) -> Union[ContextManager[BinaryIO], ContextManager[TextIO]]:
+    ) -> Union[ContextManager[IO[bytes]], ContextManager[IO[str]]]:
         """
         Similar to readFile, but returns a context manager yielding a file handle which can be
         read from. The yielded file handle does not need to and should not be closed explicitly.
@@ -1312,7 +1310,7 @@ class AbstractJobStore(ABC):
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :return: a context manager yielding a file handle which can be read from
-        :rtype: Iterator[Union[BinaryIO, TextIO]]
+        :rtype: Iterator[Union[IO[bytes], IO[str]]]
         """
         raise NotImplementedError()
 
@@ -1465,7 +1463,7 @@ class AbstractJobStore(ABC):
     def readSharedFileStream(self,
                              sharedFileName: str,
                              encoding: Optional[str] = None,
-                             errors: Optional[str] = None) -> ContextManager[BinaryIO]:
+                             errors: Optional[str] = None) -> ContextManager[IO[bytes]]:
         return self.read_shared_file_stream(sharedFileName, encoding, errors)
 
     @abstractmethod
@@ -1473,7 +1471,7 @@ class AbstractJobStore(ABC):
     def read_shared_file_stream(self,
                                 shared_file_name: str,
                                 encoding: Optional[str] = None,
-                                errors: Optional[str] = None) -> Iterator[BinaryIO]:
+                                errors: Optional[str] = None) -> Iterator[IO[bytes]]:
         """
         Returns a context manager yielding a readable file handle to the global file referenced
         by the given name.
@@ -1488,7 +1486,7 @@ class AbstractJobStore(ABC):
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :return: a context manager yielding a readable file handle
-        :rtype: Iterator[BinaryIO]
+        :rtype: Iterator[IO[bytes]]
         """
         raise NotImplementedError()
 
@@ -1579,7 +1577,7 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
         ]
     )
     def _read_from_url(
-        cls, url: ParseResult, writable: Union[BinaryIO, TextIO]
+        cls, url: ParseResult, writable: Union[IO[bytes], IO[str]]
     ) -> Tuple[int, bool]:
         # We can only retry on errors that happen as responses to the request.
         # If we start getting file data, and the connection drops, we fail.

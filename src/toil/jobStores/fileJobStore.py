@@ -25,7 +25,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from urllib.parse import quote, unquote, ParseResult
-from typing import BinaryIO, Iterator, List, Optional, TextIO, Union, overload
+from typing import IO, Iterator, List, Optional, Union, overload
 if sys.version_info >= (3, 8):
     from typing import Literal
 else:
@@ -586,14 +586,14 @@ class FileJobStore(AbstractJobStore):
         file_id: Union[str, FileID],
         encoding: Literal[None] = None,
         errors: Optional[str] = None,
-    ) -> Iterator[BinaryIO]:
+    ) -> Iterator[IO[bytes]]:
         ...
 
     @contextmanager
     @overload
     def read_file_stream(
         self, file_id: Union[str, FileID], encoding: str, errors: Optional[str] = None
-    ) -> Iterator[TextIO]:
+    ) -> Iterator[IO[str]]:
         ...
 
     @contextmanager
@@ -603,7 +603,7 @@ class FileJobStore(AbstractJobStore):
         file_id: Union[str, FileID],
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
-    ) -> Union[Iterator[BinaryIO], Iterator[TextIO]]:
+    ) -> Union[Iterator[IO[bytes]], Iterator[IO[str]]]:
         ...
 
     @contextmanager
@@ -612,7 +612,7 @@ class FileJobStore(AbstractJobStore):
         file_id: Union[str, FileID],
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
-    ) -> Union[Iterator[BinaryIO], Iterator[TextIO]]:
+    ) -> Union[Iterator[IO[bytes]], Iterator[IO[str]]]:
         self._check_job_store_file_id(file_id)
         if encoding is None:
             with open(

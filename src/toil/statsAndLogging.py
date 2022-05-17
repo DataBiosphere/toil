@@ -19,7 +19,7 @@ import time
 from argparse import ArgumentParser, Namespace
 from logging.handlers import RotatingFileHandler
 from threading import Event, Thread
-from typing import TYPE_CHECKING, Any, BinaryIO, Callable, List, Optional, TextIO, Union
+from typing import TYPE_CHECKING, Any, Callable, IO, List, Optional, Union
 
 from toil.lib.expando import Expando
 from toil.lib.resources import get_total_cpu_time
@@ -49,7 +49,7 @@ class StatsAndLogging:
         self._worker.start()
 
     @classmethod
-    def formatLogStream(cls, stream: Union[TextIO, BinaryIO], job_name: Optional[str] = None) -> str:
+    def formatLogStream(cls, stream: Union[IO[str], IO[bytes]], job_name: Optional[str] = None) -> str:
         """
         Given a stream of text or bytes, and the job name, job itself, or some
         other optional stringifyable identity info for the job, return a big
@@ -75,7 +75,7 @@ class StatsAndLogging:
 
 
     @classmethod
-    def logWithFormatting(cls, jobStoreID: str, jobLogs: Union[TextIO, BinaryIO], method: Callable[[str], None] = logger.debug,
+    def logWithFormatting(cls, jobStoreID: str, jobLogs: Union[IO[str], IO[bytes]], method: Callable[[str], None] = logger.debug,
                             message: Optional[str] = None) -> None:
         if message is not None:
             method(message)
@@ -143,7 +143,7 @@ class StatsAndLogging:
         startTime = time.time()
         startClock = get_total_cpu_time()
 
-        def callback(fileHandle: Union[BinaryIO, TextIO]) -> None:
+        def callback(fileHandle: Union[IO[bytes], IO[str]]) -> None:
             statsStr = fileHandle.read()
             if not isinstance(statsStr, str):
                 statsStr = statsStr.decode()
