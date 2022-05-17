@@ -26,7 +26,7 @@ import uuid
 from contextlib import contextmanager
 from io import BytesIO
 from typing import Optional, List
-from urllib.parse import ParseResult, urlparse, urlunsplit, urlencode, parse_qs
+from urllib.parse import ParseResult, urlsplit, urlunsplit, urlencode, parse_qs
 
 import boto.s3.connection
 import boto.sdb
