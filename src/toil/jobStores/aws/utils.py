@@ -21,6 +21,7 @@ from typing import cast, Optional
 
 from boto3.s3.transfer import TransferConfig
 from boto.exception import BotoServerError, S3ResponseError, SDBResponseError
+from botocore.client import Config
 from botocore.exceptions import ClientError
 from mypy_boto3_s3 import S3Client, S3ServiceResource
 
@@ -40,6 +41,17 @@ from toil.lib.aws.utils import connection_reset, get_bucket_region
 
 logger = logging.getLogger(__name__)
 
+# Make one botocore Config object for setting up S3 to talk to the exact region
+# we told it to talk to, so that we don't keep making new objects that look
+# like distinct memoization keys. We need to set the addressing style to path
+# so that we talk to region-specific DNS names and not per-bucket DNS names. We
+# also need to set a special flag to make sure we don't use the generic
+# s3.amazonaws.com for us-east-1, or else we might not actually end up talking
+# to us-east-1 when a bucket is there. 
+DIAL_SPECIFIC_REGION_CONFIG = Config(s3={
+    'addressing_style': 'path',
+    'us_east_1_regional_endpoint': 'regional'
+})
 
 class SDBHelper:
     """
@@ -312,9 +324,17 @@ def copyKeyMultipart(resource: S3ServiceResource,
 
     # Get a client to the source region, which may not be the same as the one
     # this resource is connected to. We should probably talk to it for source
-    # object metadata.
+    # object metadata. And we really want it to talk to the source region and
+    # not wherever the bucket virtual hostnames go.
     source_region = get_bucket_region(srcBucketName)
-    source_client = cast(S3Client, session.client('s3', region_name=source_region))
+    source_client = cast(
+        S3Client,
+        session.client(
+            's3',
+            region_name=source_region,
+            config=DIAL_SPECIFIC_REGION_CONFIG
+        )
+    )
 
     # The boto3 functions don't allow passing parameters as None to
     # indicate they weren't provided. So we have to do a bit of work
@@ -340,7 +360,23 @@ def copyKeyMultipart(resource: S3ServiceResource,
             # cross-region CopyObject from inside a VPC with an endpoint. But
             # the AGC team suggested we try doing the copy by talking to the
             # source region instead.
-            source_resource = cast(S3ServiceResource, session.resource('s3', region_name=source_region))
+            
+            # In order to *actually* talk to the source region, we need to hit
+            # against the source region's endpoint, s3.<region>.amazonaws.com.
+            # But by default Boto3/botocore send requests to
+            # <bucketname>.s3.amazonaws.com, which seems like it ends up going
+            # to the VPC endpoint when inside a VPC, even if that's the wrong
+            # region. So we need to use a special config to make sure we
+            # actually send our request to a region-specific hostname and go
+            # over the Internet.
+            source_resource = cast(
+                S3ServiceResource,
+                session.resource(
+                    's3',
+                    region_name=source_region,
+                    config=DIAL_SPECIFIC_REGION_CONFIG
+                )
+            )
             # Remake everything against the other resource.
             dstBucket = source_resource.Bucket(compat_bytes(dstBucketName))
             dstObject = dstBucket.Object(compat_bytes(dstKeyName))
