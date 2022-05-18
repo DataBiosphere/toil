@@ -385,7 +385,7 @@ def copyKeyMultipart(resource: S3ServiceResource,
             # the source region's API servers, they reject it and tell us to
             # talk to the destination region's API servers instead. Which we
             # can't reach.
-            logger.error('Amazon is refusing to perform a server-side copy: %s', e)
+            logger.error('Amazon is refusing to perform a server-side copy of %s: %s', copySource, e)
             raise ServerSideCopyProhibitedError()
         else:
             # Some other ClientError happened
