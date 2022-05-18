@@ -45,16 +45,16 @@ def main() -> None:
     #  kill flag.
 
     # Get the leader PID
-    pid_to_kill = job_store.read_leader_pid_file()
+    pid_to_kill = job_store.read_leader_pid()
 
     # Check if the leader is on the same machine
     leader_node_id = job_store.read_leader_node_id()
     local_leader = leader_node_id == getNodeID()
 
     if local_leader:
-        # Check if we can send signal to the leader. If not, process might be in
-        # another container so we fall back to using the kill flag through the
-        # job store.
+        # Check if we can send signals to the leader. If not, process might be
+        # in another container so we fall back to using the kill flag through
+        # the job store.
         try:
             os.kill(pid_to_kill, 0)
         except OSError:

@@ -931,7 +931,7 @@ class Toil(ContextManager["Toil"]):
         self._assertContextManagerUsed()
 
         # Write shared files to the job store
-        self._jobStore.write_leader_pid_file()
+        self._jobStore.write_leader_pid()
         self._jobStore.write_leader_node_id()
 
         if self.config.restart:
@@ -973,7 +973,7 @@ class Toil(ContextManager["Toil"]):
         self._assertContextManagerUsed()
 
         # Write shared files to the job store
-        self._jobStore.write_leader_pid_file()
+        self._jobStore.write_leader_pid()
         self._jobStore.write_leader_node_id()
 
         if not self.config.restart:

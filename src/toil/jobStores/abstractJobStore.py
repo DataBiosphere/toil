@@ -1452,7 +1452,7 @@ class AbstractJobStore(ABC):
 
     # A few shared files useful to Toil, but probably less useful to the users.
 
-    def write_leader_pid_file(self) -> None:
+    def write_leader_pid(self) -> None:
         """
         Write the pid of this process to a file in the job store.
 
@@ -1463,7 +1463,7 @@ class AbstractJobStore(ABC):
         with self.write_shared_file_stream('pid.log') as f:
             f.write(str(os.getpid()).encode('utf-8'))
 
-    def read_leader_pid_file(self) -> int:
+    def read_leader_pid(self) -> int:
         """
         Read the pid of the leader process to a file in the job store.
 

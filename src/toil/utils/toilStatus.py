@@ -174,7 +174,7 @@ class ToilStatus:
             return 'QUEUED'
 
         try:
-            pid = jobstore.read_leader_pid_file()
+            pid = jobstore.read_leader_pid()
             try:
                 os.kill(pid, 0)  # Does not kill process when 0 is passed.
             except OSError:  # Process not found, must be done.

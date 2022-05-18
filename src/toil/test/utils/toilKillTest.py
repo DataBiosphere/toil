@@ -64,7 +64,7 @@ class ToilKillTest(ToilTest):
         while True:
             try:
                 job_store = Toil.resumeJobStore(self.job_store)
-                job_store.read_leader_pid_file()
+                job_store.read_leader_pid()
                 # pid file exists, now wait for the kill flag to exist
                 if not job_store.read_kill_flag():
                     # kill flag exists to be deleted to kill the leader
