@@ -45,6 +45,7 @@ from toil.jobStores.abstractJobStore import (
 )
 from toil.jobStores.aws.utils import (
     SDBHelper,
+    ServerSideCopyProhibitedError,
     copyKeyMultipart,
     fileSizeAndTime,
     monkeyPatchSdbConnection,
@@ -431,28 +432,38 @@ class AWSJobStore(AbstractJobStore):
         return info.fileID
 
     def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=False):
-        if issubclass(otherCls, AWSJobStore):
-            srcObj = get_object_for_url(uri, existing=True)
-            size = srcObj.content_length
-            if shared_file_name is None:
-                info = self.FileInfo.create(srcObj.key)
-            else:
-                self._requireValidSharedFileName(shared_file_name)
-                jobStoreFileID = self._shared_file_id(shared_file_name)
-                info = self.FileInfo.loadOrCreate(jobStoreFileID=jobStoreFileID,
-                                                  ownerID=str(self.sharedFileOwnerID),
-                                                  encrypted=None)
-            info.copyFrom(srcObj)
-            info.save()
-            return FileID(info.fileID, size) if shared_file_name is None else None
-        else:
-            return super()._import_file(otherCls, uri, shared_file_name=shared_file_name)
+        try:
+            if issubclass(otherCls, AWSJobStore):
+                srcObj = get_object_for_url(uri, existing=True)
+                size = srcObj.content_length
+                if shared_file_name is None:
+                    info = self.FileInfo.create(srcObj.key)
+                else:
+                    self._requireValidSharedFileName(shared_file_name)
+                    jobStoreFileID = self._shared_file_id(shared_file_name)
+                    info = self.FileInfo.loadOrCreate(jobStoreFileID=jobStoreFileID,
+                                                      ownerID=str(self.sharedFileOwnerID),
+                                                      encrypted=None)
+                info.copyFrom(srcObj)
+                info.save()
+                return FileID(info.fileID, size) if shared_file_name is None else None
+        except ServerSideCopyProhibitedError:
+            # AWS refuses to do this copy for us
+            logger.warning("Falling back to copying via the local machine. This could get expensive!")
+            pass
+        return super()._import_file(otherCls, uri, shared_file_name=shared_file_name)
 
     def _export_file(self, otherCls, file_id, uri):
-        if issubclass(otherCls, AWSJobStore):
-            dstObj = get_object_for_url(uri)
-            info = self.FileInfo.loadOrFail(file_id)
-            info.copyTo(dstObj)
+        try:
+            if issubclass(otherCls, AWSJobStore):
+                dstObj = get_object_for_url(uri)
+                info = self.FileInfo.loadOrFail(file_id)
+                info.copyTo(dstObj)
+                return
+        except ServerSideCopyProhibitedError:
+            # AWS refuses to do this copy for us
+            logger.warning("Falling back to copying via the local machine. This could get expensive!")
+            pass
         else:
             super()._default_export_file(otherCls, file_id, uri)
 

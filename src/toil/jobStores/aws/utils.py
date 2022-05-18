@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 # so that we talk to region-specific DNS names and not per-bucket DNS names. We
 # also need to set a special flag to make sure we don't use the generic
 # s3.amazonaws.com for us-east-1, or else we might not actually end up talking
-# to us-east-1 when a bucket is there. 
+# to us-east-1 when a bucket is there.
 DIAL_SPECIFIC_REGION_CONFIG = Config(s3={
     'addressing_style': 'path',
     'us_east_1_regional_endpoint': 'regional'
@@ -282,6 +282,12 @@ def uploadFile(readable,
     info = client.head_object(Bucket=bucketName, Key=compat_bytes(fileID), **headerArgs)
     return info.get('VersionId', None)
 
+class ServerSideCopyProhibitedError(RuntimeError):
+    """
+    Raised when AWS refuses to perform a server-side copy between S3 keys, and
+    insists that you pay to download and upload the data yourself instead.
+    """
+    pass
 
 @retry(errors=[ErrorCondition(
     error=ClientError,
@@ -301,6 +307,21 @@ def copyKeyMultipart(resource: S3ServiceResource,
     Copies a key from a source key to a destination key in multiple parts. Note that if the
     destination key exists it will be overwritten implicitly, and if it does not exist a new
     key will be created. If the destination bucket does not exist an error will be raised.
+
+    This function will always do a fast, server-side copy, at least
+    until/unless <https://github.com/boto/boto3/issues/3270> is fixed. In some
+    situations, a fast, server-side copy is not actually possible. For example,
+    when residing in an AWS VPC with an S3 VPC Endpoint configured, copying
+    from a bucket in another region to a bucket in your own region cannot be
+    performed server-side. This is because the VPC Endpoint S3 API servers
+    refuse to perform server-side copies between regions, the source region's
+    API servers refuse to initiate the copy and refer you to the destination
+    bucket's region's API servers, and the VPC routing tables are configured to
+    redirect all access to the current region's S3 API servers to the S3
+    Endpoint API servers instead.
+
+    If a fast server-side copy is not actually possible, a
+    ServerSideCopyProhibitedError will be raised.
 
     :param resource: boto3 resource
     :param str srcBucketName: The name of the bucket to be copied from.
@@ -357,31 +378,15 @@ def copyKeyMultipart(resource: S3ServiceResource,
         if get_error_code(e) == 'AccessDenied' and 'cross-region' in get_error_message(e):
             # We have this problem: <https://aws.amazon.com/premiumsupport/knowledge-center/s3-troubleshoot-copy-between-buckets/#Cross-Region_request_issues_with_VPC_endpoints_for_Amazon_S3>
             # The Internet and AWS docs say that we just can't do a
-            # cross-region CopyObject from inside a VPC with an endpoint. But
-            # the AGC team suggested we try doing the copy by talking to the
-            # source region instead.
-            
-            # In order to *actually* talk to the source region, we need to hit
-            # against the source region's endpoint, s3.<region>.amazonaws.com.
-            # But by default Boto3/botocore send requests to
-            # <bucketname>.s3.amazonaws.com, which seems like it ends up going
-            # to the VPC endpoint when inside a VPC, even if that's the wrong
-            # region. So we need to use a special config to make sure we
-            # actually send our request to a region-specific hostname and go
-            # over the Internet.
-            source_resource = cast(
-                S3ServiceResource,
-                session.resource(
-                    's3',
-                    region_name=source_region,
-                    config=DIAL_SPECIFIC_REGION_CONFIG
-                )
-            )
-            # Remake everything against the other resource.
-            dstBucket = source_resource.Bucket(compat_bytes(dstBucketName))
-            dstObject = dstBucket.Object(compat_bytes(dstKeyName))
-            # And redo the copy
-            dstObject.copy(copySource, SourceClient=source_client, ExtraArgs=copyEncryptionArgs)
+            # cross-region CopyObject from inside a VPC with an endpoint. The
+            # AGC team suggested we try doing the copy by talking to the
+            # source region instead, but that does not actually work; if we
+            # hack up botocore enough for it to actually send the request to
+            # the source region's API servers, they reject it and tell us to
+            # talk to the destination region's API servers instead. Which we
+            # can't reach.
+            logger.error('Amazon is refusing to perform a server-side copy: %s', e)
+            raise ServerSideCopyProhibitedError()
         else:
             # Some other ClientError happened
             raise
