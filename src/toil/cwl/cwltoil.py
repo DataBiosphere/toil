@@ -609,7 +609,13 @@ class ToilPathMapper(PathMapper):
         Initialize this ToilPathMapper.
 
         :param stage_listing: Stage files and directories inside directories
-        even if we also stage the parent.
+               even if we also stage the parent.
+        :param get_file: A function that takes a URL, an optional "streamable"
+               flag for if a file is supposed to be streamable, and an optional
+               "streaming_allowed" flag for whether we are running with
+               streaming on, and returns a file: URI to where the file or
+               directory has been downloaded to. Meant to be a partially-bound
+               version of toil_get_file().   
         """
         self.get_file = get_file
         self.stage_listing = stage_listing
@@ -745,8 +751,11 @@ class ToilPathMapper(PathMapper):
                 # root-owned files in whatever we mounted for the Docker work
                 # directory, somehow. So make a directory ourselves instead.
                 if self.get_file:
+                    # Ask for an empty directory
+                    new_dir_uri = self.get_file("_:")
+                    # And get a path for it
                     resolved = schema_salad.ref_resolver.uri_file_path(
-                        self.get_file("_:")
+                        new_dir_uri
                     )
 
                     if "listing" in obj and obj["listing"] != []:
@@ -1324,6 +1333,8 @@ def toil_get_file(
     to close the file descriptors (to break the pipes) and join the threads
     """
     pipe_threads_real = pipe_threads or []
+    # We can't use urlparse here because we need to handle the '_:' scheme and
+    # urlparse sees that as a path and not a URI scheme.
     if file_store_id.startswith("toildir:"):
         # This is a file in a directory, or maybe a directory itself.
         # See ToilFsAccess and upload_directory.
@@ -1402,18 +1413,22 @@ def toil_get_file(
         return schema_salad.ref_resolver.file_uri(src_path)
     elif file_store_id.startswith("_:"):
         # Someone is asking us for an empty temp directory.
+        # We need to check this before the file path case because urlsplit()
+        # will call this a path with no scheme.
         dest_path = file_store.getLocalTempDir()
         return schema_salad.ref_resolver.file_uri(dest_path)
-    elif file_store_id.startswith("file:"):
-        # We need to support file: URIs, because we might be involved in moving
-        # files around on the local disk when uploading things after a job. We
-        # might want to catch cases where a leader filesystem file URI leaks in
-        # here, but we can't, so we just rely on the rest of the code to be
-        # correct.
+    elif file_store_id.startswith("file:") or urlsplit(file_store_id).scheme == "":
+        # There's a file: scheme or no scheme, and we know this isn't a _: URL.
+        
+        # We need to support file: URIs and local paths, because we might be
+        # involved in moving files around on the local disk when uploading
+        # things after a job. We might want to catch cases where a leader
+        # filesystem file URI leaks in here, but we can't, so we just rely on
+        # the rest of the code to be correct.
         return file_store_id
     else:
         raise RuntimeError(
-            f"Cannot obtain file {file_store_id} from host "
+            f"Cannot obtain file {file_store_id} while on host "
             f"{socket.gethostname()}; all imports must happen on the "
             f"leader!"
         )
