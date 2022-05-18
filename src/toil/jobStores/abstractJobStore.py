@@ -1550,6 +1550,11 @@ class AbstractJobStore(ABC):
 
 
 class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
+    """
+    A mostly fake JobStore to access URLs not really associated with real job
+    stores.
+    """
+    
     @classmethod
     def _supports_url(cls, url: ParseResult, export: bool = False) -> bool:
         return url.scheme.lower() in ('http', 'https', 'ftp') and not export
@@ -1596,3 +1601,13 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
             # Do the download
             shutil.copyfileobj(readable, counter)
             return size[0], False
+    
+    @classmethod
+    def _get_is_directory(cls, url: ParseResult) -> bool:
+        # TODO: Implement HTTP index parsing and FTP directory listing
+        return False
+        
+    @classmethod
+    def _list_url(cls, url: ParseResult) -> bool:
+        # TODO: Implement HTTP index parsing and FTP directory listing
+        raise NotImplementedError("HTTP and FTP URLs cannot yet be listed")

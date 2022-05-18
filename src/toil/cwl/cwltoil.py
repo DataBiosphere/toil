@@ -52,7 +52,7 @@ from typing import (
     Union,
     cast,
 )
-from urllib.parse import urlparse, urlsplit, ParseResult
+from urllib.parse import quote, unquote, urlparse, urlsplit, ParseResult
 
 import cwltool.builder
 import cwltool.command_line_tool
@@ -846,9 +846,9 @@ class ToilPathMapper(PathMapper):
 
                     if deref.startswith("file:"):
                         deref = schema_salad.ref_resolver.uri_file_path(deref)
-                    if urllib.parse.urlsplit(deref).scheme in ["http", "https"]:
+                    if urlsplit(deref).scheme in ["http", "https"]:
                         deref = downloadHttpFile(path)
-                    elif urllib.parse.urlsplit(deref).scheme != "toilfile":
+                    elif urlsplit(deref).scheme != "toilfile":
                         # Dereference symbolic links
                         st = os.lstat(deref)
                         while stat.S_ISLNK(st.st_mode):
@@ -1158,8 +1158,8 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
                 # Navigate to the right subdirectory
                 destination = self.dir_to_download[cache_key] + "/" + subpath
         elif parse.scheme == 'file':
-            # This is a File URL
-            destination = parse.path
+            # This is a File URL. Decode it to an actual path.
+            destination = unquote(parse.path)
         elif parse.scheme == '':
             # This is just a local file and not a URL
             destination = path
@@ -1281,7 +1281,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
             # Now list it (it is probably a directory)
             return [
-                cwltool.stdfsaccess.abspath(urllib.parse.quote(entry), fn)
+                cwltool.stdfsaccess.abspath(quote(entry), fn)
                 for entry in os.listdir(directory)
             ]
         else:
