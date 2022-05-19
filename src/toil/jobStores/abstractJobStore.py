@@ -1608,6 +1608,6 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
         return False
         
     @classmethod
-    def _list_url(cls, url: ParseResult) -> bool:
+    def _list_url(cls, url: ParseResult) -> List[str]:
         # TODO: Implement HTTP index parsing and FTP directory listing
         raise NotImplementedError("HTTP and FTP URLs cannot yet be listed")
