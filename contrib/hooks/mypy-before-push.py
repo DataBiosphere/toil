@@ -41,7 +41,7 @@ def check_checked_out_commit(local_object) -> bool:
     status, log = read_cache(local_object)
     if status is None:
         announce('Commit has not been type-checked. Checking now.')
-        status, log = check_to_cache(local_object)
+        status, log, _ = check_to_cache(local_object)
         from_cache = False
     else:
         from_cache = True
