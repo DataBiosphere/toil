@@ -180,7 +180,7 @@ class BucketUsingTest(ToilTest):
     """
     Base class for tests that need a bucket.
     """
-    
+
     from mypy_boto3_s3 import S3ServiceResource
     from mypy_boto3_s3.service_resource import Bucket
 
@@ -217,9 +217,9 @@ class AWSStateStoreTest(hidden.AbstractStateStoreTest, BucketUsingTest):
     """
     Test AWS-based state storage.
     """
-    
+
     from toil.server.utils import AbstractStateStore
-    
+
     bucket_path = "prefix/of/keys"
 
     def get_state_store(self) -> AbstractStateStore:
@@ -230,30 +230,30 @@ class AWSStateStoreTest(hidden.AbstractStateStoreTest, BucketUsingTest):
         from toil.server.utils import S3StateStore
 
         return S3StateStore('s3://' + self.bucket_name + '/' + self.bucket_path)
-        
+
     def test_state_store_paths(self) -> None:
         """
         Make sure that the S3 state store puts things in the right places.
-        
+
         We don't *really* care about the exact internal structure, but we do
         care about actually being under the path we are supposed to use.
         """
-        
+
         from toil.lib.aws.utils import get_object_for_url
-        
+
         store = self.get_state_store()
 
         # Should hold a value
         store.set('testid', 'testkey', 'testvalue')
         self.assertEqual(store.get('testid', 'testkey'), 'testvalue')
-        
-        expected_url = urlparse('s3://' + self.bucket_name + '/' + 
+
+        expected_url = urlparse('s3://' + self.bucket_name + '/' +
             os.path.join(self.bucket_path, 'testid', 'testkey'))
-        
+
         obj = get_object_for_url(expected_url, True)
         self.assertEqual(obj.content_length, len('testvalue'))
-        
-        
+
+
 
 
 @needs_server
@@ -301,11 +301,11 @@ class AbstractToilWESServerTest(ToilTest):
               output:
                 type: stdout
             """)
-            
+
         self.slow_cwl = textwrap.dedent("""
             cwlVersion: v1.0
             class: CommandLineTool
-            baseCommand: sleep 
+            baseCommand: sleep
             stdout: output.txt
             inputs:
               delay:
@@ -316,7 +316,7 @@ class AbstractToilWESServerTest(ToilTest):
               output:
                 type: stdout
             """)
-            
+
     def tearDown(self) -> None:
         super().tearDown()
 
@@ -373,14 +373,14 @@ class AbstractToilWESServerTest(ToilTest):
         self.assertTrue(rv.is_json)
         run_id = rv.json.get("run_id")
         self.assertIsNotNone(run_id)
-        
+
         return run_id
 
     def _poll_status(self, client: "FlaskClient", run_id: str) -> str:
         """
         Get the status of the given workflow.
         """
-        
+
         rv = client.get(f"/ga4gh/wes/v1/runs/{run_id}/status")
         self.assertEqual(rv.status_code, 200)
         self.assertTrue(rv.is_json)
@@ -392,10 +392,10 @@ class AbstractToilWESServerTest(ToilTest):
                               "PAUSED", "COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR",
                               "CANCELED", "CANCELING"])
         return state
-        
+
     def _cancel_workflow(self, client: "FlaskClient", run_id: str) -> None:
         rv = client.post(f"/ga4gh/wes/v1/runs/{run_id}/cancel")
-        self.assertEqual(rv.status_code, 200) 
+        self.assertEqual(rv.status_code, 200)
 
     def _wait_for_status(self, client: "FlaskClient", run_id: str, target_status: str) -> None:
         """
@@ -420,7 +420,7 @@ class AbstractToilWESServerTest(ToilTest):
         """
         Wait for the given workflow run to succeed. If it fails, raise an exception.
         """
-        self._wait_for_status(client, run_id, "COMPLETE") 
+        self._wait_for_status(client, run_id, "COMPLETE")
 
 
 class ToilWESServerBenchTest(AbstractToilWESServerTest):
@@ -586,7 +586,7 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
             zip_file.writestr('data.json', json.dumps({"message": "Hello, world!"}))
             zip_file.writestr('MANIFEST.json', json.dumps({"mainWorkflowURL": "actual.cwl", "inputFileURLs": ["data.json"]}))
         self.run_zip_workflow(zip_path, include_message=False)
-        
+
     def test_run_and_cancel_workflows(self) -> None:
         """
         Run two workflows, cancel one of them, and make sure they all exist.
@@ -597,24 +597,24 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
             time.sleep(2)
             status1 = self._poll_status(client, run1)
             self.assertIn(status1, ["QUEUED", "INITIALIZING", "RUNNING"])
-            
+
             # Start another workflow
             run2 = self._start_slow_workflow(client)
             self.assertNotEqual(run1, run2)
             time.sleep(2)
             status2 = self._poll_status(client, run2)
             self.assertIn(status2, ["QUEUED", "INITIALIZING", "RUNNING"])
-            
+
             # Cancel the second one
             self._cancel_workflow(client, run2)
             time.sleep(1)
             status2 = self._poll_status(client, run2)
             self.assertIn(status2, ["CANCELING", "CANCELED"])
-            
+
             # Make sure the first one still exists too
             status1 = self._poll_status(client, run1)
             self.assertIn(status1, ["QUEUED", "INITIALIZING", "RUNNING"])
-            
+
             self._wait_for_status(client, run2, "CANCELED")
             self._wait_for_success(client, run1)
 
@@ -636,11 +636,11 @@ class ToilWESServerCeleryS3StateWorkflowTest(ToilWESServerWorkflowTest, BucketUs
     """
     Test the server with Celery and state stored in S3.
     """
-    
+
     def setUp(self) -> None:
         # Overwrite server args from __init__. The bucket name isn't available when __init__ runs.
         self._server_args = ["--state_store", "s3://" + self.bucket_name + "/state"]
         super().setUp()
-    
+
 if __name__ == "__main__":
     unittest.main()
