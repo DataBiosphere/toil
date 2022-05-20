@@ -22,6 +22,7 @@ import zipfile
 from abc import abstractmethod
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 try:
     from flask import Flask
@@ -218,6 +219,8 @@ class AWSStateStoreTest(hidden.AbstractStateStoreTest, BucketUsingTest):
     """
     
     from toil.server.utils import AbstractStateStore
+    
+    bucket_path = "prefix/of/keys"
 
     def get_state_store(self) -> AbstractStateStore:
         """
@@ -226,7 +229,31 @@ class AWSStateStoreTest(hidden.AbstractStateStoreTest, BucketUsingTest):
 
         from toil.server.utils import S3StateStore
 
-        return S3StateStore('s3://' + self.bucket_name)
+        return S3StateStore('s3://' + self.bucket_name + '/' + self.bucket_path)
+        
+    def test_state_store_paths(self) -> None:
+        """
+        Make sure that the S3 state store puts things in the right places.
+        
+        We don't *really* care about the exact internal structure, but we do
+        care about actually being under the path we are supposed to use.
+        """
+        
+        from toil.lib.aws.utils import get_object_for_url
+        
+        store = self.get_state_store()
+
+        # Should hold a value
+        store.set('testid', 'testkey', 'testvalue')
+        self.assertEqual(store.get('testid', 'testkey'), 'testvalue')
+        
+        expected_url = urlparse('s3://' + self.bucket_name + '/' + 
+            os.path.join(self.bucket_path, 'testid', 'testkey'))
+        
+        obj = get_object_for_url(expected_url, True)
+        self.assertEqual(obj.content_length, len('testvalue'))
+        
+        
 
 
 @needs_server
