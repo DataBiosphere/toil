@@ -360,10 +360,9 @@ cactus_integration:
     - git clone https://github.com/ComparativeGenomicsToolkit/cactus.git --recursive
     - cd cactus
     - git fetch origin
-    - git checkout a06d65042b7292de7f55e9396738ce69087f10af
+    - git checkout 3345cc0ce8dbf27ec765178f6031c5558d6d3525
     - git submodule update --init --recursive
     - pip install --upgrade setuptools pip
     - pip install --upgrade .
-    - pip install psutil==5.9.0 numpy==1.22.3 networkx==2.8.0 --upgrade
     - toil clean aws:us-west-2:${BUCKET_NAME}
     - time cactus --setEnv SINGULARITY_DOCKER_HUB_MIRROR --batchSystem kubernetes --binariesMode singularity --clean always aws:us-west-2:${BUCKET_NAME} examples/evolverMammals.txt examples/evolverMammals.hal --root mr --defaultDisk "8G" --logDebug
