@@ -332,7 +332,10 @@ if HAVE_S3:
                 raise RuntimeError(f"{url} doesn't look like an S3 URL")
 
             self._bucket = parse.netloc
-            self._base_path = parse.path
+            # urlparse keeps the leading '/', but here we want a path in the
+            # bucket without a leading '/'. We also need to support an empty
+            # path.
+            self._base_path = parse.path[1:] if parse.path.startswith('/') else parse.path
             self._client = client('s3', region_name=get_current_aws_region())
 
             logger.debug("Connected to S3StateStore at %s", url)
