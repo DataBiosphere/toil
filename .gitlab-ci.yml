@@ -288,7 +288,7 @@ jobstore_and_provisioning:
     - make test tests=src/toil/test/sort/sortTest.py
     - make test tests=src/toil/test/provisioners/aws/awsProvisionerTest.py
     - make test tests=src/toil/test/provisioners/clusterScalerTest.py
-#    - python -m pytest --duration=0 -s -r s src/toil/test/provisioners/gceProvisionerTest.py
+#    - make test tests=src/toil/test/provisioners/gceProvisionerTest.py
 # https://ucsc-ci.com/databiosphere/toil/-/jobs/38672
 # guessing decorators are masking class as function?  ^  also, abstract class is run as normal test?  should hide.
 
@@ -324,7 +324,7 @@ provisioner_integration:
     - make test tests=src/toil/test/provisioners/clusterScalerTest.py
     - make test tests=src/toil/test/utils/utilsTest.py::UtilsTest::testAWSProvisionerUtils
     - make test tests=src/toil/test/provisioners/aws/awsProvisionerTest.py
-    # - python -m pytest -s src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
+#    - make test tests=src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
 
 google_jobstore:
   stage: integration
@@ -360,10 +360,9 @@ cactus_integration:
     - git clone https://github.com/ComparativeGenomicsToolkit/cactus.git --recursive
     - cd cactus
     - git fetch origin
-    - git checkout a06d65042b7292de7f55e9396738ce69087f10af
+    - git checkout 3345cc0ce8dbf27ec765178f6031c5558d6d3525
     - git submodule update --init --recursive
     - pip install --upgrade setuptools pip
     - pip install --upgrade .
-    - pip install psutil numpy --upgrade
     - toil clean aws:us-west-2:${BUCKET_NAME}
-    - time cactus --setEnv SINGULARITY_DOCKER_HUB_MIRROR --batchSystem kubernetes --binariesMode singularity --clean always aws:us-west-2:${BUCKET_NAME} examples/evolverMammals.txt examples/evolverMammals.hal --root mr --defaultDisk "8G" --logDebug
+    - time cactus --setEnv SINGULARITY_DOCKER_HUB_MIRROR --batchSystem kubernetes --consCores 2 --binariesMode singularity --clean always aws:us-west-2:${BUCKET_NAME} examples/evolverMammals.txt examples/evolverMammals.hal --root mr --defaultDisk "8G" --logDebug
