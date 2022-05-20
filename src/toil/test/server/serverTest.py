@@ -179,8 +179,7 @@ class BucketUsingTest(ToilTest):
     """
     Base class for tests that need a bucket.
     """
-
-    from toil.server.utils import AbstractStateStore
+    
     from mypy_boto3_s3 import S3ServiceResource
     from mypy_boto3_s3.service_resource import Bucket
 
@@ -217,6 +216,8 @@ class AWSStateStoreTest(hidden.AbstractStateStoreTest, BucketUsingTest):
     """
     Test AWS-based state storage.
     """
+    
+    from toil.server.utils import AbstractStateStore
 
     def get_state_store(self) -> AbstractStateStore:
         """
@@ -590,21 +591,6 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
             self._wait_for_status(client, run2, "CANCELED")
             self._wait_for_success(client, run1)
 
-class ToilWESServerS3StateWorkflowTest(AbstractToilWESServerTest, BucketUsingTest):
-    """
-    Test the server without Celery but with state stored in S3.
-    """
-    
-    def __init__(self, *args, **kwargs):
-        """
-        Set up S3 state storage.
-        """
-        super().__init__(*args, **kwargs)
-
-        # Default to the local testing task runner instead of Celery for when
-        # we run workflows.
-        self._server_args = ["--bypass_celery", "--state_store", "s3://" + self.bucket_name + "/state"]
-
 @needs_celery_broker
 class ToilWESServerCeleryWorkflowTest(ToilWESServerWorkflowTest):
     """
@@ -617,22 +603,17 @@ class ToilWESServerCeleryWorkflowTest(ToilWESServerWorkflowTest):
         """
         super().__init__(*args, **kwargs)
         self._server_args = []
-        
-class ToilWESServerCeleryS3StateWorkflowTest(ToilWESServerCeleryWorkflowTest, ToilWESServerS3StateWorkflowTest):
+
+@needs_celery_broker
+class ToilWESServerCeleryS3StateWorkflowTest(ToilWESServerWorkflowTest, BucketUsingTest):
     """
     Test the server with Celery and state stored in S3.
     """
     
-    def __init__(self, *args, **kwargs):
-        """
-        Set up Celery as the runner and S3 state storage.
-        """
-        super().__init__(*args, **kwargs)
-
-        # Use S3 state and Celery task management
+    def setUp(self) -> None:
+        # Overwrite server args from __init__. The bucket name isn't available when __init__ runs.
         self._server_args = ["--state_store", "s3://" + self.bucket_name + "/state"]
-
-
-
+        super().setUp()
+    
 if __name__ == "__main__":
     unittest.main()
