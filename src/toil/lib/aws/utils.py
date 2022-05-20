@@ -208,7 +208,7 @@ def create_s3_bucket(
 def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None) -> str:
     """
     Get the AWS region name associated with the given S3 bucket.
-    
+
     Takes an optional S3 API URL override.
     """
     s3_client = cast(S3Client, session.client('s3', endpoint_url=endpoint_url))
@@ -216,7 +216,7 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None) -> s
         with attempt:
             loc = s3_client.get_bucket_location(Bucket=bucket_name)
             return bucket_location_to_region(loc.get('LocationConstraint', None))
-            
+
 def region_to_bucket_location(region: str) -> str:
     return '' if region == 'us-east-1' else region
 
@@ -234,7 +234,7 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> Obj
 
         keyName = url.path[1:]
         bucketName = url.netloc
-        
+
         # Decide if we need to override Boto's built-in URL here.
         endpoint_url: Optional[str] = None
         host = os.environ.get('TOIL_S3_HOST', None)

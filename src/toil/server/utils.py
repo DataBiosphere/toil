@@ -468,7 +468,7 @@ TERMINAL_STATES = {"COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELED"}
 
 # How long can a workflow be in CANCELING state before we conclude that the
 # workflow running task is gone and move it to CANCELED?
-MAX_CANCELING_SECONDS = 20
+MAX_CANCELING_SECONDS = 30
 
 class WorkflowStateMachine:
     """
