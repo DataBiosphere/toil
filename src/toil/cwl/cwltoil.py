@@ -1005,7 +1005,7 @@ def check_directory_dict_invariants(
 
     for name, item in contents.items():
         if name == '':
-            raise RuntimeError('Found nameless entry in directory: ' + str(contents))
+            raise RuntimeError('Found nameless entry in directory: ' + json.dumps(contents, indent=2))
         if isinstance(item, dict):
             check_directory_dict_invariants(item)
 
@@ -1110,7 +1110,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             # Is a Toil file
 
             if self.file_store is None:
-                raise RuntimeError("URL requires a file store:" + path)
+                raise RuntimeError("URL requires a file store: " + path)
 
             destination = self.file_store.readGlobalFile(
                 FileID.unpack(path[len("toilfile:") :]), symlink=True
@@ -1124,7 +1124,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
             # Is a directory or relative to it
 
             if self.file_store is None:
-                raise RuntimeError("URL requires a file store:" + path)
+                raise RuntimeError("URL requires a file store: " + path)
 
             # We will download the whole directory and then look inside it
 
@@ -1206,7 +1206,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         return super().glob(pattern)
 
     def open(self, fn: str, mode: str) -> IO[Any]:
-        # TODO: Also implement JobStore-suppoeted URLs through JobStore methods.
+        # TODO: Also implement JobStore-supported URLs through JobStore methods.
         # We know this falls back on _abs
         return super().open(fn, mode)
 
@@ -1214,7 +1214,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         """Test for file existence."""
         # toil's _abs() throws errors when files are not found and cwltool's _abs() does not
         try:
-            # TODO: Also implement JobStore-suppoeted URLs through JobStore methods.
+            # TODO: Also implement JobStore-supported URLs through JobStore methods.
             return os.path.exists(self._abs(path))
         except NoSuchFileException:
             return False
@@ -1249,7 +1249,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
             return self.size(here)
         else:
-            # TODO: Also implement JobStore-suppoeted URLs through JobStore methods.
+            # TODO: Also implement JobStore-supported URLs through JobStore methods.
             # We know this falls back on _abs
             return super().size(path)
 
