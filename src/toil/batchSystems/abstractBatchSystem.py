@@ -117,13 +117,15 @@ class AbstractBatchSystem(ABC):
     @abstractmethod
     def issueBatchJob(self, jobDesc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
         """
-        Issues a job with the specified command to the batch system and returns a unique jobID.
+        Issues a job with the specified command to the batch system and returns
+        a unique jobID.
 
-        :param jobDesc a toil.job.JobDescription
-        :param job_environment: a collection of job-specific environment variables
-                                to be set on the worker.
+        :param jobDesc: a toil.job.JobDescription
+        :param job_environment: a collection of job-specific environment
+                                variables to be set on the worker.
 
-        :return: a unique jobID that can be used to reference the newly issued job
+        :return: a unique jobID that can be used to reference the newly issued
+                 job
         """
         raise NotImplementedError()
 

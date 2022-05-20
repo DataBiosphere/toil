@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import os
 import pickle
 import re
 import shutil
@@ -46,7 +47,7 @@ from urllib.request import urlopen
 from uuid import uuid4
 from requests.exceptions import HTTPError
 
-from toil.common import Config, safeUnpickleFromStream
+from toil.common import Config, safeUnpickleFromStream, getNodeID
 from toil.fileStores import FileID
 from toil.job import (
     CheckpointJobDescription,
@@ -1531,6 +1532,71 @@ class AbstractJobStore(ABC):
         :rtype: int
         """
         raise NotImplementedError()
+
+    # A few shared files useful to Toil, but probably less useful to the users.
+
+    def write_leader_pid(self) -> None:
+        """
+        Write the pid of this process to a file in the job store.
+
+        Overwriting the current contents of pid.log is a feature, not a bug of
+        this method. Other methods will rely on always having the most current
+        pid available. So far there is no reason to store any old pids.
+        """
+        with self.write_shared_file_stream('pid.log') as f:
+            f.write(str(os.getpid()).encode('utf-8'))
+
+    def read_leader_pid(self) -> int:
+        """
+        Read the pid of the leader process to a file in the job store.
+
+        :raise NoSuchFileException: If the PID file doesn't exist.
+        """
+        with self.read_shared_file_stream('pid.log') as f:
+            return int(f.read().strip())
+
+    def write_leader_node_id(self) -> None:
+        """
+        Write the leader node id to the job store. This should only be called
+        by the leader.
+        """
+        with self.write_shared_file_stream("leader_node_id.log") as f:
+            f.write(getNodeID().encode('utf-8'))
+
+    def read_leader_node_id(self) -> str:
+        """
+        Read the leader node id stored in the job store.
+
+        :raise NoSuchFileException: If the node ID file doesn't exist.
+        """
+        with self.read_shared_file_stream("leader_node_id.log") as f:
+            return f.read().decode('utf-8').strip()
+
+    def write_kill_flag(self, kill: bool = False) -> None:
+        """
+        Write a file inside the job store that serves as a kill flag.
+
+        The initialized file contains the characters "NO". This should only be
+        changed when the user runs the "toil kill" command.
+
+        Changing this file to a "YES" triggers a kill of the leader process. The
+        workers are expected to be cleaned up by the leader.
+        """
+        with self.write_shared_file_stream("_toil_kill_flag") as f:
+            f.write(("YES" if kill else "NO").encode('utf-8'))
+
+    def read_kill_flag(self) -> bool:
+        """
+        Read the kill flag from the job store, and return True if the leader
+        has been killed. False otherwise.
+        """
+        try:
+            with self.read_shared_file_stream("_toil_kill_flag") as f:
+                killed = f.read().decode() == "YES"
+        except NoSuchFileException:
+            # The kill flag file doesn't exist yet.
+            killed = False
+        return killed
 
     # Helper methods for subclasses
 
