@@ -6,6 +6,7 @@ import sys
 import os
 import subprocess
 import socket
+import functools
 
 from subprocess import CalledProcessError, TimeoutExpired
 from typing import Tuple, Optional
@@ -22,31 +23,67 @@ def announce(message):
     sys.stderr.write('\n')
     sys.stderr.flush()
 
-cached_hostname = None
+@functools.lru_cache(maxsize=None)
 def get_hostname() -> str:
-    global cached_hostname
-    if cached_hostname is None:
-        try:
-            cached_hostname = socket.getfqdn()
-        except:
-            cached_hostname = 'localhost'
-    return cached_hostname
+    """
+    Get the current hostname, or fall back to localhost.
+    """
+    try:
+        return socket.getfqdn()
+    except:
+        return 'localhost'
 
 def file_link(path: str, text: Optional[str] = None) -> str:
-    
+    """
+    Produce a string we can print to a terminal to create a hyperlink.
+
+    Uses OSC 8 (operating system command number 8) as documented at
+    <https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda>
+    """
+
     # Determine link protocol to use
     if 'SSH_TTY' in os.environ:
+        # If the user is SSH-ing in, link to the file over SFTP so their
+        # desktop's virtual filesystem can go get it.
         protocol = 'sftp'
     else:
         protocol = 'file'
-    
-    realpath = os.path.realpath(path)
+
     if not text:
-        text = path    
-        
-    return f'\033]8;;{protocol}://{get_hostname()}{realpath}\033\\{text}\033]8;;\033\\'
+        # If we didn't get any link text, use the provided path.
+        text = path
+
+    # We always want to link to a full path name
+    realpath = os.path.realpath(path)
+
+    # This is the Operating System Command escape sequence
+    OSC = '\033]'
+    # This is the standard String Terminator for ending arguments to operating
+    # system commands.
+    ST = '\033\\'
+    # This is the command to set a link format on characters you print.
+    # It takes as an argument some optional params, a semicolon, and a URL.
+    # The argument is terminated with the String Terminator.
+    # Set the URL to an empty string to turn off linkification.
+    LINK_COMMAND=f'{OSC}8;'
+
+    # This is the full URL we want to link to.
+    # We include a hostname even for file:// URLs because that's what Gnome
+    # terminal seems to expect. This may or may not work well elsewhere.
+    url = f'{protocol}://{get_hostname()}{realpath}'
+
+    # This is what we print to turn on linking to the URL
+    turn_on_link = f'{LINK_COMMAND};{url}{ST}'
+    # And this is what we print to stop linking.
+    turn_off_link = f'{LINK_COMMAND};{ST}'
+
+    return f'{turn_on_link}{text}{turn_off_link}'
 
 def in_acceptable_environment() -> bool:
+    """
+    Determine if we are in an environment where we ought to be able to run mypy
+    type checking.
+    """
     try:
         # We need to be able to get at Toil, and we need to be in a virtual
         # environment.
@@ -62,7 +99,7 @@ def get_current_commit() -> str:
     Get the currently checked-out commit.
     """
     return subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('utf-8').strip()
-    
+
 def is_rebase():
     """
     Return true if we think we are currently rebasing.
@@ -136,4 +173,5 @@ def check_to_cache(local_object, timeout: float = None) -> Tuple[Optional[bool],
         return False, log, filename
     except TimeoutExpired:
         return None, None, None
-        
+
+
