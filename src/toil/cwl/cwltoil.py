@@ -112,6 +112,7 @@ from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job, Promise
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.jobStores.fileJobStore import FileJobStore
+from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
 from toil.lib.threading import ExceptionalThread
 from toil.statsAndLogging import DEFAULT_LOGLEVEL
 from toil.version import baseVersion
@@ -1668,6 +1669,9 @@ def toilStageFiles(
 ) -> None:
     """
     Copy input files out of the global file store and update location and path.
+
+    :param destBucket: If set, export to this base URL instead of to the local
+           filesystem.
     """
 
     def _collectDirEntries(
@@ -1788,9 +1792,21 @@ def toilStageFiles(
                         n.write(p.resolved.encode("utf-8"))
 
     def _check_adjust(f: CWLObjectType) -> CWLObjectType:
-        f["location"] = schema_salad.ref_resolver.file_uri(
-            pm.mapper(cast(str, f["location"]))[1]
-        )
+        # Figure out where the path mapper put this
+        mapped_location: MapperEnt = pm.mapper(cast(str, f["location"]))
+        if destBucket:
+            # Make the location point to the destination bucket.
+            # Reconstruct the path we exported to.
+            base_name = mapped_location.target[len(outdir) :]
+            dest_url = "/".join(s.strip("/") for s in [destBucket, base_name])
+            # And apply it
+            f["location"] = dest_url
+        else:
+            # Make the location point to the place we put this thing on the
+            # local filesystem.
+            f["location"] = schema_salad.ref_resolver.file_uri(
+                mapped_location.target
+            )
 
         if "contents" in f:
             del f["contents"]
@@ -2820,53 +2836,37 @@ def generate_default_job_store(
     if provisioner_name:
         situation += f" with the '{provisioner_name}' provisioner"
 
+    # Default to local job store
+    job_store_type = "file"
+
     try:
         if provisioner_name == "gce":
-            # We can't use a local directory on Google cloud
-
-            # Make sure we have the Google job store
-            from toil.jobStores.googleJobStore import GoogleJobStore  # noqa
-
-            # Look for a project
-            project = os.getenv("TOIL_GOOGLE_PROJECTID")
-            project_part = (":" + project) if project else ""
-
-            # Roll a randomn bucket name, possibly in the project.
-            return f"google{project_part}:toil-cwl-{str(uuid.uuid4())}"
+            # With GCE, always use the Google job store
+            job_store_type = "google"
         elif provisioner_name == "aws" or batch_system_name in {"mesos", "kubernetes"}:
-            # We can't use a local directory on AWS or on these cloud batch systems.
-            # If we aren't provisioning on Google, we should try an AWS batch system.
-
-            # Make sure we have AWS
-            from toil.jobStores.aws.jobStore import AWSJobStore  # noqa
-
-            # Find a region
-            from toil.lib.aws import get_current_aws_region
-
-            region = get_current_aws_region()
-
-            if not region:
-                # We can't generate an AWS job store without a region
-                situation += " running outside AWS with no TOIL_AWS_ZONE set"
-                raise NoAvailableJobStoreException()
-
-            # Roll a random name
-            return f"aws:{region}:toil-cwl-{str(uuid.uuid4())}"
+            # With AWS or these batch systems, always use the AWS job store
+            job_store_type = "aws"
         elif provisioner_name is not None and provisioner_name not in ["aws", "gce"]:
             # We 've never heard of this provisioner and don't know what kind
             # of job store to use with it.
             raise NoAvailableJobStoreException()
 
+        # Then if we get here a job store type has been selected, so try and
+        # make it
+        return generate_locator(job_store_type, local_suggestion=local_directory, decoration="cwl")
+
+    except JobStoreUnavailableException as e:
+        raise NoAvailableJobStoreException(
+            f"Could not determine a job store appropriate for "
+            f"{situation} because: {e}. Please specify a jobstore with the "
+            f"--jobStore option."
+        )
     except (ImportError, NoAvailableJobStoreException):
         raise NoAvailableJobStoreException(
             f"Could not determine a job store appropriate for "
             f"{situation}. Please specify a jobstore with the "
             f"--jobStore option."
         )
-
-    # Usually use the local directory and a file job store.
-    return local_directory
-
 
 usage_message = "\n\n" + textwrap.dedent(
     """

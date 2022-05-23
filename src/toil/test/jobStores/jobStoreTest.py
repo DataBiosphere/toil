@@ -40,7 +40,7 @@ from toil.job import Job, JobDescription, TemporaryID
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobException)
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.lib.aws.utils import create_s3_bucket
+from toil.lib.aws.utils import create_s3_bucket, get_object_for_url
 from toil.lib.memoize import memoize
 from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
@@ -1276,7 +1276,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
         from toil.lib.aws.session import establish_boto3_session
         from toil.jobStores.aws.jobStore import BucketLocationConflictException
-        from toil.jobStores.aws.utils import retry_s3
+        from toil.lib.aws.utils import retry_s3
 
         externalAWSLocation = 'us-west-1'
         for testRegion in 'us-east-1', 'us-west-2':
@@ -1409,7 +1409,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                         self.assertEqual(hashlib.md5(f.read()).hexdigest(), expected_md5)
 
     def _prepareTestFile(self, bucket, size=None):
-        from toil.jobStores.aws.utils import retry_s3
+        from toil.lib.aws.utils import retry_s3
 
         file_name = 'testfile_%s' % uuid.uuid4()
         url = f's3://{bucket.name}/{file_name}'
@@ -1423,14 +1423,14 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def _hashTestFile(self, url: str) -> str:
         from toil.jobStores.aws.jobStore import AWSJobStore
-        key = AWSJobStore._get_object_for_url(urlparse.urlparse(url), existing=True)
+        key = get_object_for_url(urlparse.urlparse(url), existing=True)
         contents = key.get().get('Body').read()
         return hashlib.md5(contents).hexdigest()
 
     def _createExternalStore(self):
         """A S3.Bucket instance is returned"""
         from toil.jobStores.aws.jobStore import establish_boto3_session
-        from toil.jobStores.aws.utils import retry_s3
+        from toil.lib.aws.utils import retry_s3
 
         resource = establish_boto3_session().resource(
             "s3", region_name=self.awsRegion()

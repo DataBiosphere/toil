@@ -21,6 +21,7 @@ from typing import List, Optional, Any
 
 from toil.lib.aws import (get_aws_zone_from_environment,
                           get_aws_zone_from_metadata,
+                          get_aws_zone_from_environment_region,
                           get_aws_zone_from_boto,
                           running_on_ec2,
                           zone_to_region)
@@ -63,7 +64,8 @@ def get_best_aws_zone(spotBid: Optional[float] = None, nodeType: Optional[str] =
 
     Reports the TOIL_AWS_ZONE environment variable if set.
 
-    Otherwise, if we are running on EC2, reports the zone we are running in.
+    Otherwise, if we are running on EC2 or ECS, reports the zone we are running
+    in.
 
     Otherwise, if a spot bid, node type, and Boto2 EC2 connection are
     specified, picks a zone where instances are easy to buy from the zones in
@@ -73,6 +75,9 @@ def get_best_aws_zone(spotBid: Optional[float] = None, nodeType: Optional[str] =
     In this case, zone_options can be used to restrict to a subset of the zones
     in the region.
 
+    Otherwise, if we have the TOIL_AWS_REGION variable set, chooses a zone in
+    that region.
+
     Finally, if a default region is configured in Boto 2, chooses a zone in
     that region.
 
@@ -81,6 +86,7 @@ def get_best_aws_zone(spotBid: Optional[float] = None, nodeType: Optional[str] =
     return get_aws_zone_from_environment() or \
         get_aws_zone_from_metadata() or \
         get_aws_zone_from_spot_market(spotBid, nodeType, boto2_ec2, zone_options) or \
+        get_aws_zone_from_environment_region() or \
         get_aws_zone_from_boto()
 
 

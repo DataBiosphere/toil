@@ -17,7 +17,7 @@ import uuid
 from typing import Optional
 
 from toil.jobStores.aws.jobStore import AWSJobStore
-from toil.lib.aws.utils import create_s3_bucket
+from toil.lib.aws.utils import create_s3_bucket, get_bucket_region
 from toil.lib.aws.session import establish_boto3_session
 from toil.test import ToilTest, needs_aws_s3
 
@@ -54,7 +54,7 @@ class S3Test(ToilTest):
             bucket_tagging.put(
                 Tagging={"TagSet": [{"Key": "Owner", "Value": owner_tag}]}
             )
-        self.assertTrue(AWSJobStore.getBucketRegion, "us-east-1")
+        self.assertEqual(get_bucket_region(bucket_name), "us-east-1")
 
     @classmethod
     def tearDownClass(cls) -> None:

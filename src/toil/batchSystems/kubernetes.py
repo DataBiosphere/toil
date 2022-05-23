@@ -21,7 +21,6 @@ cannot yet be launched. That functionality will need to wait for user-mode
 Docker
 """
 import datetime
-import getpass
 import logging
 import os
 import string
@@ -47,7 +46,7 @@ from toil.batchSystems.contained_executor import pack_job
 from toil.common import Toil
 from toil.job import JobDescription
 from toil.lib.conversions import human2bytes
-from toil.lib.misc import slow_down, utc_now
+from toil.lib.misc import slow_down, utc_now, get_user_name
 from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
 from toil.statsAndLogging import configure_root_logger, set_log_level
@@ -470,17 +469,24 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Collect volumes and mounts
         volumes = []
         mounts = []
+        
+        def mount_host_path(volume_name: str, host_path: str, mount_path: str) -> None:
+            """
+            Add a host path volume with the given name to mount the given path.
+            """
+            # Use type='Directory' to fail if the host directory doesn't exist already.
+            volume_source = kubernetes.client.V1HostPathVolumeSource(path=host_path, type='Directory')
+            volume = kubernetes.client.V1Volume(name=volume_name,
+                                                host_path=volume_source)
+            volumes.append(volume)
+            volume_mount = kubernetes.client.V1VolumeMount(mount_path=mount_path, name=volume_name)
+            mounts.append(volume_mount)
 
         if self.host_path is not None:
             # Provision Toil WorkDir from a HostPath volume, to share with other pods
-            host_path_volume_name = 'workdir'
-            # Use type='Directory' to fail if the host directory doesn't exist already.
-            host_path_volume_source = kubernetes.client.V1HostPathVolumeSource(path=self.host_path, type='Directory')
-            host_path_volume = kubernetes.client.V1Volume(name=host_path_volume_name,
-                                                         host_path=host_path_volume_source)
-            volumes.append(host_path_volume)
-            host_path_volume_mount = kubernetes.client.V1VolumeMount(mount_path=self.worker_work_dir, name=host_path_volume_name)
-            mounts.append(host_path_volume_mount)
+            mount_host_path('workdir', self.host_path, self.worker_work_dir)
+            # We also need to mount across /var/run/user, where we will put per-node coordiantion info.
+            mount_host_path('coordination', '/var/run/user', '/var/run/user')
         else:
             # Provision Toil WorkDir as an ephemeral volume
             ephemeral_volume_name = 'workdir'
@@ -490,6 +496,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             volumes.append(ephemeral_volume)
             ephemeral_volume_mount = kubernetes.client.V1VolumeMount(mount_path=self.worker_work_dir, name=ephemeral_volume_name)
             mounts.append(ephemeral_volume_mount)
+            # And don't share coordination directory
 
         if self.aws_secret_name is not None:
             # Also mount an AWS secret, if provided.
@@ -1238,7 +1245,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # and all lowercase letters, numbers, or - or .
         acceptable_chars = set(string.ascii_lowercase + string.digits + '-.')
 
-        return ''.join([c for c in getpass.getuser().lower() if c in acceptable_chars])[:100]
+        return ''.join([c for c in get_user_name().lower() if c in acceptable_chars])[:100]
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:

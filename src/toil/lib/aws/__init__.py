@@ -13,6 +13,7 @@
 # limitations under the License.
 import collections
 import inspect
+import json
 import logging
 import os
 import re
@@ -34,6 +35,7 @@ def get_current_aws_region() -> Optional[str]:
     Return the AWS region that the currently configured AWS zone (see
     get_current_aws_zone()) is in.
     """
+    # Try to derive it from the zone.
     aws_zone = get_current_aws_zone()
     return zone_to_region(aws_zone) if aws_zone else None
 
@@ -46,21 +48,45 @@ def get_aws_zone_from_environment() -> Optional[str]:
 def get_aws_zone_from_metadata() -> Optional[str]:
     """
     Get the AWS zone from instance metadata, if on EC2 and the boto module is
-    available.
+    available. Otherwise, gets the AWS zone from ECS task metadata, if on ECS.
     """
-    if running_on_ec2():
+
+    # When running on ECS, we also appear to be running on EC2, but the EC2
+    # metadata service doesn't seem to be contactable. So we check ECS first.
+
+    if running_on_ecs():
+        # Use the ECS metadata service
+        logger.debug("Fetch AZ from ECS metadata")
         try:
+            resp = json.load(urlopen(os.environ['ECS_CONTAINER_METADATA_URI_V4'] + '/task', timeout=1))
+            logger.debug("ECS metadata: %s", resp)
+            if isinstance(resp, dict):
+                # We found something. Go with that.
+                return resp.get('AvailabilityZone')
+        except (json.decoder.JSONDecodeError, KeyError, URLError) as e:
+            # We're on ECS but can't get the metadata. That's odd.
+            logger.warning("Skipping ECS metadata due to error: %s", e)
+    if running_on_ec2():
+        # On EC2 alone, or on ECS but we couldn't get ahold of the ECS
+        # metadata.
+        try:
+            # Use the EC2 metadata service
             import boto
             from boto.utils import get_instance_metadata
+            logger.debug("Fetch AZ from EC2 metadata")
             return get_instance_metadata()['placement']['availability-zone']
-        except (KeyError, ImportError):
-            pass
+        except ImportError:
+            # This is expected to happen a lot
+            logger.debug("No boto to fetch ECS metadata")
+        except (KeyError, URLError) as e:
+            # We're on EC2 but can't get the metadata. That's odd.
+            logger.warning("Skipping EC2 metadata due to error: %s", e)
     return None
 
 def get_aws_zone_from_boto() -> Optional[str]:
     """
     Get the AWS zone from the Boto config file, if it is configured and the
-    boto module is avbailable.
+    boto module is available.
     """
     try:
         import boto
@@ -72,6 +98,16 @@ def get_aws_zone_from_boto() -> Optional[str]:
         pass
     return None
 
+def get_aws_zone_from_environment_region() -> Optional[str]:
+    """
+    Pick an AWS zone in the region defined by TOIL_AWS_REGION, if it is set.
+    """
+    aws_region = os.environ.get('TOIL_AWS_REGION')
+    if aws_region is not None:
+        # If a region is specified, use the first zone in the region.
+        return aws_region + 'a'
+    # Otherwise, don't pick a region and let us fall back on the next method.
+    return None
 
 def get_current_aws_zone() -> Optional[str]:
     """
@@ -79,8 +115,11 @@ def get_current_aws_zone() -> Optional[str]:
 
     Reports the TOIL_AWS_ZONE environment variable if set.
 
-    Otherwise, if we have boto and are running on EC2, reports the zone we are
-    running in.
+    Otherwise, if we have boto and are running on EC2, or if we are on ECS,
+    reports the zone we are running in.
+
+    Otherwise, if we have the TOIL_AWS_REGION variable set, chooses a zone in
+    that region.
 
     Finally, if we have boto2, and a default region is configured in Boto 2,
     chooses a zone in that region.
@@ -89,6 +128,7 @@ def get_current_aws_zone() -> Optional[str]:
     """
     return get_aws_zone_from_environment() or \
         get_aws_zone_from_metadata() or \
+        get_aws_zone_from_environment_region() or \
         get_aws_zone_from_boto()
 
 def zone_to_region(zone: str) -> str:
@@ -119,3 +159,10 @@ def running_on_ec2() -> bool:
         return True
     except (URLError, socket.timeout):
         return False
+
+def running_on_ecs() -> bool:
+    """
+    Return True if we are currently running on Amazon ECS, and false otherwise.
+    """
+    # We only care about relatively current ECS
+    return 'ECS_CONTAINER_METADATA_URI_V4' in os.environ

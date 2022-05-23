@@ -14,7 +14,7 @@
 import argparse
 import logging
 from difflib import get_close_matches
-from typing import TYPE_CHECKING, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Set, Type, Tuple, Union
 
 if TYPE_CHECKING:
     from toil.provisioners.aws.awsProvisioner import AWSProvisioner
@@ -182,3 +182,12 @@ class ClusterTypeNotSupportedException(Exception):
     """Indicates that a provisioner does not support a given cluster type."""
     def __init__(self, provisioner_class, cluster_type):
         super().__init__(f"The {provisioner_class} provisioner does not support making {cluster_type} clusters")
+
+class ClusterCombinationNotSupportedException(Exception):
+    """Indicates that a provisioner does not support making a given type of cluster with a given architecture."""
+    def __init__(self, provisioner_class: Type, cluster_type: str, architecture: str, reason: Optional[str] = None):
+        message = (f"The {provisioner_class} provisioner does not support making {cluster_type} clusters "
+                   f"using nodes with the {architecture} architecture.")
+        if reason is not None:
+            message += f" This is because: {reason}"
+        super().__init__(message)

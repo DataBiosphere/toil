@@ -13,6 +13,9 @@
 # limitations under the License.
 """CLI entry for the Toil servers."""
 import logging
+import sys
+
+from toil.statsAndLogging import add_logging_options, set_logging_from_options
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +26,11 @@ def main() -> None:
                                      start_server)
     except ImportError:
         logger.warning("The toil[server] extra is not installed.")
-        return
+        sys.exit(1)
 
     parser = parser_with_server_options()
+    add_logging_options(parser)
     args = parser.parse_args()
+    set_logging_from_options(args)
 
     start_server(args)

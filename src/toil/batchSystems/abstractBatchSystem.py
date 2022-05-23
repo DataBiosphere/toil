@@ -117,13 +117,15 @@ class AbstractBatchSystem(ABC):
     @abstractmethod
     def issueBatchJob(self, jobDesc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
         """
-        Issues a job with the specified command to the batch system and returns a unique jobID.
+        Issues a job with the specified command to the batch system and returns
+        a unique jobID.
 
-        :param jobDesc a toil.job.JobDescription
-        :param job_environment: a collection of job-specific environment variables
-                                to be set on the worker.
+        :param jobDesc: a toil.job.JobDescription
+        :param job_environment: a collection of job-specific environment
+                                variables to be set on the worker.
 
-        :return: a unique jobID that can be used to reference the newly issued job
+        :return: a unique jobID that can be used to reference the newly issued
+                 job
         """
         raise NotImplementedError()
 
@@ -387,14 +389,18 @@ class BatchSystemSupport(AbstractBatchSystem):
                for cleaning up the worker.
         """
         assert isinstance(info, WorkerCleanupInfo)
+        assert info.workflowID is not None
         workflowDir = Toil.getLocalWorkflowDir(info.workflowID, info.workDir)
-        DeferredFunctionManager.cleanupWorker(workflowDir)
+        coordination_dir = Toil.get_local_workflow_coordination_dir(info.workflowID, info.workDir)
+        DeferredFunctionManager.cleanupWorker(coordination_dir)
         workflowDirContents = os.listdir(workflowDir)
-        AbstractFileStore.shutdownFileStore(workflowDir, info.workflowID)
-        if (info.cleanWorkDir == 'always'
-            or info.cleanWorkDir in ('onSuccess', 'onError')
-            and workflowDirContents in ([], [cacheDirName(info.workflowID)])):
-            shutil.rmtree(workflowDir, ignore_errors=True)
+        AbstractFileStore.shutdownFileStore(info.workflowID, info.workDir)
+        if info.cleanWorkDir == 'always' or info.cleanWorkDir in ('onSuccess', 'onError'):
+            if workflowDirContents in ([], [cacheDirName(info.workflowID)]):
+                shutil.rmtree(workflowDir, ignore_errors=True)
+            if coordination_dir != workflowDir:
+                # No more coordination to do here either.
+                shutil.rmtree(coordination_dir, ignore_errors=True)
 
 class NodeInfo:
     """

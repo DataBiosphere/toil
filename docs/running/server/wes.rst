@@ -75,6 +75,11 @@ Below is a detailed summary of all available options:
             Specify the default parameters to be sent to the workflow engine for each run.  Accepts multiple values.
 
             Example: ``toil server --opt=--logLevel=CRITICAL --opt=--workDir=/tmp``.
+--dest_bucket_base DEST_BUCKET_BASE
+            Direct CWL workflows to save output files to dynamically generated unique paths under the given URL.
+            Supports AWS S3.
+--state_store STATE_STORE
+            The local path or S3 URL where workflow state metadata should be stored. (default: in --work_dir)
 
 .. _GA4GH docs on CORS: https://w3id.org/ga4gh/product-approval-support/cors
 

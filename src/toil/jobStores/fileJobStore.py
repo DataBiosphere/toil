@@ -19,13 +19,16 @@ import random
 import re
 import shutil
 import stat
+import sys
 import tempfile
 import time
 import uuid
 from contextlib import contextmanager
 from typing import BinaryIO, Iterator, Optional, TextIO, Union, overload
-
-from typing_extensions import Literal
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 from toil.fileStores import FileID
 from toil.job import TemporaryID
