@@ -252,7 +252,7 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only
         info = s3_client.head_bucket(Bucket=bucket_name)  # type: ignore
         return cast(str, info['ResponseMetadata']['HTTPHeaders']['x-amz-bucket-region'])
 
-    # Compose a list of strategise we want to try in order, which may work.
+    # Compose a list of strategies we want to try in order, which may work.
     # None is an acceptable return type that actually means something.
     strategies: List[Callable[[], Optional[str]]] = []
     strategies.append(attempt_get_bucket_location)
@@ -299,7 +299,6 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> Obj
         :param bool existing: If True, key is expected to exist. If False, key is expected not to
                exists and it will be created. If None, the key will be created if it doesn't exist.
         """
-        s3_resource = cast(S3ServiceResource, session.resource('s3'))
 
         key_name = url.path[1:]
         bucket_name = url.netloc

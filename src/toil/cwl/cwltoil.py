@@ -1225,7 +1225,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         # https://github.com/DataBiosphere/toil/issues/3665
         if path.startswith("toilfile:"):
             if self.file_store is None:
-                raise RuntimeError("URL requires a file store:" + path)
+                raise RuntimeError("URL requires a file store: " + path)
             return self.file_store.getGlobalFileSize(
                 FileID.unpack(path[len("toilfile:") :])
             )
