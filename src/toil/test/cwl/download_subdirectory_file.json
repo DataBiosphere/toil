@@ -1,0 +1,5 @@
+{
+    "input_parent_directory": {"class": "Directory", "location": "directory"},
+    "input_subdirname": "directory",
+    "input_filename": "file.txt"
+}
