@@ -10,11 +10,11 @@ from urllib.parse import urlparse, urldefrag
 
 import requests
 import ruamel.yaml
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List, Tuple, Iterable, cast
 from toil.wdl.utils import get_version as get_wdl_version
 
 from werkzeug.utils import secure_filename
-from wes_client.util import WESClient, wes_reponse as wes_response
+from wes_client.util import WESClient, wes_reponse as wes_response  # type: ignore
 
 
 """
@@ -41,12 +41,12 @@ cwltest --verbose \
 logger = logging.getLogger(__name__)
 
 
-class WESClientWithWorkflowEngineParameters(WESClient):
+class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
     """
     A modified version of the WESClient from the wes-service package that
     includes workflow_engine_parameters support.
     """
-    def __init__(self, base_url: str, auth: Optional[Tuple[str, str]] = None):
+    def __init__(self, base_url: str, auth: Optional[Tuple[str, str]] = None) -> None:
         proto, host = base_url.split("://")  # TODO: use urlparse
         super().__init__({
             "auth": auth,
@@ -55,13 +55,13 @@ class WESClientWithWorkflowEngineParameters(WESClient):
         })
 
     @staticmethod
-    def get_version(extension: str, workflow_file: str):
+    def get_version(extension: str, workflow_file: str) -> str:
         """Determines the version of a .py, .wdl, or .cwl file."""
         if extension == "py":
             return "3.8"
         elif extension == "cwl":
             with open(workflow_file) as f:
-                return ruamel.yaml.safe_load(f)["cwlVersion"]
+                return str(ruamel.yaml.safe_load(f)["cwlVersion"])
         elif extension == "wdl":
             with open(workflow_file) as f:
                 return get_wdl_version(f)
@@ -91,10 +91,26 @@ class WESClientWithWorkflowEngineParameters(WESClient):
         replace_paths(workflow_params.values())
 
     @staticmethod
-    def build_wes_request(workflow_url: str,
-                          workflow_params_url: str,
-                          attachments: List[str],
-                          workflow_engine_parameters: Optional[List[str]] = None):
+    def build_wes_request(
+            workflow_url: str,
+            workflow_params_url: Optional[str],
+            attachments: Optional[List[str]],
+            workflow_engine_parameters: Optional[List[str]] = None
+    ) -> Tuple[Dict[str, str], Iterable[Tuple[str, Tuple[str, BytesIO]]]]:
+        """
+        Build the workflow run request to submit to WES.
+
+        :param workflow_url: The URL to the CWL workflow document.
+        :param workflow_params_url: The URL to the CWL input files.
+        :param attachments: A list of local paths to files that will be uploaded
+                            to the server.
+        :param workflow_engine_parameters: A list of engine parameters to set
+                                           along with this workflow run.
+
+        :returns: A dictionary of parameters as the body of the request, and an
+                  iterable for the pairs of filename and file contents to upload
+                  to the server.
+        """
 
         # Read from the workflow_param file and parse it into a dict
         if workflow_params_url:
@@ -114,7 +130,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):
         wf_url, frag = urldefrag(workflow_url)
         workflow_type = wf_url.lower().split(".")[-1]  # Grab the file extension
         workflow_type_version = WESClientWithWorkflowEngineParameters.get_version(workflow_type, wf_url)
-        data = {
+        data: Dict[str, str] = {
             "workflow_url": os.path.basename(workflow_url),
             "workflow_params": json.dumps(workflow_params),
             "workflow_type": workflow_type,
@@ -133,6 +149,8 @@ class WESClientWithWorkflowEngineParameters(WESClient):
             data["workflow_engine_parameters"] = json.dumps(params)
 
         # Deal with workflow attachments
+        if attachments is None:
+            attachments = []
         base = os.path.dirname(wf_url)
         attachments.append(wf_url)
 
@@ -148,7 +166,13 @@ class WESClientWithWorkflowEngineParameters(WESClient):
         return data, (("workflow_attachment", val) for val in
                       workflow_attachments)
 
-    def run_with_engine_options(self, workflow_file, secondary_file, attachments, engine_options):
+    def run_with_engine_options(
+            self,
+            workflow_file: str,
+            secondary_file: Optional[str],
+            attachments: Optional[List[str]],
+            engine_options: Optional[List[str]]
+    ) -> Dict[str, Any]:
         """
         Composes and sends a post request that signals the WES server to run a
         workflow.
@@ -171,10 +195,10 @@ class WESClientWithWorkflowEngineParameters(WESClient):
             auth=self.auth,
         )
 
-        return wes_response(post_result)
+        return cast(Dict[str, Any], wes_response(post_result))
 
 
-def get_deps_from_cwltool(cwl_file: str, input_file: Optional[str] = None):
+def get_deps_from_cwltool(cwl_file: str, input_file: Optional[str] = None) -> List[str]:
     """
     Return a list of dependencies of the given workflow from cwltool.
 
@@ -198,7 +222,7 @@ def get_deps_from_cwltool(cwl_file: str, input_file: Optional[str] = None):
     json_result: Dict[str, Any] = json.loads(result)
     deps = []
 
-    def get_deps(obj: Any):
+    def get_deps(obj: Any) -> None:
         for file in obj:
             if isinstance(file, dict) and "location" in file:
                 loc = file.get("location")
@@ -269,7 +293,7 @@ def print_logs_and_exit(client: WESClientWithWorkflowEngineParameters, run_id: s
     sys.exit(exit_code)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="A CWL runner that runs workflows through WES.")
 
     # the first two positional arguments are the CWL file and its input file
