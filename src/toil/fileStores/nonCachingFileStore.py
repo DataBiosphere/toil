@@ -20,15 +20,14 @@ from collections import defaultdict
 from contextlib import contextmanager
 from typing import (
     Any,
-    BinaryIO,
     Callable,
     DefaultDict,
     Dict,
     Generator,
+    IO,
     Iterator,
     List,
     Optional,
-    TextIO,
     Union,
     cast,
 )
@@ -115,7 +114,7 @@ class NonCachingFileStore(AbstractFileStore):
         return localFilePath
 
     @contextmanager
-    def readGlobalFileStream(self, fileStoreID: str, encoding: Optional[str] = None, errors: Optional[str] = None) -> Iterator[Union[BinaryIO, TextIO]]:
+    def readGlobalFileStream(self, fileStoreID: str, encoding: Optional[str] = None, errors: Optional[str] = None) -> Iterator[Union[IO[bytes], IO[str]]]:
         with self.jobStore.read_file_stream(fileStoreID, encoding=encoding, errors=errors) as f:
             self.logAccess(fileStoreID)
             yield f

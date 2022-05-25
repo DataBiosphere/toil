@@ -36,6 +36,11 @@ import toil.server.wes.amazon_wes_utils as amazon_wes_utils
 
 logger = logging.getLogger(__name__)
 
+# How many seconds should we give a Toil workflow to gracefully shut down
+# before we kill it?
+# Ought to be long enough to let it clean up its job store, but shorter than
+# our patience for CANCELING WES workflows to time out to CANCELED.
+WAIT_FOR_DEATH_TIMEOUT = 20
 
 class ToilWorkflowRunner:
     """
@@ -327,7 +332,10 @@ class ToilWorkflowRunner:
             logger.warning(str(e))
             process.terminate()
 
-            if process.wait(timeout=5) is None:
+            try:
+                process.wait(timeout=WAIT_FOR_DEATH_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                # We need to actually stop now.
                 process.kill()
 
             logger.info("Child process terminated by interruption.")
@@ -383,7 +391,7 @@ def run_wes_task(base_scratch_dir: str, state_store_url: str, workflow_id: str, 
 
     :param workflow_id: ID of the workflow run.
     """
-    
+
     runner = ToilWorkflowRunner(base_scratch_dir, state_store_url, workflow_id,
                                 request=request, engine_options=engine_options)
 
@@ -418,10 +426,10 @@ def cancel_run(task_id: str) -> None:
 class TaskRunner:
     """
     Abstraction over the Celery API. Runs our run_wes task and allows canceling it.
-    
+
     We can swap this out in the server to allow testing without Celery.
     """
-    
+
     @staticmethod
     def run(args: Tuple[str, str, str, Dict[str, Any], List[str]], task_id: str) -> None:
         """
@@ -430,14 +438,14 @@ class TaskRunner:
         run_wes.apply_async(args=args,
                             task_id=task_id,
                             ignore_result=True)
-                            
+
     @staticmethod
     def cancel(task_id: str) -> None:
         """
         Cancel the task with the given ID on Celery.
         """
         cancel_run(task_id)
-        
+
 
 # If Celery can't be set up, we can just use this fake version instead.
 
@@ -446,7 +454,7 @@ class MultiprocessingTaskRunner(TaskRunner):
     """
     Version of TaskRunner that just runs tasks with Multiprocessing.
     """
-    
+
     @staticmethod
     def run(args: Tuple[str, str, str, Dict[str, Any], List[str]], task_id: str) -> None:
         """
@@ -455,7 +463,7 @@ class MultiprocessingTaskRunner(TaskRunner):
         logger.info("Starting task %s in a process", task_id)
         _id_to_process[task_id] = multiprocessing.Process(target=run_wes_task, args=args)
         _id_to_process[task_id].start()
-        
+
     @staticmethod
     def cancel(task_id: str) -> None:
         """
