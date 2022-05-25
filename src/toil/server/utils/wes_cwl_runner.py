@@ -25,16 +25,13 @@ Example usage with cwltest:
 
 ```
 cwltest --verbose \
-    --tool=python \
+    --tool=toil-wes-cwl-runner \
     --test=src/toil/test/cwl/spec_v12/conformance_tests.yaml \
-    -n=306 \
+    -n=0-50 \
     --timeout=2400 \
-    -j1 \
+    -j2 \
     -- \
-    src/toil/test/server/wes_cwl_runner.py \
     --wes_endpoint=http://localhost:8080 \
-    --wes_user=test \
-    --wes_password=test \
     --disableCaching \
     --clean=always \
     --logDebug
@@ -235,7 +232,7 @@ def submit_run(client: WESClientWithWorkflowEngineParameters,
     submit the CWL workflow to the WES server via the WES client.
     """
     # First, get the list of files to attach to this workflow
-    attachments = get_deps_from_cwltool(cwl_file, input_file)
+    attachments = get_deps_from_cwltool(cwl_file)
 
     if input_file:
         attachments.extend(get_deps_from_cwltool(cwl_file, input_file))
@@ -256,14 +253,12 @@ def poll_run(client: WESClientWithWorkflowEngineParameters, run_id: str) -> bool
     return state in ("COMPLETE", "CANCELING", "CANCELED", "EXECUTOR_ERROR", "SYSTEM_ERROR")
 
 
-def print_logs_and_exit(client: WESClientWithWorkflowEngineParameters, run_id: str, download_files: bool = False) -> None:
+def print_logs_and_exit(client: WESClientWithWorkflowEngineParameters, run_id: str) -> None:
     """
     Fetch the workflow logs from the WES server and print the results.
 
     :param client: The WES client.
     :param run_id: The run_id of the target workflow.
-    :param download_files: If True, download the output files to the local
-                           filesystem.
     """
     data = client.get_run_log(run_id)
 
@@ -292,6 +287,8 @@ def main():
 
     # Initialize client and run the workflow
     endpoint = options.wes_endpoint
+
+    # For security reasons, username and password can only come from environment variables
     wes_user = os.environ.get("TOIL_WES_USER", None)
     wes_password = os.environ.get("TOIL_WES_USER", None)
 
