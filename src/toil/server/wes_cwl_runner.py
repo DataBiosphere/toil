@@ -163,8 +163,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
                     rel = os.path.basename(file)
                 workflow_attachments.append((rel, BytesIO(f.read())))
 
-        return data, (("workflow_attachment", val) for val in
-                      workflow_attachments)
+        return data, [("workflow_attachment", val) for val in workflow_attachments]
 
     def run_with_engine_options(
             self,
@@ -191,7 +190,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
         post_result = requests.post(
             f"{self.proto}://{self.host}/ga4gh/wes/v1/runs",
             data=data,
-            files=files,
+            files=files,  # type: ignore[arg-type]
             auth=self.auth,
         )
 
