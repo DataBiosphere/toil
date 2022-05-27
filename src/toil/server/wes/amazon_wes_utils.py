@@ -23,7 +23,7 @@ import os
 import sys
 import zipfile
 from os import path
-from typing import Any, BinaryIO, Dict, List, Optional
+from typing import Any, Dict, IO, List, Optional
 if sys.version_info >= (3, 8):
     from typing import TypedDict
 else:
@@ -68,10 +68,10 @@ class FilesDict(TypedDict, total=False):
     * `workflowOptions`: Open binary-mode file for a JSON of options sent along with the workflow.
     * `workflowDependencies`: Open binary-mode file for the zip the workflow came in, if any.
     """
-    workflowSource: BinaryIO
-    workflowInputFiles: List[BinaryIO]
-    workflowOptions: BinaryIO
-    workflowDependencies: BinaryIO
+    workflowSource: IO[bytes]
+    workflowInputFiles: List[IO[bytes]]
+    workflowOptions: IO[bytes]
+    workflowDependencies: IO[bytes]
 
 def parse_workflow_zip_file(file: str, workflow_type: str) -> WorkflowPlan:
     """
