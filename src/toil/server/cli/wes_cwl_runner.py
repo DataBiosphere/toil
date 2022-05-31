@@ -45,9 +45,17 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
     """
     A modified version of the WESClient from the wes-service package that
     includes workflow_engine_parameters support.
+
+    TODO: Propose a PR in wes-service to include workflow_engine_params.
     """
-    def __init__(self, base_url: str, auth: Optional[Tuple[str, str]] = None) -> None:
-        proto, host = base_url.split("://")  # TODO: use urlparse
+    def __init__(self, endpoint: str, auth: Optional[Tuple[str, str]] = None) -> None:
+        """
+        :param endpoint: The http(s) URL of the WES server. Must include the
+                         protocol.
+        :param auth: Authentication information that will be attached to every
+                     request to the WES server.
+        """
+        proto, host = endpoint.split("://")
         super().__init__({
             "auth": auth,
             "proto": proto,
@@ -316,7 +324,7 @@ def main() -> None:
     wes_password = os.environ.get("TOIL_WES_USER", None)
 
     client = WESClientWithWorkflowEngineParameters(
-        base_url=endpoint,
+        endpoint=endpoint,
         auth=(wes_user, wes_password) if wes_user and wes_password else None)
 
     run_id = submit_run(client, cwl_file, input_file, engine_options=rest)
