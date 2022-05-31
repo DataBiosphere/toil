@@ -321,7 +321,7 @@ def main() -> None:
 
     # For security reasons, username and password can only come from environment variables
     wes_user = os.environ.get("TOIL_WES_USER", None)
-    wes_password = os.environ.get("TOIL_WES_USER", None)
+    wes_password = os.environ.get("TOIL_WES_PASSWORD", None)
 
     client = WESClientWithWorkflowEngineParameters(
         endpoint=endpoint,
