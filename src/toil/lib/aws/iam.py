@@ -4,6 +4,7 @@ import boto3
 from toil.lib.aws import zone_to_region
 from toil.provisioners.aws import get_best_aws_zone
 from functools import lru_cache
+from typing import Any
 
 from toil.lib.aws.session import AWSConnectionManager
 
@@ -24,7 +25,7 @@ _CLUSTER_LAUNCHING_PERMISSIONS = {"iam:CreateRole",
                                   }
 
 
-def check_policy_warnings(allowed_actions: dict, launching_perms = _CLUSTER_LAUNCHING_PERMISSIONS) -> None:
+def check_policy_warnings(allowed_actions: dict[str, list[str]], launching_perms : set[str] = _CLUSTER_LAUNCHING_PERMISSIONS) -> None:
     """
     Check whether necessary permissions are permitted
 
@@ -38,7 +39,7 @@ def check_policy_warnings(allowed_actions: dict, launching_perms = _CLUSTER_LAUN
     return None
 
 
-def helper_permission_check(perm, list_perms):
+def helper_permission_check(perm : str, list_perms : list[str]) -> bool:
     flag = False
     for allowed in list_perms:
         if allowed[0] == "*":
@@ -63,13 +64,14 @@ def helper_permission_check(perm, list_perms):
 
 
 
-def test_dummy_perms():
+def test_dummy_perms() -> None:
     launch_tester = {'*': ['ec2:*', 'iam:*', 's3:*', 'sdb:*']}
 
-    print(check_policy_warnings(launch_tester))
+    check_policy_warnings(launch_tester)
+    print("Success")
 
 
-def get_allowed_actions():
+def get_allowed_actions() -> dict[str, list[str]]:
     aws = AWSConnectionManager()
 
     region = zone_to_region(get_best_aws_zone() or "us-west-2a" )
@@ -113,5 +115,5 @@ def get_allowed_actions():
     return allowed_actions
 
 @lru_cache
-def get_aws_account_num():
+def get_aws_account_num() -> Any:
     return boto3.client('sts').get_caller_identity().get('Account')
