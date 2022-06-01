@@ -248,9 +248,8 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only
         # for an 'x-amz-bucket-region' header on the response, which can tell
         # us where the bucket is. See
         # <https://github.com/aws/aws-sdk-cpp/issues/844#issuecomment-383747871>
-        # This won't typecheck until https://github.com/youtype/mypy_boto3_builder/issues/147 is fixed.
-        info = s3_client.head_bucket(Bucket=bucket_name)  # type: ignore
-        return cast(str, info['ResponseMetadata']['HTTPHeaders']['x-amz-bucket-region'])
+        info = s3_client.head_bucket(Bucket=bucket_name)
+        return info['ResponseMetadata']['HTTPHeaders']['x-amz-bucket-region']
 
     # Compose a list of strategies we want to try in order, which may work.
     # None is an acceptable return type that actually means something.
