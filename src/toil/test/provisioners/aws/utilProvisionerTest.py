@@ -28,6 +28,7 @@ from toil.lib.aws import zone_to_region
 from toil.provisioners import cluster_factory
 from toil.provisioners.aws import get_best_aws_zone
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
+from toil.lib.aws.iam import check_policy_warnings
 from toil.test import (
     ToilTest,
     integrative,
@@ -63,9 +64,7 @@ log = logging.getLogger(__name__)
 
 @pytest.mark.timeout(1800)
 def test_policy_warnings():
-    provisioner = AWSProvisioner('fakename', 'mesos', "us-west-2a", 10000, None, None)
-
-    assert provisioner.permission_warning_check(None) == True
+    assert check_policy_warnings() == True
 
 @pytest.mark.timeout(1800)
 def test_list_policies():

@@ -25,7 +25,7 @@ _CLUSTER_LAUNCHING_PERMISSIONS = {"iam:CreateRole",
                                   }
 
 
-def check_policy_warnings(allowed_actions: dict[str, list[str]], launching_perms : set[str] = _CLUSTER_LAUNCHING_PERMISSIONS) -> None:
+def check_policy_warnings(allowed_actions: dict[str, list[str]] = {}, launching_perms : set[str] = _CLUSTER_LAUNCHING_PERMISSIONS) -> None:
     """
     Check whether necessary permissions are permitted for AWS
 
