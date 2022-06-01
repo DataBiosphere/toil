@@ -469,6 +469,35 @@ These are the steps to take to publish a Toil release:
 
   Make sure to replace ``X`` and ``Y+1`` with actual numbers.
 
+Using Git Hooks
+~~~~~~~~~~~~~~~
+
+In the ``contrib/hooks`` directory, there are two scripts, ``mypy-after-commit.py`` and
+``mypy-before-push.py``, that can be set up as Git hooks to make sure you don't accidentally
+push commits that would immediately fail type-checking. These are supposed to eliminate the
+need to run ``make mypy`` constantly. You can install them into your Git working copy like
+this ::
+
+    ln -rs ./contrib/hooks/mypy-after-commit.py .git/hooks/post-commit
+    ln -rs ./contrib/hooks/mypy-before-push.py .git/hooks/pre-push
+
+After you make a commit, the post-commit script will start type-checking it, and if it takes
+too long re-launch the process in the background. When you push, the pre-push script will see
+if the commit you are pushing type-checked successfully, and if it hasn't been type-checked
+but is currently checked out, it will be type-checked. If type-checking fails, the push will
+be aborted.
+
+Type-checking will only be performed if you are in a Toil development virtual environment. If
+you aren't, the scripts won't do anything.
+
+To bypass or override pre-push hook, if it is wrong or if you need to push something that
+doesn't typecheck, you can ``git push --no-verify``. If the scripts get confused about whether
+a commit actually typechecks, you can clear out the type-checking result cache, which is in
+``/var/run/user/<your UID>/.mypy_toil_result_cache`` on Linux and in ``.mypy_toil_result_cache``
+in the Toil repo on Mac.
+
+To uninstall the scripts, delete ``.git/hooks/post-commit`` and ``.git/hooks/pre-push``.
+
 Adding Retries to a Function
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
