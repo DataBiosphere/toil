@@ -406,6 +406,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                 '/var/lib/docker',
                 '/var/lib/cwl',
                 '/var/run/docker.sock',
+                '/var/run/user',
                 '/tmp',
                 self.worker_work_dir
             ])):

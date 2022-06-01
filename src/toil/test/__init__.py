@@ -20,6 +20,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -48,7 +49,10 @@ from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 import pytz
-from typing_extensions import Literal
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
 from toil.lib.iterables import concat
@@ -322,16 +326,17 @@ def get_temp_file(suffix: str = "", rootDir: Optional[str] = None) -> str:
         os.chmod(tmp_file, 0o777)  # Ensure everyone has access to the file.
         return tmp_file
 
-def _require_env(var_name: str, comment: str, test_item: MT) -> MT:
+def needs_env_var(var_name: str, comment: Optional[str] = None) -> Callable[[MT], MT]:
     """
-    Set a class or method to run only if the given environment variable is set.
-    Not used as a decorator itself.
-
-    Includes a comment saying what the variable should be set to.
+    Use as a decorator before test classes or methods to run only if the given
+    environment variable is set.
+    Can include a comment saying what the variable should be set to.
     """
-    if not os.getenv(var_name):
-        return unittest.skip(f"Set {var_name}{' to ' + comment if comment else ''} to include this test.")(test_item)
-    return test_item
+    def decorator(test_item: MT) -> MT:
+        if not os.getenv(var_name):
+            return unittest.skip(f"Set {var_name}{' to ' + comment if comment else ''} to include this test.")(test_item)
+        return test_item
+    return decorator
 
 def needs_rsync3(test_item: MT) -> MT:
     """
@@ -376,7 +381,7 @@ def needs_aws_ec2(test_item: MT) -> MT:
     test_item = _mark_test('aws-ec2', needs_aws_s3(test_item))
     # In addition to S3 we also need an SSH key to deploy with.
     # TODO: We assume that if this is set we have EC2 access.
-    test_item = _require_env('TOIL_AWS_KEYNAME', 'an AWS-stored SSH key', test_item)
+    test_item = needs_env_var('TOIL_AWS_KEYNAME', 'an AWS-stored SSH key')(test_item)
     return test_item
 
 
@@ -388,14 +393,15 @@ def needs_aws_batch(test_item: MT) -> MT:
     # Assume we need S3 as well as Batch
     test_item = _mark_test('aws-batch', needs_aws_s3(test_item))
     # Assume we have Batch if the user has set these variables.
-    test_item = _require_env('TOIL_AWS_BATCH_QUEUE', 'an AWS Batch queue name or ARN', test_item)
-    test_item = _require_env('TOIL_AWS_BATCH_JOB_ROLE_ARN', 'an IAM role ARN that grants S3 and SDB access', test_item)
+    test_item = needs_env_var('TOIL_AWS_BATCH_QUEUE', 'an AWS Batch queue name or ARN')(test_item)
+    test_item = needs_env_var('TOIL_AWS_BATCH_JOB_ROLE_ARN', 'an IAM role ARN that grants S3 and SDB access')(test_item)
     try:
         from toil.lib.aws import get_current_aws_region
         if get_current_aws_region() is None:
             # We don't know a region so we need one set.
             # TODO: It always won't be set if we get here.
-            test_item = _require_env('TOIL_AWS_REGION', 'an AWS region to use with AWS batch', test_item)
+            test_item = needs_env_var('TOIL_AWS_REGION', 'an AWS region to use with AWS batch')(test_item)
+
     except ImportError:
         return unittest.skip("Install Toil with the 'aws' extra to include this test.")(
             test_item
@@ -414,7 +420,7 @@ def needs_google(test_item: MT) -> MT:
     except ImportError:
         return unittest.skip("Install Toil with the 'google' extra to include this test.")(test_item)
 
-    test_item = _require_env('TOIL_GOOGLE_PROJECTID', "a Google project ID", test_item)
+    test_item = needs_env_var('TOIL_GOOGLE_PROJECTID', "a Google project ID")(test_item)
     return test_item
 
 
@@ -617,7 +623,7 @@ def needs_celery_broker(test_item: MT) -> MT:
     Use as a decorator before test classes or methods to run only if RabbitMQ is set up to take Celery jobs.
     """
     test_item = _mark_test('celery', test_item)
-    test_item = _require_env('TOIL_WES_BROKER_URL', "a URL to a RabbitMQ broker for Celery", test_item)
+    test_item = needs_env_var('TOIL_WES_BROKER_URL', "a URL to a RabbitMQ broker for Celery")(test_item)
     return test_item
 
 def needs_local_appliance(test_item: MT) -> MT:

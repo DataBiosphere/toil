@@ -28,11 +28,11 @@ pip = f'{python} -m pip'
 dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras with PyNACL
                          python,
                          f'{python}-dev',
+                         'python3.7-distutils' if python == 'python3.7' else '',
                          'python3.8-distutils' if python == 'python3.8' else '',
                          'python3.9-distutils' if python == 'python3.9' else '',
                          # 'python3.9-venv' if python == 'python3.9' else '',
                          'python3-pip',
-                         'libcurl4-openssl-dev',
                          'libssl-dev',
                          'wget',
                          'curl',
@@ -40,7 +40,6 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          "nodejs",  # CWL support for javascript expressions
                          'rsync',
                          'screen',
-                         'build-essential',  # We need a build environment to build Singularity 3.
                          'libarchive13',
                          'libc6',
                          'libseccomp2',
@@ -53,7 +52,13 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'cryptsetup',
                          'less',
                          'vim',
-                         'git'])
+                         'git',
+                         # Dependencies for Mesos which the deb doesn't actually list
+                         'libsvn1',
+                         'libcurl4-nss-dev',
+                         'libapr1',
+                         # Dependencies for singularity
+                         'containernetworking-plugins'])
 
 
 def heredoc(s):
@@ -67,7 +72,7 @@ motd = heredoc('''
     Run toil <workflow>.py --help to see all options for running your workflow.
     For more information see http://toil.readthedocs.io/en/latest/
 
-    Copyright (C) 2015-2020 Regents of the University of California
+    Copyright (C) 2015-2022 Regents of the University of California
 
     Version: {applianceSelf}
 
@@ -77,40 +82,46 @@ motd = heredoc('''
 motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 
 print(heredoc('''
-    # We can't use a newer Ubuntu until we no longer need Mesos
-    FROM ubuntu:16.04
+    FROM ubuntu:20.04
 
     ARG TARGETARCH
+
+    RUN if [ -z "$TARGETARCH" ] ; then echo "Specify a TARGETARCH argument to build this container"; exit 1; fi
 
     # make sure we don't use too new a version of setuptools (which can get out of sync with poetry and break things)
     ENV SETUPTOOLS_USE_DISTUTILS=stdlib
 
-    RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install apt-transport-https ca-certificates software-properties-common && apt-get clean && rm -rf /var/lib/apt/lists/*
+    # Try to avoid "Failed to fetch ...  Undetermined Error" from apt
+    # See <https://stackoverflow.com/a/66523384>
+    RUN printf 'Acquire::http::Pipeline-Depth "0";\\nAcquire::http::No-Cache=True;\\nAcquire::BrokenProxy=true;\\n' >/etc/apt/apt.conf.d/99fixbadproxy
 
-    RUN echo "deb http://repos.mesosphere.io/ubuntu/ xenial main" \
-        > /etc/apt/sources.list.d/mesosphere.list \
-        && apt-key adv --keyserver keyserver.ubuntu.com --recv E56151BF \
-        && echo "deb http://deb.nodesource.com/node_6.x xenial main" \
-        > /etc/apt/sources.list.d/nodesource.list \
-        && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280
+    RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install apt-transport-https ca-certificates software-properties-common curl && apt-get clean && rm -rf /var/lib/apt/lists/*
 
     RUN add-apt-repository -y ppa:deadsnakes/ppa
+
+    # Find a repo with a Mesos build.
+    # See https://rpm.aventer.biz/README.txt
+    # A working snapshot is https://ipfs.io/ipfs/QmfTy9sXhHsgyWwosCJDfYR4fChTosA8HhoaMgmeJ5LSmS/
+    # As archived with:
+    # mkdir mesos-repo && cd mesos-repo
+    # wget --recursive --restrict-file-names=windows -k --convert-links --no-parent --page-requisites https://rpm.aventer.biz/Ubuntu/ https://www.aventer.biz/assets/support_aventer.asc https://rpm.aventer.biz/README.txt
+    # ipfs add -r .
+    RUN echo "deb https://rpm.aventer.biz/Ubuntu focal main" \
+        > /etc/apt/sources.list.d/mesos.list \
+        && curl https://www.aventer.biz/assets/support_aventer.asc | apt-key add -
 
     RUN apt-get -y update --fix-missing && \
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
         DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
-        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos=1.0.1-2.0.94.ubuntu1604 ; fi && \
+        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos ; mesos-agent --help >/dev/null ; fi && \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
-
+    
     # Install a particular old Debian Sid Singularity from somewhere.
-    # The dependencies it thinks it needs aren't really needed and aren't
-    # available here.
     ADD singularity-sources.tsv /etc/singularity/singularity-sources.tsv
-    RUN wget "$(cat /etc/singularity/singularity-sources.tsv | grep "^$TARGETARCH" | cut -f3)" && \
-        (dpkg -i singularity-container_3*.deb || true) && \
-        dpkg --force-depends --configure -a && \
-        sed -i 's/containernetworking-plugins, //' /var/lib/dpkg/status && \
+    RUN wget -q "$(cat /etc/singularity/singularity-sources.tsv | grep "^$TARGETARCH" | cut -f3)" && \
+        dpkg -i singularity-container_3*.deb && \
+        rm singularity-container_3*.deb && \
         sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf && \
         mkdir -p /usr/local/libexec/toil && \
         mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real \
@@ -126,9 +137,6 @@ print(heredoc('''
     ADD singularity-wrapper.sh /usr/local/bin/singularity
 
     RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/local/bin/singularity
-
-    # fixes an incompatibility updating pip on Ubuntu 16 w/ python3.8
-    RUN sed -i "s/platform.linux_distribution()/('Ubuntu', '16.04', 'xenial')/g" /usr/lib/python3/dist-packages/pip/download.py
 
     # The stock pip is too old and can't install from sdist with extras
     RUN {pip} install --upgrade pip==21.3.1
@@ -149,9 +157,6 @@ print(heredoc('''
         | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ \
         && chmod u+x /usr/local/bin/docker \
         && /usr/local/bin/docker -v
-
-    # Fix for Mesos interface dependency missing on ubuntu
-    RUN {pip} install protobuf==3.0.0
 
     # Fix for https://issues.apache.org/jira/browse/MESOS-3793
     ENV MESOS_LAUNCHER=posix
@@ -174,7 +179,7 @@ print(heredoc('''
     env PATH /opt/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
     # We want to pick the right Python when the user runs it
-    RUN rm /usr/bin/python3 && rm /usr/bin/python && \
+    RUN rm -f /usr/bin/python3 && rm -f /usr/bin/python && \
         ln -s /usr/bin/{python} /usr/bin/python3 && \
         ln -s /usr/bin/python3 /usr/bin/python
 

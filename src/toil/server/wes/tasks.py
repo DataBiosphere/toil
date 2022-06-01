@@ -14,10 +14,11 @@
 import fcntl
 import json
 import logging
+import multiprocessing
 import os
 import subprocess
 import zipfile
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Optional, Tuple, Union
 from urllib.parse import urldefrag
 
 from celery.exceptions import SoftTimeLimitExceeded  # type: ignore
@@ -29,12 +30,17 @@ from toil.server.utils import (get_iso_time,
                                download_file_from_internet,
                                download_file_from_s3,
                                get_file_class,
-                               safe_read_file,
-                               safe_write_file)
+                               connect_to_workflow_state_store,
+                               WorkflowStateMachine)
 import toil.server.wes.amazon_wes_utils as amazon_wes_utils
 
 logger = logging.getLogger(__name__)
 
+# How many seconds should we give a Toil workflow to gracefully shut down
+# before we kill it?
+# Ought to be long enough to let it clean up its job store, but shorter than
+# our patience for CANCELING WES workflows to time out to CANCELED.
+WAIT_FOR_DEATH_TIMEOUT = 20
 
 class ToilWorkflowRunner:
     """
@@ -44,32 +50,52 @@ class ToilWorkflowRunner:
     that command, and collecting the outputs of the resulting workflow run.
     """
 
-    def __init__(self, work_dir: str, request: Dict[str, Any], engine_options: List[str]):
-        self.work_dir = work_dir
+    def __init__(self, base_scratch_dir: str, state_store_url: str, workflow_id: str, request: Dict[str, Any], engine_options: List[str]):
+        """
+        Make a new ToilWorkflowRunner to actually run a workflow leader based
+        on a WES request.
+
+        :param base_scratch_dir: Base work directory. Workflow scratch directory
+               will be in here under the workflow ID.
+        :param state_store_url: URL to the state store through which we will
+               communicate about workflow state with the WES server.
+        :param workflow_id: ID of the workflow run.
+        :param request: WES request information.
+        :param engine_options: Extra options to pass to Toil.
+        """
+
+        # Find the scratch directory inside the base scratch directory
+        self.scratch_dir = os.path.join(base_scratch_dir, workflow_id)
+
+        # Connect to the workflow state store
+        self.store = connect_to_workflow_state_store(state_store_url, workflow_id)
+        # And use a state machine over that to look at workflow state
+        self.state_machine = WorkflowStateMachine(self.store)
+
         self.request = request
         self.engine_options = engine_options
 
         self.wf_type: str = request["workflow_type"].lower().strip()
         self.version: str = request["workflow_type_version"]
 
-        self.exec_dir = os.path.join(self.work_dir, "execution")
-        self.out_dir = os.path.join(self.work_dir, "outputs")
+        self.exec_dir = os.path.join(self.scratch_dir, "execution")
+        self.out_dir = os.path.join(self.scratch_dir, "outputs")
 
         # Compose the right kind of job store to use it the user doesn't specify one.
         default_type = os.getenv('TOIL_WES_JOB_STORE_TYPE', 'file')
-        self.default_job_store = generate_locator(default_type, local_suggestion=os.path.join(self.work_dir, "toil_job_store"))
+        self.default_job_store = generate_locator(default_type, local_suggestion=os.path.join(self.scratch_dir, "toil_job_store"))
 
         self.job_store = self.default_job_store
 
-    def write(self, filename: str, contents: str) -> None:
-        with open(os.path.join(self.work_dir, filename), "w") as f:
+    def write_scratch_file(self, filename: str, contents: str) -> None:
+        """
+        Write a file to the scratch directory.
+        """
+        with open(os.path.join(self.scratch_dir, filename), "w") as f:
             f.write(contents)
 
     def get_state(self) -> str:
-        return safe_read_file(os.path.join(self.work_dir, "state")) or "UNKNOWN"
-
-    def set_state(self, state: str) -> None:
-        safe_write_file(os.path.join(self.work_dir, "state"), state)
+        return self.state_machine.get_current_state()
 
     def write_workflow(self, src_url: str) -> str:
         """
@@ -265,8 +291,8 @@ class ToilWorkflowRunner:
         Calls a command with Popen. Writes stdout, stderr, and the command to
         separate files.
         """
-        stdout_f = os.path.join(self.work_dir, "stdout")
-        stderr_f = os.path.join(self.work_dir, "stderr")
+        stdout_f = os.path.join(self.scratch_dir, "stdout")
+        stderr_f = os.path.join(self.scratch_dir, "stderr")
 
         with open(stdout_f, "w") as stdout, open(stderr_f, "w") as stderr:
             logger.info(f"Calling: '{' '.join(cmd)}'")
@@ -281,35 +307,24 @@ class ToilWorkflowRunner:
         """
 
         # the task has been picked up by the runner and is currently preparing to run
-        self.set_state("INITIALIZING")
+        self.state_machine.send_initialize()
         commands = self.initialize_run()
 
         # store the job store location
-        with open(os.path.join(self.work_dir, "job_store"), "w") as f:
-            f.write(self.job_store)
+        self.store.set("job_store", self.job_store)
 
-        # lock the state file until we start the subprocess
-        file_obj = open(os.path.join(self.work_dir, "state"), "r+")
-        fcntl.flock(file_obj.fileno(), fcntl.LOCK_EX)
-
-        state = file_obj.read()
+        # Check if we are supposed to cancel
+        state = self.get_state()
         if state in ("CANCELING", "CANCELED"):
             logger.info("Workflow canceled.")
             return
 
-        # https://stackoverflow.com/a/15976014
-        file_obj.seek(0)
-        file_obj.write("RUNNING")
-        file_obj.truncate()
-
+        # Otherwise start to run
+        self.state_machine.send_run()
         process = self.call_cmd(cmd=commands, cwd=self.exec_dir)
 
-        # Now the command is running, we can allow state changes again
-        fcntl.flock(file_obj.fileno(), fcntl.LOCK_UN)
-        file_obj.close()
-
-        self.write("start_time", get_iso_time())
-        self.write("cmd", " ".join(commands))
+        self.store.set("start_time", get_iso_time())
+        self.store.set("cmd", " ".join(commands))
 
         try:
             exit_code = process.wait()
@@ -317,22 +332,25 @@ class ToilWorkflowRunner:
             logger.warning(str(e))
             process.terminate()
 
-            if process.wait(timeout=5) is None:
+            try:
+                process.wait(timeout=WAIT_FOR_DEATH_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                # We need to actually stop now.
                 process.kill()
 
             logger.info("Child process terminated by interruption.")
             exit_code = 130
 
-        self.write("end_time", get_iso_time())
-        self.write("exit_code", str(exit_code))
+        self.store.set("end_time", get_iso_time())
+        self.store.set("exit_code", str(exit_code))
 
         if exit_code == 0:
-            self.set_state("COMPLETE")
+            self.state_machine.send_complete()
         # non-zero exit code indicates failure
         elif exit_code == 130:
-            self.set_state("CANCELED")
+            self.state_machine.send_canceled()
         else:
-            self.set_state("EXECUTOR_ERROR")
+            self.state_machine.send_executor_error()
 
     def write_output_files(self) -> None:
         """
@@ -345,7 +363,7 @@ class ToilWorkflowRunner:
         # For CWL workflows, the stdout should be a JSON object containing the outputs
         if self.wf_type == "cwl":
             try:
-                with open(os.path.join(self.work_dir, "stdout")) as f:
+                with open(os.path.join(self.scratch_dir, "stdout")) as f:
                     output_obj = json.load(f)
             except Exception as e:
                 logger.warning("Failed to read outputs object from stdout:", exc_info=e)
@@ -361,15 +379,21 @@ class ToilWorkflowRunner:
 
         # TODO: fetch files from other job stores
 
-        self.write("outputs.json", json.dumps(output_obj))
+        self.write_scratch_file("outputs.json", json.dumps(output_obj))
 
+def run_wes_task(base_scratch_dir: str, state_store_url: str, workflow_id: str, request: Dict[str, Any], engine_options: List[str]) -> str:
+    """
+    Run a requested workflow.
 
-@celery.task(name="run_wes") # type: ignore
-def run_wes(work_dir: str, request: Dict[str, Any], engine_options: List[str]) -> str:
+    :param base_scratch_dir: Directory where the workflow's scratch dir will live, under the workflow's ID.
+
+    :param state_store_url: URL/path at which the server and Celery task communicate about workflow state.
+
+    :param workflow_id: ID of the workflow run.
     """
-    A celery task to run a requested workflow.
-    """
-    runner = ToilWorkflowRunner(work_dir, request=request, engine_options=engine_options)
+
+    runner = ToilWorkflowRunner(base_scratch_dir, state_store_url, workflow_id,
+                                request=request, engine_options=engine_options)
 
     try:
         runner.run()
@@ -381,16 +405,72 @@ def run_wes(work_dir: str, request: Dict[str, Any], engine_options: List[str]) -
             logger.info(f"Fetching output files.")
             runner.write_output_files()
     except (KeyboardInterrupt, SystemExit, SoftTimeLimitExceeded):
-        runner.set_state("CANCELED")
+        # We canceled the workflow run
+        runner.state_machine.send_canceled()
     except Exception as e:
-        runner.set_state("EXECUTOR_ERROR")
+        # The workflow run broke. We still count as the executor here.
+        runner.state_machine.send_executor_error()
         raise e
 
     return runner.get_state()
 
+# Wrap the task function as a Celery task
+run_wes = celery.task(name="run_wes")(run_wes_task)
 
 def cancel_run(task_id: str) -> None:
     """
     Send a SIGTERM signal to the process that is running task_id.
     """
     celery.control.terminate(task_id, signal='SIGUSR1')
+
+class TaskRunner:
+    """
+    Abstraction over the Celery API. Runs our run_wes task and allows canceling it.
+
+    We can swap this out in the server to allow testing without Celery.
+    """
+
+    @staticmethod
+    def run(args: Tuple[str, str, str, Dict[str, Any], List[str]], task_id: str) -> None:
+        """
+        Run the given task args with the given ID on Celery.
+        """
+        run_wes.apply_async(args=args,
+                            task_id=task_id,
+                            ignore_result=True)
+
+    @staticmethod
+    def cancel(task_id: str) -> None:
+        """
+        Cancel the task with the given ID on Celery.
+        """
+        cancel_run(task_id)
+
+
+# If Celery can't be set up, we can just use this fake version instead.
+
+_id_to_process = {}
+class MultiprocessingTaskRunner(TaskRunner):
+    """
+    Version of TaskRunner that just runs tasks with Multiprocessing.
+    """
+
+    @staticmethod
+    def run(args: Tuple[str, str, str, Dict[str, Any], List[str]], task_id: str) -> None:
+        """
+        Run the given task args with the given ID.
+        """
+        logger.info("Starting task %s in a process", task_id)
+        _id_to_process[task_id] = multiprocessing.Process(target=run_wes_task, args=args)
+        _id_to_process[task_id].start()
+
+    @staticmethod
+    def cancel(task_id: str) -> None:
+        """
+        Cancel the task with the given ID.
+        """
+        if task_id in _id_to_process:
+            logger.info("Stopping process for task %s", task_id)
+            _id_to_process[task_id].terminate()
+        else:
+            logger.error("Tried to kill nonexistent task %s", task_id)

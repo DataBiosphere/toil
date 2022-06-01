@@ -19,13 +19,17 @@ import random
 import re
 import shutil
 import stat
+import sys
 import tempfile
 import time
 import uuid
 from contextlib import contextmanager
-from typing import BinaryIO, Iterator, Optional, TextIO, Union, overload
-
-from typing_extensions import Literal
+from urllib.parse import quote, unquote, ParseResult
+from typing import IO, Iterator, List, Optional, Union, overload
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 from toil.fileStores import FileID
 from toil.job import TemporaryID
@@ -365,6 +369,22 @@ class FileJobStore(AbstractJobStore):
                        length=cls.BUFFER_SIZE,
                        executable=executable)
 
+    @classmethod
+    def _list_url(cls, url: ParseResult) -> List[str]:
+        path = cls._extract_path_from_url(url)
+        listing = []
+        for p in os.listdir(path):
+            # We know there are no slashes in these
+            component = quote(p)
+            # Return directories with trailing slashes and files without
+            listing.append((component + '/') if os.path.isdir(os.path.join(path, p)) else component)
+        return listing
+
+    @classmethod
+    def _get_is_directory(cls, url: ParseResult) -> bool:
+        path = cls._extract_path_from_url(url)
+        return os.path.isdir(path)
+
     @staticmethod
     def _extract_path_from_url(url):
         """
@@ -372,7 +392,7 @@ class FileJobStore(AbstractJobStore):
         """
         if url.netloc != '' and url.netloc != 'localhost':
             raise RuntimeError("The URL '%s' is invalid" % url.geturl())
-        return url.netloc + url.path
+        return unquote(url.path)
 
     @classmethod
     def _supports_url(cls, url, export=False):
@@ -566,14 +586,14 @@ class FileJobStore(AbstractJobStore):
         file_id: Union[str, FileID],
         encoding: Literal[None] = None,
         errors: Optional[str] = None,
-    ) -> Iterator[BinaryIO]:
+    ) -> Iterator[IO[bytes]]:
         ...
 
     @contextmanager
     @overload
     def read_file_stream(
         self, file_id: Union[str, FileID], encoding: str, errors: Optional[str] = None
-    ) -> Iterator[TextIO]:
+    ) -> Iterator[IO[str]]:
         ...
 
     @contextmanager
@@ -583,7 +603,7 @@ class FileJobStore(AbstractJobStore):
         file_id: Union[str, FileID],
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
-    ) -> Union[Iterator[BinaryIO], Iterator[TextIO]]:
+    ) -> Union[Iterator[IO[bytes]], Iterator[IO[str]]]:
         ...
 
     @contextmanager
@@ -592,7 +612,7 @@ class FileJobStore(AbstractJobStore):
         file_id: Union[str, FileID],
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
-    ) -> Union[Iterator[BinaryIO], Iterator[TextIO]]:
+    ) -> Union[Iterator[IO[bytes]], Iterator[IO[str]]]:
         self._check_job_store_file_id(file_id)
         if encoding is None:
             with open(

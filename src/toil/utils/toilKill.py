@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2021 Regents of the University of California
+# Copyright (C) 2015-2022 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,47 +15,59 @@
 import logging
 import os
 import signal
+import sys
 
-from toil.common import Config, Toil, parser_with_common_options
+from toil.common import Config, Toil, parser_with_common_options, getNodeID
+from toil.jobStores.abstractJobStore import NoSuchJobStoreException
 from toil.statsAndLogging import set_logging_from_options
-from toil.jobStores.fileJobStore import FileJobStore
 
 logger = logging.getLogger(__name__)
 
 
 def main() -> None:
     parser = parser_with_common_options()
+    parser.add_argument('--force', action='store_true',
+                        help="Send SIGKILL to the leader process if local.")
     options = parser.parse_args()
     set_logging_from_options(options)
     config = Config()
     config.setOptions(options)
 
-    job_store_type, _ = Toil.parseLocator(config.jobStore)
+    # Get the job store
+    try:
+        job_store = Toil.resumeJobStore(config.jobStore)
+    except NoSuchJobStoreException:
+        logger.error("The job store %s does not exist.", config.jobStore)
+        return
 
-    if job_store_type != 'file':
-        # Remote (aws/google) jobstore; use the old (broken?) method
-        job_store = Toil.resumeJobStore(config.jobStore)
-        logger.info("Starting routine to kill running jobs in the toil workflow: %s", config.jobStore)
-        # TODO: This behaviour is now broken: https://github.com/DataBiosphere/toil/commit/a3d65fc8925712221e4cda116d1825d4a1e963a1
-        # There's no guarantee that the batch system in use can enumerate
-        # running jobs belonging to the job store we've attached to. And
-        # moreover we don't even bother trying to kill the leader at its
-        # recorded PID, even if it is a local process.
-        batch_system = Toil.createBatchSystem(job_store.config)  # Should automatically kill existing jobs, so we're good.
-        for job_id in batch_system.getIssuedBatchJobIDs():  # Just in case we do it again.
-            batch_system.killBatchJobs([job_id])
-        logger.info("All jobs SHOULD have been killed")
-    else:
-        # otherwise, kill the pid recorded in the jobstore.
-        # TODO: We assume thnis is a local PID.
-        job_store = Toil.resumeJobStore(config.jobStore)
-        assert isinstance(job_store, FileJobStore), "Need a FileJobStore which has a sharedFilesDir"
-        pid_log = os.path.join(job_store.sharedFilesDir, 'pid.log')
-        with open(pid_log) as f:
-            pid_to_kill = f.read().strip()
+    # NOTE: the kill will not work if the leader is still initializing at this
+    #  point. Changes to the kill flag will be ignored until the leader sets the
+    #  kill flag.
+
+    # Get the leader PID
+    pid_to_kill = job_store.read_leader_pid()
+
+    # Check if the leader is on the same machine
+    leader_node_id = job_store.read_leader_node_id()
+    local_leader = leader_node_id == getNodeID()
+
+    if local_leader:
+        # Check if we can send signals to the leader. If not, process might be
+        # in another container so we fall back to using the kill flag through
+        # the job store.
         try:
-            os.kill(int(pid_to_kill), signal.SIGTERM)
-            logger.info("Toil process %s successfully terminated." % str(pid_to_kill))
+            os.kill(pid_to_kill, 0)
         except OSError:
-            logger.error("Toil process %s could not be terminated." % str(pid_to_kill))
-            raise
+            local_leader = False
+
+    if local_leader:
+        try:
+            os.kill(pid_to_kill, signal.SIGKILL if options.force else signal.SIGTERM)
+            logger.info("Toil process %i successfully terminated.", pid_to_kill)
+        except OSError:
+            logger.error("Could not signal process %i. Is it still running?", pid_to_kill)
+            sys.exit(1)
+    else:
+        # Flip the flag inside the job store to signal kill
+        job_store.write_kill_flag(kill=True)
+        logger.info("Asked the leader to terminate.")

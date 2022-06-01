@@ -68,7 +68,7 @@ class WorkerCleanupContext:
 
     def __enter__(self) -> None:
         # Set up an arena so we know who is the last worker to leave
-        self.arena = LastProcessStandingArena(Toil.getToilWorkDir(self.workerCleanupInfo.workDir),
+        self.arena = LastProcessStandingArena(Toil.get_toil_coordination_dir(self.workerCleanupInfo.workDir),
                                               self.workerCleanupInfo.workflowID + '-cleanup')
         self.arena.enter()
 
