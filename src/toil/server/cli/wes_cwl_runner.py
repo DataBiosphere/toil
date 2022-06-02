@@ -5,15 +5,17 @@ import os
 import subprocess
 import sys
 import time
-from io import BytesIO
-from urllib.parse import urlparse, urldefrag
-
 import requests
 import ruamel.yaml
+import schema_salad
+
+from io import BytesIO
+from base64 import b64encode
+from urllib.parse import urlparse, urldefrag, urljoin
 from typing import Optional, Dict, Any, List, Tuple, Iterable, cast
-from toil.wdl.utils import get_version as get_wdl_version
 
 from werkzeug.utils import secure_filename
+from toil.wdl.utils import get_version as get_wdl_version
 from wes_client.util import WESClient, wes_reponse as wes_response  # type: ignore
 
 
@@ -21,13 +23,27 @@ from wes_client.util import WESClient, wes_reponse as wes_response  # type: igno
 A CWL runner that submits a workflow to a WES server, waits for it to finish,
 and outputs the results.
 
+
+Environment variables:
++----------------------------------+----------------------------------------------------+
+| TOIL_WES_ENDPOINT                | URL to the WES server to use for the WES-based CWL |
+|                                  | runner ("toil-wes-cwl-runner") and tests.          |
++----------------------------------+----------------------------------------------------+
+| TOIL_WES_USER                    | Username to use with HTTP Basic Authentication to  |
+|                                  | log into the WES server.                           |
++----------------------------------+----------------------------------------------------+
+| TOIL_WES_PASSWORD                | Password to use with HTTP Basic Authentication to  |
+|                                  | log into the WES server.                           |
++----------------------------------+----------------------------------------------------+
+
+
 Example usage with cwltest:
 
 ```
 cwltest --verbose \
     --tool=toil-wes-cwl-runner \
     --test=src/toil/test/cwl/spec_v12/conformance_tests.yaml \
-    -n=0-50 \
+    -n=1-50 \
     --timeout=2400 \
     -j2 \
     -- \
@@ -39,6 +55,28 @@ cwltest --verbose \
 """
 
 logger = logging.getLogger(__name__)
+
+
+def generate_attachment_filename(base_dir: str, file_path: str):
+    """
+    We must send only relative paths under a single root as input fields or as
+    attachment keys. This function returns file names that will not be located
+    above the base_dir.
+
+    :param base_dir: The local directory where the CWL file is located.
+    :param file_path: The path to the attachment file. May be an absolute path
+                      or different from the CWL workflow location.
+    """
+
+    # Make sure we are working with a relative path to the CWL workflow file
+    if file_path.startswith("file://"):
+        file_path = file_path[7:]
+    file_path = os.path.relpath(file_path, base_dir)
+
+    # TODO: don't just drop the up traversals
+    #   Ideally we should make the output unique, but we should also make sure
+    #   that the same call to this function will have the same output.
+    return os.path.join(*[str(secure_filename(p)) for p in file_path.split("/") if p not in ("", ".", "..")])
 
 
 class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
@@ -56,15 +94,21 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
                      request to the WES server.
         """
         proto, host = endpoint.split("://")
+        # TODO: use the auth argument in requests.post so we don't need to encode it ourselves
+        auth = {"Authorization": b64encode(f"{auth[0]}:{auth[1]}".encode("utf-8"))} if auth else {}
         super().__init__({
             "auth": auth,
             "proto": proto,
             "host": host
         })
 
-    @staticmethod
-    def get_version(extension: str, workflow_file: str) -> str:
+    def get_version(self, extension: str, workflow_file: str) -> str:
         """Determines the version of a .py, .wdl, or .cwl file."""
+        # TODO: read from the web?
+
+        if workflow_file.startswith("file://"):
+            workflow_file = workflow_file[7:]
+
         if extension == "py":
             return "3.8"
         elif extension == "cwl":
@@ -76,40 +120,50 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
         else:
             raise RuntimeError(f"Invalid workflow extension: {extension}.")
 
-    @staticmethod
-    def parse_params(workflow_params: Dict[str, Any]) -> None:
+    def parse_and_modify_params(self, base_dir: str, workflow_params_file: str) -> Dict[str, Any]:
         """
-        Loop through files in the input workflow parameters json and make sure
-        the paths do not include relative paths to parent directories.
-        """
+        Loop through files in the input workflow parameters json and modify
+        the paths to not include relative paths to parent directories.
 
-        def secure_path(path: str) -> str:
-            return os.path.join(*[str(secure_filename(p)) for p in path.split("/") if p not in ("", ".", "..")])
+        :param base_dir: The local directory where the CWL file is located.
+        :param workflow_params_file: The URL or path to the CWL input file.
+        """
+        loader = schema_salad.ref_resolver.Loader(
+            {"location": {"@type": "@id"}}
+        )
+        workflow_params, _ = loader.resolve_ref(workflow_params_file, checklinks=False)
 
         def replace_paths(obj: Any) -> None:
             for file in obj:
                 if isinstance(file, dict) and "location" in file:
                     loc = file.get("location")
                     if isinstance(loc, str) and urlparse(loc).scheme in ("file", ""):
-                        file["location"] = secure_path(loc)
+                        file["location"] = generate_attachment_filename(base_dir, loc)
 
                     if "secondaryFiles" in file:
                         replace_paths(file.get("secondaryFiles"))
 
-        replace_paths(workflow_params.values())
+                elif isinstance(file, dict):
+                    replace_paths(file.values())
+                elif isinstance(file, list):
+                    replace_paths(file)
 
-    @staticmethod
+        replace_paths(workflow_params.values())
+        return workflow_params
+
     def build_wes_request(
-            workflow_url: str,
-            workflow_params_url: Optional[str],
+            self,
+            workflow_file: str,
+            workflow_params_file: Optional[str],
             attachments: Optional[List[str]],
             workflow_engine_parameters: Optional[List[str]] = None
     ) -> Tuple[Dict[str, str], Iterable[Tuple[str, Tuple[str, BytesIO]]]]:
         """
         Build the workflow run request to submit to WES.
 
-        :param workflow_url: The URL to the CWL workflow document.
-        :param workflow_params_url: The URL to the CWL input files.
+        :param workflow_file: The path or URL to the CWL workflow document.
+                              Only file:// URL supported at the moment.
+        :param workflow_params_file: The path or URL to the CWL input file.
         :param attachments: A list of local paths to files that will be uploaded
                             to the server.
         :param workflow_engine_parameters: A list of engine parameters to set
@@ -120,26 +174,36 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
                   to the server.
         """
 
+        local_workflow_file = urlparse(workflow_file).scheme in ("", "file")
+
+        if workflow_file.startswith("file://"):
+            workflow_file = workflow_file[7:]
+
+        # The base directory in which file dependencies should be relative to.
+        # This is used so that we wouldn't generate file names that include the
+        # entire absolute path.
+        # TODO: if workflow_file is not local, we should make the
+        #  workflow_params_file the base_dir. If neither file is local, we
+        #  won't need this.
+        base_dir = os.path.dirname(workflow_file)
+
         # Read from the workflow_param file and parse it into a dict
-        if workflow_params_url:
-            with open(workflow_params_url, "r") as f:
-                if workflow_params_url.endswith((".yaml", ".yml")):
-                    workflow_params = ruamel.yaml.safe_load(f)
-                elif workflow_params_url.endswith(".json"):
-                    workflow_params = json.load(f)
-                else:
-                    raise ValueError(
-                        f"Unsupported file type for workflow_params: '{os.path.basename(workflow_params_url)}'")
+        if workflow_params_file:
+            workflow_params = self.parse_and_modify_params(base_dir, workflow_params_file)
         else:
             workflow_params = {}
-        WESClientWithWorkflowEngineParameters.parse_params(workflow_params)
 
         # Initialize the basic parameters for the run request
-        wf_url, frag = urldefrag(workflow_url)
+        wf_url, frag = urldefrag(workflow_file)
+
+        # For local CWL files, strip out paths from the local directory
+        if local_workflow_file:
+            workflow_file = os.path.basename(workflow_file)
+
         workflow_type = wf_url.lower().split(".")[-1]  # Grab the file extension
-        workflow_type_version = WESClientWithWorkflowEngineParameters.get_version(workflow_type, wf_url)
+        workflow_type_version = self.get_version(workflow_type, wf_url)
         data: Dict[str, str] = {
-            "workflow_url": os.path.basename(workflow_url),
+            "workflow_url": workflow_file,
             "workflow_params": json.dumps(workflow_params),
             "workflow_type": workflow_type,
             "workflow_type_version": workflow_type_version
@@ -159,47 +223,48 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
         # Deal with workflow attachments
         if attachments is None:
             attachments = []
-        base = os.path.dirname(wf_url)
-        attachments.append(wf_url)
+
+        # Upload the CWL workflow file if it is local
+        if local_workflow_file:
+            attachments.append(wf_url)
 
         workflow_attachments = []
         for file in attachments:
             with open(file, "rb") as f:
-                rel: str = os.path.relpath(file, base)
-                if '../' in rel:
-                    # when inputs are in a different directory from the workflow
-                    rel = os.path.basename(file)
-                workflow_attachments.append((rel, BytesIO(f.read())))
+                filename = generate_attachment_filename(base_dir, file)
+                workflow_attachments.append((filename, BytesIO(f.read())))
 
         return data, [("workflow_attachment", val) for val in workflow_attachments]
 
     def run_with_engine_options(
             self,
             workflow_file: str,
-            secondary_file: Optional[str],
+            workflow_params_file: Optional[str],
             attachments: Optional[List[str]],
-            engine_options: Optional[List[str]]
+            workflow_engine_parameters: Optional[List[str]]
     ) -> Dict[str, Any]:
         """
         Composes and sends a post request that signals the WES server to run a
         workflow.
 
-        :param workflow_file: A local/http/https path to a CWL/WDL/python
-                              workflow file.
-        :param secondary_file: A local path to a json or yaml file.
-        :param attachments: A list of local paths to files that will be
-                            uploaded to the server.
-        :param engine_options: A list of engine options to attach.
+        :param workflow_file: The path to the CWL workflow document.
+        :param workflow_params_file: The path to the CWL input file.
+        :param attachments: A list of local paths to files that will be uploaded
+                            to the server.
+        :param workflow_engine_parameters: A list of engine parameters to set
+                                           along with this workflow run.
 
         :return: The body of the post result as a dictionary.
         """
-        data, files = WESClientWithWorkflowEngineParameters.build_wes_request(
-            workflow_file, secondary_file, attachments, engine_options)
+        data, files = self.build_wes_request(workflow_file,
+                                             workflow_params_file,
+                                             attachments,
+                                             workflow_engine_parameters)
         post_result = requests.post(
-            f"{self.proto}://{self.host}/ga4gh/wes/v1/runs",
+            urljoin(f"{self.proto}://{self.host}", "/ga4gh/wes/v1/runs"),
             data=data,
             files=files,  # type: ignore[arg-type]
-            auth=self.auth,
+            headers=self.auth,
         )
 
         return cast(Dict[str, Any], wes_response(post_result))
@@ -230,6 +295,11 @@ def get_deps_from_cwltool(cwl_file: str, input_file: Optional[str] = None) -> Li
     deps = []
 
     def get_deps(obj: Any) -> None:
+        """
+        A recursive function to add file dependencies from the cwltool output to
+        the deps list. For directory objects without listing, contents of the
+        entire directory will be included.
+        """
         for file in obj:
             if isinstance(file, dict) and "location" in file:
                 loc = file.get("location")
@@ -272,7 +342,7 @@ def submit_run(client: WESClientWithWorkflowEngineParameters,
         cwl_file,
         input_file,
         attachments=attachments,
-        engine_options=engine_options)
+        workflow_engine_parameters=engine_options)
     return run_result.get("run_id", None)
 
 
@@ -286,7 +356,8 @@ def poll_run(client: WESClientWithWorkflowEngineParameters, run_id: str) -> bool
 
 def print_logs_and_exit(client: WESClientWithWorkflowEngineParameters, run_id: str) -> None:
     """
-    Fetch the workflow logs from the WES server and print the results.
+    Fetch the workflow logs from the WES server, print the results, then exit
+    the program with the same exit code as the workflow run.
 
     :param client: The WES client.
     :param run_id: The run_id of the target workflow.

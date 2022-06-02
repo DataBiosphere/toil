@@ -132,19 +132,19 @@ def run_conformance_tests(
             # Otherwise dump all output to our output stream
             cmd.append("--verbose")
 
-        args_passed_directly_to_toil = [
+        args_passed_directly_to_runner = [
             "--clean=always",
             "--logDebug",
             "--statusWait=10",
         ]
         if not caching:
             # Turn off caching for the run
-            args_passed_directly_to_toil.append("--disableCaching")
+            args_passed_directly_to_runner.append("--disableCaching")
         if extra_args:
-            args_passed_directly_to_toil += extra_args
+            args_passed_directly_to_runner += extra_args
 
         if "SINGULARITY_DOCKER_HUB_MIRROR" in os.environ:
-            args_passed_directly_to_toil.append(
+            args_passed_directly_to_runner.append(
                 "--setEnv=SINGULARITY_DOCKER_HUB_MIRROR"
             )
 
@@ -162,8 +162,8 @@ def run_conformance_tests(
         cmd.append(f"-j{parallel_tests}")
 
         if batchSystem:
-            args_passed_directly_to_toil.append(f"--batchSystem={batchSystem}")
-        cmd.extend(["--"] + args_passed_directly_to_toil)
+            args_passed_directly_to_runner.append(f"--batchSystem={batchSystem}")
+        cmd.extend(["--"] + args_passed_directly_to_runner)
 
         log.info("Running: '%s'", "' '".join(cmd))
         try:
@@ -847,7 +847,7 @@ class CWLv12Test(ToilTest):
 
         return self.test_run_conformance(
             runner="toil-wes-cwl-runner",
-            selected_tests="0-309,313-330,333-337",
+            selected_tests="1-309,313-330,333-337",
             extra_args=extra_args
         )
 
