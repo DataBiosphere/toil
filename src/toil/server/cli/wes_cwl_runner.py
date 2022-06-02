@@ -1,18 +1,18 @@
-import argparse
-import json
-import logging
 import os
-import subprocess
 import sys
 import time
+import json
+import logging
+import argparse
 import requests
+import subprocess
 import ruamel.yaml
 import schema_salad
 
 from io import BytesIO
 from base64 import b64encode
 from urllib.parse import urlparse, urldefrag, urljoin
-from typing import Optional, Dict, Any, List, Tuple, Iterable, cast, Union
+from typing import Optional, Dict, Any, List, Tuple, Iterable, cast
 
 from werkzeug.utils import secure_filename
 from toil.wdl.utils import get_version as get_wdl_version
@@ -26,8 +26,8 @@ and outputs the results.
 
 Environment variables:
 +----------------------------------+----------------------------------------------------+
-| TOIL_WES_ENDPOINT                | URL to the WES server to use for the WES-based CWL |
-|                                  | runner ("toil-wes-cwl-runner") and tests.          |
+| TOIL_WES_ENDPOINT                | URL to the WES server to use for this WES-based    |
+|                                  | CWL runner.                                        |
 +----------------------------------+----------------------------------------------------+
 | TOIL_WES_USER                    | Username to use with HTTP Basic Authentication to  |
 |                                  | log into the WES server.                           |
@@ -57,11 +57,35 @@ cwltest --verbose \
 logger = logging.getLogger(__name__)
 
 
-def generate_attachment_filename(base_dir: str, file_path: str) -> str:
+def generate_attachment_path_name(base_dir: str, file_path: str) -> str:
     """
-    We must send only relative paths under a single root as input fields or as
-    attachment keys. This function returns file names that will not be located
-    above the base_dir.
+    Generate a relative path under base_dir as input fields or as attachment
+    keys.
+
+    This is to detect attachment path names that are above the CWL workflow file
+    and modify the path names in both the File or Directory objects in
+    workflow_params and the attachment key.
+
+    For example, for the following CWL workflow where "hello.yaml" references
+    a file "message.txt",
+
+        ~/toil/workflows/hello.cwl
+        ~/toil/input_files/hello.yaml
+        ~/toil/input_files/message.txt
+
+    This may be run with the command:
+        toil-wes-cwl-runner hello.cwl ../input_files/hello.yaml
+
+    Where "message.txt" is resolved to "../input_files/message.txt".
+
+    For the workflow attachment "../input_files/message.txt", we must replace
+    this relative path to something else that is not above the CWL workflow
+    file, otherwise the Toil WES server will drop all the traversals up to
+    contain attachments within its "execution" folder.
+
+    TODO: we need to find a way to call this function and replace the relative
+     paths referenced inside the CWL workflow directly.
+     e.g.: https://github.com/common-workflow-language/cwl-v1.2/blob/1.2.1_proposed/tests/iwd/iwd-fileobjs1.cwl#L7-L11
 
     :param base_dir: The local directory where the CWL file is located.
     :param file_path: The path to the attachment file. May be an absolute path
@@ -74,8 +98,8 @@ def generate_attachment_filename(base_dir: str, file_path: str) -> str:
     file_path = os.path.relpath(file_path, base_dir)
 
     # TODO: don't just drop the up traversals
-    #   Ideally we should make the output unique, but we should also make sure
-    #   that the same call to this function will have the same output.
+    #  Ideally we should make the output unique, but we should also make sure that the same call to this function
+    #  will have the same output.
     return os.path.join(*[str(secure_filename(p)) for p in file_path.split("/") if p not in ("", ".", "..")])
 
 
@@ -140,11 +164,10 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
                 if isinstance(file, dict) and "location" in file:
                     loc = file.get("location")
                     if isinstance(loc, str) and urlparse(loc).scheme in ("file", ""):
-                        file["location"] = generate_attachment_filename(base_dir, loc)
-
+                        file["location"] = generate_attachment_path_name(base_dir, loc)
+                    # recursively find all imported files
                     if "secondaryFiles" in file:
                         replace_paths(file.get("secondaryFiles"))
-
                 elif isinstance(file, dict):
                     replace_paths(file.values())
                 elif isinstance(file, list):
@@ -181,12 +204,10 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
         if workflow_file.startswith("file://"):
             workflow_file = workflow_file[7:]
 
-        # The base directory in which file dependencies should be relative to.
-        # This is used so that we wouldn't generate file names that include the
-        # entire absolute path.
-        # TODO: if workflow_file is not local, we should make the
-        #  workflow_params_file the base_dir. If neither file is local, we
-        #  won't need this.
+        # Define the base directory in which file dependencies should be relative to.
+        # This is used so that we wouldn't generate file names that include the entire absolute path.
+        # TODO: if workflow_file is not local, we should make the workflow_params_file the base_dir. If neither file
+        #  is local, we wouldn't need this.
         base_dir = os.path.dirname(workflow_file)
 
         # Read from the workflow_param file and parse it into a dict
@@ -196,6 +217,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
             workflow_params = {}
 
         # Initialize the basic parameters for the run request
+
         wf_url, frag = urldefrag(workflow_file)
 
         # For local CWL files, strip out paths from the local directory
@@ -223,6 +245,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
             data["workflow_engine_parameters"] = json.dumps(params)
 
         # Deal with workflow attachments
+
         if attachments is None:
             attachments = []
 
@@ -230,10 +253,11 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
         if local_workflow_file:
             attachments.append(wf_url)
 
+        # Prepare attachments and generate new path names that match the modified paths in workflow_params
         workflow_attachments = []
         for file in attachments:
             with open(file, "rb") as f:
-                filename = generate_attachment_filename(base_dir, file)
+                filename = generate_attachment_path_name(base_dir, file)
                 workflow_attachments.append((filename, BytesIO(f.read())))
 
         return data, [("workflow_attachment", val) for val in workflow_attachments]
@@ -265,7 +289,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
         post_result = requests.post(
             urljoin(f"{self.proto}://{self.host}", "/ga4gh/wes/v1/runs"),
             data=data,
-            files=files,  # type: ignore[arg-type]
+            files=files,
             headers=self.auth,
         )
 
@@ -333,6 +357,15 @@ def submit_run(client: WESClientWithWorkflowEngineParameters,
     """
     Given a CWL file, its input files, and an optional list of engine options,
     submit the CWL workflow to the WES server via the WES client.
+
+    This function also attempts to find the attachments from the CWL workflow
+    and its input file, and attach them to the WES run request.
+
+    :param client: The WES client.
+    :param cwl_file: The path to the CWL workflow document.
+    :param input_file: The path to the CWL input file.
+    :param engine_options: A list of engine parameters to set along with this
+                           workflow run.
     """
     # First, get the list of files to attach to this workflow
     attachments = get_deps_from_cwltool(cwl_file)
