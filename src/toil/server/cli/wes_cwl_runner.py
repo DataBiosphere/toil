@@ -12,7 +12,7 @@ import schema_salad
 from io import BytesIO
 from base64 import b64encode
 from urllib.parse import urlparse, urldefrag, urljoin
-from typing import Optional, Dict, Any, List, Tuple, Iterable, cast
+from typing import Optional, Dict, Any, List, Tuple, Iterable, cast, Union
 
 from werkzeug.utils import secure_filename
 from toil.wdl.utils import get_version as get_wdl_version
@@ -57,7 +57,7 @@ cwltest --verbose \
 logger = logging.getLogger(__name__)
 
 
-def generate_attachment_filename(base_dir: str, file_path: str):
+def generate_attachment_filename(base_dir: str, file_path: str) -> str:
     """
     We must send only relative paths under a single root as input fields or as
     attachment keys. This function returns file names that will not be located
@@ -94,10 +94,9 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
                      request to the WES server.
         """
         proto, host = endpoint.split("://")
-        # TODO: use the auth argument in requests.post so we don't need to encode it ourselves
-        auth = {"Authorization": b64encode(f"{auth[0]}:{auth[1]}".encode("utf-8"))} if auth else {}
         super().__init__({
-            "auth": auth,
+            # TODO: use the auth argument in requests.post so we don't need to encode it ourselves
+            "auth": {"Authorization": "Basic " + b64encode(f"{auth[0]}:{auth[1]}".encode("utf-8")).decode("utf-8")} if auth else {},
             "proto": proto,
             "host": host
         })
@@ -131,6 +130,9 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
         loader = schema_salad.ref_resolver.Loader(
             {"location": {"@type": "@id"}}
         )
+
+        # recursive types may be complicated for MyPy to deal with
+        workflow_params: Any
         workflow_params, _ = loader.resolve_ref(workflow_params_file, checklinks=False)
 
         def replace_paths(obj: Any) -> None:
@@ -149,7 +151,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
                     replace_paths(file)
 
         replace_paths(workflow_params.values())
-        return workflow_params
+        return cast(Dict[str, Any], workflow_params)
 
     def build_wes_request(
             self,
