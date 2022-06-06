@@ -342,14 +342,42 @@ class AbstractJobStore(ABC):
                 return implementation
         raise RuntimeError("No job store implementation supports %sporting for URL '%s'" %
                            ('ex' if export else 'im', url.geturl()))
+    
+    @overload
+    def importFile(self,
+                   srcUrl: str,
+                   sharedFileName: str = '',
+                   hardlink: bool = False,
+                   symlink: bool = False) -> None: ...
 
+    @overload
+    def importFile(self,
+                   srcUrl: str,
+                   sharedFileName: None = None,
+                   hardlink: bool = False,
+                   symlink: bool = False) -> FileID: ...
+    
     @deprecated(new_function_name='import_file')
     def importFile(self,
-                    srcUrl: str,
-                    sharedFileName: Optional[str] = None,
-                    hardlink: bool = False,
-                    symlink: bool = False) -> Optional[FileID]:
+                   srcUrl: str,
+                   sharedFileName: Optional[str] = None,
+                   hardlink: bool = False,
+                   symlink: bool = False) -> Optional[FileID]:
         return self.import_file(srcUrl, sharedFileName, hardlink, symlink)
+
+    @overload
+    def import_file(self,
+                    srcUrl: str,
+                    sharedFileName: str,
+                    hardlink: bool = False,
+                    symlink: bool = False) -> None: ...
+
+    @overload
+    def import_file(self,
+                    srcUrl: str,
+                    shared_file_name: None = None,
+                    hardlink: bool = False,
+                    symlink: bool = False) -> FileID: ...
 
     def import_file(self,
                     src_uri: str,
@@ -381,7 +409,7 @@ class AbstractJobStore(ABC):
 
         :param str shared_file_name: Optional name to assign to the imported file within the job store
 
-        :return: The jobStoreFileID of the imported file or None if sharedFileName was given
+        :return: The jobStoreFileID of the imported file or None if shared_file_name was given
         :rtype: toil.fileStores.FileID or None
         """
         # Note that the helper method _import_file is used to read from the source and write to
