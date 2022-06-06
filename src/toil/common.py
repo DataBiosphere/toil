@@ -28,6 +28,7 @@ from argparse import (
     Namespace,
     _ArgumentGroup,
 )
+from functools import lru_cache
 from types import TracebackType
 from typing import (
     IO,
@@ -47,7 +48,10 @@ from typing import (
 from urllib.parse import urlparse
 
 import requests
-from typing_extensions import Literal
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import (add_all_batchsystem_options,
@@ -179,6 +183,8 @@ class Config:
         self.forceDockerAppliance: bool = False
         self.statusWait: int = 3600
         self.disableProgress: bool = False
+
+        self.kill_polling_interval: int = 5
 
         # Debug options
         self.debugWorker: bool = False
@@ -765,7 +771,7 @@ def parseBool(val: str) -> bool:
     else:
         raise RuntimeError("Could not interpret \"%s\" as a boolean value" % val)
 
-
+@lru_cache(maxsize=None)
 def getNodeID() -> str:
     """
     Return unique ID of the current node (host). The resulting string will be convertable to a uuid.UUID.
@@ -926,7 +932,11 @@ class Toil(ContextManager["Toil"]):
         :return: The root job's return value
         """
         self._assertContextManagerUsed()
-        self.writePIDFile()
+
+        # Write shared files to the job store
+        self._jobStore.write_leader_pid()
+        self._jobStore.write_leader_node_id()
+
         if self.config.restart:
             raise ToilRestartException('A Toil workflow can only be started once. Use '
                                        'Toil.restart() to resume it.')
@@ -964,7 +974,11 @@ class Toil(ContextManager["Toil"]):
         """
         self._inRestart = True
         self._assertContextManagerUsed()
-        self.writePIDFile()
+
+        # Write shared files to the job store
+        self._jobStore.write_leader_pid()
+        self._jobStore.write_leader_node_id()
+
         if not self.config.restart:
             raise ToilRestartException('A Toil workflow must be initiated with Toil.start(), '
                                        'not restart().')
@@ -1227,7 +1241,7 @@ class Toil(ContextManager["Toil"]):
         if not os.path.exists(workDir):
             raise RuntimeError(f'The directory specified by --workDir or TOIL_WORKDIR ({workDir}) does not exist.')
         return workDir
-        
+
     @classmethod
     def get_toil_coordination_dir(cls, configWorkDir: Optional[str] = None) -> str:
         """
@@ -1237,7 +1251,7 @@ class Toil(ContextManager["Toil"]):
         :param configWorkDir: Value passed to the program using the --workDir flag
         :return: Path to the Toil coordination directory.
         """
-        
+
         # Get our user ID
         user_id = os.getuid()
         in_memory_base = os.path.join('/var/run/user', str(user_id), 'toil')
@@ -1251,7 +1265,7 @@ class Toil(ContextManager["Toil"]):
                 return in_memory_base
             except:
                 pass
-        
+
         # Otherwise use the on-disk one.
         return cls.getToilWorkDir(configWorkDir)
 
@@ -1260,11 +1274,11 @@ class Toil(ContextManager["Toil"]):
     def _get_workflow_path_component(workflow_id: str) -> str:
         """
         Get a safe filesystem path component for a workflow.
-        
+
         Will be consistent for all processes on a given machine, and different
         for all processes on different machines.
-        
-        :param workflow_id: THe ID of the current Toil workflow.
+
+        :param workflow_id: The ID of the current Toil workflow.
         """
         return str(uuid.uuid5(uuid.UUID(getNodeID()), workflow_id)).replace('-', '')
 
@@ -1294,7 +1308,7 @@ class Toil(ContextManager["Toil"]):
         else:
             logger.debug('Created the workflow directory for this machine at %s' % workflowDir)
         return workflowDir
-        
+
     @classmethod
     def get_local_workflow_coordination_dir(
         cls, workflow_id: str, config_work_dir: Optional[str] = None
@@ -1303,22 +1317,22 @@ class Toil(ContextManager["Toil"]):
         Return the directory where coordination files should be located for
         this workflow on this machine. These include internal Toil databases
         and lock files for the machine.
-        
+
         If an in-memory filesystem is available, it is used. Otherwise, the
         local workflow directory, which may be on a shared network filesystem,
         is used.
-        
+
         :param workflow_id: Unique ID of the current workflow.
         :param config_work_dir: Value used for the work directory in the
                current Toil Config.
-        
+
         :return: Path to the local workflow coordination directory on this
                  machine.
         """
-        
+
         # Start with the base coordination or work dir
         base = cls.get_toil_coordination_dir(config_work_dir)
-        
+
         # Make a per-workflow and node subdirectory
         subdir = os.path.join(base, cls._get_workflow_path_component(workflow_id))
         # Make it exist
@@ -1326,8 +1340,8 @@ class Toil(ContextManager["Toil"]):
         # TODO: May interfere with workflow directory creation logging if it's the same directory.
         # Return it
         return subdir
-            
-                
+
+
 
     def _runMainLoop(self, rootJob: "JobDescription") -> Any:
         """
@@ -1359,17 +1373,6 @@ class Toil(ContextManager["Toil"]):
     def _assertContextManagerUsed(self) -> None:
         if not self._inContextManager:
             raise ToilContextManagerException()
-
-    def writePIDFile(self) -> None:
-        """
-        Write a the pid of this process to a file in the jobstore.
-
-        Overwriting the current contents of pid.log is a feature, not a bug of this method.
-        Other methods will rely on always having the most current pid available.
-        So far there is no reason to store any old pids.
-        """
-        with self._jobStore.write_shared_file_stream('pid.log') as f:
-            f.write(str(os.getpid()).encode('utf-8'))
 
 
 class ToilRestartException(Exception):

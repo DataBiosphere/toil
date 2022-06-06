@@ -364,6 +364,10 @@ the logging module:
                         (default=3600)
   --disableProgress     Disables the progress bar shown when standard error is
                         a terminal.
+  --kill_polling_interval KILL_POLLING_INTERVAL
+                        Interval of time (in seconds) the leader waits between
+                        polling for the kill flag inside the job store set by
+                        the "toil kill" command. (default=5)
 
 
 Restart Option

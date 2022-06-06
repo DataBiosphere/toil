@@ -122,14 +122,14 @@ clean_sdist:
 # Setting SET_OWNER_TAG will tag cloud resources so that UCSC's cloud murder bot won't kill them.
 test: check_venv check_build_reqs
 	TOIL_OWNER_TAG="shared" \
-	    python -m pytest --durations=0 --log-level DEBUG --log-cli-level INFO -r s $(cov) $(tests)
+	    python -m pytest --durations=0 --strict-markers --log-level DEBUG --log-cli-level INFO -r s $(cov) $(tests)
 
 
 # This target will skip building docker and all docker based tests
 test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
-	    python -m pytest -vv --timeout=600 --log-level DEBUG --log-cli-level INFO $(cov) $(tests)
+	    python -m pytest -vv --timeout=600 --strict-markers --log-level DEBUG --log-cli-level INFO $(cov) $(tests)
 
 ifdef TOIL_DOCKER_REGISTRY
 

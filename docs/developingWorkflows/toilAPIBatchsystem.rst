@@ -15,9 +15,15 @@ Batch System Enivronmental Variables
 
 Environmental variables allow passing of scheduler specific parameters.
 
-For SLURM::
+For SLURM there are two environment variables - the first applies to all jobs,
+while the second defined the partition to use for parallel jobs::
 
     export TOIL_SLURM_ARGS="-t 1:00:00 -q fatq"
+    export TOIL_SLURM_PE='multicore'
+
+Depending on your SLURM configuration and Python environment, you may need to add
+`--export=ALL` to `TOIL_SLURM_ARGS` in order for the started jobs to properly
+inherit the environment.
 
 For TORQUE there are two environment variables - one for everything but the resource
 requirements, and another - for resources requirements (without the `-l` prefix)::

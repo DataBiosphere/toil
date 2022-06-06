@@ -126,6 +126,10 @@ There are several environment variables that affect the way Toil runs.
 |                                  | Instead, define resource requirements for the job. |
 |                                  | There is no default value for this variable.       |
 +----------------------------------+----------------------------------------------------+
+| TOIL_SLURM_PE                    | Name of the slurm partition to use for parallel    |
+|                                  | jobs.                                              |
+|                                  | There is no default value for this variable.       |
++----------------------------------+----------------------------------------------------+
 | TOIL_GRIDENGINE_ARGS             | Arguments for qsub for the gridengine batch        |
 |                                  | system. Do not pass CPU or memory specifications   |
 |                                  | here. Instead, define resource requirements for    |
