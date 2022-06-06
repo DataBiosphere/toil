@@ -342,11 +342,14 @@ class AbstractJobStore(ABC):
                 return implementation
         raise RuntimeError("No job store implementation supports %sporting for URL '%s'" %
                            ('ex' if export else 'im', url.geturl()))
-    
+
+    # Importing a file with a shared file name returns None, but without one it
+    # returns a file ID. Explain this to MyPy.
+
     @overload
     def importFile(self,
                    srcUrl: str,
-                   sharedFileName: str = '',
+                   sharedFileName: str,
                    hardlink: bool = False,
                    symlink: bool = False) -> None: ...
 
@@ -356,7 +359,7 @@ class AbstractJobStore(ABC):
                    sharedFileName: None = None,
                    hardlink: bool = False,
                    symlink: bool = False) -> FileID: ...
-    
+
     @deprecated(new_function_name='import_file')
     def importFile(self,
                    srcUrl: str,
@@ -367,14 +370,14 @@ class AbstractJobStore(ABC):
 
     @overload
     def import_file(self,
-                    srcUrl: str,
-                    sharedFileName: str,
+                    src_uri: str,
+                    shared_file_name: str,
                     hardlink: bool = False,
                     symlink: bool = False) -> None: ...
 
     @overload
     def import_file(self,
-                    srcUrl: str,
+                    src_uri: str,
                     shared_file_name: None = None,
                     hardlink: bool = False,
                     symlink: bool = False) -> FileID: ...
@@ -568,7 +571,7 @@ class AbstractJobStore(ABC):
     def read_from_url(cls, src_uri: str, writable: IO[bytes]) -> Tuple[int, bool]:
         """
         Read the given URL and write its content into the given writable stream.
-        
+
         :return: The size of the file in bytes and whether the executable permission bit is set
         :rtype: Tuple[int, bool]
         """
@@ -1648,7 +1651,7 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     A mostly fake JobStore to access URLs not really associated with real job
     stores.
     """
-    
+
     @classmethod
     def _supports_url(cls, url: ParseResult, export: bool = False) -> bool:
         return url.scheme.lower() in ('http', 'https', 'ftp') and not export
@@ -1695,12 +1698,12 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
             # Do the download
             shutil.copyfileobj(readable, counter)
             return size[0], False
-    
+
     @classmethod
     def _get_is_directory(cls, url: ParseResult) -> bool:
         # TODO: Implement HTTP index parsing and FTP directory listing
         return False
-        
+
     @classmethod
     def _list_url(cls, url: ParseResult) -> List[str]:
         # TODO: Implement HTTP index parsing and FTP directory listing
