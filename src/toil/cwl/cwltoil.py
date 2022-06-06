@@ -615,7 +615,7 @@ class ToilPathMapper(PathMapper):
                "streaming_allowed" flag for whether we are running with
                streaming on, and returns a file: URI to where the file or
                directory has been downloaded to. Meant to be a partially-bound
-               version of toil_get_file().   
+               version of toil_get_file().
         """
         self.get_file = get_file
         self.stage_listing = stage_listing
@@ -1419,7 +1419,7 @@ def toil_get_file(
         return schema_salad.ref_resolver.file_uri(dest_path)
     elif file_store_id.startswith("file:") or urlsplit(file_store_id).scheme == "":
         # There's a file: scheme or no scheme, and we know this isn't a _: URL.
-        
+
         # We need to support file: URIs and local paths, because we might be
         # involved in moving files around on the local disk when uploading
         # things after a job. We might want to catch cases where a leader
@@ -1876,7 +1876,7 @@ def toilStageFiles(
                             f.close()
                             # Import it and pack up the file ID so we can turn around and export it.
                             file_id_or_contents = (
-                                "toilfile:" + toil.importFile(f.name).pack()
+                                "toilfile:" + toil.import_file(f.name).pack()
                             )
 
                     if file_id_or_contents.startswith("toildir:"):
@@ -3412,6 +3412,13 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # We use the file store to write to buckets, so we can't do this (yet?)
         logger.error("Cannot export outputs to a bucket when bypassing the file store")
         return 1
+    if not options.bypass_file_store:
+        # If we're using Toil's filesystem wrappers and the ability to access
+        # URLs implemented by Toil, we need to hook up our own StdFsAccess
+        # replacement early, before we try and set up the main CWL document.
+        # Otherwise, if it takes a File with loadContents from a URL, we won't
+        # be able to load the contents when we need to.
+        runtime_context.make_fs_access = ToilFsAccess  # type: ignore[assignment]
 
     loading_context = cwltool.main.setup_loadingContext(None, runtime_context, options)
 
@@ -3572,6 +3579,9 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             # to resolve them before toil imports them into the filestore.
             # A second builder will be built in the job's run method when toil
             # actually starts the cwl job.
+            # Note that this accesses input files for tools, so the
+            # ToilFsAccess needs to be set up if we want to be able to use
+            # URLs.
             builder = tool._init_job(initialized_job_order, runtime_context)
 
             # make sure this doesn't add listing items; if shallow_listing is
@@ -3588,7 +3598,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
             # Define something we can call to import a file and get its file
             # ID.
-            file_import_function = functools.partial(toil.importFile, symlink=True)
+            file_import_function = functools.partial(toil.import_file, symlink=True)
 
             # Import all the input files, some of which may be missing optional
             # files.
