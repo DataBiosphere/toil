@@ -2,4 +2,4 @@ cwltool==3.1.20220502060230
 galaxy-tool-util
 ruamel.yaml>=0.15,<=0.17.21
 ruamel.yaml.clib>=0.2.6
-networkx>=2,<2.8.1
+networkx>=2,<2.8.4
