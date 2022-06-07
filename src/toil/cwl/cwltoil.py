@@ -48,6 +48,7 @@ from typing import (
     Optional,
     TextIO,
     Tuple,
+    Type,
     TypeVar,
     Union,
     cast,
@@ -63,7 +64,7 @@ import cwltool.load_tool
 import cwltool.main
 import cwltool.provenance
 import cwltool.resolver
-import cwltool.stdfsaccess
+from cwltool.stdfsaccess import StdFsAccess, abspath
 import schema_salad.ref_resolver
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
@@ -615,7 +616,7 @@ class ToilPathMapper(PathMapper):
                "streaming_allowed" flag for whether we are running with
                streaming on, and returns a file: URI to where the file or
                directory has been downloaded to. Meant to be a partially-bound
-               version of toil_get_file().   
+               version of toil_get_file().
         """
         self.get_file = get_file
         self.stage_listing = stage_listing
@@ -818,7 +819,7 @@ class ToilPathMapper(PathMapper):
                 )
                 return
 
-            ab = cwltool.stdfsaccess.abspath(path, basedir)
+            ab = abspath(path, basedir)
             if "contents" in obj and path.startswith("_:"):
                 # We are supposed to create this file
                 self._pathmap[path] = MapperEnt(
@@ -1063,7 +1064,7 @@ def encode_directory(
         json.dumps(contents).encode("utf-8")
     ).decode("utf-8")
 
-class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
+class ToilFsAccess(StdFsAccess):
     """
     Custom filesystem access class which handles toil filestore references.
 
@@ -1094,15 +1095,15 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         """
         Return a local absolute path for a file (no schema).
 
-        Overwrites cwltool.stdfsaccess.StdFsAccess._abs() to account for toil specific schema.
+        Overwrites StdFsAccess._abs() to account for toil specific schema.
         """
         # TODO: Both we and the ToilPathMapper relate Toil paths to local
         # paths. But we don't share the same mapping, so accesses through
         # different mechanisms will produce different local copies.
 
         # Used to fetch a path to determine if a file exists in the inherited
-        # cwltool.stdfsaccess.StdFsAccess, (among other things) so this should
-        # not error on missing files.
+        # StdFsAccess, (among other things) so this should not error on missing
+        # files.
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43  # noqa B950
 
         parse = urlparse(path)
@@ -1281,7 +1282,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
             # Now list it (it is probably a directory)
             return [
-                cwltool.stdfsaccess.abspath(quote(entry), fn)
+                abspath(quote(entry), fn)
                 for entry in os.listdir(directory)
             ]
         else:
@@ -1419,7 +1420,7 @@ def toil_get_file(
         return schema_salad.ref_resolver.file_uri(dest_path)
     elif file_store_id.startswith("file:") or urlsplit(file_store_id).scheme == "":
         # There's a file: scheme or no scheme, and we know this isn't a _: URL.
-        
+
         # We need to support file: URIs and local paths, because we might be
         # involved in moving files around on the local disk when uploading
         # things after a job. We might want to catch cases where a leader
@@ -1484,7 +1485,7 @@ def path_to_loc(obj: CWLObjectType) -> None:
 
 def import_files(
     import_function: Callable[[str], FileID],
-    fs_access: cwltool.stdfsaccess.StdFsAccess,
+    fs_access: StdFsAccess,
     fileindex: Dict[str, str],
     existing: Dict[str, str],
     cwl_object: Optional[CWLObjectType],
@@ -1876,7 +1877,7 @@ def toilStageFiles(
                             f.close()
                             # Import it and pack up the file ID so we can turn around and export it.
                             file_id_or_contents = (
-                                "toilfile:" + toil.importFile(f.name).pack()
+                                "toilfile:" + toil.import_file(f.name).pack()
                             )
 
                     if file_id_or_contents.startswith("toildir:"):
@@ -2021,7 +2022,7 @@ class CWLJob(Job):
                 resources={},
                 mutation_manager=runtime_context.mutation_manager,
                 formatgraph=tool.formatgraph,
-                make_fs_access=runtime_context.make_fs_access,
+                make_fs_access=cast(Type[StdFsAccess], runtime_context.make_fs_access),
                 fs_access=runtime_context.make_fs_access(""),
                 job_script_provider=runtime_context.job_script_provider,
                 timeout=runtime_context.eval_timeout,
@@ -2190,9 +2191,9 @@ class CWLJob(Job):
             # stuff in Toil's FileStore. We need to plug in a make_fs_access
             # function and a path_mapper type or factory function.
 
-            runtime_context.make_fs_access = functools.partial(  # type: ignore[assignment]
+            runtime_context.make_fs_access = cast(Type[StdFsAccess], functools.partial(
                 ToilFsAccess, file_store=file_store
-            )
+            ))
 
             runtime_context.path_mapper = functools.partial(  # type: ignore[assignment]
                 ToilPathMapper,
@@ -3412,6 +3413,13 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # We use the file store to write to buckets, so we can't do this (yet?)
         logger.error("Cannot export outputs to a bucket when bypassing the file store")
         return 1
+    if not options.bypass_file_store:
+        # If we're using Toil's filesystem wrappers and the ability to access
+        # URLs implemented by Toil, we need to hook up our own StdFsAccess
+        # replacement early, before we try and set up the main CWL document.
+        # Otherwise, if it takes a File with loadContents from a URL, we won't
+        # be able to load the contents when we need to.
+        runtime_context.make_fs_access = ToilFsAccess
 
     loading_context = cwltool.main.setup_loadingContext(None, runtime_context, options)
 
@@ -3572,6 +3580,9 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             # to resolve them before toil imports them into the filestore.
             # A second builder will be built in the job's run method when toil
             # actually starts the cwl job.
+            # Note that this accesses input files for tools, so the
+            # ToilFsAccess needs to be set up if we want to be able to use
+            # URLs.
             builder = tool._init_job(initialized_job_order, runtime_context)
 
             # make sure this doesn't add listing items; if shallow_listing is
@@ -3588,7 +3599,10 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
             # Define something we can call to import a file and get its file
             # ID.
-            file_import_function = functools.partial(toil.importFile, symlink=True)
+            # We cast this because import_file is overloaded depending on if we
+            # pass a shared file name or not, and we know the way we call it we
+            # always get a FileID out.
+            file_import_function = cast(Callable[[str], FileID], functools.partial(toil.import_file, symlink=True))
 
             # Import all the input files, some of which may be missing optional
             # files.
@@ -3702,7 +3716,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 outobj,
                 ("File",),
                 functools.partial(
-                    compute_checksums, cwltool.stdfsaccess.StdFsAccess("")
+                    compute_checksums, StdFsAccess("")
                 ),
             )
 
