@@ -99,7 +99,7 @@ def generate_attachment_path_name(base_dir: str, file_path: str) -> str:
 
     # TODO: don't just drop the up traversals
     #  Ideally we should make the output unique, but we should also make sure that the same call to this function
-    #  will have the same output.
+    #  will have the same output, or maintain a mapping of local path to our generated path.
     return os.path.join(*[str(secure_filename(p)) for p in file_path.split("/") if p not in ("", ".", "..")])
 
 
