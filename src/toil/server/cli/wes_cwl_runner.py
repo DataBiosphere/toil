@@ -196,7 +196,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
         workflow_type = wf_url.lower().split(".")[-1]  # Grab the file extension
         workflow_type_version = self.get_version(workflow_type, wf_url)
         data: Dict[str, str] = {
-            "workflow_url": None,  # to be set after attachments are processed
+            "workflow_url": "",  # to be set after attachments are processed
             "workflow_params": json.dumps(workflow_params),
             "workflow_type": workflow_type,
             "workflow_type_version": workflow_type_version
