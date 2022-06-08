@@ -47,7 +47,7 @@ from toil.provisioners.aws import get_best_aws_zone
 from toil.test.provisioners.aws.awsProvisionerTest import AbstractAWSAutoscaleTest
 from toil.test.provisioners.clusterTest import AbstractClusterTest
 from toil.test import (
-    ToilTest, 
+    ToilTest,
     needs_aws_ec2,
     needs_aws_s3,
     needs_cwl,
@@ -191,7 +191,7 @@ class CWLWorkflowTest(ToilTest):
     test suite. Tests Toil-specific functions like URL types supported for
     inputs.
     """
-    
+
     def setUp(self):
         """Runs anew before each test to create farm fresh temp dirs."""
         self.outDir = f"/tmp/toil-cwl-test-{str(uuid.uuid4())}"
@@ -204,7 +204,7 @@ class CWLWorkflowTest(ToilTest):
             shutil.rmtree(self.outDir)
         unittest.TestCase.tearDown(self)
 
-    
+
     def _tester(self, cwlfile, jobfile, expect, main_args=[], out_name="output"):
         from toil.cwl import cwltoil
 
@@ -259,7 +259,15 @@ class CWLWorkflowTest(ToilTest):
             input_location,
             self._expected_download_output(self.outDir),
         )
-    
+
+    def load_contents(self, inputs, tester_fn):
+        input_location = os.path.join("src/toil/test/cwl", inputs)
+        tester_fn(
+            "src/toil/test/cwl/load_contents.cwl",
+            input_location,
+            self._expected_load_contents_output(self.outDir),
+        )
+
     def download_directory(self, inputs, tester_fn):
         input_location = os.path.join("src/toil/test/cwl", inputs)
         tester_fn(
@@ -346,23 +354,38 @@ class CWLWorkflowTest(ToilTest):
 
     def test_download_https(self):
         self.download("download_https.json", self._tester)
-        
+
     def test_download_file(self):
         self.download("download_file.json", self._tester)
-        
+
     @needs_aws_s3
     def test_download_directory_s3(self):
         self.download_directory("download_directory_s3.json", self._tester)
-        
+
     def test_download_directory_file(self):
         self.download_directory("download_directory_file.json", self._tester)
-        
+
     @needs_aws_s3
     def test_download_subdirectory_s3(self):
         self.download_subdirectory("download_subdirectory_s3.json", self._tester)
-        
+
     def test_download_subdirectory_file(self):
         self.download_subdirectory("download_subdirectory_file.json", self._tester)
+
+    # We also want to make sure we can run a bare tool with loadContents on the inputs, which requires accessing the input data early in the leader.
+
+    @needs_aws_s3
+    def test_load_contents_s3(self):
+        self.load_contents("download_s3.json", self._tester)
+
+    def test_load_contents_http(self):
+        self.load_contents("download_http.json", self._tester)
+
+    def test_load_contents_https(self):
+        self.load_contents("download_https.json", self._tester)
+
+    def test_load_contents_file(self):
+        self.load_contents("download_file.json", self._tester)
 
     @slow
     def test_bioconda(self):
@@ -436,7 +459,7 @@ class CWLWorkflowTest(ToilTest):
             self.fail("Restart with missing directory did not fail")
         except NoSuchJobStoreException:
             pass
-   
+
     @needs_aws_s3
     def test_streamable(self):
         """
@@ -465,7 +488,7 @@ class CWLWorkflowTest(ToilTest):
         self.assertEqual(out, self._expected_streaming_output(self.outDir))
         with open(out[out_name]["location"][len("file://") :]) as f:
             self.assertEqual(f.read().strip(), "When is s4 coming out?")
-   
+
     @staticmethod
     def _expected_seqtk_output(outDir):
         loc = "file://" + os.path.join(outDir, "out")
@@ -505,6 +528,16 @@ class CWLWorkflowTest(ToilTest):
             }
         }
 
+    @classmethod
+    def _expected_load_contents_output(cls, out_dir):
+        """
+        Generate the putput we expect from load_contents.cwl, when sending
+        output files to the given directory.
+        """
+        expected = cls._expected_download_output(out_dir)
+        expected['length'] = 146
+        return expected
+
     @staticmethod
     def _expected_colon_output(outDir):
         loc = "file://" + os.path.join(outDir, "A%3AGln2Cys_result")
@@ -526,7 +559,7 @@ class CWLWorkflowTest(ToilTest):
                 ],
             }
         }
-    
+
     def _expected_streaming_output(self, outDir):
         loc = "file://" + os.path.join(outDir, "output.txt")
         return {
@@ -814,7 +847,7 @@ class CWLOnARMTest(AbstractClusterTest):
     """
     Run the CWL 1.2 conformance tests on ARM specifically.
     """
-    
+
     def __init__(self, methodName):
         super().__init__(methodName=methodName)
         self.clusterName = 'cwl-test-' + str(uuid.uuid4())

@@ -43,7 +43,8 @@ from typing import (
     Tuple,
     Type,
     TypeVar,
-    Union
+    Union,
+    overload
 )
 from urllib.parse import urlparse
 
@@ -1140,17 +1141,44 @@ class Toil(ContextManager["Toil"]):
             logger.debug('Injecting user script %s into batch system.', userScriptResource)
             self._batchSystem.setUserScript(userScriptResource)
 
+    # Importing a file with a shared file name returns None, but without one it
+    # returns a file ID. Explain this to MyPy.
+
+    @overload
+    def importFile(self,
+                   srcUrl: str,
+                   sharedFileName: str,
+                   symlink: bool = False) -> None: ...
+
+    @overload
+    def importFile(self,
+                   srcUrl: str,
+                   sharedFileName: None = None,
+                   symlink: bool = False) -> FileID: ...
+
     @deprecated(new_function_name='import_file')
     def importFile(self,
                    srcUrl: str,
                    sharedFileName: Optional[str] = None,
-                   symlink: bool = False) -> Optional[Union[FileID, str]]:
+                   symlink: bool = False) -> Optional[FileID]:
         return self.import_file(srcUrl, sharedFileName, symlink)
+
+    @overload
+    def import_file(self,
+                    src_uri: str,
+                    shared_file_name: str,
+                    symlink: bool = False) -> None: ...
+
+    @overload
+    def import_file(self,
+                    src_uri: str,
+                    shared_file_name: None = None,
+                    symlink: bool = False) -> FileID: ...
 
     def import_file(self,
                     src_uri: str,
                     shared_file_name: Optional[str] = None,
-                    symlink: bool = False) -> Optional[Union[FileID, str]]:
+                    symlink: bool = False) -> Optional[FileID]:
         """
         Import the file at the given URL into the job store.
 
