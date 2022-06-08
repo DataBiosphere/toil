@@ -836,18 +836,14 @@ class CWLv12Test(ToilTest):
         #   - 310: mixed_version_v10_wf
         #   - 311: mixed_version_v11_wf
         #   - 312: mixed_version_v12_wf
-        #   - 331: iwd-fileobjs1
-        #   - 332: iwd-fileobjs2
 
         # Main issues:
         # 1. `cwltool --print-deps` doesn't seem to include secondary files from the default
         #     e.g.: https://github.com/common-workflow-language/cwl-v1.2/blob/1.2.1_proposed/tests/mixed-versions/wf-v10.cwl#L4-L10
-        # 2. We need a way to reinterpret relative paths inside the workflow files
-        #    e.g.: https://github.com/common-workflow-language/cwl-v1.2/blob/1.2.1_proposed/tests/iwd/iwd-fileobjs1.cwl#L7-L11
 
         return self.test_run_conformance(
             runner="toil-wes-cwl-runner",
-            selected_tests="1-309,313-330,333-337",
+            selected_tests="1-309,313-337",
             extra_args=extra_args
         )
 
