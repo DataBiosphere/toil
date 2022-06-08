@@ -147,13 +147,42 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
 
         :param workflow_params_file: The URL or path to the CWL input file.
         """
-        loader = schema_salad.ref_resolver.Loader({})
+        loader = schema_salad.ref_resolver.Loader(
+            {"location": {"@type": "@id"}}
+        )
 
         # recursive types may be complicated for MyPy to deal with
         workflow_params: Any
         workflow_params, _ = loader.resolve_ref(workflow_params_file, checklinks=False)
 
         return cast(Dict[str, Any], workflow_params)
+
+    def modify_param_paths(self, base_dir: str, workflow_params: Dict[str, Any]) -> None:
+        """
+        Modify the file paths in the input workflow parameters to be relative
+        to base_dir.
+
+        :param base_dir: The base directory to make the file paths relative to.
+               This should be the common ancestor of all attached files, which
+               will become the root of the execution folder.
+        :param workflow_params: A dict containing the workflow parameters.
+        """
+        def replace_paths(obj: Any) -> None:
+            for file in obj:
+                if isinstance(file, dict) and "location" in file:
+                    loc = file.get("location")
+                    if isinstance(loc, str) and urlparse(loc).scheme in ("file", ""):
+                        if loc.startswith("file://"):
+                            loc = loc[7:]
+                        file["location"] = os.path.relpath(loc, base_dir)
+                    # recursively find all imported files
+                    if "secondaryFiles" in file:
+                        replace_paths(file.get("secondaryFiles"))
+                elif isinstance(file, dict):
+                    replace_paths(file.values())
+                elif isinstance(file, list):
+                    replace_paths(file)
+        replace_paths(workflow_params.values())
 
     def build_wes_request(
             self,
@@ -190,14 +219,13 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
             workflow_params = {}
 
         # Initialize the basic parameters for the run request
-
         wf_url, frag = urldefrag(workflow_file)
 
         workflow_type = wf_url.lower().split(".")[-1]  # Grab the file extension
         workflow_type_version = self.get_version(workflow_type, wf_url)
         data: Dict[str, str] = {
-            "workflow_url": "",  # to be set after attachments are processed
-            "workflow_params": json.dumps(workflow_params),
+            "workflow_url": workflow_file,
+            "workflow_params": "",  # to be set after attachments are processed
             "workflow_type": workflow_type,
             "workflow_type_version": workflow_type_version
         }
@@ -218,7 +246,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
             attachments = []
 
         # Upload the CWL workflow file if it is local
-        if local_workflow_file:
+        if local_workflow_file and wf_url not in attachments:
             attachments.append(wf_url)
 
         # Prepare attachments and generate new path names with the common prefix stripped out
@@ -229,7 +257,13 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
                 workflow_attachments.append((dest, BytesIO(f.read())))
 
         # Make sure we let the server know where the main CWL file is located
-        data["workflow_url"] = os.path.relpath(workflow_file, common_path)
+        if local_workflow_file:
+            data["workflow_url"] = os.path.relpath(workflow_file, common_path)
+
+            # Since the input file will be located at the root of the execution
+            # folder, we make sure the input files are relative to the root.
+            self.modify_param_paths(common_path, workflow_params)
+            data["workflow_params"] = json.dumps(workflow_params)
 
         return data, [("workflow_attachment", val) for val in workflow_attachments]
 
@@ -299,7 +333,10 @@ def get_deps_from_cwltool(cwl_file: str, input_file: Optional[str] = None) -> Li
         """
         for file in obj:
             if isinstance(file, dict) and "location" in file:
-                loc = file.get("location")
+                loc = cast(str, file.get("location"))
+                if urlparse(loc).scheme not in ["", "file"]:
+                    # Ignore nonlocal files.
+                    continue
 
                 # Check directory
                 if file.get("class") == "Directory":
@@ -311,7 +348,7 @@ def get_deps_from_cwltool(cwl_file: str, input_file: Optional[str] = None) -> Li
                             for sub_file in sub_files:
                                 deps.append(os.path.join(folder, sub_file))
                 else:
-                    deps.append(file.get("location"))
+                    deps.append(loc)
 
                 # check secondaryFiles
                 if "secondaryFiles" in file:
