@@ -47,7 +47,7 @@ from toil.provisioners.aws import get_best_aws_zone
 from toil.test.provisioners.aws.awsProvisionerTest import AbstractAWSAutoscaleTest
 from toil.test.provisioners.clusterTest import AbstractClusterTest
 from toil.test import (
-    ToilTest, 
+    ToilTest,
     needs_aws_ec2,
     needs_aws_s3,
     needs_cwl,
@@ -267,6 +267,15 @@ class CWLWorkflowTest(ToilTest):
             self._expected_download_output(self.outDir),
         )
 
+
+    def load_contents(self, inputs, tester_fn):
+        input_location = os.path.join("src/toil/test/cwl", inputs)
+        tester_fn(
+            "src/toil/test/cwl/load_contents.cwl",
+            input_location,
+            self._expected_load_contents_output(self.outDir),
+        )
+
     def download_directory(self, inputs, tester_fn):
         input_location = os.path.join("src/toil/test/cwl", inputs)
         tester_fn(
@@ -370,6 +379,21 @@ class CWLWorkflowTest(ToilTest):
 
     def test_download_subdirectory_file(self):
         self.download_subdirectory("download_subdirectory_file.json", self._tester)
+
+    # We also want to make sure we can run a bare tool with loadContents on the inputs, which requires accessing the input data early in the leader.
+
+    @needs_aws_s3
+    def test_load_contents_s3(self):
+        self.load_contents("download_s3.json", self._tester)
+
+    def test_load_contents_http(self):
+        self.load_contents("download_http.json", self._tester)
+
+    def test_load_contents_https(self):
+        self.load_contents("download_https.json", self._tester)
+
+    def test_load_contents_file(self):
+        self.load_contents("download_file.json", self._tester)
 
     @slow
     def test_bioconda(self):
@@ -511,6 +535,16 @@ class CWLWorkflowTest(ToilTest):
                 "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709",
             }
         }
+
+    @classmethod
+    def _expected_load_contents_output(cls, out_dir):
+        """
+        Generate the putput we expect from load_contents.cwl, when sending
+        output files to the given directory.
+        """
+        expected = cls._expected_download_output(out_dir)
+        expected['length'] = 146
+        return expected
 
     @staticmethod
     def _expected_colon_output(outDir):
