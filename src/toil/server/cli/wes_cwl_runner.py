@@ -148,7 +148,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
         :param workflow_params_file: The URL or path to the CWL input file.
         """
         loader = schema_salad.ref_resolver.Loader(
-            {"location": {"@type": "@id"}}
+            {"location": {"@type": "@id"}, "path": {"@type": "@id"}}
         )
 
         # recursive types may be complicated for MyPy to deal with
@@ -167,14 +167,24 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
                will become the root of the execution folder.
         :param workflow_params: A dict containing the workflow parameters.
         """
+
+        def replace(field: str, file_obj: Dict[str, str]) -> None:
+            """
+            Given a file object with the "location" or "path" field, replace it
+            to be relative to base_dir.
+            """
+            value = file_obj.get(field, None)
+            if isinstance(value, str) and urlparse(value).scheme in ("file", ""):
+                if value.startswith("file://"):
+                    value = value[7:]
+                file_obj[field] = os.path.relpath(value, base_dir)
+
         def replace_paths(obj: Any) -> None:
             for file in obj:
-                if isinstance(file, dict) and "location" in file:
-                    loc = file.get("location")
-                    if isinstance(loc, str) and urlparse(loc).scheme in ("file", ""):
-                        if loc.startswith("file://"):
-                            loc = loc[7:]
-                        file["location"] = os.path.relpath(loc, base_dir)
+                if isinstance(file, dict) and ("location" in file or "path" in file):
+                    replace("location", file)
+                    replace("path", file)
+
                     # recursively find all imported files
                     if "secondaryFiles" in file:
                         replace_paths(file.get("secondaryFiles"))
@@ -316,7 +326,7 @@ def get_deps_from_cwltool(cwl_file: str, input_file: Optional[str] = None) -> Li
     if input_file:
         args.append(input_file)
 
-    p = subprocess.run(args=args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    p = subprocess.run(args=args, check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
 
     result = p.stdout.decode()
     if not result:
