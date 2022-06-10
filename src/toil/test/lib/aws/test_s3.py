@@ -20,6 +20,7 @@ from toil.jobStores.aws.jobStore import AWSJobStore
 from toil.lib.aws.utils import create_s3_bucket, get_bucket_region
 from toil.lib.aws.session import establish_boto3_session
 from toil.test import ToilTest, needs_aws_s3
+from toil.lib.retry import ErrorCondition
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)

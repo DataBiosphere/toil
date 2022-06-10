@@ -27,7 +27,8 @@ from toil.lib.retry import (
     get_error_status,
     get_error_code,
     DEFAULT_DELAYS,
-    DEFAULT_TIMEOUT
+    DEFAULT_TIMEOUT,
+    ErrorCondition
 )
 
 if sys.version_info >= (3, 8):
