@@ -19,6 +19,7 @@ import itertools
 import logging
 import os
 import pickle
+import sys
 import time
 import uuid
 from abc import ABCMeta, abstractmethod
@@ -38,10 +39,15 @@ from typing import (
     Tuple,
     Union,
     cast,
+    overload
 )
 
 import dill
-from typing_extensions import Literal, overload
+
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 from toil.common import Config, Toil, addOptions, safeUnpickleFromStream
 from toil.deferred import DeferredFunction

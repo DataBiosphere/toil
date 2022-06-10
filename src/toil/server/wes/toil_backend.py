@@ -17,8 +17,9 @@ import os
 import shutil
 import uuid
 from collections import Counter
+from contextlib import contextmanager
 from tempfile import NamedTemporaryFile
-from typing import Optional, List, Dict, Any, overload, Generator, Tuple
+from typing import Optional, List, Dict, Any, overload, Generator, TextIO, Tuple, Type
 
 from flask import send_from_directory
 from flask.globals import request as flask_request
@@ -26,7 +27,7 @@ from werkzeug.utils import redirect
 from werkzeug.wrappers.response import Response
 
 
-from toil.server.utils import safe_read_file, safe_write_file
+from toil.server.utils import WorkflowStateMachine, connect_to_workflow_state_store
 from toil.server.wes.abstract_backend import (WESBackend,
                                               handle_errors,
                                               WorkflowNotFoundException,
@@ -34,8 +35,10 @@ from toil.server.wes.abstract_backend import (WESBackend,
                                               VersionNotImplementedException,
                                               WorkflowExecutionException,
                                               OperationForbidden)
-from toil.server.wes.tasks import run_wes, cancel_run
+from toil.server.wes.tasks import TaskRunner, MultiprocessingTaskRunner
 
+from toil.lib.threading import global_mutex
+from toil.lib.io import AtomicFileCreate
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
@@ -43,103 +46,136 @@ logging.basicConfig(level=logging.INFO)
 
 
 class ToilWorkflow:
-    def __init__(self, run_id: str, work_dir: str):
+    def __init__(self, base_scratch_dir: str, state_store_url: str, run_id: str, ):
         """
         Class to represent a Toil workflow. This class is responsible for
-        launching workflow runs and retrieving data generated from them.
+        launching workflow runs via Celery and retrieving data generated from
+        them.
 
-        :param run_id: A uuid string.  Used to name the folder that contains
+        :param base_scratch_dir: The directory where workflows keep their
+                                 output/scratch directories under their run
+                                 IDs.
+
+        :param state_store_url: URL or file path at which we communicate with
+                                running workflows.
+
+        :param run_id: A unique per-run string.  Used to name the folder that contains
                        all of the files containing this particular workflow
                        instance's information.
-        :param work_dir: The parent working directory.
         """
+        self.base_scratch_dir = base_scratch_dir
+        self.state_store_url = state_store_url
         self.run_id = run_id
-        self.work_dir = work_dir
-        self.exec_dir = os.path.join(self.work_dir, "execution")
+
+        self.scratch_dir = os.path.join(self.base_scratch_dir, self.run_id)
+        self.exec_dir = os.path.join(self.scratch_dir, "execution")
+
+        # TODO: share a base class with ToilWorkflowRunner for some of this stuff?
+
+        # Connect to the workflow state store
+        self.store = connect_to_workflow_state_store(state_store_url, self.run_id)
+        # And use a state machine over that to look at workflow state
+        self.state_machine = WorkflowStateMachine(self.store)
 
     @overload
-    def fetch(self, filename: str, default: str) -> str: ...
+    def fetch_state(self, key: str, default: str) -> str: ...
     @overload
-    def fetch(self, filename: str, default: None = None) -> Optional[str]: ...
+    def fetch_state(self, key: str, default: None = None) -> Optional[str]: ...
 
-    def fetch(self, filename: str, default: Optional[str] = None) -> Optional[str]:
+    def fetch_state(self, key: str, default: Optional[str] = None) -> Optional[str]:
         """
-        Return the contents of the given file. If the file does not exist, the
-        default value is returned.
+        Return the contents of the given key in the workflow's state
+        store. If the key does not exist, the default value is returned.
         """
-        if os.path.exists(os.path.join(self.work_dir, filename)):
-            with open(os.path.join(self.work_dir, filename), "r") as f:
-                return f.read()
-        return default
+        value = self.store.get(key)
+        if value is None:
+            return default
+        return value
+
+    @contextmanager
+    def fetch_scratch(self, filename: str) -> Generator[Optional[TextIO], None, None]:
+        """
+        Get a context manager for either a stream for the given file from the
+        workflow's scratch directory, or None if it isn't there.
+        """
+        if os.path.exists(os.path.join(self.scratch_dir, filename)):
+            with open(os.path.join(self.scratch_dir, filename), "r") as f:
+                yield f
+        else:
+            yield None
 
     def exists(self) -> bool:
         """ Return True if the workflow run exists."""
-        return os.path.isdir(self.work_dir)
+        return self.get_state() != "UNKNOWN"
 
     def get_state(self) -> str:
         """ Return the state of the current run."""
-        return safe_read_file(os.path.join(self.work_dir, "state")) or "UNKNOWN"
-
-    def set_state(self, state: str) -> None:
-        """ Set the state for the current run."""
-        safe_write_file(os.path.join(self.work_dir, "state"), state)
+        return self.state_machine.get_current_state()
 
     def set_up_run(self) -> None:
         """ Set up necessary directories for the run."""
-        if not os.path.exists(self.exec_dir):
-            os.makedirs(self.exec_dir)
+        # Go to queued state
+        self.state_machine.send_enqueue()
 
-        # create the state file atomically
-        with NamedTemporaryFile(mode='w', dir=self.work_dir, prefix='state.', delete=False) as f:
-            f.write("QUEUED")
-        os.rename(f.name, os.path.join(self.work_dir, "state"))
+        # Make sure scratch and exec directories exist
+        os.makedirs(self.exec_dir, exist_ok=True)
 
     def clean_up(self) -> None:
         """ Clean directory and files related to the run."""
-        shutil.rmtree(os.path.join(self.work_dir))
+        shutil.rmtree(self.scratch_dir)
+        # Don't remove state; state needs to persist forever.
 
-    def queue_run(self, request: Dict[str, Any], options: List[str]) -> None:
-        """This workflow should be ready to run. Hand this to Celery."""
-        with open(os.path.join(self.work_dir, "request.json"), "w") as f:
+    def queue_run(self, task_runner: Type[TaskRunner], request: Dict[str, Any], options: List[str]) -> None:
+        """This workflow should be ready to run. Hand this to the task system."""
+        with open(os.path.join(self.scratch_dir, "request.json"), "w") as f:
+            # Save the request to disk for get_run_log()
             json.dump(request, f)
 
         try:
-            run_wes.apply_async(args=(self.work_dir, request, options),
-                                task_id=self.run_id,  # set the Celery task ID the same as our run ID
-                                ignore_result=True)
+            # Run the task. Set the task ID the same as our run ID
+            task_runner.run(args=(self.base_scratch_dir, self.state_store_url, self.run_id, request, options),
+                            task_id=self.run_id)
         except Exception:
             # Celery or the broker might be down
-            self.set_state("SYSTEM_ERROR")
+            self.state_machine.send_system_error()
             raise WorkflowExecutionException(f"Failed to run: internal server error.")
 
     def get_output_files(self) -> Any:
         """
         Return a collection of output files that this workflow generated.
         """
-        return json.loads(self.fetch("outputs.json", "{}"))
-
+        with self.fetch_scratch("outputs.json") as f:
+            if f is None:
+                # No file is there
+                return {}
+            else:
+                # Stream in the file
+                return json.load(f)
 
 class ToilBackend(WESBackend):
     """
     WES backend implemented for Toil to run CWL, WDL, or Toil workflows. This
     class is responsible for validating and executing submitted workflows.
-
-    Single machine implementation -
-    Use Celery as the task queue and interact with the "workflows/" directory
-    in the filesystem to store and retrieve data associated with the runs.
     """
 
-    def __init__(self, work_dir: str, options: List[str], dest_bucket_base: Optional[str]) -> None:
+    def __init__(self, work_dir: str, state_store: Optional[str], options: List[str],
+                 dest_bucket_base: Optional[str], bypass_celery: bool = False) -> None:
         """
         Make a new ToilBackend for serving WES.
 
         :param work_dir: Directory to download and run workflows in.
 
+        :param state_store: Path or URL to store workflow state at.
+
         :param options: Command-line options to pass along to workflows. Must
-        use = syntax to set values instead of ordering.
+               use = syntax to set values instead of ordering.
 
         :param dest_bucket_base: If specified, direct CWL workflows to use
-        paths under the given URL for storing output files.
+               paths under the given URL for storing output files.
+
+        :param bypass_celery: Can be set to True to bypass Celery and the
+               message broker and invoke workflow-running tasks without them.
+
         """
         for opt in options:
             if not opt.startswith('-'):
@@ -147,8 +183,76 @@ class ToilBackend(WESBackend):
                 # that would need to remain in the same order.
                 raise ValueError(f'Option {opt} does not begin with -')
         super(ToilBackend, self).__init__(options)
-        self.work_dir = os.path.abspath(work_dir)
+
+        # How should we generate run IDs? We apply a prefix so that we can tell
+        # what things in our work directory suggest that runs exist and what
+        # things don't.
+        self.run_id_prefix = 'run-'
+
+        # Use this to run Celery tasks so we can swap it out for testing.
+        self.task_runner = TaskRunner if not bypass_celery else MultiprocessingTaskRunner
+
         self.dest_bucket_base = dest_bucket_base
+        self.work_dir = os.path.abspath(work_dir)
+        os.makedirs(self.work_dir, exist_ok=True)
+
+        # Where should we talk to the tasks about workflow state?
+
+        if state_store is None:
+            # Store workflow metadata under the work_dir.
+            self.state_store_url = os.path.join(self.work_dir, 'state_store')
+        else:
+            # Use the provided value
+            self.state_store_url = state_store
+
+        # Determine a server identity, so we can guess if a workflow in the
+        # possibly-persistent state store is QUEUED, INITIALIZING, or RUNNING
+        # on a Celery that no longer exists. Ideally we would ask Celery what
+        # Celery cluster it is, or we would reconcile with the tasks that exist
+        # in the Celery cluster, but Celery doesn't seem to have a cluster
+        # identity and doesn't let you poll for task existence:
+        # <https://stackoverflow.com/questions/9824172>
+
+        # Grab an ID for the current kernel boot, if we happen to be Linux.
+        # TODO: Deal with multiple servers in front of the same state store and
+        # file system but on different machines?
+        boot_id = None
+        boot_id_file = "/proc/sys/kernel/random/boot_id"
+        if os.path.exists(boot_id_file):
+            try:
+                with open(boot_id_file) as f:
+                    boot_id = f.readline().strip()
+            except OSError:
+                pass
+        # Assign an ID to the work directory storage.
+        work_dir_id = None
+        work_dir_id_file = os.path.join(self.work_dir, 'id.txt')
+        if os.path.exists(work_dir_id_file):
+            # An ID is assigned already
+            with open(work_dir_id_file) as f:
+                work_dir_id = uuid.UUID(f.readline().strip())
+        else:
+            # We need to try and assign an ID.
+            with global_mutex(self.work_dir, 'id-assignment'):
+                # We need to synchronize with other processes starting up to
+                # make sure we agree on an ID.
+                if os.path.exists(work_dir_id_file):
+                    # An ID is assigned already
+                    with open(work_dir_id_file) as f:
+                        work_dir_id = uuid.UUID(f.readline().strip())
+                else:
+                    work_dir_id = uuid.uuid4()
+                    with AtomicFileCreate(work_dir_id_file) as temp_file:
+                        # Still need to be atomic here or people not locking
+                        # will see an incomplete file.
+                        with open(temp_file, 'w') as f:
+                            f.write(str(work_dir_id))
+        # Now combine into one ID
+        if boot_id is not None:
+            self.server_id = str(uuid.uuid5(work_dir_id, boot_id))
+        else:
+            self.server_id = str(work_dir_id)
+
 
         self.supported_versions = {
             "py": ["3.6", "3.7", "3.8", "3.9"],
@@ -164,12 +268,30 @@ class ToilBackend(WESBackend):
         :param should_exists: If set, ensures that the workflow run exists (or
                               does not exist) according to the value.
         """
-        run = ToilWorkflow(run_id, work_dir=os.path.join(self.work_dir, run_id))
+        run = ToilWorkflow(self.work_dir, self.state_store_url, run_id)
 
         if should_exists and not run.exists():
             raise WorkflowNotFoundException
         if should_exists is False and run.exists():
             raise WorkflowConflictException(run_id)
+
+        # Do a little fixup of orphaned/Martian workflows that were running
+        # before the server bounced and can't be running now.
+        # Sadly we can't just ask Celery if it has heard of them.
+        # TODO: Implement multiple servers working together.
+        owning_server = run.fetch_state("server_id")
+        apparent_state = run.get_state()
+        if (apparent_state not in ("UNKNOWN", "COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELED") and
+            owning_server != self.server_id):
+
+            # This workflow is in a state that suggests it is doing something
+            # but it appears to belong to a previous incarnation of the server,
+            # and so its Celery is probably gone. Put it into system error
+            # state if possible.
+            logger.warning("Run %s in state %s appears to belong to server %s and not us, server %s. "
+                           "Its server is probably gone. Failing the workflow!",
+                           run_id, apparent_state, owning_server, self.server_id)
+            run.state_machine.send_system_error()
 
         return run
 
@@ -179,6 +301,8 @@ class ToilBackend(WESBackend):
             return
 
         for run_id in os.listdir(self.work_dir):
+            if not run_id.startswith(self.run_id_prefix):
+                continue
             run = self._get_run(run_id)
             if run.exists():
                 yield run_id, run.get_state()
@@ -244,10 +368,11 @@ class ToilBackend(WESBackend):
     @handle_errors
     def run_workflow(self) -> Dict[str, str]:
         """ Run a workflow."""
-        run_id = uuid.uuid4().hex
+        run_id = self.run_id_prefix + uuid.uuid4().hex
         run = self._get_run(run_id, should_exists=False)
 
-        # set up necessary directories for the run
+        # set up necessary directories for the run. We need to do this because
+        # we need to save attachments before we can get ahold of the request.
         run.set_up_run()
 
         # stage the uploaded files to the execution directory, so that we can run the workflow file directly
@@ -272,6 +397,11 @@ class ToilBackend(WESBackend):
             run.clean_up()
             raise VersionNotImplementedException(wf_type, version, supported_versions)
 
+        # Now we are actually going to try and do the run.
+
+        # Claim ownership of the run
+        run.store.set("server_id", self.server_id)
+
         # Generate workflow options
         workflow_options = list(self.options)
         if wf_type == "cwl" and self.dest_bucket_base:
@@ -279,7 +409,7 @@ class ToilBackend(WESBackend):
             workflow_options.append('--destBucket=' + os.path.join(self.dest_bucket_base, run_id))
 
         logger.info(f"Putting workflow {run_id} into the queue. Waiting to be picked up...")
-        run.queue_run(request, options=workflow_options)
+        run.queue_run(self.task_runner, request, options=workflow_options)
 
         return {
             "run_id": run_id
@@ -291,15 +421,19 @@ class ToilBackend(WESBackend):
         run = self._get_run(run_id, should_exists=True)
         state = run.get_state()
 
-        request = json.loads(run.fetch("request.json", "{}"))
+        with run.fetch_scratch("request.json") as f:
+            if f is None:
+                request = {}
+            else:
+                request = json.load(f)
 
-        cmd = run.fetch("cmd", "").split("\n")
-        start_time = run.fetch("start_time")
-        end_time = run.fetch("end_time")
+        cmd = run.fetch_state("cmd", "").split("\n")
+        start_time = run.fetch_state("start_time")
+        end_time = run.fetch_state("end_time")
 
         stdout = ""
         stderr = ""
-        if os.path.isfile(os.path.join(run.work_dir, 'stdout')):
+        if os.path.isfile(os.path.join(run.scratch_dir, 'stdout')):
             # We can't use flask_request.host_url here because that's just the
             # hostname, and we need to work mounted at a proxy hostname *and*
             # path under that hostname. So we need to use a relative URL to the
@@ -307,7 +441,7 @@ class ToilBackend(WESBackend):
             stdout = f"../../../../toil/wes/v1/logs/{run_id}/stdout"
             stderr = f"../../../../toil/wes/v1/logs/{run_id}/stderr"
 
-        exit_code = run.fetch("exit_code")
+        exit_code = run.fetch_state("exit_code")
 
         output_obj = {}
         if state == "COMPLETE":
@@ -334,8 +468,10 @@ class ToilBackend(WESBackend):
     def cancel_run(self, run_id: str) -> Dict[str, str]:
         """ Cancel a running workflow."""
         run = self._get_run(run_id, should_exists=True)
-        state = run.get_state()
 
+        # Do some preflight checks on the current state.
+        # We won't catch all cases where the cancel won't go through, but we can catch some.
+        state = run.get_state()
         if state in ("CANCELING", "CANCELED", "COMPLETE"):
             # We don't need to do anything.
             logger.warning(f"A user is attempting to cancel a workflow in state: '{state}'.")
@@ -343,9 +479,10 @@ class ToilBackend(WESBackend):
             # Something went wrong. Let the user know.
             raise OperationForbidden(f"Workflow is in state: '{state}', which cannot be cancelled.")
         else:
-            # Cancel the workflow in the following states: "QUEUED", "INITIALIZING", "RUNNING".
-            run.set_state("CANCELING")
-            cancel_run(run_id)
+            # Go to canceling state if allowed
+            run.state_machine.send_cancel()
+            # Stop the run task if it is there.
+            self.task_runner.cancel(run_id)
 
         return {
             "run_id": run_id
