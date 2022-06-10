@@ -15,8 +15,9 @@
 import logging
 import os
 import signal
+import sys
 
-from toil.common import Config, Toil, parser_with_common_options
+from toil.common import Config, Toil, parser_with_common_options, getNodeID
 from toil.jobStores.abstractJobStore import NoSuchJobStoreException
 from toil.statsAndLogging import set_logging_from_options
 
@@ -25,28 +26,48 @@ logger = logging.getLogger(__name__)
 
 def main() -> None:
     parser = parser_with_common_options()
+    parser.add_argument('--force', action='store_true',
+                        help="Send SIGKILL to the leader process if local.")
     options = parser.parse_args()
     set_logging_from_options(options)
     config = Config()
     config.setOptions(options)
 
-    # Kill the pid recorded in the job store.
+    # Get the job store
     try:
         job_store = Toil.resumeJobStore(config.jobStore)
     except NoSuchJobStoreException:
         logger.error("The job store %s does not exist.", config.jobStore)
         return
 
-    with job_store.read_shared_file_stream("pid.log") as f:
-        pid_to_kill = int(f.read().strip())
+    # NOTE: the kill will not work if the leader is still initializing at this
+    #  point. Changes to the kill flag will be ignored until the leader sets the
+    #  kill flag.
 
-    # TODO: We assume this is a local PID so we can't kill the leader if the
-    #  process is on a different machine. We also rely on the leader to be
-    #  responsive to clean up all its jobs.
+    # Get the leader PID
+    pid_to_kill = job_store.read_leader_pid()
 
-    try:
-        os.kill(pid_to_kill, signal.SIGTERM)
-        logger.info("Toil process %i successfully terminated.", pid_to_kill)
-    except OSError:
-        logger.error("Toil process %i could not be terminated.", pid_to_kill)
-        raise
+    # Check if the leader is on the same machine
+    leader_node_id = job_store.read_leader_node_id()
+    local_leader = leader_node_id == getNodeID()
+
+    if local_leader:
+        # Check if we can send signals to the leader. If not, process might be
+        # in another container so we fall back to using the kill flag through
+        # the job store.
+        try:
+            os.kill(pid_to_kill, 0)
+        except OSError:
+            local_leader = False
+
+    if local_leader:
+        try:
+            os.kill(pid_to_kill, signal.SIGKILL if options.force else signal.SIGTERM)
+            logger.info("Toil process %i successfully terminated.", pid_to_kill)
+        except OSError:
+            logger.error("Could not signal process %i. Is it still running?", pid_to_kill)
+            sys.exit(1)
+    else:
+        # Flip the flag inside the job store to signal kill
+        job_store.write_kill_flag(kill=True)
+        logger.info("Asked the leader to terminate.")

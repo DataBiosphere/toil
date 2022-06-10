@@ -47,7 +47,7 @@ from toil.provisioners.aws import get_best_aws_zone
 from toil.test.provisioners.aws.awsProvisionerTest import AbstractAWSAutoscaleTest
 from toil.test.provisioners.clusterTest import AbstractClusterTest
 from toil.test import (
-    ToilTest, 
+    ToilTest,
     needs_aws_ec2,
     needs_aws_s3,
     needs_cwl,
@@ -184,35 +184,26 @@ def run_conformance_tests(
             print(error_log)
             raise e
 
-
 @needs_cwl
-class CWLv10Test(ToilTest):
+class CWLWorkflowTest(ToilTest):
+    """
+    CWL tests included in Toil that don't involve the whole CWL conformance
+    test suite. Tests Toil-specific functions like URL types supported for
+    inputs.
+    """
+
     def setUp(self):
         """Runs anew before each test to create farm fresh temp dirs."""
         self.outDir = f"/tmp/toil-cwl-test-{str(uuid.uuid4())}"
         os.makedirs(self.outDir)
         self.rootDir = self._projectRootPath()
-        self.cwlSpec = os.path.join(self.rootDir, "src/toil/test/cwl/spec")
-        self.workDir = os.path.join(self.cwlSpec, "v1.0")
-        # The latest cwl git commit hash from https://github.com/common-workflow-language/common-workflow-language.
-        # Update it to get the latest tests.
-        testhash = "6a955874ade22080b8ef962b4e0d6e408112c1ef"  # Date:   Tue Dec 16 2020 8:43pm PST
-        url = (
-            "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip"
-            % testhash
-        )
-        if not os.path.exists(self.cwlSpec):
-            urlretrieve(url, "spec.zip")
-            with zipfile.ZipFile("spec.zip", "r") as z:
-                z.extractall()
-            shutil.move("common-workflow-language-%s" % testhash, self.cwlSpec)
-            os.remove("spec.zip")
 
     def tearDown(self):
         """Clean up outputs."""
         if os.path.exists(self.outDir):
             shutil.rmtree(self.outDir)
         unittest.TestCase.tearDown(self)
+
 
     def _tester(self, cwlfile, jobfile, expect, main_args=[], out_name="output"):
         from toil.cwl import cwltoil
@@ -265,6 +256,30 @@ class CWLv10Test(ToilTest):
         input_location = os.path.join("src/toil/test/cwl", inputs)
         tester_fn(
             "src/toil/test/cwl/download.cwl",
+            input_location,
+            self._expected_download_output(self.outDir),
+        )
+
+    def load_contents(self, inputs, tester_fn):
+        input_location = os.path.join("src/toil/test/cwl", inputs)
+        tester_fn(
+            "src/toil/test/cwl/load_contents.cwl",
+            input_location,
+            self._expected_load_contents_output(self.outDir),
+        )
+
+    def download_directory(self, inputs, tester_fn):
+        input_location = os.path.join("src/toil/test/cwl", inputs)
+        tester_fn(
+            "src/toil/test/cwl/download_directory.cwl",
+            input_location,
+            self._expected_download_output(self.outDir),
+        )
+
+    def download_subdirectory(self, inputs, tester_fn):
+        input_location = os.path.join("src/toil/test/cwl", inputs)
+        tester_fn(
+            "src/toil/test/cwl/download_subdirectory.cwl",
             input_location,
             self._expected_download_output(self.outDir),
         )
@@ -331,14 +346,46 @@ class CWLv10Test(ToilTest):
         )
 
     @needs_aws_s3
-    def test_run_s3(self):
+    def test_download_s3(self):
         self.download("download_s3.json", self._tester)
 
-    def test_run_http(self):
+    def test_download_http(self):
         self.download("download_http.json", self._tester)
 
-    def test_run_https(self):
+    def test_download_https(self):
         self.download("download_https.json", self._tester)
+
+    def test_download_file(self):
+        self.download("download_file.json", self._tester)
+
+    @needs_aws_s3
+    def test_download_directory_s3(self):
+        self.download_directory("download_directory_s3.json", self._tester)
+
+    def test_download_directory_file(self):
+        self.download_directory("download_directory_file.json", self._tester)
+
+    @needs_aws_s3
+    def test_download_subdirectory_s3(self):
+        self.download_subdirectory("download_subdirectory_s3.json", self._tester)
+
+    def test_download_subdirectory_file(self):
+        self.download_subdirectory("download_subdirectory_file.json", self._tester)
+
+    # We also want to make sure we can run a bare tool with loadContents on the inputs, which requires accessing the input data early in the leader.
+
+    @needs_aws_s3
+    def test_load_contents_s3(self):
+        self.load_contents("download_s3.json", self._tester)
+
+    def test_load_contents_http(self):
+        self.load_contents("download_http.json", self._tester)
+
+    def test_load_contents_https(self):
+        self.load_contents("download_https.json", self._tester)
+
+    def test_load_contents_file(self):
+        self.load_contents("download_file.json", self._tester)
 
     @slow
     def test_bioconda(self):
@@ -412,6 +459,151 @@ class CWLv10Test(ToilTest):
             self.fail("Restart with missing directory did not fail")
         except NoSuchJobStoreException:
             pass
+
+    @needs_aws_s3
+    def test_streamable(self):
+        """
+        Test that a file with 'streamable'=True is a named pipe.
+        This is a CWL1.2 feature.
+        """
+        cwlfile = "src/toil/test/cwl/stream.cwl"
+        jobfile = "src/toil/test/cwl/stream.json"
+        out_name = "output"
+        jobstore = f"--jobStore=aws:us-west-1:toil-stream-{uuid.uuid4()}"
+        from toil.cwl import cwltoil
+
+        st = StringIO()
+        args = [
+            "--outdir",
+            self.outDir,
+            jobstore,
+            os.path.join(self.rootDir, cwlfile),
+            os.path.join(self.rootDir, jobfile),
+        ]
+        cwltoil.main(args, stdout=st)
+        out = json.loads(st.getvalue())
+        out[out_name].pop("http://commonwl.org/cwltool#generation", None)
+        out[out_name].pop("nameext", None)
+        out[out_name].pop("nameroot", None)
+        self.assertEqual(out, self._expected_streaming_output(self.outDir))
+        with open(out[out_name]["location"][len("file://") :]) as f:
+            self.assertEqual(f.read().strip(), "When is s4 coming out?")
+
+    @staticmethod
+    def _expected_seqtk_output(outDir):
+        loc = "file://" + os.path.join(outDir, "out")
+        return {
+            "output1": {
+                "location": loc,
+                "checksum": "sha1$322e001e5a99f19abdce9f02ad0f02a17b5066c2",
+                "basename": "out",
+                "class": "File",
+                "size": 150,
+            }
+        }
+
+    @staticmethod
+    def _expected_revsort_output(outDir):
+        loc = "file://" + os.path.join(outDir, "output.txt")
+        return {
+            "output": {
+                "location": loc,
+                "basename": "output.txt",
+                "size": 1111,
+                "class": "File",
+                "checksum": "sha1$b9214658cc453331b62c2282b772a5c063dbd284",
+            }
+        }
+
+    @staticmethod
+    def _expected_download_output(outDir):
+        loc = "file://" + os.path.join(outDir, "output.txt")
+        return {
+            "output": {
+                "location": loc,
+                "basename": "output.txt",
+                "size": 0,
+                "class": "File",
+                "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709",
+            }
+        }
+
+    @classmethod
+    def _expected_load_contents_output(cls, out_dir):
+        """
+        Generate the putput we expect from load_contents.cwl, when sending
+        output files to the given directory.
+        """
+        expected = cls._expected_download_output(out_dir)
+        expected['length'] = 146
+        return expected
+
+    @staticmethod
+    def _expected_colon_output(outDir):
+        loc = "file://" + os.path.join(outDir, "A%3AGln2Cys_result")
+        return {
+            "result": {
+                "location": loc,
+                "basename": "A:Gln2Cys_result",
+                "class": "Directory",
+                "listing": [
+                    {
+                        "class": "File",
+                        "location": f"{loc}/whale.txt",
+                        "basename": "whale.txt",
+                        "checksum": "sha1$327fc7aedf4f6b69a42a7c8b808dc5a7aff61376",
+                        "size": 1111,
+                        "nameroot": "whale",
+                        "nameext": ".txt",
+                    }
+                ],
+            }
+        }
+
+    def _expected_streaming_output(self, outDir):
+        loc = "file://" + os.path.join(outDir, "output.txt")
+        return {
+            "output": {
+                "location": loc,
+                "basename": "output.txt",
+                "size": 24,
+                "class": "File",
+                "checksum": "sha1$d14dd02e354918b4776b941d154c18ebc15b9b38",
+            }
+        }
+
+
+@needs_cwl
+class CWLv10Test(ToilTest):
+    """
+    Run the CWL 1.0 conformance tests in various environments.
+    """
+    def setUp(self):
+        """Runs anew before each test to create farm fresh temp dirs."""
+        self.outDir = f"/tmp/toil-cwl-test-{str(uuid.uuid4())}"
+        os.makedirs(self.outDir)
+        self.rootDir = self._projectRootPath()
+        self.cwlSpec = os.path.join(self.rootDir, "src/toil/test/cwl/spec")
+        self.workDir = os.path.join(self.cwlSpec, "v1.0")
+        # The latest cwl git commit hash from https://github.com/common-workflow-language/common-workflow-language.
+        # Update it to get the latest tests.
+        testhash = "6a955874ade22080b8ef962b4e0d6e408112c1ef"  # Date:   Tue Dec 16 2020 8:43pm PST
+        url = (
+            "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip"
+            % testhash
+        )
+        if not os.path.exists(self.cwlSpec):
+            urlretrieve(url, "spec.zip")
+            with zipfile.ZipFile("spec.zip", "r") as z:
+                z.extractall()
+            shutil.move("common-workflow-language-%s" % testhash, self.cwlSpec)
+            os.remove("spec.zip")
+
+    def tearDown(self):
+        """Clean up outputs."""
+        if os.path.exists(self.outDir):
+            shutil.rmtree(self.outDir)
+        unittest.TestCase.tearDown(self)
 
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
@@ -520,81 +712,15 @@ class CWLv10Test(ToilTest):
     def test_kubernetes_cwl_conformance_with_caching(self):
         return self.test_kubernetes_cwl_conformance(caching=True)
 
-    @staticmethod
-    def _expected_seqtk_output(outDir):
-        # Having unicode string literals isn't necessary for the assertion but
-        # makes for a less noisy diff in case the assertion fails.
-        loc = "file://" + os.path.join(outDir, "out")
-        return {
-            "output1": {
-                "location": loc,
-                "checksum": "sha1$322e001e5a99f19abdce9f02ad0f02a17b5066c2",
-                "basename": "out",
-                "class": "File",
-                "size": 150,
-            }
-        }
-
-    @staticmethod
-    def _expected_revsort_output(outDir):
-        # Having unicode string literals isn't necessary for the assertion but
-        # makes for a less noisy diff in case the assertion fails.
-        loc = "file://" + os.path.join(outDir, "output.txt")
-        return {
-            "output": {
-                "location": loc,
-                "basename": "output.txt",
-                "size": 1111,
-                "class": "File",
-                "checksum": "sha1$b9214658cc453331b62c2282b772a5c063dbd284",
-            }
-        }
-
-    @staticmethod
-    def _expected_download_output(outDir):
-        # Having unicode string literals isn't necessary for the assertion but
-        # makes for a less noisy diff in case the assertion fails.
-        loc = "file://" + os.path.join(outDir, "output.txt")
-        return {
-            "output": {
-                "location": loc,
-                "basename": "output.txt",
-                "size": 0,
-                "class": "File",
-                "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709",
-            }
-        }
-
-    @staticmethod
-    def _expected_colon_output(outDir):
-        loc = "file://" + os.path.join(outDir, "A%3AGln2Cys_result")
-        return {
-            "result": {
-                "location": loc,
-                "basename": "A:Gln2Cys_result",
-                "class": "Directory",
-                "listing": [
-                    {
-                        "class": "File",
-                        "location": f"{loc}/whale.txt",
-                        "basename": "whale.txt",
-                        "checksum": "sha1$327fc7aedf4f6b69a42a7c8b808dc5a7aff61376",
-                        "size": 1111,
-                        "nameroot": "whale",
-                        "nameext": ".txt",
-                    }
-                ],
-            }
-        }
-
-
 @needs_cwl
 class CWLv11Test(ToilTest):
+    """
+    Run the CWL 1.1 conformance tests in various environments.
+    """
+
     @classmethod
     def setUpClass(cls):
-        """Runs anew before each test to create farm fresh temp dirs."""
-        cls.outDir = f"/tmp/toil-cwl-v1_1-test-{str(uuid.uuid4())}"
-        os.makedirs(cls.outDir)
+        """Runs anew before each test."""
         cls.rootDir = cls._projectRootPath()
         cls.cwlSpec = os.path.join(cls.rootDir, "src/toil/test/cwl/spec_v11")
         cls.test_yaml = os.path.join(cls.cwlSpec, "conformance_tests.yaml")
@@ -609,8 +735,6 @@ class CWLv11Test(ToilTest):
 
     def tearDown(self):
         """Clean up outputs."""
-        if os.path.exists(self.outDir):
-            shutil.rmtree(self.outDir)
         unittest.TestCase.tearDown(self)
 
     @slow
@@ -643,11 +767,13 @@ class CWLv11Test(ToilTest):
 
 @needs_cwl
 class CWLv12Test(ToilTest):
+    """
+    Run the CWL 1.2 conformance tests in various environments.
+    """
+
     @classmethod
     def setUpClass(cls):
-        """Runs anew before each test to create farm fresh temp dirs."""
-        cls.outDir = f"/tmp/toil-cwl-v1_2-test-{str(uuid.uuid4())}"
-        os.makedirs(cls.outDir)
+        """Runs anew before each test."""
         cls.rootDir = cls._projectRootPath()
         cls.cwlSpec = os.path.join(cls.rootDir, "src/toil/test/cwl/spec_v12")
         cls.test_yaml = os.path.join(cls.cwlSpec, "conformance_tests.yaml")
@@ -662,8 +788,6 @@ class CWLv12Test(ToilTest):
 
     def tearDown(self):
         """Clean up outputs."""
-        if os.path.exists(self.outDir):
-            shutil.rmtree(self.outDir)
         unittest.TestCase.tearDown(self)
 
     @slow
@@ -716,53 +840,14 @@ class CWLv12Test(ToilTest):
             ),
         )
 
-    def _expected_streaming_output(self, outDir):
-        # Having unicode string literals isn't necessary for the assertion but
-        # makes for a less noisy diff in case the assertion fails.
-        loc = "file://" + os.path.join(outDir, "output.txt")
-        return {
-            "output": {
-                "location": loc,
-                "basename": "output.txt",
-                "size": 24,
-                "class": "File",
-                "checksum": "sha1$d14dd02e354918b4776b941d154c18ebc15b9b38",
-            }
-        }
-
-    @needs_aws_s3
-    def test_streamable(self):
-        """
-        Test that a file with 'streamable'=True is a named pipe
-        """
-        cwlfile = "src/toil/test/cwl/stream.cwl"
-        jobfile = "src/toil/test/cwl/stream.json"
-        out_name = "output"
-        jobstore = f"--jobStore=aws:us-west-1:toil-stream-{uuid.uuid4()}"
-        from toil.cwl import cwltoil
-
-        st = StringIO()
-        args = [
-            "--outdir",
-            self.outDir,
-            jobstore,
-            os.path.join(self.rootDir, cwlfile),
-            os.path.join(self.rootDir, jobfile),
-        ]
-        cwltoil.main(args, stdout=st)
-        out = json.loads(st.getvalue())
-        out[out_name].pop("http://commonwl.org/cwltool#generation", None)
-        out[out_name].pop("nameext", None)
-        out[out_name].pop("nameroot", None)
-        self.assertEqual(out, self._expected_streaming_output(self.outDir))
-        with open(out[out_name]["location"][len("file://") :]) as f:
-            self.assertEqual(f.read().strip(), "When is s4 coming out?")
-
-
 @needs_aws_ec2
 @needs_fetchable_appliance
 @slow
 class CWLOnARMTest(AbstractClusterTest):
+    """
+    Run the CWL 1.2 conformance tests on ARM specifically.
+    """
+
     def __init__(self, methodName):
         super().__init__(methodName=methodName)
         self.clusterName = 'cwl-test-' + str(uuid.uuid4())

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import os
 import pickle
 import re
 import shutil
@@ -20,7 +21,6 @@ from abc import ABC, ABCMeta, abstractmethod
 from contextlib import closing, contextmanager
 from datetime import timedelta
 from http.client import BadStatusLine
-from io import BytesIO
 from typing import (
     IO,
     TYPE_CHECKING,
@@ -32,7 +32,6 @@ from typing import (
     List,
     Optional,
     Set,
-    TextIO,
     Tuple,
     Union,
     ValuesView,
@@ -48,7 +47,7 @@ from urllib.request import urlopen
 from uuid import uuid4
 from requests.exceptions import HTTPError
 
-from toil.common import Config, safeUnpickleFromStream
+from toil.common import Config, safeUnpickleFromStream, getNodeID
 from toil.fileStores import FileID
 from toil.job import (
     CheckpointJobDescription,
@@ -300,10 +299,9 @@ class AbstractJobStore(ABC):
         with self.read_shared_file_stream('rootJobReturnValue') as fH:
             return safeUnpickleFromStream(fH)
 
-    # due to https://github.com/python/mypy/issues/1362
-    @property  # type: ignore
+    @staticmethod
     @memoize
-    def _jobStoreClasses(self) -> List['AbstractJobStore']:
+    def _get_job_store_classes() -> List['AbstractJobStore']:
         """
         A list of concrete AbstractJobStore implementations whose dependencies are installed.
 
@@ -328,7 +326,8 @@ class AbstractJobStore(ABC):
                 jobStoreClasses.append(jobStoreClass)
         return jobStoreClasses
 
-    def _findJobStoreForUrl(self, url: ParseResult, export: bool = False) -> 'AbstractJobStore':
+    @classmethod
+    def _findJobStoreForUrl(cls, url: ParseResult, export: bool = False) -> 'AbstractJobStore':
         """
         Returns the AbstractJobStore subclass that supports the given URL.
 
@@ -338,19 +337,50 @@ class AbstractJobStore(ABC):
 
         :rtype: toil.jobStore.AbstractJobStore
         """
-        for jobStoreCls in self._jobStoreClasses:
-            if jobStoreCls._supports_url(url, export):
-                return jobStoreCls
+        for implementation in cls._get_job_store_classes():
+            if implementation._supports_url(url, export):
+                return implementation
         raise RuntimeError("No job store implementation supports %sporting for URL '%s'" %
                            ('ex' if export else 'im', url.geturl()))
 
+    # Importing a file with a shared file name returns None, but without one it
+    # returns a file ID. Explain this to MyPy.
+
+    @overload
+    def importFile(self,
+                   srcUrl: str,
+                   sharedFileName: str,
+                   hardlink: bool = False,
+                   symlink: bool = False) -> None: ...
+
+    @overload
+    def importFile(self,
+                   srcUrl: str,
+                   sharedFileName: None = None,
+                   hardlink: bool = False,
+                   symlink: bool = False) -> FileID: ...
+
     @deprecated(new_function_name='import_file')
     def importFile(self,
-                    srcUrl: str,
-                    sharedFileName: Optional[str] = None,
-                    hardlink: bool = False,
-                    symlink: bool = False) -> Optional[FileID]:
+                   srcUrl: str,
+                   sharedFileName: Optional[str] = None,
+                   hardlink: bool = False,
+                   symlink: bool = False) -> Optional[FileID]:
         return self.import_file(srcUrl, sharedFileName, hardlink, symlink)
+
+    @overload
+    def import_file(self,
+                    src_uri: str,
+                    shared_file_name: str,
+                    hardlink: bool = False,
+                    symlink: bool = False) -> None: ...
+
+    @overload
+    def import_file(self,
+                    src_uri: str,
+                    shared_file_name: None = None,
+                    hardlink: bool = False,
+                    symlink: bool = False) -> FileID: ...
 
     def import_file(self,
                     src_uri: str,
@@ -382,7 +412,7 @@ class AbstractJobStore(ABC):
 
         :param str shared_file_name: Optional name to assign to the imported file within the job store
 
-        :return: The jobStoreFileID of the imported file or None if sharedFileName was given
+        :return: The jobStoreFileID of the imported file or None if shared_file_name was given
         :rtype: toil.fileStores.FileID or None
         """
         # Note that the helper method _import_file is used to read from the source and write to
@@ -489,20 +519,82 @@ class AbstractJobStore(ABC):
             otherCls._write_to_url(readable, url, executable)
 
     @classmethod
+    def list_url(cls, src_uri: str) -> List[str]:
+        """
+        List the directory at the given URL. Returned path components can be
+        joined with '/' onto the passed URL to form new URLs. Those that end in
+        '/' correspond to directories. The provided URL may or may not end with
+        '/'.
+
+        Currently supported schemes are:
+
+            - 's3' for objects in Amazon S3
+                e.g. s3://bucket/prefix/
+
+            - 'file' for local files
+                e.g. file:///local/dir/path/
+
+        :param str src_uri: URL that points to a directory or prefix in the storage mechanism of a
+                supported URL scheme e.g. a prefix in an AWS s3 bucket.
+
+        :return: A list of URL components in the given directory, already URL-encoded.
+        """
+        parseResult = urlparse(src_uri)
+        otherCls = cls._findJobStoreForUrl(parseResult)
+        return otherCls._list_url(parseResult)
+
+    @classmethod
+    def get_is_directory(cls, src_uri: str) -> bool:
+        """
+        Return True if the thing at the given URL is a directory, and False if
+        it is a file. The URL may or may not end in '/'.
+        """
+        parseResult = urlparse(src_uri)
+        otherCls = cls._findJobStoreForUrl(parseResult)
+        return otherCls._get_is_directory(parseResult)
+
+    @classmethod
+    @abstractmethod
+    def _get_is_directory(cls, url: ParseResult) -> bool:
+        """
+        Return True if the thing at the given URL is a directory, and False if
+        it is a file or it is known not to exist. The URL may or may not end in
+        '/'.
+
+        :param url: URL that points to a file or object, or directory or prefix,
+               in the storage mechanism of a supported URL scheme e.g. a blob
+               in an AWS s3 bucket.
+        """
+        raise NotImplementedError
+
+    @classmethod
+    def read_from_url(cls, src_uri: str, writable: IO[bytes]) -> Tuple[int, bool]:
+        """
+        Read the given URL and write its content into the given writable stream.
+
+        :return: The size of the file in bytes and whether the executable permission bit is set
+        :rtype: Tuple[int, bool]
+        """
+        parseResult = urlparse(src_uri)
+        otherCls = cls._findJobStoreForUrl(parseResult)
+        return otherCls._read_from_url(parseResult, writable)
+
+    @classmethod
     @deprecated(new_function_name='get_size')
     def getSize(cls, url: ParseResult) -> None:
         return cls.get_size(url)
 
     @classmethod
     @abstractmethod
-    def get_size(cls, url: ParseResult) -> None:
+    def get_size(cls, src_uri: ParseResult) -> None:
         """
         Get the size in bytes of the file at the given URL, or None if it cannot be obtained.
 
-        :param ParseResult url: URL that points to a file or object in the storage
+        :param src_uri: URL that points to a file or object in the storage
                mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
         """
         raise NotImplementedError
+
 
     @classmethod
     @abstractmethod
@@ -525,19 +617,38 @@ class AbstractJobStore(ABC):
 
     @classmethod
     @abstractmethod
-    def _write_to_url(cls, readable: Union[BytesIO, TextIO], url: ParseResult, executable: bool = False) -> None:
+    def _write_to_url(cls, readable: Union[IO[bytes], IO[str]], url: ParseResult, executable: bool = False) -> None:
         """
         Reads the contents of the given readable stream and writes it to the object at the
         specified location.
 
         Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
 
-        :param Union[BytesIO, TextIO] readable: a readable stream
+        :param Union[IO[bytes], IO[str]] readable: a readable stream
 
         :param ParseResult url: URL that points to a file or object in the storage
                mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
 
         :param bool executable: determines if the file has executable permissions
+        """
+        raise NotImplementedError()
+
+    @classmethod
+    @abstractmethod
+    def _list_url(cls, url: ParseResult) -> List[str]:
+        """
+        List the contents of the given URL, which may or may not end in '/'
+
+        Returns a list of URL components. Those that end in '/' are meant to be
+        directories, while those that do not are meant to be files.
+
+        Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
+
+        :param ParseResult url: URL that points to a directory or prefix in the
+        storage mechanism of a supported URL scheme e.g. a prefix in an AWS s3
+        bucket.
+
+        :return: The children of the given URL, already URL-encoded.
         """
         raise NotImplementedError()
 
@@ -854,7 +965,7 @@ class AbstractJobStore(ABC):
         logger.debug("Discarding old statistics and logs...")
         # We have to manually discard the stream to avoid getting
         # stuck on a blocking write from the job store.
-        def discardStream(stream: Union[BytesIO, TextIO]) -> None:
+        def discardStream(stream: Union[IO[bytes], IO[str]]) -> None:
             """Read the stream 4K at a time until EOF, discarding all input."""
             while len(stream.read(4096)) != 0:
                 pass
@@ -1193,7 +1304,7 @@ class AbstractJobStore(ABC):
         jobStoreFileID: str,
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
-    ) -> Union[ContextManager[BytesIO], ContextManager[TextIO]]:
+    ) -> Union[ContextManager[IO[bytes]], ContextManager[IO[str]]]:
         return self.read_file_stream(jobStoreFileID, encoding, errors)
 
     @overload
@@ -1202,13 +1313,13 @@ class AbstractJobStore(ABC):
         file_id: Union[FileID, str],
         encoding: Literal[None] = None,
         errors: Optional[str] = None,
-    ) -> ContextManager[BytesIO]:
+    ) -> ContextManager[IO[bytes]]:
         ...
 
     @overload
     def read_file_stream(
         self, file_id: Union[FileID, str], encoding: str, errors: Optional[str] = None
-    ) -> ContextManager[TextIO]:
+    ) -> ContextManager[IO[str]]:
         ...
 
     @abstractmethod
@@ -1217,7 +1328,7 @@ class AbstractJobStore(ABC):
         file_id: Union[FileID, str],
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
-    ) -> Union[ContextManager[BytesIO], ContextManager[TextIO]]:
+    ) -> Union[ContextManager[IO[bytes]], ContextManager[IO[str]]]:
         """
         Similar to readFile, but returns a context manager yielding a file handle which can be
         read from. The yielded file handle does not need to and should not be closed explicitly.
@@ -1231,7 +1342,7 @@ class AbstractJobStore(ABC):
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :return: a context manager yielding a file handle which can be read from
-        :rtype: Iterator[Union[BytesIO, TextIO]]
+        :rtype: Iterator[Union[IO[bytes], IO[str]]]
         """
         raise NotImplementedError()
 
@@ -1384,7 +1495,7 @@ class AbstractJobStore(ABC):
     def readSharedFileStream(self,
                              sharedFileName: str,
                              encoding: Optional[str] = None,
-                             errors: Optional[str] = None) -> ContextManager[BytesIO]:
+                             errors: Optional[str] = None) -> ContextManager[IO[bytes]]:
         return self.read_shared_file_stream(sharedFileName, encoding, errors)
 
     @abstractmethod
@@ -1392,7 +1503,7 @@ class AbstractJobStore(ABC):
     def read_shared_file_stream(self,
                                 shared_file_name: str,
                                 encoding: Optional[str] = None,
-                                errors: Optional[str] = None) -> Iterator[BytesIO]:
+                                errors: Optional[str] = None) -> Iterator[IO[bytes]]:
         """
         Returns a context manager yielding a readable file handle to the global file referenced
         by the given name.
@@ -1407,7 +1518,7 @@ class AbstractJobStore(ABC):
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :return: a context manager yielding a readable file handle
-        :rtype: Iterator[BytesIO]
+        :rtype: Iterator[IO[bytes]]
         """
         raise NotImplementedError()
 
@@ -1453,6 +1564,71 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError()
 
+    # A few shared files useful to Toil, but probably less useful to the users.
+
+    def write_leader_pid(self) -> None:
+        """
+        Write the pid of this process to a file in the job store.
+
+        Overwriting the current contents of pid.log is a feature, not a bug of
+        this method. Other methods will rely on always having the most current
+        pid available. So far there is no reason to store any old pids.
+        """
+        with self.write_shared_file_stream('pid.log') as f:
+            f.write(str(os.getpid()).encode('utf-8'))
+
+    def read_leader_pid(self) -> int:
+        """
+        Read the pid of the leader process to a file in the job store.
+
+        :raise NoSuchFileException: If the PID file doesn't exist.
+        """
+        with self.read_shared_file_stream('pid.log') as f:
+            return int(f.read().strip())
+
+    def write_leader_node_id(self) -> None:
+        """
+        Write the leader node id to the job store. This should only be called
+        by the leader.
+        """
+        with self.write_shared_file_stream("leader_node_id.log") as f:
+            f.write(getNodeID().encode('utf-8'))
+
+    def read_leader_node_id(self) -> str:
+        """
+        Read the leader node id stored in the job store.
+
+        :raise NoSuchFileException: If the node ID file doesn't exist.
+        """
+        with self.read_shared_file_stream("leader_node_id.log") as f:
+            return f.read().decode('utf-8').strip()
+
+    def write_kill_flag(self, kill: bool = False) -> None:
+        """
+        Write a file inside the job store that serves as a kill flag.
+
+        The initialized file contains the characters "NO". This should only be
+        changed when the user runs the "toil kill" command.
+
+        Changing this file to a "YES" triggers a kill of the leader process. The
+        workers are expected to be cleaned up by the leader.
+        """
+        with self.write_shared_file_stream("_toil_kill_flag") as f:
+            f.write(("YES" if kill else "NO").encode('utf-8'))
+
+    def read_kill_flag(self) -> bool:
+        """
+        Read the kill flag from the job store, and return True if the leader
+        has been killed. False otherwise.
+        """
+        try:
+            with self.read_shared_file_stream("_toil_kill_flag") as f:
+                killed = f.read().decode() == "YES"
+        except NoSuchFileException:
+            # The kill flag file doesn't exist yet.
+            killed = False
+        return killed
+
     # Helper methods for subclasses
 
     def _defaultTryCount(self) -> int:
@@ -1471,6 +1647,11 @@ class AbstractJobStore(ABC):
 
 
 class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
+    """
+    A mostly fake JobStore to access URLs not really associated with real job
+    stores.
+    """
+
     @classmethod
     def _supports_url(cls, url: ParseResult, export: bool = False) -> bool:
         return url.scheme.lower() in ('http', 'https', 'ftp') and not export
@@ -1498,7 +1679,7 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
         ]
     )
     def _read_from_url(
-        cls, url: ParseResult, writable: Union[BytesIO, TextIO]
+        cls, url: ParseResult, writable: Union[IO[bytes], IO[str]]
     ) -> Tuple[int, bool]:
         # We can only retry on errors that happen as responses to the request.
         # If we start getting file data, and the connection drops, we fail.
@@ -1517,3 +1698,13 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
             # Do the download
             shutil.copyfileobj(readable, counter)
             return size[0], False
+
+    @classmethod
+    def _get_is_directory(cls, url: ParseResult) -> bool:
+        # TODO: Implement HTTP index parsing and FTP directory listing
+        return False
+
+    @classmethod
+    def _list_url(cls, url: ParseResult) -> List[str]:
+        # TODO: Implement HTTP index parsing and FTP directory listing
+        raise NotImplementedError("HTTP and FTP URLs cannot yet be listed")

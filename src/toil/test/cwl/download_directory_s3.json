@@ -1,0 +1,4 @@
+{
+    "input_directory": {"class": "Directory", "location": "s3://toil-datasets/images/logos/"},
+    "input_filename": "toil-logo-draft.png"
+}

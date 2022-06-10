@@ -15,36 +15,21 @@
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
 import datetime
 import re
-from functools import wraps
+from functools import lru_cache, wraps
 from threading import Lock
 from typing import Any, Callable, Dict, Tuple, TypeVar
 
+memoize = lru_cache(maxsize=None)
+"""
+Memoize a function result based on its parameters using this decorator.
+
+For example, this can be used in place of lazy initialization. If the decorating
+function is invoked by multiple threads, the decorated function may be called
+more than once with the same arguments.
+"""
+
 MAT = TypeVar("MAT")
 MRT = TypeVar("MRT")
-
-
-def memoize(f: Callable[[MAT], MRT]) -> Callable[[MAT], MRT]:
-    """
-    Memoize a function result based on its parameters using this decorator.
-
-    For example, this can be used in place of lazy initialization. If the decorating
-    function is invoked by multiple threads, the decorated function may be called
-    more than once with the same arguments.
-    """
-    # TODO: Recommend that f's arguments be immutable
-    memory: Dict[Tuple[Any, ...], Any] = {}
-
-    @wraps(f)
-    def new_f(*args: Any) -> Any:
-        try:
-            return memory[args]
-        except KeyError:
-            r = f(*args)
-            memory[args] = r
-            return r
-
-    return new_f
-
 
 def sync_memoize(f: Callable[[MAT], MRT]) -> Callable[[MAT], MRT]:
     """

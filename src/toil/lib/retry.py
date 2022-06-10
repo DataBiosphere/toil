@@ -361,7 +361,7 @@ def get_error_message(e: Exception) -> str:
     """
     Get the error message string from a Boto 2 or 3 error, or compatible types.
 
-    Note that error message conditions also chack more than this; this function
+    Note that error message conditions also check more than this; this function
     does not fall back to the traceback for incompatible types.
     """
     if hasattr(e, 'error_message') and isinstance(e.error_message, str):

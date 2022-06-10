@@ -22,6 +22,7 @@ import zipfile
 from abc import abstractmethod
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 try:
     from flask import Flask
@@ -175,12 +176,11 @@ class FileStateStoreURLTest(hidden.AbstractStateStoreTest):
         return FileStateStore(self.state_store_dir)
 
 @needs_aws_s3
-class AWSStateStoreTest(hidden.AbstractStateStoreTest):
+class BucketUsingTest(ToilTest):
     """
-    Test AWS-based state storage.
+    Base class for tests that need a bucket.
     """
 
-    from toil.server.utils import AbstractStateStore
     from mypy_boto3_s3 import S3ServiceResource
     from mypy_boto3_s3.service_resource import Bucket
 
@@ -213,6 +213,15 @@ class AWSStateStoreTest(hidden.AbstractStateStoreTest):
             delete_s3_bucket(cls.s3_resource, cls.bucket_name, cls.region)
         super().tearDownClass()
 
+class AWSStateStoreTest(hidden.AbstractStateStoreTest, BucketUsingTest):
+    """
+    Test AWS-based state storage.
+    """
+
+    from toil.server.utils import AbstractStateStore
+
+    bucket_path = "prefix/of/keys"
+
     def get_state_store(self) -> AbstractStateStore:
         """
         Make a state store to test, on a single fixed URL.
@@ -220,7 +229,31 @@ class AWSStateStoreTest(hidden.AbstractStateStoreTest):
 
         from toil.server.utils import S3StateStore
 
-        return S3StateStore('s3://' + self.bucket_name)
+        return S3StateStore('s3://' + self.bucket_name + '/' + self.bucket_path)
+
+    def test_state_store_paths(self) -> None:
+        """
+        Make sure that the S3 state store puts things in the right places.
+
+        We don't *really* care about the exact internal structure, but we do
+        care about actually being under the path we are supposed to use.
+        """
+
+        from toil.lib.aws.utils import get_object_for_url
+
+        store = self.get_state_store()
+
+        # Should hold a value
+        store.set('testid', 'testkey', 'testvalue')
+        self.assertEqual(store.get('testid', 'testkey'), 'testvalue')
+
+        expected_url = urlparse('s3://' + self.bucket_name + '/' +
+            os.path.join(self.bucket_path, 'testid', 'testkey'))
+
+        obj = get_object_for_url(expected_url, True)
+        self.assertEqual(obj.content_length, len('testvalue'))
+
+
 
 
 @needs_server
@@ -269,6 +302,21 @@ class AbstractToilWESServerTest(ToilTest):
                 type: stdout
             """)
 
+        self.slow_cwl = textwrap.dedent("""
+            cwlVersion: v1.0
+            class: CommandLineTool
+            baseCommand: sleep
+            stdout: output.txt
+            inputs:
+              delay:
+                type: string
+                inputBinding:
+                  position: 1
+            outputs:
+              output:
+                type: stdout
+            """)
+
     def tearDown(self) -> None:
         super().tearDown()
 
@@ -307,32 +355,72 @@ class AbstractToilWESServerTest(ToilTest):
         self.assertEqual(rv.status_code, 200)
         logger.info("Got %s:\n%s", url, rv.data.decode('utf-8'))
 
+    def _start_slow_workflow(self, client: "FlaskClient") -> str:
+        """
+        Start a slow workflow and return its ID.
+        """
+        rv = client.post("/ga4gh/wes/v1/runs", data={
+            "workflow_url": "slow.cwl",
+            "workflow_type": "CWL",
+            "workflow_type_version": "v1.0",
+            "workflow_params": json.dumps({"delay": "5"}),
+            "workflow_attachment": [
+                (BytesIO(self.slow_cwl.encode()), "slow.cwl"),
+            ],
+        })
+        # workflow is submitted successfully
+        self.assertEqual(rv.status_code, 200)
+        self.assertTrue(rv.is_json)
+        run_id = rv.json.get("run_id")
+        self.assertIsNotNone(run_id)
+
+        return run_id
+
+    def _poll_status(self, client: "FlaskClient", run_id: str) -> str:
+        """
+        Get the status of the given workflow.
+        """
+
+        rv = client.get(f"/ga4gh/wes/v1/runs/{run_id}/status")
+        self.assertEqual(rv.status_code, 200)
+        self.assertTrue(rv.is_json)
+        self.assertIn("run_id", rv.json)
+        self.assertEqual(rv.json.get("run_id"), run_id)
+        self.assertIn("state", rv.json)
+        state = rv.json.get("state")
+        self.assertIn(state, ["UNKNOWN", "QUEUED", "INITIALIZING", "RUNNING",
+                              "PAUSED", "COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR",
+                              "CANCELED", "CANCELING"])
+        return state
+
+    def _cancel_workflow(self, client: "FlaskClient", run_id: str) -> None:
+        rv = client.post(f"/ga4gh/wes/v1/runs/{run_id}/cancel")
+        self.assertEqual(rv.status_code, 200)
+
+    def _wait_for_status(self, client: "FlaskClient", run_id: str, target_status: str) -> None:
+        """
+        Wait for the given workflow run to reach the given state. If it reaches
+        a different terminal state, raise an exception.
+        """
+
+        while True:
+            state = self._poll_status(client, run_id)
+            if state == target_status:
+                # We're done!
+                logger.info("Workflow reached state %s", state)
+                return
+            if state in ["EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELED", "COMPLETE"]:
+                logger.error("Workflow run reached unexpected terminal state %s", state)
+                self._report_log(client, run_id)
+                raise RuntimeError("Workflow is in unexpected state " + state)
+            logger.info("Waiting on workflow in state %s", state)
+            time.sleep(2)
+
     def _wait_for_success(self, client: "FlaskClient", run_id: str) -> None:
         """
         Wait for the given workflow run to succeed. If it fails, raise an exception.
         """
-
-        while True:
-            rv = client.get(f"/ga4gh/wes/v1/runs/{run_id}/status")
-            self.assertEqual(rv.status_code, 200)
-            self.assertTrue(rv.is_json)
-            self.assertIn("run_id", rv.json)
-            self.assertEqual(rv.json.get("run_id"), run_id)
-            self.assertIn("state", rv.json)
-            state = rv.json.get("state")
-            self.assertIn(state, ["UNKNOWN", "QUEUED", "INITIALIZING", "RUNNING",
-                                  "PAUSED", "COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR",
-                                  "CANCELED", "CANCELING"])
-            if state == "COMPLETE":
-                # We're done!
-                logger.info("Workflow reached state %s", state)
-                return
-            if state in ["EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELED"]:
-                logger.error("Workflow run failed")
-                self._report_log(client, run_id)
-                raise RuntimeError("Workflow is in fail state " + state)
-            logger.info("Waiting on workflow in state %s", state)
-            time.sleep(2)
+        self._wait_for_status(client, run_id, "COMPLETE")
 
 
 class ToilWESServerBenchTest(AbstractToilWESServerTest):
@@ -499,8 +587,36 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
             zip_file.writestr('MANIFEST.json', json.dumps({"mainWorkflowURL": "actual.cwl", "inputFileURLs": ["data.json"]}))
         self.run_zip_workflow(zip_path, include_message=False)
 
-    # TODO: When we can check the output value, add tests for overriding
-    # packaged inputs.
+    def test_run_and_cancel_workflows(self) -> None:
+        """
+        Run two workflows, cancel one of them, and make sure they all exist.
+        """
+        with self.app.test_client() as client:
+            # Start 1 workflow
+            run1 = self._start_slow_workflow(client)
+            time.sleep(2)
+            status1 = self._poll_status(client, run1)
+            self.assertIn(status1, ["QUEUED", "INITIALIZING", "RUNNING"])
+
+            # Start another workflow
+            run2 = self._start_slow_workflow(client)
+            self.assertNotEqual(run1, run2)
+            time.sleep(2)
+            status2 = self._poll_status(client, run2)
+            self.assertIn(status2, ["QUEUED", "INITIALIZING", "RUNNING"])
+
+            # Cancel the second one
+            self._cancel_workflow(client, run2)
+            time.sleep(1)
+            status2 = self._poll_status(client, run2)
+            self.assertIn(status2, ["CANCELING", "CANCELED"])
+
+            # Make sure the first one still exists too
+            status1 = self._poll_status(client, run1)
+            self.assertIn(status1, ["QUEUED", "INITIALIZING", "RUNNING"])
+
+            self._wait_for_status(client, run2, "CANCELED")
+            self._wait_for_success(client, run1)
 
 @needs_celery_broker
 class ToilWESServerCeleryWorkflowTest(ToilWESServerWorkflowTest):
@@ -515,7 +631,16 @@ class ToilWESServerCeleryWorkflowTest(ToilWESServerWorkflowTest):
         super().__init__(*args, **kwargs)
         self._server_args = []
 
+@needs_celery_broker
+class ToilWESServerCeleryS3StateWorkflowTest(ToilWESServerWorkflowTest, BucketUsingTest):
+    """
+    Test the server with Celery and state stored in S3.
+    """
 
+    def setUp(self) -> None:
+        # Overwrite server args from __init__. The bucket name isn't available when __init__ runs.
+        self._server_args = ["--state_store", "s3://" + self.bucket_name + "/state"]
+        super().setUp()
 
 if __name__ == "__main__":
     unittest.main()
