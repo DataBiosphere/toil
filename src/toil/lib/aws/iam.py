@@ -70,7 +70,7 @@ def helper_permission_check(perm : str, list_perms : list[str]) -> bool:
 
 
 
-def test_dummy_perms() -> None:
+def test_dummy_perms() -> bool:
     """
     Test for success of check policy warning against dummy permissions
     """
@@ -78,6 +78,7 @@ def test_dummy_perms() -> None:
 
     check_policy_warnings(launch_tester)
     print("Success")
+    return True
 
 
 def get_allowed_actions() -> dict[str, list[str]]:
