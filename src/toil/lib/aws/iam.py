@@ -25,12 +25,14 @@ _CLUSTER_LAUNCHING_PERMISSIONS = {"iam:CreateRole",
                                   }
 
 
-def check_policy_warnings(allowed_actions: dict[str, list[str]] = {'*':[]}, launching_perms : set[str] = _CLUSTER_LAUNCHING_PERMISSIONS) -> None:
+def check_policy_warnings(allowed_actions: dict[str, list[str]] = None, launching_perms : set[str] = _CLUSTER_LAUNCHING_PERMISSIONS) -> None:
     """
     Check whether necessary permissions are permitted for AWS
 
     :param policy: dictionary which contains list of permitted actions for given ARN
     """
+    if allowed_actions == None:
+        allowed_actions = {'*' : []}
     permissions = [x for x in launching_perms if helper_permission_check(x, allowed_actions["*"])]
 
     if not launching_perms.issubset(set(permissions)):
