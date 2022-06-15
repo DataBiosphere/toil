@@ -4,7 +4,7 @@ import boto3
 from toil.lib.aws import zone_to_region
 from toil.provisioners.aws import get_best_aws_zone
 from functools import lru_cache
-from typing import Any
+from typing import Any, List, Dict
 
 from toil.lib.aws.session import AWSConnectionManager
 
@@ -25,11 +25,12 @@ _CLUSTER_LAUNCHING_PERMISSIONS = {"iam:CreateRole",
                                   }
 
 
-def check_policy_warnings(allowed_actions: dict[str, list[str]] = None, launching_perms : set[str] = _CLUSTER_LAUNCHING_PERMISSIONS) -> None:
+def check_policy_warnings(allowed_actions: Dict[str, List[str]] = None, launching_perms : set[str] = _CLUSTER_LAUNCHING_PERMISSIONS) -> None:
     """
     Check whether necessary permissions are permitted for AWS
 
-    :param policy: dictionary which contains list of permitted actions for given ARN
+    :param allowed_actions: Dictionary containing actions allowed by resource
+    :param launching_perms: Set of required actions to launch a cluster on AWS
     """
     if allowed_actions == None:
         allowed_actions = {'*' : []}
