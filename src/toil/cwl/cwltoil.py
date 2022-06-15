@@ -869,10 +869,7 @@ class ToilPathMapper(PathMapper):
                     targets: Dict[str, str] = {}
                     for _, value in self._pathmap.items():
                         # If the target already exists in the pathmap, it means we have a conflict.  But we didn't change tgt to reflect new name.
-                        new_target = value.target.rpartition("_")[0]
                         if value.target == tgt:  # Conflict detected in the pathmap
-                            new_target = tgt
-                        if new_target and new_target == tgt:
                             i = 2
                             new_tgt = f"{tgt}_{i}"
                             while new_tgt in targets:
