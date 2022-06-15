@@ -4,8 +4,10 @@ import boto3
 from toil.lib.aws import zone_to_region
 from toil.provisioners.aws import get_best_aws_zone
 from functools import lru_cache
-from typing import Any, List, Dict, Set
+from typing import Any, List, Dict, Set, cast
 
+from mypy_boto3_iam import IAMClient
+from mypy_boto3_iam.type_defs import GetRolePolicyResponseTypeDef
 from toil.lib.aws.session import AWSConnectionManager
 
 
@@ -91,7 +93,8 @@ def get_allowed_actions() -> Dict[str, List[str]]:
 
     region = zone_to_region(get_best_aws_zone() or "us-west-2a" )
 
-    iam = aws.client(region, 'iam')
+
+    iam: IAMClient = cast(IAMClient, aws.client(region, 'iam'))
 
     response = iam.get_instance_profile(InstanceProfileName="fakename_toil")
 
@@ -109,22 +112,23 @@ def get_allowed_actions() -> Dict[str, List[str]]:
 
     account_num = boto3.client('sts').get_caller_identity().get('Account')
 
-    allowed_actions = {}
+    allowed_actions: Dict[Any, Any] = {}
 
     for policy_name in list_policies['PolicyNames']:
         policy_arn = f"arn:aws:iam::{account_num}:policy/{policy_name}"
 
-        response = iam.get_role_policy(
+        role_policy: Dict[Any, Any] = dict(iam.get_role_policy(
             RoleName=role_name,
             PolicyName=policy_name
-        )
+        ))
 
-        if response["PolicyDocument"]["Statement"][0]["Effect"] == "Allow":
-            if response["PolicyDocument"]["Statement"][0]["Resource"] not in allowed_actions.keys():
-                allowed_actions[response["PolicyDocument"]["Statement"][0]["Resource"]] = []
+        #print("Role policy: ", role_policy)
+        if role_policy["PolicyDocument"]["Statement"][0]["Effect"] == "Allow":
+            if role_policy["PolicyDocument"]["Statement"][0]["Resource"] not in allowed_actions.keys():
+                allowed_actions[role_policy["PolicyDocument"]["Statement"][0]["Resource"]] = []
 
-            allowed_actions[response["PolicyDocument"]["Statement"][0]["Resource"]].append(
-                response["PolicyDocument"]["Statement"][0]["Action"])
+            allowed_actions[role_policy["PolicyDocument"]["Statement"][0]["Resource"]].append(
+                role_policy["PolicyDocument"]["Statement"][0]["Action"])
 
     check_policy_warnings(allowed_actions)
     return allowed_actions

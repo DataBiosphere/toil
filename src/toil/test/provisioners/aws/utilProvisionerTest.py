@@ -28,7 +28,7 @@ from toil.lib.aws import zone_to_region
 from toil.provisioners import cluster_factory
 from toil.provisioners.aws import get_best_aws_zone
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-from toil.lib.aws.iam import test_dummy_perms
+from toil.lib.aws.iam import test_dummy_perms, get_allowed_actions
 from toil.test import (
     ToilTest,
     integrative,
@@ -84,5 +84,3 @@ def test_list_policies():
     attatchedPolicies = client.list_attached_role_policies(RoleName="developer")
     print(attatchedPolicies)
 
-
-test_list_policies()
