@@ -25,15 +25,13 @@ _CLUSTER_LAUNCHING_PERMISSIONS = {"iam:CreateRole",
                                   }
 
 
-def check_policy_warnings(allowed_actions: Dict[str, List[str]] = None, launching_perms : set[str] = _CLUSTER_LAUNCHING_PERMISSIONS) -> None:
+def check_policy_warnings(allowed_actions: Dict[str, List[str]] = {'*': []}, launching_perms : set[str] = _CLUSTER_LAUNCHING_PERMISSIONS) -> None:
     """
     Check whether necessary permissions are permitted for AWS
 
     :param allowed_actions: Dictionary containing actions allowed by resource
     :param launching_perms: Set of required actions to launch a cluster on AWS
     """
-    if allowed_actions == None:
-        allowed_actions = {'*' : []}
     permissions = [x for x in launching_perms if helper_permission_check(x, allowed_actions["*"])]
 
     if not launching_perms.issubset(set(permissions)):
@@ -42,7 +40,7 @@ def check_policy_warnings(allowed_actions: Dict[str, List[str]] = None, launchin
     return None
 
 
-def helper_permission_check(perm : str, list_perms : list[str]) -> bool:
+def helper_permission_check(perm : str, list_perms : List[str]) -> bool:
     """
     Takes a permission and checks whether it's allowed against a list of allowed permissions
 
@@ -79,12 +77,12 @@ def test_dummy_perms() -> bool:
     """
     launch_tester = {'*': ['ec2:*', 'iam:*', 's3:*', 'sdb:*']}
 
-    check_policy_warnings(launch_tester)
+    check_policy_warnings(allowed_actions=launch_tester)
     print("Success")
     return True
 
 
-def get_allowed_actions() -> dict[str, list[str]]:
+def get_allowed_actions() -> Dict[str, List[str]]:
     """
     Returns a list of all allowed actions in a dictionary which is keyed by resource permissions
     are allowed upon.
