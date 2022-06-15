@@ -42,7 +42,11 @@ from toil.job import (
     ServiceJobDescription,
     TemporaryID,
 )
-from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
+from toil.jobStores.abstractJobStore import (
+    AbstractJobStore,
+    NoSuchJobException,
+    NoSuchFileException
+)
 from toil.lib.conversions import bytes2human
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
@@ -167,7 +171,7 @@ class Leader:
         # this is used limit the number of services issued to the batch system
         self.serviceJobsIssued = 0
         self.serviceJobsToBeIssued: List[str] = [] # A queue of IDs of service jobs that await scheduling
-        #Equivalents for service jobs to be run on preemptible nodes
+        # Equivalents for service jobs to be run on preemptible nodes
         self.preemptableServiceJobsIssued = 0
         self.preemptableServiceJobsToBeIssued: List[str] = []
 
@@ -210,6 +214,9 @@ class Leader:
 
         self.statusThrottler = LocalThrottle(self.config.statusWait)
 
+        # Control how often to poll the job store to see if we have been killed
+        self.kill_throttler = LocalThrottle(self.config.kill_polling_interval)
+
         # For fancy console UI, we use an Enlighten counter that displays running / queued jobs
         # This gets filled in in run() and updated periodically.
         self.progress_overall = None
@@ -236,6 +243,7 @@ class Leader:
 
         :return: The return value of the root job's run function.
         """
+        self.jobStore.write_kill_flag(kill=False)
 
         with enlighten.get_manager(stream=sys.stderr, enabled=not self.config.disableProgress) as manager:
             # Set up the fancy console UI if desirable
@@ -753,6 +761,11 @@ class Leader:
                 # Time to tell the user how things are going
                 self._reportWorkflowStatus()
 
+            if self.kill_throttler.throttle(wait=False):
+                if self.jobStore.read_kill_flag():
+                    logger.warning("Received kill via job store. Shutting down.")
+                    raise KeyboardInterrupt("killed via job store")
+
             # Make sure to keep elapsed time and ETA up to date even when no jobs come in
             self.progress_overall.update(incr=0)
 
@@ -959,13 +972,13 @@ class Leader:
         # batch system, it will show up here as waiting to run.
         return f"{running_job_count} jobs are running, {issued_job_count - running_job_count} jobs are issued and waiting to run"
 
-    def _reportWorkflowStatus(self):
+    def _reportWorkflowStatus(self) -> None:
         """
         Report the current status of the workflow to the user.
         """
 
         # For now just log our scheduling status message to the log.
-        # TODO: make this update fast enought to put it in the progress
+        # TODO: make this update fast enough to put it in the progress
         # bar/status line.
         logger.info(self._getStatusHint())
 

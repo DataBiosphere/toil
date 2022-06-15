@@ -21,12 +21,12 @@ import reprlib
 import stat
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 import uuid
 from contextlib import contextmanager
 from io import BytesIO
-from typing import Optional
+from typing import Optional, List
+from urllib.parse import ParseResult, urlsplit, urlunsplit, urlencode, parse_qs
 
 import boto.s3.connection
 import boto.sdb
@@ -45,6 +45,7 @@ from toil.jobStores.abstractJobStore import (
 )
 from toil.jobStores.aws.utils import (
     SDBHelper,
+    ServerSideCopyProhibitedError,
     copyKeyMultipart,
     fileSizeAndTime,
     monkeyPatchSdbConnection,
@@ -59,6 +60,7 @@ from toil.lib.aws.utils import (
     create_s3_bucket,
     get_bucket_region,
     get_object_for_url,
+    list_objects_for_url,
     retry_s3,
     retryable_s3_errors
 )
@@ -430,28 +432,38 @@ class AWSJobStore(AbstractJobStore):
         return info.fileID
 
     def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=False):
-        if issubclass(otherCls, AWSJobStore):
-            srcObj = get_object_for_url(uri, existing=True)
-            size = srcObj.content_length
-            if shared_file_name is None:
-                info = self.FileInfo.create(srcObj.key)
-            else:
-                self._requireValidSharedFileName(shared_file_name)
-                jobStoreFileID = self._shared_file_id(shared_file_name)
-                info = self.FileInfo.loadOrCreate(jobStoreFileID=jobStoreFileID,
-                                                  ownerID=str(self.sharedFileOwnerID),
-                                                  encrypted=None)
-            info.copyFrom(srcObj)
-            info.save()
-            return FileID(info.fileID, size) if shared_file_name is None else None
-        else:
-            return super()._import_file(otherCls, uri, shared_file_name=shared_file_name)
+        try:
+            if issubclass(otherCls, AWSJobStore):
+                srcObj = get_object_for_url(uri, existing=True)
+                size = srcObj.content_length
+                if shared_file_name is None:
+                    info = self.FileInfo.create(srcObj.key)
+                else:
+                    self._requireValidSharedFileName(shared_file_name)
+                    jobStoreFileID = self._shared_file_id(shared_file_name)
+                    info = self.FileInfo.loadOrCreate(jobStoreFileID=jobStoreFileID,
+                                                      ownerID=str(self.sharedFileOwnerID),
+                                                      encrypted=None)
+                info.copyFrom(srcObj)
+                info.save()
+                return FileID(info.fileID, size) if shared_file_name is None else None
+        except ServerSideCopyProhibitedError:
+            # AWS refuses to do this copy for us
+            logger.warning("Falling back to copying via the local machine. This could get expensive!")
+            pass
+        return super()._import_file(otherCls, uri, shared_file_name=shared_file_name)
 
     def _export_file(self, otherCls, file_id, uri):
-        if issubclass(otherCls, AWSJobStore):
-            dstObj = get_object_for_url(uri)
-            info = self.FileInfo.loadOrFail(file_id)
-            info.copyTo(dstObj)
+        try:
+            if issubclass(otherCls, AWSJobStore):
+                dstObj = get_object_for_url(uri)
+                info = self.FileInfo.loadOrFail(file_id)
+                info.copyTo(dstObj)
+                return
+        except ServerSideCopyProhibitedError:
+            # AWS refuses to do this copy for us
+            logger.warning("Falling back to copying via the local machine. This could get expensive!")
+            pass
         else:
             super()._default_export_file(otherCls, file_id, uri)
 
@@ -479,6 +491,16 @@ class AWSJobStore(AbstractJobStore):
                    bucketName=dstObj.bucket_name,
                    fileID=dstObj.key,
                    partSize=5 * 1000 * 1000)
+
+    @classmethod
+    def _list_url(cls, url: ParseResult) -> List[str]:
+        return list_objects_for_url(url)
+
+    @classmethod
+    def _get_is_directory(cls, url: ParseResult) -> bool:
+        # We consider it a directory if anything is in it.
+        # TODO: Can we just get the first item and not the whole list?
+        return len(list_objects_for_url(url)) > 0
 
     @classmethod
     def _supports_url(cls, url, export=False):
@@ -622,16 +644,16 @@ class AWSJobStore(AbstractJobStore):
         # query_auth is False when using an IAM role (see issue #2043). Including the
         # x-amz-security-token parameter without the access key results in a 403,
         # even if the resource is public, so we need to remove it.
-        scheme, netloc, path, query, fragment = urllib.parse.urlsplit(url)
-        params = urllib.parse.parse_qs(query)
+        scheme, netloc, path, query, fragment = urlsplit(url)
+        params = parse_qs(query)
         if 'x-amz-security-token' in params:
             del params['x-amz-security-token']
         if 'AWSAccessKeyId' in params:
             del params['AWSAccessKeyId']
         if 'Signature' in params:
             del params['Signature']
-        query = urllib.parse.urlencode(params, doseq=True)
-        url = urllib.parse.urlunsplit((scheme, netloc, path, query, fragment))
+        query = urlencode(params, doseq=True)
+        url = urlunsplit((scheme, netloc, path, query, fragment))
         return url
 
     def get_shared_public_url(self, shared_file_name):
@@ -1257,7 +1279,7 @@ class AWSJobStore(AbstractJobStore):
 
                                     logger.debug('Completed upload object of type %s: %s', str(type(completed)),
                                                  repr(completed))
-                                    info.version = completed['VersionId']
+                                    info.version = completed.get('VersionId')
                                     logger.debug('Completed upload with version %s', str(info.version))
 
                             if info.version is None:
