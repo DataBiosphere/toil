@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from functools import lru_cache
 import logging
 
 from pkg_resources import DistributionNotFound, get_distribution
@@ -20,6 +21,7 @@ from toil.version import cwltool_version
 logger = logging.getLogger(__name__)
 
 
+@lru_cache(maxsize=None)
 def check_cwltool_version() -> None:
     """
     Check if the installed cwltool version matches Toil's expected version. A
@@ -35,7 +37,7 @@ def check_cwltool_version() -> None:
                 f"{cwltool_version}' to match Toil's cwltool version."
             )
     except DistributionNotFound:
-        logger.warning("cwltool is not installed.")
+        logger.debug("cwltool is not installed.")
 
 
 check_cwltool_version()
