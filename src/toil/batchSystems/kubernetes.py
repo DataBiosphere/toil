@@ -474,12 +474,16 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         volumes = []
         mounts = []
 
-        def mount_host_path(volume_name: str, host_path: str, mount_path: str) -> None:
+        def mount_host_path(volume_name: str, host_path: str, mount_path: str, create: bool = False) -> None:
             """
             Add a host path volume with the given name to mount the given path.
+            
+            :param create: If True, create the directory on the host if it does
+                   not exist. Otherwise, when the directory does not exist, the
+                   pod will wait for it to come into existence.
             """
-            # Use type='Directory' to fail if the host directory doesn't exist already.
-            volume_source = kubernetes.client.V1HostPathVolumeSource(path=host_path, type='Directory')
+            volume_type = 'DirectoryOrCreate' if create else 'Directory'
+            volume_source = kubernetes.client.V1HostPathVolumeSource(path=host_path, type=volume_type)
             volume = kubernetes.client.V1Volume(name=volume_name,
                                                 host_path=volume_source)
             volumes.append(volume)
@@ -487,9 +491,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             mounts.append(volume_mount)
 
         if self.host_path is not None:
-            # Provision Toil WorkDir from a HostPath volume, to share with other pods
-            mount_host_path('workdir', self.host_path, self.worker_work_dir)
-            # We also need to mount across /var/run/user, where we will put per-node coordiantion info.
+            # Provision Toil WorkDir from a HostPath volume, to share with other pods.
+            # Create the directory if it doesn't exist already.
+            mount_host_path('workdir', self.host_path, self.worker_work_dir, create=True)
+            # We also need to mount across /var/run/user, where we will put
+            # per-node coordiantion info.
+            # Don't create this; it really should always exist.
             mount_host_path('coordination', '/var/run/user', '/var/run/user')
         else:
             # Provision Toil WorkDir as an ephemeral volume

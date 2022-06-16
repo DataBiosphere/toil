@@ -38,7 +38,8 @@ There are several environment variables that affect the way Toil runs.
 +----------------------------------+----------------------------------------------------+
 | TOIL_KUBERNETES_HOST_PATH        | A path on Kubernetes hosts that will be mounted as |
 |                                  | the Toil work directory in the workers, to allow   |
-|                                  | for shared caching.                                |
+|                                  | for shared caching. Will be created if it doesn't  |
+|                                  | already exist.                                     |
 +----------------------------------+----------------------------------------------------+
 | TOIL_KUBERNETES_OWNER            | A name prefix for easy identification of           |
 |                                  | Kubernetes jobs. If not set, Toil will use the     |
