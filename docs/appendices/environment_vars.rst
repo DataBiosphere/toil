@@ -47,6 +47,9 @@ There are several environment variables that affect the way Toil runs.
 | TOIL_KUBERNETES_SERVICE_ACCOUNT  | A service account name to apply when creating      |
 |                                  | Kubernetes pods.                                   |
 +----------------------------------+----------------------------------------------------+
+| TOIL_KUBERNETES_POD_TIMEOUT      | Seconds to wait for a scheduled Kubernetes pod to  |
+|                                  | start running.                                     |
++----------------------------------+----------------------------------------------------+
 | KUBE_WATCH_ENABLED               | A boolean variable that allows for users           |
 |                                  | to utilize kubernetes watch stream feature         |
 |                                  | instead of polling for running jobs. Default       |
