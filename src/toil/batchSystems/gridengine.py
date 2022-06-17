@@ -14,6 +14,7 @@
 import logging
 import math
 import os
+import shlex
 import time
 from pipes import quote
 from typing import Dict, List, Optional
@@ -58,7 +59,11 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                               command: str,
                               jobName: str,
                               job_environment: Optional[Dict[str, str]] = None):
-            return self.prepareQsub(cpu, memory, jobID, job_environment) + [command]
+            # (Some versions of?) qsub expects its arguments in argv to be
+            # pre-shell-lexed, because it doesn't want the user to have to
+            # quote their whole command. So we have to take the command string
+            # and lex it like the shell would.
+            return self.prepareQsub(cpu, memory, jobID, job_environment) + shlex.split(command)
 
         def submitJob(self, subLine):
             stdout = call_command(subLine)
