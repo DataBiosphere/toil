@@ -43,12 +43,16 @@ from typing import (
     Tuple,
     Type,
     TypeVar,
-    Union
+    Union,
+    overload
 )
 from urllib.parse import urlparse
 
 import requests
-from typing_extensions import Literal
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import (add_all_batchsystem_options,
@@ -180,6 +184,8 @@ class Config:
         self.forceDockerAppliance: bool = False
         self.statusWait: int = 3600
         self.disableProgress: bool = False
+
+        self.kill_polling_interval: int = 5
 
         # Debug options
         self.debugWorker: bool = False
@@ -927,7 +933,11 @@ class Toil(ContextManager["Toil"]):
         :return: The root job's return value
         """
         self._assertContextManagerUsed()
-        self.writePIDFile()
+
+        # Write shared files to the job store
+        self._jobStore.write_leader_pid()
+        self._jobStore.write_leader_node_id()
+
         if self.config.restart:
             raise ToilRestartException('A Toil workflow can only be started once. Use '
                                        'Toil.restart() to resume it.')
@@ -965,7 +975,11 @@ class Toil(ContextManager["Toil"]):
         """
         self._inRestart = True
         self._assertContextManagerUsed()
-        self.writePIDFile()
+
+        # Write shared files to the job store
+        self._jobStore.write_leader_pid()
+        self._jobStore.write_leader_node_id()
+
         if not self.config.restart:
             raise ToilRestartException('A Toil workflow must be initiated with Toil.start(), '
                                        'not restart().')
@@ -1127,17 +1141,44 @@ class Toil(ContextManager["Toil"]):
             logger.debug('Injecting user script %s into batch system.', userScriptResource)
             self._batchSystem.setUserScript(userScriptResource)
 
+    # Importing a file with a shared file name returns None, but without one it
+    # returns a file ID. Explain this to MyPy.
+
+    @overload
+    def importFile(self,
+                   srcUrl: str,
+                   sharedFileName: str,
+                   symlink: bool = False) -> None: ...
+
+    @overload
+    def importFile(self,
+                   srcUrl: str,
+                   sharedFileName: None = None,
+                   symlink: bool = False) -> FileID: ...
+
     @deprecated(new_function_name='import_file')
     def importFile(self,
                    srcUrl: str,
                    sharedFileName: Optional[str] = None,
-                   symlink: bool = False) -> Optional[Union[FileID, str]]:
+                   symlink: bool = False) -> Optional[FileID]:
         return self.import_file(srcUrl, sharedFileName, symlink)
+
+    @overload
+    def import_file(self,
+                    src_uri: str,
+                    shared_file_name: str,
+                    symlink: bool = False) -> None: ...
+
+    @overload
+    def import_file(self,
+                    src_uri: str,
+                    shared_file_name: None = None,
+                    symlink: bool = False) -> FileID: ...
 
     def import_file(self,
                     src_uri: str,
                     shared_file_name: Optional[str] = None,
-                    symlink: bool = False) -> Optional[Union[FileID, str]]:
+                    symlink: bool = False) -> Optional[FileID]:
         """
         Import the file at the given URL into the job store.
 
@@ -1360,17 +1401,6 @@ class Toil(ContextManager["Toil"]):
     def _assertContextManagerUsed(self) -> None:
         if not self._inContextManager:
             raise ToilContextManagerException()
-
-    def writePIDFile(self) -> None:
-        """
-        Write a the pid of this process to a file in the jobstore.
-
-        Overwriting the current contents of pid.log is a feature, not a bug of this method.
-        Other methods will rely on always having the most current pid available.
-        So far there is no reason to store any old pids.
-        """
-        with self._jobStore.write_shared_file_stream('pid.log') as f:
-            f.write(str(os.getpid()).encode('utf-8'))
 
 
 class ToilRestartException(Exception):

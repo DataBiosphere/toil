@@ -20,15 +20,16 @@
 
 import json
 import os
-from os import path
-from urllib.parse import urlparse, ParseResult
+import sys
 import zipfile
-from typing import Any, BinaryIO, Dict, List, Optional
-try:
+from os import path
+from typing import Any, Dict, IO, List, Optional
+if sys.version_info >= (3, 8):
     from typing import TypedDict
-except ImportError:
-    # 3.7 doesn't have this built in yet.
+else:
     from typing_extensions import TypedDict
+from urllib.parse import urlparse, ParseResult
+
 from toil.server.wes.abstract_backend import MalformedRequestException as InvalidRequestError
 
 # These functions are licensed under the same Apache 2.0 license as Toil is,
@@ -67,10 +68,10 @@ class FilesDict(TypedDict, total=False):
     * `workflowOptions`: Open binary-mode file for a JSON of options sent along with the workflow.
     * `workflowDependencies`: Open binary-mode file for the zip the workflow came in, if any.
     """
-    workflowSource: BinaryIO
-    workflowInputFiles: List[BinaryIO]
-    workflowOptions: BinaryIO
-    workflowDependencies: BinaryIO
+    workflowSource: IO[bytes]
+    workflowInputFiles: List[IO[bytes]]
+    workflowOptions: IO[bytes]
+    workflowDependencies: IO[bytes]
 
 def parse_workflow_zip_file(file: str, workflow_type: str) -> WorkflowPlan:
     """

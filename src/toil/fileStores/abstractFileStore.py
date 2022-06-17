@@ -20,16 +20,15 @@ from threading import Event, Semaphore
 from typing import (
     TYPE_CHECKING,
     Any,
-    BinaryIO,
     Callable,
     ContextManager,
     Dict,
     Generator,
+    IO,
     Iterator,
     List,
     Optional,
     Set,
-    TextIO,
     Tuple,
     Type,
     Union,
@@ -403,7 +402,7 @@ class AbstractFileStore(ABC):
         fileStoreID: str,
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
-    ) -> ContextManager[Union[BinaryIO, TextIO]]:
+    ) -> ContextManager[Union[IO[bytes], IO[str]]]:
         """
         Read a stream from the job store; similar to readGlobalFile.
 
