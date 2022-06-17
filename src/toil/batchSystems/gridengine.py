@@ -59,10 +59,14 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                               command: str,
                               jobName: str,
                               job_environment: Optional[Dict[str, str]] = None):
-            # (Some versions of?) qsub expects its arguments in argv to be
-            # pre-shell-lexed, because it doesn't want the user to have to
-            # quote their whole command. So we have to take the command string
-            # and lex it like the shell would.
+            # POSIX qsub
+            # <https://pubs.opengroup.org/onlinepubs/9699919799.2008edition/utilities/qsub.html>
+            # expects a single script argument, which is supposed to be a file.
+            # Toil commands usually are not file names but also include
+            # arguments. So we split off the arguments like the shell would and
+            # hope that the qsub we are using is clever enough to forward along
+            # arguments. Otherwise, some qsubs will go looking for the full
+            # Toil command string as a file.
             return self.prepareQsub(cpu, memory, jobID, job_environment) + shlex.split(command)
 
         def submitJob(self, subLine):
