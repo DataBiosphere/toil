@@ -122,7 +122,6 @@ def get_allowed_actions() -> Dict[str, List[str]]:
             PolicyName=policy_name
         ))
 
-        #print("Role policy: ", role_policy)
         if role_policy["PolicyDocument"]["Statement"][0]["Effect"] == "Allow":
             if role_policy["PolicyDocument"]["Statement"][0]["Resource"] not in allowed_actions.keys():
                 allowed_actions[role_policy["PolicyDocument"]["Statement"][0]["Resource"]] = []
@@ -133,7 +132,7 @@ def get_allowed_actions() -> Dict[str, List[str]]:
     check_policy_warnings(allowed_actions)
     return allowed_actions
 
-@lru_cache
+@lru_cache()
 def get_aws_account_num() -> Any:
     """
     Returns AWS account num
