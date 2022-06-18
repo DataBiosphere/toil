@@ -1132,18 +1132,18 @@ class Leader:
                 self.toilState.reset_job(jobStoreID)
                 replacementJob = self.toilState.get_job(jobStoreID)
             except NoSuchJobException:
-                # Avoid importing AWSJobStore as the corresponding extra might be missing
-                if self.jobStore.__class__.__name__ == 'AWSJobStore':
-                    # We have a ghost job - the job has been deleted but a stale read from
-                    # SDB gave us a false positive when we checked for its existence.
-                    # Process the job from here as any other job removed from the job store.
-                    # This is a temporary work around until https://github.com/BD2KGenomics/toil/issues/1091
-                    # is completed
-                    logger.warning('Got a stale read from SDB for job %s', issuedJob)
-                    self.processRemovedJob(issuedJob, result_status)
-                    return
-                else:
-                    raise
+                # We have a ghost job - the job has been deleted but a stale
+                # read from e.g. a non-POSIX-compliant filesystem gave us a
+                # false positive when we checked for its existence. Process the
+                # job from here as any other job removed from the job store.
+                # This is a hack until we can figure out how to actually always
+                # have a strongly-consistent communications channel. See
+                # https://github.com/BD2KGenomics/toil/issues/1091
+                logger.warning('Got a stale read for job %s; caught its '
+                'completion in time, but other jobs may try to run twice! Fix '
+                'the consistency of your job store storage!', issuedJob)
+                self.processRemovedJob(issuedJob, result_status)
+                return
             if replacementJob.logJobStoreFileID is not None:
                 with replacementJob.getLogFileHandle(self.jobStore) as logFileStream:
                     # more memory efficient than read().striplines() while leaving off the
