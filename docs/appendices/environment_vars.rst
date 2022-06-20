@@ -38,7 +38,8 @@ There are several environment variables that affect the way Toil runs.
 +----------------------------------+----------------------------------------------------+
 | TOIL_KUBERNETES_HOST_PATH        | A path on Kubernetes hosts that will be mounted as |
 |                                  | the Toil work directory in the workers, to allow   |
-|                                  | for shared caching.                                |
+|                                  | for shared caching. Will be created if it doesn't  |
+|                                  | already exist.                                     |
 +----------------------------------+----------------------------------------------------+
 | TOIL_KUBERNETES_OWNER            | A name prefix for easy identification of           |
 |                                  | Kubernetes jobs. If not set, Toil will use the     |
@@ -46,6 +47,9 @@ There are several environment variables that affect the way Toil runs.
 +----------------------------------+----------------------------------------------------+
 | TOIL_KUBERNETES_SERVICE_ACCOUNT  | A service account name to apply when creating      |
 |                                  | Kubernetes pods.                                   |
++----------------------------------+----------------------------------------------------+
+| TOIL_KUBERNETES_POD_TIMEOUT      | Seconds to wait for a scheduled Kubernetes pod to  |
+|                                  | start running.                                     |
 +----------------------------------+----------------------------------------------------+
 | KUBE_WATCH_ENABLED               | A boolean variable that allows for users           |
 |                                  | to utilize kubernetes watch stream feature         |
