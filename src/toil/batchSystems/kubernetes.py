@@ -98,6 +98,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Get the service account name to use, if any.
         self.service_account = config.kubernetes_service_account
 
+        # Get how long we should wait for a pod that lands on a node to
+        # actually start.
+        self.pod_timeout = config.kubernetes_pod_timeout
+
         # Get the username to mark jobs with
         username = config.kubernetes_owner
         # And a unique ID for the run
@@ -331,7 +335,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.user_script = userScript
 
     # setEnv is provided by BatchSystemSupport, updates self.environment
-    
+
     @staticmethod
     def _apply_placement_constraints(preemptable: bool, pod_spec: kubernetes.client.V1PodSpec) -> None:
         """
@@ -469,13 +473,17 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Collect volumes and mounts
         volumes = []
         mounts = []
-        
-        def mount_host_path(volume_name: str, host_path: str, mount_path: str) -> None:
+
+        def mount_host_path(volume_name: str, host_path: str, mount_path: str, create: bool = False) -> None:
             """
             Add a host path volume with the given name to mount the given path.
+            
+            :param create: If True, create the directory on the host if it does
+                   not exist. Otherwise, when the directory does not exist, the
+                   pod will wait for it to come into existence.
             """
-            # Use type='Directory' to fail if the host directory doesn't exist already.
-            volume_source = kubernetes.client.V1HostPathVolumeSource(path=host_path, type='Directory')
+            volume_type = 'DirectoryOrCreate' if create else 'Directory'
+            volume_source = kubernetes.client.V1HostPathVolumeSource(path=host_path, type=volume_type)
             volume = kubernetes.client.V1Volume(name=volume_name,
                                                 host_path=volume_source)
             volumes.append(volume)
@@ -483,9 +491,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             mounts.append(volume_mount)
 
         if self.host_path is not None:
-            # Provision Toil WorkDir from a HostPath volume, to share with other pods
-            mount_host_path('workdir', self.host_path, self.worker_work_dir)
-            # We also need to mount across /var/run/user, where we will put per-node coordiantion info.
+            # Provision Toil WorkDir from a HostPath volume, to share with other pods.
+            # Create the directory if it doesn't exist already.
+            mount_host_path('workdir', self.host_path, self.worker_work_dir, create=True)
+            # We also need to mount across /var/run/user, where we will put
+            # per-node coordiantion info.
+            # Don't create this; it really should always exist.
             mount_host_path('coordination', '/var/run/user', '/var/run/user')
         else:
             # Provision Toil WorkDir as an ephemeral volume
@@ -794,7 +805,43 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             return True
 
 
+    def _isPodStuckWaiting(self, pod_object: kubernetes.client.V1Pod, reason: Optional[str] = None, timeout: Optional[float] = None) -> bool:
+        """
+        Return True if the pod looks to be in a waiting state, and false otherwise.
 
+        :param pod_object: a Kubernetes pod with one container to check up on.
+        :param reason: Only match pods with a waiting reason equal to this.
+        :param timeout: Only match pods that have a start_time (scheduling time) older than this many seconds.
+
+        :return: True if the pod is probably stuck, False otherwise.
+        """
+
+        # Get the statuses of the pod's containers
+        container_statuses = pod_object.status.container_statuses
+        if container_statuses is None or len(container_statuses) == 0:
+            # Pod exists but has no container statuses
+            # This happens when the pod is just "Scheduled"
+            # ("PodScheduled" status event) and isn't actually starting
+            # to run yet.
+            # Can't be stuck
+            return False
+
+        waiting_info = getattr(getattr(container_statuses[0], 'state', None), 'waiting', None)
+        if waiting_info is None:
+            # Pod is not waiting
+            return False
+
+        if reason is not None and waiting_info.reason != reason:
+            # Pod fails reason filter
+            return False
+
+        start_time = getattr(pod_object.status, 'start_time', None)
+        if timeout is not None and (start_time is None or (utc_now() - start_time).total_seconds() < timeout):
+            # It hasn't been waiting too long, or we care but don't know how
+            # long it has been waiting
+            return False
+
+        return True
 
     def _getIDForOurJob(self, jobObject):
         """
@@ -942,26 +989,23 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     continue
 
                 # Containers can get stuck in Waiting with reason ImagePullBackOff
-
-                # Get the statuses of the pod's containers
-                containerStatuses = pod.status.container_statuses
-                if containerStatuses is None or len(containerStatuses) == 0:
-                    # Pod exists but has no container statuses
-                    # This happens when the pod is just "Scheduled"
-                    # ("PodScheduled" status event) and isn't actually starting
-                    # to run yet.
-                    # Can't be stuck in ImagePullBackOff
-                    continue
-
-                waitingInfo = getattr(getattr(pod.status.container_statuses[0], 'state', None), 'waiting', None)
-                if waitingInfo is not None and waitingInfo.reason == 'ImagePullBackOff':
+                if self._isPodStuckWaiting(pod, reason='ImagePullBackoff'):
                     # Assume it will never finish, even if the registry comes back or whatever.
                     # We can get into this state when we send in a non-existent image.
                     # See https://github.com/kubernetes/kubernetes/issues/58384
                     jobObject = j
                     chosenFor = 'stuck'
-                    logger.warning('Failing stuck job; did you try to run a non-existent Docker image?'
+                    logger.warning('Failing stuck job (ImagePullBackoff); did you try to run a non-existent Docker image?'
                                    ' Check TOIL_APPLIANCE_SELF.')
+                    break
+
+                # Containers can also get stuck in Waiting with reason
+                # ContainerCreating, if for example their mounts don't work.
+                if self._isPodStuckWaiting(pod, reason='ContainerCreating', timeout=self.pod_timeout):
+                    # Assume that it will never finish.
+                    jobObject = j
+                    chosenFor = 'stuck'
+                    logger.warning('Failing stuck job (ContainerCreating longer than %s seconds); did you try to mount something impossible?', self.pod_timeout)
                     break
 
                 # Pods can also get stuck nearly but not quite out of memory,
@@ -1258,6 +1302,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         parser.add_argument("--kubernetesServiceAccount", dest="kubernetes_service_account", default=None,
                             help="Service account to run jobs as.  "
                                  "(default: %(default)s)")
+        parser.add_argument("--kubernetesPodTimeout", dest="kubernetes_pod_timeout", default=120,
+                            help="Seconds to wait for a scheduled Kubernetes pod to start running.  "
+                                 "(default: %(default)s)")
 
     OptionType = TypeVar('OptionType')
     @classmethod
@@ -1265,4 +1312,5 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         setOption("kubernetes_host_path", default=None, env=['TOIL_KUBERNETES_HOST_PATH'])
         setOption("kubernetes_owner", default=cls.get_default_kubernetes_owner(), env=['TOIL_KUBERNETES_OWNER'])
         setOption("kubernetes_service_account", default=None, env=['TOIL_KUBERNETES_SERVICE_ACCOUNT'])
+        setOption("kubernetes_pod_timeout", default=120, env=['TOIL_KUBERNETES_POD_TIMEOUT'])
 
