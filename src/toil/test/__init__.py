@@ -626,6 +626,25 @@ def needs_celery_broker(test_item: MT) -> MT:
     test_item = needs_env_var('TOIL_WES_BROKER_URL', "a URL to a RabbitMQ broker for Celery")(test_item)
     return test_item
 
+def needs_wes_server(test_item: MT) -> MT:
+    """
+    Use as a decorator before test classes or methods to run only if a WES
+    server is available to run against.
+    """
+    test_item = _mark_test('wes_server', test_item)
+
+    wes_url = os.environ.get('TOIL_WES_ENDPOINT')
+    if not wes_url:
+        return unittest.skip(f"Set TOIL_WES_ENDPOINT to include this test")(test_item)
+
+    try:
+        urlopen(f"{wes_url}/ga4gh/wes/v1/service-info")
+    except (HTTPError, URLError) as e:
+        return unittest.skip(f"Run a WES server on {wes_url} to include this test")(test_item)
+
+    return test_item
+
+
 def needs_local_appliance(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to only run them if
