@@ -4,7 +4,7 @@ pytest-cov>=2.12.1,<4
 pytest-timeout>=1.4.2,<3
 stubserver>=1.1,<2
 setuptools>=51.3.3,<63
-sphinx>=4,<5
+sphinx>=4,<6
 cwltest>=2.2.20211116163652
 mypy==0.960
 types-requests

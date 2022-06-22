@@ -996,6 +996,25 @@ class CWLSmallLogDir(ToilTest):
         output = open(result).read()
         assert output == "hello\n"
 
+    def test_filename_conflict_resolution(self):
+        toil = "toil-cwl-runner"
+        options = [
+            f"--outdir={self.out_dir}",
+            "--clean=always",
+        ]
+        cwl = os.path.join(
+            os.path.dirname(__file__), "test_filename_conflict_resolution.cwl"
+        )
+        input = os.path.join(os.path.dirname(__file__), "test_filename_conflict_resolution.ms")
+        output = input + '.sector_*'
+        cwl_inputs = [
+            "--msin", input
+        ]
+        cmd = [toil] + options + [cwl] + cwl_inputs
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = p.communicate()
+        assert b"Finished toil run successfully" in stderr
+        assert p.returncode == 0
 
 @needs_cwl
 class CWLSmallTests(ToilTest):
