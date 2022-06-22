@@ -211,11 +211,19 @@ class FileJobStore(AbstractJobStore):
         return 'file:' + jobStorePath
 
     def load_job(self, job_id):
+        # If the job obviously doesn't exist, note that.
         self._check_job_store_id_exists(job_id)
-        # Load a valid version of the job
+        # Try to load a valid version of the job.
         jobFile = self._get_job_file_name(job_id)
-        with open(jobFile, 'rb') as fileHandle:
-            job = pickle.load(fileHandle)
+        try:
+            with open(jobFile, 'rb') as fileHandle:
+                job = pickle.load(fileHandle)
+        except FileNotFoundError:
+            # We were racing a delete on a non-POSIX-compliant filesystem.
+            # This is the good case; the delete arrived in time.
+            # If it didn't, we might go on to re-execute the already-finished job.
+            # Anyway, this job doesn't really exist after all.
+            raise NoSuchJobException()
 
         # Pass along the current config, which is the JobStore's responsibility.
         job.assignConfig(self.config)

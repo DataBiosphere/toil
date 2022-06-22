@@ -1,7 +1,7 @@
 #!/bin/sh
 NAMESPACE="toil"
 
-CUTOFF=$(date -u -Iseconds --date='2 days ago' | sed 's/+00:00/Z/' )
+CUTOFF=$(date -u -Iseconds --date='10 hours ago' | sed 's/+00:00/Z/' )
 
 kubectl get po --namespace $NAMESPACE -o json | jq -r '.items[] | [.metadata.name, .status.startTime] | @tsv' | while IFS= read -r line
 do
