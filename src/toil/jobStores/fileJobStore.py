@@ -52,8 +52,6 @@ class FileJobStore(AbstractJobStore):
     """
 
     # Valid chars for the creation of temporary "spray" directories.
-    # Note that on case-insensitive filesystems we're twice as likely to use
-    # letter directories as number directories.
     validDirs = "abcdefghijklmnopqrstuvwxyz0123456789"
     validDirsSet = set(validDirs)
 
