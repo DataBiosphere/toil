@@ -24,7 +24,7 @@ import unittest
 import uuid
 import zipfile
 from io import StringIO
-from typing import Dict, List, MutableMapping, Optional
+from typing import Dict, List, MutableMapping, Optional, Union
 from unittest.mock import Mock, call
 from urllib.request import urlretrieve
 
@@ -61,6 +61,7 @@ from toil.test import (
     needs_parasol,
     needs_slurm,
     needs_torque,
+    needs_wes_server,
     slow,
 )
 
@@ -72,21 +73,24 @@ CONFORMANCE_TEST_TIMEOUT = 3600
 def run_conformance_tests(
     workDir: str,
     yml: str,
+    runner: Optional[str] = None,
     caching: bool = False,
     batchSystem: str = None,
     selected_tests: str = None,
     selected_tags: str = None,
     skipped_tests: str = None,
-    extra_args: List[str] = [],
+    extra_args: Optional[List[str]] = None,
     must_support_all_features: bool = False,
     junit_file: Optional[str] = None,
-) -> Optional[str]:
+):
     """
     Run the CWL conformance tests.
 
     :param workDir: Directory to run tests in.
 
     :param yml: CWL test list YML to run tests from.
+
+    :param runner: If set, use this cwl runner instead of the default toil-cwl-runner.
 
     :param caching: If True, use Toil file store caching.
 
@@ -98,16 +102,18 @@ def run_conformance_tests(
 
     :param skipped_tests: Comma-separated string labels of tests to skip.
 
-    :param extra_args: Provide these extra arguments to toil-cwl-runner for each test.
+    :param extra_args: Provide these extra arguments to runner for each test.
 
     :param must_support_all_features: If set, fail if some CWL optional features are unsupported.
 
     :param junit_file: JUnit XML file to write test info to.
     """
     try:
+        if runner is None:
+            runner = "toil-cwl-runner"
         cmd = [
             "cwltest",
-            "--tool=toil-cwl-runner",
+            f"--tool={runner}",
             f"--test={yml}",
             "--timeout=2400",
             f"--basedir={workDir}",
@@ -126,18 +132,19 @@ def run_conformance_tests(
             # Otherwise dump all output to our output stream
             cmd.append("--verbose")
 
-        args_passed_directly_to_toil = [
+        args_passed_directly_to_runner = [
             "--clean=always",
             "--logDebug",
             "--statusWait=10",
         ]
         if not caching:
             # Turn off caching for the run
-            args_passed_directly_to_toil.append("--disableCaching")
-        args_passed_directly_to_toil += extra_args
+            args_passed_directly_to_runner.append("--disableCaching")
+        if extra_args:
+            args_passed_directly_to_runner += extra_args
 
         if "SINGULARITY_DOCKER_HUB_MIRROR" in os.environ:
-            args_passed_directly_to_toil.append(
+            args_passed_directly_to_runner.append(
                 "--setEnv=SINGULARITY_DOCKER_HUB_MIRROR"
             )
 
@@ -155,8 +162,8 @@ def run_conformance_tests(
         cmd.append(f"-j{parallel_tests}")
 
         if batchSystem:
-            args_passed_directly_to_toil.append(f"--batchSystem={batchSystem}")
-        cmd.extend(["--"] + args_passed_directly_to_toil)
+            args_passed_directly_to_runner.append(f"--batchSystem={batchSystem}")
+        cmd.extend(["--"] + args_passed_directly_to_runner)
 
         log.info("Running: '%s'", "' '".join(cmd))
         try:
@@ -259,6 +266,7 @@ class CWLWorkflowTest(ToilTest):
             input_location,
             self._expected_download_output(self.outDir),
         )
+
 
     def load_contents(self, inputs, tester_fn):
         input_location = os.path.join("src/toil/test/cwl", inputs)
@@ -839,6 +847,40 @@ class CWLv12Test(ToilTest):
                 self.rootDir, "kubernetes-caching-conformance.junit.xml"
             ),
         )
+
+    @slow
+    @needs_wes_server
+    def test_wes_server_cwl_conformance(self):
+        """
+        Run the CWL conformance tests via WES. TOIL_WES_ENDPOINT must be
+        specified. If the WES server requires authentication, set TOIL_WES_USER
+        and TOIL_WES_PASSWORD.
+
+        To run manually:
+
+        TOIL_WES_ENDPOINT=http://localhost:8080 \
+        TOIL_WES_USER=test \
+        TOIL_WES_PASSWORD=password \
+        python -m pytest src/toil/test/cwl/cwlTest.py::CWLv12Test::test_wes_server_cwl_conformance -vv --log-level INFO --log-cli-level INFO
+        """
+        endpoint = os.environ.get("TOIL_WES_ENDPOINT")
+        extra_args = [f"--wes_endpoint={endpoint}"]
+
+        # These are the ones that currently fail:
+        #   - 310: mixed_version_v10_wf
+        #   - 311: mixed_version_v11_wf
+        #   - 312: mixed_version_v12_wf
+
+        # Main issues:
+        # 1. `cwltool --print-deps` doesn't seem to include secondary files from the default
+        #     e.g.: https://github.com/common-workflow-language/cwl-v1.2/blob/1.2.1_proposed/tests/mixed-versions/wf-v10.cwl#L4-L10
+
+        return self.test_run_conformance(
+            runner="toil-wes-cwl-runner",
+            selected_tests="1-309,313-337",
+            extra_args=extra_args
+        )
+
 
 @needs_aws_ec2
 @needs_fetchable_appliance

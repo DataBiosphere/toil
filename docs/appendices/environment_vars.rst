@@ -221,5 +221,9 @@ There are several environment variables that affect the way Toil runs.
 |                                  | the workers. If not set, Toil will use the number  |
 |                                  | of job threads.                                    |
 +----------------------------------+----------------------------------------------------+
+| GUNICORN_CMD_ARGS                | Specify additional Gunicorn configurations for the |
+|                                  | Toil WES server. See `Gunicorn settings`_.         |
++----------------------------------+----------------------------------------------------+
 
 .. _standard temporary directory: https://docs.python.org/3/library/tempfile.html#tempfile.gettempdir
+.. _Gunicorn settings: https://docs.gunicorn.org/en/stable/settings.html#settings
