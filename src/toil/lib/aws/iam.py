@@ -34,7 +34,7 @@ def check_policy_warnings(allowed_actions: Dict[str, List[str]] = {'*': []}, lau
     :param allowed_actions: Dictionary containing actions allowed by resource
     :param launching_perms: Set of required actions to launch a cluster on AWS
     """
-    permissions = [x for x in launching_perms if helper_permission_check(x, allowed_actions["*"])]
+    permissions = [x for x in launching_perms if check_permission_allowed(x, allowed_actions["*"])]
 
     if not launching_perms.issubset(set(permissions)):
         raise RuntimeError("Missing permissions", permissions)
@@ -42,9 +42,9 @@ def check_policy_warnings(allowed_actions: Dict[str, List[str]] = {'*': []}, lau
     return None
 
 
-def helper_permission_check(perm: str, list_perms: List[str]) -> bool:
+def check_permission_allowed(perm: str, list_perms: List[str]) -> bool:
     """
-    Takes a permission and checks whether it's allowed against a list of allowed permissions
+    Takes a permission and checks whether it's allowed by determining if it is contained within a list of given permissions
 
     :param perm: Permission to check in string form
     :param list_perms: Permission list to check against
@@ -65,11 +65,8 @@ def helper_permission_check(perm: str, list_perms: List[str]) -> bool:
 
         if allowed == perm:
             flag = True
-    if not flag:
 
-        return False
-    else:
-        return True
+    return flag
 
 
 
