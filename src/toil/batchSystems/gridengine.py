@@ -14,6 +14,7 @@
 import logging
 import math
 import os
+import shlex
 import time
 from pipes import quote
 from typing import Dict, List, Optional
@@ -58,7 +59,15 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                               command: str,
                               jobName: str,
                               job_environment: Optional[Dict[str, str]] = None):
-            return self.prepareQsub(cpu, memory, jobID, job_environment) + [command]
+            # POSIX qsub
+            # <https://pubs.opengroup.org/onlinepubs/9699919799.2008edition/utilities/qsub.html>
+            # expects a single script argument, which is supposed to be a file.
+            # Toil commands usually are not file names but also include
+            # arguments. So we split off the arguments like the shell would and
+            # hope that the qsub we are using is clever enough to forward along
+            # arguments. Otherwise, some qsubs will go looking for the full
+            # Toil command string as a file.
+            return self.prepareQsub(cpu, memory, jobID, job_environment) + shlex.split(command)
 
         def submitJob(self, subLine):
             stdout = call_command(subLine)

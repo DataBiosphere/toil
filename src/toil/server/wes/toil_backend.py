@@ -255,7 +255,7 @@ class ToilBackend(WESBackend):
 
 
         self.supported_versions = {
-            "py": ["3.6", "3.7", "3.8", "3.9"],
+            "py": ["3.7", "3.8", "3.9"],
             "cwl": ["v1.0", "v1.1", "v1.2"],
             "wdl": ["draft-2", "1.0"]
         }

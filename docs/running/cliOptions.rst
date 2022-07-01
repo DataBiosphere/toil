@@ -147,6 +147,9 @@ the logging module:
   --kubernetesServiceAccount KUBERNETES_SERVICE_ACCOUNT
                         A service account name to apply when creating
                         Kubernetes pods.
+  --kubernetesPodTimeout KUBERNETES_POD_TIMEOUT
+                        Seconds to wait for a scheduled Kubernetes pod to
+                        start running.
 
   --tesEndpoint TES_ENDPOINT
                         The http(s) URL of the TES server.
