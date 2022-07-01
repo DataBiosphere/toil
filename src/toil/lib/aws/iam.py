@@ -44,26 +44,29 @@ def check_policy_warnings(allowed_actions: Dict[str, List[str]] = {'*': []}, lau
 
 def check_permission_allowed(perm: str, list_perms: List[str]) -> bool:
     """
-    Takes a permission and checks whether it's allowed by determining if it is contained within a list of given permissions
+    Takes a permission and checks whether it's contained within a list of given permissions
 
     :param perm: Permission to check in string form
     :param list_perms: Permission list to check against
     """
     flag = False
     for allowed in list_perms:
+        # For a specific action is allowed upon all resources eg. *:CreateRole
         if allowed[0] == "*":
             if perm.endswith(allowed[1:]):
                 flag = True
 
-        if allowed[0] == "*" and allowed[-1] == "*":
+        # Covers case of action with wildcard allowed on all resources with broad perms
+        elif allowed[0] == "*" and allowed[-1] == "*":
             if allowed[1:-1] in perm:
                 flag = True
 
-        if allowed[-1] == "*":
+        # Check for group of actions allowed upon resource eg iam:Create*
+        elif allowed[-1] == "*":
             if perm.startswith(allowed[:-1]):
                 flag = True
-
-        if allowed == perm:
+        # Check if the exact permission is in the allowed list
+        elif allowed == perm:
             flag = True
 
     return flag
