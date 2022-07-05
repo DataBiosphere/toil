@@ -49,27 +49,46 @@ def check_permission_allowed(perm: str, list_perms: List[str]) -> bool:
     :param perm: Permission to check in string form
     :param list_perms: Permission list to check against
     """
-    flag = False
+
+    #Two wildcards, ? any single character, * match zero or more characters
     for allowed in list_perms:
-        # For a specific action is allowed upon all resources eg. *:CreateRole
-        if allowed[0] == "*":
-            if perm.endswith(allowed[1:]):
-                flag = True
 
-        # Covers case of action with wildcard allowed on all resources with broad perms
-        elif allowed[0] == "*" and allowed[-1] == "*":
-            if allowed[1:-1] in perm:
-                flag = True
+        # Allowed permission is just a wildcard, automatically matches any permission we would test
+        if allowed == "*":
+            return True
 
-        # Check for group of actions allowed upon resource eg iam:Create*
-        elif allowed[-1] == "*":
-            if perm.startswith(allowed[:-1]):
-                flag = True
-        # Check if the exact permission is in the allowed list
+        # Check if the exact permission is in the list of allowed actions
         elif allowed == perm:
-            flag = True
+            return True
 
-    return flag
+        # Attempt to match permission character by character
+        else:
+            perm_index = 0
+            allowed_index = 0
+            while perm_index != len(perm) and allowed_index != len(allowed):
+                #Matching character
+                if perm[perm_index] == allowed[allowed_index]:
+                    perm_index += 1
+                    allowed_index += 1
+                #Matched single character wildcard
+                elif perm[perm_index] == '?' or allowed[allowed_index] == '?':
+                    perm_index += 1
+                    allowed_index += 1
+                #This is weird, eg ec2:* and would require having a list of all ec2 permissions to check against
+                elif perm[perm_index] == "*":
+                    break
+                elif allowed[allowed_index] == "*":
+                    #Check if the string ends with a wildcard
+                    if allowed_index + 1 == len(allowed):
+                        return True
+                    while perm_index < len(perm) and (allowed[allowed_index + 1] != perm[perm_index] or perm[perm_index] == '?'):
+                        perm_index += 1
+                    allowed_index += 1
+                #Unmatched characters
+                else:
+                    break
+
+    return False
 
 
 
