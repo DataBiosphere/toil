@@ -324,11 +324,6 @@ class AWSProvisioner(AbstractProvisioner):
         :return: None
         """
 
-        #Implement IAM check here
-        #Test if user can create roles or not
-        #If awsEc2ProfileArn provided test on that,
-        
-
         leader_type = E2Instances[leaderNodeType]
 
         if self.clusterType == 'kubernetes':

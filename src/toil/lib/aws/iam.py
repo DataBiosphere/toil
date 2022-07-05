@@ -37,7 +37,8 @@ def check_policy_warnings(allowed_actions: Dict[str, List[str]] = {'*': []}, lau
     permissions = [x for x in launching_perms if check_permission_allowed(x, allowed_actions["*"])]
 
     if not launching_perms.issubset(set(permissions)):
-        raise RuntimeError("Missing permissions", permissions)
+        for perm in permissions:
+            logger.warning('Permission %s is missing', perm)
 
     return None
 

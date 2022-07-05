@@ -1,4 +1,4 @@
-# Copyright (C) 2021 Michael R. Crusoe
+# Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ import logging
 import os
 import uuid
 from typing import Optional
+import pytest
 
 from toil.jobStores.aws.jobStore import AWSJobStore
 from toil.lib.aws.utils import create_s3_bucket
@@ -28,7 +29,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 
 class IAMTest(ToilTest):
-    """Confirm the workarounds for us-east-1."""
+    """Check that given permissions and associated functions perform correctly"""
 
     from mypy_boto3_s3 import S3ServiceResource
     from mypy_boto3_s3.service_resource import Bucket
@@ -50,13 +51,11 @@ class IAMTest(ToilTest):
 
     def test_negative_permissions_iam(self):
         launch_tester = {'*': ['ec2:*',  's3:*', 'sdb:*']}
-        try:
+        with pytest.raises(RuntimeError):
             iam.check_policy_warnings(launch_tester)
-        except RuntimeError:
-            pass
 
     def test_allowed_actions(self):
         allowed = iam.get_allowed_actions()
         for action in allowed:
             logger.info("allowed %s", action)
-        #logger.info(allowed)
+        assert()
