@@ -464,18 +464,26 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
     Tests of the WES server running workflows.
     """
 
-    def run_zip_workflow(self, zip_path: str, include_message: bool = True) -> None:
+    def run_zip_workflow(self, zip_path: str, include_message: bool = True, include_params: bool = True) -> None:
         """
         We have several zip file tests; this submits a zip file and makes sure it ran OK.
+        
+        If include_message is set to False, don't send a "message" argument in  workflow_params.
+        If include_params is also set to False, don't send workflow_params at all.
         """
         self.assertTrue(os.path.exists(zip_path))
+        
+        # Set up what we will POST to start the workflow.
+        post_data = {
+            "workflow_url": "file://" + zip_path,
+            "workflow_type": "CWL",
+            "workflow_type_version": "v1.0"
+        }
+        if include_params or include_message:
+            # We need workflow_params too
+            post_data["workflow_params"] = json.dumps({"message": "Hello, world!"} if include_message else {})
         with self.app.test_client() as client:
-            rv = client.post("/ga4gh/wes/v1/runs", data={
-                "workflow_url": "file://" + zip_path,
-                "workflow_type": "CWL",
-                "workflow_type_version": "v1.0",
-                "workflow_params": json.dumps({"message": "Hello, world!"} if include_message else {})
-            })
+            rv = client.post("/ga4gh/wes/v1/runs", data=post_data)
             # workflow is submitted successfully
             self.assertEqual(rv.status_code, 200)
             self.assertTrue(rv.is_json)
@@ -586,6 +594,16 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
             zip_file.writestr('data.json', json.dumps({"message": "Hello, world!"}))
             zip_file.writestr('MANIFEST.json', json.dumps({"mainWorkflowURL": "actual.cwl", "inputFileURLs": ["data.json"]}))
         self.run_zip_workflow(zip_path, include_message=False)
+        
+    def test_run_workflow_no_params_zip(self) -> None:
+        """Test run example CWL workflow from ZIP without workflow_params."""
+        workdir = self._createTempDir()
+        zip_path = os.path.abspath(os.path.join(workdir, 'workflow.zip'))
+        with zipfile.ZipFile(zip_path, 'w') as zip_file:
+            zip_file.writestr('main.cwl', self.example_cwl)
+            zip_file.writestr('inputs.json', json.dumps({"message": "Hello, world!"}))
+        # Don't even bother sending workflow_params
+        self.run_zip_workflow(zip_path, include_message=False, include_params=False)
 
     def test_run_and_cancel_workflows(self) -> None:
         """
