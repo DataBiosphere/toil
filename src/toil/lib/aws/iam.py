@@ -66,24 +66,31 @@ def check_permission_allowed(perm: str, list_perms: List[str]) -> bool:
             perm_index = 0
             allowed_index = 0
             while perm_index != len(perm) and allowed_index != len(allowed):
+
                 #Matching character
                 if perm[perm_index] == allowed[allowed_index]:
                     perm_index += 1
                     allowed_index += 1
+
                 #Matched single character wildcard
                 elif perm[perm_index] == '?' or allowed[allowed_index] == '?':
                     perm_index += 1
                     allowed_index += 1
-                #This is weird, eg ec2:* and would require having a list of all ec2 permissions to check against
+
+                #This is weird, case doesn't happen w/ current use case
                 elif perm[perm_index] == "*":
                     break
+
+                #Allowed action has a wildcard
                 elif allowed[allowed_index] == "*":
                     #Check if the string ends with a wildcard
                     if allowed_index + 1 == len(allowed):
                         return True
+                    #Assumes that multiple wildcards sequentially eg ec2:** is not possible
                     while perm_index < len(perm) and (allowed[allowed_index + 1] != perm[perm_index] or perm[perm_index] == '?'):
                         perm_index += 1
                     allowed_index += 1
+
                 #Unmatched characters
                 else:
                     break
@@ -94,7 +101,7 @@ def check_permission_allowed(perm: str, list_perms: List[str]) -> bool:
 
 def test_dummy_perms() -> bool:
     """
-    Test for success of check policy warning against dummy permissions
+    Test the function check_policy_warnings() against a known good list of permissions
     """
     launch_tester = {'*': ['ec2:*', 'iam:*', 's3:*', 'sdb:*']}
 
@@ -108,29 +115,18 @@ def get_allowed_actions() -> Dict[str, List[str]]:
     Returns a list of all allowed actions in a dictionary which is keyed by resource permissions
     are allowed upon.
     """
+
     aws = AWSConnectionManager()
-
     region = zone_to_region(get_best_aws_zone() or "us-west-2a" )
-
-
     iam: IAMClient = cast(IAMClient, aws.client(region, 'iam'))
-
     response = iam.get_instance_profile(InstanceProfileName="fakename_toil")
-
     role_name = response['InstanceProfile']['Roles'][0]['RoleName']
-
     list_policies = iam.list_role_policies(RoleName=role_name)
-
     account_num = boto3.client('sts').get_caller_identity().get('Account')
-
     str_arn = f"arn:aws:iam::{account_num}:role/{role_name}"
-
     role_name = response['InstanceProfile']['Roles'][0]['RoleName']
-
     list_policies = iam.list_role_policies(RoleName=role_name)
-
     account_num = boto3.client('sts').get_caller_identity().get('Account')
-
     allowed_actions: Dict[Any, Any] = {}
 
     for policy_name in list_policies['PolicyNames']:
