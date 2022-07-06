@@ -19,7 +19,7 @@ Message types and message bus for leader component coordination.
 import collections
 import inspect
 import logging
-from typing import Any, Dict, Iterator, List, NamedTuple, Type, TypeVar
+from typing import Any, Dict, IO, Iterator, List, NamedTuple, Type, TypeVar
 
 logger = logging.getLogger( __name__ )
 
@@ -129,6 +129,16 @@ class MessageBus:
             # in the right order, and before the later messages.
             message_list.reverse()
             self.__messages_by_type[message_type] = message_list + self.__messages_by_type[message_type]
+            
+    @classmethod
+    def decode_bus_messages(cls, stream: IO[bytes]) -> Iterator[NamedTuple]:
+        """
+        Yield every message from the given log stream. Discard any trailing partial messages.
+        """
+        
+        # TODO: implement
+        return []
+        
 
 
 
