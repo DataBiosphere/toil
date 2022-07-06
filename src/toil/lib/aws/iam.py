@@ -27,7 +27,7 @@ _CLUSTER_LAUNCHING_PERMISSIONS = {"iam:CreateRole",
                                   }
 
 
-def check_policy_warnings(allowed_actions: Dict[str, List[str]] = {'*': []}, launching_perms: Set[str] = _CLUSTER_LAUNCHING_PERMISSIONS) -> None:
+def check_policy_warnings(allowed_actions: Dict[str, List[str]] = {'*': []}, launching_perms: Set[str] = _CLUSTER_LAUNCHING_PERMISSIONS) -> bool:
     """
     Check whether necessary permissions are permitted for AWS
 
@@ -39,8 +39,9 @@ def check_policy_warnings(allowed_actions: Dict[str, List[str]] = {'*': []}, lau
     if not launching_perms.issubset(set(permissions)):
         for perm in permissions:
             logger.warning('Permission %s is missing', perm)
+        return False
 
-    return None
+    return True
 
 
 def check_permission_allowed(perm: str, list_perms: List[str]) -> bool:
@@ -111,19 +112,19 @@ def test_dummy_perms() -> bool:
     return True
 
 
-def get_allowed_actions() -> Dict[str, List[str]]:
+def get_allowed_actions(zone: str) -> Dict[str, List[str]]:
     """
     Returns a list of all allowed actions in a dictionary which is keyed by resource permissions
     are allowed upon.
     """
 
     aws = AWSConnectionManager()
-    region = zone_to_region(get_best_aws_zone() or "us-west-2a" )
+    region = zone
     iam: IAMClient = cast(IAMClient, aws.client(region, 'iam'))
     response = iam.get_instance_profile(InstanceProfileName="fakename_toil")
     role_name = response['InstanceProfile']['Roles'][0]['RoleName']
     list_policies = iam.list_role_policies(RoleName=role_name)
-    account_num = boto3.client('sts').get_caller_identity().get('Account')
+    account_num = get_aws_account_num()
     str_arn = f"arn:aws:iam::{account_num}:role/{role_name}"
     role_name = response['InstanceProfile']['Roles'][0]['RoleName']
     list_policies = iam.list_role_policies(RoleName=role_name)
@@ -138,14 +139,16 @@ def get_allowed_actions() -> Dict[str, List[str]]:
             PolicyName=policy_name
         ))
 
-        if role_policy["PolicyDocument"]["Statement"][0]["Effect"] == "Allow":
-            if role_policy["PolicyDocument"]["Statement"][0]["Resource"] not in allowed_actions.keys():
-                allowed_actions[role_policy["PolicyDocument"]["Statement"][0]["Resource"]] = []
+        for statement in role_policy["PolicyDocument"]["Statement"]:
 
-            allowed_actions[role_policy["PolicyDocument"]["Statement"][0]["Resource"]].append(
-                role_policy["PolicyDocument"]["Statement"][0]["Action"])
+            if statement["effect"] == "Allow":
 
-    check_policy_warnings(allowed_actions)
+                for resource in statement["Resource"]:
+                    if resource not in allowed_actions.keys():
+                        allowed_actions[resource] = []
+
+                    allowed_actions[resource].append(role_policy[statement["Action"]])
+
     return allowed_actions
 
 @lru_cache()

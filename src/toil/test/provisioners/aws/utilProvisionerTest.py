@@ -46,25 +46,12 @@ from botocore.session import get_session
 import boto.connection
 
 
-#from toil.provisioners.aws.awsProvisioner import _CLUSTER_LAUNCHING_PERMISSIONS
-_CLUSTER_LAUNCHING_PERMISSIONS = ["iam:CreateRole",
-                                  "iam:CreateInstanceProfile",
-                                  "iam:TagInstanceProfile",
-                                  "iam:DeleteRole",
-                                  "iam:DeleteRoleProfile",
-                                  "iam:ListAttatchedRolePolicies",
-                                  "iam:ListPolicies",
-                                  "iam:ListRoleTags",
-                                  "iam:PutRolePolicy",
-                                  "iam:RemoveRoleFromInstanceProfile",
-                                  "iam:TagRole"
-                                  ]
 log = logging.getLogger(__name__)
 
 
 @pytest.mark.timeout(1800)
 def test_policy_warnings():
-    assert test_dummy_perms() == True
+    assert test_dummy_perms() is True
 
 @pytest.mark.timeout(1800)
 def test_list_policies():
@@ -81,6 +68,7 @@ def test_list_policies():
 
     client = session.client('iam')
 
-    attatchedPolicies = client.list_attached_role_policies(RoleName="developer")
-    print(attatchedPolicies)
+    attatched_policies = client.list_attached_role_policies(RoleName="developer")
+    print(attatched_policies)
+    assert attatched_policies is not None
 

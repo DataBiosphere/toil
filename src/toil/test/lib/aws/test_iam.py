@@ -46,16 +46,13 @@ class IAMTest(ToilTest):
     '''
     def test_permissions_iam(self):
         launch_tester = {'*': ['ec2:*', 'iam:*', 's3:*', 'sdb:*']}
-
-        iam.check_policy_warnings(launch_tester)
+        assert iam.check_policy_warnings(launch_tester) is True
 
     def test_negative_permissions_iam(self):
         launch_tester = {'*': ['ec2:*',  's3:*', 'sdb:*']}
-        with pytest.raises(RuntimeError):
-            iam.check_policy_warnings(launch_tester)
+        assert iam.check_policy_warnings(launch_tester) is False
 
     def test_allowed_actions(self):
         allowed = iam.get_allowed_actions()
         for action in allowed:
             logger.info("allowed %s", action)
-        assert()
