@@ -23,6 +23,7 @@ from toil.batchSystems.abstractBatchSystem import (
     AbstractScalableBatchSystem,
     NodeInfo,
 )
+from toil.bus import ClusterSizeMessage, ClusterDesiredSizeMessage
 from toil.common import Config, defaultTargetTime
 from toil.job import JobDescription, ServiceJobDescription
 from toil.lib.retry import old_retry
@@ -537,8 +538,11 @@ class ClusterScaler:
                                 self.preemptableNodeDeficit[instance_type])
                 estimatedNodeCount += compensationNodes
 
+            # Tell everyone how big the cluster is
             logger.debug("Currently %i nodes of type %s in cluster" % (currentNodeCounts[nodeShape],
                                                                       instance_type))
+            self.leader.toilState.bus.publish(ClusterSizeMessage(instance_type, currentNodeCounts[nodeShape]))
+            self.leader.toilState.bus.publish(ClusterDesiredSizeMessage(instance_type, estimatedNodeCount))
             if self.leader.toilMetrics:
                 self.leader.toilMetrics.logClusterSize(instance_type=instance_type,
                                                        currentSize=currentNodeCounts[nodeShape],

@@ -19,7 +19,7 @@ import uuid
 from collections import Counter
 from contextlib import contextmanager
 from tempfile import NamedTemporaryFile
-from typing import Optional, List, Dict, Any, overload, Generator, TextIO, Tuple, Type
+from typing import Optional, List, Dict, Any, overload, Generator, TextIO, Tuple, Type, Union
 
 from flask import send_from_directory
 from flask.globals import request as flask_request
@@ -152,8 +152,8 @@ class ToilWorkflow:
             else:
                 # Stream in the file
                 return json.load(f)
-                
-    def _get_scratch_file_path(self, path) -> Optional[str]:
+
+    def _get_scratch_file_path(self, path: str) -> Optional[str]:
         """
         Return the given relative path from self.scratch_dir, if it is a file,
         and None otherwise.
@@ -161,54 +161,55 @@ class ToilWorkflow:
         if not os.path.isfile(os.path.join(self.scratch_dir, path)):
             return None
         return path
-    
+
     def get_stdout_path(self) -> Optional[str]:
         """
         Return the path to the standard output log, relative to the run's
         scratch_dir, or None if it doesn't exist.
         """
         return self._get_scratch_file_path('stdout')
-        
+
     def get_stderr_path(self) -> Optional[str]:
         """
         Return the path to the standard output log, relative to the run's
         scratch_dir, or None if it doesn't exist.
         """
         return self._get_scratch_file_path('stdout')
-        
+
     def get_task_logs(self) -> List[Dict[str, Union[str, int, None]]]:
         """
         Return all the task log objects for the individual tasks in the workflow.
         """
-        
+
         # First, find where we kept the message log from the workflow that we
         # can actually decode.
         path = self._get_scratch_file_path('bus_messages')
-        
+
         if path is None:
             # No task logs available
             return []
         else:
             # Replay all the messages and work out what they mean for jobs.
-            
+
             # We track the state of jobs here, by ID
             job_statuses: Dict[str, int]
-            
-            with open(path) as log_stream:
-                for event in MessageBus.decode_bus_messages(log_stream):
-                    # For each full, terminated event in the stream, until EOF.
-                    if isinstance(event, JobUpdatedMessage):
-                        # Apply the latest return code from the job with this ID.
-                        job_statuses[event.job_id] = event.result_status
-                        
+
+            with open(path, 'rb') as log_stream:
+                # Read all the full, properly-terminated messages about job updates
+                inbox = MessageBus.decode_bus_messages(log_stream, [JobUpdatedMessage])
+                for event in inbox.for_each(JobUpdatedMessage):
+                    # And for each of them
+                    # Apply the latest return code from the job with this ID.
+                    job_statuses[event.job_id] = event.result_status
+
             # Compose log objects from recovered job info.
             return [{"name": job_id, "exit_code": job_status} for job_id, job_status in job_statuses.items()]
             # TODO: use sqlite or something instead???
             # TODO: times, log files, AWS Batch IDs if any, names from the workflow instead of IDs, commands
-                        
-                    
-                
-    
+
+
+
+
 
 class ToilBackend(WESBackend):
     """
@@ -476,7 +477,7 @@ class ToilBackend(WESBackend):
     @handle_errors
     def get_run_log(self, run_id: str) -> Dict[str, Any]:
         """ Get detailed info about a workflow run."""
-         = self._get_run(run_id, should_exists=True)
+        run = self._get_run(run_id, should_exists=True)
         state = run.get_state()
 
         with run.fetch_scratch("request.json") as f:
@@ -501,9 +502,9 @@ class ToilBackend(WESBackend):
         if run.get_stderr_path() is not None:
             # We have a standard error link.
             stderr = f"../../../../toil/wes/v1/logs/{run_id}/stderr"
-            
+
         exit_code = run.fetch_state("exit_code")
-        
+
         task_logs = run.get_task_logs()
 
         output_obj = {}
@@ -573,7 +574,7 @@ class ToilBackend(WESBackend):
         path = run.get_stdout_path()
         if path is None:
             # There's no log right now
-            raise FileNotFoundError() 
+            raise FileNotFoundError()
         else:
             return send_from_directory(run.scratch_dir, path, mimetype="text/plain")
 
@@ -586,7 +587,7 @@ class ToilBackend(WESBackend):
         path = run.get_stderr_path()
         if path is None:
             # There's no log right now
-            raise FileNotFoundError() 
+            raise FileNotFoundError()
         else:
             return send_from_directory(run.scratch_dir, path, mimetype="text/plain")
 

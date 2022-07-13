@@ -236,7 +236,7 @@ class ToilState:
                 jobDesc.nextSuccessors() is None,
             )
             # Set the job updated because we should be able to make progress on it.
-            self.bus.put(JobUpdatedMessage(str(jobDesc.jobStoreID), 0))
+            self.bus.publish(JobUpdatedMessage(str(jobDesc.jobStoreID), 0))
 
             if isinstance(jobDesc, CheckpointJobDescription) and jobDesc.checkpoint is not None:
                 jobDesc.command = jobDesc.checkpoint
