@@ -132,7 +132,7 @@ class Leader:
         """
         If jobCache is passed, it must be a dict from job ID to pre-existing
         JobDescription objects. Jobs will be loaded from the cache (which can be
-        downloaded from the jobStore in a batch) during the construction of the ToilState object.
+        downloaded from the jobStore in a batch) when loading into the ToilState object.
 
         :param config:      A Config object holding the original user options/settings/args.
         :param batchSystem: The Batch System object containing functions to communicate with the
@@ -150,13 +150,21 @@ class Leader:
         # The job store
         self.jobStore = jobStore
         self.jobStoreLocator = config.jobStore
-
-        # Reconsititute the current state of the jobs in the jobStore
-        self.toilState = ToilState(jobStore, rootJob, jobCache=jobCache)
-
+        
+        # The ToilState will be the authority on the current state of the jobs
+        # in the jobStore, and its bus is the one true place to listen for
+        # state change information about jobs.
+        self.toilState = ToilState(self.jobStore)
+        
         # Connect to the message bus, so we will get all the messages of these
         # types in an inbox.
         self._messages = self.toilState.bus.connect([JobUpdatedMessage])
+
+        # Load the jobs into the ToilState, now that we are able to receive any
+        # resulting messages.
+        # TODO: Give other components a chance to connect to the bus before
+        # this, somehow, so they can also see messages from this?
+        self.toilState.load_workflow(rootJob, jobCache=jobCache)
 
         logger.debug("Found %s jobs to start and %i jobs with successors to run",
                      self._messages.count(JobUpdatedMessage), len(self.toilState.successorCounts))

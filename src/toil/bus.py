@@ -102,6 +102,14 @@ class MessageBus:
     def __init__(self) -> None:
         # Each MessageBus has an independent PyPubSub instance
         self._pubsub = Publisher()
+        
+    def _type_to_name(self, message_type: type) -> str:
+        """
+        Convert a type to a name that can be a PyPubSub topic (all normal
+        characters, hierarchically dotted).
+        """
+        
+        return '.'.join([message_type.__module__, message_type.__name__])
 
     # All our messages are NamedTuples, but NamedTuples don't actually inherit
     # from NamedTupe, so MyPy complains if we require that here.
@@ -109,7 +117,9 @@ class MessageBus:
         """
         Put a message onto the bus.
         """
-        self._pubsub.sendMessage(str(type(message)), message=message)
+        topic = self._type_to_name(type(message))
+        logger.debug('Notifying %s with message: %s', topic, message)
+        self._pubsub.sendMessage(topic, message=message)
 
     # This next function takes callables that take things of the type that was passed in as a
     # runtime argument, which we can explain to MyPy using a TypeVar and Type[]
@@ -121,16 +131,24 @@ class MessageBus:
         Returns a subscription object; when the subscription object is GC'd the subscription will end.
         """
 
-        # Make sure to wrap the handler so we get the right argument name and we can control lifetime.
+        topic = self._type_to_name(message_type)
+        logger.debug('Listening for message topic: %s', topic)
+
+        # Make sure to wrap the handler so we get the right argument name and
+        # we can control lifetime.
         def handler_wraper(message: MessageBus.MessageType) -> None:
             handler(message)
 
-        listener = self._pubsub.subscribe(handler_wraper, str(message_type))
-        # Hide the handler function in the pubsub listener to keep it alive
+        # The docs says this returns the listener but really it seems to return
+        # a listener and something else. 
+        listener, _ = self._pubsub.subscribe(handler_wraper, topic)
+        # Hide the handler function in the pubsub listener to keep it alive.
+        # If it goes out of scope the subscription expires, and the pubsub
+        # system only uses weak references.
         setattr(listener, 'handler_wrapper', handler_wraper)
         return listener
 
-    def connect(self, wanted_types: List[type]) -> MessageBusConnection:
+    def connect(self, wanted_types: List[type]) -> 'MessageBusConnection':
         """
         Get a connection object that serves as an inbox for messages of the
         given types.
@@ -141,9 +159,18 @@ class MessageBus:
         # We call this private method, really we mean this to be module scope.
         connection._set_bus_and_message_types(self, wanted_types)
         return connection
+        
+        
+    def outbox(self) -> 'MessageOutbox':
+        """
+        Get a connection object that only allows sending messages.
+        """
+        connection = MessageOutbox()
+        connection._set_bus(self)
+        return connection
 
     @classmethod
-    def decode_bus_messages(cls, stream: IO[bytes], message_types: List[Type[MessageType]]) -> MessageInbox:
+    def decode_bus_messages(cls, stream: IO[bytes], message_types: List[Type[MessageType]]) -> 'MessageInbox':
         """
         Get an inbox for all messages in the given log stream. Discard any
         trailing partial messages.

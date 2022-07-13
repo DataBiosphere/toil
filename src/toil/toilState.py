@@ -42,32 +42,27 @@ class ToilState:
     def __init__(
         self,
         jobStore: AbstractJobStore,
-        rootJob: JobDescription,
-        jobCache: Optional[Dict[str, JobDescription]] = None,
     ) -> None:
         """
-        Load the state from the jobStore, using the rootJob as the root of the job DAG.
-
-        The jobCache is a map from jobStoreID to JobDescription or None. Is
-        used to speed up the building of the state when loading initially from
-        the JobStore, and is not preserved.
+        Create an empty ToilState over the given job store.
+        
+        After calling this, you probably want to call load_workflow() to
+        initialize the state given the root job, correct jobs to reflect a
+        consistent state, and find jobs that need leader attention.
 
         :param jobStore: The job store to use.
-
-        :param rootJob: The description for the root job of the workflow being run.
-
-        :param jobCache: A dict to cache downloaded job descriptions in, keyed by ID.
         """
+        
+        # We have a public bus for messages about job state changes.
+        self.bus = MessageBus()
+        
         # We need to keep the job store so we can load and save jobs.
         self.__job_store = jobStore
-
+        
         # This holds the one true copy of every JobDescription in the leader.
         # TODO: Do in-place update instead of assignment when we load so we
         # can't let any non-true copies escape.
         self.__job_database = {}
-
-        # Scheduling messages should go over this bus.
-        self.bus = MessageBus()
 
         # Maps from successor (child or follow-on) jobStoreID to predecessor jobStoreIDs
         self.successor_to_predecessors: Dict[str, Set[str]] = {}
@@ -103,6 +98,26 @@ class ToilState:
         # Set of jobs that have multiple predecessors that have one or more predecessors
         # finished, but not all of them.
         self.jobsToBeScheduledWithMultiplePredecessors: Set[str] = set()
+
+    def load_workflow(
+        self,
+        rootJob: JobDescription,
+        jobCache: Optional[Dict[str, JobDescription]] = None
+    ) -> None:
+        """
+        Load the workflow rooted at the given job.
+        
+        If jobs are loaded that have updated and need to be dealt with by the
+        leader, JobUpdatedMessage messages will be sent to the message bus. 
+        
+        The jobCache is a map from jobStoreID to JobDescription or None. Is
+        used to speed up the building of the state when loading initially from
+        the JobStore, and is not preserved.
+
+        :param rootJob: The description for the root job of the workflow being run.
+
+        :param jobCache: A dict to cache downloaded job descriptions in, keyed by ID.
+        """
 
         if jobCache is not None:
             # Load any pre-cached JobDescriptions we were given
@@ -210,6 +225,9 @@ class ToilState:
         """
         Traverses tree of jobs down from the subtree root JobDescription
         (jobDesc), building the ToilState class.
+        
+        Updated jobs that the leader needs to deal with will have messages sent
+        to the message bus.
 
         :param jobDesc: The description for the root job of the workflow being run.
         """
