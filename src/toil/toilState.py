@@ -62,7 +62,7 @@ class ToilState:
         # This holds the one true copy of every JobDescription in the leader.
         # TODO: Do in-place update instead of assignment when we load so we
         # can't let any non-true copies escape.
-        self.__job_database = {}
+        self.__job_database: Dict[str, JobDescription] = {}
 
         # Maps from successor (child or follow-on) jobStoreID to predecessor jobStoreIDs
         self.successor_to_predecessors: Dict[str, Set[str]] = {}

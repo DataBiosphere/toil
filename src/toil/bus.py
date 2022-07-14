@@ -30,6 +30,8 @@ class JobIssuedMessage(NamedTuple):
     """
     Produced when a job is issued to run on the batch system.
     """
+    # The kind of job issued, for statistics aggregation
+    job_type: str
     # The job store ID of the job
     job_id: str
 
@@ -47,6 +49,8 @@ class JobCompletedMessage(NamedTuple):
     """
     Produced when a job is completed, whether successful or not.
     """
+    # The kind of job issued, for statistics aggregation
+    job_type: str
     # The job store ID of the job
     job_id: str
 
@@ -54,6 +58,8 @@ class JobFailedMessage(NamedTuple):
     """
     Produced when a job is completely failed, and will not be retried again.
     """
+    # The kind of job issued, for statistics aggregation
+    job_type: str
     # The job store ID of the job
     job_id: str
 
@@ -63,6 +69,14 @@ class JobMissingMessage(NamedTuple):
     """
     # The job store ID of the job
     job_id: str
+    
+class QueueSizeMessage(NamedTuple):
+    """
+    Produced to describe the size of the queue of jobs issued but not yet
+    completed. Theoretically recoverable from other messages.
+    """
+    # The size of the queue
+    queue_size: int
 
 class ClusterSizeMessage(NamedTuple):
     """

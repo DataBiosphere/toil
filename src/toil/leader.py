@@ -33,7 +33,7 @@ from toil.batchSystems.abstractBatchSystem import (
     AbstractBatchSystem,
     BatchJobExitReason,
 )
-from toil.bus import JobIssuedMessage, JobUpdatedMessage, JobCompletedMessage, JobFailedMessage, JobMissingMessage
+from toil.bus import JobIssuedMessage, JobUpdatedMessage, JobCompletedMessage, JobFailedMessage, JobMissingMessage, QueueSizeMessage
 from toil.common import Config, Toil, ToilMetrics
 from toil.cwl.utils import CWL_INTERNAL_JOBS, CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
 from toil.job import (
@@ -267,7 +267,7 @@ class Leader:
             # Start the stats/logging aggregation thread
             self.statsAndLogging.start()
             if self.config.metrics:
-                self.toilMetrics = ToilMetrics(provisioner=self.provisioner)
+                self.toilMetrics = ToilMetrics(self.toilState.bus, provisioner=self.provisioner)
 
             try:
 
@@ -707,9 +707,7 @@ class Leader:
                     logger.warning("This indicates an unsupported CWL requirement!")
                     self.recommended_fail_exit_code = CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
             # Tell everyone it stopped running.
-            self._messages.publish(JobCompletedMessage(updatedJob.jobStoreID))
-            if self.toilMetrics:
-                self.toilMetrics.logCompletedJob(updatedJob)
+            self._messages.publish(JobCompletedMessage(updatedJob.displayName, updatedJob.jobStoreID))
             self.processFinishedJob(bsID, exitStatus, wallTime=wallTime, exitReason=exitReason)
 
     def _processLostJobs(self):
@@ -913,11 +911,9 @@ class Leader:
                    "%s and cores: %s, disk: %s, and memory: %s",
                    jobNode, str(jobBatchSystemID), int(jobNode.cores),
                    bytes2human(jobNode.disk), bytes2human(jobNode.memory))
-        # Tell everyone it is issued
-        self._messages.publish(JobIssuedMessage(jobNode.jobStoreID))
-        if self.toilMetrics:
-            self.toilMetrics.logIssuedJob(jobNode)
-            self.toilMetrics.logQueueSize(self.getNumberOfJobsIssued())
+        # Tell everyone it is issued and the queue size changed
+        self._messages.publish(JobIssuedMessage(jobNode.displayName, jobNode.jobStoreID))
+        self._messages.publish(QueueSizeMessage(self.getNumberOfJobsIssued()))
         # Tell the user there's another job to do
         self.progress_overall.total += 1
         self.progress_overall.update(incr=0)
@@ -1118,8 +1114,6 @@ class Leader:
                         jobStoreID, str(jobBatchSystemID), timesMissing)
             # Tell everyone it is missing
             self._messages.publish(JobMissingMessage(jobStoreID))
-            if self.toilMetrics:
-                self.toilMetrics.logMissingJob()
             if timesMissing == killAfterNTimesMissing:
                 self.reissueMissingJobs_missingHash.pop(jobBatchSystemID)
                 jobsToKill.append(jobBatchSystemID)
@@ -1278,9 +1272,7 @@ class Leader:
         job_desc = self.toilState.get_job(job_id)
 
         # Tell everyone it failed
-        self._messages.publish(JobFailedMessage(job_id))
-        if self.toilMetrics:
-            self.toilMetrics.logFailedJob(job_desc)
+        self._messages.publish(JobFailedMessage(job_desc.displayName, job_id))
 
         if job_id in self.toilState.service_to_client:
             # Is a service job

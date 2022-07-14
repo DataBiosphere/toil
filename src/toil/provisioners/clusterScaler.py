@@ -543,10 +543,6 @@ class ClusterScaler:
                                                                       instance_type))
             self.leader.toilState.bus.publish(ClusterSizeMessage(instance_type, currentNodeCounts[nodeShape]))
             self.leader.toilState.bus.publish(ClusterDesiredSizeMessage(instance_type, estimatedNodeCount))
-            if self.leader.toilMetrics:
-                self.leader.toilMetrics.logClusterSize(instance_type=instance_type,
-                                                       currentSize=currentNodeCounts[nodeShape],
-                                                       desiredSize=estimatedNodeCount)
 
             # Bound number using the max and min node parameters
             if estimatedNodeCount > self.maxNodes[nodeShape]:
