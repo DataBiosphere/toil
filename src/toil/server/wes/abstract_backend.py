@@ -256,7 +256,8 @@ class WESBackend:
         else:
             raise MalformedRequestException("Missing 'workflow_url' in submission")
 
-        if "workflow_params" in body and not isinstance(body["workflow_params"], dict):
+        if not isinstance(body.get("workflow_params"), dict):
+            # get will return None if the key is absent, which isn't a dict
             # They sent us something silly like "workflow_params": "5"
             raise MalformedRequestException("Got a 'workflow_params' which does not decode to a JSON object")
 
