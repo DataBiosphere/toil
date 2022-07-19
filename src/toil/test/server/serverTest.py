@@ -27,6 +27,7 @@ from urllib.parse import urlparse
 try:
     from flask import Flask
     from flask.testing import FlaskClient
+    from werkzeug.test import TestResponse
 except ImportError:
     # We need to let pytest collect tests form this file even if the server
     # extra wasn't installed. We'll then skip them all.
@@ -319,14 +320,44 @@ class AbstractToilWESServerTest(ToilTest):
 
     def tearDown(self) -> None:
         super().tearDown()
-
-    def _report_log(self, client: "FlaskClient", run_id: str) -> None:
+    
+    def _fetch_run_log(self, client: "FlaskClient", run_id: str) -> TestResponse:
         """
-        Report the log for the given workflow run.
+        Fetch the run log for a given workflow.
         """
         rv = client.get(f"/ga4gh/wes/v1/runs/{run_id}")
         self.assertEqual(rv.status_code, 200)
         self.assertTrue(rv.is_json)
+        return rv
+        
+    def _check_successful_log(self, client: "FlaskClient", run_id: str) -> None:
+        """
+        Make sure the run log for the given run is generated correctly.
+        The workflow should succeed, it should have some tasks, and they should have all succeeded.
+        """
+        rv = self._fetch_run_log(client, run_id)
+        self.assertIn("run_log", rv.json)
+        run_log = rv.json.get("run_log")
+        self.assertEqual(type(run_log), dict)
+        if "exit_code" in run_log:
+            # The workflow succeeded if it has an exit code
+            self.assertEqual(run_log["exit_code"], 0)
+        # The workflow is complete
+        self.assertEqual(rv.json.get("status"), "COMPLETE")
+        task_logs = rv.json.get("task_logs")
+        # There are tasks reported
+        self.assertEqual(type(task_logs), list)
+        self.assertGreater(len(task_logs), 0)
+        for task_log in task_logs:
+            # All the tasks succeeded
+            self.assertEqual(type(task_log), dict)
+            self.assertEqual(task_log.get("exit_code"), 0)
+        
+    def _report_log(self, client: "FlaskClient", run_id: str) -> None:
+        """
+        Report the log for the given workflow run.
+        """
+        rv = self._fetch_run_log(client, run_id)
         self.assertIn("run_log", rv.json)
         run_log = rv.json.get("run_log")
         self.assertEqual(type(run_log), dict)
@@ -421,6 +452,7 @@ class AbstractToilWESServerTest(ToilTest):
         Wait for the given workflow run to succeed. If it fails, raise an exception.
         """
         self._wait_for_status(client, run_id, "COMPLETE")
+        self._check_successful_log(client, run_id)
 
 
 class ToilWESServerBenchTest(AbstractToilWESServerTest):
