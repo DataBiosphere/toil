@@ -181,13 +181,19 @@ class BucketUsingTest(ToilTest):
     """
     Base class for tests that need a bucket.
     """
+    
+    try:
+        # We need the class to be evaluateable without the AWS modules, if not
+        # runnable
+        from mypy_boto3_s3 import S3ServiceResource
+        from mypy_boto3_s3.service_resource import Bucket
+    except ImportError:
+        pass
 
-    from mypy_boto3_s3 import S3ServiceResource
-    from mypy_boto3_s3.service_resource import Bucket
 
     region: Optional[str]
-    s3_resource: Optional[S3ServiceResource]
-    bucket: Optional[Bucket]
+    s3_resource: Optional['S3ServiceResource']
+    bucket: Optional['Bucket']
     bucket_name: Optional[str]
 
     @classmethod

@@ -17,6 +17,7 @@ import logging
 import multiprocessing
 import os
 import subprocess
+import tempfile
 import zipfile
 from typing import Dict, Any, List, Optional, Tuple, Union
 from urllib.parse import urldefrag
@@ -344,6 +345,14 @@ class ToilWorkflowRunner:
         self.store.set("end_time", get_iso_time())
         self.store.set("exit_code", str(exit_code))
 
+        logger.info('Toil child finished with code %s', exit_code)
+
+        if exit_code != 0:
+            for line in open(os.path.join(self.scratch_dir, "stderr")):
+                logger.error('Toil says: %s', line.rstrip())
+            for line in open(os.path.join(self.scratch_dir, "stdout")):
+                logger.info('Toil says: %s', line.rstrip())
+
         if exit_code == 0:
             self.state_machine.send_complete()
         # non-zero exit code indicates failure
@@ -392,6 +401,8 @@ def run_wes_task(base_scratch_dir: str, state_store_url: str, workflow_id: str, 
     :param workflow_id: ID of the workflow run.
     """
 
+    logger.info("Starting WES workflow")
+
     runner = ToilWorkflowRunner(base_scratch_dir, state_store_url, workflow_id,
                                 request=request, engine_options=engine_options)
 
@@ -406,11 +417,13 @@ def run_wes_task(base_scratch_dir: str, state_store_url: str, workflow_id: str, 
             runner.write_output_files()
     except (KeyboardInterrupt, SystemExit, SoftTimeLimitExceeded):
         # We canceled the workflow run
+        logger.info('Canceling the workflow')
         runner.state_machine.send_canceled()
-    except Exception as e:
+    except Exception:
         # The workflow run broke. We still count as the executor here.
+        logger.exception('Running Toil produced an exception.')
         runner.state_machine.send_executor_error()
-        raise e
+        raise
 
     return runner.get_state()
 
@@ -446,31 +459,115 @@ class TaskRunner:
         """
         cancel_run(task_id)
 
+    @staticmethod
+    def is_ok(task_id: str) -> None:
+        """
+        Make sure that the task running system is working for the given task.
+        If the task system has detected an internal failure, return False.
+        """
+        # Nothing to do for Celery
+        return True
 
 # If Celery can't be set up, we can just use this fake version instead.
 
-_id_to_process = {}
 class MultiprocessingTaskRunner(TaskRunner):
     """
     Version of TaskRunner that just runs tasks with Multiprocessing.
     """
 
+    _id_to_process: Dict[str, multiprocessing.Process] = {}
+    _id_to_log: Dict[str, str] = {}
+
     @staticmethod
-    def run(args: Tuple[str, str, str, Dict[str, Any], List[str]], task_id: str) -> None:
+    def set_up_and_run_task(output_path: str, args: Tuple[str, str, str, Dict[str, Any], List[str]]) -> None:
+        """
+        Set up IO for the child process and then call run_wes_task.
+        """
+
+        # Multiprocessing and the server manage to hide actual task output from
+        # the tests. And replacing sys.stdout and sys.stderr don't seem to work
+        # to collect tracebacks. So we make sure to configure logging in the
+        # multiprocessing process and log to a file that we were told about, so
+        # the server can come get the log if we unexpectedly die.
+
+        logging.basicConfig(level=logging.DEBUG)
+
+        output_file = open(output_path, 'w')
+        output_file.write('Initializing task log.\n')
+        output_file.flush()
+
+        # Take over logging
+        handler = logging.StreamHandler(output_file)
+        logging.getLogger().addHandler(handler)
+
+        try:
+            logger.info('Log messages captured')
+
+            output_file.write('Running task.\n')
+            output_file.flush()
+            run_wes_task(*args)
+        except Exception:
+            logger.exception('Exception in task!')
+            raise
+        finally:
+            output_file.write('Finishing task log.\n')
+            output_file.flush()
+            output_file.close()
+
+    @classmethod
+    def run(cls, args: Tuple[str, str, str, Dict[str, Any], List[str]], task_id: str) -> None:
         """
         Run the given task args with the given ID.
         """
-        logger.info("Starting task %s in a process", task_id)
-        _id_to_process[task_id] = multiprocessing.Process(target=run_wes_task, args=args)
-        _id_to_process[task_id].start()
 
-    @staticmethod
-    def cancel(task_id: str) -> None:
+        # We need to send the child process's output somewhere or it will get lost during testing
+        fd, path = tempfile.mkstemp()
+        os.close(fd)
+        cls._id_to_log[task_id] = path
+
+        logger.info("Starting task %s in a process that should log to %s", task_id, path)
+    
+        cls._id_to_process[task_id] = multiprocessing.Process(target=cls.set_up_and_run_task, args=(path, args))
+        cls._id_to_process[task_id].start()
+
+    @classmethod
+    def cancel(cls, task_id: str) -> None:
         """
         Cancel the task with the given ID.
         """
-        if task_id in _id_to_process:
+        if task_id in cls._id_to_process:
             logger.info("Stopping process for task %s", task_id)
-            _id_to_process[task_id].terminate()
+            cls._id_to_process[task_id].terminate()
         else:
             logger.error("Tried to kill nonexistent task %s", task_id)
+
+    @classmethod
+    def is_ok(cls, task_id: str) -> bool:
+        """
+        Make sure that the task running system is working for the given task.
+        If the task system has detected an internal failure, return False.
+        """
+        
+        process = cls._id_to_process.get(task_id)
+        if process is None:
+            return True
+
+        if process.exitcode is not None:
+            if process.exitcode != 0:
+                # Something went wring in the task and it couldn't handle it.
+                logger.error("Process for running %s failed with code %s", task_id, process.exitcode)
+                for line in open(cls._id_to_log[task_id]):
+                    logger.error("Task says: %s", line.rstrip())
+                return False
+            else:
+                # The task finished
+                if os.path.exists(cls._id_to_log[task_id]):
+                    for line in open(cls._id_to_log[task_id]):
+                        logger.info("Task says: %s", line.rstrip())
+                    # Clean up the log
+                    logger.debug("Cleaning up task log %s", cls._id_to_log[task_id])
+                    # TODO: handle racing deletes
+                    os.unlink(cls._id_to_log[task_id])
+
+        return True
+                

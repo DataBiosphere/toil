@@ -113,6 +113,16 @@ class ToilWorkflow:
         """ Return the state of the current run."""
         return self.state_machine.get_current_state()
 
+    def check_on_run(self, task_runner: Type[TaskRunner]):
+        """
+        Check to make sure nothing has gone wrong in the task runner for this
+        workflow.
+        """
+        if not task_runner.is_ok(self.run_id) and self.get_state() not in ['SYSTEM_ERROR', 'EXECUTOR_ERROR', 'COMPLETE', 'CANCELED']:
+            logger.error('Failing run %s because the task to run its leader crashed', self.run_id)
+            self.state_machine.send_system_error()
+
+
     def set_up_run(self) -> None:
         """ Set up necessary directories for the run."""
         # Go to queued state
@@ -359,6 +369,8 @@ class ToilBackend(WESBackend):
                            run_id, apparent_state, owning_server, self.server_id)
             run.state_machine.send_system_error()
 
+        # Poll to make sure the run is not broken
+        run.check_on_run(self.task_runner)
         return run
 
     def get_runs(self) -> Generator[Tuple[str, str], None, None]:
