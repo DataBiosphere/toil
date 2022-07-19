@@ -175,6 +175,13 @@ class ToilWorkflow:
         scratch_dir, or None if it doesn't exist.
         """
         return self._get_scratch_file_path('stdout')
+        
+    def get_messages_path(self) -> Optional[str]:
+        """
+        Return the path to the bus message log, relative to the run's
+        scratch_dir, or None if it doesn't exist.
+        """
+        return self._get_scratch_file_path('bus_messages')
 
     def get_task_logs(self) -> List[Dict[str, Union[str, int, None]]]:
         """
@@ -183,7 +190,7 @@ class ToilWorkflow:
 
         # First, find where we kept the message log from the workflow that we
         # can actually decode.
-        path = self._get_scratch_file_path('bus_messages')
+        path = self.get_messages_path()
 
         if path is None:
             # No task logs available
@@ -192,9 +199,9 @@ class ToilWorkflow:
             # Replay all the messages and work out what they mean for jobs.
 
             # We track the state of jobs here, by ID
-            job_statuses: Dict[str, int]
+            job_statuses: Dict[str, int] = {}
 
-            with open(path, 'rb') as log_stream:
+            with open(os.path.join(self.scratch_dir, path), 'rb') as log_stream:
                 # Read all the full, properly-terminated messages about job updates
                 inbox = MessageBus.decode_bus_messages(log_stream, [JobUpdatedMessage])
                 for event in inbox.for_each(JobUpdatedMessage):
@@ -466,6 +473,9 @@ class ToilBackend(WESBackend):
         if wf_type == "cwl" and self.dest_bucket_base:
             # Output to a directory under out base destination bucket URL.
             workflow_options.append('--destBucket=' + os.path.join(self.dest_bucket_base, run_id))
+        # Tell it to dump its messages to a file.
+        # TODO: automatically sync file names with accessors somehow.
+        workflow_options.append('--writeMessages=' + os.path.join(run.scratch_dir, 'bus_messages'))
 
         logger.info(f"Putting workflow {run_id} into the queue. Waiting to be picked up...")
         run.queue_run(self.task_runner, request, options=workflow_options)

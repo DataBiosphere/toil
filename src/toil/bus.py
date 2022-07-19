@@ -26,6 +26,9 @@ from pubsub.core.listener import Listener
 
 logger = logging.getLogger( __name__ )
 
+# We define a bunch of named tuple message types.
+# These all need to be plain data: only hold ints, strings, etc.
+
 class JobIssuedMessage(NamedTuple):
     """
     Produced when a job is issued to run on the batch system.
@@ -69,7 +72,7 @@ class JobMissingMessage(NamedTuple):
     """
     # The job store ID of the job
     job_id: str
-    
+
 class QueueSizeMessage(NamedTuple):
     """
     Produced to describe the size of the queue of jobs issued but not yet
@@ -98,6 +101,61 @@ class ClusterDesiredSizeMessage(NamedTuple):
     # The number of them that the Toil autoscaler wants there to be
     desired_size: int
 
+# Then we define a serialization format.
+
+def message_to_bytes(message: NamedTuple) -> bytes:
+    """
+    Convert a plain-old-data named tuple into a byte string.
+    """
+    parts = []
+    for item in message:
+        item_type = type(item)
+        if item_type in [int, float, bool]:
+            parts.append(str(item).encode('utf-8'))
+        elif item_type == str:
+            parts.append(item.encode('unicode_escape'))
+        else:
+            # We haven't implemented this type yet.
+            raise RuntimeError(f"Cannot store message argument of type {item_type}: {item}")
+    return b'\t'.join(parts)
+
+
+# TODO: Messages have to be named tuple types.
+MessageType = TypeVar('MessageType')
+def bytes_to_message(message_type: Type[MessageType], data: bytes) -> MessageType:
+    """
+    Convert bytes from message_to_bytes back to a message of the given type.
+    """
+    parts = data.split('\t')
+
+    # Get a mapping from field name to type in the named tuple.
+    field_to_type: Dict[str, type] = getattr(message_type, '__annotations__', getattr(MessageType, '_field_types', None))
+    if field_to_type is None:
+        raise RuntimeError(f"Cannot get field types from {message_type}")
+    field_names: List[str] = getattr(message_type, '_fields')
+
+    if len(field_names) != len(parts):
+        raise RuntimeError(f"Cannot parse {field_types} from {parts}")
+
+    # Parse each part according to its type and put it in here
+    typed_parts = []
+
+    for name, part in zip(field_names, parts):
+        field_type = field_to_type[name]
+        if field_type in [int, float, bool]:
+            typed_parts.append(field_type(part.decode('utf-8')))
+        elif field_type == str:
+            # Decode, accounting for escape sequences
+            typed_parts.append(part.decode('unicode_escape'))
+        else:
+            raise RuntimeError(f"Cannot read message argument of type {field_type}")
+
+    # Build the parts back up into the named tuple.
+    return message_type(*typed_parts)
+
+
+
+
 class MessageBus:
     """
     Holds messages that should cause jobs to change their scheduling states.
@@ -116,13 +174,14 @@ class MessageBus:
     def __init__(self) -> None:
         # Each MessageBus has an independent PyPubSub instance
         self._pubsub = Publisher()
-        
-    def _type_to_name(self, message_type: type) -> str:
+
+    @classmethod
+    def _type_to_name(cls, message_type: type) -> str:
         """
         Convert a type to a name that can be a PyPubSub topic (all normal
         characters, hierarchically dotted).
         """
-        
+
         return '.'.join([message_type.__module__, message_type.__name__])
 
     # All our messages are NamedTuples, but NamedTuples don't actually inherit
@@ -154,7 +213,7 @@ class MessageBus:
             handler(message)
 
         # The docs says this returns the listener but really it seems to return
-        # a listener and something else. 
+        # a listener and something else.
         listener, _ = self._pubsub.subscribe(handler_wraper, topic)
         # Hide the handler function in the pubsub listener to keep it alive.
         # If it goes out of scope the subscription expires, and the pubsub
@@ -173,8 +232,7 @@ class MessageBus:
         # We call this private method, really we mean this to be module scope.
         connection._set_bus_and_message_types(self, wanted_types)
         return connection
-        
-        
+
     def outbox(self) -> 'MessageOutbox':
         """
         Get a connection object that only allows sending messages.
@@ -183,56 +241,102 @@ class MessageBus:
         connection._set_bus(self)
         return connection
 
+    def connect_output_file(self, file_path: str) -> Any:
+        """
+        Send copies of all messages to the given output file.
+
+        Returns opaque connection data which must be kept alive for the
+        connection to persist.
+        """
+
+        stream = open(file_path, 'wb')
+        def handler(topic_object=pub.AUTO_TOPIC, **message_data):
+            """
+            Log the message in the given message data, associated with the given topic.
+            """
+            # There should always be a "message"
+            assert len(message_data) == 1
+            assert 'message' in message_data
+            message = message_data['message']
+            topic = topic_object.getName()
+            stream.write(topic.encode('utf-8'))
+            stream.write('\t')
+            stream.write(message_to_bytes(message))
+            stream.write('\n')
+
     @classmethod
     def decode_bus_messages(cls, stream: IO[bytes], message_types: List[Type[MessageType]]) -> 'MessageInbox':
         """
         Get an inbox for all messages in the given log stream. Discard any
         trailing partial messages.
-        
+
         All messages in the stream will be in the inbox by the time it is
         returned; it only needs to be checked once.
         """
-        raise NotImplementedError()
-        return MessageInbox()
+
+        # We know all the message types we care about, so build the mapping from topic name to message type
+        name_to_type = {cls._type_to_name(t): t for t in message_types}
+
+        # We need an inbox to stuff
+        to_return = MessageInbox()
+        to_return._messages_by_type = {t: [] for t in message_types}
+
+        for line in stream:
+            if not line.endswith(b'\n'):
+                # Skip unterminated line
+                continue
+            # Drop the newline and split on first tab
+            parts = line[:-1].split(b'\t', 1)
+
+            # Get the type of the message
+            message_type = name_to_type[parts[0]]
+
+            # Decode the actual message
+            message = bytes_to_message(message_type, parts[1])
+
+            # Stuff it into the inbox
+            to_return._messages_by_type[message_type].append(message)
+
+        return to_return
 
 class MessageInbox:
     """
     A buffered connection to a message bus that lets us receive messages.
     Buffers incoming messages until you are ready for them.
     """
-    
+
     def __init__(self) -> None:
         """
         Make a disconnected inbox.
         """
-        
+
         super().__init__()
-        
+
         # This holds all the messages on the bus, organized by type.
         self._messages_by_type: Dict[type, List[Any]] = {}
         # This holds listeners for all the types, when we connect to a bus
         self._listeners_by_type: Dict[type, Listener] = {}
-        
+
         # We define a handler for messages
         def on_message(message: Any) -> None:
             self._messages_by_type[type(message)].append(message)
         self._handler = on_message
-        
+
     def _set_bus_and_message_types(self, bus: MessageBus, wanted_types: List[type]) -> None:
         """
         Connect to the given bus and collect the given message types.
-        
+
         We must not have connected to anything yet.
         """
-        
+
         for t in wanted_types:
             # or every kind of message we are subscribing to
-            
+
             # Make a quue for the messages
             self._messages_by_type[t] = []
             # Make and save a subscription
             self._listeners_by_type[t] = bus.subscribe(t, self._handler)
-            
+
     def count(self, message_type: type) -> int:
         """
         Get the number of pending messages of the given type.
@@ -298,22 +402,22 @@ class MessageOutbox:
     """
     A connection to a message bus that lets us publish messages.
     """
-    
+
     def __init__(self) -> None:
         """
         Make a disconnected outbox.
         """
         super().__init__()
         self._bus: Optional[MessageBus] = None
-    
+
     def _set_bus(self, bus: MessageBus) -> None:
         """
         Connect to the given bus.
-        
+
         We must not have connected to anything yet.
         """
         self._bus = bus
-        
+
     def publish(self, message: Any) -> None:
         """
         Publish the given message to the connected message bus.
@@ -323,7 +427,7 @@ class MessageOutbox:
         if self._bus is None:
             raise RuntimeError("Cannot send message when not connected to a bus")
         self._bus.publish(message)
-        
+
 class MessageBusConnection(MessageInbox, MessageOutbox):
     """
     A two-way connection to a message bus. Buffers incoming messages until you
@@ -335,18 +439,19 @@ class MessageBusConnection(MessageInbox, MessageOutbox):
         Make a MessageBusConnection that is not connected yet.
         """
         super().__init__()
-        
-    
+
+
     def _set_bus_and_message_types(self, bus: MessageBus, wanted_types: List[type]) -> None:
         """
         Connect to the given bus and collect the given message types.
-        
+
         We must not have connected to anything yet.
         """
-        
+
         # We need to call the two inherited connection methods
         super()._set_bus_and_message_types(bus, wanted_types)
         self._set_bus(bus)
 
 
-    
+
+

@@ -179,14 +179,17 @@ class Config:
         self.maxJobDuration: int = sys.maxsize
         self.rescueJobsFrequency: int = 60
 
-        # Misc
-        self.environment: Dict[str, str] = {}
-        self.disableChaining: bool = False
-        self.disableJobStoreChecksumVerification: bool = False
+        # Log management
         self.maxLogFileSize: int = 64000
         self.writeLogs = None
         self.writeLogsGzip = None
         self.writeLogsFromAllJobs: bool = False
+        self.write_messages: Optional[str] = None
+
+        # Misc
+        self.environment: Dict[str, str] = {}
+        self.disableChaining: bool = False
+        self.disableJobStoreChecksumVerification: bool = False
         self.sseKey: Optional[str] = None
         self.servicePollingInterval: int = 60
         self.useAsync: bool = True
@@ -374,23 +377,26 @@ class Config:
         set_option("doubleMem")
         set_option("maxJobDuration", int, iC(1))
         set_option("rescueJobsFrequency", int, iC(1))
+        
+        # Log management
+        set_option("maxLogFileSize", h2b, iC(1))
+        set_option("writeLogs")
+        set_option("writeLogsGzip")
+        set_option("writeLogsFromAllJobs")
+        set_option("write_messages")
+        
+        assert not (self.writeLogs and self.writeLogsGzip), \
+            "Cannot use both --writeLogs and --writeLogsGzip at the same time."
+        assert not self.writeLogsFromAllJobs or self.writeLogs or self.writeLogsGzip, \
+            "To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set."
 
         # Misc
         set_option("environment", parseSetEnv)
         set_option("disableChaining")
         set_option("disableJobStoreChecksumVerification")
-        set_option("maxLogFileSize", h2b, iC(1))
-        set_option("writeLogs")
-        set_option("writeLogsGzip")
-        set_option("writeLogsFromAllJobs")
         set_option("runCwlInternalJobsOnWorkers")
         set_option("statusWait", int)
         set_option("disableProgress")
-
-        assert not (self.writeLogs and self.writeLogsGzip), \
-            "Cannot use both --writeLogs and --writeLogsGzip at the same time."
-        assert not self.writeLogsFromAllJobs or self.writeLogs or self.writeLogsGzip, \
-            "To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set."
 
         def check_sse_key(sse_key: str) -> None:
             with open(sse_key) as f:
@@ -696,24 +702,38 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
                                   f"that is jobs which get lost by the batch system. Expert parameter.  "
                                   f"default={config.rescueJobsFrequency}")
 
-    # Debug options
-    debug_options = parser.add_argument_group(
-        title="Toil debug options.",
-        description="Debug options for finding problems or helping with testing."
+    # Log management options
+    log_options = parser.add_argument_group(
+        title="Toil log management options.",
+        description="Options for how Toil should manage its logs."
     )
-    debug_options.add_argument("--debugWorker", default=False, action="store_true",
-                               help="Experimental no forking mode for local debugging.  Specifically, workers "
-                                    "are not forked and stderr/stdout are not redirected to the log.")
-    debug_options.add_argument("--disableWorkerOutputCapture", default=False, action="store_true",
-                               help="Let worker output go to worker's standard out/error instead of per-job logs.")
-    debug_options.add_argument("--badWorker", dest="badWorker", default=None,
-                               help=f"For testing purposes randomly kill --badWorker proportion of jobs using "
-                                    f"SIGKILL.  default={config.badWorker}")
-    debug_options.add_argument("--badWorkerFailInterval", dest="badWorkerFailInterval", default=None,
-                               help=f"When killing the job pick uniformly within the interval from 0.0 to "
-                                    f"--badWorkerFailInterval seconds after the worker starts.  "
-                                    f"default={config.badWorkerFailInterval}")
-
+    log_options.add_argument("--maxLogFileSize", dest="maxLogFileSize", default=None,
+                             help=f"The maximum size of a job log file to keep (in bytes), log files larger than "
+                                  f"this will be truncated to the last X bytes. Setting this option to zero will "
+                                  f"prevent any truncation. Setting this option to a negative value will truncate "
+                                  f"from the beginning.  Default={bytes2human(config.maxLogFileSize)}")
+    log_options.add_argument("--writeLogs", dest="writeLogs", nargs='?', action='store', default=None,
+                             const=os.getcwd(),
+                             help="Write worker logs received by the leader into their own files at the specified "
+                                  "path. Any non-empty standard output and error from failed batch system jobs will "
+                                  "also be written into files at this path.  The current working directory will be "
+                                  "used if a path is not specified explicitly. Note: By default only the logs of "
+                                  "failed jobs are returned to leader. Set log level to 'debug' or enable "
+                                  "'--writeLogsFromAllJobs' to get logs back from successful jobs, and adjust "
+                                  "'maxLogFileSize' to control the truncation limit for worker logs.")
+    log_options.add_argument("--writeLogsGzip", dest="writeLogsGzip", nargs='?', action='store', default=None,
+                             const=os.getcwd(),
+                             help="Identical to --writeLogs except the logs files are gzipped on the leader.")
+    log_options.add_argument("--writeLogsFromAllJobs", dest="writeLogsFromAllJobs", action='store_true',
+                             default=False,
+                             help="Whether to write logs from all jobs (including the successful ones) without "
+                                  "necessarily setting the log level to 'debug'. Ensure that either --writeLogs "
+                                  "or --writeLogsGzip is set if enabling this option.")
+    log_options.add_argument("--writeMessages", dest="write_messages", default=None,
+                             help="File to send messages from the leader's message bus to.")
+    log_options.add_argument("--realTimeLogging", dest="realTimeLogging", action="store_true", default=False,
+                             help="Enable real-time logging from workers to leader")
+    
     # Misc options
     misc_options = parser.add_argument_group(
         title="Toil miscellaneous options.",
@@ -727,30 +747,6 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
                               help="Disables checksum verification for files transferred to/from the job store.  "
                                    "Checksum verification is a safety check to ensure the data is not corrupted "
                                    "during transfer. Currently only supported for non-streaming AWS files.")
-    misc_options.add_argument("--maxLogFileSize", dest="maxLogFileSize", default=None,
-                              help=f"The maximum size of a job log file to keep (in bytes), log files larger than "
-                                   f"this will be truncated to the last X bytes. Setting this option to zero will "
-                                   f"prevent any truncation. Setting this option to a negative value will truncate "
-                                   f"from the beginning.  Default={bytes2human(config.maxLogFileSize)}")
-    misc_options.add_argument("--writeLogs", dest="writeLogs", nargs='?', action='store', default=None,
-                              const=os.getcwd(),
-                              help="Write worker logs received by the leader into their own files at the specified "
-                                   "path. Any non-empty standard output and error from failed batch system jobs will "
-                                   "also be written into files at this path.  The current working directory will be "
-                                   "used if a path is not specified explicitly. Note: By default only the logs of "
-                                   "failed jobs are returned to leader. Set log level to 'debug' or enable "
-                                   "'--writeLogsFromAllJobs' to get logs back from successful jobs, and adjust "
-                                   "'maxLogFileSize' to control the truncation limit for worker logs.")
-    misc_options.add_argument("--writeLogsGzip", dest="writeLogsGzip", nargs='?', action='store', default=None,
-                              const=os.getcwd(),
-                              help="Identical to --writeLogs except the logs files are gzipped on the leader.")
-    misc_options.add_argument("--writeLogsFromAllJobs", dest="writeLogsFromAllJobs", action='store_true',
-                              default=False,
-                              help="Whether to write logs from all jobs (including the successful ones) without "
-                                   "necessarily setting the log level to 'debug'. Ensure that either --writeLogs "
-                                   "or --writeLogsGzip is set if enabling this option.")
-    misc_options.add_argument("--realTimeLogging", dest="realTimeLogging", action="store_true", default=False,
-                              help="Enable real-time logging from workers to leader")
     misc_options.add_argument("--sseKey", dest="sseKey", default=None,
                               help="Path to file containing 32 character key to be used for server-side encryption on "
                                    "awsJobStore or googleJobStore. SSE will not be used if this flag is not passed.")
@@ -771,6 +767,24 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
                               help="Seconds to wait between reports of running jobs.")
     misc_options.add_argument('--disableProgress', dest='disableProgress', action='store_true', default=False,
                               help="Disables the progress bar shown when standard error is a terminal.")
+
+    # Debug options
+    debug_options = parser.add_argument_group(
+        title="Toil debug options.",
+        description="Debug options for finding problems or helping with testing."
+    )
+    debug_options.add_argument("--debugWorker", default=False, action="store_true",
+                               help="Experimental no forking mode for local debugging.  Specifically, workers "
+                                    "are not forked and stderr/stdout are not redirected to the log.")
+    debug_options.add_argument("--disableWorkerOutputCapture", default=False, action="store_true",
+                               help="Let worker output go to worker's standard out/error instead of per-job logs.")
+    debug_options.add_argument("--badWorker", dest="badWorker", default=None,
+                               help=f"For testing purposes randomly kill --badWorker proportion of jobs using "
+                                    f"SIGKILL.  default={config.badWorker}")
+    debug_options.add_argument("--badWorkerFailInterval", dest="badWorkerFailInterval", default=None,
+                               help=f"When killing the job pick uniformly within the interval from 0.0 to "
+                                    f"--badWorkerFailInterval seconds after the worker starts.  "
+                                    f"default={config.badWorkerFailInterval}")
 
 
 def parseBool(val: str) -> bool:
