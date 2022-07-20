@@ -16,8 +16,9 @@ import logging
 import os
 import shutil
 import uuid
-from collections import Counter
+from collections import Counter, defaultdict
 from contextlib import contextmanager
+from dataclasses import dataclass
 from tempfile import NamedTemporaryFile
 from typing import Optional, List, Dict, Any, overload, Generator, TextIO, Tuple, Type, Union
 
@@ -27,7 +28,7 @@ from werkzeug.utils import redirect
 from werkzeug.wrappers.response import Response
 
 
-from toil.bus import JobUpdatedMessage, MessageBus
+from toil.bus import MessageBus, JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage, JobFailedMessage
 from toil.server.utils import WorkflowStateMachine, connect_to_workflow_state_store
 from toil.server.wes.abstract_backend import (WESBackend,
                                               handle_errors,
@@ -207,21 +208,41 @@ class ToilWorkflow:
         else:
             # Replay all the messages and work out what they mean for jobs.
 
-            # We track the state of jobs here, by ID
-            job_statuses: Dict[str, int] = {}
+            # We track the state and name of jobs here, by ID.
+            # We would use a list of two items but MyPy can't understand a lits
+            # of items of multiple types, so we need to define a new class.
+            @dataclass
+            class JobStatus:
+                """
+                Records the status of a job.
+                """
+                name: str
+                exit_code: int
+            
+            job_statuses: Dict[str, JobStatus] = defaultdict(lambda: JobStatus('', -1))
 
             with open(os.path.join(self.scratch_dir, path), 'rb') as log_stream:
                 # Read all the full, properly-terminated messages about job updates
-                for event in MessageBus.scan_bus_messages(log_stream, [JobUpdatedMessage]):
+                for event in MessageBus.scan_bus_messages(log_stream, [JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage, JobFailedMessage]):
                     # And for each of them
-                    logger.debug('Got message from workflow: %s', event)
+                    logger.info('Got message from workflow: %s', event)
                     
                     if isinstance(event, JobUpdatedMessage):
                         # Apply the latest return code from the job with this ID.
-                        job_statuses[event.job_id] = event.result_status
+                        job_statuses[event.job_id].exit_code = event.result_status
+                    elif isinstance(event, JobIssuedMessage):
+                        job_statuses[event.job_id].name = event.job_type
+                    elif isinstance(event, JobCompletedMessage):
+                        job_statuses[event.job_id].name = event.job_type
+                    elif isinstance(event, JobCompletedMessage):
+                        job_statuses[event.job_id].name = event.job_type
+                        if job_statuses[event.job_id].exit_code == 0:
+                            # Record the failure if we never got a failed exit code.
+                            job_statuses[event.job_id].exit_code = 1
 
             # Compose log objects from recovered job info.
-            logs: List[Dict[str, Union[str, int, None]]] = [{"name": job_id, "exit_code": job_status} for job_id, job_status in job_statuses.items()]
+            logs: List[Dict[str, Union[str, int, None]]] = [{"name": job_status.name, "exit_code": job_status.exit_code} for job_status in job_statuses.values()]
+            logger.info('Recovered task logs: %s', logs)
             return logs
             # TODO: times, log files, AWS Batch IDs if any, names from the workflow instead of IDs, commands
 

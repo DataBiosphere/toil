@@ -1776,8 +1776,55 @@ def remove_empty_listings(rec: CWLObjectType) -> None:
         del rec["listing"]
         return
 
+class CWLBaseUserJob(Job):
+    """
+    Base class for all CWL jibs that do user work, to give them useful names.
+    """
+    
+    def __init__(self,
+                 cores: Union[float, None] = 1,
+                 memory: Union[int, str, None] = "1GiB",
+                 disk: Union[int, str, None] = "1MiB",
+                 tool_id: Optional[str] = None,
+                 parent_name: Optional[str] = None,
+                 subjob_name: Optional[str] = None) -> None:
+        """
+        Make a new job and set up its requirements and naming.
+        
+        :param tool_id: Full CWL tool ID for the job, if applicable.
+        :param parent_name: Shortened name of the parent CWL job, if applicable.
+        :param subjob_name: Name qualifier for when one CWL tool becomes multiple jobs.
+        """
+        
+        # Get the name of the class we are, as a final fallback or a name
+        # component.
+        class_name = self.__class__.__name__
+        
+        name_parts = []
+        
+        if parent_name is not None:
+            # Scope to parent
+            name_parts.append(parent_name)
+        if tool_id is not None:
+            # Start with the short name of the tool
+            name_parts.append(shortname(tool_id))
+        if subjob_name is not None:
+            # We aren't this whole thing, we're a sub-component
+            name_parts.append(subjob_name)
+        if tool_id is None and subjob_name is None:
+            # We need something. Put the class.
+            name_parts.append(class_name)
+            
+        # String together the hierarchical name
+        unit_name = ".".join(name_parts)
+        
+        # Display as that along with the class
+        display_name = f"{class_name} {unit_name}"
+        
+        # Set up the job with the right requirements and names.
+        super().__init__(cores=cores, memory=memory, disk=disk, unitName=unit_name, displayName=display_name)
 
-class ResolveIndirect(Job):
+class ResolveIndirect(CWLBaseUserJob):
     """
     Helper Job.
 
@@ -1785,9 +1832,9 @@ class ResolveIndirect(Job):
     of actual values.
     """
 
-    def __init__(self, cwljob: CWLObjectType):
+    def __init__(self, cwljob: CWLObjectType, parent_name: Optional[str] = None):
         """Store the dictionary of promises for later resolution."""
-        super().__init__(cores=1, memory="1GiB", disk="1MiB")
+        super().__init__(parent_name=parent_name, subjob_name="_resolve")
         self.cwljob = cwljob
 
     def run(self, file_store: AbstractFileStore) -> CWLObjectType:
@@ -1946,8 +1993,7 @@ def toilStageFiles(
 
     visit_class(cwljob, ("File", "Directory"), _check_adjust)
 
-
-class CWLJobWrapper(Job):
+class CWLJobWrapper(CWLBaseUserJob):
     """
     Wrap a CWL job that uses dynamic resources requirement.
 
@@ -1964,7 +2010,7 @@ class CWLJobWrapper(Job):
         conditional: Union[Conditional, None] = None,
     ):
         """Store our context for later evaluation."""
-        super().__init__(cores=1, memory="1GiB", disk="1MiB")
+        super().__init__(tool_id=tool.tool.get("id"), parent_name=parent_name, subjob_name="_wrapper")
         self.cwltool = remove_pickle_problems(tool)
         self.cwljob = cwljob
         self.runtime_context = runtime_context
@@ -1990,7 +2036,7 @@ class CWLJobWrapper(Job):
         return realjob.rv()
 
 
-class CWLJob(Job):
+class CWLJob(CWLBaseUserJob):
     """Execute a CWL tool using cwltool.executors.SingleJobExecutor."""
 
     def __init__(
@@ -1998,7 +2044,7 @@ class CWLJob(Job):
         tool: Process,
         cwljob: CWLObjectType,
         runtime_context: cwltool.context.RuntimeContext,
-        parent_name: Optional[str],
+        parent_name: Optional[str] = None,
         conditional: Union[Conditional, None] = None,
     ):
         """Store the context for later execution."""
@@ -2035,13 +2081,6 @@ class CWLJob(Job):
             )
 
         req = tool.evalResources(self.builder, runtime_context)
-        displayName = cast(str, self.cwltool.tool["id"])
-        # Make our job names more descriptive for HPC batch systems.
-        unitName = shortname(displayName)
-        if parent_name:
-            unitName = f"{parent_name}.{unitName}"
-        # Store the unitName for use to passing into runtime context before executing the tool
-        self.unitName = unitName
 
         super().__init__(
             cores=req["cores"],
@@ -2050,8 +2089,8 @@ class CWLJob(Job):
                 (cast(int, req["tmpdirSize"]) * (2 ** 20))
                 + (cast(int, req["outdirSize"]) * (2 ** 20))
             ),
-            unitName=unitName,
-            displayName=displayName,
+            tool_id=self.cwltool.tool["id"],
+            parent_name=parent_name
         )
 
         self.cwljob = cwljob
@@ -2205,7 +2244,7 @@ class CWLJob(Job):
 
         logger.debug("Running tool %s with order: %s", self.cwltool, self.cwljob)
 
-        runtime_context.name = self.unitName
+        runtime_context.name = self.description.unitName
         output, status = ToilSingleJobExecutor().execute(
             process=self.cwltool,
             job_order_object=cwljob,
@@ -2256,7 +2295,6 @@ def get_container_engine(runtime_context: cwltool.context.RuntimeContext) -> str
         return "singularity"
     return "docker"
 
-
 def makeJob(
     tool: Process,
     jobobj: CWLObjectType,
@@ -2284,9 +2322,10 @@ def makeJob(
             cast(cwltool.workflow.Workflow, tool),
             jobobj,
             runtime_context,
+            parent_name=parent_name,
             conditional=conditional,
         )
-        followOn = ResolveIndirect(wfjob.rv())
+        followOn = ResolveIndirect(wfjob.rv(), parent_name=wfjob.description.unitName)
         wfjob.addFollowOn(followOn)
         return wfjob, followOn
     else:
@@ -2313,7 +2352,7 @@ def makeJob(
                         conditional=conditional,
                     )
                     return job_wrapper, job_wrapper
-        job = CWLJob(tool, jobobj, runtime_context, parent_name, conditional)
+        job = CWLJob(tool, jobobj, runtime_context, parent_name=parent_name, conditional=conditional)
         return job, job
 
 
@@ -2576,7 +2615,7 @@ def remove_pickle_problems(obj: ProcessType) -> ProcessType:
     return obj
 
 
-class CWLWorkflow(Job):
+class CWLWorkflow(CWLBaseUserJob):
     """
     Toil Job to convert a CWL workflow graph into a Toil job graph.
 
@@ -2588,10 +2627,11 @@ class CWLWorkflow(Job):
         cwlwf: cwltool.workflow.Workflow,
         cwljob: CWLObjectType,
         runtime_context: cwltool.context.RuntimeContext,
+        parent_name: Optional[str] = None,
         conditional: Union[Conditional, None] = None,
     ):
         """Gather our context for later execution."""
-        super().__init__(cores=1, memory="1GiB", disk="1MiB")
+        super().__init__(tool_id=cwlwf.tool.get("id"), parent_name=parent_name)
         self.cwlwf = cwlwf
         self.cwljob = cwljob
         self.runtime_context = runtime_context

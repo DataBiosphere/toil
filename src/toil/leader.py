@@ -712,7 +712,7 @@ class Leader:
                     logger.warning("This indicates an unsupported CWL requirement!")
                     self.recommended_fail_exit_code = CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
             # Tell everyone it stopped running.
-            self._messages.publish(JobCompletedMessage(updatedJob.displayName, updatedJob.jobStoreID))
+            self._messages.publish(JobCompletedMessage(updatedJob.unitName, updatedJob.jobStoreID))
             self.processFinishedJob(bsID, exitStatus, wallTime=wallTime, exitReason=exitReason)
 
     def _processLostJobs(self):
@@ -917,7 +917,7 @@ class Leader:
                    jobNode, str(jobBatchSystemID), int(jobNode.cores),
                    bytes2human(jobNode.disk), bytes2human(jobNode.memory))
         # Tell everyone it is issued and the queue size changed
-        self._messages.publish(JobIssuedMessage(jobNode.displayName, jobNode.jobStoreID))
+        self._messages.publish(JobIssuedMessage(jobNode.unitName, jobNode.jobStoreID))
         self._messages.publish(QueueSizeMessage(self.getNumberOfJobsIssued()))
         # Tell the user there's another job to do
         self.progress_overall.total += 1
@@ -1277,7 +1277,7 @@ class Leader:
         job_desc = self.toilState.get_job(job_id)
 
         # Tell everyone it failed
-        self._messages.publish(JobFailedMessage(job_desc.displayName, job_id))
+        self._messages.publish(JobFailedMessage(job_desc.unitName, job_id))
 
         if job_id in self.toilState.service_to_client:
             # Is a service job

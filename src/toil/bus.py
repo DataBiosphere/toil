@@ -31,6 +31,7 @@ from typing import (
     Optional,
     Type,
     TypeVar,
+    Union,
     cast
 )
 
@@ -215,7 +216,7 @@ class MessageBus:
 
     # This next function takes callables that take things of the type that was passed in as a
     # runtime argument, which we can explain to MyPy using a TypeVar and Type[]
-    MessageType = TypeVar('MessageType')
+    MessageType = TypeVar('MessageType', bound='NamedTuple')
     def subscribe(self, message_type: Type[MessageType], handler: Callable[[MessageType], Any]) -> Listener:
         """
         Register the given callable to be called when messages of the given type are sent.
@@ -293,8 +294,16 @@ class MessageBus:
         return (handler, listener)
         
 
+    # TODO: If we annotate this as returning an Iterator[NamedTuple], MyPy
+    # complains when we loop over it that the loop variable is a <nothing>,
+    # ifen in code protected by isinstance(). Using a typevar makes it complain
+    # that we "need type annotation" for the loop variable, because it can't
+    # get it from the types in the (possibly empty?) list.
+    # TODO: Find a good way to annotate this as returning an iterator of a
+    # union of the types passed in message_types, in a way that MyPy can
+    # understand.
     @classmethod
-    def scan_bus_messages(cls, stream: IO[bytes], message_types: List[Type[MessageType]]) -> Iterator[MessageType]:
+    def scan_bus_messages(cls, stream: IO[bytes], message_types: List[Type[NamedTuple]]) -> Iterator[Any]:
         """
         Get an iterator over all messages in the given log stream of the given
         types, in order. Discard any trailing partial messages.
