@@ -44,6 +44,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
+from toil.bus import MessageBus, MessageOutbox, JobBatchAnnotationMessage
 from toil.common import Config, Toil
 from toil.job import JobDescription
 from toil.lib.aws import get_current_aws_region, zone_to_region
@@ -137,6 +138,10 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         self.aws_id_to_bs_id: Dict[str, int] = {}
         # We need to track if jobs were killed so they don't come out as updated
         self.killed_job_aws_ids: Set[str] = set()
+        
+        # We may need to annotate jobs with their AWS Batch IDs, in case
+        # somebody (like the WES server trying to talk to AGC) needs those.
+        self._outbox: Optional[MessageOutbox] = None
 
     def setUserScript(self, user_script: Resource) -> None:
         logger.debug('Setting user script for deployment: {}'.format(user_script))

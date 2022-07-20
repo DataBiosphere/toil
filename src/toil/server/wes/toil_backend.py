@@ -28,7 +28,7 @@ from werkzeug.utils import redirect
 from werkzeug.wrappers.response import Response
 
 
-from toil.bus import MessageBus, JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage, JobFailedMessage
+from toil.bus import MessageBus, JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage, JobFailedMessage, JobBatchAnnotationMessage
 from toil.server.utils import WorkflowStateMachine, connect_to_workflow_state_store
 from toil.server.wes.abstract_backend import (WESBackend,
                                               handle_errors,
@@ -48,7 +48,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 class ToilWorkflow:
-    def __init__(self, base_scratch_dir: str, state_store_url: str, run_id: str, ):
+    def __init__(self, base_scratch_dir: str, state_store_url: str, run_id: str):
         """
         Class to represent a Toil workflow. This class is responsible for
         launching workflow runs via Celery and retrieving data generated from
@@ -193,9 +193,11 @@ class ToilWorkflow:
         """
         return self._get_scratch_file_path('bus_messages')
 
-    def get_task_logs(self) -> List[Dict[str, Union[str, int, None]]]:
+    def get_task_logs(self, annotate_job_names: bool = False, no_annotation: str = "XXXXXX") -> List[Dict[str, Union[str, int, None]]]:
         """
         Return all the task log objects for the individual tasks in the workflow.
+        
+        :param annotate_job_names: set to True if you want job anmes to have annotations appended to them, or no_annotation if no annotation, separated by "|".
         """
 
         # First, find where we kept the message log from the workflow that we
@@ -218,12 +220,17 @@ class ToilWorkflow:
                 """
                 name: str
                 exit_code: int
+                annotation: Optional[str]
             
-            job_statuses: Dict[str, JobStatus] = defaultdict(lambda: JobStatus('', -1))
+            job_statuses: Dict[str, JobStatus] = defaultdict(lambda: JobStatus('', -1, None))
+            
+            message_types = [JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage, JobFailedMessage]
+            if annotate_job_names:
+                message_types.append(JobBatchAnnotationMessage)
 
             with open(os.path.join(self.scratch_dir, path), 'rb') as log_stream:
                 # Read all the full, properly-terminated messages about job updates
-                for event in MessageBus.scan_bus_messages(log_stream, [JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage, JobFailedMessage]):
+                for event in MessageBus.scan_bus_messages(log_stream, message_types):
                     # And for each of them
                     logger.info('Got message from workflow: %s', event)
                     
@@ -239,9 +246,17 @@ class ToilWorkflow:
                         if job_statuses[event.job_id].exit_code == 0:
                             # Record the failure if we never got a failed exit code.
                             job_statuses[event.job_id].exit_code = 1
+                    elif isinstance(event, JobBatchAnnotationMessage):
+                        job_statuses[event.job_id].annotation = event.annotation
 
             # Compose log objects from recovered job info.
-            logs: List[Dict[str, Union[str, int, None]]] = [{"name": job_status.name, "exit_code": job_status.exit_code} for job_status in job_statuses.values()]
+            logs: List[Dict[str, Union[str, int, None]]] = []
+            for job_status in job_statuses.values():
+                job_name = job_status.name
+                if annotate_job_names:
+                    annotation = job_status.annotation if job_status.annotation is not None else no_annotation
+                    job_name = f'{job_name}|{annotation}'
+                logs.append({"name": job_name, "exit_code": job_status.exit_code})
             logger.info('Recovered task logs: %s', logs)
             return logs
             # TODO: times, log files, AWS Batch IDs if any, names from the workflow instead of IDs, commands

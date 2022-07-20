@@ -88,6 +88,15 @@ class JobMissingMessage(NamedTuple):
     """
     # The job store ID of the job
     job_id: str
+    
+class JobBatchAnnotationMessage(NamedTuple):
+    """
+    Produced when the batch system has extra information that goes with a job.
+    """
+    # The job store ID of the job
+    job_id: str
+    # The annotation data
+    annotation: str
 
 class QueueSizeMessage(NamedTuple):
     """
