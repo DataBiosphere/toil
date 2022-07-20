@@ -1776,9 +1776,9 @@ def remove_empty_listings(rec: CWLObjectType) -> None:
         del rec["listing"]
         return
 
-class CWLBaseUserJob(Job):
+class CWLNamedJob(Job):
     """
-    Base class for all CWL jibs that do user work, to give them useful names.
+    Base class for all CWL jobs that do user work, to give them useful names.
     """
     
     def __init__(self,
@@ -1824,7 +1824,7 @@ class CWLBaseUserJob(Job):
         # Set up the job with the right requirements and names.
         super().__init__(cores=cores, memory=memory, disk=disk, unitName=unit_name, displayName=display_name)
 
-class ResolveIndirect(CWLBaseUserJob):
+class ResolveIndirect(CWLNamedJob):
     """
     Helper Job.
 
@@ -1993,7 +1993,7 @@ def toilStageFiles(
 
     visit_class(cwljob, ("File", "Directory"), _check_adjust)
 
-class CWLJobWrapper(CWLBaseUserJob):
+class CWLJobWrapper(CWLNamedJob):
     """
     Wrap a CWL job that uses dynamic resources requirement.
 
@@ -2036,7 +2036,7 @@ class CWLJobWrapper(CWLBaseUserJob):
         return realjob.rv()
 
 
-class CWLJob(CWLBaseUserJob):
+class CWLJob(CWLNamedJob):
     """Execute a CWL tool using cwltool.executors.SingleJobExecutor."""
 
     def __init__(
@@ -2615,7 +2615,7 @@ def remove_pickle_problems(obj: ProcessType) -> ProcessType:
     return obj
 
 
-class CWLWorkflow(CWLBaseUserJob):
+class CWLWorkflow(CWLNamedJob):
     """
     Toil Job to convert a CWL workflow graph into a Toil job graph.
 
