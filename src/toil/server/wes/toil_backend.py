@@ -113,15 +113,14 @@ class ToilWorkflow:
         """ Return the state of the current run."""
         return self.state_machine.get_current_state()
 
-    def check_on_run(self, task_runner: Type[TaskRunner]):
+    def check_on_run(self, task_runner: Type[TaskRunner]) -> None:
         """
         Check to make sure nothing has gone wrong in the task runner for this
-        workflow.
+        workflow. If something has, log, and fail the workflow with an error.
         """
         if not task_runner.is_ok(self.run_id) and self.get_state() not in ['SYSTEM_ERROR', 'EXECUTOR_ERROR', 'COMPLETE', 'CANCELED']:
             logger.error('Failing run %s because the task to run its leader crashed', self.run_id)
             self.state_machine.send_system_error()
-
 
     def set_up_run(self) -> None:
         """ Set up necessary directories for the run."""
@@ -213,16 +212,16 @@ class ToilWorkflow:
 
             with open(os.path.join(self.scratch_dir, path), 'rb') as log_stream:
                 # Read all the full, properly-terminated messages about job updates
-                inbox = MessageBus.decode_bus_messages(log_stream, [JobUpdatedMessage])
-                for event in inbox.for_each(JobUpdatedMessage):
+                for event in MessageBus.scan_bus_messages(log_stream, [JobUpdatedMessage]):
                     # And for each of them
                     logger.debug('Got message from workflow: %s', event)
-
-                    # Apply the latest return code from the job with this ID.
-                    job_statuses[event.job_id] = event.result_status
+                    
+                    if isinstance(event, JobUpdatedMessage):
+                        # Apply the latest return code from the job with this ID.
+                        job_statuses[event.job_id] = event.result_status
 
             # Compose log objects from recovered job info.
-            logs = [{"name": job_id, "exit_code": job_status} for job_id, job_status in job_statuses.items()]
+            logs: List[Dict[str, Union[str, int, None]]] = [{"name": job_id, "exit_code": job_status} for job_id, job_status in job_statuses.items()]
             return logs
             # TODO: times, log files, AWS Batch IDs if any, names from the workflow instead of IDs, commands
 

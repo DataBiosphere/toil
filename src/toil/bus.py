@@ -19,10 +19,24 @@ Message types and message bus for leader component coordination.
 import collections
 import inspect
 import logging
-from typing import Any, Callable, Dict, IO, Iterator, List, NamedTuple, Optional, Type, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    IO,
+    Iterator,
+    List,
+    Literal,
+    NamedTuple,
+    Optional,
+    Type,
+    TypeVar,
+    cast
+)
 
 from pubsub.core import Publisher
 from pubsub.core.listener import Listener
+from pubsub.core.topicobj import Topic
 from pubsub.core.topicutils import ALL_TOPICS
 
 logger = logging.getLogger( __name__ )
@@ -130,13 +144,17 @@ def bytes_to_message(message_type: Type[MessageType], data: bytes) -> MessageTyp
     parts = data.split(b'\t')
 
     # Get a mapping from field name to type in the named tuple.
-    field_to_type: Dict[str, type] = getattr(message_type, '__annotations__', getattr(MessageType, '_field_types', None))
+    # We need to check a couple different fields because this moved in a recent
+    # Python 3 release.
+    field_to_type: Optional[Dict[str, type]] = cast(Optional[Dict[str, type]], 
+                                                    getattr(message_type, '__annotations__', 
+                                                            getattr(message_type, '_field_types', None)))
     if field_to_type is None:
         raise RuntimeError(f"Cannot get field types from {message_type}")
     field_names: List[str] = getattr(message_type, '_fields')
 
     if len(field_names) != len(parts):
-        raise RuntimeError(f"Cannot parse {field_types} from {parts}")
+        raise RuntimeError(f"Cannot parse {field_names} from {parts}")
 
     # Parse each part according to its type and put it in here
     typed_parts = []
@@ -251,9 +269,12 @@ class MessageBus:
         """
 
         stream = open(file_path, 'wb')
-        def handler(topic_object=Listener.AUTO_TOPIC, **message_data):
+        
+        # Type of the ** is the value type of the dictionary; key type is always string.
+        def handler(topic_object: Topic = Listener.AUTO_TOPIC, **message_data: NamedTuple) -> None:
             """
-            Log the message in the given message data, associated with the given topic.
+            Log the message in the given message data, associated with the
+            given topic.
             """
             # There should always be a "message"
             assert len(message_data) == 1
@@ -273,21 +294,14 @@ class MessageBus:
         
 
     @classmethod
-    def decode_bus_messages(cls, stream: IO[bytes], message_types: List[Type[MessageType]]) -> 'MessageInbox':
+    def scan_bus_messages(cls, stream: IO[bytes], message_types: List[Type[MessageType]]) -> Iterator[MessageType]:
         """
-        Get an inbox for all messages in the given log stream. Discard any
-        trailing partial messages.
-
-        All messages in the stream will be in the inbox by the time it is
-        returned; it only needs to be checked once.
+        Get an iterator over all messages in the given log stream of the given
+        types, in order. Discard any trailing partial messages.
         """
 
         # We know all the message types we care about, so build the mapping from topic name to message type
         name_to_type = {cls._type_to_name(t): t for t in message_types}
-
-        # We need an inbox to stuff
-        to_return = MessageInbox()
-        to_return._messages_by_type = {t: [] for t in message_types}
 
         for line in stream:
             logger.debug('Got message: %s', line)
@@ -305,16 +319,15 @@ class MessageBus:
 
             # Decode the actual message
             message = bytes_to_message(message_type, parts[1])
-
-            # Stuff it into the inbox
-            to_return._messages_by_type[message_type].append(message)
-
-        return to_return
+            
+            # And produce it
+            yield message
 
 class MessageInbox:
     """
     A buffered connection to a message bus that lets us receive messages.
     Buffers incoming messages until you are ready for them.
+    Does not conserve ordering between messages of different types.
     """
 
     def __init__(self) -> None:

@@ -456,7 +456,7 @@ class TaskRunner:
         cancel_run(task_id)
 
     @staticmethod
-    def is_ok(task_id: str) -> None:
+    def is_ok(task_id: str) -> bool:
         """
         Make sure that the task running system is working for the given task.
         If the task system has detected an internal failure, return False.
