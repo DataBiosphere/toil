@@ -164,6 +164,9 @@ class Leader:
         # Connect to the message bus, so we will get all the messages of these
         # types in an inbox.
         self._messages = self.toilState.bus.connect([JobUpdatedMessage])
+        
+        # Connect the batch system to the bus so it can e.g. annotate jobs
+        batchSystem.set_message_bus(self.toilState.bus)
 
         # Load the jobs into the ToilState, now that we are able to receive any
         # resulting messages.

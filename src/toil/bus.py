@@ -89,14 +89,17 @@ class JobMissingMessage(NamedTuple):
     # The job store ID of the job
     job_id: str
     
-class JobBatchAnnotationMessage(NamedTuple):
+class JobAnnotationMessage(NamedTuple):
     """
-    Produced when the batch system has extra information that goes with a job.
+    Produced when extra information (such as an AWS Batch job ID from the
+    AWSBatchBatchSystem) is available that goes with a job.
     """
     # The job store ID of the job
     job_id: str
+    # The name of the annotation
+    annotation_name: str
     # The annotation data
-    annotation: str
+    annotation_value: str
 
 class QueueSizeMessage(NamedTuple):
     """

@@ -20,7 +20,7 @@ from collections import Counter, defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
 from tempfile import NamedTemporaryFile
-from typing import Optional, List, Dict, Any, overload, Generator, TextIO, Tuple, Type, Union
+from typing import Callable, Optional, List, Dict, Any, overload, Generator, TextIO, Tuple, Type, Union
 
 from flask import send_from_directory
 from flask.globals import request as flask_request
@@ -28,7 +28,7 @@ from werkzeug.utils import redirect
 from werkzeug.wrappers.response import Response
 
 
-from toil.bus import MessageBus, JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage, JobFailedMessage, JobBatchAnnotationMessage
+from toil.bus import MessageBus, JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage, JobFailedMessage, JobAnnotationMessage
 from toil.server.utils import WorkflowStateMachine, connect_to_workflow_state_store
 from toil.server.wes.abstract_backend import (WESBackend,
                                               handle_errors,
@@ -36,8 +36,10 @@ from toil.server.wes.abstract_backend import (WESBackend,
                                               WorkflowConflictException,
                                               VersionNotImplementedException,
                                               WorkflowExecutionException,
-                                              OperationForbidden)
+                                              OperationForbidden,
+                                              TaskLog)
 from toil.server.wes.tasks import TaskRunner, MultiprocessingTaskRunner
+import toil.server.wes.amazon_wes_utils as amazon_wes_utils
 
 from toil.lib.threading import global_mutex
 from toil.lib.io import AtomicFileCreate
@@ -45,7 +47,6 @@ from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-
 
 class ToilWorkflow:
     def __init__(self, base_scratch_dir: str, state_store_url: str, run_id: str):
@@ -193,11 +194,17 @@ class ToilWorkflow:
         """
         return self._get_scratch_file_path('bus_messages')
 
-    def get_task_logs(self, annotate_job_names: bool = False, no_annotation: str = "XXXXXX") -> List[Dict[str, Union[str, int, None]]]:
+    def get_task_logs(self, filter_function: Optional[Callable[[TaskLog, Dict[str, str]], Optional[TaskLog]]] = None) -> List[Dict[str, Union[str, int, None]]]:
         """
         Return all the task log objects for the individual tasks in the workflow.
-        
-        :param annotate_job_names: set to True if you want job anmes to have annotations appended to them, or no_annotation if no annotation, separated by "|".
+
+        Task names will be the job_type values from issued/completed/failed
+        messages, with annotations from JobAnnotationMessage messages if
+        available.
+
+        :param filter_function: If set, will be called with each task log and
+               its job annotations. Returns a modified copy of the task log to
+               actually report, or None if the task log should be omitted.
         """
 
         # First, find where we kept the message log from the workflow that we
@@ -220,20 +227,16 @@ class ToilWorkflow:
                 """
                 name: str
                 exit_code: int
-                annotation: Optional[str]
-            
-            job_statuses: Dict[str, JobStatus] = defaultdict(lambda: JobStatus('', -1, None))
-            
-            message_types = [JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage, JobFailedMessage]
-            if annotate_job_names:
-                message_types.append(JobBatchAnnotationMessage)
+                annotations: Dict[str, str]
+
+            job_statuses: Dict[str, JobStatus] = defaultdict(lambda: JobStatus('', -1, {}))
 
             with open(os.path.join(self.scratch_dir, path), 'rb') as log_stream:
                 # Read all the full, properly-terminated messages about job updates
-                for event in MessageBus.scan_bus_messages(log_stream, message_types):
+                for event in MessageBus.scan_bus_messages(log_stream, [JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage, JobFailedMessage, JobAnnotationMessage]):
                     # And for each of them
                     logger.info('Got message from workflow: %s', event)
-                    
+
                     if isinstance(event, JobUpdatedMessage):
                         # Apply the latest return code from the job with this ID.
                         job_statuses[event.job_id].exit_code = event.result_status
@@ -246,17 +249,21 @@ class ToilWorkflow:
                         if job_statuses[event.job_id].exit_code == 0:
                             # Record the failure if we never got a failed exit code.
                             job_statuses[event.job_id].exit_code = 1
-                    elif isinstance(event, JobBatchAnnotationMessage):
-                        job_statuses[event.job_id].annotation = event.annotation
+                    elif isinstance(event, JobAnnotationMessage):
+                        # Remember the last value of any annotation that is set
+                        job_statuses[event.job_id].annotations[event.annotation_name] = event.annotation_value
 
             # Compose log objects from recovered job info.
-            logs: List[Dict[str, Union[str, int, None]]] = []
+            logs: List[TaskLog] = []
             for job_status in job_statuses.values():
-                job_name = job_status.name
-                if annotate_job_names:
-                    annotation = job_status.annotation if job_status.annotation is not None else no_annotation
-                    job_name = f'{job_name}|{annotation}'
-                logs.append({"name": job_name, "exit_code": job_status.exit_code})
+                task: Optional[TaskLog] = {"name": job_status.name, "exit_code": job_status.exit_code}
+                if filter_function is not None:
+                    # Convince MyPy the task is set
+                    assert task is not None
+                    # Give the filter function hook a chance to modify or omit the task
+                    task = filter_function(task, job_status.annotations)
+                if task is not None:
+                    logs.append(task)
             logger.info('Recovered task logs: %s', logs)
             return logs
             # TODO: times, log files, AWS Batch IDs if any, names from the workflow instead of IDs, commands
@@ -272,7 +279,7 @@ class ToilBackend(WESBackend):
     """
 
     def __init__(self, work_dir: str, state_store: Optional[str], options: List[str],
-                 dest_bucket_base: Optional[str], bypass_celery: bool = False) -> None:
+                 dest_bucket_base: Optional[str], bypass_celery: bool = False, wes_dialect: str = "standard") -> None:
         """
         Make a new ToilBackend for serving WES.
 
@@ -289,6 +296,10 @@ class ToilBackend(WESBackend):
         :param bypass_celery: Can be set to True to bypass Celery and the
                message broker and invoke workflow-running tasks without them.
 
+        :param wes_dialect: Can be set to "agc" to emit WES responses that are
+               compatible with Amazon Genomics CLI's restricted subset of
+               acceptable WES responses. Requests are always accepted if
+               acceptable in any dialect.
         """
         for opt in options:
             if not opt.startswith('-'):
@@ -304,6 +315,10 @@ class ToilBackend(WESBackend):
 
         # Use this to run Celery tasks so we can swap it out for testing.
         self.task_runner = TaskRunner if not bypass_celery else MultiprocessingTaskRunner
+        
+        # Record if we need to limit our WES responses for a particular
+        # non-compliant consumer
+        self.wes_dialect = wes_dialect
 
         self.dest_bucket_base = dest_bucket_base
         self.work_dir = os.path.abspath(work_dir)
@@ -564,7 +579,14 @@ class ToilBackend(WESBackend):
 
         exit_code = run.fetch_state("exit_code")
 
-        task_logs = run.get_task_logs()
+        if self.wes_dialect == "agc":
+            # We need to emit a restricted subset of WES where tasks obey
+            # certain Amazon-defined rules.
+            filter_function = amazon_wes_utils.task_filter
+        else:
+            # We can emit any standard-compliant WES tasks
+            filter_function = None
+        task_logs = run.get_task_logs(filter_function=filter_function)
 
         output_obj = {}
         if state == "COMPLETE":

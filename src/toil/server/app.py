@@ -68,6 +68,10 @@ def parser_with_server_options() -> argparse.ArgumentParser:
     parser.add_argument("--dest_bucket_base", type=str, default=None,
                         help="Direct CWL workflows to save output files to dynamically generated "
                              "unique paths under the given URL. Supports AWS S3.")
+    parser.add_argument("--wes_dialect", type=str, default="standard", choices=["standard", "agc"],
+                        help="Restrict WES responses to a dialect compatible with clients that do not fully "
+                             "implement the WES standard. (default: 'standard')")
+    
     parser.add_argument("--version", action='version', version=version)
     return parser
 

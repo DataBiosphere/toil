@@ -31,6 +31,7 @@ from typing import (
     Union,
 )
 
+from toil.bus import MessageBus
 from toil.common import Config, Toil, cacheDirName
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -113,6 +114,18 @@ class AbstractBatchSystem(ABC):
                or module and the modules it depends on.
         """
         raise NotImplementedError()
+        
+    def set_message_bus(self, message_bus: MessageBus) -> None:
+        """
+        Give the batch system an opportunity to connect directly to the message
+        bus, so that it can send informational messages about the jobs it is
+        running to other Toil components.
+        
+        Currently the only message a batch system may send is
+        JobAnnotationMessage.
+        """
+        # By default, do nothing.
+        pass
 
     @abstractmethod
     def issueBatchJob(self, jobDesc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:

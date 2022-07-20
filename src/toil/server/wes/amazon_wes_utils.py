@@ -23,14 +23,14 @@ import os
 import sys
 import zipfile
 from os import path
-from typing import Any, Dict, IO, List, Optional
+from typing import Any, Dict, IO, List, Optional, Union, cast
 if sys.version_info >= (3, 8):
     from typing import TypedDict
 else:
     from typing_extensions import TypedDict
 from urllib.parse import urlparse, ParseResult
 
-from toil.server.wes.abstract_backend import MalformedRequestException as InvalidRequestError
+from toil.server.wes.abstract_backend import TaskLog, MalformedRequestException as InvalidRequestError
 
 # These functions are licensed under the same Apache 2.0 license as Toil is,
 # but they come from a repo with a NOTICE file, so we must preserve this notice
@@ -234,3 +234,26 @@ def workflow_manifest_url_to_path(url: ParseResult, parent_dir: Optional[str] = 
     if parent_dir:
         return path.join(parent_dir, relpath)
     return relpath
+
+def task_filter(task: TaskLog, annotations: Dict[str, str]) -> Optional[TaskLog]:
+    """
+    AGC requires task names to be annotated with an AWS Batch job ID that they
+    were run under. If it encounters an un-annotated task name, it will crash.
+    See <https://github.com/aws/amazon-genomics-cli/issues/494>.
+    
+    This encodes the AWSBatchJobID annotation, from the AmazonBatchBatchSystem,
+    into the task name of the givwn task, and returns the modified task. If no
+    such annotation is available, the task is censored and None is returned.
+    """
+    
+    try:
+        # Get the Batch ID for the task
+        batch_id = annotations["AWSBatchJobID"]
+    except KeyError:
+        # We can't add a Batch ID to this task, so hide it
+        return None
+        
+    modified_task = dict(task)
+    # Tack the batch ID onto the end of the name with the required separator
+    modified_task["name"] = "|".join([cast(str, modified_task.get("name", "")), batch_id])
+    return modified_task

@@ -5,13 +5,17 @@ import os
 import logging
 import tempfile
 from abc import abstractmethod
-from typing import Optional, List, Dict, Any, Tuple, Callable
+from typing import Optional, List, Dict, Any, Tuple, Union, Callable
 from urllib.parse import urldefrag
 
 import connexion  # type: ignore
 from werkzeug.utils import secure_filename
 
 logger = logging.getLogger(__name__)
+
+# Define a type for WES task log entries in responses
+# TODO: make this a typed dict with all the WES task log field names and their types.
+TaskLog = Dict[str, Union[str, int, None]]
 
 
 class VersionNotImplementedException(Exception):
