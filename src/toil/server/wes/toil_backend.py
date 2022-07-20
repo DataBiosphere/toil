@@ -315,7 +315,7 @@ class ToilBackend(WESBackend):
 
         # Use this to run Celery tasks so we can swap it out for testing.
         self.task_runner = TaskRunner if not bypass_celery else MultiprocessingTaskRunner
-        
+
         # Record if we need to limit our WES responses for a particular
         # non-compliant consumer
         self.wes_dialect = wes_dialect

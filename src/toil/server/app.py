@@ -71,7 +71,7 @@ def parser_with_server_options() -> argparse.ArgumentParser:
     parser.add_argument("--wes_dialect", type=str, default="standard", choices=["standard", "agc"],
                         help="Restrict WES responses to a dialect compatible with clients that do not fully "
                              "implement the WES standard. (default: 'standard')")
-    
+
     parser.add_argument("--version", action='version', version=version)
     return parser
 
@@ -111,7 +111,7 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
         flask_app.app.add_url_rule("/engine/v1/status", view_func=backend.get_health)
         # And we can provide lost humans some information on what they are looking at
         flask_app.app.add_url_rule("/", view_func=backend.get_homepage)
-        
+
     return flask_app
 
 

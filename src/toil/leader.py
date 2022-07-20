@@ -150,21 +150,21 @@ class Leader:
         # The job store
         self.jobStore = jobStore
         self.jobStoreLocator = config.jobStore
-        
+
         # The ToilState will be the authority on the current state of the jobs
         # in the jobStore, and its bus is the one true place to listen for
         # state change information about jobs.
         self.toilState = ToilState(self.jobStore)
-        
+
         if self.config.write_messages is not None:
             # Message bus messages need to go to the given file.
             # Keep a reference to the return value so the listener stays alive.
             self._message_subscription = self.toilState.bus.connect_output_file(self.config.write_messages)
-        
+
         # Connect to the message bus, so we will get all the messages of these
         # types in an inbox.
         self._messages = self.toilState.bus.connect([JobUpdatedMessage])
-        
+
         # Connect the batch system to the bus so it can e.g. annotate jobs
         batchSystem.set_message_bus(self.toilState.bus)
 

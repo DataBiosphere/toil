@@ -240,19 +240,19 @@ def task_filter(task: TaskLog, annotations: Dict[str, str]) -> Optional[TaskLog]
     AGC requires task names to be annotated with an AWS Batch job ID that they
     were run under. If it encounters an un-annotated task name, it will crash.
     See <https://github.com/aws/amazon-genomics-cli/issues/494>.
-    
+
     This encodes the AWSBatchJobID annotation, from the AmazonBatchBatchSystem,
     into the task name of the givwn task, and returns the modified task. If no
     such annotation is available, the task is censored and None is returned.
     """
-    
+
     try:
         # Get the Batch ID for the task
         batch_id = annotations["AWSBatchJobID"]
     except KeyError:
         # We can't add a Batch ID to this task, so hide it
         return None
-        
+
     modified_task = dict(task)
     # Tack the batch ID onto the end of the name with the required separator
     modified_task["name"] = "|".join([cast(str, modified_task.get("name", "")), batch_id])

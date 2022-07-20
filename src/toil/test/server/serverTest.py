@@ -181,7 +181,7 @@ class BucketUsingTest(ToilTest):
     """
     Base class for tests that need a bucket.
     """
-    
+
     try:
         # We need the class to be evaluateable without the AWS modules, if not
         # runnable
@@ -326,7 +326,7 @@ class AbstractToilWESServerTest(ToilTest):
 
     def tearDown(self) -> None:
         super().tearDown()
-    
+
     def _fetch_run_log(self, client: "FlaskClient", run_id: str) -> TestResponse:
         """
         Fetch the run log for a given workflow.
@@ -335,7 +335,7 @@ class AbstractToilWESServerTest(ToilTest):
         self.assertEqual(rv.status_code, 200)
         self.assertTrue(rv.is_json)
         return rv
-        
+
     def _check_successful_log(self, client: "FlaskClient", run_id: str) -> None:
         """
         Make sure the run log for the given run is generated correctly.
@@ -359,7 +359,7 @@ class AbstractToilWESServerTest(ToilTest):
             # All the tasks succeeded
             self.assertEqual(type(task_log), dict)
             self.assertEqual(task_log.get("exit_code"), 0)
-        
+
     def _report_log(self, client: "FlaskClient", run_id: str) -> None:
         """
         Report the log for the given workflow run.

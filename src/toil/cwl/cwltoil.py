@@ -1780,7 +1780,7 @@ class CWLNamedJob(Job):
     """
     Base class for all CWL jobs that do user work, to give them useful names.
     """
-    
+
     def __init__(self,
                  cores: Union[float, None] = 1,
                  memory: Union[int, str, None] = "1GiB",
@@ -1790,18 +1790,18 @@ class CWLNamedJob(Job):
                  subjob_name: Optional[str] = None) -> None:
         """
         Make a new job and set up its requirements and naming.
-        
+
         :param tool_id: Full CWL tool ID for the job, if applicable.
         :param parent_name: Shortened name of the parent CWL job, if applicable.
         :param subjob_name: Name qualifier for when one CWL tool becomes multiple jobs.
         """
-        
+
         # Get the name of the class we are, as a final fallback or a name
         # component.
         class_name = self.__class__.__name__
-        
+
         name_parts = []
-        
+
         if parent_name is not None:
             # Scope to parent
             name_parts.append(parent_name)
@@ -1814,13 +1814,13 @@ class CWLNamedJob(Job):
         if tool_id is None and subjob_name is None:
             # We need something. Put the class.
             name_parts.append(class_name)
-            
+
         # String together the hierarchical name
         unit_name = ".".join(name_parts)
-        
+
         # Display as that along with the class
         display_name = f"{class_name} {unit_name}"
-        
+
         # Set up the job with the right requirements and names.
         super().__init__(cores=cores, memory=memory, disk=disk, unitName=unit_name, displayName=display_name)
 

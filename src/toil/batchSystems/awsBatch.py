@@ -138,7 +138,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         self.aws_id_to_bs_id: Dict[str, int] = {}
         # We need to track if jobs were killed so they don't come out as updated
         self.killed_job_aws_ids: Set[str] = set()
-        
+
         # We may need to annotate jobs with their AWS Batch IDs, in case
         # somebody (like the WES server trying to talk to AGC) needs those.
         self._outbox: Optional[MessageOutbox] = None
@@ -146,13 +146,13 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
     def setUserScript(self, user_script: Resource) -> None:
         logger.debug('Setting user script for deployment: {}'.format(user_script))
         self.user_script = user_script
-        
+
     def set_message_bus(self, message_bus: MessageBus) -> None:
         """
         Give the batch system an opportunity to connect directly to the message
         bus, so that it can send informational messages about the jobs it is
         running to other Toil components.
-        
+
         Currently the only message a batch system may send is
         JobAnnotationMessage.
         """
@@ -217,7 +217,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             # Tie it to the numeric ID
             self.bs_id_to_aws_id[bs_id] = aws_id
             self.aws_id_to_bs_id[aws_id] = bs_id
-            
+
             if self._outbox is not None:
                 # Annotate the job with the AWS Batch job ID it got.
                 self._outbox.publish(JobAnnotationMessage(str(job_desc.jobStoreID), "AWSBatchJobID", aws_id))

@@ -114,13 +114,13 @@ class AbstractBatchSystem(ABC):
                or module and the modules it depends on.
         """
         raise NotImplementedError()
-        
+
     def set_message_bus(self, message_bus: MessageBus) -> None:
         """
         Give the batch system an opportunity to connect directly to the message
         bus, so that it can send informational messages about the jobs it is
         running to other Toil components.
-        
+
         Currently the only message a batch system may send is
         JobAnnotationMessage.
         """

@@ -88,7 +88,7 @@ class JobMissingMessage(NamedTuple):
     """
     # The job store ID of the job
     job_id: str
-    
+
 class JobAnnotationMessage(NamedTuple):
     """
     Produced when extra information (such as an AWS Batch job ID from the
@@ -159,8 +159,8 @@ def bytes_to_message(message_type: Type[MessageType], data: bytes) -> MessageTyp
     # Get a mapping from field name to type in the named tuple.
     # We need to check a couple different fields because this moved in a recent
     # Python 3 release.
-    field_to_type: Optional[Dict[str, type]] = cast(Optional[Dict[str, type]], 
-                                                    getattr(message_type, '__annotations__', 
+    field_to_type: Optional[Dict[str, type]] = cast(Optional[Dict[str, type]],
+                                                    getattr(message_type, '__annotations__',
                                                             getattr(message_type, '_field_types', None)))
     if field_to_type is None:
         raise RuntimeError(f"Cannot get field types from {message_type}")
@@ -282,7 +282,7 @@ class MessageBus:
         """
 
         stream = open(file_path, 'wb')
-        
+
         # Type of the ** is the value type of the dictionary; key type is always string.
         def handler(topic_object: Topic = Listener.AUTO_TOPIC, **message_data: NamedTuple) -> None:
             """
@@ -298,13 +298,13 @@ class MessageBus:
             stream.write(b'\t')
             stream.write(message_to_bytes(message))
             stream.write(b'\n')
-        
+
         listener, _ = self._pubsub.subscribe(handler, ALL_TOPICS)
-        
+
         # To keep this alive, we need to keep the handler alive, and we might
         # want the pypubsub Listener.
         return (handler, listener)
-        
+
 
     # TODO: If we annotate this as returning an Iterator[NamedTuple], MyPy
     # complains when we loop over it that the loop variable is a <nothing>,
@@ -340,7 +340,7 @@ class MessageBus:
 
             # Decode the actual message
             message = bytes_to_message(message_type, parts[1])
-            
+
             # And produce it
             yield message
 
