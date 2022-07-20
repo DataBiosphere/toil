@@ -407,8 +407,6 @@ def run_wes_task(base_scratch_dir: str, state_store_url: str, workflow_id: str, 
 
     logger.info("Starting WES workflow")
 
-    raise RuntimeError("Boom")
-
     runner = ToilWorkflowRunner(base_scratch_dir, state_store_url, workflow_id,
                                 request=request, engine_options=engine_options)
 
@@ -499,20 +497,22 @@ class MultiprocessingTaskRunner(TaskRunner):
         """
 
         # Multiprocessing and the server manage to hide actual task output from
-        # the tests. And replacing sys.stdout and sys.stderr don't seem to work
-        # to collect tracebacks. So we make sure to configure logging in the
-        # multiprocessing process and log to a file that we were told about, so
-        # the server can come get the log if we unexpectedly die.
-
-        logging.basicConfig(level=logging.DEBUG)
+        # the tests. Logging messages will appear in pytest's "live" log but
+        # not in the captured log. And replacing sys.stdout and sys.stderr
+        # don't seem to work to collect tracebacks. So we make sure to
+        # configure logging in the multiprocessing process and log to a file
+        # that we were told about, so the server can come get the log if we
+        # unexpectedly die.
 
         output_file = open(output_path, 'w')
         output_file.write('Initializing task log\n')
         output_file.flush()
 
-        # Take over logging
+        # Take over logging.
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.DEBUG)
         handler = logging.StreamHandler(output_file)
-        logging.getLogger().addHandler(handler)
+        root_logger.addHandler(handler)
 
         try:
             logger.info('Running task')
@@ -538,6 +538,7 @@ class MultiprocessingTaskRunner(TaskRunner):
         # We need to send the child process's output somewhere or it will get lost during testing
         fd, path = tempfile.mkstemp()
         os.close(fd)
+        # Store the log filename before the process, like is_ok() expects.
         cls._id_to_log[task_id] = path
 
         logger.info("Starting task %s in a process that should log to %s", task_id, path)
@@ -565,6 +566,7 @@ class MultiprocessingTaskRunner(TaskRunner):
 
         process = cls._id_to_process.get(task_id)
         if process is None:
+            # Never heard of this task, so it's not broken.
             return True
 
         if process.exitcode is not None and process.exitcode != 0:
