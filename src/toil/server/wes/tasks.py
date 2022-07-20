@@ -401,9 +401,13 @@ def run_wes_task(base_scratch_dir: str, state_store_url: str, workflow_id: str, 
     :param state_store_url: URL/path at which the server and Celery task communicate about workflow state.
 
     :param workflow_id: ID of the workflow run.
+
+    :returns: the state of the workflow run.
     """
 
     logger.info("Starting WES workflow")
+
+    raise RuntimeError("Boom")
 
     runner = ToilWorkflowRunner(base_scratch_dir, state_store_url, workflow_id,
                                 request=request, engine_options=engine_options)
@@ -475,6 +479,10 @@ class TaskRunner:
 class MultiprocessingTaskRunner(TaskRunner):
     """
     Version of TaskRunner that just runs tasks with Multiprocessing.
+
+    Can't use threading because there's no way to send a cancel signal or
+    exception to a Python thread, if loops in the task (i.e.
+    ToilWorkflowRunner) don't poll for it.
     """
 
     _id_to_process: Dict[str, multiprocessing.Process] = {}
@@ -483,7 +491,11 @@ class MultiprocessingTaskRunner(TaskRunner):
     @staticmethod
     def set_up_and_run_task(output_path: str, args: Tuple[str, str, str, Dict[str, Any], List[str]]) -> None:
         """
-        Set up IO for the child process and then call run_wes_task.
+        Set up logging for the process into the given file and then call
+        run_wes_task with the given arguments.
+
+        If the process finishes successfully, it will clean up the log, but if
+        the process crashes, the caller must clean up the log.
         """
 
         # Multiprocessing and the server manage to hide actual task output from
@@ -495,7 +507,7 @@ class MultiprocessingTaskRunner(TaskRunner):
         logging.basicConfig(level=logging.DEBUG)
 
         output_file = open(output_path, 'w')
-        output_file.write('Initializing task log.\n')
+        output_file.write('Initializing task log\n')
         output_file.flush()
 
         # Take over logging
@@ -503,16 +515,17 @@ class MultiprocessingTaskRunner(TaskRunner):
         logging.getLogger().addHandler(handler)
 
         try:
-            logger.info('Log messages captured')
-
-            output_file.write('Running task.\n')
+            logger.info('Running task')
             output_file.flush()
             run_wes_task(*args)
         except Exception:
             logger.exception('Exception in task!')
             raise
+        else:
+            # If the task does not crash, clean up the log
+            os.unlink(output_path)
         finally:
-            output_file.write('Finishing task log.\n')
+            logger.debug('Finishing task log')
             output_file.flush()
             output_file.close()
 
@@ -528,7 +541,7 @@ class MultiprocessingTaskRunner(TaskRunner):
         cls._id_to_log[task_id] = path
 
         logger.info("Starting task %s in a process that should log to %s", task_id, path)
-    
+
         cls._id_to_process[task_id] = multiprocessing.Process(target=cls.set_up_and_run_task, args=(path, args))
         cls._id_to_process[task_id].start()
 
@@ -549,27 +562,25 @@ class MultiprocessingTaskRunner(TaskRunner):
         Make sure that the task running system is working for the given task.
         If the task system has detected an internal failure, return False.
         """
-        
+
         process = cls._id_to_process.get(task_id)
         if process is None:
             return True
 
-        if process.exitcode is not None:
-            if process.exitcode != 0:
-                # Something went wring in the task and it couldn't handle it.
-                logger.error("Process for running %s failed with code %s", task_id, process.exitcode)
+        if process.exitcode is not None and process.exitcode != 0:
+            # Something went wring in the task and it couldn't handle it.
+            logger.error("Process for running %s failed with code %s", task_id, process.exitcode)
+            try:
                 for line in open(cls._id_to_log[task_id]):
-                    logger.error("Task says: %s", line.rstrip())
-                return False
-            else:
-                # The task finished
-                if os.path.exists(cls._id_to_log[task_id]):
-                    for line in open(cls._id_to_log[task_id]):
-                        logger.info("Task says: %s", line.rstrip())
-                    # Clean up the log
-                    logger.debug("Cleaning up task log %s", cls._id_to_log[task_id])
-                    # TODO: handle racing deletes
-                    os.unlink(cls._id_to_log[task_id])
+                    # Dump the task log
+                    logger.error("Task said: %s", line.rstrip())
+                # Remove the task log because it is no longer needed
+                os.unlink(cls._id_to_log[task_id])
+            except FileNotFoundError:
+                # Log is already gone
+                pass
+            return False
 
         return True
-                
+
+
