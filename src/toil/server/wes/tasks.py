@@ -347,14 +347,6 @@ class ToilWorkflowRunner:
 
         logger.info('Toil child finished with code %s', exit_code)
 
-        if exit_code != 0:
-            logger.error('Reporting Toil stdout %s of size %s', os.path.abspath(os.path.join(self.scratch_dir, "stdout")), os.path.getsize(os.path.join(self.scratch_dir, "stdout")))
-            for line in open(os.path.join(self.scratch_dir, "stdout")):
-                logger.error('Toil says: %s', line.rstrip())
-            logger.error('Reporting Toil stderr %s of size %s', os.path.abspath(os.path.join(self.scratch_dir, "stderr")), os.path.getsize(os.path.join(self.scratch_dir, "stderr")))
-            for line in open(os.path.join(self.scratch_dir, "stderr")):
-                logger.info('Toil says: %s', line.rstrip())
-
         if exit_code == 0:
             self.state_machine.send_complete()
         # non-zero exit code indicates failure

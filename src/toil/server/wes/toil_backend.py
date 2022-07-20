@@ -598,7 +598,6 @@ class ToilBackend(WESBackend):
             # There's no log right now
             raise FileNotFoundError()
         else:
-            logger.debug('Sending stdout file %s of size %s', os.path.abspath(os.path.join(run.scratch_dir, path)), os.path.getsize(os.path.join(run.scratch_dir, path)))
             return send_from_directory(run.scratch_dir, path, mimetype="text/plain")
 
     @handle_errors
@@ -612,7 +611,6 @@ class ToilBackend(WESBackend):
             # There's no log right now
             raise FileNotFoundError()
         else:
-            logger.debug('Sending stderr file %s of size %s', os.path.abspath(os.path.join(run.scratch_dir, path)), os.path.getsize(os.path.join(run.scratch_dir, path)))
             return send_from_directory(run.scratch_dir, path, mimetype="text/plain")
 
     @handle_errors
