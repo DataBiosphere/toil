@@ -23,6 +23,7 @@ from typing import Any, Callable, Dict, IO, Iterator, List, NamedTuple, Optional
 
 from pubsub.core import Publisher
 from pubsub.core.listener import Listener
+from pubsub.core.topicutils import ALL_TOPICS
 
 logger = logging.getLogger( __name__ )
 
@@ -126,7 +127,7 @@ def bytes_to_message(message_type: Type[MessageType], data: bytes) -> MessageTyp
     """
     Convert bytes from message_to_bytes back to a message of the given type.
     """
-    parts = data.split('\t')
+    parts = data.split(b'\t')
 
     # Get a mapping from field name to type in the named tuple.
     field_to_type: Dict[str, type] = getattr(message_type, '__annotations__', getattr(MessageType, '_field_types', None))
@@ -250,7 +251,7 @@ class MessageBus:
         """
 
         stream = open(file_path, 'wb')
-        def handler(topic_object=pub.AUTO_TOPIC, **message_data):
+        def handler(topic_object=Listener.AUTO_TOPIC, **message_data):
             """
             Log the message in the given message data, associated with the given topic.
             """
@@ -260,9 +261,16 @@ class MessageBus:
             message = message_data['message']
             topic = topic_object.getName()
             stream.write(topic.encode('utf-8'))
-            stream.write('\t')
+            stream.write(b'\t')
             stream.write(message_to_bytes(message))
-            stream.write('\n')
+            stream.write(b'\n')
+        
+        listener, _ = self._pubsub.subscribe(handler, ALL_TOPICS)
+        
+        # To keep this alive, we need to keep the handler alive, and we might
+        # want the pypubsub Listener.
+        return (handler, listener)
+        
 
     @classmethod
     def decode_bus_messages(cls, stream: IO[bytes], message_types: List[Type[MessageType]]) -> 'MessageInbox':
@@ -282,6 +290,7 @@ class MessageBus:
         to_return._messages_by_type = {t: [] for t in message_types}
 
         for line in stream:
+            logger.debug('Got message: %s', line)
             if not line.endswith(b'\n'):
                 # Skip unterminated line
                 continue
@@ -289,7 +298,10 @@ class MessageBus:
             parts = line[:-1].split(b'\t', 1)
 
             # Get the type of the message
-            message_type = name_to_type[parts[0]]
+            message_type = name_to_type.get(parts[0].decode('utf-8'))
+            if message_type is None:
+                # We aren't interested in this kind of message.
+                continue
 
             # Decode the actual message
             message = bytes_to_message(message_type, parts[1])

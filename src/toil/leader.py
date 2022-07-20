@@ -158,7 +158,8 @@ class Leader:
         
         if self.config.write_messages is not None:
             # Message bus messages need to go to the given file.
-            self.toilState.bus.connect_output_file(self.config.write_messages)
+            # Keep a reference to the return value so the listener stays alive.
+            self._message_subscription = self.toilState.bus.connect_output_file(self.config.write_messages)
         
         # Connect to the message bus, so we will get all the messages of these
         # types in an inbox.

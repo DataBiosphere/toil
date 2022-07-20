@@ -342,6 +342,7 @@ class AbstractToilWESServerTest(ToilTest):
         The workflow should succeed, it should have some tasks, and they should have all succeeded.
         """
         rv = self._fetch_run_log(client, run_id)
+        logger.debug('Log info: %s', rv.json)
         self.assertIn("run_log", rv.json)
         run_log = rv.json.get("run_log")
         self.assertEqual(type(run_log), dict)
@@ -349,7 +350,7 @@ class AbstractToilWESServerTest(ToilTest):
             # The workflow succeeded if it has an exit code
             self.assertEqual(run_log["exit_code"], 0)
         # The workflow is complete
-        self.assertEqual(rv.json.get("status"), "COMPLETE")
+        self.assertEqual(rv.json.get("state"), "COMPLETE")
         task_logs = rv.json.get("task_logs")
         # There are tasks reported
         self.assertEqual(type(task_logs), list)

@@ -185,7 +185,7 @@ class ToilWorkflow:
         scratch_dir, or None if it doesn't exist.
         """
         return self._get_scratch_file_path('stderr')
-        
+
     def get_messages_path(self) -> Optional[str]:
         """
         Return the path to the bus message log, relative to the run's
@@ -216,12 +216,14 @@ class ToilWorkflow:
                 inbox = MessageBus.decode_bus_messages(log_stream, [JobUpdatedMessage])
                 for event in inbox.for_each(JobUpdatedMessage):
                     # And for each of them
+                    logger.debug('Got message from workflow: %s', event)
+
                     # Apply the latest return code from the job with this ID.
                     job_statuses[event.job_id] = event.result_status
 
             # Compose log objects from recovered job info.
-            return [{"name": job_id, "exit_code": job_status} for job_id, job_status in job_statuses.items()]
-            # TODO: use sqlite or something instead???
+            logs = [{"name": job_id, "exit_code": job_status} for job_id, job_status in job_statuses.items()]
+            return logs
             # TODO: times, log files, AWS Batch IDs if any, names from the workflow instead of IDs, commands
 
 
