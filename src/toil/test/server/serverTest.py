@@ -327,7 +327,7 @@ class AbstractToilWESServerTest(ToilTest):
     def tearDown(self) -> None:
         super().tearDown()
 
-    def _fetch_run_log(self, client: "FlaskClient", run_id: str) -> TestResponse:
+    def _fetch_run_log(self, client: "FlaskClient", run_id: str) -> "TestResponse":
         """
         Fetch the run log for a given workflow.
         """
