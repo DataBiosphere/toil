@@ -19,6 +19,7 @@ Message types and message bus for leader component coordination.
 import collections
 import inspect
 import logging
+import sys
 from typing import (
     Any,
     Callable,
@@ -26,7 +27,6 @@ from typing import (
     IO,
     Iterator,
     List,
-    Literal,
     NamedTuple,
     Optional,
     Type,
