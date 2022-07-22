@@ -191,8 +191,9 @@ class ToilWorkflowRunner:
         to be executed. Return that list of shell commands that should be
         executed in order to complete this workflow run.
         """
-        # Obtain CWL-style workflow parameters from the request.
-        workflow_params = self.request["workflow_params"]
+        # Obtain CWL-style workflow parameters from the request. Default to an
+        # empty dict if not found, because we want to tolerate omitting this.
+        workflow_params = self.request.get("workflow_params", {})
 
         # And any workflow engine parameters the user specified.
         workflow_engine_parameters = self.request.get("workflow_engine_parameters", {})
