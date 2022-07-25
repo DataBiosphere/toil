@@ -111,29 +111,10 @@ def test_dummy_perms() -> bool:
     print("Success")
     return True
 
-
-def get_allowed_actions(zone: str) -> Dict[str, List[str]]:
-    """
-    Returns a list of all allowed actions in a dictionary which is keyed by resource permissions
-    are allowed upon.
-    """
-
-    aws = AWSConnectionManager()
-    region = zone
-    iam: IAMClient = cast(IAMClient, aws.client(region, 'iam'))
-    response = iam.get_instance_profile(InstanceProfileName="fakename_toil")
-    role_name = response['InstanceProfile']['Roles'][0]['RoleName']
-    list_policies = iam.list_role_policies(RoleName=role_name)
-    account_num = get_aws_account_num()
-    str_arn = f"arn:aws:iam::{account_num}:role/{role_name}"
-    role_name = response['InstanceProfile']['Roles'][0]['RoleName']
-    list_policies = iam.list_role_policies(RoleName=role_name)
-    account_num = boto3.client('sts').get_caller_identity().get('Account')
+def allowed_actions_roles(policy_names, iam, role_name):
     allowed_actions: Dict[Any, Any] = {}
 
-    for policy_name in list_policies['PolicyNames']:
-        policy_arn = f"arn:aws:iam::{account_num}:policy/{policy_name}"
-
+    for policy_name in policy_names:
         role_policy: Dict[Any, Any] = dict(iam.get_role_policy(
             RoleName=role_name,
             PolicyName=policy_name
@@ -148,6 +129,48 @@ def get_allowed_actions(zone: str) -> Dict[str, List[str]]:
                         allowed_actions[resource] = []
 
                     allowed_actions[resource].append(role_policy[statement["Action"]])
+    return allowed_actions
+
+def allowed_actions_users(policy_names, iam, user_name):
+
+    allowed_actions: Dict[Any, Any] = {}
+
+    for policy_name in policy_names:
+        user_policy: Dict[Any, Any] = dict(iam.get_user_policy(
+            UserName=user_name,
+            PolicyName=policy_name
+        ))
+
+        for statement in user_policy["PolicyDocument"]["Statement"]:
+
+            if statement["effect"] == "Allow":
+
+                for resource in statement["Resource"]:
+                    if resource not in allowed_actions.keys():
+                        allowed_actions[resource] = []
+
+                    allowed_actions[resource].append(user_policy[statement["Action"]])
+    return allowed_actions
+
+def get_allowed_actions(zone: str) -> Dict[str, List[str]]:
+    """
+    Returns a list of all allowed actions in a dictionary which is keyed by resource permissions
+    are allowed upon.
+    """
+
+    aws = AWSConnectionManager()
+    iam: IAMClient = cast(IAMClient, aws.client(zone, 'iam'))
+    allowed_actions: Dict[Any, Any] = {}
+    try:
+        user = iam.get_user()
+        list_policies = iam.list_attached_user_policies(UserName=user['User']['UserName'])
+        allowed_actions = allowed_actions_users(list_policies['PolicyNames'], iam, user['User']['UserName'])
+
+    except:
+        response = iam.get_instance_profile(InstanceProfileName="fakename_toil")
+        role_name = response['InstanceProfile']['Roles'][0]['RoleName']
+        list_policies = iam.list_role_policies(RoleName=role_name)
+        allowed_actions = allowed_actions_roles(list_policies['PolicyNames'], iam, role_name)
 
     return allowed_actions
 

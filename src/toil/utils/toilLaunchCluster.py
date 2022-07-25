@@ -152,7 +152,6 @@ def main() -> None:
         raise RuntimeError(f'Please provide a value for --zone or set a default in the '
                            f'TOIL_{options.provisioner.upper()}_ZONE environment variable.')
 
-
     check_policy_warnings(get_allowed_actions(zone=options.zone))
 
     logger.info('Creating cluster %s...', options.clusterName)
