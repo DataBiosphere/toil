@@ -163,7 +163,7 @@ def get_allowed_actions(zone: str) -> Dict[str, List[str]]:
     allowed_actions: Dict[Any, Any] = {}
     try:
         user = iam.get_user()
-        list_policies = iam.list_attached_user_policies(UserName=user['User']['UserName'])
+        list_policies = iam.list_user_policies(UserName=user['User']['UserName'])
         allowed_actions = allowed_actions_users(list_policies['PolicyNames'], iam, user['User']['UserName'])
 
     except:
