@@ -562,7 +562,11 @@ class MultiprocessingTaskRunner(TaskRunner):
             # Never heard of this task, so it's not broken.
             return True
 
-        if process.exitcode is not None and process.exitcode != 0:
+        # If the process exited normally, or with an error code consistent with
+        # being canceled by cancel(), then it is OK.
+        ACCEPTABLE_EXIT_CODES = [0, -15]
+
+        if process.exitcode is not None and process.exitcode not in ACCEPTABLE_EXIT_CODES:
             # Something went wring in the task and it couldn't handle it.
             logger.error("Process for running %s failed with code %s", task_id, process.exitcode)
             try:
