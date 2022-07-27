@@ -509,7 +509,7 @@ class MultiprocessingTaskRunner(TaskRunner):
         handler = logging.StreamHandler(output_file)
         root_logger.addHandler(handler)
 
-        def handle_sigterm(signal_number, stack_frame):
+        def handle_sigterm(_: Any, __: Any) -> None:
             """
             Multiprocessing will send SIGTERM to stop us; translate that to
             something the run_wes_task shutdown code understands to avoid
