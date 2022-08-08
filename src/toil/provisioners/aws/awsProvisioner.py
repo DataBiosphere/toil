@@ -41,6 +41,7 @@ from toil.lib.aws import zone_to_region
 from toil.lib.aws.ami import get_flatcar_ami
 from toil.lib.aws.utils import create_s3_bucket
 from toil.lib.aws.session import AWSConnectionManager
+from toil.lib.aws.iam import get_allowed_actions, policy_permissions_allow, CLUSTER_LAUNCHING_PERMISSIONS
 from toil.lib.conversions import human2bytes
 from toil.lib.ec2 import (a_short_time,
                           create_auto_scaling_group,
@@ -89,28 +90,6 @@ _STORAGE_ROOT_OVERHEAD_GIGS = 4
 _S3_BUCKET_MAX_NAME_LEN = 63
 # The suffix of the S3 bucket associated with the cluster
 _S3_BUCKET_INTERNAL_SUFFIX = '--internal'
-
-_INSTANCE_PERMISSIONS = ["ec2:AuthorizeSecurityGroupIngress",
-              "ec2:CancelSpotInstanceRequests",
-              "ec2:CreateSecurityGroup",
-              "ec2:CreateTags",
-              "ec2:DeleteSecurityGroup",
-              "ec2:DescribeAvailabilityZones",
-              "ec2:DescribeImages",
-              "ec2:DescribeInstances",
-              "ec2:DescribeInstanceStatus",
-              "ec2:DescribeKeyPairs",
-              "ec2:DescribeSecurityGroups",
-              "ec2:DescribeSpotInstanceRequests",
-              "ec2:DescribeSpotPriceHistory",
-              "ec2:DescribeVolumes",
-              "ec2:ModifyInstanceAttribute",
-              "ec2:RequestSpotInstances",
-              "ec2:RunInstances",
-              "ec2:StartInstances",
-              "ec2:StopInstances",
-              "ec2:TerminateInstances",
-              "iam:PassRole"]
 
 
 def awsRetryPredicate(e):
@@ -348,6 +327,10 @@ class AWSProvisioner(AbstractProvisioner):
             self._leader_subnet = self._get_default_subnet(self._zone)
 
         profileArn = awsEc2ProfileArn or self._createProfileArn()
+
+        # Function prints warning to the log
+        policy_permissions_allow(get_allowed_actions(zone=self._zone), CLUSTER_LAUNCHING_PERMISSIONS)
+
         # the security group name is used as the cluster identifier
         createdSGs = self._createSecurityGroups()
         bdms = self._getBoto3BlockDeviceMappings(leader_type, rootVolSize=leaderStorage)

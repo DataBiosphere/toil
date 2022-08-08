@@ -31,29 +31,14 @@ logging.basicConfig(level=logging.DEBUG)
 class IAMTest(ToilTest):
     """Check that given permissions and associated functions perform correctly"""
 
-    from mypy_boto3_s3 import S3ServiceResource
-    from mypy_boto3_s3.service_resource import Bucket
-
-    s3_resource: Optional[S3ServiceResource]
-    bucket: Optional[Bucket]
-    '''
-    @classmethod
-    def setUpClass(cls) -> None:
-        super().setUpClass()
-        session = establish_boto3_session(region_name="us-east-1")
-        cls.s3_resource = session.resource("s3", region_name="us-east-1")
-        cls.bucket = None
-    '''
     def test_permissions_iam(self):
-        launch_tester = {'*': ['ec2:*', 'iam:*', 's3:*', 'sdb:*']}
-        assert iam.check_policy_warnings(launch_tester) is True
+        allowed_perms = {'*': ['ec2:*', 'iam:*', 's3:*', 'sdb:*']}
+        assert iam.check_policy_permissions(allowed_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS) is True
 
     def test_negative_permissions_iam(self):
-        launch_tester = {'*': ['ec2:*',  's3:*', 'sdb:*']}
-        assert iam.check_policy_warnings(launch_tester) is False
-    '''
-    def test_allowed_actions(self):
-        allowed = iam.get_allowed_actions()
-        for action in allowed:
-            logger.info("allowed %s", action)
-    '''
+        allowed_perms = {'*': ['ec2:*',  's3:*', 'sdb:*']}
+        assert iam.check_policy_permissions(allowed_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS) is False
+
+    def test_wildcard_handling(self):
+        allowed_perms = {'*': ['iam:Create**', 'iam:?*', 'iam:**Tags', '*:*Profile', 'iam:???????']}
+        assert iam.check_policy_permissions(allowed_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS) is True
