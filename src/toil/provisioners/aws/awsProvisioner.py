@@ -39,7 +39,7 @@ from toil.lib.aws import zone_to_region
 from toil.lib.aws.ami import get_flatcar_ami
 from toil.lib.aws.utils import create_s3_bucket
 from toil.lib.aws.session import AWSConnectionManager
-from toil.lib.aws.iam import get_allowed_actions, policy_permissions_allow, CLUSTER_LAUNCHING_PERMISSIONS
+from toil.lib.aws.iam import get_policy_permissions, policy_permissions_allow, CLUSTER_LAUNCHING_PERMISSIONS
 from toil.lib.conversions import human2bytes
 from toil.lib.ec2 import (a_short_time,
                           create_auto_scaling_group,
@@ -327,7 +327,7 @@ class AWSProvisioner(AbstractProvisioner):
         profileArn = awsEc2ProfileArn or self._createProfileArn()
 
         # Function prints warning to the log
-        policy_permissions_allow(get_allowed_actions(zone=self._zone), CLUSTER_LAUNCHING_PERMISSIONS)
+        policy_permissions_allow(get_policy_permissions(zone=self._zone)["*"], CLUSTER_LAUNCHING_PERMISSIONS)
 
         # the security group name is used as the cluster identifier
         createdSGs = self._createSecurityGroups()

@@ -28,17 +28,22 @@ logging.basicConfig(level=logging.DEBUG)
 
 
 
+
 class IAMTest(ToilTest):
     """Check that given permissions and associated functions perform correctly"""
 
     def test_permissions_iam(self):
-        allowed_perms = {'*': ['ec2:*', 'iam:*', 's3:*', 'sdb:*']}
-        assert iam.check_policy_permissions(allowed_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS) is True
+        granted_perms = {'ec2:*', 'iam:*', 's3:*', 'sdb:*'}
+        assert iam.policy_permissions_allow(granted_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS) is True
 
     def test_negative_permissions_iam(self):
-        allowed_perms = {'*': ['ec2:*',  's3:*', 'sdb:*']}
-        assert iam.check_policy_permissions(allowed_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS) is False
+        granted_perms = {'ec2:*',  's3:*', 'sdb:*'}
+        assert iam.policy_permissions_allow(granted_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS) is False
 
     def test_wildcard_handling(self):
-        allowed_perms = {'*': ['iam:Create**', 'iam:?*', 'iam:**Tags', '*:*Profile', 'iam:???????']}
-        assert iam.check_policy_permissions(allowed_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS) is True
+        assert iam.check_permission_allowed("iam:CreateRole", ['iam:Create**']) is True
+        assert iam.check_permission_allowed("iam:GetUser", ['iam:???????']) is True
+        assert iam.check_permission_allowed("iam:ListRoleTags", ['iam:*?*Tags']) is True
+        assert iam.check_permission_allowed("iam:*", ["*"]) is True
+        assert iam.check_permission_allowed("ec2:*", ['iam:*']) is False
+

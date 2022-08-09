@@ -52,7 +52,7 @@ CLUSTER_LAUNCHING_PERMISSIONS = {"iam:CreateRole",
                                   }
 
 
-def policy_permissions_allow(required_permissions: Dict[str, List[str]] = {'*': []}, given_permissions: Set[str] = set()) -> bool:
+def policy_permissions_allow(given_permissions: Set[str] = set(), required_permissions: Set[str] = set()) -> bool:
     """
     Check whether given set of actions are a subset of another given set of actions, returns true if they are
     otherwise false and prints a warning.
@@ -63,11 +63,10 @@ def policy_permissions_allow(required_permissions: Dict[str, List[str]] = {'*': 
 
     # We only check actions explicitly allowed on all resources here,
     #TODO: Add a resource parameter to check for actions allowed by resource
-    #Permissions
-    allowed_perms = [x for x in given_permissions if check_permission_allowed(x, required_permissions["*"])]
-    if not given_permissions.issubset(set(allowed_perms)):
-        #Any disallowed permission will not be in the list of permissions that is generated
-        missing_perms = given_permissions.difference(set(allowed_perms))
+
+    missing_perms = [x for x in required_permissions if not check_permission_allowed(x, list(given_permissions))]
+
+    if missing_perms:
         for perm in missing_perms:
             logger.warning('Permission %s is missing', perm)
         return False
@@ -85,7 +84,7 @@ def check_permission_allowed(perm: str, list_perms: List[str]) -> bool:
     """
 
     for allowed in list_perms:
-        if fnmatch.fnmatch(allowed, perm):
+        if fnmatch.fnmatch(perm, allowed):
             return True
     return False
 
@@ -144,10 +143,10 @@ def allowed_actions_users(iam: IAMClient, policy_names: List[str], user_name: st
 
     return allowed_actions
 
-def get_allowed_actions(zone: str) -> Dict[str, List[str]]:
+def get_policy_permissions(zone: str) -> Dict[str, List[str]]:
     """
-    Returns a list of all allowed actions in a dictionary which is keyed by resource permissions
-    are allowed upon. Requires AWS credentials to be associated with a user or assumed role.
+    Returns a dictionary containing lists of all permission grant patterns keyed by resource
+    that they are allowed upon. Requires AWS credentials to be associated with a user or assumed role.
 
     :param zone: AWS zone to connect to
     """
