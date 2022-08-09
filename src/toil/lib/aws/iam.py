@@ -2,10 +2,11 @@
 import logging
 import boto3
 import fnmatch
+import json
 from toil.lib.aws import zone_to_region
 from toil.provisioners.aws import get_best_aws_zone
 from functools import lru_cache
-from typing import Any, List, Dict, Set, cast
+from typing import Any, Optional, List, Dict, Set, cast
 
 from mypy_boto3_iam import IAMClient
 from mypy_boto3_sts import STSClient
@@ -51,10 +52,10 @@ CLUSTER_LAUNCHING_PERMISSIONS = {"iam:CreateRole",
                                   }
 
 
-def policy_permissions_allow(required_permissions: Dict[str, List[str]] = {'*': []}, given_permissions: Set[str] = {}) -> bool:
+def policy_permissions_allow(required_permissions: Dict[str, List[str]] = {'*': []}, given_permissions: Set[str] = set()) -> bool:
     """
     Check whether given set of actions are a subset of another given set of actions, returns true if they are
-    otherwise false.
+    otherwise false and prints a warning.
 
     :param required_permissions: Dictionary containing actions required, keyed by resource
     :param given_permissions: Set of actions that are granted to a user or role
@@ -100,17 +101,18 @@ def allowed_actions_roles(iam: IAMClient, policy_names: List[str], role_name: st
     allowed_actions: Dict[str, List[str]] = defaultdict(list)
 
     for policy_name in policy_names:
-        role_policy: Dict[str, List[str]] = dict(iam.get_role_policy(
+        role_policy = iam.get_role_policy(
             RoleName=role_name,
             PolicyName=policy_name
-        ))
-
-        for statement in role_policy["PolicyDocument"]["Statement"]:
+        )
+        role_policy_document = json.loads(role_policy["PolicyDocument"])
+        for statement in role_policy_document["Statement"]:
 
             if statement["effect"] == "Allow":
 
                 for resource in statement["Resource"]:
-                    allowed_actions[resource].append(role_policy[statement["Action"]])
+                    for action in statement["Action"]:
+                        allowed_actions[resource].append(action)
 
     return allowed_actions
 
@@ -126,15 +128,19 @@ def allowed_actions_users(iam: IAMClient, policy_names: List[str], user_name: st
     allowed_actions: Dict[str, List[str]] = defaultdict(list)
 
     for policy_name in policy_names:
-        user_policy: Dict[Any, Any] = dict(iam.get_user_policy(
+        user_policy = iam.get_user_policy(
             UserName=user_name,
             PolicyName=policy_name
-        ))
+        )
 
-        for statement in user_policy["PolicyDocument"]["Statement"]:
+        user_policy_document = json.loads(user_policy["PolicyDocument"])
+
+        #Policy document structured like so https://boto3.amazonaws.com/v1/documentation/api/latest/guide/iam-example-policies.html#example
+        for statement in user_policy_document["Statement"]:
             if statement["effect"] == "Allow":
                 for resource in statement["Resource"]:
-                    allowed_actions[resource].append(user_policy[statement["Action"]])
+                    for action in statement["Action"]:
+                        allowed_actions[resource].append(action)
 
     return allowed_actions
 
@@ -171,7 +177,7 @@ def get_allowed_actions(zone: str) -> Dict[str, List[str]]:
     return allowed_actions
 
 @lru_cache()
-def get_aws_account_num() -> str:
+def get_aws_account_num() -> Optional[str]:
     """
     Returns AWS account num
     """
