@@ -323,9 +323,9 @@ class ToilBackend(WESBackend):
         logger.info("Using WES dialect: %s", self.wes_dialect)
 
         self.dest_bucket_base = dest_bucket_base
-        logger.info("Using destination bucket base URL: ", self.dest_bucket_base)
+        logger.info("Using destination bucket base URL: %s", self.dest_bucket_base)
         self.work_dir = os.path.abspath(work_dir)
-        logger.info("Using work dir: ", self.work_dir)
+        logger.info("Using work dir: %s", self.work_dir)
         os.makedirs(self.work_dir, exist_ok=True)
 
         # Where should we talk to the tasks about workflow state?
@@ -336,7 +336,7 @@ class ToilBackend(WESBackend):
         else:
             # Use the provided value
             self.state_store_url = state_store
-        logger.info("Using state store: ", self.state_store_url)
+        logger.info("Using state store: %s", self.state_store_url)
 
         # Determine a server identity, so we can guess if a workflow in the
         # possibly-persistent state store is QUEUED, INITIALIZING, or RUNNING
@@ -385,7 +385,7 @@ class ToilBackend(WESBackend):
             self.server_id = str(uuid.uuid5(work_dir_id, boot_id))
         else:
             self.server_id = str(work_dir_id)
-        logger.info("Using server ID: ", self.server_id)
+        logger.info("Using server ID: %s", self.server_id)
 
 
         self.supported_versions = {
