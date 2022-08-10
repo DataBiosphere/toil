@@ -116,7 +116,8 @@ class ClusterSizeMessage(NamedTuple):
     """
     # The instance type name, like t4g.medium
     instance_type: str
-    # The number of them that the Toil autoscaler thinks there are
+    # The number of instances of that type that the Toil autoscaler thinks
+    # there are
     current_size: int
 
 class ClusterDesiredSizeMessage(NamedTuple):
@@ -126,7 +127,8 @@ class ClusterDesiredSizeMessage(NamedTuple):
     """
     # The instance type name, like t4g.medium
     instance_type: str
-    # The number of them that the Toil autoscaler wants there to be
+    # The number of instances of that type that the Toil autoscaler wants there
+    # to be
     desired_size: int
 
 # Then we define a serialization format.
@@ -277,8 +279,10 @@ class MessageBus:
         """
         Send copies of all messages to the given output file.
 
-        Returns opaque connection data which must be kept alive for the
-        connection to persist.
+        Returns connection data which must be kept alive for the
+        connection to persist. That data is opaque: the user is not supposed to
+        look at it or touch it or do anything with it other than store it
+        somewhere or delete it.
         """
 
         stream = open(file_path, 'wb')
@@ -348,7 +352,7 @@ class MessageInbox:
     """
     A buffered connection to a message bus that lets us receive messages.
     Buffers incoming messages until you are ready for them.
-    Does not conserve ordering between messages of different types.
+    Does not preserve ordering between messages of different types.
     """
 
     def __init__(self) -> None:
@@ -372,13 +376,13 @@ class MessageInbox:
         """
         Connect to the given bus and collect the given message types.
 
-        We must not have connected to anything yet.
+        Should only ever be called once on a given instance.
         """
 
         for t in wanted_types:
             # or every kind of message we are subscribing to
 
-            # Make a quue for the messages
+            # Make a queue for the messages
             self._messages_by_type[t] = []
             # Make and save a subscription
             self._listeners_by_type[t] = bus.subscribe(t, self._handler)
@@ -460,7 +464,7 @@ class MessageOutbox:
         """
         Connect to the given bus.
 
-        We must not have connected to anything yet.
+        Should only ever be called once on a given instance.
         """
         self._bus = bus
 
