@@ -96,7 +96,8 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
                           state_store=args.state_store,
                           options=args.opt,
                           dest_bucket_base=args.dest_bucket_base,
-                          bypass_celery=args.bypass_celery)
+                          bypass_celery=args.bypass_celery,
+                          wes_dialect=args.wes_dialect)
 
     flask_app.add_api('workflow_execution_service.swagger.yaml',
                       resolver=connexion.Resolver(backend.resolve_operation_id))  # noqa

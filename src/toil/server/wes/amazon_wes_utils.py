@@ -19,6 +19,7 @@
 # expects.
 
 import json
+import logging
 import os
 import sys
 import zipfile
@@ -31,6 +32,8 @@ else:
 from urllib.parse import urlparse, ParseResult
 
 from toil.server.wes.abstract_backend import TaskLog, MalformedRequestException as InvalidRequestError
+
+logger = logging.getLogger(__name__)
 
 # These functions are licensed under the same Apache 2.0 license as Toil is,
 # but they come from a repo with a NOTICE file, so we must preserve this notice
@@ -235,6 +238,7 @@ def workflow_manifest_url_to_path(url: ParseResult, parent_dir: Optional[str] = 
         return path.join(parent_dir, relpath)
     return relpath
 
+# This one is all UCSC code
 def task_filter(task: TaskLog, annotations: Dict[str, str]) -> Optional[TaskLog]:
     """
     AGC requires task names to be annotated with an AWS Batch job ID that they
@@ -251,9 +255,11 @@ def task_filter(task: TaskLog, annotations: Dict[str, str]) -> Optional[TaskLog]
         batch_id = annotations["AWSBatchJobID"]
     except KeyError:
         # We can't add a Batch ID to this task, so hide it
+        logger.warning("Omitting task due to missing annotation: %s", task)
         return None
 
     modified_task = dict(task)
     # Tack the batch ID onto the end of the name with the required separator
     modified_task["name"] = "|".join([cast(str, modified_task.get("name", "")), batch_id])
+    logger.info("Transformed task %s to %s", task, modified_task)
     return modified_task

@@ -244,7 +244,7 @@ class ToilWorkflow:
                         job_statuses[event.job_id].name = event.job_type
                     elif isinstance(event, JobCompletedMessage):
                         job_statuses[event.job_id].name = event.job_type
-                    elif isinstance(event, JobCompletedMessage):
+                    elif isinstance(event, JobFailedMessage):
                         job_statuses[event.job_id].name = event.job_type
                         if job_statuses[event.job_id].exit_code == 0:
                             # Record the failure if we never got a failed exit code.
@@ -315,13 +315,17 @@ class ToilBackend(WESBackend):
 
         # Use this to run Celery tasks so we can swap it out for testing.
         self.task_runner = TaskRunner if not bypass_celery else MultiprocessingTaskRunner
+        logger.info("Using task runner: %s", self.task_runner)
 
         # Record if we need to limit our WES responses for a particular
         # non-compliant consumer
         self.wes_dialect = wes_dialect
+        logger.info("Using WES dialect: %s", self.wes_dialect)
 
         self.dest_bucket_base = dest_bucket_base
+        logger.info("Using destination bucket base URL: ", self.dest_bucket_base)
         self.work_dir = os.path.abspath(work_dir)
+        logger.info("Using work dir: ", self.work_dir)
         os.makedirs(self.work_dir, exist_ok=True)
 
         # Where should we talk to the tasks about workflow state?
@@ -332,6 +336,7 @@ class ToilBackend(WESBackend):
         else:
             # Use the provided value
             self.state_store_url = state_store
+        logger.info("Using state store: ", self.state_store_url)
 
         # Determine a server identity, so we can guess if a workflow in the
         # possibly-persistent state store is QUEUED, INITIALIZING, or RUNNING
@@ -380,6 +385,7 @@ class ToilBackend(WESBackend):
             self.server_id = str(uuid.uuid5(work_dir_id, boot_id))
         else:
             self.server_id = str(work_dir_id)
+        logger.info("Using server ID: ", self.server_id)
 
 
         self.supported_versions = {
@@ -478,7 +484,7 @@ class ToilBackend(WESBackend):
                 for key, value in engine_parameters
             ],
             "system_state_counts": state_counts,
-            "tags": {},
+            "tags": {"wes_dialect": self.wes_dialect},
         }
 
     @handle_errors
@@ -582,9 +588,11 @@ class ToilBackend(WESBackend):
         if self.wes_dialect == "agc":
             # We need to emit a restricted subset of WES where tasks obey
             # certain Amazon-defined rules.
+            logger.info("WES dialect %s requires transforming tasks", self.wes_dialect)
             filter_function = amazon_wes_utils.task_filter
         else:
             # We can emit any standard-compliant WES tasks
+            logger.info("WES dialect %s does not require transforming tasks", self.wes_dialect)
             filter_function = None
         task_logs = run.get_task_logs(filter_function=filter_function)
 
