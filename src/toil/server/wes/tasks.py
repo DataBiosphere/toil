@@ -16,7 +16,9 @@ import json
 import logging
 import multiprocessing
 import os
+import signal
 import subprocess
+import sys
 import tempfile
 import zipfile
 from typing import Dict, Any, List, Optional, Tuple, Union
@@ -331,7 +333,7 @@ class ToilWorkflowRunner:
         try:
             exit_code = process.wait()
         except (KeyboardInterrupt, SystemExit, SoftTimeLimitExceeded) as e:
-            logger.warning(str(e))
+            logger.warning("Workflow interrupted: %s", type(e))
             process.terminate()
 
             try:
@@ -507,6 +509,19 @@ class MultiprocessingTaskRunner(TaskRunner):
         handler = logging.StreamHandler(output_file)
         root_logger.addHandler(handler)
 
+        def handle_sigterm(_: Any, __: Any) -> None:
+            """
+            Multiprocessing will send SIGTERM to stop us; translate that to
+            something the run_wes_task shutdown code understands to avoid
+            always waiting for the cancel timeout.
+
+            Caller still needs to handle a sigterm exit code, in case we get
+            canceled before the handler is set!
+            """
+            sys.exit()
+
+        signal.signal(signal.SIGTERM, handle_sigterm)
+
         try:
             logger.info('Running task')
             output_file.flush()
@@ -562,7 +577,11 @@ class MultiprocessingTaskRunner(TaskRunner):
             # Never heard of this task, so it's not broken.
             return True
 
-        if process.exitcode is not None and process.exitcode != 0:
+        # If the process exited normally, or with an error code consistent with
+        # being canceled by cancel(), then it is OK.
+        ACCEPTABLE_EXIT_CODES = [0, -signal.SIGTERM]
+
+        if process.exitcode is not None and process.exitcode not in ACCEPTABLE_EXIT_CODES:
             # Something went wring in the task and it couldn't handle it.
             logger.error("Process for running %s failed with code %s", task_id, process.exitcode)
             try:

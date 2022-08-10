@@ -506,12 +506,12 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
     def run_zip_workflow(self, zip_path: str, include_message: bool = True, include_params: bool = True) -> None:
         """
         We have several zip file tests; this submits a zip file and makes sure it ran OK.
-        
+
         If include_message is set to False, don't send a "message" argument in  workflow_params.
         If include_params is also set to False, don't send workflow_params at all.
         """
         self.assertTrue(os.path.exists(zip_path))
-        
+
         # Set up what we will POST to start the workflow.
         post_data = {
             "workflow_url": "file://" + zip_path,
@@ -633,7 +633,7 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
             zip_file.writestr('data.json', json.dumps({"message": "Hello, world!"}))
             zip_file.writestr('MANIFEST.json', json.dumps({"mainWorkflowURL": "actual.cwl", "inputFileURLs": ["data.json"]}))
         self.run_zip_workflow(zip_path, include_message=False)
-        
+
     def test_run_workflow_no_params_zip(self) -> None:
         """Test run example CWL workflow from ZIP without workflow_params."""
         workdir = self._createTempDir()
@@ -663,6 +663,7 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
             self.assertIn(status2, ["QUEUED", "INITIALIZING", "RUNNING"])
 
             # Cancel the second one
+            cancel_sent = time.time()
             self._cancel_workflow(client, run2)
             time.sleep(1)
             status2 = self._poll_status(client, run2)
@@ -673,7 +674,15 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
             self.assertIn(status1, ["QUEUED", "INITIALIZING", "RUNNING"])
 
             self._wait_for_status(client, run2, "CANCELED")
+            cancel_complete = time.time()
             self._wait_for_success(client, run1)
+
+            # Make sure the cancellation was relatively prompt and we didn't
+            # have to go through any of the timeout codepaths
+            cancel_seconds = cancel_complete - cancel_sent
+            logger.info("Cancellation took %s seconds to complete", cancel_seconds)
+            from toil.server.wes.tasks import WAIT_FOR_DEATH_TIMEOUT
+            self.assertLess(cancel_seconds, WAIT_FOR_DEATH_TIMEOUT)
 
 @needs_celery_broker
 class ToilWESServerCeleryWorkflowTest(ToilWESServerWorkflowTest):
