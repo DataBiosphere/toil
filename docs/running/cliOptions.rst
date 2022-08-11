@@ -315,14 +315,8 @@ the logging module:
                         systems such as gridengine, htcondor, torque, slurm,
                         and lsf.
 
-  **Miscellaneous Options**
+**Log Management Options**
 
-  --disableCaching      Disables caching in the file store. This flag must be
-                        set to use a batch system that does not support
-                        cleanup, such as Parasol.
-  --disableChaining     Disables chaining of jobs (chaining uses one job's
-                        resource allocation for its successor job if
-                        possible).
   --maxLogFileSize MAXLOGFILESIZE
                         The maximum size of a job log file to keep (in bytes),
                         log files larger than this will be truncated to the
@@ -344,6 +338,17 @@ the logging module:
                         Identical to -\\-writeLogs except the logs files are
                         gzipped on the leader.
   --realTimeLogging     Enable real-time logging from workers to leader.
+  --writeMessages FILEPATH
+                        File to send messages from the leader's message bus to.
+
+**Miscellaneous Options**
+
+  --disableCaching      Disables caching in the file store. This flag must be
+                        set to use a batch system that does not support
+                        cleanup, such as Parasol.
+  --disableChaining     Disables chaining of jobs (chaining uses one job's
+                        resource allocation for its successor job if
+                        possible).
   --sseKey SSEKEY       Path to file containing 32 character key to be used
                         for server-side encryption on awsJobStore or
                         googleJobStore. SSE will not be used if this flag is
