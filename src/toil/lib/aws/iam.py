@@ -143,7 +143,7 @@ def allowed_actions_users(iam: IAMClient, policy_names: List[str], user_name: st
 
     return allowed_actions
 
-def get_policy_permissions(zone: str) -> Dict[str, List[str]]:
+def get_policy_permissions(region: str) -> Dict[str, List[str]]:
     """
     Returns a dictionary containing lists of all permission grant patterns keyed by resource
     that they are allowed upon. Requires AWS credentials to be associated with a user or assumed role.
@@ -151,8 +151,8 @@ def get_policy_permissions(zone: str) -> Dict[str, List[str]]:
     :param zone: AWS zone to connect to
     """
 
-    iam: IAMClient = cast(IAMClient, get_client(zone, 'iam'))
-    sts: STSClient = cast(STSClient, get_client(zone, 'sts'))
+    iam: IAMClient = cast(IAMClient, get_client('iam', region))
+    sts: STSClient = cast(STSClient, get_client('sts', region))
     allowed_actions: Dict[str, List[str]] = {}
     try:
         # If successful then we assume we are operating as a user, and grab the associated permissions
