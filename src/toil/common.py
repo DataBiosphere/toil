@@ -1363,8 +1363,8 @@ class Toil(ContextManager["Toil"]):
             # different set of sessions and get cleaned up out from under us
             # when that session ends.
             lambda: ofilter(omap(os.getenv('XDG_RUNTIME_DIR'), lambda p: os.path.join(p, 'toil')), os.path.exists),
-            # Try under /run/lock
-            lambda: try_path('/run/lock/toil'),
+            # Try under /run/lock. It might be a temp dir style sticky directory.
+            lambda: try_path('/run/lock'),
             # Finally, fall back on the work dir and hope it's a legit filesystem.
             lambda: cls.getToilWorkDir(config_work_dir)
         ]
