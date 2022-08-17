@@ -494,10 +494,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Provision Toil WorkDir from a HostPath volume, to share with other pods.
             # Create the directory if it doesn't exist already.
             mount_host_path('workdir', self.host_path, self.worker_work_dir, create=True)
-            # We also need to mount across /var/run/user, where we will put
+            # We also need to mount across /run/lock, where we will put
             # per-node coordiantion info.
             # Don't create this; it really should always exist.
-            mount_host_path('coordination', '/var/run/user', '/var/run/user')
+            mount_host_path('coordination', '/run/lock', '/run/lock')
         else:
             # Provision Toil WorkDir as an ephemeral volume
             ephemeral_volume_name = 'workdir'
