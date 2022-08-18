@@ -27,6 +27,7 @@ from urllib.parse import urlparse
 try:
     from flask import Flask
     from flask.testing import FlaskClient
+    from werkzeug.test import TestResponse
 except ImportError:
     # We need to let pytest collect tests form this file even if the server
     # extra wasn't installed. We'll then skip them all.
@@ -181,12 +182,18 @@ class BucketUsingTest(ToilTest):
     Base class for tests that need a bucket.
     """
 
-    from mypy_boto3_s3 import S3ServiceResource
-    from mypy_boto3_s3.service_resource import Bucket
+    try:
+        # We need the class to be evaluateable without the AWS modules, if not
+        # runnable
+        from mypy_boto3_s3 import S3ServiceResource
+        from mypy_boto3_s3.service_resource import Bucket
+    except ImportError:
+        pass
+
 
     region: Optional[str]
-    s3_resource: Optional[S3ServiceResource]
-    bucket: Optional[Bucket]
+    s3_resource: Optional['S3ServiceResource']
+    bucket: Optional['Bucket']
     bucket_name: Optional[str]
 
     @classmethod
@@ -320,13 +327,44 @@ class AbstractToilWESServerTest(ToilTest):
     def tearDown(self) -> None:
         super().tearDown()
 
-    def _report_log(self, client: "FlaskClient", run_id: str) -> None:
+    def _fetch_run_log(self, client: "FlaskClient", run_id: str) -> "TestResponse":
         """
-        Report the log for the given workflow run.
+        Fetch the run log for a given workflow.
         """
         rv = client.get(f"/ga4gh/wes/v1/runs/{run_id}")
         self.assertEqual(rv.status_code, 200)
         self.assertTrue(rv.is_json)
+        return rv
+
+    def _check_successful_log(self, client: "FlaskClient", run_id: str) -> None:
+        """
+        Make sure the run log for the given run is generated correctly.
+        The workflow should succeed, it should have some tasks, and they should have all succeeded.
+        """
+        rv = self._fetch_run_log(client, run_id)
+        logger.debug('Log info: %s', rv.json)
+        self.assertIn("run_log", rv.json)
+        run_log = rv.json.get("run_log")
+        self.assertEqual(type(run_log), dict)
+        if "exit_code" in run_log:
+            # The workflow succeeded if it has an exit code
+            self.assertEqual(run_log["exit_code"], 0)
+        # The workflow is complete
+        self.assertEqual(rv.json.get("state"), "COMPLETE")
+        task_logs = rv.json.get("task_logs")
+        # There are tasks reported
+        self.assertEqual(type(task_logs), list)
+        self.assertGreater(len(task_logs), 0)
+        for task_log in task_logs:
+            # All the tasks succeeded
+            self.assertEqual(type(task_log), dict)
+            self.assertEqual(task_log.get("exit_code"), 0)
+
+    def _report_log(self, client: "FlaskClient", run_id: str) -> None:
+        """
+        Report the log for the given workflow run.
+        """
+        rv = self._fetch_run_log(client, run_id)
         self.assertIn("run_log", rv.json)
         run_log = rv.json.get("run_log")
         self.assertEqual(type(run_log), dict)
@@ -421,6 +459,7 @@ class AbstractToilWESServerTest(ToilTest):
         Wait for the given workflow run to succeed. If it fails, raise an exception.
         """
         self._wait_for_status(client, run_id, "COMPLETE")
+        self._check_successful_log(client, run_id)
 
 
 class ToilWESServerBenchTest(AbstractToilWESServerTest):
@@ -467,12 +506,12 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
     def run_zip_workflow(self, zip_path: str, include_message: bool = True, include_params: bool = True) -> None:
         """
         We have several zip file tests; this submits a zip file and makes sure it ran OK.
-        
+
         If include_message is set to False, don't send a "message" argument in  workflow_params.
         If include_params is also set to False, don't send workflow_params at all.
         """
         self.assertTrue(os.path.exists(zip_path))
-        
+
         # Set up what we will POST to start the workflow.
         post_data = {
             "workflow_url": "file://" + zip_path,
@@ -594,7 +633,7 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
             zip_file.writestr('data.json', json.dumps({"message": "Hello, world!"}))
             zip_file.writestr('MANIFEST.json', json.dumps({"mainWorkflowURL": "actual.cwl", "inputFileURLs": ["data.json"]}))
         self.run_zip_workflow(zip_path, include_message=False)
-        
+
     def test_run_workflow_no_params_zip(self) -> None:
         """Test run example CWL workflow from ZIP without workflow_params."""
         workdir = self._createTempDir()
@@ -624,6 +663,7 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
             self.assertIn(status2, ["QUEUED", "INITIALIZING", "RUNNING"])
 
             # Cancel the second one
+            cancel_sent = time.time()
             self._cancel_workflow(client, run2)
             time.sleep(1)
             status2 = self._poll_status(client, run2)
@@ -634,7 +674,15 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
             self.assertIn(status1, ["QUEUED", "INITIALIZING", "RUNNING"])
 
             self._wait_for_status(client, run2, "CANCELED")
+            cancel_complete = time.time()
             self._wait_for_success(client, run1)
+
+            # Make sure the cancellation was relatively prompt and we didn't
+            # have to go through any of the timeout codepaths
+            cancel_seconds = cancel_complete - cancel_sent
+            logger.info("Cancellation took %s seconds to complete", cancel_seconds)
+            from toil.server.wes.tasks import WAIT_FOR_DEATH_TIMEOUT
+            self.assertLess(cancel_seconds, WAIT_FOR_DEATH_TIMEOUT)
 
 @needs_celery_broker
 class ToilWESServerCeleryWorkflowTest(ToilWESServerWorkflowTest):

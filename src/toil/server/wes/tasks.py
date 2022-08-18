@@ -16,7 +16,10 @@ import json
 import logging
 import multiprocessing
 import os
+import signal
 import subprocess
+import sys
+import tempfile
 import zipfile
 from typing import Dict, Any, List, Optional, Tuple, Union
 from urllib.parse import urldefrag
@@ -330,7 +333,7 @@ class ToilWorkflowRunner:
         try:
             exit_code = process.wait()
         except (KeyboardInterrupt, SystemExit, SoftTimeLimitExceeded) as e:
-            logger.warning(str(e))
+            logger.warning("Workflow interrupted: %s", type(e))
             process.terminate()
 
             try:
@@ -344,6 +347,8 @@ class ToilWorkflowRunner:
 
         self.store.set("end_time", get_iso_time())
         self.store.set("exit_code", str(exit_code))
+
+        logger.info('Toil child finished with code %s', exit_code)
 
         if exit_code == 0:
             self.state_machine.send_complete()
@@ -391,7 +396,11 @@ def run_wes_task(base_scratch_dir: str, state_store_url: str, workflow_id: str, 
     :param state_store_url: URL/path at which the server and Celery task communicate about workflow state.
 
     :param workflow_id: ID of the workflow run.
+
+    :returns: the state of the workflow run.
     """
+
+    logger.info("Starting WES workflow")
 
     runner = ToilWorkflowRunner(base_scratch_dir, state_store_url, workflow_id,
                                 request=request, engine_options=engine_options)
@@ -407,11 +416,13 @@ def run_wes_task(base_scratch_dir: str, state_store_url: str, workflow_id: str, 
             runner.write_output_files()
     except (KeyboardInterrupt, SystemExit, SoftTimeLimitExceeded):
         # We canceled the workflow run
+        logger.info('Canceling the workflow')
         runner.state_machine.send_canceled()
-    except Exception as e:
+    except Exception:
         # The workflow run broke. We still count as the executor here.
+        logger.exception('Running Toil produced an exception.')
         runner.state_machine.send_executor_error()
-        raise e
+        raise
 
     return runner.get_state()
 
@@ -447,31 +458,143 @@ class TaskRunner:
         """
         cancel_run(task_id)
 
+    @staticmethod
+    def is_ok(task_id: str) -> bool:
+        """
+        Make sure that the task running system is working for the given task.
+        If the task system has detected an internal failure, return False.
+        """
+        # Nothing to do for Celery
+        return True
 
 # If Celery can't be set up, we can just use this fake version instead.
 
-_id_to_process = {}
 class MultiprocessingTaskRunner(TaskRunner):
     """
     Version of TaskRunner that just runs tasks with Multiprocessing.
+
+    Can't use threading because there's no way to send a cancel signal or
+    exception to a Python thread, if loops in the task (i.e.
+    ToilWorkflowRunner) don't poll for it.
     """
 
+    _id_to_process: Dict[str, multiprocessing.Process] = {}
+    _id_to_log: Dict[str, str] = {}
+
     @staticmethod
-    def run(args: Tuple[str, str, str, Dict[str, Any], List[str]], task_id: str) -> None:
+    def set_up_and_run_task(output_path: str, args: Tuple[str, str, str, Dict[str, Any], List[str]]) -> None:
+        """
+        Set up logging for the process into the given file and then call
+        run_wes_task with the given arguments.
+
+        If the process finishes successfully, it will clean up the log, but if
+        the process crashes, the caller must clean up the log.
+        """
+
+        # Multiprocessing and the server manage to hide actual task output from
+        # the tests. Logging messages will appear in pytest's "live" log but
+        # not in the captured log. And replacing sys.stdout and sys.stderr
+        # don't seem to work to collect tracebacks. So we make sure to
+        # configure logging in the multiprocessing process and log to a file
+        # that we were told about, so the server can come get the log if we
+        # unexpectedly die.
+
+        output_file = open(output_path, 'w')
+        output_file.write('Initializing task log\n')
+        output_file.flush()
+
+        # Take over logging.
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.DEBUG)
+        handler = logging.StreamHandler(output_file)
+        root_logger.addHandler(handler)
+
+        def handle_sigterm(_: Any, __: Any) -> None:
+            """
+            Multiprocessing will send SIGTERM to stop us; translate that to
+            something the run_wes_task shutdown code understands to avoid
+            always waiting for the cancel timeout.
+
+            Caller still needs to handle a sigterm exit code, in case we get
+            canceled before the handler is set!
+            """
+            sys.exit()
+
+        signal.signal(signal.SIGTERM, handle_sigterm)
+
+        try:
+            logger.info('Running task')
+            output_file.flush()
+            run_wes_task(*args)
+        except Exception:
+            logger.exception('Exception in task!')
+            raise
+        else:
+            # If the task does not crash, clean up the log
+            os.unlink(output_path)
+        finally:
+            logger.debug('Finishing task log')
+            output_file.flush()
+            output_file.close()
+
+    @classmethod
+    def run(cls, args: Tuple[str, str, str, Dict[str, Any], List[str]], task_id: str) -> None:
         """
         Run the given task args with the given ID.
         """
-        logger.info("Starting task %s in a process", task_id)
-        _id_to_process[task_id] = multiprocessing.Process(target=run_wes_task, args=args)
-        _id_to_process[task_id].start()
 
-    @staticmethod
-    def cancel(task_id: str) -> None:
+        # We need to send the child process's output somewhere or it will get lost during testing
+        fd, path = tempfile.mkstemp()
+        os.close(fd)
+        # Store the log filename before the process, like is_ok() expects.
+        cls._id_to_log[task_id] = path
+
+        logger.info("Starting task %s in a process that should log to %s", task_id, path)
+
+        cls._id_to_process[task_id] = multiprocessing.Process(target=cls.set_up_and_run_task, args=(path, args))
+        cls._id_to_process[task_id].start()
+
+    @classmethod
+    def cancel(cls, task_id: str) -> None:
         """
         Cancel the task with the given ID.
         """
-        if task_id in _id_to_process:
+        if task_id in cls._id_to_process:
             logger.info("Stopping process for task %s", task_id)
-            _id_to_process[task_id].terminate()
+            cls._id_to_process[task_id].terminate()
         else:
             logger.error("Tried to kill nonexistent task %s", task_id)
+
+    @classmethod
+    def is_ok(cls, task_id: str) -> bool:
+        """
+        Make sure that the task running system is working for the given task.
+        If the task system has detected an internal failure, return False.
+        """
+
+        process = cls._id_to_process.get(task_id)
+        if process is None:
+            # Never heard of this task, so it's not broken.
+            return True
+
+        # If the process exited normally, or with an error code consistent with
+        # being canceled by cancel(), then it is OK.
+        ACCEPTABLE_EXIT_CODES = [0, -signal.SIGTERM]
+
+        if process.exitcode is not None and process.exitcode not in ACCEPTABLE_EXIT_CODES:
+            # Something went wring in the task and it couldn't handle it.
+            logger.error("Process for running %s failed with code %s", task_id, process.exitcode)
+            try:
+                for line in open(cls._id_to_log[task_id]):
+                    # Dump the task log
+                    logger.error("Task said: %s", line.rstrip())
+                # Remove the task log because it is no longer needed
+                os.unlink(cls._id_to_log[task_id])
+            except FileNotFoundError:
+                # Log is already gone
+                pass
+            return False
+
+        return True
+
+
