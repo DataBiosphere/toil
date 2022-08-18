@@ -76,6 +76,7 @@ class SlurmTest(ToilTest):
     def test(self):
         subprocess.run(["docker", "cp", "test.py", "slurm-test_slurmmaster_1:/tmp"], check=True)
         subprocess.run(["docker", "cp", "test_script.sh", "slurm-test_slurmmaster_1:/tmp"], check=True)
+        instToil = subprocess.run(["docker", "exec", "pip", "install", "toil"])
         process = subprocess.run(["docker", "exec", "slurm-test_slurmmaster_1", "/tmp/test_script.sh"], capture_output=True)
         if process.returncode:
             raise RuntimeError(process.stderr.decode() + process.stdout.decode())
