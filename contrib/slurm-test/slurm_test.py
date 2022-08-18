@@ -24,26 +24,6 @@ from abc import ABCMeta, abstractmethod
 from fractions import Fraction
 from unittest import skipIf
 
-from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
-                                                   BatchSystemSupport,
-                                                   InsufficientSystemResources)
-# Don't import any batch systems here that depend on extras
-# in order to import properly. Import them later, in tests
-# protected by annotations.
-from toil.batchSystems.mesos.test import MesosTestSupport
-from toil.batchSystems.parasol import ParasolBatchSystem
-from toil.batchSystems.registry import (
-    BATCH_SYSTEM_FACTORY_REGISTRY,
-    BATCH_SYSTEMS,
-    addBatchSystemFactory,
-    restore_batch_system_plugin_state,
-    save_batch_system_plugin_state,
-)
-from toil.batchSystems.singleMachine import SingleMachineBatchSystem
-from toil.common import Config, Toil
-from toil.job import Job, JobDescription
-from toil.lib.retry import retry_flaky_test
-from toil.lib.threading import cpu_count
 from toil.test import (ToilTest,
                        needs_aws_batch,
                        needs_aws_s3,
@@ -59,7 +39,7 @@ from toil.test import (ToilTest,
                        needs_tes,
                        needs_torque,
                        slow)
-from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
+
 
 logger = logging.getLogger(__name__)
 
@@ -76,12 +56,18 @@ class SlurmTest(ToilTest):
     def test(self):
         subprocess.run(["docker", "cp", "test.py", "slurm-test_slurmmaster_1:/tmp"], check=True)
         subprocess.run(["docker", "cp", "test_script.sh", "slurm-test_slurmmaster_1:/tmp"], check=True)
-        instToil = subprocess.run(["docker", "exec", "pip", "install", "toil"])
+        inst_toil = subprocess.run(["docker", "exec", "pip", "install", "toil"], capture_output=True)
         process = subprocess.run(["docker", "exec", "slurm-test_slurmmaster_1", "/tmp/test_script.sh"], capture_output=True)
         if process.returncode:
             raise RuntimeError(process.stderr.decode() + process.stdout.decode())
         with open("output.txt", "w") as f:
+            f.write(inst_toil.stdout.decode())
+            f.write("\n")
             f.write(process.stdout.decode())
+
+
         return True
 
     #Docker cp script into leader, then run on master
+    def tearDown(self):
+        subprocess.run(["docker-compose", "stop"])
