@@ -1,15 +1,14 @@
-from toil.common import Toil
-from toil.job import Job
+#!/usr/bin/env python3
 
+import time
+import os
+import socket
+from datetime import datetime as dt
 
-def helloWorld(message, memory="1G", cores=1, disk="1G"):
-    return f"Hello, world!, here's a message: {message}"
-
-
-if __name__ == "__main__":
-    parser = Job.Runner.getDefaultArgumentParser()
-    options = parser.parse_args()
-    options.clean = "always"
-    with Toil(options) as toil:
-        output = toil.start(Job.wrapFn(helloWorld, "You did it!"))
-    print(output)
+if __name__ == '__main__':
+    print('Process started {}'.format(dt.now()))
+    print('NODE : {}'.format(socket.gethostname()))
+    print('PID  : {}'.format(os.getpid()))
+    print('Executing for 15 secs')
+    time.sleep(15)
+    print('Process finished {}\n'.format(dt.now()))

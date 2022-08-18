@@ -54,7 +54,7 @@ class SlurmTest(ToilTest):
             f.write(captured_out.decode())
 
     def test(self):
-        subprocess.run(["docker", "cp", "test.py", "slurm-test_slurmmaster_1:/tmp"], check=True)
+        subprocess.run(["docker", "cp", "toilScript.py", "slurm-test_slurmmaster_1:/tmp"], check=True)
         subprocess.run(["docker", "cp", "test_script.sh", "slurm-test_slurmmaster_1:/tmp"], check=True)
         inst_toil = subprocess.run(["docker", "exec", "pip", "install", "toil"], capture_output=True)
         process = subprocess.run(["docker", "exec", "slurm-test_slurmmaster_1", "/tmp/test_script.sh"], capture_output=True)
