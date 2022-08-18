@@ -1,0 +1,1 @@
+             JOBID PARTITION     NAME     USER ST       TIME  NODES NODELIST(REASON)

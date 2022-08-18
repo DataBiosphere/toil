@@ -1,0 +1,43 @@
+services:
+  slurmmaster:
+        image: rancavil/slurm-master:19.05.5-1
+        hostname: slurmmaster
+        user: admin
+        volumes:
+                - shared-vol:/home/admin
+        ports:
+                - 6817:6817
+                - 6818:6818
+                - 6819:6819
+  slurmnode1:
+        image: rancavil/slurm-node:19.05.5-1
+        hostname: slurmnode1
+        user: admin
+        volumes:
+                - shared-vol:/home/admin
+        environment:
+                - SLURM_NODENAME=slurmnode1
+        links:
+                - slurmmaster
+  slurmnode2:
+        image: rancavil/slurm-node:19.05.5-1
+        hostname: slurmnode2
+        user: admin
+        volumes:
+                - shared-vol:/home/admin
+        environment:
+                - SLURM_NODENAME=slurmnode2
+        links:
+                - slurmmaster
+  slurmnode3:
+        image: rancavil/slurm-node:19.05.5-1
+        hostname: slurmnode3
+        user: admin
+        volumes:
+                - shared-vol:/home/admin
+        environment:
+                - SLURM_NODENAME=slurmnode3
+        links:
+                - slurmmaster
+volumes:
+        shared-vol:
