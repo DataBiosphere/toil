@@ -39,6 +39,7 @@ from toil.lib.aws import zone_to_region
 from toil.lib.aws.ami import get_flatcar_ami
 from toil.lib.aws.utils import create_s3_bucket
 from toil.lib.aws.session import AWSConnectionManager
+from toil.lib.aws.iam import get_policy_permissions, policy_permissions_allow, CLUSTER_LAUNCHING_PERMISSIONS
 from toil.lib.conversions import human2bytes
 from toil.lib.ec2 import (a_short_time,
                           create_auto_scaling_group,
@@ -324,6 +325,10 @@ class AWSProvisioner(AbstractProvisioner):
             self._leader_subnet = self._get_default_subnet(self._zone)
 
         profileArn = awsEc2ProfileArn or self._createProfileArn()
+
+        # Function prints warning to the log
+        policy_permissions_allow(get_policy_permissions(region=self._region)["*"], CLUSTER_LAUNCHING_PERMISSIONS)
+
         # the security group name is used as the cluster identifier
         createdSGs = self._createSecurityGroups()
         bdms = self._getBoto3BlockDeviceMappings(leader_type, rootVolSize=leaderStorage)
@@ -1710,6 +1715,4 @@ class AWSProvisioner(AbstractProvisioner):
                 iam.add_role_to_instance_profile(profile.instance_profile_name, iamRoleName)
                 logger.debug("Associated role %s with profile", iamRoleName)
 
-
         return profile_arn
-
