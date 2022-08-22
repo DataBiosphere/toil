@@ -391,7 +391,10 @@ class GoogleJobStore(AbstractJobStore):
         statsID = self.statsBaseID + str(uuid.uuid4())
         log.debug("Writing stats file: %s", statsID)
         with self._upload_stream(statsID, encrypt=False, update=False) as f:
-            f.write(msg)
+            if isinstance(msg, str):
+                f.write(msg.encode("utf-8"))
+            else:
+                f.write(msg)
 
     @google_retry
     def read_logs(self, callback, read_all=False):
@@ -515,7 +518,10 @@ class GoogleJobStore(AbstractJobStore):
             def readFrom(self, readable):
                 if not update:
                     assert not blob.exists()
-                blob.upload_from_file(readable)
+                if readable.seekable():
+                    blob.upload_from_file(readable)
+                else:
+                    blob.upload_from_string(readable.read())
 
         with UploadPipe(encoding=encoding, errors=errors) as writable:
             yield writable
