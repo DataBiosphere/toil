@@ -127,6 +127,7 @@ class GCEProvisioner(AbstractProvisioner):
         the Google launchCluster takes the following parameters:
         keyName: The key used to communicate with instances
         botoPath: Boto credentials for reading an AWS jobStore (optional).
+        network: a network (optional)
         vpcSubnet: A subnet (optional).
         """
         if 'keyName' not in kwargs:
@@ -135,6 +136,7 @@ class GCEProvisioner(AbstractProvisioner):
         if 'botoPath' in kwargs:
             self._botoPath = kwargs['botoPath']
         self._vpcSubnet = kwargs['vpcSubnet'] if 'vpcSubnet' in kwargs else None
+        self._network = kwargs['network'] if 'network' in kwargs else None
 
         # Throws an error if cluster exists
         self._instanceGroup = self._gceDriver.ex_create_instancegroup(self.clusterName, self._zone)
@@ -168,6 +170,7 @@ class GCEProvisioner(AbstractProvisioner):
             location=self._zone,
             ex_service_accounts=sa_scopes,
             ex_metadata=metadata,
+            ex_network=self._network,
             ex_subnetwork=self._vpcSubnet,
             ex_disks_gce_struct = [disk],
             description=self._tags,

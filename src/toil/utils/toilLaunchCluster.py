@@ -59,6 +59,9 @@ def main() -> None:
                              "      \"Name\": clusterName,\n"
                              "      \"Owner\": IAM username\n"
                              " }. ")
+    
+    parser.add_argument("--network",
+                        help="cloud network to use. default: 'default'")
     parser.add_argument("--vpcSubnet",
                         help="VPC subnet ID to launch cluster leader in. Uses default subnet "
                         "if not specified. This subnet needs to have auto assign IPs turned on.")
@@ -163,6 +166,7 @@ def main() -> None:
                           keyName=options.keyPairName,
                           botoPath=options.botoPath,
                           userTags=tags,
+                          network=options.network,
                           vpcSubnet=options.vpcSubnet,
                           awsEc2ProfileArn=options.awsEc2ProfileArn,
                           awsEc2ExtraSecurityGroupIds=options.awsEc2ExtraSecurityGroupIds)
