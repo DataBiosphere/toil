@@ -29,10 +29,13 @@ logger = logging.getLogger(__name__)
 class Node:
     maxWaitTime = 7 * 60
 
-    def __init__(self, publicIP, privateIP, name, launchTime, nodeType, preemptable, tags=None):
+    def __init__(self, publicIP, privateIP, name, launchTime, nodeType, preemptable, tags=None, use_private_ip=None):
         self.publicIP = publicIP
         self.privateIP = privateIP
-        self.effectiveIP = self.publicIP or self.privateIP
+        if use_private_ip:
+            self.effectiveIP = self.privateIP #or self.publicIP?
+        else:    
+            self.effectiveIP = self.publicIP or self.privateIP
         self.name = name
         self.launchTime = launchTime
         self.nodeType = nodeType
