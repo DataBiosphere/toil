@@ -12,4 +12,5 @@ if __name__ == "__main__":
     options.clean = "always"
     with Toil(options) as toil:
         output = toil.start(Job.wrapFn(helloWorld, "You did it!"))
-    print(output)
+    with open("output.txt", "w") as f:
+        f.write(output)

@@ -56,18 +56,20 @@ class SlurmTest(ToilTest):
     def test(self):
         subprocess.run(["docker", "cp", "toilScript.py", "slurm-test_slurmmaster_1:/tmp"], check=True)
         subprocess.run(["docker", "cp", "test_script.sh", "slurm-test_slurmmaster_1:/tmp"], check=True)
-        inst_toil = subprocess.run(["docker", "exec", "pip", "install", "toil"], capture_output=True)
-        process = subprocess.run(["docker", "exec", "slurm-test_slurmmaster_1", "/tmp/test_script.sh"], capture_output=True)
-        if process.returncode:
-            raise RuntimeError(process.stderr.decode() + process.stdout.decode())
+        subprocess.run(["docker", "exec", "slurm-test_slurmmaster_1", "sudo", "apt-get", "update", "-y"])
+        inst_toil = subprocess.run(["docker", "exec", "slurm-test_slurmmaster_1", "sudo", "apt", "install", "toil", "-y"], capture_output=True)
+        #process = subprocess.run(["docker", "exec", "slurm-test_slurmmaster_1", "/tmp/test_script.sh"], capture_output=True)
+        process = subprocess.run(["docker", "exec", "slurm-test_slurmmaster_1", "toil", "--help"], capture_output=True)
+        #if process.returncode:
+            #raise RuntimeError(process.stderr.decode() + process.stdout.decode())
         with open("output.txt", "w") as f:
             f.write(inst_toil.stdout.decode())
-            f.write("\n")
+            #f.write("\n There just isnt output")
             f.write(process.stdout.decode())
 
 
         return True
 
     #Docker cp script into leader, then run on master
-    def tearDown(self):
-        subprocess.run(["docker-compose", "stop"])
+    #def tearDown(self):
+        #subprocess.run(["docker-compose", "stop"])
