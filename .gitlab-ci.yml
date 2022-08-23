@@ -54,6 +54,7 @@ stages:
 
 slurm_test:
   image:
+    name: "quay.io/vgteam/vg_ci_prebake:latest"
     entrypoint: ["/usr/bin/env"]
   stage: main_tests
   script:
