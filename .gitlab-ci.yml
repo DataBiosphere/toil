@@ -60,6 +60,7 @@ slurm_test:
   script:
     - pwd
     - cd contrib/slurm-test/
+    - pip install docker-compose
     - set -e
     - docker-compose up -d
     - docker cp toil_workflow.py slurm-test_slurmmaster_1:/home/admin
