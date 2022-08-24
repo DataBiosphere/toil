@@ -59,6 +59,7 @@ slurm_test:
   stage: main_tests
   script:
     - pwd
+    - cp src/toil/test/sort/sort.py contrib/slurm-test/sort.py
     - cd contrib/slurm-test/
     - pip install docker-compose
     - ./slurm_test.sh
