@@ -14,6 +14,5 @@ docker cp slurm-test_slurmmaster_1:/home/admin/output.txt output_Docker.txt
 docker exec slurm-test_slurmmaster_1 python3 /home/admin/sort.py file:my-job-store --batchSystem slurm --disableCaching --retryCount 0
 docker-compose stop
 ./check_out.sh
-rm output_Docker.txt
 rm sort.py
 echo "Sucessfully ran workflow on slurm cluster"
