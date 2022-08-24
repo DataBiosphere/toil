@@ -5,7 +5,7 @@ docker ps
 docker cp toil_workflow.py slurm-test_slurmmaster_1:/home/admin
 #Assumes sort.py copied to this directory during gitlab run for ease of access
 docker cp sort.py slurm-test_slurmmaster_1:/home/admin
-docker cp fileToSort.py slurm-test_slurmmaster_1:/home/admin
+docker cp fileToSort.txt slurm-test_slurmmaster_1:/home/admin
 docker cp toil_workflow.py slurm-test_slurmmaster_1:/home/admin
 GIT_COMMIT=$(git rev-parse HEAD)
 docker exec slurm-test_slurmmaster_1 sudo apt install python3-pip -y
