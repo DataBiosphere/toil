@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Launches a toil leader instance with the specified provisioner."""
+
 import logging
 import os
 from typing import Dict, List, Tuple, Union
@@ -111,6 +112,7 @@ def main() -> None:
                              "the extra security groups do not have the same name as the cluster name.")
     options = parser.parse_args()
     set_logging_from_options(options)
+
     tags = create_tags_dict(options.tags) if options.tags else dict()
 
     # Get worker node types
@@ -153,6 +155,7 @@ def main() -> None:
     if not options.zone:
         raise RuntimeError(f'Please provide a value for --zone or set a default in the '
                            f'TOIL_{options.provisioner.upper()}_ZONE environment variable.')
+
 
     logger.info('Creating cluster %s...', options.clusterName)
 
