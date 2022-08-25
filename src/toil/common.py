@@ -1337,15 +1337,15 @@ class Toil(ContextManager["Toil"]):
 
         def try_path(path: str) -> Optional[str]:
             """
-            Try to use the given path. Return it if it exists and can be made,
-            or None otherwise.
+            Try to use the given path. Return it if it exists or can be made,
+            and we can make things within it, or None otherwise.
             """
             try:
                 os.makedirs(path, exist_ok=True)
             except OSError:
                 # Maybe we lack permissions
                 return None
-            return path if os.path.exists(path) else None
+            return path if os.path.exists(path) and os.access(path, os.W_OK) else None
 
         # Then we can specify our algorithm as a prioritized list of methods to
         # try.
