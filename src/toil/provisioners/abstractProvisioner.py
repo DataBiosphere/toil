@@ -606,12 +606,22 @@ class AbstractProvisioner(ABC):
         """
         Add a service to prepare and mount local scratch volumes.
         """
+
+        # TODO: when
+        # https://www.flatcar.org/docs/latest/setup/storage/mounting-storage/
+        # describes how to collect all the ephemeral disks declaratively and
+        # make Ignition RAID them, stop doing it manually. Might depend on real
+        # solution for https://github.com/coreos/ignition/issues/1126
+        #
+        # TODO: check what kind of isntance this is, and what ephemeral volumes
+        # *should* be there, and declaratively RAID and mount them.
         config.addFile("/home/core/volumes.sh", contents=textwrap.dedent("""\
             #!/bin/bash
             set -x
             ephemeral_count=0
             drives=()
-            directories=(toil mesos docker kubelet cwl)
+            # Directories are relative to /var
+            directories=(lib/toil lib/mesos lib/docker lib/kubelet lib/cwl tmp)
             for drive in /dev/xvd{a..z} /dev/nvme{0..26}n1; do
                 echo "checking for ${drive}"
                 if [ -b $drive ]; then
@@ -643,7 +653,7 @@ class AbstractProvisioner(ABC):
             if (("$ephemeral_count" == "0" )); then
                 echo "no ephemeral drive"
                 for directory in "${directories[@]}"; do
-                    sudo mkdir -p /var/lib/$directory
+                    sudo mkdir -p /var/$directory
                 done
                 exit 0
             fi
@@ -664,9 +674,9 @@ class AbstractProvisioner(ABC):
                 sudo mount /dev/md0 /mnt/ephemeral
             fi
             for directory in "${directories[@]}"; do
-                sudo mkdir -p /mnt/ephemeral/var/lib/$directory
-                sudo mkdir -p /var/lib/$directory
-                sudo mount --bind /mnt/ephemeral/var/lib/$directory /var/lib/$directory
+                sudo mkdir -p /mnt/ephemeral/var/$directory
+                sudo mkdir -p /var/$directory
+                sudo mount --bind /mnt/ephemeral/var/$directory /var/$directory
             done
             """))
         config.addUnit("volume-mounting.service", contents=textwrap.dedent("""\
@@ -766,6 +776,8 @@ class AbstractProvisioner(ABC):
             entryPointArgs = " ".join(["'" + customDockerInitCommand + "'", entryPoint, entryPointArgs])
             entryPoint = "customDockerInit.sh"
 
+        # Set up the service. Make sure to make it default to using the
+        # actually-big temp directory.
         config.addUnit(f"toil-{role}.service", contents=textwrap.dedent(f'''\
             [Unit]
             Description=toil-{role} container
@@ -773,6 +785,7 @@ class AbstractProvisioner(ABC):
             After=create-kubernetes-cluster.service
 
             [Service]
+            Environment="TMPDIR=/var/tmp"
             Restart=on-failure
             RestartSec=2
             ExecStartPre=-/usr/bin/docker rm toil_{role}
@@ -787,6 +800,7 @@ class AbstractProvisioner(ABC):
                 -v /var/lib/docker:/var/lib/docker \\
                 -v /var/lib/toil:/var/lib/toil \\
                 -v /var/lib/cwl:/var/lib/cwl \\
+                -v /var/tmp:/var/tmp \\
                 -v /tmp:/tmp \\
                 -v /opt:/opt \\
                 -v /etc/kubernetes:/etc/kubernetes \\

@@ -67,8 +67,7 @@ def policy_permissions_allow(given_permissions: Set[str] = set(), required_permi
     missing_perms = [x for x in required_permissions if not check_permission_allowed(x, list(given_permissions))]
 
     if missing_perms:
-        for perm in missing_perms:
-            logger.warning('Permission %s is missing', perm)
+        logger.warning('You appear to lack the folowing AWS permissions: %s', ', '.join(missing_perms))
         return False
 
     return True
@@ -159,7 +158,7 @@ def get_policy_permissions(region: str) -> Dict[str, List[str]]:
         user = iam.get_user()
         list_policies = iam.list_user_policies(UserName=user['User']['UserName'])
         allowed_actions = allowed_actions_users(iam, list_policies['PolicyNames'], user['User']['UserName'])
-
+        logger.debug('We are probably user %s with permissions: %s', user['User']['UserName'], allowed_actions)
     except:
         # If not successful, we check the role associated with an instance profile
         # and grab the role's associated permissions
@@ -170,6 +169,7 @@ def get_policy_permissions(region: str) -> Dict[str, List[str]]:
             role_name = role["Arn"].split("/")[1]
             list_policies = iam.list_role_policies(RoleName=role_name)
             allowed_actions = allowed_actions_roles(iam, list_policies['PolicyNames'], role_name)
+            logger.debug('We are probably role %s with permissions: %s', role_name, allowed_actions)
         except:
             logger.exception("Exception when trying to get role policies")
 

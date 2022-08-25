@@ -141,6 +141,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # TODO: Keep this in sync with the Dockerfile.
             self.worker_work_dir = '/var/lib/toil'
 
+        # A Toil-managed Kubernetes cluster will have most of its temp space at
+        # /var/tmp, which is where really large temp files really belong
+        # according to https://systemd.io/TEMPORARY_DIRECTORIES/. So we will
+        # set the default temporary directory to there for all our jobs.
+        self.environment['TMPDIR'] = '/var/tmp'
+
         # Get the name of the AWS secret, if any, to mount in containers.
         self.aws_secret_name = os.environ.get("TOIL_AWS_SECRET_NAME", None)
 
@@ -477,7 +483,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         def mount_host_path(volume_name: str, host_path: str, mount_path: str, create: bool = False) -> None:
             """
             Add a host path volume with the given name to mount the given path.
-            
+
             :param create: If True, create the directory on the host if it does
                    not exist. Otherwise, when the directory does not exist, the
                    pod will wait for it to come into existence.

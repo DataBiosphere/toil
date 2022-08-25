@@ -327,7 +327,8 @@ class AWSProvisioner(AbstractProvisioner):
         profileArn = awsEc2ProfileArn or self._createProfileArn()
 
         # Function prints warning to the log
-        policy_permissions_allow(get_policy_permissions(region=self._region)["*"], CLUSTER_LAUNCHING_PERMISSIONS)
+        if not policy_permissions_allow(get_policy_permissions(region=self._region)["*"], CLUSTER_LAUNCHING_PERMISSIONS):
+            logger.warning('Toil may not be able to properly launch (or destroy!) your cluster.')
 
         # the security group name is used as the cluster identifier
         createdSGs = self._createSecurityGroups()
