@@ -785,12 +785,12 @@ class AbstractProvisioner(ABC):
             After=create-kubernetes-cluster.service
 
             [Service]
-            Environment="TMPDIR=/var/tmp"
             Restart=on-failure
             RestartSec=2
             ExecStartPre=-/usr/bin/docker rm toil_{role}
             ExecStartPre=-/usr/bin/bash -c '{customInitCmd()}'
             ExecStart=/usr/bin/docker run \\
+                -e TMPDIR=/var/tmp \\
                 --entrypoint={entryPoint} \\
                 --net=host \\
                 --init \\
