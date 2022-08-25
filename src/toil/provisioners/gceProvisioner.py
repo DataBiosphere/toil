@@ -51,7 +51,7 @@ class GCEProvisioner(AbstractProvisioner):
     """
 
     NODE_BOTO_PATH = "/root/.boto"  # boto file path on instances
-    SOURCE_IMAGE = b'projects/flatcar-cloud/global/images/family/flatcar-stable'
+    SOURCE_IMAGE = b'projects/kinvolk-public/global/images/family/flatcar-stable'
 
     def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):
         self.cloud = 'gce'
