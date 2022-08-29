@@ -2,6 +2,6 @@ boto>=2.48.0, <3
 boto3>=1.20.46, <2
 boto3-stubs[s3,sdb,iam]==1.24.0
 mypy-boto3-s3==1.24.0
-mypy-boto3-sdb==1.24.0
-mypy-boto3-iam==1.24.0
+mypy-boto3-sdb==1.24.36.post1
+mypy-boto3-iam==1.24.59
 mypy-boto3-sts==1.24.0
