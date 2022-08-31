@@ -206,7 +206,7 @@ def allowed_actions_users(iam: IAMClient, policy_names: List[str], user_name: st
 
     return allowed_actions
 
-def get_policy_permissions(region: str) -> Dict[str, List[str]]:
+def get_policy_permissions(region: str) -> AllowedActionCollection:
     """
     Returns an action collection containing lists of all permission grant patterns keyed by resource
     that they are allowed upon. Requires AWS credentials to be associated with a user or assumed role.
