@@ -1,0 +1,7 @@
+version: '3.3'
+services:
+    gridengine:
+        ports:
+            - '10022:22'
+        container_name: gridengine
+        image: agaveapi/gridengine
