@@ -41,6 +41,7 @@ from typing import (
     cast,
     overload
 )
+from typing_extensions import NotRequired, TypedDict
 
 import dill
 
@@ -138,6 +139,70 @@ class TemporaryID:
     def __ne__(self, other: Any) -> bool:
         return not isinstance(other, TemporaryID) or self._value != other._value
 
+class AcceleratorRequirement(TypedDict): 
+    """
+    Represents a requirement for one or more computational accelerators, like a
+    GPU or FPGA.
+    """
+    count: int
+    """
+    How many of the accelerator are needed to run the job.
+    """
+    kind: str
+    """
+    What kind of accelerator is required. Can be "gpu". Other kinds defined in
+    the future might be "fpga", etc.
+    """
+    model: NotRequired[str]
+    """
+    What model of accelerator is needed. The exact set of values available
+    depends on what the backing scheduler calls its accelerators; strings like
+    "nvidia-tesla-k80" might be expected to work. If a specific model of
+    accelerator is not required, this should be absent.
+    """
+    brand: NotRequired[str]
+    """
+    What brand or manufacturer of accleerator is required. The exact set of
+    values available depends on what the backing scheduler calls the brands of
+    its accleerators; strings like "nvidia" or "amd" might be expected to work.
+    If a specific brand of accleerator is not required (for example, because
+    the job can use multiple brands of accelerator that support a given API)
+    this should be absent.
+    """
+    api: NotRequired[str]
+    """
+    What API is to be used to communicate with the accelerator. This can be
+    "cuda". Other APIs supported in the future might be "rocm", "opencl",
+    "metal", etc. If the job does not need a particular API to talk to the
+    accelerator, this should be absent.
+    """
+    
+    @classmethod
+    def parse(spec: Union[int, str, Dict[str, Union[str, int]]]) -> AcceleratorRequirement:
+        """
+        Parse an AcceleratorRequirement specified by user code. Supports formats like:
+        
+        8
+        
+        "1"
+        
+        "nvidia-tesla-k80"
+        
+        "nvidia-tesla-k80:2"
+        
+        "gpu"
+        
+        "cuda:1"
+        
+        {"kind": "gpu"}
+        
+        {"brand": "nvidia", "count": 5}
+        
+        Assumes that if not specified, we are talking about GPUs, and about one
+        of them. Knows that "gpu" is a kind, and "cuda" is an API, and "nvidia"
+        is a brand.
+        """
+        raise NotImplementedError
 
 class Requirer:
     """
@@ -145,22 +210,23 @@ class Requirer:
     cores, memory, disk, and preemptability as properties.
     """
 
-    _requirementOverrides: Dict[str, Union[int, float, bool]]
+    _requirementOverrides: Dict[str, Union[int, float, bool, List[AcceleratorRequirement]]]
 
     def __init__(
-        self, requirements: Mapping[str, Union[int, str, float, bool, None]]
+        self, requirements: Mapping[str, Union[int, str, float, bool, AcceleratorRequirement, List[AcceleratorRequirement], None]]
     ) -> None:
         """
         Parse and save the given requirements.
 
-        :param dict requirements: Dict from string to number, string, or bool
+        :param dict requirements: Dict from string to value
             describing a set of resource requirments. 'cores', 'memory',
-            'disk', and 'preemptable' fields, if set, are parsed and broken out
-            into properties. If unset, the relevant property will be
-            unspecified, and will be pulled from the assigned Config object if
-            queried (see :meth:`toil.job.Requirer.assignConfig`). If
-            unspecified and no Config object is assigned, an AttributeError
-            will be raised at query time.
+            'disk', 'preemptable', and 'accelerators' fields, if set, are
+            parsed and broken out into properties. If unset, the relevant
+            property will be unspecified, and will be pulled from the assigned
+            Config object if queried (see
+            :meth:`toil.job.Requirer.assignConfig`). If unspecified and no
+            Config object is assigned, an AttributeError will be raised at
+            query time.
         """
         super().__init__()
 
@@ -253,6 +319,13 @@ class Requirer:
         name: Literal["cores"], value: Union[str, int, float]
     ) -> Union[int, float]:
         ...
+        
+    @overload
+    @staticmethod
+    def _parseResource(
+        name: Literal["accelerators"], value: Union[str, int, AcceleratorRequirement, List[AcceleratorRequirement]]
+    ) -> List[AcceleratorRequirement]:
+        ...
 
     @overload
     @staticmethod
@@ -270,7 +343,7 @@ class Requirer:
 
     @staticmethod
     def _parseResource(
-        name: str, value: Union[str, int, float, bool, None]
+        name: str, value: Union[str, int, float, bool, AcceleratorRequirement, List[AcceleratorRequirement], None]
     ) -> Union[int, float, bool, None]:
         """
         Parse a Toil resource requirement value and apply resource-specific type checks.
@@ -333,11 +406,13 @@ class Requirer:
                 return value
             else:
                 raise TypeError(f"The '{name}' requirement does not accept values that are of type {type(value)}")
+        elif name == 'accelerators':
+            raise NotImplementedError()
         else:
             # Anything else we just pass along without opinons
             return cast(Union[int, float, bool], value)
 
-    def _fetchRequirement(self, requirement: str) -> Union[int, float, bool, None]:
+    def _fetchRequirement(self, requirement: str) -> Union[int, float, bool, List[AcceleratorRequirement], None]:
         """
         Get the value of the specified requirement ('blah').
 
@@ -368,7 +443,7 @@ class Requirer:
             )
 
     @property
-    def requirements(self) -> Dict[str, Union[int, float, str, bool]]:
+    def requirements(self) -> Dict[str, Union[int, float, str, bool, List[AcceleratorRequirement]]]:
         """Get dict containing all non-None, non-defaulted requirements."""
         return dict(self._requirementOverrides)
 
@@ -408,6 +483,17 @@ class Requirer:
     def preemptable(self, val: Union[int, str, bool]) -> None:
         self._requirementOverrides["preemptable"] = Requirer._parseResource(
             "preemptable", val
+        )
+        
+    @property
+    def accelerators(self) -> List[AcceleratorRequirement]:
+        """Any accelerators, such as GPUs, that are needed."""
+        return cast(List[AcceleratorRequirement], self._fetchRequirement("accelerators"))
+
+    @accelerators.setter
+    def accelerators(self, val: Union[int, str, AcceleratorRequirement, List[AcceleratorRequirement]]) -> None:
+        self._requirementOverrides["preemptable"] = Requirer._parseResource(
+            "accelerators", val
         )
 
 
