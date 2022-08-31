@@ -10,7 +10,7 @@ from typing import Any, Optional, List, Dict, Set, cast
 
 from mypy_boto3_iam import IAMClient
 from mypy_boto3_sts import STSClient
-from mypy_boto3_iam.type_defs import GetRolePolicyResponseTypeDef
+from mypy_boto3_iam.type_defs import AttachedPolicyTypeDef
 from toil.lib.aws.session import client as get_client
 from collections import defaultdict
 
@@ -143,7 +143,7 @@ def get_actions_from_policy_document(policy_doc: Dict[str, Any]) -> AllowedActio
                             allowed_actions[resource][key].append(statement[key])
 
     return allowed_actions
-def allowed_actions_attached(iam: IAMClient, attached_policies: List[Dict[str, str]]) -> AllowedActionCollection:
+def allowed_actions_attached(iam: IAMClient, attached_policies: List[AttachedPolicyTypeDef]) -> AllowedActionCollection:
     """
     Go through any attached policy we can find to acquire a policy document to get actions from
 
@@ -156,8 +156,8 @@ def allowed_actions_attached(iam: IAMClient, attached_policies: List[Dict[str, s
         policy_desc = iam.get_policy(PolicyArn=policy['PolicyArn'])
         policy_ver = iam.get_policy_version(PolicyArn=policy_desc['Policy']['Arn'], VersionId=policy_desc['Policy']['DefaultVersionId'])
         #logger.debug(policy_ver['PolicyVersion']['Document']['Statement'])
-
-        allowed_actions = add_to_action_collection(allowed_actions, get_actions_from_policy_document(policy_ver['PolicyVersion']['Document']))
+        policy_document = json.loads(policy_ver['PolicyVersion']['Document'])
+        allowed_actions = add_to_action_collection(allowed_actions, get_actions_from_policy_document(policy_document))
 
     return allowed_actions
 
