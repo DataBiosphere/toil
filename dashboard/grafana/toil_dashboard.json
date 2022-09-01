@@ -79,7 +79,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "avg(irate(node_cpu{mode=\"user\",job=\"aws-node-exporter\"}[5m])) without (cpu)",
+              "expr": "avg(irate(node_cpu_seconds_total{mode=\"user\",job=\"aws-node-exporter\"}[5m])) without (cpu)",
               "intervalFactor": 2,
               "legendFormat": "{{instance}}",
               "metric": "node",
@@ -155,7 +155,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "node_memory_MemTotal{job=\"aws-node-exporter\"} - node_memory_MemFree{job=\"aws-node-exporter\"} - node_memory_Buffers{job=\"aws-node-exporter\"} - node_memory_Cached{job=\"aws-node-exporter\"}",
+              "expr": "node_memory_MemTotal_bytes{job=\"aws-node-exporter\"} - node_memory_MemFree_bytes{job=\"aws-node-exporter\"} - node_memory_Buffers_bytes{job=\"aws-node-exporter\"} - node_memory_Cached_bytes{job=\"aws-node-exporter\"}",
               "intervalFactor": 2,
               "legendFormat": "{{instance}}",
               "refId": "A",

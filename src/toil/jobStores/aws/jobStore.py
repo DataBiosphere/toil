@@ -1279,7 +1279,7 @@ class AWSJobStore(AbstractJobStore):
 
                                     logger.debug('Completed upload object of type %s: %s', str(type(completed)),
                                                  repr(completed))
-                                    info.version = completed['VersionId']
+                                    info.version = completed.get('VersionId')
                                     logger.debug('Completed upload with version %s', str(info.version))
 
                             if info.version is None:

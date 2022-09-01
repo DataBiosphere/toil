@@ -71,6 +71,10 @@ def parser_with_server_options() -> argparse.ArgumentParser:
     parser.add_argument("--dest_bucket_base", type=str, default=None,
                         help="Direct CWL workflows to save output files to dynamically generated "
                              "unique paths under the given URL. Supports AWS S3.")
+    parser.add_argument("--wes_dialect", type=str, default="standard", choices=["standard", "agc"],
+                        help="Restrict WES responses to a dialect compatible with clients that do not fully "
+                             "implement the WES standard. (default: 'standard')")
+
     parser.add_argument("--version", action='version', version=version)
     return parser
 
@@ -95,7 +99,8 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
                           state_store=args.state_store,
                           options=args.opt,
                           dest_bucket_base=args.dest_bucket_base,
-                          bypass_celery=args.bypass_celery)
+                          bypass_celery=args.bypass_celery,
+                          wes_dialect=args.wes_dialect)
 
     flask_app.add_api('workflow_execution_service.swagger.yaml',
                       resolver=connexion.Resolver(backend.resolve_operation_id))  # noqa
@@ -110,7 +115,7 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
         flask_app.app.add_url_rule("/engine/v1/status", view_func=backend.get_health)
         # And we can provide lost humans some information on what they are looking at
         flask_app.app.add_url_rule("/", view_func=backend.get_homepage)
-        
+
     return flask_app
 
 

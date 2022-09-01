@@ -35,7 +35,12 @@ class GunicornApplication(BaseApplication):  # type: ignore
         pass
 
     def load_config(self) -> None:
-        for key, value in self.options.items():
+        parser = self.cfg.parser()
+        env_args = parser.parse_args(self.cfg.get_cmd_args_from_env())
+
+        # TODO: also read from the Gunicorn config file?
+
+        for key, value in {**self.options, **vars(env_args)}.items():
             if key in self.cfg.settings and value is not None:
                 self.cfg.set(key.lower(), value)
 
