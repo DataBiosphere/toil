@@ -1220,12 +1220,12 @@ class AWSJobStore(AbstractJobStore):
                                 if 'Uploads' in response and len(response['Uploads']) != 0 and response['Uploads'][0]['UploadId'] == uploadId:
                                     logger.debug('Multipart upload visible as %s', uploadId)
                                     break
+                                logger.debug('Multipart upload %s is not visible; we see %s', uploadId, response.get('Uploads'))
                             except s3_boto3_client.exceptions.NoSuchBucket:
                                 # Sometimes we can make the multipart upload
                                 # but then not see the bucket when we look for
                                 # the upload.
-                                pass
-                            logger.debug('Multipart upload %s is not visible; we see %s', uploadId, response.get('Uploads'))
+                                logger.debug('Multipart upload %s is not visible; bucket %s appears missing', uploadId, bucket_name)
                             time.sleep(CONSISTENCY_TIME * 2 ** i)
 
                         try:
