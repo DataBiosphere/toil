@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,8 +30,8 @@ from toil.lib.aws.session import client as get_client
 try:
     from boto.exception import BotoServerError
 except ImportError:
-    BotoServerError = None  # type: ignore
     # AWS/boto extra is not installed
+    BotoServerError = None  # type: ignore
 
 
 logger = logging.getLogger(__name__)
