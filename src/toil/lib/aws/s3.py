@@ -25,7 +25,8 @@ from contextlib import contextmanager
 from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
 
-from toil.lib.units import modify_url, MB, MIB, TB
+from toil.lib.misc import modify_url
+from toil.lib.units import MB, MIB, TB
 from toil.lib.pipes import WritablePipe, ReadablePipe, HashingPipe
 from toil.lib.retry import ErrorCondition
 from toil.lib.retry import retry
