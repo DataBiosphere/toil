@@ -1,7 +1,7 @@
-FROM sscaling/mtail
+FROM jinnlynn/mtail
 
 EXPOSE 3903
 
 COPY ./toil.mtail /home/toil.mtail
 
-ENTRYPOINT ["mtail", "-progs", "/home/", "-logfds", "0"]
+CMD ["-progs", "/home/", "-logs", "/dev/stdin"]

@@ -65,7 +65,6 @@ from toil.lib.aws.s3 import (create_bucket,
 from toil.jobStores.exceptions import NoSuchFileException
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.checksum import compute_checksum_for_file, ChecksumError
-from toil.lib.io import AtomicFileCreate
 from toil.version import version
 
 

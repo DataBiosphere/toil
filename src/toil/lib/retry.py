@@ -165,6 +165,12 @@ try:
 except ModuleNotFoundError:
     botocore = None
 
+try:
+    import boto.exception
+    SUPPORTED_HTTP_ERRORS.append(boto.exception.BotoServerError)
+except ModuleNotFoundError:
+    boto = None
+
 logger = logging.getLogger(__name__)
 
 

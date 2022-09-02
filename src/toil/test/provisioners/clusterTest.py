@@ -20,7 +20,7 @@ import boto.ec2
 
 from uuid import uuid4
 
-from toil.lib.util import zone_to_region
+from toil.lib.aws.util import zone_to_region
 from toil.provisioners.aws import get_best_aws_zone
 from toil.test import ToilTest, needs_aws_ec2, needs_fetchable_appliance
 

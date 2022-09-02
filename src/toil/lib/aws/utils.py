@@ -27,7 +27,8 @@ from toil.lib.retry import (
     get_error_status,
     get_error_code,
     DEFAULT_DELAYS,
-    DEFAULT_TIMEOUT
+    DEFAULT_TIMEOUT,
+    ErrorCondition
 )
 
 if sys.version_info >= (3, 8):
@@ -69,9 +70,8 @@ THROTTLED_ERROR_CODES = [
 ]
 
 @retry(errors=[BotoServerError])
-def delete_iam_role(
-    role_name: str, region: Optional[str] = None, quiet: bool = True
-) -> None:
+def delete_iam_role(role_name: str, region: Optional[str] = None, display_type='print') -> None:
+    display = print if display_type == 'print' else logger.debug
     from boto.iam.connection import IAMConnection
     # TODO: the Boto3 type hints are a bit oversealous here; they want hundreds
     # of overloads of the client-getting methods to exist based on the literal
@@ -88,38 +88,36 @@ def delete_iam_role(
     role = iam_resource.Role(role_name)
     # normal policies
     for attached_policy in role.attached_policies.all():
-        printq(f'Now dissociating policy: {attached_policy.policy_name} from role {role.name}', quiet)
+        display(f'Now dissociating policy: {attached_policy.policy_name} from role {role.name}')
         role.detach_policy(PolicyArn=attached_policy.arn)
     # inline policies
     for inline_policy in role.policies.all():
-        printq(f'Deleting inline policy: {inline_policy.policy_name} from role {role.name}', quiet)
+        display(f'Deleting inline policy: {inline_policy.policy_name} from role {role.name}')
         # couldn't find an easy way to remove inline policies with boto3; use boto
         boto_iam_connection.delete_role_policy(role.name, inline_policy.policy_name)
     iam_client.delete_role(RoleName=role_name)
-    printq(f'Role {role_name} successfully deleted.', quiet)
+    display(f'Role {role_name} successfully deleted.')
 
 
 @retry(errors=[BotoServerError])
-def delete_iam_instance_profile(
-    instance_profile_name: str, region: Optional[str] = None, quiet: bool = True
-) -> None:
+def delete_iam_instance_profile(instance_profile_name: str, region: Optional[str] = None, display_type='print') -> None:
+    display = print if display_type == 'print' else logger.debug
     iam_resource = cast(IAMServiceResource, session.resource("iam", region_name=region))
     instance_profile = iam_resource.InstanceProfile(instance_profile_name)
     if instance_profile.roles is not None:
         for role in instance_profile.roles:
-            printq(f'Now dissociating role: {role.name} from instance profile {instance_profile_name}', quiet)
+            display(f'Now dissociating role: {role.name} from instance profile {instance_profile_name}')
             instance_profile.remove_role(RoleName=role.name)
     instance_profile.delete()
-    printq(f'Instance profile "{instance_profile_name}" successfully deleted.', quiet)
+    display(f'Instance profile "{instance_profile_name}" successfully deleted.')
 
 
 @retry(errors=[BotoServerError])
-def delete_sdb_domain(
-    sdb_domain_name: str, region: Optional[str] = None, quiet: bool = True
-) -> None:
+def delete_sdb_domain(sdb_domain_name: str, region: Optional[str] = None, display_type='print') -> None:
+    display = print if display_type == 'print' else logger.debug
     sdb_client = cast(SimpleDBClient, session.client("sdb", region_name=region))
     sdb_client.delete_domain(DomainName=sdb_domain_name)
-    printq(f'SBD Domain: "{sdb_domain_name}" successfully deleted.', quiet)
+    display(f'SBD Domain: "{sdb_domain_name}" successfully deleted.')
 
 
 def connection_reset(e: Exception) -> bool:

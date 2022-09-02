@@ -48,7 +48,7 @@ There are many other command line options. Help information can be found by usin
 
     $ toil server --help
 
-Below is a detailed summary of all available options:
+Below is a detailed summary of all server-specific options:
 
 
 --debug
@@ -80,6 +80,8 @@ Below is a detailed summary of all available options:
             Supports AWS S3.
 --state_store STATE_STORE
             The local path or S3 URL where workflow state metadata should be stored. (default: in --work_dir)
+--wes_dialect {standard,agc}
+            Restrict WES responses to a dialect compatible with clients that do not fully implement the WES standard. (default: 'standard')
 
 .. _GA4GH docs on CORS: https://w3id.org/ga4gh/product-approval-support/cors
 

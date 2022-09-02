@@ -17,6 +17,7 @@ import logging
 import random
 import time
 import uuid
+from argparse import Namespace
 from collections import defaultdict
 from contextlib import contextmanager
 from queue import Empty, Queue
@@ -626,7 +627,7 @@ class ScalerThreadTest(ToilTest):
 
 
 class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisioner):
-    """Mimics a job batcher, provisioner and scalable batch system."""
+    """Mimics a leader, job batcher, provisioner and scalable batch system."""
     def __init__(self, config, secondsPerJob):
         super().__init__(clusterName='clusterName', clusterType='mesos')
         # To mimic parallel preemptable and non-preemptable queues
@@ -646,6 +647,9 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         self.maxWorkers = defaultdict(int)  # Maximum number of workers, by node shape
         self.running = False
         self.leaderThread = Thread(target=self._leaderFn)
+        self.toilState = Namespace()
+        self.toilState.bus = Namespace()
+        self.toilState.bus.publish = MagicMock()
 
     def start(self):
         self.running = True

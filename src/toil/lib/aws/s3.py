@@ -16,7 +16,6 @@ import itertools
 import urllib.parse
 import math
 import logging
-import sys
 import os
 
 from io import BytesIO
@@ -135,7 +134,8 @@ def create_bucket(s3_resource: S3ServiceResource, bucket: str) -> Bucket:
 
 # # TODO: Determine specific retries
 @retry(errors=[BotoServerError])
-def delete_bucket(s3_resource: S3ServiceResource, bucket: str) -> None:
+def delete_bucket(s3_resource: S3ServiceResource, bucket: str, display_type='print') -> None:
+    display = print if display_type == 'print' else logger.debug
     s3_client = s3_resource.meta.client
     bucket_obj = s3_resource.Bucket(bucket)
     try:
@@ -146,16 +146,13 @@ def delete_bucket(s3_resource: S3ServiceResource, bucket: str) -> None:
         bucket_obj.object_versions.delete()
         bucket_obj.delete()
     except s3_client.exceptions.NoSuchBucket:
-        logger.info(f"Bucket already deleted (NoSuchBucket): '{bucket}'")
-        print(f"Bucket already deleted (NoSuchBucket): '{bucket}'")
+        display(f"Bucket already deleted (NoSuchBucket): '{bucket}'")
     except ClientError as e:
         if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') != 404:
             raise
-        logger.info(f"Bucket already deleted (404): '{bucket}'")
-        print(f"Bucket already deleted (404): '{bucket}'")
+        display(f"Bucket already deleted (404): '{bucket}'")
     else:
-        logger.info(f"Successfully deleted bucket: '{bucket}'")
-        print(f"Successfully deleted bucket: '{bucket}'")
+        display(f"Successfully deleted bucket: '{bucket}'")
 
 
 # TODO: Determine specific retries
