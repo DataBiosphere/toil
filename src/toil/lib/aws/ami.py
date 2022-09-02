@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time
 import urllib.request
 from typing import Dict, Optional
 
@@ -27,15 +28,28 @@ def get_flatcar_ami(ec2_client: BaseClient, architecture: str ='amd64') -> str:
     :param ec2_client: Boto3 EC2 Client
     :param architecture: The architecture type for the new AWS machine. Can be either amd64 or arm64
     """
+
+    # How many times should we bang on the Flatcar release feed before moving
+    # on if it can't get us an AMI?
+    MAX_TRIES = 3
+
     # Take a user override
     ami = os.environ.get('TOIL_AWS_AMI')
     if not ami:
         logger.debug("No AMI found in TOIL_AWS_AMI; checking Flatcar release feed")
-        ami = official_flatcar_ami_release(ec2_client=ec2_client, architecture=architecture)
+        try_number = 0
+        while not ami and try_number < MAX_TRIES:
+            # Sometimes we have observed the feed to just not have the image we
+            # want, temporarily. So check a few times.
+            ami = official_flatcar_ami_release(ec2_client=ec2_client, architecture=architecture)
+            if not ami:
+                try_number += 1
+                if try_number < MAX_TRIES:
+                    logger.warning("Flatcar release feed was retrieved but could not produce an AMI. Waiting and retrying...")
+                    time.sleep(10)
     if not ami:
         logger.warning("No available AMI found in Flatcar release feed; checking marketplace")
-        # TODO: Support architecture
-        ami = aws_marketplace_flatcar_ami_search(ec2_client=ec2_client)
+        ami = aws_marketplace_flatcar_ami_search(ec2_client=ec2_client, architecture=architecture)
     if not ami:
         logger.critical("No available AMI found in marketplace")
         raise RuntimeError('Unable to fetch the latest flatcar image.')
@@ -70,20 +84,27 @@ def official_flatcar_ami_release(ec2_client: BaseClient, architecture: str ='amd
                 if len(response['Images']) == 1 and response['Images'][0]['State'] == 'available':
                     return ami  # type: ignore
         # We didn't find it
-        logger.warning(f'Flatcar image feed at {JSON_FEED_URL} does not have an image for region {region}')
+        logger.warning(f'Flatcar release feed at {JSON_FEED_URL} does not have an image for region {region}')
     except KeyError:
         # We didn't see a field we need
-        logger.warning(f'Flatcar image feed at {JSON_FEED_URL} does not have expected format')
+        logger.warning(f'Flatcar release feed at {JSON_FEED_URL} does not have expected format')
+    return None
 
 
 @retry()  # TODO: What errors do we get for timeout, JSON parse failure, etc?
-def aws_marketplace_flatcar_ami_search(ec2_client: BaseClient) -> Optional[str]:
+def aws_marketplace_flatcar_ami_search(ec2_client: BaseClient, architecture: str ='amd64') -> Optional[str]:
     """Query AWS for all AMI names matching 'Flatcar-stable-*' and return the most recent one."""
+
+    if architecture == 'amd64':
+        # We use 'amd64' and 'arm64', but AWS uses 'x86_64' and 'arm64'.
+        # Translate to Amazon's terms.
+        architecture = 'x86_64'
+
     response: dict = ec2_client.describe_images(Owners=['aws-marketplace'],  # type: ignore
                                                 Filters=[{'Name': 'name', 'Values': ['Flatcar-stable-*']}])
     latest: Dict[str, str] = {'CreationDate': '0lder than atoms.'}
     for image in response['Images']:
-        if image["Architecture"] == "x86_64" and image["State"] == "available":
+        if image["Architecture"] == architecture and image["State"] == "available":
             if image['CreationDate'] > latest['CreationDate']:
                 latest = image
     return latest.get('ImageId', None)
