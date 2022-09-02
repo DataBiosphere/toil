@@ -102,8 +102,15 @@ def retry_s3(delays: Iterable[float] = DEFAULT_DELAYS, timeout: float = DEFAULT_
     return old_retry(delays=delays, timeout=timeout, predicate=predicate)
 
 
-# # TODO: Determine specific retries
-# @retry()
+# TODO: Determine specific retries
+@retry()
+def list_multipart_uploads(s3_resource, bucket, prefix, max_uploads=1):
+    s3_client = s3_resource.meta.client
+    return s3_client.list_multipart_uploads(Bucket=bucket, MaxUploads=max_uploads, Prefix=prefix)
+
+
+# TODO: Determine specific retries
+@retry()
 def create_bucket(s3_resource: S3ServiceResource, bucket: str) -> Bucket:
     """
     Create an AWS S3 bucket, using the given Boto3 S3 resource, with the

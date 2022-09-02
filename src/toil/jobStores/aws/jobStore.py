@@ -64,6 +64,7 @@ from toil.lib.aws.utils import (
     retry_s3,
     retryable_s3_errors
 )
+from toil.lib.aws.s3 import list_multipart_uploads, delete_bucket
 from toil.lib.compatibility import compat_bytes
 from toil.lib.aws.session import establish_boto3_session
 from toil.lib.ec2nodes import EC2Regions
@@ -1213,9 +1214,11 @@ class AWSJobStore(AbstractJobStore):
 
                         for i in range(CONSISTENCY_TICKS):
                             # Sometimes we can create a multipart upload and not see it. Wait around for it.
-                            response = client.list_multipart_uploads(Bucket=bucket_name,
-                                                                     MaxUploads=1,
-                                                                     Prefix=compat_bytes(info.fileID))
+                            response = list_multipart_uploads(
+                                s3_resource=store.s3_resource,
+                                bucket=bucket_name,
+                                prefix=compat_bytes(info.fileID)
+                            )
                             if len(response['Uploads']) != 0 and response['Uploads'][0]['UploadId'] == uploadId:
                                 logger.debug('Multipart upload visible as %s', uploadId)
                                 break
@@ -1624,27 +1627,7 @@ class AWSJobStore(AbstractJobStore):
 
     @staticmethod
     def _delete_bucket(bucket):
-        """
-        :param bucket: S3.Bucket
-        """
-        for attempt in retry_s3():
-            with attempt:
-                try:
-                    uploads = s3_boto3_client.list_multipart_uploads(Bucket=bucket.name).get('Uploads')
-                    if uploads:
-                        for u in uploads:
-                            s3_boto3_client.abort_multipart_upload(Bucket=bucket.name,
-                                                                   Key=u["Key"],
-                                                                   UploadId=u["UploadId"])
-
-                    bucket.objects.all().delete()
-                    bucket.object_versions.delete()
-                    bucket.delete()
-                except s3_boto3_client.exceptions.NoSuchBucket:
-                    pass
-                except ClientError as e:
-                    if get_error_status(e) != 404:
-                        raise
+        delete_bucket(s3_boto3_resource, bucket.name)
 
 
 aRepr = reprlib.Repr()
