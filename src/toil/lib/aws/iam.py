@@ -55,8 +55,12 @@ AllowedActionCollection = Dict[str, Dict[str, List[str]]]
 
 def init_action_collection() -> AllowedActionCollection:
     '''
-    Initialization of an action collection, an action collection contains allowed actions and not actions
-    by resource
+    Initialization of an action collection, an action collection contains allowed Actions and NotActions
+    by resource, these are patterns containing wildcards, an Action explicitly allows a matched pattern,
+    eg ec2:* will explicitly allow all ec2 permissions
+
+    A NotAction will explicitly allow all actions that don't match a specific pattern
+    eg iam:* allows all non iam actions
     '''
     return defaultdict(lambda: {'Action': [], 'NotAction': []})
 
@@ -94,8 +98,8 @@ def policy_permissions_allow(given_permissions: AllowedActionCollection, require
     missing_perms = []
 
     for permission in required_permissions:
-        if not check_permission_allowed(permission, given_permissions[resource]['Action']):
-            if given_permissions[resource]['NotAction'] == [] or check_permission_allowed(permission, given_permissions[resource]["NotAction"]):
+        if not permission_matches_any(permission, given_permissions[resource]['Action']):
+            if given_permissions[resource]['NotAction'] == [] or permission_matches_any(permission, given_permissions[resource]["NotAction"]):
                 missing_perms.append(permission)
 
     if missing_perms:
@@ -106,7 +110,7 @@ def policy_permissions_allow(given_permissions: AllowedActionCollection, require
     return True
 
 
-def check_permission_allowed(perm: str, list_perms: List[str]) -> bool:
+def permission_matches_any(perm: str, list_perms: List[str]) -> bool:
     """
     Takes a permission and checks whether it's contained within a list of given permissions
     Returns True if it is otherwise False
@@ -122,7 +126,8 @@ def check_permission_allowed(perm: str, list_perms: List[str]) -> bool:
 
 def get_actions_from_policy_document(policy_doc: Dict[str, Any]) -> AllowedActionCollection:
     '''
-    Given a policy document, go through each statement and add actions and not actions to an action collection
+    Given a policy document, go through each statement and create an AllowedActionCollection representing the
+    permissions granted in the policy document.
 
     :param policy_doc: A policy document to examine
     '''
@@ -145,7 +150,7 @@ def get_actions_from_policy_document(policy_doc: Dict[str, Any]) -> AllowedActio
     return allowed_actions
 def allowed_actions_attached(iam: IAMClient, attached_policies: List[AttachedPolicyTypeDef]) -> AllowedActionCollection:
     """
-    Go through any attached policy we can find to acquire a policy document to get actions from
+    Go through all attached policy documents and create an AllowedActionCollection representing granted permissions.
 
     :param iam: IAM client to use
     :param attached_policies: Attached policies
@@ -155,7 +160,6 @@ def allowed_actions_attached(iam: IAMClient, attached_policies: List[AttachedPol
     for policy in attached_policies:
         policy_desc = iam.get_policy(PolicyArn=policy['PolicyArn'])
         policy_ver = iam.get_policy_version(PolicyArn=policy_desc['Policy']['Arn'], VersionId=policy_desc['Policy']['DefaultVersionId'])
-        #logger.debug(policy_ver['PolicyVersion']['Document']['Statement'])
         policy_document = json.loads(policy_ver['PolicyVersion']['Document'])
         allowed_actions = add_to_action_collection(allowed_actions, get_actions_from_policy_document(policy_document))
 
@@ -223,13 +227,9 @@ def get_policy_permissions(region: str) -> AllowedActionCollection:
         user = iam.get_user()
         list_policies = iam.list_user_policies(UserName=user['User']['UserName'])
         attached_policies = iam.list_attached_user_policies(UserName=user['User']['UserName'])
-
         user_attached_policies = allowed_actions_attached(iam, attached_policies['AttachedPolicies'])
-
         allowed_actions = add_to_action_collection(allowed_actions, user_attached_policies)
-
         user_inline_policies = allowed_actions_users(iam, list_policies['PolicyNames'], user['User']['UserName'])
-
         allowed_actions = add_to_action_collection(allowed_actions, user_inline_policies)
 
     except:
@@ -242,24 +242,14 @@ def get_policy_permissions(region: str) -> AllowedActionCollection:
             role_name = role["Arn"].split("/")[1]
             list_policies = iam.list_role_policies(RoleName=role_name)
             attached_policies = iam.list_attached_role_policies(RoleName=role_name)
-            #logger.info(attached_policies)
-
-
-            logger.debug("Checking attached role policies")
             role_attached_policies = allowed_actions_attached(iam, attached_policies['AttachedPolicies'])
-
             allowed_actions = add_to_action_collection(allowed_actions, role_attached_policies)
-
-            logger.debug("Checking inline role policies")
-
             role_inline_policies = allowed_actions_roles(iam, list_policies['PolicyNames'], role_name)
-
             allowed_actions = add_to_action_collection(allowed_actions, role_inline_policies)
 
         except:
             logger.exception("Exception when trying to get role policies")
-    logger.debug("ALLOWED ACTIONS")
-    logger.debug(allowed_actions)
+    logger.debug("Allowed actions: %s", allowed_actions)
     return allowed_actions
 
 @lru_cache()

@@ -45,9 +45,9 @@ class IAMTest(ToilTest):
         assert iam.policy_permissions_allow(granted_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS) is False
 
     def test_wildcard_handling(self):
-        assert iam.check_permission_allowed("iam:CreateRole", ['iam:Create**']) is True
-        assert iam.check_permission_allowed("iam:GetUser", ['iam:???????']) is True
-        assert iam.check_permission_allowed("iam:ListRoleTags", ['iam:*?*Tags']) is True
-        assert iam.check_permission_allowed("iam:*", ["*"]) is True
-        assert iam.check_permission_allowed("ec2:*", ['iam:*']) is False
+        assert iam.permission_matches_any("iam:CreateRole", ['iam:Create**']) is True
+        assert iam.permission_matches_any("iam:GetUser", ['iam:???????']) is True
+        assert iam.permission_matches_any("iam:ListRoleTags", ['iam:*?*Tags']) is True
+        assert iam.permission_matches_any("iam:*", ["*"]) is True
+        assert iam.permission_matches_any("ec2:*", ['iam:*']) is False
 
