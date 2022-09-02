@@ -24,8 +24,7 @@ from mypy_boto3_iam.type_defs import GetRolePolicyResponseTypeDef
 from collections import defaultdict
 
 from toil.lib.retry import retry
-from toil.lib.aws.credentials import client, resource
-from toil.lib.aws.session import client as get_client
+from toil.lib.aws.session import client, resource
 
 try:
     from boto.exception import BotoServerError
@@ -203,8 +202,8 @@ def get_policy_permissions(region: str) -> Dict[str, List[str]]:
     :param zone: AWS zone to connect to
     """
 
-    iam: IAMClient = cast(IAMClient, get_client('iam', region))
-    sts: STSClient = cast(STSClient, get_client('sts', region))
+    iam: IAMClient = cast(IAMClient, client('iam', region))
+    sts: STSClient = cast(STSClient, client('sts', region))
     allowed_actions: Dict[str, List[str]] = {}
     try:
         # If successful then we assume we are operating as a user, and grab the associated permissions

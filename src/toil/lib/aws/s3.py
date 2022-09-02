@@ -16,7 +16,6 @@ import itertools
 import urllib.parse
 import math
 import logging
-import sys
 import os
 
 from io import BytesIO
