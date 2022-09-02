@@ -142,7 +142,7 @@ def create_bucket(s3_resource: S3ServiceResource, bucket: str) -> Bucket:
 
 # # TODO: Determine specific retries
 @retry(errors=[BotoServerError])
-def delete_bucket(s3_resource: S3ServiceResource, bucket: str, display_type='print') -> None:
+def delete_bucket(s3_resource: S3ServiceResource, bucket: str, display_type='log') -> None:
     display = print if display_type == 'print' else logger.debug
     s3_client = s3_resource.meta.client
     bucket_obj = s3_resource.Bucket(bucket)

@@ -20,7 +20,6 @@ from typing import Any, Callable, ContextManager, Dict, Hashable, Iterable, Iter
 from urllib.parse import ParseResult
 
 from toil.lib.aws import session
-from toil.lib.misc import printq
 from toil.lib.retry import (
     retry,
     old_retry,
@@ -167,11 +166,9 @@ def retry_s3(delays: Iterable[float] = (0, 1, 1, 4, 16, 64),
         ),
     ]
 )
-def delete_s3_bucket(bucket: str, region: Optional[str], quiet: bool = True) -> None:
-    """
-    Delete the given S3 bucket.
-    """
-    printq(f'Deleting s3 bucket: {bucket}', quiet)
+def delete_s3_bucket(bucket: str, region: Optional[str], display_type='log') -> None:
+    display = print if display_type == 'print' else logger.debug
+    display(f'Deleting s3 bucket: {bucket}')
 
     paginator = s3_resource.meta.client.get_paginator('list_object_versions')
     try:
@@ -184,12 +181,12 @@ def delete_s3_bucket(bucket: str, region: Optional[str], quiet: bool = True) -> 
             to_delete: List[Dict[str, Any]] = cast(List[Dict[str, Any]], response.get('Versions', [])) + \
                                               cast(List[Dict[str, Any]], response.get('DeleteMarkers', []))
             for entry in to_delete:
-                printq(f"    Deleting {entry['Key']} version {entry['VersionId']}", quiet)
+                display(f"    Deleting {entry['Key']} version {entry['VersionId']}")
                 s3_resource.meta.client.delete_object(Bucket=bucket, Key=entry['Key'], VersionId=entry['VersionId'])
         s3_resource.Bucket(bucket).delete()
-        printq(f'\n * Deleted s3 bucket successfully: {bucket}\n\n', quiet)
+        display(f'\n * Deleted s3 bucket successfully: {bucket}\n\n')
     except s3_resource.meta.client.exceptions.NoSuchBucket:
-        printq(f'\n * S3 bucket no longer exists: {bucket}\n\n', quiet)
+        display(f'\n * S3 bucket no longer exists: {bucket}\n\n')
 
 
 def create_s3_bucket(
