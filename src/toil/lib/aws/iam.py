@@ -72,7 +72,8 @@ CLUSTER_LAUNCHING_PERMISSIONS = {"iam:CreateRole",
                                   }
 
 @retry(errors=[BotoServerError])
-def delete_iam_role(role_name: str, region: Optional[str] = None) -> None:
+def delete_iam_role(role_name: str, region: Optional[str] = None, display_type='print') -> None:
+    display = print if display_type == 'print' else logger.debug
     from boto.iam.connection import IAMConnection
     iam_client = client('iam', region_name=region)
     iam_resource = resource('iam', region_name=region)
@@ -80,26 +81,27 @@ def delete_iam_role(role_name: str, region: Optional[str] = None) -> None:
     role = iam_resource.Role(role_name)
     # normal policies
     for attached_policy in role.attached_policies.all():
-        print(f'Now dissociating policy: {attached_policy.name} from role {role.name}')
+        display(f'Now dissociating policy: {attached_policy.name} from role {role.name}')
         role.detach_policy(PolicyName=attached_policy.name)
     # inline policies
     for attached_policy in role.policies.all():
-        print(f'Deleting inline policy: {attached_policy.name} from role {role.name}')
+        display(f'Deleting inline policy: {attached_policy.name} from role {role.name}')
         # couldn't find an easy way to remove inline policies with boto3; use boto
         boto_iam_connection.delete_role_policy(role.name, attached_policy.name)
     iam_client.delete_role(RoleName=role_name)
-    print(f'Role {role_name} successfully deleted.')
+    display(f'Role {role_name} successfully deleted.')
 
 
 @retry(errors=[BotoServerError])
-def delete_iam_instance_profile(instance_profile_name: str, region: Optional[str] = None) -> None:
+def delete_iam_instance_profile(instance_profile_name: str, region: Optional[str] = None, display_type='print') -> None:
+    display = print if display_type == 'print' else logger.debug
     iam_resource = resource('iam', region_name=region)
     instance_profile = iam_resource.InstanceProfile(instance_profile_name)
     for role in instance_profile.roles:
-        print(f'Now dissociating role: {role.name} from instance profile {instance_profile_name}')
+        display(f'Now dissociating role: {role.name} from instance profile {instance_profile_name}')
         instance_profile.remove_role(RoleName=role.name)
     instance_profile.delete()
-    print(f'Instance profile "{instance_profile_name}" successfully deleted.')
+    display(f'Instance profile "{instance_profile_name}" successfully deleted.')
 
 
 def policy_permissions_allow(given_permissions: Set[str] = set(), required_permissions: Set[str] = set()) -> bool:
