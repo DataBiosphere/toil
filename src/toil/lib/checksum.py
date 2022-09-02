@@ -17,7 +17,7 @@ import hashlib
 from io import BytesIO
 from typing import BinaryIO, Union
 
-from toil.lib.aws.s3 import S3_PART_SIZE
+from toil.lib.aws.config import S3_PART_SIZE
 
 logger = logging.getLogger(__name__)
 

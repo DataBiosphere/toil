@@ -14,22 +14,19 @@
 import hashlib
 import itertools
 import urllib.parse
-import math
 import logging
 import os
 
 from io import BytesIO
-from typing import Tuple, Optional, Union
+from typing import Tuple, Optional, Union, Iterable, Callable, Iterator, ContextManager
 from datetime import timedelta
 from contextlib import contextmanager
 from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
 
 from toil.lib.misc import modify_url
-from toil.lib.units import MB, MIB, TB
 from toil.lib.pipes import WritablePipe, ReadablePipe, HashingPipe
-from toil.lib.retry import ErrorCondition
-from toil.lib.retry import retry
+from toil.lib.retry import ErrorCondition, old_retry, retry, DEFAULT_DELAYS, DEFAULT_TIMEOUT
 
 try:
     from boto.exception import BotoServerError
@@ -41,29 +38,6 @@ except ImportError:
     # AWS/boto extra is not installed
 
 logger = logging.getLogger(__name__)
-
-# AWS Defined Limits
-# https://docs.aws.amazon.com/AmazonS3/latest/userguide/qfacts.html
-AWS_MAX_MULTIPART_COUNT = 10000
-AWS_MAX_CHUNK_SIZE = 5 * TB
-AWS_MIN_CHUNK_SIZE = 5 * MB
-# Note: There is no minimum size limit on the last part of a multipart upload.
-
-# The chunk size we chose arbitrarily, but it must be consistent for etags
-DEFAULT_AWS_CHUNK_SIZE = 128 * MIB
-assert AWS_MAX_CHUNK_SIZE > DEFAULT_AWS_CHUNK_SIZE > AWS_MIN_CHUNK_SIZE
-
-S3_PARALLELIZATION_FACTOR = 8
-S3_PART_SIZE = 16 * MIB
-
-
-def get_s3_multipart_chunk_size(file_size: int) -> int:
-    if file_size >= AWS_MAX_CHUNK_SIZE * AWS_MAX_MULTIPART_COUNT:
-        return AWS_MAX_CHUNK_SIZE
-    elif file_size <= DEFAULT_AWS_CHUNK_SIZE * AWS_MAX_MULTIPART_COUNT:
-        return DEFAULT_AWS_CHUNK_SIZE
-    else:
-        return math.ceil(file_size / AWS_MAX_MULTIPART_COUNT)
 
 
 class NoSuchFileException(Exception):
