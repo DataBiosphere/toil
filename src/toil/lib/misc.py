@@ -8,10 +8,11 @@ import subprocess
 import sys
 import time
 import typing
+import urllib.parse
+import pytz
+
 from contextlib import closing
 from typing import Iterator, List, Optional, Union
-
-import pytz
 
 logger = logging.getLogger(__name__)
 
