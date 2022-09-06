@@ -11,9 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import argparse
 import logging
 from difflib import get_close_matches
-from typing import TYPE_CHECKING, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Set, Type, Tuple, Union
 
 if TYPE_CHECKING:
     from toil.provisioners.aws.awsProvisioner import AWSProvisioner
@@ -29,7 +30,7 @@ def cluster_factory(
     clusterType: str = "mesos",
     zone: Optional[str] = None,
     nodeStorage: int = 50,
-    nodeStorageOverrides: Optional[str] = None,
+    nodeStorageOverrides: Optional[List[str]] = None,
     sseKey: Optional[str] = None,
 ) -> Union["AWSProvisioner", "GCEProvisioner"]:
     """
@@ -62,7 +63,7 @@ def cluster_factory(
         raise RuntimeError("Invalid provisioner '%s'" % provisioner)
 
 
-def add_provisioner_options(parser):
+def add_provisioner_options(parser: argparse.ArgumentParser) -> None:
     group = parser.add_argument_group("Provisioner Options.")
 
     provisioner_choices = ['aws', 'gce']
@@ -100,7 +101,6 @@ def parse_node_types(node_type_specs: Optional[str]) -> List[Tuple[Set[str], Opt
     :returns: a list of node types, where each type is the set of
               instance types, and the float bid, or None.
     """
-
     # Collect together all the node types
     parsed = []
 
@@ -148,7 +148,7 @@ def check_valid_node_types(provisioner, node_types: List[Tuple[Set[str], Optiona
     # check if a valid node type for aws
     from toil.lib.generatedEC2Lists import E2Instances, regionDict
     if provisioner == 'aws':
-        from toil.provisioners.aws import get_current_aws_region
+        from toil.lib.aws import get_current_aws_region
         current_region = get_current_aws_region() or 'us-west-2'
         # check if instance type exists in this region
         for node_type in node_types:
@@ -182,3 +182,12 @@ class ClusterTypeNotSupportedException(Exception):
     """Indicates that a provisioner does not support a given cluster type."""
     def __init__(self, provisioner_class, cluster_type):
         super().__init__(f"The {provisioner_class} provisioner does not support making {cluster_type} clusters")
+
+class ClusterCombinationNotSupportedException(Exception):
+    """Indicates that a provisioner does not support making a given type of cluster with a given architecture."""
+    def __init__(self, provisioner_class: Type, cluster_type: str, architecture: str, reason: Optional[str] = None):
+        message = (f"The {provisioner_class} provisioner does not support making {cluster_type} clusters "
+                   f"using nodes with the {architecture} architecture.")
+        if reason is not None:
+            message += f" This is because: {reason}"
+        super().__init__(message)

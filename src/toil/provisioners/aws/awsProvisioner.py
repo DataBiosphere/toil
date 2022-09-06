@@ -11,27 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import collections
 import json
 import logging
 import os
+import platform
 import socket
 import string
 import textwrap
-import threading
 import time
 import uuid
 from functools import wraps
 from typing import Any, Callable, Collection, Dict, Iterable, List, Optional, Set
 from urllib.parse import unquote
 
-import boto3
-import boto3.resources.base
 # We need these to exist as attributes we can get off of the boto object
 import boto.ec2
 import boto.iam
 import boto.vpc
-import botocore
 from boto.ec2.blockdevicemapping import BlockDeviceMapping as Boto2BlockDeviceMapping
 from boto.ec2.blockdevicemapping import BlockDeviceType as Boto2BlockDeviceType
 from boto.ec2.instance import Instance as Boto2Instance
@@ -42,6 +38,8 @@ from botocore.exceptions import ClientError
 from toil.lib.aws import zone_to_region
 from toil.lib.aws.ami import get_flatcar_ami
 from toil.lib.aws.utils import create_s3_bucket
+from toil.lib.aws.session import AWSConnectionManager
+from toil.lib.aws.iam import get_policy_permissions, policy_permissions_allow, CLUSTER_LAUNCHING_PERMISSIONS
 from toil.lib.conversions import human2bytes
 from toil.lib.ec2 import (a_short_time,
                           create_auto_scaling_group,
@@ -49,7 +47,6 @@ from toil.lib.ec2 import (a_short_time,
                           create_launch_template,
                           create_ondemand_instances,
                           create_spot_instances,
-                          establish_boto3_session,
                           wait_instances_running,
                           wait_transition,
                           wait_until_instance_profile_arn_exists)
@@ -65,7 +62,7 @@ from toil.lib.retry import (
     old_retry,
     retry,
 )
-from toil.provisioners import NoSuchClusterException
+from toil.provisioners import NoSuchClusterException, ClusterCombinationNotSupportedException
 from toil.provisioners.abstractProvisioner import (
     AbstractProvisioner,
     ManagedNodesNotSupportedException,
@@ -150,91 +147,6 @@ def awsFilterImpairedNodes(nodes, ec2):
 class InvalidClusterStateException(Exception):
     pass
 
-class AWSConnectionManager:
-    """
-    Class that represents a connection to AWS. Caches Boto 3 and Boto 2 objects
-    by region.
-
-    Access to any kind of item goes through the particular method for the thing
-    you want (session, resource, service, Boto2 Context), and then you pass the
-    region you want to work in, and possibly the type of thing you want, as arguments.
-
-    This class is intended to eventually enable multi-region clusters, where
-    connections to multiple regions may need to be managed in the same
-    provisioner.
-
-    Since connection objects may not be thread safe (see
-    <https://boto3.amazonaws.com/v1/documentation/api/1.14.31/guide/session.html#multithreading-or-multiprocessing-with-sessions>),
-    one is created for each thread that calls the relevant lookup method.
-    """
-
-    # TODO: mypy is going to have !!FUN!! with this API because the final type
-    # we get out (and whether it has the right methods for where we want to use
-    # it) depends on having the right string value for the service. We could
-    # also individually wrap every service we use, but that seems like a good
-    # way to generate a lot of boring code.
-
-    def __init__(self):
-        """
-        Make a new empty AWSConnectionManager.
-        """
-        # This stores Boto3 sessions in .item of a thread-local storage, by
-        # region.
-        self.sessions_by_region = collections.defaultdict(threading.local)
-        # This stores Boto3 resources in .item of a thread-local storage, by
-        # (region, service name) tuples
-        self.resource_cache = collections.defaultdict(threading.local)
-        # This stores Boto3 clients in .item of a thread-local storage, by
-        # (region, service name) tuples
-        self.client_cache = collections.defaultdict(threading.local)
-        # This stores Boto 2 connections in .item of a thread-local storage, by
-        # (region, service name) tuples.
-        self.boto2_cache = collections.defaultdict(threading.local)
-
-    def session(self, region: str) -> boto3.session.Session:
-        """
-        Get the Boto3 Session to use for the given region.
-        """
-        storage = self.sessions_by_region[region]
-        if not hasattr(storage, 'item'):
-            # This is the first time this thread wants to talk to this region
-            # through this manager
-            storage.item = establish_boto3_session(region_name=region)
-        return storage.item
-
-    def resource(self, region: str, service_name: str) -> boto3.resources.base.ServiceResource:
-        """
-        Get the Boto3 Resource to use with the given service (like 'ec2') in the given region.
-        """
-        key = (region, service_name)
-        storage = self.resource_cache[key]
-        if not hasattr(storage, 'item'):
-            storage.item = self.session(region).resource(service_name)
-        return storage.item
-
-    def client(self, region: str, service_name: str) -> botocore.client.BaseClient:
-        """
-        Get the Boto3 Client to use with the given service (like 'ec2') in the given region.
-        """
-        key = (region, service_name)
-        storage = self.client_cache[key]
-        if not hasattr(storage, 'item'):
-            storage.item = self.session(region).client(service_name)
-        return storage.item
-
-    def boto2(self, region: str, service_name: str) -> boto.connection.AWSAuthConnection:
-        """
-        Get the connected boto2 connection for the given region and service.
-        """
-        if service_name == 'iam':
-            # IAM connections are regionless
-            region = 'universal'
-        key = (region, service_name)
-        storage = self.boto2_cache[key]
-        if not hasattr(storage, 'item'):
-            storage.item = getattr(boto, service_name).connect_to_region(region)
-        return storage.item
-
 class AWSProvisioner(AbstractProvisioner):
     def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):
         self.cloud = 'aws'
@@ -255,6 +167,10 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Set up our connections to AWS
         self.aws = AWSConnectionManager()
+
+        # Set our architecture to the current machine architecture
+        # Assume the same architecture unless specified differently in launchCluster()
+        self._architecture = 'amd64' if platform.machine() in ['x86_64', 'amd64'] else 'arm64'
 
         # Call base class constructor, which will call createClusterSettings()
         # or readClusterSettings()
@@ -392,8 +308,14 @@ class AWSProvisioner(AbstractProvisioner):
                 # Kubernetes won't run here.
                 raise RuntimeError('Kubernetes requires 2 or more cores, and %s is too small' %
                                    leaderNodeType)
-
         self._keyName = keyName
+        self._architecture = leader_type.architecture
+
+        if self.clusterType == 'mesos' and self._architecture != 'amd64':
+            # Mesos images aren't currently available for this architecture, so we can't start a Mesos cluster.
+            # Complain about this before we create anything.
+            raise ClusterCombinationNotSupportedException(type(self), self.clusterType, self._architecture,
+                                                          reason="Mesos is only available for amd64.")
 
         if vpcSubnet:
             # This is where we put the leader
@@ -403,11 +325,15 @@ class AWSProvisioner(AbstractProvisioner):
             self._leader_subnet = self._get_default_subnet(self._zone)
 
         profileArn = awsEc2ProfileArn or self._createProfileArn()
+
+        # Function prints warning to the log
+        policy_permissions_allow(get_policy_permissions(region=self._region)["*"], CLUSTER_LAUNCHING_PERMISSIONS)
+
         # the security group name is used as the cluster identifier
         createdSGs = self._createSecurityGroups()
         bdms = self._getBoto3BlockDeviceMappings(leader_type, rootVolSize=leaderStorage)
 
-        userData = self._getIgnitionUserData('leader')
+        userData = self._getIgnitionUserData('leader', architecture=self._architecture)
 
         # Make up the tags
         self._tags = {'Name': self.clusterName,
@@ -425,6 +351,7 @@ class AWSProvisioner(AbstractProvisioner):
         # Make tags for the leader specifically
         leader_tags = dict(self._tags)
         leader_tags[_TAG_KEY_TOIL_NODE_TYPE] = 'leader'
+        logger.debug('Launching leader with tags: %s', leader_tags)
 
         instances = create_instances(self.aws.resource(self._region, 'ec2'),
                                      image_id=self._discoverAMI(),
@@ -444,6 +371,7 @@ class AWSProvisioner(AbstractProvisioner):
         leader.wait_until_exists()
 
         # Don't go on until the leader is started
+        logger.info('Waiting for leader instance %s to be running', leader)
         leader.wait_until_running()
 
         # Now reload it to make sure all the IPs are set.
@@ -761,8 +689,9 @@ class AWSProvisioner(AbstractProvisioner):
         if removed:
             print('... Successfully deleted S3 buckets')
 
-    def terminateNodes(self, nodes : List[Node]):
-        self._terminateIDs([x.name for x in nodes])
+    def terminateNodes(self, nodes: List[Node]) -> None:
+        if nodes:
+            self._terminateIDs([x.name for x in nodes])
 
     def _recover_node_type_bid(self, node_type: Set[str], spot_bid: Optional[float]) -> Optional[float]:
         """
@@ -842,7 +771,7 @@ class AWSProvisioner(AbstractProvisioner):
             subnet_id = next(iter(self._worker_subnets_by_zone[zone]))
 
         keyPath = self._sseKey if self._sseKey else None
-        userData = self._getIgnitionUserData('worker', keyPath, preemptable)
+        userData = self._getIgnitionUserData('worker', keyPath, preemptable, self._architecture)
         if isinstance(userData, str):
             # Spot-market provisioning requires bytes for user data.
             userData = userData.encode('utf-8')
@@ -940,7 +869,7 @@ class AWSProvisioner(AbstractProvisioner):
         :return: The AMI ID (a string like 'ami-0a9a5d2b65cce04eb') for Flatcar.
         :rtype: str
         """
-        return get_flatcar_ami(self.aws.client(self._region, 'ec2'))
+        return get_flatcar_ami(self.aws.client(self._region, 'ec2'), self._architecture)
 
     def _toNameSpace(self) -> str:
         assert isinstance(self.clusterName, (str, bytes))
@@ -1359,7 +1288,7 @@ class AWSProvisioner(AbstractProvisioner):
         bdms = self._getBoto3BlockDeviceMappings(type_info, rootVolSize=rootVolSize)
 
         keyPath = self._sseKey if self._sseKey else None
-        userData = self._getIgnitionUserData('worker', keyPath, preemptable)
+        userData = self._getIgnitionUserData('worker', keyPath, preemptable, self._architecture)
 
         lt_name = self._name_worker_launch_template(instance_type, preemptable=preemptable)
 
@@ -1786,6 +1715,4 @@ class AWSProvisioner(AbstractProvisioner):
                 iam.add_role_to_instance_profile(profile.instance_profile_name, iamRoleName)
                 logger.debug("Associated role %s with profile", iamRoleName)
 
-
         return profile_arn
-

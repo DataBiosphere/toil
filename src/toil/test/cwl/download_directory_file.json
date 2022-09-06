@@ -1,0 +1,4 @@
+{
+    "input_directory": {"class": "Directory", "location": "directory/directory"},
+    "input_filename": "file.txt"
+}

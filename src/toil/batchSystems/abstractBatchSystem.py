@@ -31,6 +31,7 @@ from typing import (
     Union,
 )
 
+from toil.bus import MessageBus
 from toil.common import Config, Toil, cacheDirName
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -64,7 +65,7 @@ class UpdatedBatchJobInfo(NamedTuple):
 
 # Information required for worker cleanup on shutdown of the batch system.
 class WorkerCleanupInfo(NamedTuple):
-    workDir: str
+    workDir: Optional[str]
     """workdir path (where the cache would go)"""
 
     workflowID: str
@@ -72,19 +73,17 @@ class WorkerCleanupInfo(NamedTuple):
 
     cleanWorkDir: str
 
-class AbstractBatchSystem(ABC):
-    """
-    An abstract (as far as Python currently allows) base class to represent the interface the batch
-    system must provide to Toil.
-    """
 
+class AbstractBatchSystem(ABC):
+    """An abstract base class to represent the interface the batch system must provide to Toil."""
     @classmethod
     @abstractmethod
     def supportsAutoDeployment(cls) -> bool:
         """
-        Whether this batch system supports auto-deployment of the user script itself. If it does,
-        the :meth:`.setUserScript` can be invoked to set the resource object representing the user
-        script.
+        Whether this batch system supports auto-deployment of the user script itself.
+
+        If it does, the :meth:`.setUserScript` can be invoked to set the resource
+        object representing the user script.
 
         Note to implementors: If your implementation returns True here, it should also override
         """
@@ -116,16 +115,30 @@ class AbstractBatchSystem(ABC):
         """
         raise NotImplementedError()
 
+    def set_message_bus(self, message_bus: MessageBus) -> None:
+        """
+        Give the batch system an opportunity to connect directly to the message
+        bus, so that it can send informational messages about the jobs it is
+        running to other Toil components.
+
+        Currently the only message a batch system may send is
+        JobAnnotationMessage.
+        """
+        # By default, do nothing.
+        pass
+
     @abstractmethod
     def issueBatchJob(self, jobDesc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
         """
-        Issues a job with the specified command to the batch system and returns a unique jobID.
+        Issues a job with the specified command to the batch system and returns
+        a unique jobID.
 
-        :param jobDesc a toil.job.JobDescription
-        :param job_environment: a collection of job-specific environment variables
-                                to be set on the worker.
+        :param jobDesc: a toil.job.JobDescription
+        :param job_environment: a collection of job-specific environment
+                                variables to be set on the worker.
 
-        :return: a unique jobID that can be used to reference the newly issued job
+        :return: a unique jobID that can be used to reference the newly issued
+                 job
         """
         raise NotImplementedError()
 
@@ -389,14 +402,18 @@ class BatchSystemSupport(AbstractBatchSystem):
                for cleaning up the worker.
         """
         assert isinstance(info, WorkerCleanupInfo)
+        assert info.workflowID is not None
         workflowDir = Toil.getLocalWorkflowDir(info.workflowID, info.workDir)
-        DeferredFunctionManager.cleanupWorker(workflowDir)
+        coordination_dir = Toil.get_local_workflow_coordination_dir(info.workflowID, info.workDir)
+        DeferredFunctionManager.cleanupWorker(coordination_dir)
         workflowDirContents = os.listdir(workflowDir)
-        AbstractFileStore.shutdownFileStore(workflowDir, info.workflowID)
-        if (info.cleanWorkDir == 'always'
-            or info.cleanWorkDir in ('onSuccess', 'onError')
-            and workflowDirContents in ([], [cacheDirName(info.workflowID)])):
-            shutil.rmtree(workflowDir, ignore_errors=True)
+        AbstractFileStore.shutdownFileStore(info.workflowID, info.workDir)
+        if info.cleanWorkDir == 'always' or info.cleanWorkDir in ('onSuccess', 'onError'):
+            if workflowDirContents in ([], [cacheDirName(info.workflowID)]):
+                shutil.rmtree(workflowDir, ignore_errors=True)
+            if coordination_dir != workflowDir:
+                # No more coordination to do here either.
+                shutil.rmtree(coordination_dir, ignore_errors=True)
 
 class NodeInfo:
     """
@@ -438,7 +455,7 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
     """
 
     @abstractmethod
-    def getNodes(self, preemptable: Optional[bool] = None) -> Dict[str, NodeInfo]:
+    def getNodes(self, preemptable: Optional[bool] = None, timeout: int = 600) -> Dict[str, NodeInfo]:
         """
         Returns a dictionary mapping node identifiers of preemptable or non-preemptable nodes to
         NodeInfo objects, one for each node.
@@ -457,25 +474,6 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
         :param nodeIP: The worker nodes private IP address
 
         :return: True if the worker node has been issued any tasks, else False
-        """
-        raise NotImplementedError()
-
-    # TODO: May be unused!
-    @abstractmethod
-    @contextmanager
-    def nodeFiltering(self, filter: Optional[Callable[[NodeInfo], bool]]) -> Iterator[None]:
-        """
-        Used to prevent races in autoscaling where
-        1) nodes have reported to the autoscaler as having no jobs
-        2) scaler decides to terminate these nodes. In parallel the batch system assigns jobs to the same nodes
-        3) scaler terminates nodes, resulting in job failures for all jobs on that node.
-
-        Call this method prior to node termination to ensure that nodes being considered for termination are not
-        assigned new jobs. Call the method again passing None as the filter to disable the filtering
-        after node termination is done.
-
-        :param method: This will be used as a filter on nodes considered when assigning new jobs.
-            After this context manager exits the filter should be removed
         """
         raise NotImplementedError()
 

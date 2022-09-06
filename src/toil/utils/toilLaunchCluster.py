@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Launches a toil leader instance with the specified provisioner."""
+
 import logging
 import os
 from typing import Dict, List, Tuple, Union
@@ -44,7 +45,7 @@ def main() -> None:
                         " On Google/GCE, this is the ssh key pair.")
     parser.add_argument("--owner", dest='owner',
                         help="The owner tag for all instances. If not given, the value in"
-                        " --keyPairName will be used if given.")
+                        "TOIL_OWNER_TAG will be used, or else the value of --keyPairName.")
     parser.add_argument("--boto", dest='botoPath',
                         help="The path to the boto credentials directory. This is transferred "
                         "to all nodes in order to access the AWS jobStore from non-AWS instances.")
@@ -106,6 +107,7 @@ def main() -> None:
                              "the extra security groups do not have the same name as the cluster name.")
     options = parser.parse_args()
     set_logging_from_options(options)
+
     tags = create_tags_dict(options.tags) if options.tags else dict()
 
     # Get worker node types
@@ -140,7 +142,7 @@ def main() -> None:
                     # Provision fixed nodes
                     nodeCounts.append(int(spec))
 
-    owner = options.owner or options.keyPairName or 'toil'
+    owner = options.owner or os.getenv('TOIL_OWNER_TAG') or options.keyPairName or 'toil'
 
     # Check to see if the user specified a zone. If not, see if one is stored in an environment variable.
     options.zone = options.zone or os.environ.get(f'TOIL_{options.provisioner.upper()}_ZONE')
@@ -148,6 +150,7 @@ def main() -> None:
     if not options.zone:
         raise RuntimeError(f'Please provide a value for --zone or set a default in the '
                            f'TOIL_{options.provisioner.upper()}_ZONE environment variable.')
+
 
     logger.info('Creating cluster %s...', options.clusterName)
 

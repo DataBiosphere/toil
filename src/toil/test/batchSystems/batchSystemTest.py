@@ -18,6 +18,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
 from abc import ABCMeta, abstractmethod
 from fractions import Fraction
@@ -44,10 +45,12 @@ from toil.job import Job, JobDescription
 from toil.lib.retry import retry_flaky_test
 from toil.lib.threading import cpu_count
 from toil.test import (ToilTest,
+                       needs_aws_batch,
                        needs_aws_s3,
                        needs_fetchable_appliance,
                        needs_gridengine,
                        needs_htcondor,
+                       needs_kubernetes_installed,
                        needs_kubernetes,
                        needs_lsf,
                        needs_mesos,
@@ -55,8 +58,7 @@ from toil.test import (ToilTest,
                        needs_slurm,
                        needs_tes,
                        needs_torque,
-                       slow,
-                       travis_test)
+                       slow)
 from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 
 logger = logging.getLogger(__name__)
@@ -175,6 +177,13 @@ class hidden:
             self.batchSystem.shutdown()
             super(hidden.AbstractBatchSystemTest, self).tearDown()
 
+        def get_max_startup_seconds(self) -> int:
+            """
+            Get the number of seconds this test ought to wait for the first job to run.
+            Some batch systems may need time to scale up.
+            """
+            return 120
+
         def test_available_cores(self):
             self.assertTrue(cpu_count() >= numCores)
 
@@ -200,7 +209,7 @@ class hidden:
             # getUpdatedBatchJob, and the sleep time is longer than the time we
             # should spend waiting for both to start, so if our cluster can
             # only run one job at a time, we will fail the test.
-            runningJobIDs = self._waitForJobsToStart(2, tries=120)
+            runningJobIDs = self._waitForJobsToStart(2, tries=self.get_max_startup_seconds())
             self.assertEqual(set(runningJobIDs), {job1, job2})
 
             # Killing the jobs instead of allowing them to complete means this test can run very
@@ -449,6 +458,60 @@ class KubernetesBatchSystemTest(hidden.AbstractBatchSystemTest):
         return KubernetesBatchSystem(config=self.config,
                                      maxCores=numCores, maxMemory=1e9, maxDisk=2001)
 
+@needs_kubernetes_installed
+class KubernetesBatchSystemBenchTest(ToilTest):
+    """
+    Kubernetes batch system unit tests that don't need to actually talk to a cluster.
+    """
+
+    def test_preemptability_constraints(self):
+        """
+        Make sure we generate the right preemptability constraints.
+        """
+
+        # Make sure we can print diffs of these long strings
+        self.maxDiff = 10000
+
+        from kubernetes.client import V1PodSpec
+        from toil.batchSystems.kubernetes import KubernetesBatchSystem
+
+        normal_spec = V1PodSpec(containers=[])
+        KubernetesBatchSystem._apply_placement_constraints(False, normal_spec)
+        self.assertEqual(str(normal_spec.affinity), textwrap.dedent("""
+        {'preferred_during_scheduling_ignored_during_execution': None,
+         'required_during_scheduling_ignored_during_execution': {'node_selector_terms': [{'match_expressions': [{'key': 'eks.amazonaws.com/capacityType',
+                                                                                                                 'operator': 'NotIn',
+                                                                                                                 'values': ['SPOT']},
+                                                                                                                {'key': 'cloud.google.com/gke-preemptible',
+                                                                                                                 'operator': 'NotIn',
+                                                                                                                 'values': ['true']}],
+                                                                                          'match_fields': None}]}}
+        """).strip())
+        self.assertEqual(str(normal_spec.tolerations), "None")
+
+        spot_spec = V1PodSpec(containers=[])
+        KubernetesBatchSystem._apply_placement_constraints(True, spot_spec)
+        self.assertEqual(str(spot_spec.affinity), textwrap.dedent("""
+        {'preferred_during_scheduling_ignored_during_execution': [{'preference': {'node_selector_terms': [{'match_expressions': [{'key': 'eks.amazonaws.com/capacityType',
+                                                                                                                                  'operator': 'In',
+                                                                                                                                  'values': ['SPOT']}],
+                                                                                                           'match_fields': None},
+                                                                                                          {'match_expressions': [{'key': 'cloud.google.com/gke-preemptible',
+                                                                                                                                  'operator': 'In',
+                                                                                                                                  'values': ['true']}],
+                                                                                                           'match_fields': None}]},
+                                                                   'weight': 1}],
+         'required_during_scheduling_ignored_during_execution': None}
+        """).strip())
+        self.assertEqual(str(spot_spec.tolerations), textwrap.dedent("""
+        [{'effect': None,
+         'key': 'cloud.google.com/gke-preemptible',
+         'operator': None,
+         'toleration_seconds': None,
+         'value': 'true'}]
+        """).strip())
+
+
 @needs_tes
 @needs_fetchable_appliance
 class TESBatchSystemTest(hidden.AbstractBatchSystemTest):
@@ -466,6 +529,24 @@ class TESBatchSystemTest(hidden.AbstractBatchSystemTest):
         return TESBatchSystem(config=self.config,
                               maxCores=numCores, maxMemory=1e9, maxDisk=2001)
 
+@needs_aws_batch
+@needs_fetchable_appliance
+class AWSBatchBatchSystemTest(hidden.AbstractBatchSystemTest):
+    """
+    Tests against the AWS Batch batch system
+    """
+
+    def supportsWallTime(self):
+        return True
+
+    def createBatchSystem(self):
+        from toil.batchSystems.awsBatch import AWSBatchBatchSystem
+        return AWSBatchBatchSystem(config=self.config,
+                                   maxCores=numCores, maxMemory=1e9, maxDisk=2001)
+
+    def get_max_startup_seconds(self) -> int:
+        # AWS Batch may need to scale out the compute environment.
+        return 300
 
 @slow
 @needs_mesos
@@ -530,7 +611,6 @@ def write_temp_file(s: str, temp_dir: str) -> str:
         os.close(fd)
 
 
-@travis_test
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     """
     Tests against the single-machine batch system
@@ -989,7 +1069,6 @@ class HTCondorBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
         super().tearDown()
 
 
-@travis_test
 class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
     """
     Tests Toil workflow against the SingleMachine batch system
@@ -1043,7 +1122,7 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
     def testNestedResourcesDoNotBlock(self):
         """
         Resources are requested in the order Memory > Cpu > Disk.
-        Test that inavailability of cpus for one job that is scheduled does not block another job
+        Test that unavailability of cpus for one job that is scheduled does not block another job
         that can run.
         """
         tempDir = self._createTempDir('testFiles')
@@ -1145,7 +1224,7 @@ class MesosBatchSystemJobTest(hidden.AbstractBatchSystemJobTest, MesosTestSuppor
         self._stopMesos()
 
 
-def measureConcurrency(filepath, sleep_time=3):
+def measureConcurrency(filepath, sleep_time=10):
     """
     Run in parallel to determine the number of concurrent tasks.
     This code was copied from toil.batchSystemTestMaxCoresSingleMachineBatchSystemTest

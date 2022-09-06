@@ -15,19 +15,19 @@ import errno
 import fcntl
 import logging
 import os
+import tempfile
 from collections import defaultdict
 from contextlib import contextmanager
 from typing import (
     Any,
-    BinaryIO,
     Callable,
     DefaultDict,
     Dict,
     Generator,
+    IO,
     Iterator,
     List,
     Optional,
-    TextIO,
     Union,
     cast,
 )
@@ -52,10 +52,10 @@ class NonCachingFileStore(AbstractFileStore):
         self,
         jobStore: AbstractJobStore,
         jobDesc: JobDescription,
-        localTempDir: str,
+        file_store_dir: str,
         waitForPreviousCommit: Callable[[], Any],
     ) -> None:
-        super().__init__(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
+        super().__init__(jobStore, jobDesc, file_store_dir, waitForPreviousCommit)
         # This will be defined in the `open` method.
         self.jobStateFile: Optional[str] = None
         self.localFileMap: DefaultDict[str, List[str]] = defaultdict(list)
@@ -65,7 +65,7 @@ class NonCachingFileStore(AbstractFileStore):
         jobReqs = job.disk
         startingDir = os.getcwd()
         self.localTempDir: str = make_public_dir(in_directory=self.localTempDir)
-        self._removeDeadJobs(self.workDir)
+        self._removeDeadJobs(self.coordination_dir)
         self.jobStateFile = self._createJobStateFile()
         freeSpace, diskSize = getFileSystemSize(self.localTempDir)
         if freeSpace <= 0.1 * diskSize:
@@ -114,7 +114,7 @@ class NonCachingFileStore(AbstractFileStore):
         return localFilePath
 
     @contextmanager
-    def readGlobalFileStream(self, fileStoreID: str, encoding: Optional[str] = None, errors: Optional[str] = None) -> Iterator[Union[BinaryIO, TextIO]]:
+    def readGlobalFileStream(self, fileStoreID: str, encoding: Optional[str] = None, errors: Optional[str] = None) -> Iterator[Union[IO[bytes], IO[str]]]:
         with self.jobStore.read_file_stream(fileStoreID, encoding=encoding, errors=errors) as f:
             self.logAccess(fileStoreID)
             yield f
@@ -185,18 +185,18 @@ class NonCachingFileStore(AbstractFileStore):
         """
 
     @classmethod
-    def _removeDeadJobs(cls, nodeInfo: str, batchSystemShutdown: bool=False) -> None:
+    def _removeDeadJobs(cls, coordination_dir: str, batchSystemShutdown: bool=False) -> None:
         """
         Look at the state of all jobs registered in the individual job state files, and handle them
         (clean up the disk)
 
-        :param str nodeInfo: The location of the workflow directory on the node.
+        :param str coordination_dir: The location of the coordination directory on the node.
         :param bool batchSystemShutdown: Is the batch system in the process of shutting down?
         :return:
         """
 
-        for jobState in cls._getAllJobStates(nodeInfo):
-            if not process_name_exists(nodeInfo, jobState['jobProcessName']):
+        for jobState in cls._getAllJobStates(coordination_dir):
+            if not process_name_exists(coordination_dir, jobState['jobProcessName']):
                 # We need to have a race to pick someone to clean up.
 
                 try:
@@ -229,23 +229,25 @@ class NonCachingFileStore(AbstractFileStore):
                         os.close(dirFD)
 
     @staticmethod
-    def _getAllJobStates(workflowDir: str) -> Iterator[Dict[str, str]]:
+    def _getAllJobStates(coordination_dir: str) -> Iterator[Dict[str, str]]:
         """
         Generator function that deserializes and yields the job state for every job on the node,
         one at a time.
 
-        :param workflowDir: The location of the workflow directory on the node.
+        :param coordination_dir: The location of the coordination directory on the node.
 
         :return: dict with keys (jobName,  jobProcessName, jobDir)
         """
         jobStateFiles = []
-        # Note that the directory tree may contain files whose names are not decodable to Unicode.
+        
+        # Note that the directory may contain files whose names are not decodable to Unicode.
         # So we need to work in bytes.
-        # We require that the job state files aren't in any of those directories.
-        for root, dirs, files in os.walk(workflowDir.encode('utf-8')):
-            for filename in files:
-                if filename == b'.jobState':
-                    jobStateFiles.append(os.path.join(root, filename).decode('utf-8'))
+        for entry in os.scandir(os.fsencode(coordination_dir)):
+            # For each job state file in the coordination directory
+            if entry.name.endswith(b'.jobState'):
+                # This is the state of a job
+                jobStateFiles.append(os.fsdecode(entry.path))
+        
         for fname in jobStateFiles:
             try:
                 yield NonCachingFileStore._readJobState(fname)
@@ -267,21 +269,27 @@ class NonCachingFileStore(AbstractFileStore):
         Create the job state file for the current job and fill in the required
         values.
 
+        Places the file in the coordination directory.
+
         :return: Path to the job state file
         :rtype: str
         """
-        jobStateFile = os.path.join(self.localTempDir, '.jobState')
-        jobState = {'jobProcessName': get_process_name(self.workDir),
+        jobState = {'jobProcessName': get_process_name(self.coordination_dir),
                     'jobName': self.jobName,
                     'jobDir': self.localTempDir}
-        with open(jobStateFile + '.tmp', 'wb') as fH:
+        (fd, jobStateFile) = tempfile.mkstemp(suffix='.jobState.tmp', dir=self.coordination_dir)
+        with open(fd, 'wb') as fH:
+            # Write data
             dill.dump(jobState, fH)
+        # Drop suffix
+        jobStateFile = jobStateFile[:-len('.tmp')]
+        # Put in place
         os.rename(jobStateFile + '.tmp', jobStateFile)
         return jobStateFile
 
     @classmethod
-    def shutdown(cls, dir_: str) -> None:
+    def shutdown(cls, shutdown_info: str) -> None:
         """
-        :param dir_: The workflow directory that will contain all the individual worker directories.
+        :param shutdown_info: The coordination directory.
         """
-        cls._removeDeadJobs(dir_, batchSystemShutdown=True)
+        cls._removeDeadJobs(shutdown_info, batchSystemShutdown=True)

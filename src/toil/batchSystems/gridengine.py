@@ -14,6 +14,7 @@
 import logging
 import math
 import os
+import shlex
 import time
 from pipes import quote
 from typing import Dict, List, Optional
@@ -58,7 +59,15 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                               command: str,
                               jobName: str,
                               job_environment: Optional[Dict[str, str]] = None):
-            return self.prepareQsub(cpu, memory, jobID, job_environment) + [command]
+            # POSIX qsub
+            # <https://pubs.opengroup.org/onlinepubs/9699919799.2008edition/utilities/qsub.html>
+            # expects a single script argument, which is supposed to be a file.
+            # Toil commands usually are not file names but also include
+            # arguments. So we split off the arguments like the shell would and
+            # hope that the qsub we are using is clever enough to forward along
+            # arguments. Otherwise, some qsubs will go looking for the full
+            # Toil command string as a file.
+            return self.prepareQsub(cpu, memory, jobID, job_environment) + shlex.split(command)
 
         def submitJob(self, subLine):
             stdout = call_command(subLine)
@@ -140,8 +149,10 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                     if arg.startswith(("vf=", "hvmem=", "-pe")):
                         raise ValueError("Unexpected CPU, memory or pe specifications in TOIL_GRIDGENGINE_ARGs: %s" % arg)
                 qsubline.extend(sgeArgs)
-            if os.getenv('TOIL_GRIDENGINE_PE') is not None:
-                peCpu = int(math.ceil(cpu)) if cpu is not None else 1
+            # If cpu == 1 (or None) then don't add PE env variable to the qsub command.
+            #               This will allow for use of the serial queue for these jobs.
+            if (os.getenv('TOIL_GRIDENGINE_PE') is not None) and (cpu is not None) and (cpu > 1) :
+                peCpu = int(math.ceil(cpu))
                 qsubline.extend(['-pe', os.getenv('TOIL_GRIDENGINE_PE'), str(peCpu)])
             elif (cpu is not None) and (cpu > 1):
                 raise RuntimeError("must specify PE in TOIL_GRIDENGINE_PE environment variable when using multiple CPUs. "

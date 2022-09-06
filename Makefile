@@ -80,10 +80,11 @@ help:
 # This Makefile uses bash features like printf and <()
 SHELL=bash
 tests=src/toil/test
+arch=linux/amd64,linux/arm64
 cov="--cov=toil"
 extras=
 # You can say make develop packages=xxx to install packages in the same Python
-# environemnt as Toil itself without creating dependency conflicts with Toil
+# environment as Toil itself without creating dependency conflicts with Toil
 packages=
 sdist_name:=toil-$(shell python version_template.py distVersion).tar.gz
 
@@ -118,25 +119,21 @@ clean_sdist:
 	- rm -rf dist
 	- rm src/toil/version.py
 
-# We always claim to be Travis, so that local test runs will not skip Travis tests.
 # Setting SET_OWNER_TAG will tag cloud resources so that UCSC's cloud murder bot won't kill them.
 test: check_venv check_build_reqs
-	TRAVIS=true TOIL_OWNER_TAG="shared" \
-	    python -m pytest --durations=0 --log-level DEBUG --log-cli-level INFO -r s $(cov) $(tests)
+	TOIL_OWNER_TAG="shared" \
+	    python -m pytest --durations=0 --strict-markers --log-level DEBUG --log-cli-level INFO -r s $(cov) $(tests)
 
 
 # This target will skip building docker and all docker based tests
-# these are our travis tests; rename?
 test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
-	TRAVIS=true \
-	    python -m pytest -vv --timeout=600 --log-level DEBUG --log-cli-level INFO $(cov) $(tests)
+	    python -m pytest -vv --timeout=600 --strict-markers --log-level DEBUG --log-cli-level INFO $(cov) $(tests)
 
 ifdef TOIL_DOCKER_REGISTRY
 
 docker_image:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME)
-
 grafana_image:=$(TOIL_DOCKER_REGISTRY)/toil-grafana
 prometheus_image:=$(TOIL_DOCKER_REGISTRY)/toil-prometheus
 mtail_image:=$(TOIL_DOCKER_REGISTRY)/toil-mtail
@@ -148,28 +145,34 @@ define tag_docker
 	@printf "$(green)Tagged appliance image $1 as $2.$(normal)\n"
 endef
 
-docker: docker/Dockerfile
+docker: toil_docker prometheus_docker grafana_docker mtail_docker
+
+pre_pull_docker:
 	# Pre-pull everything
-	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull ubuntu:16.04 && break || sleep 60; done
+	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull ubuntu:20.04 && break || sleep 60; done
 	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull prom/prometheus:v2.24.1 && break || sleep 60; done
 	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull grafana/grafana && break || sleep 60; done
 	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull sscaling/mtail && break || sleep 60; done
 
+toil_docker: pre_pull_docker docker/Dockerfile
 	@set -ex \
 	; cd docker \
-	; docker buildx build --platform linux/amd64,linux/arm64 --tag=$(docker_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
+	; docker buildx build --platform=$(arch) --tag=$(docker_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
 
+prometheus_docker: pre_pull_docker
 	@set -ex \
 	; cd dashboard/prometheus \
-	; docker build --tag=$(prometheus_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
+	; docker buildx build --platform=$(arch) --tag=$(prometheus_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
 
+grafana_docker: pre_pull_docker
 	@set -ex \
 	; cd dashboard/grafana \
-	; docker build --tag=$(grafana_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
+	; docker buildx build --platform=$(arch) --tag=$(grafana_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
 
+mtail_docker: pre_pull_docker
 	@set -ex \
 	; cd dashboard/mtail \
-	; docker build --tag=$(mtail_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
+	; docker buildx build --platform=$(arch) --tag=$(mtail_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
 
 docker/$(sdist_name): dist/$(sdist_name)
 	cp $< $@
@@ -183,10 +186,10 @@ clean_docker:
 
 push_docker: docker
 	# Weird if logic is so we fail if all the pushes fail
-	cd docker ; for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker buildx build --platform linux/amd64,linux/arm64 --push --tag=$(docker_image):$(TOIL_DOCKER_TAG) -f Dockerfile . && break || sleep 60; done
-	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(grafana_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
-	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(prometheus_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
-	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(mtail_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
+	cd docker ; for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker buildx build --platform $(arch) --push --tag=$(docker_image):$(TOIL_DOCKER_TAG) -f Dockerfile . && break || sleep 60; done
+	cd dashboard/prometheus ; for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker buildx build --platform $(arch) --push --tag=$(prometheus_image):$(TOIL_DOCKER_TAG) -f Dockerfile . && break || sleep 60; done
+	cd dashboard/grafana ; for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker buildx build --platform $(arch) --push --tag=$(grafana_image):$(TOIL_DOCKER_TAG) -f Dockerfile . && break || sleep 60; done
+	cd dashboard/mtail ; for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker buildx build --platform $(arch) --push --tag=$(mtail_image):$(TOIL_DOCKER_TAG) -f Dockerfile . && break || sleep 60; done
 
 else
 
@@ -281,4 +284,5 @@ flake8: $(PYSOURCES)
 		check_venv \
 		check_clean_working_copy \
 		check_build_reqs \
-		docker clean_docker push_docker
+		docker clean_docker push_docker \
+		pre_pull_docker toil_docker prometheus_docker grafana_docker mtail_docker

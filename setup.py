@@ -31,6 +31,7 @@ def get_requirements(extra=None):
         # Parse out as one per line
         return [l.strip() for l in fp.readlines() if l.strip()]
 
+
 def run_setup():
     """
     Calls setup(). This function exists so the setup() invocation preceded more internal
@@ -114,6 +115,7 @@ def run_setup():
                 'cwltoil = toil.cwl.cwltoil:cwltoil_was_removed [cwl]',
                 'toil-cwl-runner = toil.cwl.cwltoil:main [cwl]',
                 'toil-wdl-runner = toil.wdl.toilwdl:main',
+                'toil-wes-cwl-runner = toil.server.cli.wes_cwl_runner:main [server]',
                 '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]',
                 '_toil_contained_executor = toil.batchSystems.contained_executor:executor']})
 

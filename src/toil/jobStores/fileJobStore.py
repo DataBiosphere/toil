@@ -19,13 +19,17 @@ import random
 import re
 import shutil
 import stat
+import sys
 import tempfile
 import time
 import uuid
 from contextlib import contextmanager
-from typing import BinaryIO, Iterator, Optional, TextIO, Union, overload
-
-from typing_extensions import Literal
+from urllib.parse import quote, unquote, ParseResult
+from typing import IO, Iterator, List, Optional, Union, overload
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 
 from toil.fileStores import FileID
 from toil.job import TemporaryID
@@ -48,9 +52,7 @@ class FileJobStore(AbstractJobStore):
     """
 
     # Valid chars for the creation of temporary "spray" directories.
-    # Note that on case-insensitive filesystems we're twice as likely to use
-    # letter directories as number directories.
-    validDirs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    validDirs = "abcdefghijklmnopqrstuvwxyz0123456789"
     validDirsSet = set(validDirs)
 
     # What prefix should be on the per-job job directories, to distinguish them
@@ -63,10 +65,10 @@ class FileJobStore(AbstractJobStore):
     # 10Mb RAM chunks when reading/writing files
     BUFFER_SIZE = 10485760  # 10Mb
 
-    def __init__(self, path, fanOut=1000):
+    def __init__(self, path: str, fanOut: int = 1000) -> None:
         """
-        :param str path: Path to directory holding the job store
-        :param int fanOut: Number of items to have in a directory before making
+        :param path: Path to directory holding the job store
+        :param fanOut: Number of items to have in a directory before making
                            subdirectories
         """
         super().__init__(path)
@@ -207,11 +209,19 @@ class FileJobStore(AbstractJobStore):
         return 'file:' + jobStorePath
 
     def load_job(self, job_id):
+        # If the job obviously doesn't exist, note that.
         self._check_job_store_id_exists(job_id)
-        # Load a valid version of the job
+        # Try to load a valid version of the job.
         jobFile = self._get_job_file_name(job_id)
-        with open(jobFile, 'rb') as fileHandle:
-            job = pickle.load(fileHandle)
+        try:
+            with open(jobFile, 'rb') as fileHandle:
+                job = pickle.load(fileHandle)
+        except FileNotFoundError:
+            # We were racing a delete on a non-POSIX-compliant filesystem.
+            # This is the good case; the delete arrived in time.
+            # If it didn't, we might go on to re-execute the already-finished job.
+            # Anyway, this job doesn't really exist after all.
+            raise NoSuchJobException()
 
         # Pass along the current config, which is the JobStore's responsibility.
         job.assignConfig(self.config)
@@ -365,6 +375,22 @@ class FileJobStore(AbstractJobStore):
                        length=cls.BUFFER_SIZE,
                        executable=executable)
 
+    @classmethod
+    def _list_url(cls, url: ParseResult) -> List[str]:
+        path = cls._extract_path_from_url(url)
+        listing = []
+        for p in os.listdir(path):
+            # We know there are no slashes in these
+            component = quote(p)
+            # Return directories with trailing slashes and files without
+            listing.append((component + '/') if os.path.isdir(os.path.join(path, p)) else component)
+        return listing
+
+    @classmethod
+    def _get_is_directory(cls, url: ParseResult) -> bool:
+        path = cls._extract_path_from_url(url)
+        return os.path.isdir(path)
+
     @staticmethod
     def _extract_path_from_url(url):
         """
@@ -372,7 +398,7 @@ class FileJobStore(AbstractJobStore):
         """
         if url.netloc != '' and url.netloc != 'localhost':
             raise RuntimeError("The URL '%s' is invalid" % url.geturl())
-        return url.netloc + url.path
+        return unquote(url.path)
 
     @classmethod
     def _supports_url(cls, url, export=False):
@@ -566,14 +592,14 @@ class FileJobStore(AbstractJobStore):
         file_id: Union[str, FileID],
         encoding: Literal[None] = None,
         errors: Optional[str] = None,
-    ) -> Iterator[BinaryIO]:
+    ) -> Iterator[IO[bytes]]:
         ...
 
     @contextmanager
     @overload
     def read_file_stream(
         self, file_id: Union[str, FileID], encoding: str, errors: Optional[str] = None
-    ) -> Iterator[TextIO]:
+    ) -> Iterator[IO[str]]:
         ...
 
     @contextmanager
@@ -583,7 +609,7 @@ class FileJobStore(AbstractJobStore):
         file_id: Union[str, FileID],
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
-    ) -> Union[Iterator[BinaryIO], Iterator[TextIO]]:
+    ) -> Union[Iterator[IO[bytes]], Iterator[IO[str]]]:
         ...
 
     @contextmanager
@@ -592,7 +618,7 @@ class FileJobStore(AbstractJobStore):
         file_id: Union[str, FileID],
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
-    ) -> Union[Iterator[BinaryIO], Iterator[TextIO]]:
+    ) -> Union[Iterator[IO[bytes]], Iterator[IO[str]]]:
         self._check_job_store_file_id(file_id)
         if encoding is None:
             with open(

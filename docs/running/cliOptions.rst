@@ -112,6 +112,8 @@ the logging module:
                         getting too big (set using ``--maxLogFileSize BYTESIZE``).
   --maxLogFileSize BYTESIZE
                         Sets the maximum log file size in bytes (``--rotatingLogging`` must be active).
+  --log-dir DIRPATH
+                        For CWL and local file system only. Log stdout and stderr (if tool requests stdout/stderr) to the DIRPATH.
 
 **Batch System Options**
 
@@ -145,6 +147,9 @@ the logging module:
   --kubernetesServiceAccount KUBERNETES_SERVICE_ACCOUNT
                         A service account name to apply when creating
                         Kubernetes pods.
+  --kubernetesPodTimeout KUBERNETES_POD_TIMEOUT
+                        Seconds to wait for a scheduled Kubernetes pod to
+                        start running.
 
   --tesEndpoint TES_ENDPOINT
                         The http(s) URL of the TES server.
@@ -154,6 +159,20 @@ the logging module:
                         Password to use for basic authentication to TES server.
   --tesBearerToken TES_BEARER_TOKEN
                         Bearer token to use for authentication to TES server.
+
+  --awsBatchRegion AWS_BATCH_REGION
+                        Region to use when using the AWS Batch batch system.
+                        Can often be autodetected from Boto configuration or
+                        the AWS region in which the current machine is running,
+                        if any.
+  --awsBatchQueue AWS_BATCH_QUEUE
+                        Name or ARN of an AWS Batch Queue to use with the AWS
+                        Batch batch system.
+  --awsBatchJobRoleArn AWS_BATCH_JOB_ROLE_ARN
+                        ARN of an IAM role to run AWS Batch jobs as with the
+                        AWS Batch batch system. If the jobs are not run with an
+                        IAM role or on machines that have access to S3 and
+                        SimpleDB, the AWS job store will not be usable.
 
   --scale SCALE         A scaling factor to change the value of all submitted
                         tasks' submitted cores. Used in singleMachine batch
@@ -166,7 +185,8 @@ the logging module:
                         As long as caching is enabled Toil will protect the
                         file automatically by changing the permissions to
                         read-only.
-  --coalesceStatusCalls Coalese status calls to prevent the batch system from
+  --coalesceStatusCalls
+                        Coalese status calls to prevent the batch system from
                         being overloaded. Currently only supported for LSF.
 
 **Autoscaling Options**
@@ -181,6 +201,7 @@ the logging module:
                         bid set off by a colon, making the node type preemptable. Instance
                         types may appear in multiple node types, and the same node type
                         may appear as both preemptable and non-preemptable.
+                        
                         Valid argument specifying two node types:
                             c5.4xlarge/c5a.4xlarge:0.42,t2.large
                         Node types:
@@ -294,14 +315,8 @@ the logging module:
                         systems such as gridengine, htcondor, torque, slurm,
                         and lsf.
 
-  **Miscellaneous Options**
+**Log Management Options**
 
-  --disableCaching      Disables caching in the file store. This flag must be
-                        set to use a batch system that does not support
-                        cleanup, such as Parasol.
-  --disableChaining     Disables chaining of jobs (chaining uses one job's
-                        resource allocation for its successor job if
-                        possible).
   --maxLogFileSize MAXLOGFILESIZE
                         The maximum size of a job log file to keep (in bytes),
                         log files larger than this will be truncated to the
@@ -323,6 +338,17 @@ the logging module:
                         Identical to -\\-writeLogs except the logs files are
                         gzipped on the leader.
   --realTimeLogging     Enable real-time logging from workers to leader.
+  --writeMessages FILEPATH
+                        File to send messages from the leader's message bus to.
+
+**Miscellaneous Options**
+
+  --disableCaching      Disables caching in the file store. This flag must be
+                        set to use a batch system that does not support
+                        cleanup, such as Parasol.
+  --disableChaining     Disables chaining of jobs (chaining uses one job's
+                        resource allocation for its successor job if
+                        possible).
   --sseKey SSEKEY       Path to file containing 32 character key to be used
                         for server-side encryption on awsJobStore or
                         googleJobStore. SSE will not be used if this flag is
@@ -346,6 +372,10 @@ the logging module:
                         (default=3600)
   --disableProgress     Disables the progress bar shown when standard error is
                         a terminal.
+  --kill_polling_interval KILL_POLLING_INTERVAL
+                        Interval of time (in seconds) the leader waits between
+                        polling for the kill flag inside the job store set by
+                        the "toil kill" command. (default=5)
 
 
 Restart Option

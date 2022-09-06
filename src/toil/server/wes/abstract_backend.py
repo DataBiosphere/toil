@@ -5,13 +5,17 @@ import os
 import logging
 import tempfile
 from abc import abstractmethod
-from typing import Optional, List, Dict, Any, Tuple, Callable
+from typing import Optional, List, Dict, Any, Tuple, Union, Callable
 from urllib.parse import urldefrag
 
 import connexion  # type: ignore
-from werkzeug.utils import secure_filename  # type: ignore
+from werkzeug.utils import secure_filename
 
 logger = logging.getLogger(__name__)
+
+# Define a type for WES task log entries in responses
+# TODO: make this a typed dict with all the WES task log field names and their types.
+TaskLog = Dict[str, Union[str, int, None]]
 
 
 class VersionNotImplementedException(Exception):
@@ -207,7 +211,7 @@ class WESBackend:
         """
         if not temp_dir:
             temp_dir = tempfile.mkdtemp()
-        body = {}
+        body: Dict[str, Any] = {}
         has_attachments = False
         for key, ls in connexion.request.files.lists():
             try:
@@ -255,7 +259,9 @@ class WESBackend:
             self.log_for_run(run_id, "Using workflow_url '%s'" % body.get("workflow_url"))
         else:
             raise MalformedRequestException("Missing 'workflow_url' in submission")
-        if "workflow_params" not in body:
-            raise MalformedRequestException("Missing 'workflow_params' in submission")
+
+        if "workflow_params" in body and not isinstance(body["workflow_params"], dict):
+            # They sent us something silly like "workflow_params": "5"
+            raise MalformedRequestException("Got a 'workflow_params' which does not decode to a JSON object")
 
         return temp_dir, body

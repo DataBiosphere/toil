@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import ast
-import getpass
 import json
 import logging
 import os
@@ -41,8 +40,9 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.batchSystems.local_support import BatchSystemLocalSupport
 from toil.batchSystems.mesos import JobQueue, MesosShape, TaskData, ToilJob
 from toil.job import JobDescription
+from toil.lib.conversions import b_to_mib, mib_to_b
 from toil.lib.memoize import strict_bool
-from toil.lib.misc import get_public_ip
+from toil.lib.misc import get_public_ip, get_user_name
 
 log = logging.getLogger(__name__)
 
@@ -291,14 +291,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             else:
                 log.debug('Job %s ended naturally before it could be killed.', item.jobID)
 
-    def nodeInUse(self, nodeIP):
+    def nodeInUse(self, nodeIP: str) -> bool:
         return nodeIP in self.hostToJobIDs
-
-    @contextmanager
-    def nodeFiltering(self, filter):
-        self.nodeFilter = [filter]
-        yield
-        self.nodeFilter = []
 
     def getWaitDuration(self):
         """
@@ -324,7 +318,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         The Mesos driver thread which handles the scheduler's communication with the Mesos master
         """
         framework = addict.Dict()
-        framework.user = getpass.getuser()  # We must determine the user name ourselves with pymesos
+        framework.user = get_user_name()  # We must determine the user name ourselves with pymesos
         framework.name = "toil"
         framework.principal = framework.name
         # Make the driver which implements most of the scheduler logic and calls back to us for the user-defined parts.
@@ -467,18 +461,18 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                        # can only run preemptable jobs:
                        and (not offerPreemptable or jobType.preemptable)
                        and remainingCores >= jobType.cores
-                       and remainingDisk >= toMiB(jobType.disk)
-                       and remainingMemory >= toMiB(jobType.memory)):
+                       and remainingDisk >= b_to_mib(jobType.disk)
+                       and remainingMemory >= b_to_mib(jobType.memory)):
                     task = self._prepareToRun(jobType, offer)
                     # TODO: this used to be a conditional but Hannes wanted it changed to an assert
                     # TODO: ... so we can understand why it exists.
                     assert int(task.task_id.value) not in self.runningJobMap
                     runnableTasksOfType.append(task)
                     log.debug("Preparing to launch Mesos task %s with %.2f cores, %.2f MiB memory, and %.2f MiB disk using offer %s ...",
-                              task.task_id.value, jobType.cores, toMiB(jobType.memory), toMiB(jobType.disk), offer.id.value)
+                              task.task_id.value, jobType.cores, b_to_mib(jobType.memory), b_to_mib(jobType.disk), offer.id.value)
                     remainingCores -= jobType.cores
-                    remainingMemory -= toMiB(jobType.memory)
-                    remainingDisk -= toMiB(jobType.disk)
+                    remainingMemory -= b_to_mib(jobType.memory)
+                    remainingDisk -= b_to_mib(jobType.disk)
                     nextToLaunchIndex += 1
                 if not self.jobQueues.typeEmpty(jobType):
                     # report that remaining jobs cannot be run with the current resourcesq:
@@ -488,9 +482,9 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                               dict(offer=offer.id.value,
                                    requirements=jobType.__dict__,
                                    non='' if offerPreemptable else 'non-',
-                                   memory=fromMiB(offerMemory),
+                                   memory=mib_to_b(offerMemory),
                                    cores=offerCores,
-                                   disk=fromMiB(offerDisk)))
+                                   disk=mib_to_b(offerDisk)))
                 runnableTasks.extend(runnableTasksOfType)
             # Launch all runnable tasks together so we only call launchTasks once per offer
             if runnableTasks:
@@ -563,8 +557,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         disk = task.resources[-1]
         disk.name = 'disk'
         disk.type = 'SCALAR'
-        if toMiB(job.resources.disk) > 1:
-            disk.scalar.value = toMiB(job.resources.disk)
+        if b_to_mib(job.resources.disk) > 1:
+            disk.scalar.value = b_to_mib(job.resources.disk)
         else:
             log.warning("Job %s uses less disk than Mesos requires. Rounding %s up to 1 MiB.",
                         job.jobID, job.resources.disk)
@@ -574,8 +568,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         mem = task.resources[-1]
         mem.name = 'mem'
         mem.type = 'SCALAR'
-        if toMiB(job.resources.memory) > 1:
-            mem.scalar.value = toMiB(job.resources.memory)
+        if b_to_mib(job.resources.memory) > 1:
+            mem.scalar.value = b_to_mib(job.resources.memory)
         else:
             log.warning("Job %s uses less memory than Mesos requires. Rounding %s up to 1 MiB.",
                         job.jobID, job.resources.memory)
@@ -714,13 +708,20 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
         return executor
 
-    def getNodes(self, preemptable=None, timeout=600):
-        timeout = timeout or sys.maxsize
-        return {nodeAddress: executor.nodeInfo
-                for nodeAddress, executor in self.executors.items()
-                if time.time() - executor.lastSeen < timeout
-                and (preemptable is None
-                     or preemptable == (executor.agentId not in self.nonPreemptableNodes))}
+    def getNodes(self,
+                 preemptable: Optional[bool] = None,
+                 timeout: Optional[int] = None) -> Dict[str, NodeInfo]:
+        """
+        Return all nodes that match:
+         - preemptable status (None includes all)
+         - timeout period (seen within the last # seconds, or None for all)
+        """
+        nodes = dict()
+        for node_ip, executor in self.executors.items():
+            if preemptable is None or (preemptable == (executor.agentId not in self.nonPreemptableNodes)):
+                if timeout is None or (time.time() - executor.lastSeen < timeout):
+                    nodes[node_ip] = executor.nodeInfo
+        return nodes
 
     def reregistered(self, driver, masterInfo):
         """
@@ -846,10 +847,3 @@ class MesosBatchSystem(BatchSystemLocalSupport,
     def setOptions(cls, setOption):
         setOption("mesos_endpoint", None, None, cls.get_default_mesos_endpoint(), old_names=["mesosMasterAddress"])
 
-
-def toMiB(n):
-    return n / 1024 / 1024
-
-
-def fromMiB(n):
-    return n * 1024 * 1024

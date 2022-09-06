@@ -7,7 +7,8 @@ def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
 
 
 if __name__ == "__main__":
-    options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+    parser = Job.Runner.getDefaultArgumentParser()
+    options = parser.parse_args()
     options.logLevel = "INFO"
     options.clean = "always"
 

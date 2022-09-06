@@ -28,13 +28,13 @@ import the expand_ function and invoke it directly with either no or exactly one
 #  - don't import even standard modules at global scope without renaming them
 #    to have leading/trailing underscores
 
-baseVersion = '5.6.0a1'
+baseVersion = '5.8.0a1'
 cgcloudVersion = '1.6.0a1.dev393'
 
 
 def version():
     """
-    A version identifier that includes the full-legth commit SHA1 and an optional suffix to
+    A version identifier that includes the full-length commit SHA1 and an optional suffix to
     indicate that the working copy is dirty.
     """
     return '-'.join(filter(None, [distVersion(), currentCommit(), ('dirty' if dirty() else None)]))

@@ -4,7 +4,9 @@ docker>=3.7.2, <6
 python-dateutil
 psutil >= 3.0.1, <6
 py-tes>=0.4.2,<1
+PyPubSub >=4.0.3, <5
 addict>=2.2.1, <2.5
 pytz>=2012
 enlighten>=1.5.2, <2
+packaging>=21.1
 typing-extensions ; python_version < '3.8'

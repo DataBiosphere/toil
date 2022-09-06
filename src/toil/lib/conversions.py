@@ -4,7 +4,7 @@ Also contains general conversion functions
 """
 
 import math
-from typing import SupportsInt, Tuple
+from typing import SupportsInt, Tuple, Union
 
 # See https://en.wikipedia.org/wiki/Binary_prefix
 BINARY_PREFIXES = ['ki', 'mi', 'gi', 'ti', 'pi', 'ei', 'kib', 'mib', 'gib', 'tib', 'pib', 'eib']
@@ -88,6 +88,19 @@ def bytes2human(n: SupportsInt) -> str:
     unit = units[power_level if power_level < len(units) else -1]
     value = convert_units(n, "b", unit)
     return f'{value:.1f} {unit}'
+    
+def b_to_mib(n: Union[int, float]) -> float:
+    """
+    Convert a number from bytes to mibibytes.
+    """
+    return convert_units(n, 'b', 'mib')
+
+
+def mib_to_b(n: Union[int, float]) -> float:
+    """
+    Convert a number from mibibytes to bytes.
+    """
+    return convert_units(n, 'mib', 'b')
 
 #General Conversions
 

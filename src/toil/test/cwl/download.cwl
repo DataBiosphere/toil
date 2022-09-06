@@ -1,5 +1,3 @@
-# Example command line program wrapper for the Unix tool "sort"
-# demonstrating command line flags.
 class: CommandLineTool
 doc: "Download a file from different cloud environments"
 cwlVersion: v1.0

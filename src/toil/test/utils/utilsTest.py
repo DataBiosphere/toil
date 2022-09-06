@@ -38,8 +38,7 @@ from toil.test import (
     needs_cwl,
     needs_docker,
     needs_rsync3,
-    slow,
-    travis_test,
+    slow
 )
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
@@ -140,6 +139,7 @@ class UtilsTest(ToilTest):
         # TODO: Run these for the other clouds.
         clusterName = f'cluster-utils-test{uuid.uuid4()}'
         keyName = os.getenv('TOIL_AWS_KEYNAME').strip() or 'id_rsa'
+        expected_owner = os.getenv('TOIL_OWNER_TAG') or keyName
 
         try:
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
@@ -156,7 +156,7 @@ class UtilsTest(ToilTest):
             leader = cluster.getLeader()
 
             # check that the leader carries the appropriate tags
-            tags = {'key1': 'value1', 'key2': 'value2', 'key3': 'value3', 'Name': clusterName, 'Owner': keyName}
+            tags = {'key1': 'value1', 'key2': 'value2', 'key3': 'value3', 'Name': clusterName, 'Owner': expected_owner}
             for key in tags:
                 self.assertEqual(leader.tags.get(key), tags[key])
         finally:
@@ -262,7 +262,6 @@ class UtilsTest(ToilTest):
         # Delete output file
         os.remove(self.outputFile)
 
-    @travis_test
     def testUnicodeSupport(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.clean = 'always'
@@ -294,7 +293,6 @@ class UtilsTest(ToilTest):
                 s = status_fn(self.toilDir)
                 self.assertEqual(s, status, 'Status took longer than 10 seconds to fetch:  %s' % s)
 
-    @travis_test
     def testGetPIDStatus(self):
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
         wf = subprocess.Popen(self.sort_workflow_cmd)
@@ -302,12 +300,11 @@ class UtilsTest(ToilTest):
         wf.wait()
         self.check_status('COMPLETED', status_fn=ToilStatus.getPIDStatus)
 
-        # TODO: we need to reach into the FileJobStore's files and
-        # delete this shared file. We assume we know its internal layout.
+        # TODO: we need to reach into the FileJobStore's files and delete this
+        #  shared file. We assume we know its internal layout.
         os.remove(os.path.join(self.toilDir, 'files/shared/pid.log'))
         self.check_status('QUEUED', status_fn=ToilStatus.getPIDStatus)
 
-    @travis_test
     def testGetStatusFailedToilWF(self):
         """
         Test that ToilStatus.getStatus() behaves as expected with a failing Toil workflow.

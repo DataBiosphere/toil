@@ -224,8 +224,10 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
     #Setup the temporary directories.
     ##########################################
     # Dir to put all this worker's temp files in.
-    assert config.workflowID
+    assert config.workflowID is not None
     toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
+    # Dir to put lock files in, ideally not on NFS.
+    toil_coordination_dir = Toil.get_local_workflow_coordination_dir(config.workflowID, config.workDir)
     localWorkerTempDir = make_public_dir(in_directory=toilWorkflowDir)
     os.chmod(localWorkerTempDir, 0o755)
 
@@ -304,7 +306,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         ##########################################
         # Connect to the deferred function system
         ##########################################
-        deferredFunctionManager = DeferredFunctionManager(toilWorkflowDir)
+        deferredFunctionManager = DeferredFunctionManager(toil_coordination_dir)
 
         ##########################################
         # Load the JobDescription
@@ -512,6 +514,17 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             # and it needs to inform its caller.
             failure_exit_code = CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
         AbstractFileStore._terminateEvent.set()
+    finally:
+        try:
+            import cwltool.main
+
+            cwltool.main._terminate_processes()
+        except (ImportError, ModuleNotFoundError):
+            pass
+        except Exception as e:
+            logger.debug("cwltool.main._terminate_processess exception: %s", (e))
+            raise e
+
 
     ##########################################
     #Wait for the asynchronous chain of writes/updates to finish
