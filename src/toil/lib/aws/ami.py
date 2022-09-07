@@ -11,7 +11,7 @@ from toil.lib.retry import retry
 logger = logging.getLogger(__name__)
 
 
-def get_flatcar_ami(ec2_client: BaseClient, architecture: str ='amd64') -> str:
+def get_flatcar_ami(ec2_client: BaseClient, architecture: str = 'amd64') -> str:
     """
     Retrieve the flatcar AMI image to use as the base for all Toil autoscaling instances.
 
@@ -30,21 +30,20 @@ def get_flatcar_ami(ec2_client: BaseClient, architecture: str ='amd64') -> str:
     # Take a user override
     ami = os.environ.get('TOIL_AWS_AMI')
     if not ami:
-        logger.debug("No AMI found in TOIL_AWS_AMI; checking Flatcar release feed")
+        logger.debug('No AMI found in TOIL_AWS_AMI; checking Flatcar release feed')
         ami = official_flatcar_ami_release(ec2_client=ec2_client, architecture=architecture)
     if not ami:
-        logger.warning("No available AMI found in Flatcar release feed; checking marketplace")
-        # TODO: Support architecture
-        ami = aws_marketplace_flatcar_ami_search(ec2_client=ec2_client)
+        logger.warning('No available AMI found in Flatcar release feed; checking marketplace')
+        ami = aws_marketplace_flatcar_ami_search(ec2_client=ec2_client, architecture=architecture)
     if not ami:
-        logger.critical("No available AMI found in marketplace")
+        logger.critical('No available AMI found in marketplace')
         raise RuntimeError('Unable to fetch the latest flatcar image.')
-    logger.info("Selected Flatcar AMI: %s", ami)
+    logger.info('Selected Flatcar AMI: %s', ami)
     return ami
 
 
 @retry()  # TODO: What errors do we get for timeout, JSON parse failure, etc?
-def official_flatcar_ami_release(ec2_client: BaseClient, architecture: str ='amd64') -> Optional[str]:
+def official_flatcar_ami_release(ec2_client: BaseClient, architecture: str = 'amd64') -> Optional[str]:
     """
     Check stable.release.flatcar-linux.net for the latest flatcar AMI.  Verify it's on AWS.
 
@@ -77,13 +76,18 @@ def official_flatcar_ami_release(ec2_client: BaseClient, architecture: str ='amd
 
 
 @retry()  # TODO: What errors do we get for timeout, JSON parse failure, etc?
-def aws_marketplace_flatcar_ami_search(ec2_client: BaseClient) -> Optional[str]:
+def aws_marketplace_flatcar_ami_search(ec2_client: BaseClient, architecture: str = 'amd64') -> Optional[str]:
     """Query AWS for all AMI names matching 'Flatcar-stable-*' and return the most recent one."""
+
+    # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_images
+    # Possible arch choices on AWS: 'i386'|'x86_64'|'arm64'|'x86_64_mac'
+    architecture_mapping = {'amd64': 'x86_64',
+                            'arm64': 'arm64'}
     response: dict = ec2_client.describe_images(Owners=['aws-marketplace'],  # type: ignore
                                                 Filters=[{'Name': 'name', 'Values': ['Flatcar-stable-*']}])
     latest: Dict[str, str] = {'CreationDate': '0lder than atoms.'}
     for image in response['Images']:
-        if image["Architecture"] == "x86_64" and image["State"] == "available":
+        if image['Architecture'] == architecture_mapping[architecture] and image['State'] == 'available':
             if image['CreationDate'] > latest['CreationDate']:
                 latest = image
     return latest.get('ImageId', None)

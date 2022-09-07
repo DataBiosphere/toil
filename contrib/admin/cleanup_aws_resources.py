@@ -253,7 +253,8 @@ def main(argv):
 
     options = parser.parse_args(argv)
 
-    account_name = session.client('iam').list_account_aliases()['AccountAliases'][0]
+    account_aliases = session.client('iam').list_account_aliases()['AccountAliases']
+    account_name = account_aliases[0] if account_aliases else "[no name]"
     print(f'\n\nNow running for AWS account: {account_name}.')
 
     match = [m.strip() for m in options.match.split(',') if m.strip()]

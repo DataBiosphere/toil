@@ -1212,19 +1212,21 @@ class AWSJobStore(AbstractJobStore):
                                 parts = []
                                 logger.debug('Multipart upload started as %s', uploadId)
 
-                        for i in range(CONSISTENCY_TICKS):
-                            # Sometimes we can create a multipart upload and not see it. Wait around for it.
-                            response = list_multipart_uploads(
-                                s3_resource=store.s3_resource,
-                                bucket=bucket_name,
-                                prefix=compat_bytes(info.fileID)
-                            )
-                            if len(response['Uploads']) != 0 and response['Uploads'][0]['UploadId'] == uploadId:
-                                logger.debug('Multipart upload visible as %s', uploadId)
-                                break
-                            else:
-                                logger.debug('Multipart upload %s is not visible; we see %s', uploadId, response['Uploads'])
-                                time.sleep(CONSISTENCY_TIME * 2 ** i)
+                        for attempt in retry_s3():
+                            with attempt:
+                                for i in range(CONSISTENCY_TICKS):
+                                    # Sometimes we can create a multipart upload and can not see it. Wait around for it.
+                                    response = list_multipart_uploads(
+                                        s3_resource=store.s3_resource,
+                                        bucket=bucket_name,
+                                        prefix=compat_bytes(info.fileID)
+                                    )
+                                    if len(response['Uploads']) != 0 and response['Uploads'][0]['UploadId'] == uploadId:
+                                        logger.debug('Multipart upload visible as %s', uploadId)
+                                        break
+                                    else:
+                                        logger.debug('Multipart upload %s is not visible; we see %s', uploadId, response['Uploads'])
+                                        time.sleep(CONSISTENCY_TIME * 2 ** i)
 
                         try:
                             for part_num in itertools.count():
