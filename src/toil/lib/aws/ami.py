@@ -34,7 +34,6 @@ def get_flatcar_ami(ec2_client: BaseClient, architecture: str = 'amd64') -> str:
         ami = official_flatcar_ami_release(ec2_client=ec2_client, architecture=architecture)
     if not ami:
         logger.warning('No available AMI found in Flatcar release feed; checking marketplace')
-        # TODO: Support architecture
         ami = aws_marketplace_flatcar_ami_search(ec2_client=ec2_client, architecture=architecture)
     if not ami:
         logger.critical('No available AMI found in marketplace')
