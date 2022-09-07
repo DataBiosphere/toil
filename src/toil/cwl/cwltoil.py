@@ -58,8 +58,8 @@ from urllib.parse import quote, unquote, urlparse, urlsplit, ParseResult
 import cwltool.builder
 import cwltool.command_line_tool
 import cwltool.context
-import cwltool.errors
-import cwltool.expression
+import cwl_utils.errors
+import cwl_utils.expression
 import cwltool.load_tool
 import cwltool.main
 import cwltool.provenance
@@ -240,7 +240,7 @@ class Conditional:
         if self.expression is None:
             return False
 
-        expr_is_true = cwltool.expression.do_eval(
+        expr_is_true = cwl_utils.expression.do_eval(
             self.expression,
             {shortname(k): v for k, v in resolve_dict_w_promises(job).items()},
             self.requirements,
@@ -253,7 +253,7 @@ class Conditional:
         if isinstance(expr_is_true, bool):
             return not expr_is_true
 
-        raise cwltool.errors.WorkflowException(
+        raise cwl_utils.errors.WorkflowException(
             "'%s' evaluated to a non-boolean value" % self.expression
         )
 
@@ -388,7 +388,7 @@ class ResolveSource:
 
         if pick_value_type == "first_non_null":
             if len(result) < 1:
-                raise cwltool.errors.WorkflowException(
+                raise cwl_utils.errors.WorkflowException(
                     "%s: first_non_null operator found no non-null values" % self.name
                 )
             else:
@@ -396,12 +396,12 @@ class ResolveSource:
 
         elif pick_value_type == "the_only_non_null":
             if len(result) == 0:
-                raise cwltool.errors.WorkflowException(
+                raise cwl_utils.errors.WorkflowException(
                     "%s: the_only_non_null operator found no non-null values"
                     % self.name
                 )
             elif len(result) > 1:
-                raise cwltool.errors.WorkflowException(
+                raise cwl_utils.errors.WorkflowException(
                     "%s: the_only_non_null operator found more than one non-null values"
                     % self.name
                 )
@@ -412,7 +412,7 @@ class ResolveSource:
             return result
 
         else:
-            raise cwltool.errors.WorkflowException(
+            raise cwl_utils.errors.WorkflowException(
                 f"Unsupported pickValue '{pick_value_type}' on {self.name}"
             )
 
@@ -489,7 +489,7 @@ class StepValueFrom:
         :param inputs:
         :return: object
         """
-        return cwltool.expression.do_eval(
+        return cwl_utils.expression.do_eval(
             self.expr,
             inputs,
             self.req,
@@ -1706,7 +1706,7 @@ def upload_directory(
         if skip_broken:
             return
         else:
-            raise cwltool.errors.WorkflowException(
+            raise cwl_utils.errors.WorkflowException(
                 "Directory is missing: %s" % directory_metadata["location"]
             )
 
@@ -1753,7 +1753,7 @@ def upload_file(
         if skip_broken:
             return
         else:
-            raise cwltool.errors.WorkflowException("File is missing: %s" % location)
+            raise cwl_utils.errors.WorkflowException("File is missing: %s" % location)
     file_metadata["location"] = write_file(uploadfunc, fileindex, existing, location)
 
     logger.debug("Sending file at: %s", file_metadata["location"])
@@ -2253,7 +2253,7 @@ class CWLJob(CWLNamedJob):
         )
         ended_at = datetime.datetime.now()  # noqa F841
         if status != "success":
-            raise cwltool.errors.WorkflowException(status)
+            raise cwl_utils.errors.WorkflowException(status)
 
         for t, fd in pipe_threads:
             os.close(fd)
@@ -2469,7 +2469,7 @@ class CWLScatter(Job):
 
             def valueFromFunc(k: str, v: Any) -> Any:
                 if k in valueFrom:
-                    return cwltool.expression.do_eval(
+                    return cwl_utils.expression.do_eval(
                         valueFrom[k],
                         shortio,
                         self.step.requirements,
