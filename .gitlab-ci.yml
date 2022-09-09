@@ -60,8 +60,7 @@ py310_main:
   stage: basic_tests
   script:
     - pwd
-    - python3.10 -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages=htcondor
-    - curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10
+    - python3.10 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10 && pip install -U pip wheel && make prepare && make develop extras=[all] packages=htcondor
     - make test tests=src/toil/test/src
     - make test tests=src/toil/test/utils
     - TOIL_SKIP_DOCKER=true make test tests=src/toil/test/lib
