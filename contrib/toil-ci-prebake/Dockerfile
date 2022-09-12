@@ -8,7 +8,7 @@
 #
 # For example:
 #
-#   docker login
+#   docker login quay.io
 #   docker build . -t quay.io/ucsc_cgl/toil_ci_prebake:latest
 #   docker push quay.io/ucsc_cgl/toil_ci_prebake:latest
 #
