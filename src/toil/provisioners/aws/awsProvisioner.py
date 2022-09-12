@@ -301,8 +301,9 @@ class AWSProvisioner(AbstractProvisioner):
         :return: None
         """
 
-        # Function prints warning to the log
-        if not policy_permissions_allow(get_policy_permissions(region=self._region)["*"], CLUSTER_LAUNCHING_PERMISSIONS):
+        # First, pre-flight-check pur permissions before makign anything.
+        if not policy_permissions_allow(get_policy_permissions(region=self._region), CLUSTER_LAUNCHING_PERMISSIONS):
+            # Function prints a more specific warning to the log, but give some context.
             logger.warning('Toil may not be able to properly launch (or destroy!) your cluster.')
 
         leader_type = E2Instances[leaderNodeType]
