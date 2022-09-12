@@ -140,7 +140,7 @@ print(heredoc('''
 
     # The stock pip is too old and can't install from sdist with extras
     #RUN {pip} install --upgrade pip==21.3.1
-    curl -sS https://bootstrap.pypa.io/get-pip.py | {python}
+    RUN curl -sS https://bootstrap.pypa.io/get-pip.py | {python}
 
     # Default setuptools is too old
     RUN {pip} install --upgrade setuptools==59.7.0
