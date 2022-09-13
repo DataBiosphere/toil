@@ -405,10 +405,7 @@ class CWLWorkflowTest(ToilTest):
             out_name="output1",
         )
 
-    # TODO: work out why we can't fulfil the SoftwareRequirement and it crashes
-    # the galaxy module 
     @needs_docker
-    @pytest.mark.xfail
     def test_biocontainers(self):
         self._tester(
             "src/toil/test/cwl/seqtk_seq.cwl",

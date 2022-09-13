@@ -301,7 +301,7 @@ class AWSProvisioner(AbstractProvisioner):
         :return: None
         """
 
-        # First, pre-flight-check pur permissions before makign anything.
+        # First, pre-flight-check our permissions before making anything.
         if not policy_permissions_allow(get_policy_permissions(region=self._region), CLUSTER_LAUNCHING_PERMISSIONS):
             # Function prints a more specific warning to the log, but give some context.
             logger.warning('Toil may not be able to properly launch (or destroy!) your cluster.')

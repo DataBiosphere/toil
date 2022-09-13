@@ -613,7 +613,7 @@ class AbstractProvisioner(ABC):
         # make Ignition RAID them, stop doing it manually. Might depend on real
         # solution for https://github.com/coreos/ignition/issues/1126
         #
-        # TODO: check what kind of isntance this is, and what ephemeral volumes
+        # TODO: check what kind of instance this is, and what ephemeral volumes
         # *should* be there, and declaratively RAID and mount them.
         config.addFile("/home/core/volumes.sh", contents=textwrap.dedent("""\
             #!/bin/bash
@@ -777,7 +777,8 @@ class AbstractProvisioner(ABC):
             entryPoint = "customDockerInit.sh"
 
         # Set up the service. Make sure to make it default to using the
-        # actually-big temp directory.
+        # actually-big temp directory of /var/tmp (see
+        # https://systemd.io/TEMPORARY_DIRECTORIES/).
         config.addUnit(f"toil-{role}.service", contents=textwrap.dedent(f'''\
             [Unit]
             Description=toil-{role} container
