@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import errno
+import json
 import logging
 import os
 import socket
@@ -386,6 +387,26 @@ def list_objects_for_url(url: ParseResult) -> List[str]:
 
         logger.debug('Found in %s items: %s', url, listing)
         return listing
+
+def build_tag_dict(environment: Dict[str, str] =  os.environ) -> Dict[str, str]:
+    tags = dict()
+    owner_tag = environment.get('TOIL_OWNER_TAG')
+    if owner_tag:
+        tags.update({'Owner': owner_tag})
+
+    user_tags = environment.get('TOIL_AWS_TAGS')
+    if user_tags:
+        try:
+            json_user_tags = json.loads(user_tags)
+            if isinstance(json_user_tags, dict):
+                tags.update(json.loads(user_tags))
+            else:
+                logger.error('TOIL_AWS_TAGS must be in JSON format: {"key" : "value", ...}')
+                exit(1)
+        except json.decoder.JSONDecodeError:
+            logger.error('TOIL_AWS_TAGS must be in JSON format: {"key" : "value", ...}')
+            exit(1)
+    return tags
 def flatten_tags(tags: Dict[str, str]) -> List[Dict[str, str]]:
     """
     Convert tags from a key to value dict into a list of 'Key': xxx, 'Value': xxx dicts.
