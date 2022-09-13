@@ -13,6 +13,7 @@
 # limitations under the License.
 import hashlib
 import itertools
+import json
 import logging
 import os
 import pickle
@@ -66,6 +67,7 @@ from toil.lib.aws.utils import (
 )
 from toil.lib.compatibility import compat_bytes
 from toil.lib.aws.session import establish_boto3_session
+from toil.lib.aws.utils import flatten_tags
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.exceptions import panic
 from toil.lib.io import AtomicFileCreate
@@ -747,10 +749,23 @@ class AWSJobStore(AbstractJobStore):
                                 get_bucket_region(bucket_name) == self.region
                             ), f"bucket_name: {bucket_name}, {get_bucket_region(bucket_name)} != {self.region}"
 
+                            tags = dict()
                             owner_tag = os.environ.get('TOIL_OWNER_TAG')
                             if owner_tag:
+                                tags.update({'Owner': owner_tag})
+
+                            user_tags = os.environ.get('TOIL_AWS_TAGS')
+                            if user_tags:
+                                try:
+                                    tags.update(json.loads(user_tags))
+                                except json.decoder.JSONDecodeError:
+                                    logger.error('TOIL_AWS_TAGS must be in JSON format: {"key" : "value", ...}')
+                                    exit(1)
+
+                            if tags:
+                                flat_tags = flatten_tags(tags)
                                 bucket_tagging = self.s3_resource.BucketTagging(bucket_name)
-                                bucket_tagging.put(Tagging={'TagSet': [{'Key': 'Owner', 'Value': owner_tag}]})
+                                bucket_tagging.put(Tagging={'TagSet': flat_tags})
                         elif block:
                             raise
                         else:

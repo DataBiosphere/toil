@@ -386,5 +386,8 @@ def list_objects_for_url(url: ParseResult) -> List[str]:
 
         logger.debug('Found in %s items: %s', url, listing)
         return listing
-
-
+def flatten_tags(tags: Dict[str, str]) -> List[Dict[str, str]]:
+    """
+    Convert tags from a key to value dict into a list of 'Key': xxx, 'Value': xxx dicts.
+    """
+    return [{'Key': k, 'Value': v} for k, v in tags.items()]
