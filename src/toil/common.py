@@ -1320,51 +1320,33 @@ class Toil(ContextManager["Toil"]):
                  deleted.
         """
 
-        # Define higher-order functions over Optional because I learned Haskell
-        # once.
-
-        T = TypeVar('T')
-        def omap(o: Optional[T], f: Callable[[T], T]) -> Optional[T]:
-            """
-            Map a function over an optional.
-            """
-            return f(o) if o is not None else None
-
-        def ofilter(o: Optional[T], p: Callable[[T], bool]) -> Optional[T]:
-            """
-            Filter an optional with a predicate function.
-            """
-            return None if (o is None or not p(o)) else o
-
-        # Then we can specify our algorithm as a prioritized list of methods to
-        # try.
-        sources: List[Callable[[], Optional[str]]] = [
+        # Go get a coordination directory, using a lot of short-circuiting of
+        # or and the fact that and returns its second argument when it
+        # succeeds.
+        coordination_dir: Optional[str] = (
             # First try an override env var
-            lambda: os.getenv('TOIL_COORDINATION_DIR_OVERRIDE'),
+            os.getenv('TOIL_COORDINATION_DIR_OVERRIDE') or
             # Then the value from the config
-            lambda: config_coordination_dir,
+            config_coordination_dir or
             # Then a normal env var
             # TODO: why/how would this propagate when not using single machine?
-            lambda: os.getenv('TOIL_COORDINATION_DIR'),
+            os.getenv('TOIL_COORDINATION_DIR') or
             # Then try a `toil` subdirectory of the XDG runtime directory
             # (often /var/run/users/<UID>). But only if we are actually in a
             # session that has the env var set. Otherwise it might belong to a
             # different set of sessions and get cleaned up out from under us
             # when that session ends.
-            lambda: ofilter(omap(os.getenv('XDG_RUNTIME_DIR'), lambda p: os.path.join(p, 'toil')), os.path.exists),
+            ('XDG_RUNTIME_DIR' in os.environ and try_path(os.path.join(os.environ['XDG_RUNTIME_DIR'], 'toil'))) or
             # Try under /run/lock. It might be a temp dir style sticky directory.
-            lambda: try_path('/run/lock'),
+            try_path('/run/lock') or
             # Finally, fall back on the work dir and hope it's a legit filesystem.
-            lambda: cls.getToilWorkDir(config_work_dir)
-        ]
+            cls.getToilWorkDir(config_work_dir)
+        )
 
-        for source in sources:
-            # Go through all the sources and use the first one that works.
-            result = source()
-            if result is not None:
-                return result
+        if coordination_dir is None:
+            raise RuntimeError("Could not determine a coordination directory by any method!")
 
-        raise RuntimeError("Could not determine a coordination directory by any method!")
+        return coordination_dir
 
     @staticmethod
     def _get_workflow_path_component(workflow_id: str) -> str:
