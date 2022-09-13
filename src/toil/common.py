@@ -71,6 +71,7 @@ from toil.fileStores import FileID
 from toil.lib.aws import zone_to_region
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human, human2bytes
+from toil.lib.io import try_path
 from toil.lib.retry import retry
 from toil.provisioners import add_provisioner_options, cluster_factory, parse_node_types
 from toil.realtimeLogger import RealtimeLogger
@@ -1334,18 +1335,6 @@ class Toil(ContextManager["Toil"]):
             Filter an optional with a predicate function.
             """
             return None if (o is None or not p(o)) else o
-
-        def try_path(path: str) -> Optional[str]:
-            """
-            Try to use the given path. Return it if it exists or can be made,
-            and we can make things within it, or None otherwise.
-            """
-            try:
-                os.makedirs(path, exist_ok=True)
-            except OSError:
-                # Maybe we lack permissions
-                return None
-            return path if os.path.exists(path) and os.access(path, os.W_OK) else None
 
         # Then we can specify our algorithm as a prioritized list of methods to
         # try.
