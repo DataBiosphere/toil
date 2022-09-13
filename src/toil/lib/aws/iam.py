@@ -169,8 +169,6 @@ def allowed_actions_roles(iam: IAMClient, policy_names: List[str], role_name: st
     """
     Returns a dictionary containing a list of all aws actions allowed for a given role.
     This dictionary is keyed by resource and gives a list of policies allowed on that resource.
-    
-    TODO: Only considers inline policies. Needs to also consider attached policies.
 
     :param iam: IAM client to use
     :param policy_names: Name of policy document associated with a role
@@ -194,8 +192,6 @@ def allowed_actions_users(iam: IAMClient, policy_names: List[str], user_name: st
     """
     Gets all allowed actions for a user given by user_name, returns a dictionary, keyed by resource,
     with a list of permissions allowed for each given resource.
-    
-    TODO: Only considers inline policies. Needs to also consider attached policies.
 
     :param iam: IAM client to use
     :param policy_names: Name of policy document associated with a user
