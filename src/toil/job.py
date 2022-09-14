@@ -36,6 +36,7 @@ from typing import (
     Mapping,
     Optional,
     Set,
+    Sequence,
     Tuple,
     Union,
     cast,
@@ -311,7 +312,7 @@ ParsedRequirement = Union[int, float, bool, List[AcceleratorRequirement]]
 ParseableIndivisibleResource = Union[str, int]
 ParseableDivisibleResource = Union[str, int, float]
 ParseableFlag = Union[str, int, bool]
-ParseableAcceleratorRequirement = Union[str, int, Dict[str, Any], List[Union[str, int, Dict[str, Any]]]]
+ParseableAcceleratorRequirement = Union[str, int, Mapping[str, Any], AcceleratorRequirement, Sequence[Union[str, int, Mapping[str, Any], AcceleratorRequirement]]]
 
 ParseableRequirement = Union[ParseableIndivisibleResource, ParseableDivisibleResource, ParseableFlag, ParseableAcceleratorRequirement]
 
