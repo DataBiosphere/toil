@@ -174,13 +174,9 @@ batch_systems:
     - kill $(jobs -p) || true
 
 slurm_test:
-  image:
-    name: "quay.io/vgteam/vg_ci_prebake:latest"
-    entrypoint: ["/usr/bin/env"]
   stage: main_tests
   script:
     - pwd
-    - cp src/toil/test/sort/sort.py contrib/slurm-test/sort.py
     - cd contrib/slurm-test/
     - pip install docker-compose
     - ./slurm_test.sh
