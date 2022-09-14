@@ -270,7 +270,8 @@ class AcceleratorRequirement(TypedDict):
         
 class RequirementsDict(TypedDict):
     """
-    Typed storage for requirements, where requirement values are of different types.
+    Typed storage for requirements for a job, where requirement values are of
+    different types depending on the requirement.
     """
     
     cores: NotRequired[Union[int, float]]
@@ -278,14 +279,18 @@ class RequirementsDict(TypedDict):
     disk: NotRequired[int]
     accelerators: NotRequired[List[AcceleratorRequirement]]
     preemptible: NotRequired[bool]
-    
+
+# These must be all the key names in RequirementsDict
+REQUIREMENT_NAMES = ["disk", "memory", "cores", "accelerators", "preemptible"]
+
+# This is the supertype of all value types in RequirementsDict
 ParsedRequirement = Union[int, float, bool, List[AcceleratorRequirement]]
 
 # We define some types for things we can parse into different kind of requirements
 ParseableIndivisibleResource = Union[str, int]
 ParseableDivisibleResource = Union[str, int, float]
 ParseableFlag = Union[str, int, bool]
-ParseableAcceleratorRequirement = Union[str, int, AcceleratorRequirement, List[AcceleratorRequirement]]
+ParseableAcceleratorRequirement = Union[str, int, Dict[str, Any], List[Union[str, int, Dict[str, Any]]]]
 
 ParseableRequirement = Union[ParseableIndivisibleResource, ParseableDivisibleResource, ParseableFlag, ParseableAcceleratorRequirement]
     
@@ -1171,10 +1176,11 @@ class Job:
 
     def __init__(
         self,
-        memory: Optional[Union[int, str]] = None,
-        cores: Optional[Union[int, float, str]] = None,
-        disk: Optional[Union[int, str]] = None,
-        preemptable: Optional[Union[bool, int, str]] = None,
+        memory: Optional[ParseableIndivisibleResource] = None,
+        cores: Optional[ParseableDivisibleResource] = None,
+        disk: Optional[ParseableIndivisibleResource] = None,
+        accelerators: Optional[ParseableAcceleratorRequirement] = None,
+        preemptable: Optional[ParseableFlag] = None,
         unitName: Optional[str] = "",
         checkpoint: Optional[bool] = False,
         displayName: Optional[str] = "",
@@ -1188,6 +1194,7 @@ class Job:
         :param memory: the maximum number of bytes of memory the job will require to run.
         :param cores: the number of CPU cores required.
         :param disk: the amount of local disk space required by the job, expressed in bytes.
+        :param accelerators: the computational accelerators required by the job. If a string, can be a string of a number, or a string specifying a model, brand, or API (with optional colon-delimited count).
         :param preemptable: if the job can be run on a preemptable node.
         :param unitName: Human-readable name for this instance of the job.
         :param checkpoint: if any of this job's successor jobs completely fails,
@@ -1200,6 +1207,7 @@ class Job:
         :type memory: int or string convertible by toil.lib.conversions.human2bytes to an int
         :type cores: float, int, or string convertible by toil.lib.conversions.human2bytes to an int
         :type disk: int or string convertible by toil.lib.conversions.human2bytes to an int
+        :type accelerators: int, string, dict, or list of those. Strings and dicts must be parseable by AcceleratorRequirement.parse.
         :type preemptable: bool, int in {0, 1}, or string in {'false', 'true'} in any case
         :type unitName: str
         :type checkpoint: bool
@@ -1212,6 +1220,7 @@ class Job:
 
         # Build a requirements dict for the description
         requirements = {'memory': memory, 'cores': cores, 'disk': disk,
+                        'accelerators': accelerators,
                         'preemptable': preemptable}
         if descriptionClass is None:
             if checkpoint:
@@ -1987,14 +1996,20 @@ class Job:
         Is not executed as a job; runs within a ServiceHostJob.
         """
 
-        def __init__(self, memory=None, cores=None, disk=None, preemptable=None, unitName=None):
+        def __init__(self, memory=None, cores=None, disk=None, acclerators=None, preemptable=None, unitName=None):
             """
             Memory, core and disk requirements are specified identically to as in \
             :func:`toil.job.Job.__init__`.
             """
 
             # Save the requirements in ourselves so they are visible on `self` to user code.
-            super().__init__({'memory': memory, 'cores': cores, 'disk': disk, 'preemptable': preemptable})
+            super().__init__({
+                'memory': memory,
+                'cores': cores,
+                'disk': disk,
+                'accelerators': accelerators,
+                'preemptable': preemptable
+            })
 
             # And the unit name
             self.unitName = unitName
@@ -2627,11 +2642,12 @@ class FunctionWrappingJob(Job):
         :param callable userFunction: The function to wrap. It will be called with ``*args`` and
                ``**kwargs`` as arguments.
 
-        The keywords ``memory``, ``cores``, ``disk``, ``preemptable`` and ``checkpoint`` are
-        reserved keyword arguments that if specified will be used to determine the resources
-        required for the job, as :func:`toil.job.Job.__init__`. If they are keyword arguments to
-        the function they will be extracted from the function definition, but may be overridden
-        by the user (as you would expect).
+        The keywords ``memory``, ``cores``, ``disk``, ``accelerators`,
+        ``preemptable`` and ``checkpoint`` are reserved keyword arguments that
+        if specified will be used to determine the resources required for the
+        job, as :func:`toil.job.Job.__init__`. If they are keyword arguments to
+        the function they will be extracted from the function definition, but
+        may be overridden by the user (as you would expect).
         """
         # Use the user-specified requirements, if specified, else grab the default argument
         # from the function, if specified, else default to None
@@ -2661,6 +2677,7 @@ class FunctionWrappingJob(Job):
         super().__init__(memory=resolve('memory', dehumanize=True),
                          cores=resolve('cores', dehumanize=True),
                          disk=resolve('disk', dehumanize=True),
+                         accelerators=resolve('accelerators'),
                          preemptable=resolve('preemptable'),
                          checkpoint=resolve('checkpoint', default=False),
                          unitName=resolve('name', default=None))
@@ -2707,6 +2724,8 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
         - memory
         - disk
         - cores
+        - accelerators
+        - preemptible
 
     For example to wrap a function into a job we would call::
 
@@ -2733,7 +2752,7 @@ class PromisedRequirementFunctionWrappingJob(FunctionWrappingJob):
     def __init__(self, userFunction, *args, **kwargs):
         self._promisedKwargs = kwargs.copy()
         # Replace resource requirements in intermediate job with small values.
-        kwargs.update(dict(disk='1M', memory='32M', cores=0.1))
+        kwargs.update(dict(disk='1M', memory='32M', cores=0.1, accelerators=[], preemptible=True))
         super().__init__(userFunction, *args, **kwargs)
 
     @classmethod
@@ -2754,9 +2773,8 @@ class PromisedRequirementFunctionWrappingJob(FunctionWrappingJob):
         return self.addChildFn(userFunction, *self._args, **self._promisedKwargs).rv()
 
     def evaluatePromisedRequirements(self):
-        requirements = ["disk", "memory", "cores"]
         # Fulfill resource requirement promises
-        for requirement in requirements:
+        for requirement in REQUIREMENT_NAMES:
             try:
                 if isinstance(self._promisedKwargs[requirement], PromisedRequirement):
                     self._promisedKwargs[requirement] = self._promisedKwargs[requirement].getValue()
@@ -3151,7 +3169,7 @@ class PromisedRequirement:
 
         :param kwargs: function keyword arguments
         """
-        for r in ["disk", "memory", "cores"]:
+        for r in REQUIREMENT_NAMES:
             if isinstance(kwargs.get(r), Promise):
                 kwargs[r] = PromisedRequirement(kwargs[r])
                 return True
