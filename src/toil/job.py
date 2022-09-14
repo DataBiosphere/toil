@@ -162,10 +162,10 @@ class AcceleratorRequirement(TypedDict):
     """
     brand: NotRequired[str]
     """
-    What brand or manufacturer of accleerator is required. The exact set of
+    What brand or manufacturer of accelerator is required. The exact set of
     values available depends on what the backing scheduler calls the brands of
     its accleerators; strings like "nvidia" or "amd" might be expected to work.
-    If a specific brand of accleerator is not required (for example, because
+    If a specific brand of accelerator is not required (for example, because
     the job can use multiple brands of accelerator that support a given API)
     this should be absent.
     """
@@ -182,38 +182,123 @@ class AcceleratorRequirement(TypedDict):
         """
         Parse an AcceleratorRequirement specified by user code. Supports formats like:
         
-        8
+        >>> AcceleratorRequirement.parse(8)
+        {'count': 8, 'kind': 'gpu'}
         
-        "1"
+        >>> AcceleratorRequirement.parse("1")
+        {'count': 1, 'kind': 'gpu'}
         
-        "nvidia-tesla-k80"
+        >>> AcceleratorRequirement.parse("nvidia-tesla-k80")
+        {'count': 1, 'kind': 'gpu', 'model': 'nvidia-tesla-k80'}
         
-        "nvidia-tesla-k80:2"
+        >>> AcceleratorRequirement.parse("nvidia-tesla-k80:2")
+        {'count': 2, 'kind': 'gpu', 'model': 'nvidia-tesla-k80'}
         
-        "gpu"
+        >>> AcceleratorRequirement.parse("gpu")
+        {'count': 1, 'kind': 'gpu'}
         
-        "cuda:1"
+        >>> AcceleratorRequirement.parse("cuda:1")
+        {'count': 1, 'kind': 'gpu', 'api': 'cuda'}
         
-        {"kind": "gpu"}
+        >>> AcceleratorRequirement.parse({"kind": "gpu"})
+        {'count': 1, 'kind': 'gpu'}
         
-        {"brand": "nvidia", "count": 5}
+        >>> AcceleratorRequirement.parse({"brand": "nvidia", "count": 5})
+        {'count': 5, 'kind': 'gpu', 'brand': 'nvidia'}
         
         Assumes that if not specified, we are talking about GPUs, and about one
         of them. Knows that "gpu" is a kind, and "cuda" is an API, and "nvidia"
         is a brand.
+        
+        Raises ValueError if it gets somethign it can't parse, and TypeError if
+        it gets something it can't parse because it's the wrong type.
         """
-        raise NotImplementedError
+        
+        KINDS = {'gpu'}
+        BRANDS = {'nvidia', 'amd'}
+        APIS = {'cuda', 'rocm'}
+        
+        parsed: AcceleratorRequirement = {'count': 1, 'kind': 'gpu'}
+        
+        if isinstance(spec, int):
+            parsed['count'] = spec
+        elif isinstance(spec, str):
+            parts = spec.split(':')
+            
+            if len(parts) > 2:
+                raise ValueError("Could not parse AcceleratorRequirement: " + spec)
+            
+            possible_count = parts[-1]
+            
+            try:
+                # If they have : and then a count, or just a count, handle that.
+                parsed['count'] = int(possible_count)
+                if len(parts) > 1:
+                    # Then we take whatever was before the colon as text
+                    possible_description = parts[0]
+                else:
+                    possible_description = None
+            except ValueError:
+                # It doesn't end with a number
+                if len(parts) == 2:
+                    # We should have a number though.
+                    raise ValueError("Could not parse AcceleratorRequirement count in: " + spec)
+                else:
+                    # Must be just the description
+                    possible_description = possible_count
+            
+            # Determine if we have a kind, brand, API, or (by default) model
+            if possible_description in KINDS:
+                parsed['kind'] = possible_description
+            elif possible_description in BRANDS:
+                parsed['brand'] = possible_description
+            elif possible_description in APIS:
+                parsd['api'] = possible_description
+            else:
+                parsed['model'] = possible_description
+                
+            # TODO: Know more about all the interrelationships so we can derive
+            # a brand or kind from an API and fill those in too.
+        elif isisntance(spec, dict):
+            # It's a dict, so merge with the defaults.
+            parsed.update(spec)
+            # TODO: make sure they didn't misspell keys or something
+        else:
+            raise TypeError(f"Cannot parse value of type {type(spec)} as an AcceleratorRequirement")
+            
+        return parsed
+        
+class RequirementsDict(TypedDict):
+    """
+    Typed storage for requirements, where requirement values are of different types.
+    """
+    
+    cores: NotRequired[Union[int, float]]
+    memory: NotRequired[int]
+    disk: NotRequired[int]
+    accelerators: NotRequired[List[AcceleratorRequirement]]
+    preemptible: NotRequired[bool]
+    
+ParsedRequirement = Union[int, float, bool, List[AcceleratorRequirement]]
 
+# We define some types for things we can parse into different kind of requirements
+ParseableIndivisibleResource = Union[str, int]
+ParseableDivisibleResource = Union[str, int, float]
+ParseableFlag = Union[str, int, bool]
+ParseableAcceleratorRequirement = Union[str, int, AcceleratorRequirement, List[AcceleratorRequirement]]
+
+ParseableRequirement = Union[ParseableIndivisibleResource, ParseableDivisibleResource, ParseableFlag, ParseableAcceleratorRequirement]
+    
 class Requirer:
     """
     Base class implementing the storage and presentation of requirements for
     cores, memory, disk, and preemptability as properties.
     """
 
-    _requirementOverrides: Dict[str, Union[int, float, bool, List[AcceleratorRequirement]]]
+    _requirementOverrides: RequirementsDict
 
     def __init__(
-        self, requirements: Mapping[str, Union[int, str, float, bool, AcceleratorRequirement, List[AcceleratorRequirement], None]]
+        self, requirements: Mapping[str, ParseableRequirement]
     ) -> None:
         """
         Parse and save the given requirements.
@@ -309,42 +394,42 @@ class Requirer:
     @overload
     @staticmethod
     def _parseResource(
-        name: Union[Literal["memory"], Literal["disks"]], value: Union[str, int]
+        name: Union[Literal["memory"], Literal["disks"]], value: ParseableIndivisibleResource
     ) -> int:
         ...
 
     @overload
     @staticmethod
     def _parseResource(
-        name: Literal["cores"], value: Union[str, int, float]
+        name: Literal["cores"], value: ParseableDivisibleResource
     ) -> Union[int, float]:
         ...
         
     @overload
     @staticmethod
     def _parseResource(
-        name: Literal["accelerators"], value: Union[str, int, AcceleratorRequirement, List[AcceleratorRequirement]]
+        name: Literal["accelerators"], value: ParseableAcceleratorRequirement
     ) -> List[AcceleratorRequirement]:
         ...
 
     @overload
     @staticmethod
     def _parseResource(
-        name: str, value: Union[str, int, float, bool]
-    ) -> Union[int, float, bool]:
+        name: str, value: ParseableRequirement
+    ) -> ParsedRequirement:
         ...
 
     @overload
     @staticmethod
     def _parseResource(
-        name: str, value: Union[str, int, float, bool, None]
-    ) -> Union[int, float, bool, None]:
+        name: str, value: None
+    ) -> None:
         ...
 
     @staticmethod
     def _parseResource(
-        name: str, value: Union[str, int, float, bool, AcceleratorRequirement, List[AcceleratorRequirement], None]
-    ) -> Union[int, float, bool, None]:
+        name: str, value: Optional[ParseableRequirement]
+    ) -> Optional[ParsedRequirement]:
         """
         Parse a Toil resource requirement value and apply resource-specific type checks.
 
@@ -401,18 +486,23 @@ class Requirer:
                 if value == 0:
                     return False
                 else:
-                    raise ValueError(f"The '{name}' requirement, asn an int, must be 1 or 0 but is {value}")
+                    raise ValueError(f"The '{name}' requirement, as an int, must be 1 or 0 but is {value}")
             elif isinstance(value, bool):
                 return value
             else:
                 raise TypeError(f"The '{name}' requirement does not accept values that are of type {type(value)}")
         elif name == 'accelerators':
-            raise NotImplementedError()
+            # The type checking for this is delegated to the
+            # AcceleratorRequirement class.
+            if isinstance(value, list):
+                return [AcceleratorRequirement.parse(v) for v in value]
+            else:
+                return [AcceleratorRequirement.parse(value)]
         else:
             # Anything else we just pass along without opinons
-            return cast(Union[int, float, bool], value)
+            return cast(ParsedRequirement, value)
 
-    def _fetchRequirement(self, requirement: str) -> Union[int, float, bool, List[AcceleratorRequirement], None]:
+    def _fetchRequirement(self, requirement: str) -> Optional[ParsedRequirement]:
         """
         Get the value of the specified requirement ('blah').
 
@@ -443,7 +533,7 @@ class Requirer:
             )
 
     @property
-    def requirements(self) -> Dict[str, Union[int, float, str, bool, List[AcceleratorRequirement]]]:
+    def requirements(self) -> RequirementsDict:
         """Get dict containing all non-None, non-defaulted requirements."""
         return dict(self._requirementOverrides)
 
@@ -453,7 +543,7 @@ class Requirer:
         return cast(int, self._fetchRequirement("disk"))
 
     @disk.setter
-    def disk(self, val: Union[str, int]) -> None:
+    def disk(self, val: ParseableIndivisibleResource) -> None:
         self._requirementOverrides["disk"] = Requirer._parseResource("disk", val)
 
     @property
@@ -462,7 +552,7 @@ class Requirer:
         return cast(int, self._fetchRequirement("memory"))
 
     @memory.setter
-    def memory(self, val: Union[str, int]) -> None:
+    def memory(self, val: ParseableIndivisibleResource) -> None:
         self._requirementOverrides["memory"] = Requirer._parseResource("memory", val)
 
     @property
@@ -471,7 +561,7 @@ class Requirer:
         return cast(Union[int, float], self._fetchRequirement("cores"))
 
     @cores.setter
-    def cores(self, val: Union[str, int, float]) -> None:
+    def cores(self, val: ParseableDivisibleResource) -> None:
         self._requirementOverrides["cores"] = Requirer._parseResource("cores", val)
 
     @property
@@ -480,7 +570,7 @@ class Requirer:
         return cast(bool, self._fetchRequirement("preemptable"))
 
     @preemptable.setter
-    def preemptable(self, val: Union[int, str, bool]) -> None:
+    def preemptable(self, val: ParseableFlag) -> None:
         self._requirementOverrides["preemptable"] = Requirer._parseResource(
             "preemptable", val
         )
@@ -491,7 +581,7 @@ class Requirer:
         return cast(List[AcceleratorRequirement], self._fetchRequirement("accelerators"))
 
     @accelerators.setter
-    def accelerators(self, val: Union[int, str, AcceleratorRequirement, List[AcceleratorRequirement]]) -> None:
+    def accelerators(self, val: ParseableAcceleratorRequirement) -> None:
         self._requirementOverrides["preemptable"] = Requirer._parseResource(
             "accelerators", val
         )
