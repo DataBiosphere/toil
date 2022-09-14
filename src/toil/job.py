@@ -590,6 +590,22 @@ class Requirer:
         self._requirementOverrides["preemptable"] = Requirer._parseResource(
             "accelerators", val
         )
+        
+    def requirements_string() -> str:
+        """
+        Get a nice human-readable string of our requirements.
+        """
+        parts = []
+        for k in REQUIREMENT_NAMES:
+            v = self._fetchRequirement(k)
+            if v is not None:
+                if isinstance(v, (int, float)) and v > 1000:
+                    # Make large numbers readable
+                    v = bytes2human(v)
+                parts.append(f'{k}: {v}')
+        if len(parts) == 0:
+            parts = ['no requirements']
+        return ', '.join(parts)
 
 
 class JobDescription(Requirer):

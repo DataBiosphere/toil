@@ -335,101 +335,143 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.user_script = userScript
 
     # setEnv is provided by BatchSystemSupport, updates self.environment
-
-    @staticmethod
-    def _apply_placement_constraints(preemptable: bool, pod_spec: kubernetes.client.V1PodSpec) -> None:
+    
+    # Represents a collection of label or taint keys and their sets of acceptable (or unacceptable) values.
+    KeyValuesList = List[Tuple[str, List[str]]]
+    
+    class Placement(NamedTuple):
         """
-        Set .affinity and/or .tolerations on the given pod spec, so that it
-        runs on the right kind of nodes, according to whether it is allowed to
-        be preempted.
-
-        Preemptable jobs will be able to run on preemptable or non-preemptable
-        nodes, and will prefer preemptable nodes if available.
-
-        Non-preemptable jobs will not be allowed to run on nodes that are
-        marked as preemptable.
-
-        Understands the labeling scheme used by EKS, and the taint scheme used
-        by GCE. The Toil-managed Kubernetes setup will mimic at least one of
-        these.
+        Internal format for pod placement constraints and preferences.
         """
+        required_labels: KeyValuesList
+        """
+        Labels which are required to be present (with these values).
+        """
+        desired_labels: KeyValuesList
+        """
+        Labels which are optional, but preferred to be present (with these values).
+        """
+        prohibited_labels: KeyValuesList
+        """
+        Labels which are not allowed to be present (with these values).
+        """
+        tolerated_taints: KeyValuesList
+        """
+        Taints which are allowed to be present (with these values).
+        """
+    
+        def set_preemptable(self, preemptable: bool) -> None:
+            """
+            Add constraints for a job being preemptible or not.
+            
+            Preemptable jobs will be able to run on preemptable or non-preemptable
+            nodes, and will prefer preemptable nodes if available.
 
-        # We consider nodes preemptable if they have any of these label or taint values.
-        # We tolerate all effects of specified taints.
-        # Amazon just uses a label, while Google
-        # <https://cloud.google.com/kubernetes-engine/docs/how-to/preemptible-vms>
-        # uses a label and a taint.
-        PREEMPTABLE_SCHEMES = {'labels': [('eks.amazonaws.com/capacityType', ['SPOT']),
-                                          ('cloud.google.com/gke-preemptible', ['true'])],
-                               'taints': [('cloud.google.com/gke-preemptible', ['true'])]}
+            Non-preemptable jobs will not be allowed to run on nodes that are
+            marked as preemptable.
+            
+            Understands the labeling scheme used by EKS, and the taint scheme used
+            by GCE. The Toil-managed Kubernetes setup will mimic at least one of
+            these.
+            """
+            
+            # We consider nodes preemptable if they have any of these label or taint values.
+            # We tolerate all effects of specified taints.
+            # Amazon just uses a label, while Google
+            # <https://cloud.google.com/kubernetes-engine/docs/how-to/preemptible-vms>
+            # uses a label and a taint.
+            PREEMPTABLE_SCHEMES = {'labels': [('eks.amazonaws.com/capacityType', ['SPOT']),
+                                              ('cloud.google.com/gke-preemptible', ['true'])],
+                                   'taints': [('cloud.google.com/gke-preemptible', ['true'])]}
+                                   
+            if preemptable:
+                # We want to seek preemptable labels and tolerate preemptable taints.
+                self.required_labels += PREEMPTABLE_SCHEMES['labels']
+                self.tolerated_taints += PREEMPTABLE_SCHEMES['taints']
+            else:
+                # We want to prohibit preemptable labels
+                self.prohibited_labels += PREEMPTABLE_SCHEMES['labels']
+                
+    
+        def apply(self, pod_spec: kubernetes.client.V1PodSpec) -> None:
+            """
+            Set .affinity and/or .tolerations on the given pod spec, so that it
+            runs on the right kind of nodes for the given constraints.
+            """
 
-        # We will compose a node selector with these requirements to require or prefer.
-        # These requirements will be AND-ed and turn into a single term.
-        node_selector_requirements: List[kubernetes.client.V1NodeSelectorRequirement] = []
-        # These terms will be OR'd, along with a term made of those ANDed requirements
-        node_selector_terms: List[kubernetes.client.V1NodeSelectorTerm] = []
-        # And this list of tolerations to apply
-        tolerations: List[kubernetes.client.V1Toleration] = []
+            # Convert our collections to Kubernetes expressions.
+            
+            # REQUIRE that ALL of these requirements be satisfied 
+            required_selector_requirements: List[kubernetes.client.V1NodeSelectorRequirement] = []
+            # PREFER that EACH of these terms be satisfied
+            preferred_scheduling_terms: List[kubernetes.client.V1PreferredSchedulingTerm] = []
+            # And this list of tolerations to apply
+            tolerations: List[kubernetes.client.V1Toleration] = []
 
-        if preemptable:
-            # We want to seek preemptable labels and tolerate preemptable taints.
-            for label, values in PREEMPTABLE_SCHEMES['labels']:
-                is_spot = kubernetes.client.V1NodeSelectorRequirement(key=label,
-                                                                      operator='In',
-                                                                      values=values)
-                # We want to OR all the labels, so they all need to become separate terms.
-                node_selector_terms.append(kubernetes.client.V1NodeSelectorTerm(
-                    match_expressions=[is_spot]
-                ))
-            for taint, values in PREEMPTABLE_SCHEMES['taints']:
-                for value in values:
-                    # Each toleration can tolerate one value
-                    spot_ok = kubernetes.client.V1Toleration(key=taint,
-                                                             value=value)
-                    tolerations.append(spot_ok)
-        else:
-            # We want to prohibit preemptable labels
-            for label, values in PREEMPTABLE_SCHEMES['labels']:
-                # So we need to say that each preemptable label either doesn't
-                # have any of the preemptable values, or doesn't exist.
+            for label, values in self.required_labels:
+                # Collect requirements for the required labels
+                has_label = kubernetes.client.V1NodeSelectorRequirement(key=label,
+                                                                        operator='In',
+                                                                        values=values)
+                required_selector_requirements.append(has_label)
+            for label, values in self.desired_labels:
+                # Collect preferences for the preferred labels
+                has_label = kubernetes.client.V1NodeSelectorRequirement(key=label,
+                                                                        operator='In',
+                                                                        values=values)
+                term = kubernetes.client.V1NodeSelectorTerm(
+                    match_expressions=[has_label]
+                )
+                selector = kubernetes.client.V1NodeSelector(
+                    node_selector_terms=[term]
+                )
+                # Each becomes a separate preference, more is better.
+                preference = kubernetes.client.V1PreferredSchedulingTerm(weight=1,
+                                                                         preference=selector)
+                                                                        
+                preferred_selector_terms.append(preference)
+            for label, values in self.prohibited_labels:
+                # So we need to say that each label either doesn't
+                # have any of the banned values, or doesn't exist.
                 # Although the docs don't really say so, NotIn also matches
                 # cases where the label doesn't exist. This is suggested by
                 # <https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#set-based-requirement>
-                # So we create a NotIn for each preemptable label and AND them
+                # So we create a NotIn for each label and AND them
                 # all together.
-                not_spot = kubernetes.client.V1NodeSelectorRequirement(key=label,
-                                                                       operator='NotIn',
-                                                                       values=values)
-                node_selector_requirements.append(not_spot)
+                not_labeled = kubernetes.client.V1NodeSelectorRequirement(key=label,
+                                                                          operator='NotIn',
+                                                                          values=values)
+                required_selector_requirements.append(not_labeled)
+            for taint, values in self.tolerated_taints:
+                for value in values:
+                    # Each toleration can tolerate one value
+                    taint_ok = kubernetes.client.V1Toleration(key=taint,
+                                                              value=value)
+                    tolerations.append(taint_ok)
 
-        # Now combine everything
-        if node_selector_requirements:
-            # We have requirements that want to be a term
-            node_selector_terms.append(kubernetes.client.V1NodeSelectorTerm(
-                match_expressions=node_selector_requirements
-            ))
-
-        if node_selector_terms:
-            # Make the terms into a node selector
-            node_selector = kubernetes.client.V1NodeSelector(node_selector_terms=node_selector_terms)
-            if preemptable:
-                # Node selector sense is a preference, so we wrap it
-                node_preference = kubernetes.client.V1PreferredSchedulingTerm(weight=1, preference=node_selector)
-                # And make an affinity around a preference
-                node_affinity = kubernetes.client.V1NodeAffinity(
-                    preferred_during_scheduling_ignored_during_execution=[node_preference]
+            # Now combine everything
+            if preferred_selector_terms or required_selector_requirements:
+                # We prefer or require something about labels.
+                
+                # Make a term that says we match all the requirements
+                requirements_term = kubernetes.client.V1NodeSelectorTerm(
+                    match_expressions=required_selector_requirements
                 )
-            else:
-                # Node selector sense is a requirement, so make an affinity around a requirement
+                # And a selector to hold the term
+                requirements_selector = kubernetes.client.V1NodeSelector(node_selector_terms=[requirements_term])
+                
+                # Make an affinity that prefers the preferences and requires the requirements
                 node_affinity = kubernetes.client.V1NodeAffinity(
-                    required_during_scheduling_ignored_during_execution=node_selector
+                    preferred_during_scheduling_ignored_during_execution=preferred_selector_terms
+                    required_during_scheduling_ignored_during_execution=requirements_selector
                 )
-            # Apply the affinity
-            pod_spec.affinity = node_affinity
+            
+                # Apply the affinity
+                pod_spec.affinity = node_affinity
 
-        if tolerations:
-            # Apply the tolerations
-            pod_spec.tolerations = tolerations
+            if tolerations:
+                # Apply the tolerations
+                pod_spec.tolerations = tolerations
 
     def _create_pod_spec(
             self,
@@ -464,8 +506,31 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         requirements_dict = {'cpu': job_desc.cores,
                              'memory': job_desc.memory + 1024 * 1024 * 512,
                              'ephemeral-storage': job_desc.disk + 1024 * 1024 * 512}
+                             
+        # Also start on the placement constraints
+        placement = Placement()
+        placement.set_preemptible(job_desc.preemptible)
+                             
+        for accelerator in job_desc.accelerators:
+            # Add in requirements for accelerators (GPUs)
+            if accelerator['kind'] == 'gpu':
+                # We can't schedule GPUs without a brand, because the
+                # Kubernetes resources are <brand>.com/gpu. If no brand is
+                # specified, default to nvidia, which is very popular.
+                vendor = accelerator.get('brand', 'nvidia')
+                key = f'{brand}.com/{accelerator[kind]}'
+                if key not in requirements_dict:
+                    requirements_dict[key] = 0    
+                requirements_dict[key] += accelerator['count']
+                
+            if 'model' in accelerator:
+                placement.required_labels.append(('accelerator', [accleerator['model']]))
+                    
+                
+                             
         # Use the requirements as the limits, for predictable behavior, and because
-        # the UCSC Kubernetes admins want it that way.
+        # the UCSC Kubernetes admins want it that way. For GPUs, Kubernetes
+        # requires them to be equal.
         limits_dict = requirements_dict
         resources = kubernetes.client.V1ResourceRequirements(limits=limits_dict,
                                                              requests=requirements_dict)
@@ -531,7 +596,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                                                volumes=volumes,
                                                restart_policy="Never")
         # Tell the spec where to land
-        self._apply_placement_constraints(job_desc.preemptable, pod_spec)
+        placement.apply(pod_spec)
 
         if self.service_account:
             # Apply service account if set
