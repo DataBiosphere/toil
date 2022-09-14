@@ -327,7 +327,7 @@ class AWSProvisioner(AbstractProvisioner):
         profileArn = awsEc2ProfileArn or self._createProfileArn()
 
         # Function prints warning to the log
-        policy_permissions_allow(get_policy_permissions(region=self._region)["*"], CLUSTER_LAUNCHING_PERMISSIONS)
+        policy_permissions_allow(get_policy_permissions(region=self._region), CLUSTER_LAUNCHING_PERMISSIONS)
 
         # the security group name is used as the cluster identifier
         createdSGs = self._createSecurityGroups()
