@@ -310,7 +310,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
         if localID:
             return localID
         else:
-            self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
+            self.check_resource_request(jobNode)
             jobID = self.getNextJobID()
             self.currentJobs.add(jobID)
 

@@ -300,20 +300,20 @@ class hidden:
 
         def testCheckResourceRequest(self):
             if isinstance(self.batchSystem, BatchSystemSupport):
-                checkResourceRequest = self.batchSystem.checkResourceRequest
-                self.assertRaises(InsufficientSystemResources, checkResourceRequest,
-                                  memory=1000, cores=200, disk=1e9)
-                self.assertRaises(InsufficientSystemResources, checkResourceRequest,
-                                  memory=5, cores=200, disk=1e9)
-                self.assertRaises(InsufficientSystemResources, checkResourceRequest,
-                                  memory=1001e9, cores=1, disk=1e9)
-                self.assertRaises(InsufficientSystemResources, checkResourceRequest,
-                                  memory=5, cores=1, disk=2e9)
-                self.assertRaises(AssertionError, checkResourceRequest,
-                                  memory=None, cores=1, disk=1000)
-                self.assertRaises(AssertionError, checkResourceRequest,
-                                  memory=10, cores=None, disk=1000)
-                checkResourceRequest(memory=10, cores=1, disk=100)
+                check_resource_request = self.batchSystem.check_resource_request
+                self.assertRaises(InsufficientSystemResources, check_resource_request,
+                                  Requirer(dict(memory=1000, cores=200, disk=1e9)))
+                self.assertRaises(InsufficientSystemResources, check_resource_request,
+                                  Requirer(dict(memory=5, cores=200, disk=1e9)))
+                self.assertRaises(InsufficientSystemResources, check_resource_request,
+                                  Requirer(dict(memory=1001e9, cores=1, disk=1e9)))
+                self.assertRaises(InsufficientSystemResources, check_resource_request,
+                                  Requirer(dict(memory=5, cores=1, disk=2e9)))
+                self.assertRaises(AttributeError, check_resource_request,
+                                  Requirer(dict(cores=1, disk=1000)))
+                self.assertRaises(AttributeError, check_resource_request,
+                                  Requirer(dict(memory=10, disk=1000)))
+                check_resource_request(Requirer(dict(memory=10, cores=1, disk=100)))
 
         def testScalableBatchSystem(self):
             # If instance of scalable batch system

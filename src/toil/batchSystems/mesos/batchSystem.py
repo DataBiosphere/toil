@@ -179,18 +179,14 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         localID = self.handleLocalJob(jobNode)
         if localID:
             return localID
-
+        
+        self.check_resource_request(jobNode)
         mesos_resources = {
             "memory": jobNode.memory,
             "cores": jobNode.cores,
             "disk": jobNode.disk,
             "preemptable": jobNode.preemptable
         }
-        self.checkResourceRequest(
-            memory=mesos_resources["memory"],
-            cores=mesos_resources["cores"],
-            disk=mesos_resources["disk"]
-        )
 
         jobID = self.getNextJobID()
         environment = self.environment.copy()

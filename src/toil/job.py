@@ -176,9 +176,9 @@ class AcceleratorRequirement(TypedDict):
     "metal", etc. If the job does not need a particular API to talk to the
     accelerator, this should be absent.
     """
-    
+
     # TODO: support requesting any GPU with X amount of vram
-    
+
     @classmethod
     def parse(spec: Union[int, str, Dict[str, Union[str, int]]]) -> AcceleratorRequirement:
         """
@@ -611,6 +611,30 @@ class Requirer:
         self._requirementOverrides["preemptable"] = Requirer._parseResource(
             "accelerators", val
         )
+
+    def scale(requirement: str, factor: float) -> "Requirer":
+        """
+        Return a copy of this object with the given requirement scaled up or
+        down by the given factor. Only works on requirements where that makes
+        sense.
+        """
+
+        # Make a shallow copy
+        scaled = copy.copy(self)
+        # But make sure it has its own override dictionary
+        scaled._requirementOverrides = dict(scaled._requirementOverrides)
+
+        original_value = getattr(scaled, requirement)
+        if isinstance(original_value, (int, float)):
+            # This is something we actually can scale up and down
+            new_value = original_value * factor
+            if requirement in ('memory', 'disk'):
+                # Must round to an int
+                new_value = math.ceil(new_value)
+            setattr(scaled, requirement, new_value)
+        else:
+            # We can't scale some requirements.
+            raise ValueError("Cannot scale {requirement} requirements!")
 
     def requirements_string() -> str:
         """

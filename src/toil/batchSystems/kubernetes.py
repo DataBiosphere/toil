@@ -40,11 +40,12 @@ from kubernetes.client.rest import ApiException
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchJobExitReason,
-                                                   UpdatedBatchJobInfo)
+                                                   UpdatedBatchJobInfo,
+                                                   InsufficientSystemResources)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
 from toil.common import Toil
-from toil.job import JobDescription
+from toil.job import JobDescription, Requirer 
 from toil.lib.conversions import human2bytes
 from toil.lib.misc import slow_down, utc_now, get_user_name
 from toil.lib.retry import ErrorCondition, retry
@@ -473,6 +474,18 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # Apply the tolerations
                 pod_spec.tolerations = tolerations
 
+    def check_resource_request(self, requirer: Requirer, job_name: str = '', detail: str = '') -> None:
+        super().check_resource_request(requirer, job_name, detail)
+        for accelerator in requirer.accelerators:
+            if accelerator['kind'] != 'gpu' and 'model' not in accelerator:
+                # We can only provide GPUs or things with a model right now
+                msg = [job_name if job_name else 'A job',
+                       f' is requesting accelerator {accelerator} but the Toil Kubernetes batch system'
+                       'only knows how to request gpu accelerators or accelerators with a defined model.']
+                if detail:
+                    msg.append(detail)
+                raise InsufficientSystemResources(''.join(msg)) 
+    
     def _create_pod_spec(
             self,
             job_desc: JobDescription,
@@ -529,13 +542,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # TODO: What if the cluster uses some other accelerator model labeling scheme?
                 placement.required_labels.append(('accelerator', [accelerator['model']]))
             
-            if accelerator['kind'] != 'gpu' and 'model' not in accelerator:
-                # We can't actually express this.
-                # Schedule anyway in hopes the cluster has this somehow.
-                logger.error('Cannot express acclerator requirement: %s on job %s. Ignoring requirement!', accelerator, job_desc)
-                # TODO: Support AMD's labeling scheme: https://github.com/RadeonOpenCompute/k8s-device-plugin/tree/master/cmd/k8s-node-labeller
-                # That just has each trait of the accelerator as a separate label, but nothing that quite corresponds to a model.
-
+            # TODO: Support AMD's labeling scheme: https://github.com/RadeonOpenCompute/k8s-device-plugin/tree/master/cmd/k8s-node-labeller
+            # That just has each trait of the accelerator as a separate label, but nothing that quite corresponds to a model.
 
         # Use the requirements as the limits, for predictable behavior, and because
         # the UCSC Kubernetes admins want it that way. For GPUs, Kubernetes
@@ -614,9 +622,6 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         return pod_spec
 
     def issueBatchJob(self, job_desc, job_environment: Optional[Dict[str, str]] = None):
-        # TODO: get a sensible self.maxCores, etc. so we can checkResourceRequest.
-        # How do we know if the cluster will autoscale?
-
         # Try the job as local
         localID = self.handleLocalJob(job_desc)
         if localID is not None:
@@ -626,7 +631,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # We actually want to send to the cluster
 
             # Check resource requirements (managed by BatchSystemSupport)
-            self.checkResourceRequest(job_desc.memory, job_desc.cores, job_desc.disk)
+            self.check_resource_request(job_desc.memory, job_desc.cores, job_desc.disk)
 
             # Make a pod that describes running the job
             pod_spec = self._create_pod_spec(job_desc, job_environment=job_environment)

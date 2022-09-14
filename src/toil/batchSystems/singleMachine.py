@@ -617,17 +617,17 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """Adds the command and resources to a queue to be run."""
 
         self._checkOnDaddy()
-
-        # Round cores to minCores and apply scale.
-        # Make sure to give minCores even if asked for 0 cores, or negative or something.
-        cores = max(math.ceil(jobDesc.cores * self.scale / self.minCores) * self.minCores, self.minCores)
+        
+        # Apply scale in cores
+        scaled_desc = jobDesc.scale('cores', self.scale)
+        # Round cores up to multiples of minCores
+        scaled_desc.cores = max(math.ceil(scaled_desc.cores / self.minCores) * self.minCores, self.minCores)
 
         # Don't do our own assertions about job size vs. our configured size.
         # The abstract batch system can handle it.
-        self.checkResourceRequest(jobDesc.memory, cores, jobDesc.disk, job_name=jobDesc.jobName,
-                                  detail=f'Scale is set to {self.scale}.')
-        logger.debug(f"Issuing the command: {jobDesc.command} with "
-                  f"memory: {jobDesc.memory}, cores: {cores}, disk: {jobDesc.disk}")
+        self.check_resource_request(scaled_desc, job_name=jobDesc.jobName,
+                                    detail=f'Scale is set to {self.scale}.')
+        logger.debug(f"Issuing the command: {jobDesc.command} with {scaled_desc.requirements_string()}")
         with self.jobIndexLock:
             jobID = self.jobIndex
             self.jobIndex += 1
@@ -643,8 +643,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             self._runDebugJob(jobDesc.command, jobID, environment)
         else:
             # Queue the job for later
-            self.inputQueue.put((jobDesc.command, jobID, cores, jobDesc.memory,
-                                jobDesc.disk, environment))
+            self.inputQueue.put((jobDesc.command, jobID, scaled_desc.cores, scaled_desc.memory,
+                                scaled_desc.disk, environment))
 
         return jobID
 

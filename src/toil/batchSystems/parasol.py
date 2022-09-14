@@ -128,7 +128,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         """
         Issues parasol with job commands.
         """
-        self.checkResourceRequest(jobDesc.memory, jobDesc.cores, jobDesc.disk)
+        self.check_resource_request(jobDesc)
 
         MiB = 1 << 20
         truncatedMemory = jobDesc.memory // MiB * MiB

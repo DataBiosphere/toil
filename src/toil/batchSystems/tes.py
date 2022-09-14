@@ -151,7 +151,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
     # setEnv is provided by BatchSystemSupport, updates self.environment
 
     def issueBatchJob(self, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
-        # TODO: get a sensible self.maxCores, etc. so we can checkResourceRequest.
+        # TODO: get a sensible self.maxCores, etc. so we can check_resource_request.
         # How do we know if the cluster will autoscale?
 
         # Try the job as local
@@ -163,7 +163,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
             # We actually want to send to the cluster
 
             # Check resource requirements (managed by BatchSystemSupport)
-            self.checkResourceRequest(job_desc.memory, job_desc.cores, job_desc.disk)
+            self.check_resource_request(job_desc)
 
             # Make a batch system scope job ID
             bs_id = self.getNextJobID()

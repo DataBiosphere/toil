@@ -35,7 +35,7 @@ from toil.bus import MessageBus
 from toil.common import Config, Toil, cacheDirName
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.job import JobDescription
+from toil.job import JobDescription, Requirer
 from toil.resource import Resource
 
 logger = logging.getLogger(__name__)
@@ -304,15 +304,11 @@ class BatchSystemSupport(AbstractBatchSystem):
                 cleanWorkDir=config.cleanWorkDir,
             )
 
-    def checkResourceRequest(self, memory: int, cores: float, disk: int, job_name: str = '', detail: str = '') -> None:
+    def check_resource_request(self, requirer: Requirer, job_name: str = '', detail: str = '') -> None:
         """
         Check resource request is not greater than that available or allowed.
 
-        :param int memory: amount of memory being requested, in bytes
-
-        :param float cores: number of cores being requested
-
-        :param int disk: amount of disk space being requested, in bytes
+        :param requirer: Object whose requirements are being checked
 
         :param str job_name: Name of the job being checked, for generating a useful error report.
 
@@ -322,9 +318,9 @@ class BatchSystemSupport(AbstractBatchSystem):
                greater than allowed
         """
         batch_system = self.__class__.__name__ or 'this batch system'
-        for resource, requested, available in [('cores', cores, self.maxCores),
-                                               ('memory', memory, self.maxMemory),
-                                               ('disk', disk, self.maxDisk)]:
+        for resource, requested, available in [('cores', requirer.cores, self.maxCores),
+                                               ('memory', requirer.memory, self.maxMemory),
+                                               ('disk', requirer.disk, self.maxDisk)]:
             assert requested is not None
             if requested > available:
                 unit = 'bytes of ' if resource in ('disk', 'memory') else ''
