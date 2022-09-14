@@ -139,7 +139,7 @@ class TemporaryID:
     def __ne__(self, other: Any) -> bool:
         return not isinstance(other, TemporaryID) or self._value != other._value
 
-class AcceleratorRequirement(TypedDict): 
+class AcceleratorRequirement(TypedDict):
     """
     Represents a requirement for one or more computational accelerators, like a
     GPU or FPGA.
@@ -177,59 +177,61 @@ class AcceleratorRequirement(TypedDict):
     accelerator, this should be absent.
     """
     
+    # TODO: support requesting any GPU with X amount of vram
+    
     @classmethod
     def parse(spec: Union[int, str, Dict[str, Union[str, int]]]) -> AcceleratorRequirement:
         """
         Parse an AcceleratorRequirement specified by user code. Supports formats like:
-        
+
         >>> AcceleratorRequirement.parse(8)
         {'count': 8, 'kind': 'gpu'}
-        
+
         >>> AcceleratorRequirement.parse("1")
         {'count': 1, 'kind': 'gpu'}
-        
+
         >>> AcceleratorRequirement.parse("nvidia-tesla-k80")
-        {'count': 1, 'kind': 'gpu', 'model': 'nvidia-tesla-k80'}
-        
+        {'count': 1, 'kind': 'gpu', 'brand': 'nvidia', 'model': 'nvidia-tesla-k80'}
+
         >>> AcceleratorRequirement.parse("nvidia-tesla-k80:2")
-        {'count': 2, 'kind': 'gpu', 'model': 'nvidia-tesla-k80'}
-        
+        {'count': 2, 'kind': 'gpu', 'brand': 'nvidia', 'model': 'nvidia-tesla-k80'}
+
         >>> AcceleratorRequirement.parse("gpu")
         {'count': 1, 'kind': 'gpu'}
-        
+
         >>> AcceleratorRequirement.parse("cuda:1")
-        {'count': 1, 'kind': 'gpu', 'api': 'cuda'}
-        
+        {'count': 1, 'kind': 'gpu', 'brand': 'nvidia', 'api': 'cuda'}
+
         >>> AcceleratorRequirement.parse({"kind": "gpu"})
         {'count': 1, 'kind': 'gpu'}
-        
+
         >>> AcceleratorRequirement.parse({"brand": "nvidia", "count": 5})
         {'count': 5, 'kind': 'gpu', 'brand': 'nvidia'}
-        
+
         Assumes that if not specified, we are talking about GPUs, and about one
         of them. Knows that "gpu" is a kind, and "cuda" is an API, and "nvidia"
         is a brand.
-        
+
         Raises ValueError if it gets somethign it can't parse, and TypeError if
         it gets something it can't parse because it's the wrong type.
         """
-        
+
         KINDS = {'gpu'}
         BRANDS = {'nvidia', 'amd'}
-        APIS = {'cuda', 'rocm'}
-        
+        APIS = {'cuda', 'rocm', 'opencl'}
+
         parsed: AcceleratorRequirement = {'count': 1, 'kind': 'gpu'}
-        
+
         if isinstance(spec, int):
             parsed['count'] = spec
         elif isinstance(spec, str):
             parts = spec.split(':')
-            
+
             if len(parts) > 2:
                 raise ValueError("Could not parse AcceleratorRequirement: " + spec)
-            
+
             possible_count = parts[-1]
-            
+
             try:
                 # If they have : and then a count, or just a count, handle that.
                 parsed['count'] = int(possible_count)
@@ -246,7 +248,7 @@ class AcceleratorRequirement(TypedDict):
                 else:
                     # Must be just the description
                     possible_description = possible_count
-            
+
             # Determine if we have a kind, brand, API, or (by default) model
             if possible_description in KINDS:
                 parsed['kind'] = possible_description
@@ -256,24 +258,43 @@ class AcceleratorRequirement(TypedDict):
                 parsd['api'] = possible_description
             else:
                 parsed['model'] = possible_description
-                
-            # TODO: Know more about all the interrelationships so we can derive
-            # a brand or kind from an API and fill those in too.
+
+            if parsed['kind'] == 'gpu':
+                # Use some smarts about what current GPUs are like to elaborate the
+                # description.
+
+                if 'brand' not in parsed and 'model' in parsed:
+                    # Try to guess the brand from the model
+                    for brand in BRANDS:
+                        if model.startswith(brand):
+                            # The model often starts with the brand
+                            parsed['brand'] = brand
+                            break
+
+                if 'brand' not in parsed and 'api' in parsed:
+                    # Try to guess the brand from the API
+                    if parsed['api'] == 'cuda':
+                        # Only nvidia makes cuda cards
+                        parsed['brand'] = 'nvidia'
+                    elif parsed['api'] == 'rocm':
+                        # Only amd makes rocm cards
+                        parsed['brand'] = 'amd'
+
         elif isisntance(spec, dict):
             # It's a dict, so merge with the defaults.
             parsed.update(spec)
             # TODO: make sure they didn't misspell keys or something
         else:
             raise TypeError(f"Cannot parse value of type {type(spec)} as an AcceleratorRequirement")
-            
+
         return parsed
-        
+
 class RequirementsDict(TypedDict):
     """
     Typed storage for requirements for a job, where requirement values are of
     different types depending on the requirement.
     """
-    
+
     cores: NotRequired[Union[int, float]]
     memory: NotRequired[int]
     disk: NotRequired[int]
@@ -293,7 +314,7 @@ ParseableFlag = Union[str, int, bool]
 ParseableAcceleratorRequirement = Union[str, int, Dict[str, Any], List[Union[str, int, Dict[str, Any]]]]
 
 ParseableRequirement = Union[ParseableIndivisibleResource, ParseableDivisibleResource, ParseableFlag, ParseableAcceleratorRequirement]
-    
+
 class Requirer:
     """
     Base class implementing the storage and presentation of requirements for
@@ -409,7 +430,7 @@ class Requirer:
         name: Literal["cores"], value: ParseableDivisibleResource
     ) -> Union[int, float]:
         ...
-        
+
     @overload
     @staticmethod
     def _parseResource(
@@ -579,7 +600,7 @@ class Requirer:
         self._requirementOverrides["preemptable"] = Requirer._parseResource(
             "preemptable", val
         )
-        
+
     @property
     def accelerators(self) -> List[AcceleratorRequirement]:
         """Any accelerators, such as GPUs, that are needed."""
@@ -590,7 +611,7 @@ class Requirer:
         self._requirementOverrides["preemptable"] = Requirer._parseResource(
             "accelerators", val
         )
-        
+
     def requirements_string() -> str:
         """
         Get a nice human-readable string of our requirements.

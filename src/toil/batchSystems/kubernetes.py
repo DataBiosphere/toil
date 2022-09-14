@@ -335,10 +335,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.user_script = userScript
 
     # setEnv is provided by BatchSystemSupport, updates self.environment
-    
+
     # Represents a collection of label or taint keys and their sets of acceptable (or unacceptable) values.
     KeyValuesList = List[Tuple[str, List[str]]]
-    
+
     class Placement(NamedTuple):
         """
         Internal format for pod placement constraints and preferences.
@@ -359,22 +359,22 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         """
         Taints which are allowed to be present (with these values).
         """
-    
+
         def set_preemptable(self, preemptable: bool) -> None:
             """
             Add constraints for a job being preemptible or not.
-            
+
             Preemptable jobs will be able to run on preemptable or non-preemptable
             nodes, and will prefer preemptable nodes if available.
 
             Non-preemptable jobs will not be allowed to run on nodes that are
             marked as preemptable.
-            
+
             Understands the labeling scheme used by EKS, and the taint scheme used
             by GCE. The Toil-managed Kubernetes setup will mimic at least one of
             these.
             """
-            
+
             # We consider nodes preemptable if they have any of these label or taint values.
             # We tolerate all effects of specified taints.
             # Amazon just uses a label, while Google
@@ -383,7 +383,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             PREEMPTABLE_SCHEMES = {'labels': [('eks.amazonaws.com/capacityType', ['SPOT']),
                                               ('cloud.google.com/gke-preemptible', ['true'])],
                                    'taints': [('cloud.google.com/gke-preemptible', ['true'])]}
-                                   
+
             if preemptable:
                 # We want to seek preemptable labels and tolerate preemptable taints.
                 self.required_labels += PREEMPTABLE_SCHEMES['labels']
@@ -391,8 +391,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             else:
                 # We want to prohibit preemptable labels
                 self.prohibited_labels += PREEMPTABLE_SCHEMES['labels']
-                
-    
+
+
         def apply(self, pod_spec: kubernetes.client.V1PodSpec) -> None:
             """
             Set .affinity and/or .tolerations on the given pod spec, so that it
@@ -400,8 +400,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             """
 
             # Convert our collections to Kubernetes expressions.
-            
-            # REQUIRE that ALL of these requirements be satisfied 
+
+            # REQUIRE that ALL of these requirements be satisfied
             required_selector_requirements: List[kubernetes.client.V1NodeSelectorRequirement] = []
             # PREFER that EACH of these terms be satisfied
             preferred_scheduling_terms: List[kubernetes.client.V1PreferredSchedulingTerm] = []
@@ -428,7 +428,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # Each becomes a separate preference, more is better.
                 preference = kubernetes.client.V1PreferredSchedulingTerm(weight=1,
                                                                          preference=selector)
-                                                                        
+
                 preferred_selector_terms.append(preference)
             for label, values in self.prohibited_labels:
                 # So we need to say that each label either doesn't
@@ -452,20 +452,20 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Now combine everything
             if preferred_selector_terms or required_selector_requirements:
                 # We prefer or require something about labels.
-                
+
                 # Make a term that says we match all the requirements
                 requirements_term = kubernetes.client.V1NodeSelectorTerm(
                     match_expressions=required_selector_requirements
                 )
                 # And a selector to hold the term
                 requirements_selector = kubernetes.client.V1NodeSelector(node_selector_terms=[requirements_term])
-                
+
                 # Make an affinity that prefers the preferences and requires the requirements
                 node_affinity = kubernetes.client.V1NodeAffinity(
-                    preferred_during_scheduling_ignored_during_execution=preferred_selector_terms
+                    preferred_during_scheduling_ignored_during_execution=preferred_selector_terms,
                     required_during_scheduling_ignored_during_execution=requirements_selector
                 )
-            
+
                 # Apply the affinity
                 pod_spec.affinity = node_affinity
 
@@ -506,13 +506,15 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         requirements_dict = {'cpu': job_desc.cores,
                              'memory': job_desc.memory + 1024 * 1024 * 512,
                              'ephemeral-storage': job_desc.disk + 1024 * 1024 * 512}
-                             
+
         # Also start on the placement constraints
         placement = Placement()
         placement.set_preemptible(job_desc.preemptible)
-                             
+
         for accelerator in job_desc.accelerators:
-            # Add in requirements for accelerators (GPUs)
+            # Add in requirements for accelerators (GPUs).
+            # See https://kubernetes.io/docs/tasks/manage-gpus/scheduling-gpus/
+
             if accelerator['kind'] == 'gpu':
                 # We can't schedule GPUs without a brand, because the
                 # Kubernetes resources are <brand>.com/gpu. If no brand is
@@ -520,14 +522,21 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 vendor = accelerator.get('brand', 'nvidia')
                 key = f'{brand}.com/{accelerator[kind]}'
                 if key not in requirements_dict:
-                    requirements_dict[key] = 0    
+                    requirements_dict[key] = 0
                 requirements_dict[key] += accelerator['count']
-                
+
             if 'model' in accelerator:
-                placement.required_labels.append(('accelerator', [accleerator['model']]))
-                    
-                
-                             
+                # TODO: What if the cluster uses some other accelerator model labeling scheme?
+                placement.required_labels.append(('accelerator', [accelerator['model']]))
+            
+            if accelerator['kind'] != 'gpu' and 'model' not in accelerator:
+                # We can't actually express this.
+                # Schedule anyway in hopes the cluster has this somehow.
+                logger.error('Cannot express acclerator requirement: %s on job %s. Ignoring requirement!', accelerator, job_desc)
+                # TODO: Support AMD's labeling scheme: https://github.com/RadeonOpenCompute/k8s-device-plugin/tree/master/cmd/k8s-node-labeller
+                # That just has each trait of the accelerator as a separate label, but nothing that quite corresponds to a model.
+
+
         # Use the requirements as the limits, for predictable behavior, and because
         # the UCSC Kubernetes admins want it that way. For GPUs, Kubernetes
         # requires them to be equal.
@@ -542,7 +551,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         def mount_host_path(volume_name: str, host_path: str, mount_path: str, create: bool = False) -> None:
             """
             Add a host path volume with the given name to mount the given path.
-            
+
             :param create: If True, create the directory on the host if it does
                    not exist. Otherwise, when the directory does not exist, the
                    pod will wait for it to come into existence.
