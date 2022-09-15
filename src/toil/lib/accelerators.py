@@ -81,7 +81,7 @@ def get_individual_local_accelerators() -> List[AcceleratorRequirement]:
     """
 
     # For now we only lnow abput nvidia GPUs
-    return [{'kind': 'gpu', 'brand': 'nvidia', 'api': 'cuda', 'count': '1'} for _ in range(count_nvidia_gpus())]
+    return [{'kind': 'gpu', 'brand': 'nvidia', 'api': 'cuda', 'count': 1} for _ in range(count_nvidia_gpus())]
 
 
 
