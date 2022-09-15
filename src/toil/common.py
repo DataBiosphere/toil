@@ -83,7 +83,7 @@ from toil.version import dockerRegistry, dockerTag, version
 
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
-    from toil.job import Job, JobDescription, TemporaryID
+    from toil.job import Job, JobDescription, TemporaryID, AcceleratorRequirement
     from toil.jobStores.abstractJobStore import AbstractJobStore
     from toil.provisioners.abstractProvisioner import AbstractProvisioner
     from toil.resource import ModuleDescriptor
@@ -166,8 +166,11 @@ class Config:
         self.defaultMemory: int = 2147483648
         self.defaultCores: Union[float, int] = 1
         self.defaultDisk: int = 2147483648
-        self.readGlobalFileMutableByDefault: bool = False
         self.defaultPreemptable: bool = False
+        # TODO: These names are generated programmatically in
+        # Requirer._fetchRequirement so we can't use snake_case until we fix
+        # that (and add compatibility getters/setters?)
+        self.defaultAccelerators: List[AcceleratorRequirement] = []
         self.maxCores: int = SYS_MAX_SIZE
         self.maxMemory: int = SYS_MAX_SIZE
         self.maxDisk: int = SYS_MAX_SIZE
@@ -196,7 +199,7 @@ class Config:
         self.forceDockerAppliance: bool = False
         self.statusWait: int = 3600
         self.disableProgress: bool = False
-
+        self.readGlobalFileMutableByDefault: bool = False
         self.kill_polling_interval: int = 5
 
         # Debug options

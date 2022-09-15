@@ -31,7 +31,7 @@ import time
 import uuid
 import yaml
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, TypeVar, Union
 
 import kubernetes
 import urllib3
@@ -68,6 +68,8 @@ def is_retryable_kubernetes_error(e):
             return True
     return False
 
+# Represents a collection of label or taint keys and their sets of acceptable (or unacceptable) values.
+KeyValuesList = List[Tuple[str, List[str]]]
 
 class KubernetesBatchSystem(BatchSystemCleanupSupport):
     @classmethod
@@ -336,9 +338,6 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.user_script = userScript
 
     # setEnv is provided by BatchSystemSupport, updates self.environment
-
-    # Represents a collection of label or taint keys and their sets of acceptable (or unacceptable) values.
-    KeyValuesList = List[Tuple[str, List[str]]]
 
     class Placement(NamedTuple):
         """

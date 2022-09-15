@@ -54,7 +54,7 @@ else:
 from toil.common import Config, Toil, addOptions, safeUnpickleFromStream
 from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
-from toil.lib.conversions import human2bytes
+from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.expando import Expando
 from toil.lib.resources import (get_total_cpu_time,
                                 get_total_cpu_time_and_memory_usage)
@@ -181,7 +181,7 @@ class AcceleratorRequirement(TypedDict):
     # TODO: support requesting any GPU with X amount of vram
 
     @classmethod
-    def parse(spec: Union[int, str, Dict[str, Union[str, int]]]) -> AcceleratorRequirement:
+    def parse(spec: Union[int, str, Dict[str, Union[str, int]]]) -> 'AcceleratorRequirement':
         """
         Parse an AcceleratorRequirement specified by user code. Supports formats like:
 
@@ -300,10 +300,10 @@ class RequirementsDict(TypedDict):
     memory: NotRequired[int]
     disk: NotRequired[int]
     accelerators: NotRequired[List[AcceleratorRequirement]]
-    preemptible: NotRequired[bool]
+    preemptable: NotRequired[bool]
 
 # These must be all the key names in RequirementsDict
-REQUIREMENT_NAMES = ["disk", "memory", "cores", "accelerators", "preemptible"]
+REQUIREMENT_NAMES = ["disk", "memory", "cores", "accelerators", "preemptable"]
 
 # This is the supertype of all value types in RequirementsDict
 ParsedRequirement = Union[int, float, bool, List[AcceleratorRequirement]]
@@ -376,20 +376,15 @@ class Requirer:
 
     def __copy__(self) -> "Requirer":
         """Return a semantically-shallow copy of the object, for :meth:`copy.copy`."""
-        # See https://stackoverflow.com/a/40484215 for how to do an override
-        # that uses the base implementation
-
-        # Hide this override
-        implementation = self.__copy__
-        self.__copy__ = None  # type: ignore[assignment]
-
-        # Do the copy which omits the config via __getstate__ override
-        clone = copy.copy(self)
-
-        # Put back the override on us and the copy
-        self.__copy__ = implementation  # type: ignore[assignment]
-        clone.__copy__ = implementation  # type: ignore[assignment]
-
+        # The hide-the-method-and-call-the-copy-module approach from
+        # <https://stackoverflow.com/a/40484215> doesn't seem to work for
+        # __copy__. So we try the method of
+        # <https://stackoverflow.com/a/51043609>. But we go through the
+        # pickling state hook.
+        
+        clone = type(self).__new__(self.__class__)
+        clone.__dict__.update(self.__getstate__())
+        
         if self._config is not None:
             # Share a config reference
             clone.assignConfig(self._config)
@@ -613,7 +608,7 @@ class Requirer:
             "accelerators", val
         )
 
-    def scale(requirement: str, factor: float) -> "Requirer":
+    def scale(self, requirement: str, factor: float) -> "Requirer":
         """
         Return a copy of this object with the given requirement scaled up or
         down by the given factor. Only works on requirements where that makes
@@ -633,11 +628,12 @@ class Requirer:
                 # Must round to an int
                 new_value = math.ceil(new_value)
             setattr(scaled, requirement, new_value)
+            return scaled
         else:
             # We can't scale some requirements.
             raise ValueError("Cannot scale {requirement} requirements!")
 
-    def requirements_string() -> str:
+    def requirements_string(self) -> str:
         """
         Get a nice human-readable string of our requirements.
         """
@@ -2788,6 +2784,9 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
         - cores
         - accelerators
         - preemptible
+        
+    Note that the *argument* is named "preemptible" but internally the
+    *requirement* is "preemptable".
 
     For example to wrap a function into a job we would call::
 

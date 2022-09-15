@@ -47,7 +47,6 @@ from toil.jobStores.abstractJobStore import (
     NoSuchJobException,
     NoSuchFileException
 )
-from toil.lib.conversions import bytes2human
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
 from toil.provisioners.clusterScaler import ScalerThread
