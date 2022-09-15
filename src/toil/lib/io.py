@@ -146,6 +146,18 @@ def make_public_dir(in_directory: Optional[str] = None) -> str:
     os.chmod(this_should_never_happen, 0o777)
     return this_should_never_happen
 
+def try_path(path: str) -> Optional[str]:
+    """
+    Try to use the given path. Return it if it exists or can be made,
+    and we can make things within it, or None otherwise.
+    """
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError:
+        # Maybe we lack permissions
+        return None
+    return path if os.path.exists(path) and os.access(path, os.W_OK) else None
+
 
 class WriteWatchingStream:
     """
