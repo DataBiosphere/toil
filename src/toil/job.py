@@ -180,7 +180,7 @@ class AcceleratorRequirement(TypedDict):
 
     # TODO: support requesting any GPU with X amount of vram
 
-    @classmethod
+    @staticmethod
     def parse(spec: Union[int, str, Dict[str, Union[str, int]]]) -> 'AcceleratorRequirement':
         """
         Parse an AcceleratorRequirement specified by user code. Supports formats like:
@@ -259,36 +259,52 @@ class AcceleratorRequirement(TypedDict):
                 parsd['api'] = possible_description
             else:
                 parsed['model'] = possible_description
-
-            if parsed['kind'] == 'gpu':
-                # Use some smarts about what current GPUs are like to elaborate the
-                # description.
-
-                if 'brand' not in parsed and 'model' in parsed:
-                    # Try to guess the brand from the model
-                    for brand in BRANDS:
-                        if model.startswith(brand):
-                            # The model often starts with the brand
-                            parsed['brand'] = brand
-                            break
-
-                if 'brand' not in parsed and 'api' in parsed:
-                    # Try to guess the brand from the API
-                    if parsed['api'] == 'cuda':
-                        # Only nvidia makes cuda cards
-                        parsed['brand'] = 'nvidia'
-                    elif parsed['api'] == 'rocm':
-                        # Only amd makes rocm cards
-                        parsed['brand'] = 'amd'
-
-        elif isisntance(spec, dict):
+        elif isinstance(spec, dict):
             # It's a dict, so merge with the defaults.
             parsed.update(spec)
             # TODO: make sure they didn't misspell keys or something
         else:
             raise TypeError(f"Cannot parse value of type {type(spec)} as an AcceleratorRequirement")
+            
+        if parsed['kind'] == 'gpu':
+            # Use some smarts about what current GPUs are like to elaborate the
+            # description.
+
+            if 'brand' not in parsed and 'model' in parsed:
+                # Try to guess the brand from the model
+                for brand in BRANDS:
+                    if model.startswith(brand):
+                        # The model often starts with the brand
+                        parsed['brand'] = brand
+                        break
+
+            if 'brand' not in parsed and 'api' in parsed:
+                # Try to guess the brand from the API
+                if parsed['api'] == 'cuda':
+                    # Only nvidia makes cuda cards
+                    parsed['brand'] = 'nvidia'
+                elif parsed['api'] == 'rocm':
+                    # Only amd makes rocm cards
+                    parsed['brand'] = 'amd'
 
         return parsed
+        
+    @staticmethod
+    def satisfies(candidate: 'AcceleratorRequirement', requirement: 'AcceleratorRequirement') -> bool:
+        """
+        Return True if the given candidate at least partially satisfies the given requirement (i.e. check all fields other than count).
+        """
+        
+        for key in ['kind', 'brand', 'api', 'model']:
+            if key in requirement:
+                if key not in candidate:
+                    logger.debug('Candidate %s does not satisfy requirement %s because it does not have a %s', candidate, requirement, key)
+                    return False
+                if candidate[key] != requirement[key]:
+                    logger.debug('Candidate %s does not satisfy requirement %s because it does not have the correct %s', candidate, requirement, key)
+                    return False
+        # If all these match or are more specific than required, we match!
+        return True
 
 class RequirementsDict(TypedDict):
     """

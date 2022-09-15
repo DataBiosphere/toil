@@ -52,11 +52,13 @@ from toil.test import (
     needs_aws_s3,
     needs_cwl,
     needs_docker,
+    needs_docker_cuda,
     needs_env_var,
     needs_fetchable_appliance,
     needs_gridengine,
     needs_kubernetes,
     needs_lsf,
+    needs_local_cuda,
     needs_mesos,
     needs_parasol,
     needs_slurm,
@@ -413,6 +415,17 @@ class CWLWorkflowTest(ToilTest):
             self._expected_seqtk_output(self.outDir),
             main_args=["--beta-use-biocontainers"],
             out_name="output1",
+        )
+    
+    @needs_docker
+    @needs_docker_cuda
+    @needs_local_cuda
+    def test_cuda(self):
+        self._tester(
+            "src/toil/test/cwl/nvidia_smi.cwl",
+            "src/toil/test/cwl/empty.json",
+            {},
+            out_name="result",
         )
 
     @slow

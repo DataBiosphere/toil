@@ -482,6 +482,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                        f' is requesting accelerator {accelerator} but the Toil Kubernetes batch system'
                        'only knows how to request gpu accelerators or accelerators with a defined model.']
                 if detail:
+                    msg.append(' ')
                     msg.append(detail)
                 raise InsufficientSystemResources(''.join(msg)) 
     

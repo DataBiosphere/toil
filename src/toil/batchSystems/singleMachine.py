@@ -23,15 +23,17 @@ from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
 from queue import Empty, Queue
 from threading import Condition, Event, Lock, Thread
-from typing import Dict, List, Optional, Sequence, Union
+from typing import Dict, List, Optional, Set, Sequence, Tuple, Union
 
 import toil
 from toil import worker as toil_worker
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchSystemSupport,
-                                                   UpdatedBatchJobInfo)
+                                                   UpdatedBatchJobInfo,
+                                                   InsufficientSystemResources)
 from toil.common import SYS_MAX_SIZE, Config, Toil, fC
-from toil.job import JobDescription
+from toil.job import JobDescription, AcceleratorRequirement, Requirer
+from toil.lib.accelerators import get_individual_local_accelerators
 from toil.lib.threading import cpu_count
 
 logger = logging.getLogger(__name__)
@@ -142,12 +144,20 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # A dict mapping child PIDs to the Job IDs they are supposed to be running.
         self.childToJob: Dict[int, str] = {}
 
-        # A pool representing available CPU in units of minCores
-        self.coreFractions = ResourcePool(int(self.maxCores / self.minCores), 'cores')
-        # A pool representing available memory in bytes
-        self.memory = ResourcePool(self.maxMemory, 'memory')
-        # A pool representing the available space in bytes
-        self.disk = ResourcePool(self.maxDisk, 'disk')
+        # For accelerators, we need a collection of what each accelerator is, and an acquirable set of them.
+        self.accelerator_identities = get_individual_local_accelerators()
+        
+        # Put them all organized by resource type
+        self.resource_sources = [
+            # A pool representing available CPU in units of minCores
+            ResourcePool(int(self.maxCores / self.minCores), 'cores'),
+            # A pool representing available memory in bytes
+            ResourcePool(self.maxMemory, 'memory'),
+            # A pool representing the available space in bytes
+            ResourcePool(self.maxDisk, 'disk'),
+            # And a set for acquiring individual accelerators
+            ResourceSet(set(range(len(self.accelerator_identities))), 'accelerators')
+        ]
 
         # If we can't schedule something, we fill this in with a reason why
         self.schedulingStatusMessage = None
@@ -194,13 +204,13 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     try:
                         # Grab something from the input queue if available.
                         args = self.inputQueue.get_nowait()
-                        jobCommand, jobID, jobCores, jobMemory, jobDisk, environment = args
+                        jobCommand, jobID, jobCores, jobMemory, jobDisk, job_accelerators, environment = args
 
                         coreFractions = int(jobCores / self.minCores)
 
                         # Try to start the child
                         result = self._startChild(jobCommand, jobID,
-                            coreFractions, jobMemory, jobDisk, environment)
+                            coreFractions, jobMemory, jobDisk, job_accelerators, environment)
 
                         if result is None:
                             # We did not get the resources to run this job.
@@ -463,8 +473,72 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """
 
         self.schedulingStatusMessage = message
+        
+    def check_resource_request(self, requirer: Requirer, job_name: str = '', detail: str = '') -> None:
+        super().check_resource_request(requirer, job_name, detail)
+        _, problem = self._identify_sucfficient_accelerators(requirer.accelerators, set(range(len(self.accelerator_identities))))
+        if problem is not None:
+            # We can't get the accelerators
+            msg = [job_name if job_name else 'A job',
+                   f' is requesting accelerator {problem} but the current machine only has: {self.accelerator_identities}.']
+            if detail:
+                msg.append(' ')
+                msg.append(detail)
+            raise InsufficientSystemResources(''.join(msg)) 
+             
 
-    def _startChild(self, jobCommand, jobID, coreFractions, jobMemory, jobDisk, environment):
+    def _release_acquired_resources(self, resources: List[Union[int, Set[int]]]) -> None:
+        """
+        Release all resources acquired for a job.
+        Assumes resources are in the order: core fractions, memory, disk, accelerators.
+        """
+        
+        # What pools and sets do we want resources from
+        
+        for resource, request in zip(self.resource_sources, resources):
+            assert ((isinstance(resource, ResourcePool) and isinstance(request, int)) or
+                    (isinstance(resource, ResourceSet) and isinstance(request, Set[int])))
+            resource.release(request)
+    
+    def _identify_sucfficient_accelerators(self, needed_accelerators: List[AcceleratorRequirement], available_accelerator_ids: Set[int]) -> Tuple[Optional[Set[int]], Optional[AcceleratorRequirement]]:
+        """
+        Given the accelerator requirements of a job, and the set of available
+        accelerators out of our associated collection of accelerators, find a
+        set of the available accelerators that satisfies the job's
+        requirements.
+        
+        Returns that set and None if the set exists, or None and an unsatisfied
+        AcceleratorRequirement if it does not.
+        
+        TODO: Uses a simple greedy algorithm and not a smart matching
+        algorithm, so if the job requires different kinds of accelerators, and
+        some accelerators available can match multiple requirements, then it is
+        possible that a solution will not be found.
+        """
+        accelerators_needed: Set[int] = set()
+        for requirement in needed_accelerators:
+            for i in range(requirement['count']):
+                # For each individual accelerator we need
+                satisfied = False
+                for candidate_index in available_accelerator_ids:
+                    # Check all the ones we haven't grabbed yet
+                    # TODO: We'll re-check early ones against this requirement if it has a count of more than one.
+                    candidate = self.accelerator_identities[candidate]
+                    if AcceleratorRequirement.satisfies(candidate, requirement):
+                        # If this accelerator can satisfy one unit of this requirement
+                        # Say we want it
+                        accelerators_needed.add(candidate_index)
+                        snapshot.remove(candidate_index)
+                        # And move on to the next required unit
+                        satisfied = True
+                        break
+                if not satisfied:
+                    # We can't get the resources we need to run right now.
+                    return None, requirement
+        # If we get here we satisfied everything
+        return accelerators_needed, None
+    
+    def _startChild(self, jobCommand, jobID, coreFractions, jobMemory, jobDisk, job_accelerators: List[AcceleratorRequirement], environment):
         """
         Start a child process for the given job.
 
@@ -480,80 +554,87 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         # This is when we started working on the job.
         startTime = time.time()
-
-        # See if we can fit the job in our resource pools right now.
-        if self.coreFractions.acquireNow(coreFractions):
-            # We got some cores
-            if self.memory.acquireNow(jobMemory):
-                # We got some memory
-                if self.disk.acquireNow(jobDisk):
-                    # We got the final resource, disk.
-                    # Actually run the job.
-                    # When it finishes we will release what it was using.
-                    # So it is important to not lose track of the child process.
-
-                    try:
-                        # Launch the job.
-                        # Make sure it is in its own session (and thus its own
-                        # process group) so that, if the user signals the
-                        # workflow, Toil will be responsible for killing the
-                        # job. This also makes sure that we can signal the job
-                        # and all its children together. We assume that the
-                        # process group ID will equal the PID of the process we
-                        # are starting.
-                        popen = subprocess.Popen(jobCommand,
-                                                 shell=True,
-                                                 env=dict(os.environ, **environment),
-                                                 start_new_session=True)
-                    except Exception:
-                        # If the job can't start, make sure we release resources now
-                        self.coreFractions.release(coreFractions)
-                        self.memory.release(jobMemory)
-                        self.disk.release(jobDisk)
-
-                        logger.error('Could not start job %s: %s', jobID, traceback.format_exc())
-
-                        # Report as failed.
-                        self.outputQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=EXIT_STATUS_UNAVAILABLE_VALUE, wallTime=0, exitReason=None))
-
-                        # Free resources
-                        self.coreFractions.release(coreFractions)
-                        self.memory.release(jobMemory)
-                        self.disk.release(jobDisk)
-
-                        # Complain it broke.
-                        return False
-                    else:
-                        # If the job did start, record it
-                        self.children[popen.pid] = popen
-                        # Make sure we can look it up by PID later
-                        self.childToJob[popen.pid] = jobID
-                        # Record that the job is running, and the resources it is using
-                        info = Info(startTime, popen, (coreFractions, jobMemory, jobDisk), killIntended=False)
-                        self.runningJobs[jobID] = info
-
-                        logger.debug('Launched job %s as child %d', jobID, popen.pid)
-
-                        # Report success starting the job
-                        # Note that if a PID were somehow 0 it would look like False
-                        assert popen.pid != 0
-                        return popen.pid
-                else:
-                    # We can't get disk, so free cores and memory
-                    self.coreFractions.release(coreFractions)
-                    self.memory.release(jobMemory)
-                    self._setSchedulingStatusMessage('Not enough disk to run job %s' % jobID)
+        
+        # And what do we want from each resource in self.resource_sources?
+        # We know they go cores, memory, disk, accelerators.
+        resource_requests: List[Union[int, Set[int]]] = [coreFractions, jobMemory, jobDisk]
+        
+        if job_accelerators:
+            # Try and find some accelerators to use.
+            # Start with all the accelerators that are free right now
+            accelerator_set : ResourceSet = self.resource_sources[3]
+            snapshot = accelerator_set.get_free_snapshot()
+            # And build a plan of the ones we want
+            accelerators_needed, problem = self._identify_sucfficient_accelerators(accelerator_set, snapshot)
+            if accelerators_needed is not None:
+                # Now we have a plan to get the accelerators we need.
+                resource_requests.append(accelerators_needed)
             else:
-                # Free cores, since we can't get memory
-                self.coreFractions.release(coreFractions)
-                self._setSchedulingStatusMessage('Not enough memory to run job %s' % jobID)
-        else:
-            self._setSchedulingStatusMessage('Not enough cores to run job %s' % jobID)
+                # We couldn't make a plan; the accelerators are busy
+                assert problem is not None
+                logger.debug('Accelerators are busy: %s', problem)
+                self._setSchedulingStatusMessage('Not enough accelerators to run job %s' % jobID)
+                return None
+                
+        
+        acquired = []
+        for source, request in zip(self.resource_sources, resource_requests):
+            # For each kind of resource we want, go get it
+            assert ((isinstance(source, ResourcePool) and isinstance(request, int)) or
+                    (isinstance(source, ResourceSet) and isinstance(request, Set[int])))
+            if source.acquireNow(request):
+                acquired.append(request)
+            else:
+                # We can't get everything
+                self._setSchedulingStatusMessage('Not enough %s to run job %s' % (source.resource_type, jobID))
+                self._release_acquired_resources(acquired)
+                return None
+                
+        # Now we have all the resources!
+        
+        # Actually run the job.
+        # When it finishes we will release what it was using.
+        # So it is important to not lose track of the child process.
 
-        # If we get here, we didn't succeed or fail starting the job.
-        # We didn't manage to get the resources.
-        # Report that.
-        return None
+        try:
+            # Launch the job.
+            # Make sure it is in its own session (and thus its own
+            # process group) so that, if the user signals the
+            # workflow, Toil will be responsible for killing the
+            # job. This also makes sure that we can signal the job
+            # and all its children together. We assume that the
+            # process group ID will equal the PID of the process we
+            # are starting.
+            popen = subprocess.Popen(jobCommand,
+                                     shell=True,
+                                     env=dict(os.environ, **environment),
+                                     start_new_session=True)
+        except Exception:
+            # If the job can't start, make sure we release resources now
+            self._release_acquired_resources(acquired)
+
+            logger.error('Could not start job %s: %s', jobID, traceback.format_exc())
+
+            # Report as failed.
+            self.outputQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=EXIT_STATUS_UNAVAILABLE_VALUE, wallTime=0, exitReason=None))
+
+            # Complain it broke.
+            return False
+        else:
+            # If the job did start, record it
+            self.children[popen.pid] = popen
+            # Make sure we can look it up by PID later
+            self.childToJob[popen.pid] = jobID
+            # Record that the job is running, and the resources it is using
+            info = Info(startTime, popen, acquired, killIntended=False)
+            self.runningJobs[jobID] = info
+
+            logger.debug('Launched job %s as child %d', jobID, popen.pid)
+
+            # Report success starting the job
+            # Note that if a PID were somehow 0 it would look like False
+            assert popen.pid != 0
+            return popen.pid
 
     def _handleChild(self, pid: int) -> None:
         """
@@ -569,8 +650,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         jobID = self.childToJob[pid]
         info = self.runningJobs[jobID]
 
-        # Unpack the job resources
-        (coreFractions, jobMemory, jobDisk) = info.resources
+        # Get the job resources reserved by the job
+        acquired = info.resources
+        
 
         # Clean up our records of the job.
         self.runningJobs.pop(jobID)
@@ -607,9 +689,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self._wait_for_death([pid])
 
         # Free up the job's resources.
-        self.coreFractions.release(coreFractions)
-        self.memory.release(jobMemory)
-        self.disk.release(jobDisk)
+        self._release_acquired_resources(acquired)
 
         logger.debug('Child %d for job %s succeeded', pid, jobID)
 
@@ -644,7 +724,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         else:
             # Queue the job for later
             self.inputQueue.put((jobDesc.command, jobID, scaled_desc.cores, scaled_desc.memory,
-                                scaled_desc.disk, environment))
+                                scaled_desc.disk, scaled_desc.accelerators, environment))
 
         return jobID
 
@@ -743,6 +823,22 @@ class Info:
         self.resources = resources
         self.killIntended = killIntended
 
+class AcquisitionTimeoutException(Exception):
+    """To be raised when a resource request times out."""
+    def __init__(self, resource: str, requested: Union[int, float, Set[int]], available: Union[int, float, Set[int]]):
+        """
+        Creates an instance of this exception that indicates which resource is insufficient for
+        current demands, as well as the resources requested and actually available.
+
+        :param str resource: string representing the resource type
+
+        :param requested: the resources requested that resulted in this exception
+
+        :param available: the resources actually available
+        """
+        self.requested = requested
+        self.available = available
+        self.resource = resource
 
 class ResourcePool:
     """
@@ -753,14 +849,14 @@ class ResourcePool:
     Provides a context manager to do something with an amount of resource
     acquired.
     """
-    def __init__(self, initial_value, resourceType, timeout=5):
+    def __init__(self, initial_value: int, resource_type: str, timeout=5):
         super().__init__()
         # We use this condition to signal everyone whenever some resource is released.
         # We use its associated lock to guard value.
         self.condition = Condition()
         # This records how much resource is available right now.
         self.value = initial_value
-        self.resourceType = resourceType
+        self.resource_type = resource_type
         self.timeout = timeout
 
     def acquireNow(self, amount):
@@ -790,8 +886,8 @@ class ResourcePool:
             while amount > self.value:
                 if time.time() - startTime >= self.timeout:
                     # This means the thread timed out waiting for the resource.
-                    raise self.AcquisitionTimeoutException(resource=self.resourceType,
-                                                           requested=amount, available=self.value)
+                    raise AcquisitionTimeoutException(resource=self.resource_type,
+                                                      requested=amount, available=self.value)
                 # Allow self.timeout seconds to get the resource, else quit
                 # through the above if condition. This wait + timeout is the
                 # last thing in the loop such that a request that takes longer
@@ -824,20 +920,92 @@ class ResourcePool:
         finally:
             self.release(amount)
 
-    class AcquisitionTimeoutException(Exception):
-        """To be raised when a resource request times out."""
-        def __init__(self, resource, requested, available):
-            """
-            Creates an instance of this exception that indicates which resource is insufficient for
-            current demands, as well as the amount requested and amount actually available.
+class ResourceSet:
+    """
+    Represents a collection of distinct resources (such as accelerators).
 
-            :param str resource: string representing the resource type
+    Subsets can be acquired immediately or with a timeout, and released.
 
-            :param int|float requested: the amount of the particular resource requested that resulted
-                   in this exception
+    Provides a context manager to do something with a set of of resources
+    acquired.
+    """
+    def __init__(self, initial_value: Set[int], resource_type: str, timeout: float = 5):
+        super().__init__()
+        # We use this condition to signal everyone whenever some resource is released.
+        # We use its associated lock to guard value.
+        self.condition = Condition()
+        # This records what resources are available right now.
+        self.value = initial_value
+        self.resource_type = resource_type
+        self.timeout = timeout
 
-            :param int|float available: amount of the particular resource actually available
-            """
-            self.requested = requested
-            self.available = available
-            self.resource = resource
+    def acquireNow(self, subset: Set[int]):
+        """
+        Reserve the given amount of the given resource.
+
+        Returns True if successful and False if this is not possible immediately.
+        """
+
+        with self.condition:
+            if subset > self.value:
+                return False
+            self.value -= subset
+            self.__validate()
+            return True
+
+    def acquire(self, subset: Set[int]):
+        """
+        Reserve the given amount of the given resource.
+
+        Raises AcquisitionTimeoutException if this is not possible in under
+        self.timeout time.
+        """
+        with self.condition:
+            startTime = time.time()
+            while subset > self.value:
+                if time.time() - startTime >= self.timeout:
+                    # This means the thread timed out waiting for the resource.
+                    raise AcquisitionTimeoutException(resource=self.resource_type,
+                                                      requested=subset, available=self.value)
+                # Allow self.timeout seconds to get the resource, else quit
+                # through the above if condition. This wait + timeout is the
+                # last thing in the loop such that a request that takes longer
+                # than self.timeout due to multiple wakes under the threshold
+                # are still honored.
+                self.condition.wait(timeout=self.timeout)
+            self.value -= subset
+            self.__validate()
+
+    def release(self, subset: Set[int]):
+        with self.condition:
+            self.value += subset
+            self.__validate()
+            self.condition.notify_all()
+            
+    def get_free_snapshot(self) -> Set[int]:
+        """
+        Get a snapshot of what items are free right now.
+        May be stale as soon as you get it, but you will need some kind of hint
+        to try and do an acquire.
+        """
+        return set(self.value)
+
+    def __validate(self):
+        # Nothing to do!
+        pass
+
+    def __str__(self):
+        return str(self.value)
+
+    def __repr__(self):
+        return "ResourceSet(%s)" % self.value
+
+    @contextmanager
+    def acquisitionOf(self, subset: Set[int]):
+        self.acquire(subset)
+        try:
+            yield
+        finally:
+            self.release(subset)
+
+    

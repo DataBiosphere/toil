@@ -170,6 +170,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                 msg = [job_name if job_name else 'A job',
                        f' is requesting accelerator {accelerator} but AWS Batch can only provide nvidia gpu accelerators.']
                 if detail:
+                    msg.append(' ')
                     msg.append(detail)
                 raise InsufficientSystemResources(''.join(msg))
 
