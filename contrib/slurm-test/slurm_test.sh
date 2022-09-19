@@ -3,7 +3,9 @@ set -e
 docker-compose up -d
 docker ps
 docker cp toil_workflow.py slurm-test_slurmmaster_1:/home/admin
-ln -s /toil/src/test/sort/sort.py sort.py
+cd ../..
+ln -s "$(pwd)/src/toil/test/sort/sort.py" "$(pwd)/contrib/slurm-test/sort.py"
+cd contrib/slurm-test/
 docker cp sort.py slurm-test_slurmmaster_1:/home/admin
 docker cp fileToSort.txt slurm-test_slurmmaster_1:/home/admin
 docker cp toil_workflow.py slurm-test_slurmmaster_1:/home/admin
