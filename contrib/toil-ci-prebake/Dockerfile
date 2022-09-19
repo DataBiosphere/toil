@@ -33,6 +33,7 @@ RUN sudo add-apt-repository -y ppa:deadsnakes/ppa && \
     sudo apt-get install -y \
         python3.7 python3.7-dev python3.7-venv python3.7-distutils \
         python3.8 python3.8-dev python3.8-venv python3.8-distutils \
-        python3.9 python3.9-dev python3.9-venv python3.9-distutils
+        python3.9 python3.9-dev python3.9-venv python3.9-distutils \
+        python3.10 python3.10-dev python3.10-venv python3.10-distutils
 
 LABEL maintainers="anovak@soe.ucsc.edu lblauvel@ucsc.edu"
