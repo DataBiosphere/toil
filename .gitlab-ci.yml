@@ -1,4 +1,4 @@
-image: quay.io/vgteam/vg_ci_prebake:latest
+image: quay.io/ucsc_cgl/toil_ci_prebake:latest
 # Note that we must run in a privileged container for our internal Docker daemon to come up.
 
 variables:
@@ -22,7 +22,6 @@ before_script:
   - cat /etc/hosts
   - mkdir -p ~/.kube && cp "$GITLAB_SECRET_FILE_KUBE_CONFIG" ~/.kube/config
   - mkdir -p ~/.aws && cp "$GITLAB_SECRET_FILE_AWS_CREDENTIALS" ~/.aws/credentials
-  - mkdir -p ~/.docker/cli-plugins/ ; curl -L https://github.com/docker/buildx/releases/download/v0.6.3/buildx-v0.6.3.linux-amd64 >  ~/.docker/cli-plugins/docker-buildx ; chmod u+x ~/.docker/cli-plugins/docker-buildx
   # We need to make sure docker buildx create can't see the ~/.kube/config that we deploy. It has
   # a service account bearer token for auth and triggers https://github.com/docker/buildx/issues/267
   # where buildx can't use a bearer token from a kube config and falls back to anonymous instead
