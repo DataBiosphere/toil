@@ -93,7 +93,7 @@ class AbstractFileStore(ABC):
         :param jobStore: the job store in use for the current Toil run.
         :param jobDesc: the JobDescription object for the currently
                running job.
-        
+
         :param file_store_dir: the per-worker local temporary directory where
                the file store should store local files. Per-job directories will be
                created under here by the file store.
@@ -111,7 +111,7 @@ class AbstractFileStore(ABC):
         self.localTempDir: str = os.path.abspath(file_store_dir)
         assert self.jobStore.config.workflowID is not None
         self.workflow_dir: str = Toil.getLocalWorkflowDir(self.jobStore.config.workflowID, self.jobStore.config.workDir)
-        self.coordination_dir: str =Toil.get_local_workflow_coordination_dir(self.jobStore.config.workflowID, self.jobStore.config.workDir)
+        self.coordination_dir: str =Toil.get_local_workflow_coordination_dir(self.jobStore.config.workflowID, self.jobStore.config.workDir, self.jobStore.config.coordination_dir)
         self.jobName: str = (
             self.jobDesc.command.split()[1] if self.jobDesc.command else ""
         )
@@ -149,7 +149,7 @@ class AbstractFileStore(ABC):
         return fileStoreCls(jobStore, jobDesc, file_store_dir, waitForPreviousCommit)
 
     @staticmethod
-    def shutdownFileStore(workflowID: str, config_work_dir: Optional[str]) -> None:
+    def shutdownFileStore(workflowID: str, config_work_dir: Optional[str], config_coordination_dir: Optional[str]) -> None:
         """
         Carry out any necessary filestore-specific cleanup.
 
@@ -162,13 +162,14 @@ class AbstractFileStore(ABC):
 
         :param workflowID: The workflow ID for this invocation of the workflow
         :param config_work_dir: The path to the work directory in the Toil Config.
+        :param config_coordination_dir: The path to the coordination directory in the Toil Config.
         """
         # Defer these imports until runtime, since these classes depend on our file
         from toil.fileStores.cachingFileStore import CachingFileStore
         from toil.fileStores.nonCachingFileStore import NonCachingFileStore
 
         workflowDir = Toil.getLocalWorkflowDir(workflowID, config_work_dir)
-        coordination_dir = Toil.get_local_workflow_coordination_dir(workflowID, config_work_dir)
+        coordination_dir = Toil.get_local_workflow_coordination_dir(workflowID, config_work_dir, config_coordination_dir)
         cacheDir = os.path.join(workflowDir, cacheDirName(workflowID))
         if os.path.exists(cacheDir):
             # The presence of the cacheDir suggests this was a cached run. We don't need

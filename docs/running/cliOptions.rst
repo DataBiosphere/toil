@@ -48,6 +48,12 @@ Commandline Options
                         exist on all machines running jobs; if capturing standard
                         output and error from batch system jobs is desired, it will
                         generally need to be on a shared file system.
+  --coordinationDir COORDINATION_DIR
+                        Absolute path to directory where lock files
+                        generated during the Toil run should be placed. This
+                        directory needs to exist on all machines running jobs,
+                        and must be a proper POSIX filesystem. It should not be
+                        a shared filesystem.
   --noStdOutErr         Do not capture standard output and error from batch system jobs.
   --stats               Records statistics about the toil workflow to be used
                         by 'toil stats'.
