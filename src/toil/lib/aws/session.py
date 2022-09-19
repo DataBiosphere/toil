@@ -61,11 +61,12 @@ def establish_boto3_session(region_name: Optional[str] = None) -> Session:
     botocore_session = get_session()
     botocore_session.get_component('credential_provider').get_provider(
         'assume-role').cache = JSONFileCache()
-    session_kwargs = dict(botocore_session=botocore_session, region_name=region_name)
-    if os.environ.get("TOIL_AWS_PROFILE"):
-        session_kwargs["profile_name"] = os.environ.get("TOIL_AWS_PROFILE")
 
-    return Session(**session_kwargs)
+    if os.environ.get("TOIL_AWS_PROFILE"):
+        profile_name = os.environ.get("TOIL_AWS_PROFILE")
+        return Session(botocore_session=botocore_session, region_name=region_name, profile_name=profile_name)
+    else:
+        return Session(botocore_session=botocore_session, region_name=region_name)
 
 @lru_cache(maxsize=None)
 def client(service_name: str, *args: List[Any], region_name: Optional[str] = None, **kwargs: Dict[str, Any]) -> botocore.client.BaseClient:
