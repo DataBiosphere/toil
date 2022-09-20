@@ -103,8 +103,7 @@ def policy_permissions_allow(given_permissions: AllowedActionCollection, require
                 missing_perms.append(permission)
 
     if missing_perms:
-        for perm in missing_perms:
-            logger.warning('Permission %s is missing', perm)
+        logger.warning('You appear to lack the folowing AWS permissions: %s', ', '.join(missing_perms))
         return False
 
     return True

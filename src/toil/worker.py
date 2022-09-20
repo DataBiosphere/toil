@@ -227,7 +227,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
     assert config.workflowID is not None
     toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
     # Dir to put lock files in, ideally not on NFS.
-    toil_coordination_dir = Toil.get_local_workflow_coordination_dir(config.workflowID, config.workDir)
+    toil_coordination_dir = Toil.get_local_workflow_coordination_dir(config.workflowID, config.workDir, config.coordination_dir)
     localWorkerTempDir = make_public_dir(in_directory=toilWorkflowDir)
     os.chmod(localWorkerTempDir, 0o755)
 
