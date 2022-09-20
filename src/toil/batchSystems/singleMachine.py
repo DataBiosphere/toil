@@ -210,9 +210,16 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                             # cores/memory/disk individually)?
                             self.inputQueue.put(args)
                             break
+                        elif result is not False:
+                            #Result is a PID
+
+                            if self._outbox is not None:
+                                # Annotate the job with the AWS Batch job ID it got.
+                                self._outbox.publish(
+                                    JobAnnotationMessage(str(job_desc.jobStoreID), "SingleMachinePID", result))
 
                         # Otherwise it's a PID if it succeeded, or False if it couldn't
-                        # start. But we don't care either way here.
+                        # start.
 
                     except Empty:
                         # Nothing to run. Stop looking in the queue.
