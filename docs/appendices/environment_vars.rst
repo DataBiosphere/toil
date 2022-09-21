@@ -229,4 +229,3 @@ There are several environment variables that affect the way Toil runs.
 
 .. _standard temporary directory: https://docs.python.org/3/library/tempfile.html#tempfile.gettempdir
 .. _Gunicorn settings: https://docs.gunicorn.org/en/stable/settings.html#settings
-.. _AWS Tags: https://docs.aws.amazon.com/general/latest/gr/aws_tagging.html
