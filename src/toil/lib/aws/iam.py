@@ -17,7 +17,7 @@ import fnmatch
 import json
 
 from functools import lru_cache
-from typing import Optional, List, Dict, cast
+from typing import Optional, List, Dict, cast, Any
 from mypy_boto3_iam import IAMClient
 from mypy_boto3_sts import STSClient
 from mypy_boto3_iam.type_defs import AttachedPolicyTypeDef
@@ -119,6 +119,7 @@ def init_action_collection() -> AllowedActionCollection:
     '''
     return defaultdict(lambda: {'Action': [], 'NotAction': []})
 
+
 def add_to_action_collection(a: AllowedActionCollection, b: AllowedActionCollection) -> AllowedActionCollection:
     '''
     Combines two action collections
@@ -133,8 +134,6 @@ def add_to_action_collection(a: AllowedActionCollection, b: AllowedActionCollect
         to_return[key]['NotAction'] += b[key]['NotAction']
 
     return to_return
-
-
 
 
 def policy_permissions_allow(given_permissions: AllowedActionCollection, required_permissions: List[str] = []) -> bool:
@@ -179,6 +178,7 @@ def permission_matches_any(perm: str, list_perms: List[str]) -> bool:
             return True
     return False
 
+
 def get_actions_from_policy_document(policy_doc: Dict[str, Any]) -> AllowedActionCollection:
     '''
     Given a policy document, go through each statement and create an AllowedActionCollection representing the
@@ -203,6 +203,8 @@ def get_actions_from_policy_document(policy_doc: Dict[str, Any]) -> AllowedActio
                             allowed_actions[resource][key].append(statement[key])
 
     return allowed_actions
+
+
 def allowed_actions_attached(iam: IAMClient, attached_policies: List[AttachedPolicyTypeDef]) -> AllowedActionCollection:
     """
     Go through all attached policy documents and create an AllowedActionCollection representing granted permissions.
@@ -244,6 +246,7 @@ def allowed_actions_roles(iam: IAMClient, policy_names: List[str], role_name: st
 
     return allowed_actions
 
+
 def allowed_actions_users(iam: IAMClient, policy_names: List[str], user_name: str) -> AllowedActionCollection:
     """
     Gets all allowed actions for a user given by user_name, returns a dictionary, keyed by resource,
@@ -264,6 +267,7 @@ def allowed_actions_users(iam: IAMClient, policy_names: List[str], user_name: st
         allowed_actions = add_to_action_collection(allowed_actions, get_actions_from_policy_document(policy_document))
 
     return allowed_actions
+
 
 def get_policy_permissions(region: str) -> AllowedActionCollection:
     """

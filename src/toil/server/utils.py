@@ -25,7 +25,7 @@ from toil.lib.retry import retry
 from toil.lib.io import AtomicFileCreate
 
 try:
-    from toil.lib.aws import get_current_aws_region
+    from toil.lib.aws.util import get_current_aws_region
     from toil.lib.aws.session import client
     from toil.lib.aws.utils import retry_s3
     HAVE_S3 = True

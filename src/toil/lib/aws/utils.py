@@ -166,7 +166,7 @@ def retry_s3(delays: Iterable[float] = (0, 1, 1, 4, 16, 64),
         ),
     ]
 )
-def delete_s3_bucket(bucket: str, region: Optional[str], display_type='log') -> None:
+def delete_s3_bucket(s3_resource: "S3ServiceResource", bucket: str, display_type='log') -> None:
     display = print if display_type == 'print' else logger.debug
     display(f'Deleting s3 bucket: {bucket}')
 
@@ -367,7 +367,7 @@ def list_objects_for_url(url: ParseResult) -> List[str]:
             key_name = key_name + '/'
 
         # Decide if we need to override Boto's built-in URL here.
-        # TODO: Decuplicate with get_object_for_url, or push down into session module
+        # TODO: Deduplicate with get_object_for_url, or push down into session module
         endpoint_url: Optional[str] = None
         host = os.environ.get('TOIL_S3_HOST', None)
         port = os.environ.get('TOIL_S3_PORT', None)
