@@ -3,7 +3,7 @@ set -e
 docker-compose up -d
 docker ps
 docker cp toil_workflow.py slurm-test_slurmmaster_1:/home/admin
-docker cp sort.py slurm-test_slurmmaster_1:/home/admin
+docker cp -L sort.py slurm-test_slurmmaster_1:/home/admin
 docker cp fileToSort.txt slurm-test_slurmmaster_1:/home/admin
 docker cp toil_workflow.py slurm-test_slurmmaster_1:/home/admin
 GIT_COMMIT=$(git rev-parse HEAD)
