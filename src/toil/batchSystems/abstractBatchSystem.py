@@ -65,13 +65,20 @@ class UpdatedBatchJobInfo(NamedTuple):
 
 # Information required for worker cleanup on shutdown of the batch system.
 class WorkerCleanupInfo(NamedTuple):
-    workDir: Optional[str]
-    """workdir path (where the cache would go)"""
+    work_dir: Optional[str]
+    """Work directory path (where the cache would go) if specified by user"""
 
-    workflowID: str
-    """used to identify files specific to this workflow"""
+    coordination_dir: Optional[str]
+    """Coordination directory path (where lock files would go) if specified by user"""
 
-    cleanWorkDir: str
+    workflow_id: str
+    """Used to identify files specific to this workflow"""
+
+    clean_work_dir: str
+    """
+    When to clean up the work and coordination directories for a job ('always',
+    'onSuccess', 'onError', 'never')
+    """
 
 
 class AbstractBatchSystem(ABC):
@@ -299,9 +306,10 @@ class BatchSystemSupport(AbstractBatchSystem):
             raise Exception("config.workflowID must be set")
         else:
             self.workerCleanupInfo = WorkerCleanupInfo(
-                workDir=config.workDir,
-                workflowID=config.workflowID,
-                cleanWorkDir=config.cleanWorkDir,
+                work_dir=config.workDir,
+                coordination_dir=config.coordination_dir,
+                workflow_id=config.workflowID,
+                clean_work_dir=config.cleanWorkDir,
             )
 
     def checkResourceRequest(self, memory: int, cores: float, disk: int, job_name: str = '', detail: str = '') -> None:
@@ -402,14 +410,14 @@ class BatchSystemSupport(AbstractBatchSystem):
                for cleaning up the worker.
         """
         assert isinstance(info, WorkerCleanupInfo)
-        assert info.workflowID is not None
-        workflowDir = Toil.getLocalWorkflowDir(info.workflowID, info.workDir)
-        coordination_dir = Toil.get_local_workflow_coordination_dir(info.workflowID, info.workDir)
+        assert info.workflow_id is not None
+        workflowDir = Toil.getLocalWorkflowDir(info.workflow_id, info.work_dir)
+        coordination_dir = Toil.get_local_workflow_coordination_dir(info.workflow_id, info.work_dir, info.coordination_dir)
         DeferredFunctionManager.cleanupWorker(coordination_dir)
         workflowDirContents = os.listdir(workflowDir)
-        AbstractFileStore.shutdownFileStore(info.workflowID, info.workDir)
-        if info.cleanWorkDir == 'always' or info.cleanWorkDir in ('onSuccess', 'onError'):
-            if workflowDirContents in ([], [cacheDirName(info.workflowID)]):
+        AbstractFileStore.shutdownFileStore(info.workflow_id, info.work_dir, info.coordination_dir)
+        if info.clean_work_dir in ('always', 'onSuccess', 'onError'):
+            if workflowDirContents in ([], [cacheDirName(info.workflow_id)]):
                 shutil.rmtree(workflowDir, ignore_errors=True)
             if coordination_dir != workflowDir:
                 # No more coordination to do here either.

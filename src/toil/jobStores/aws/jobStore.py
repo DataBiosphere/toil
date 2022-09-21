@@ -1219,11 +1219,14 @@ class AWSJobStore(AbstractJobStore):
                                     response = client.list_multipart_uploads(Bucket=bucket_name,
                                                                              MaxUploads=1,
                                                                              Prefix=compat_bytes(info.fileID))
-                                    if len(response['Uploads']) != 0 and response['Uploads'][0]['UploadId'] == uploadId:
+                                    if ('Uploads' in response and
+                                        len(response['Uploads']) != 0 and
+                                        response['Uploads'][0]['UploadId'] == uploadId):
+
                                         logger.debug('Multipart upload visible as %s', uploadId)
                                         break
                                     else:
-                                        logger.debug('Multipart upload %s is not visible; we see %s', uploadId, response['Uploads'])
+                                        logger.debug('Multipart upload %s is not visible; we see %s', uploadId, response.get('Uploads'))
                                         time.sleep(CONSISTENCY_TIME * 2 ** i)
 
                         try:

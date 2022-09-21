@@ -59,7 +59,7 @@ from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import (add_all_batchsystem_options,
                                        set_batchsystem_config_defaults,
                                        set_batchsystem_options)
-from toil.bus import (MessageBus, 
+from toil.bus import (MessageBus,
                       JobIssuedMessage,
                       JobCompletedMessage,
                       JobFailedMessage,
@@ -71,6 +71,7 @@ from toil.fileStores import FileID
 from toil.lib.aws import zone_to_region
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human, human2bytes
+from toil.lib.io import try_path
 from toil.lib.retry import retry
 from toil.provisioners import add_provisioner_options, cluster_factory, parse_node_types
 from toil.realtimeLogger import RealtimeLogger
@@ -124,6 +125,7 @@ class Config:
         self.jobStore: Optional[str] = None  # type: ignore
         self.logLevel: str = logging.getLevelName(root_logger.getEffectiveLevel())
         self.workDir: Optional[str] = None
+        self.coordination_dir: Optional[str] = None
         self.noStdOutErr: bool = False
         self.stats: bool = False
 
@@ -299,6 +301,11 @@ class Config:
                 logger.warning(f'Length of workDir path "{self.workDir}" is {len(self.workDir)} characters.  '
                                f'Consider setting a shorter path with --workPath or setting TMPDIR to something '
                                f'like "/tmp" to avoid overly long paths.')
+        set_option("coordination_dir")
+        if self.coordination_dir is not None:
+            self.coordination_dir = os.path.abspath(self.coordination_dir)
+            if not os.path.exists(self.coordination_dir):
+                raise RuntimeError(f"The path provided to --coordinationDir ({self.coordination_dir}) does not exist.")
 
         set_option("noStdOutErr")
         set_option("stats")
@@ -377,14 +384,14 @@ class Config:
         set_option("doubleMem")
         set_option("maxJobDuration", int, iC(1))
         set_option("rescueJobsFrequency", int, iC(1))
-        
+
         # Log management
         set_option("maxLogFileSize", h2b, iC(1))
         set_option("writeLogs")
         set_option("writeLogsGzip")
         set_option("writeLogsFromAllJobs")
         set_option("write_messages")
-        
+
         assert not (self.writeLogs and self.writeLogsGzip), \
             "Cannot use both --writeLogs and --writeLogsGzip at the same time."
         assert not self.writeLogsFromAllJobs or self.writeLogs or self.writeLogsGzip, \
@@ -480,6 +487,10 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
                                    "variables (TMPDIR, TEMP, TMP) via mkdtemp. This directory needs to exist on "
                                    "all machines running jobs; if capturing standard output and error from batch "
                                    "system jobs is desired, it will generally need to be on a shared file system. "
+                                   "When sharing a cache between containers on a host, this directory must be "
+                                   "shared between the containers.")
+    core_options.add_argument("--coordinationDir", dest="coordination_dir", default=None,
+                              help="Absolute path to directory where Toil will keep state and lock files."
                                    "When sharing a cache between containers on a host, this directory must be "
                                    "shared between the containers.")
     core_options.add_argument("--noStdOutErr", dest="noStdOutErr", action="store_true", default=None,
@@ -733,7 +744,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
                              help="File to send messages from the leader's message bus to.")
     log_options.add_argument("--realTimeLogging", dest="realTimeLogging", action="store_true", default=False,
                              help="Enable real-time logging from workers to leader")
-    
+
     # Misc options
     misc_options = parser.add_argument_group(
         title="Toil miscellaneous options.",
@@ -1294,32 +1305,48 @@ class Toil(ContextManager["Toil"]):
         return workDir
 
     @classmethod
-    def get_toil_coordination_dir(cls, configWorkDir: Optional[str] = None) -> str:
+    def get_toil_coordination_dir(cls, config_work_dir: Optional[str], config_coordination_dir: Optional[str]) -> str:
         """
         Return a path to a writable directory, which will be in memory if
         convenient. Ought to be used for file locking and coordination.
 
-        :param configWorkDir: Value passed to the program using the --workDir flag
-        :return: Path to the Toil coordination directory.
+        :param config_work_dir: Value passed to the program using the
+               --workDir flag
+        :param config_coordination_dir: Value passed to the program using the
+               --coordinationDir flag
+
+        :return: Path to the Toil coordination directory. Ought to be on a
+                 POSIX filesystem that allows directories containing open files to be
+                 deleted.
         """
 
-        # Get our user ID
-        user_id = os.getuid()
-        in_memory_base = os.path.join('/var/run/user', str(user_id), 'toil')
-        if os.path.exists(in_memory_base):
-            # We have an in-memory directory to use
-            return in_memory_base
-        else:
-            try:
-                # Try to make it opportunistically.
-                os.makedirs(in_memory_base, exist_ok=True)
-                return in_memory_base
-            except:
-                pass
+        # Go get a coordination directory, using a lot of short-circuiting of
+        # or and the fact that and returns its second argument when it
+        # succeeds.
+        coordination_dir: Optional[str] = (
+            # First try an override env var
+            os.getenv('TOIL_COORDINATION_DIR_OVERRIDE') or
+            # Then the value from the config
+            config_coordination_dir or
+            # Then a normal env var
+            # TODO: why/how would this propagate when not using single machine?
+            os.getenv('TOIL_COORDINATION_DIR') or
+            # Then try a `toil` subdirectory of the XDG runtime directory
+            # (often /var/run/users/<UID>). But only if we are actually in a
+            # session that has the env var set. Otherwise it might belong to a
+            # different set of sessions and get cleaned up out from under us
+            # when that session ends.
+            ('XDG_RUNTIME_DIR' in os.environ and try_path(os.path.join(os.environ['XDG_RUNTIME_DIR'], 'toil'))) or
+            # Try under /run/lock. It might be a temp dir style sticky directory.
+            try_path('/run/lock') or
+            # Finally, fall back on the work dir and hope it's a legit filesystem.
+            cls.getToilWorkDir(config_work_dir)
+        )
 
-        # Otherwise use the on-disk one.
-        return cls.getToilWorkDir(configWorkDir)
+        if coordination_dir is None:
+            raise RuntimeError("Could not determine a coordination directory by any method!")
 
+        return coordination_dir
 
     @staticmethod
     def _get_workflow_path_component(workflow_id: str) -> str:
@@ -1362,7 +1389,10 @@ class Toil(ContextManager["Toil"]):
 
     @classmethod
     def get_local_workflow_coordination_dir(
-        cls, workflow_id: str, config_work_dir: Optional[str] = None
+        cls,
+        workflow_id: str,
+        config_work_dir: Optional[str],
+        config_coordination_dir: Optional[str]
     ) -> str:
         """
         Return the directory where coordination files should be located for
@@ -1376,13 +1406,15 @@ class Toil(ContextManager["Toil"]):
         :param workflow_id: Unique ID of the current workflow.
         :param config_work_dir: Value used for the work directory in the
                current Toil Config.
+        :param config_coordination_dir: Value used for the coordination
+               directory in the current Toil Config.
 
         :return: Path to the local workflow coordination directory on this
                  machine.
         """
 
         # Start with the base coordination or work dir
-        base = cls.get_toil_coordination_dir(config_work_dir)
+        base = cls.get_toil_coordination_dir(config_work_dir, config_coordination_dir)
 
         # Make a per-workflow and node subdirectory
         subdir = os.path.join(base, cls._get_workflow_path_component(workflow_id))
@@ -1391,8 +1423,6 @@ class Toil(ContextManager["Toil"]):
         # TODO: May interfere with workflow directory creation logging if it's the same directory.
         # Return it
         return subdir
-
-
 
     def _runMainLoop(self, rootJob: "JobDescription") -> Any:
         """
@@ -1505,7 +1535,7 @@ class ToilMetrics:
                 self.nodeExporterProc = None
             except KeyboardInterrupt:
                 self.nodeExporterProc.terminate()  # type: ignore[union-attr]
-                
+
         # When messages come in on the message bus, call our methods.
         # TODO: Just annotate the methods with some kind of @listener and get
         # their argument types and magically register them?
@@ -1592,7 +1622,7 @@ class ToilMetrics:
         self, m: ClusterSizeMessage
     ) -> None:
         self.log("current_size '%s' %i" % (m.instance_type, m.current_size))
-    
+
     def logClusterDesiredSize(
         self, m: ClusterDesiredSizeMessage
     ) -> None:
@@ -1600,7 +1630,7 @@ class ToilMetrics:
 
     def logQueueSize(self, m: QueueSizeMessage) -> None:
         self.log("queue_size %i" % m.queue_size)
-        
+
     def logMissingJob(self, m: JobMissingMessage) -> None:
         self.log("missing_job")
 
