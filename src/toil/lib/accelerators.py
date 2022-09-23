@@ -63,7 +63,7 @@ def count_nvidia_gpus() -> int:
         return int(minidom.parseString(
             subprocess.check_output(["nvidia-smi", "-q", "-x"])
         ).getElementsByTagName("attached_gpus")[0].firstChild.data)
-    except (subprocess.CalledProcessError, IndexError, ValueError):
+    except (FileNotFoundError, subprocess.CalledProcessError, IndexError, ValueError):
         return 0
 
     # TODO: Parse each gpu > product_name > text content and convert to some
