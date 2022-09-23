@@ -62,7 +62,7 @@ def count_nvidia_gpus() -> int:
     try:
         return int(minidom.parseString(
             subprocess.check_output(["nvidia-smi", "-q", "-x"])
-        ).getElementsByTagName("attached_gpus")[0].firstChild)
+        ).getElementsByTagName("attached_gpus")[0].firstChild.data)
     except (subprocess.CalledProcessError, IndexError, ValueError):
         return 0
 

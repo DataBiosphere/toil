@@ -229,9 +229,9 @@ class CWLWorkflowTest(ToilTest):
         )
         cwltoil.main(main_args, stdout=st)
         out = json.loads(st.getvalue())
-        out[out_name].pop("http://commonwl.org/cwltool#generation", None)
-        out[out_name].pop("nameext", None)
-        out[out_name].pop("nameroot", None)
+        out.get(out_name, {}).pop("http://commonwl.org/cwltool#generation", None)
+        out.get(out_name, {}).pop("nameext", None)
+        out.get(out_name, {}).pop("nameroot", None)
         self.assertEqual(out, expect)
 
     def _debug_worker_tester(self, cwlfile, jobfile, expect):

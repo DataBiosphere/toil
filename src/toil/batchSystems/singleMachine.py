@@ -497,7 +497,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         
         for resource, request in zip(self.resource_sources, resources):
             assert ((isinstance(resource, ResourcePool) and isinstance(request, int)) or
-                    (isinstance(resource, ResourceSet) and isinstance(request, Set[int])))
+                    (isinstance(resource, ResourceSet) and isinstance(request, set)))
             resource.release(request)
     
     def _identify_sucfficient_accelerators(self, needed_accelerators: List[AcceleratorRequirement], available_accelerator_ids: Set[int]) -> Tuple[Optional[Set[int]], Optional[AcceleratorRequirement]]:
@@ -516,19 +516,20 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         possible that a solution will not be found.
         """
         accelerators_needed: Set[int] = set()
+        accelerators_still_available = set(available_accelerator_ids)
         for requirement in needed_accelerators:
             for i in range(requirement['count']):
                 # For each individual accelerator we need
                 satisfied = False
-                for candidate_index in available_accelerator_ids:
+                for candidate_index in accelerators_still_available:
                     # Check all the ones we haven't grabbed yet
                     # TODO: We'll re-check early ones against this requirement if it has a count of more than one.
-                    candidate = self.accelerator_identities[candidate]
+                    candidate = self.accelerator_identities[candidate_index]
                     if AcceleratorRequirement.satisfies(candidate, requirement):
                         # If this accelerator can satisfy one unit of this requirement
                         # Say we want it
                         accelerators_needed.add(candidate_index)
-                        snapshot.remove(candidate_index)
+                        accelerators_still_available.remove(candidate_index)
                         # And move on to the next required unit
                         satisfied = True
                         break
@@ -565,7 +566,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             accelerator_set : ResourceSet = self.resource_sources[3]
             snapshot = accelerator_set.get_free_snapshot()
             # And build a plan of the ones we want
-            accelerators_needed, problem = self._identify_sucfficient_accelerators(accelerator_set, snapshot)
+            accelerators_needed, problem = self._identify_sucfficient_accelerators(job_accelerators, snapshot)
             if accelerators_needed is not None:
                 # Now we have a plan to get the accelerators we need.
                 resource_requests.append(accelerators_needed)
@@ -581,7 +582,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         for source, request in zip(self.resource_sources, resource_requests):
             # For each kind of resource we want, go get it
             assert ((isinstance(source, ResourcePool) and isinstance(request, int)) or
-                    (isinstance(source, ResourceSet) and isinstance(request, Set[int])))
+                    (isinstance(source, ResourceSet) and isinstance(request, set)))
             if source.acquireNow(request):
                 acquired.append(request)
             else:
@@ -978,7 +979,7 @@ class ResourceSet:
 
     def release(self, subset: Set[int]):
         with self.condition:
-            self.value += subset
+            self.value |= subset
             self.__validate()
             self.condition.notify_all()
             
