@@ -16,7 +16,7 @@
 
 import subprocess
 
-from typing import List, Optional
+from typing import List, Optional, Set
 from xml.dom import minidom
 
 from toil.job import AcceleratorRequirement
@@ -80,8 +80,20 @@ def get_individual_local_accelerators() -> List[AcceleratorRequirement]:
     accelerator assignment API.
     """
 
-    # For now we only lnow abput nvidia GPUs
+    # For now we only know abput nvidia GPUs
     return [{'kind': 'gpu', 'brand': 'nvidia', 'api': 'cuda', 'count': 1} for _ in range(count_nvidia_gpus())]
 
+def get_restrictive_environment_for_local_accelerators(accelerator_numbers : Set[int]) -> Dict[str, str]:
+    """
+    Get environment variables which can be applied to a process to restrict it
+    to using only the given accelerator numbers.
+
+    The numbers are in the space of accelerators returned by
+    get_individual_local_accelerators().
+    """
+
+    # Since we only know about nvidia GPUs right now, we can just say our
+    # accelerator numbering space is the same as nvidia's GPU numbering space.
+    return {'CUDA_VISIBLE_DEVICES': ','.join((str(i) for i in accelerator_numbers))}
 
 

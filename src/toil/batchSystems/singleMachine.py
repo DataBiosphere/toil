@@ -33,7 +33,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
                                                    InsufficientSystemResources)
 from toil.common import SYS_MAX_SIZE, Config, Toil, fC
 from toil.job import JobDescription, AcceleratorRequirement, Requirer
-from toil.lib.accelerators import get_individual_local_accelerators
+from toil.lib.accelerators import get_individual_local_accelerators, get_restrictive_environment_for_local_accelerators
 from toil.lib.threading import cpu_count
 
 logger = logging.getLogger(__name__)
@@ -146,7 +146,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         # For accelerators, we need a collection of what each accelerator is, and an acquirable set of them.
         self.accelerator_identities = get_individual_local_accelerators()
-        
+
         # Put them all organized by resource type
         self.resource_sources = [
             # A pool representing available CPU in units of minCores
@@ -473,7 +473,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """
 
         self.schedulingStatusMessage = message
-        
+
     def check_resource_request(self, requirer: Requirer, job_name: str = '', detail: str = '') -> None:
         super().check_resource_request(requirer, job_name, detail)
         _, problem = self._identify_sucfficient_accelerators(requirer.accelerators, set(range(len(self.accelerator_identities))))
@@ -484,32 +484,32 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             if detail:
                 msg.append(' ')
                 msg.append(detail)
-            raise InsufficientSystemResources(''.join(msg)) 
-             
+            raise InsufficientSystemResources(''.join(msg))
+
 
     def _release_acquired_resources(self, resources: List[Union[int, Set[int]]]) -> None:
         """
         Release all resources acquired for a job.
         Assumes resources are in the order: core fractions, memory, disk, accelerators.
         """
-        
+
         # What pools and sets do we want resources from
-        
+
         for resource, request in zip(self.resource_sources, resources):
             assert ((isinstance(resource, ResourcePool) and isinstance(request, int)) or
                     (isinstance(resource, ResourceSet) and isinstance(request, set)))
             resource.release(request)
-    
+
     def _identify_sucfficient_accelerators(self, needed_accelerators: List[AcceleratorRequirement], available_accelerator_ids: Set[int]) -> Tuple[Optional[Set[int]], Optional[AcceleratorRequirement]]:
         """
         Given the accelerator requirements of a job, and the set of available
         accelerators out of our associated collection of accelerators, find a
         set of the available accelerators that satisfies the job's
         requirements.
-        
+
         Returns that set and None if the set exists, or None and an unsatisfied
         AcceleratorRequirement if it does not.
-        
+
         TODO: Uses a simple greedy algorithm and not a smart matching
         algorithm, so if the job requires different kinds of accelerators, and
         some accelerators available can match multiple requirements, then it is
@@ -538,7 +538,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     return None, requirement
         # If we get here we satisfied everything
         return accelerators_needed, None
-    
+
     def _startChild(self, jobCommand, jobID, coreFractions, jobMemory, jobDisk, job_accelerators: List[AcceleratorRequirement], environment):
         """
         Start a child process for the given job.
@@ -555,11 +555,14 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         # This is when we started working on the job.
         startTime = time.time()
-        
+
         # And what do we want from each resource in self.resource_sources?
         # We know they go cores, memory, disk, accelerators.
         resource_requests: List[Union[int, Set[int]]] = [coreFractions, jobMemory, jobDisk]
-        
+
+        # Keep a reference to the accelerators separately
+        accelerators_needed = None
+
         if job_accelerators:
             # Try and find some accelerators to use.
             # Start with all the accelerators that are free right now
@@ -576,8 +579,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 logger.debug('Accelerators are busy: %s', problem)
                 self._setSchedulingStatusMessage('Not enough accelerators to run job %s' % jobID)
                 return None
-                
-        
+
+
         acquired = []
         for source, request in zip(self.resource_sources, resource_requests):
             # For each kind of resource we want, go get it
@@ -590,9 +593,17 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 self._setSchedulingStatusMessage('Not enough %s to run job %s' % (source.resource_type, jobID))
                 self._release_acquired_resources(acquired)
                 return None
-                
+
         # Now we have all the resources!
-        
+
+        # Prepare the environment
+        child_environment = dict(os.environ, **environment)
+
+        # Communicate the accelerator resources, if any, to the child process
+        # by modifying the environemnt
+        accelerators_acquired: Set[int] = accelerators_needed if accelerators_needed is not None else set()
+        child_environment.update(get_restrictive_environment_for_local_accelerators(accelerators_acquired))
+
         # Actually run the job.
         # When it finishes we will release what it was using.
         # So it is important to not lose track of the child process.
@@ -608,7 +619,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             # are starting.
             popen = subprocess.Popen(jobCommand,
                                      shell=True,
-                                     env=dict(os.environ, **environment),
+                                     env=child_environment,
                                      start_new_session=True)
         except Exception:
             # If the job can't start, make sure we release resources now
@@ -653,7 +664,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         # Get the job resources reserved by the job
         acquired = info.resources
-        
+
 
         # Clean up our records of the job.
         self.runningJobs.pop(jobID)
@@ -698,7 +709,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """Adds the command and resources to a queue to be run."""
 
         self._checkOnDaddy()
-        
+
         # Apply scale in cores
         scaled_desc = jobDesc.scale('cores', self.scale)
         # Round cores up to multiples of minCores
@@ -982,7 +993,7 @@ class ResourceSet:
             self.value |= subset
             self.__validate()
             self.condition.notify_all()
-            
+
     def get_free_snapshot(self) -> Set[int]:
         """
         Get a snapshot of what items are free right now.
@@ -1009,4 +1020,5 @@ class ResourceSet:
         finally:
             self.release(subset)
 
-    
+
+
