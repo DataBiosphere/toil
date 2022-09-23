@@ -16,7 +16,7 @@
 
 import subprocess
 
-from typing import List, Optional, Set
+from typing import Dict, List, Optional, Set
 from xml.dom import minidom
 
 from toil.job import AcceleratorRequirement
