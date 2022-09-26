@@ -17,6 +17,7 @@ import importlib
 import inspect
 import itertools
 import logging
+import math
 import os
 import pickle
 import sys
@@ -273,7 +274,7 @@ class AcceleratorRequirement(TypedDict):
             if 'brand' not in parsed and 'model' in parsed:
                 # Try to guess the brand from the model
                 for brand in BRANDS:
-                    if model.startswith(brand):
+                    if parsed['model'].startswith(brand):
                         # The model often starts with the brand
                         parsed['brand'] = brand
                         break
