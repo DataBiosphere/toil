@@ -33,7 +33,7 @@ def have_working_nvidia_smi() -> bool:
     """
     try:
         subprocess.check_call(['nvidia-smi'])
-    except subprocess.CalledProcessError:
+    except (FileNotFoundError, subprocess.CalledProcessError):
         return False
     return True
 
