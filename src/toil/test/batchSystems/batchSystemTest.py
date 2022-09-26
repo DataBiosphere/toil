@@ -437,6 +437,7 @@ class hidden:
 
         def _createConfig(self):
             config = super(hidden.AbstractGridEngineBatchSystemTest, self)._createConfig()
+            config.statePollingWait = 0.5  # Reduce polling wait so tests run faster
             # can't use _getTestJobStorePath since that method removes the directory
             config.jobStore = 'file:' + self._createTempDir('jobStore')
             return config
