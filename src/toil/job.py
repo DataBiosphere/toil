@@ -2070,7 +2070,7 @@ class Job:
         Is not executed as a job; runs within a ServiceHostJob.
         """
 
-        def __init__(self, memory=None, cores=None, disk=None, acclerators=None, preemptable=None, unitName=None):
+        def __init__(self, memory=None, cores=None, disk=None, accelerators=None, preemptable=None, unitName=None):
             """
             Memory, core and disk requirements are specified identically to as in \
             :func:`toil.job.Job.__init__`.
