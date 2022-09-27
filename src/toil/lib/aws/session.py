@@ -179,5 +179,9 @@ class AWSConnectionManager:
         key = (region, service_name)
         storage = self.boto2_cache[key]
         if not hasattr(storage, 'item'):
-            storage.item = getattr(boto, service_name).connect_to_region(region)
+            if os.environ.get("TOIL_AWS_PROFILE"):
+                profile_name = os.environ.get("TOIL_AWS_PROFILE")
+                storage.item = getattr(boto, service_name).connect_to_region(region, profile_name=profile_name)
+            else:
+                storage.item = getattr(boto, service_name).connect_to_region(region)
         return cast(boto.connection.AWSAuthConnection, storage.item)
