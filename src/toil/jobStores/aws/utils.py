@@ -17,7 +17,7 @@ import logging
 import os
 import types
 from ssl import SSLError
-from typing import cast, Optional
+from typing import Optional, cast
 
 from boto3.s3.transfer import TransferConfig
 from boto.exception import BotoServerError, S3ResponseError, SDBResponseError
@@ -25,19 +25,17 @@ from botocore.client import Config
 from botocore.exceptions import ClientError
 from mypy_boto3_s3 import S3Client, S3ServiceResource
 
-from toil.lib.compatibility import compat_bytes
-from toil.lib.retry import (
-    ErrorCondition,
-    get_error_status,
-    get_error_code,
-    get_error_message,
-    old_retry,
-    retry,
-    DEFAULT_DELAYS,
-    DEFAULT_TIMEOUT
-)
 from toil.lib.aws import session
 from toil.lib.aws.utils import connection_reset, get_bucket_region
+from toil.lib.compatibility import compat_bytes
+from toil.lib.retry import (DEFAULT_DELAYS,
+                            DEFAULT_TIMEOUT,
+                            ErrorCondition,
+                            get_error_code,
+                            get_error_message,
+                            get_error_status,
+                            old_retry,
+                            retry)
 
 logger = logging.getLogger(__name__)
 

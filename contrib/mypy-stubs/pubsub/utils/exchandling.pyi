@@ -1,7 +1,9 @@
-from ..core.listener import IListenerExcHandler as IListenerExcHandler
-from ..core.topicmgr import TopicManager as TopicManager
-from _typeshed import Incomplete
 from typing import List
+
+from _typeshed import Incomplete
+
+from ..core.listener import IListenerExcHandler
+from ..core.topicmgr import TopicManager
 
 class TracebackInfo:
     ExcClass: Incomplete

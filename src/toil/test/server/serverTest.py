@@ -33,7 +33,7 @@ except ImportError:
     # extra wasn't installed. We'll then skip them all.
     pass
 
-from toil.test import ToilTest, needs_server, needs_celery_broker, needs_aws_s3
+from toil.test import ToilTest, needs_aws_s3, needs_celery_broker, needs_server
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -51,7 +51,9 @@ class ToilServerUtilsTest(ToilTest):
         away without flipping the state.
         """
 
-        from toil.server.utils import WorkflowStateMachine, WorkflowStateStore, MemoryStateStore
+        from toil.server.utils import (MemoryStateStore,
+                                       WorkflowStateMachine,
+                                       WorkflowStateStore)
 
         store = WorkflowStateStore(MemoryStateStore(), "test-workflow")
 

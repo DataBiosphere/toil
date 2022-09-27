@@ -1,6 +1,16 @@
-from tes.models import CancelTaskRequest, CreateTaskResponse, GetTaskRequest, ListTasksRequest, ListTasksResponse, ServiceInfo, Task, strconv
-from tes.utils import TimeoutError, raise_for_status, unmarshal
 from typing import Any, Optional, Union
+
+from tes.models import (
+    CancelTaskRequest,
+    CreateTaskResponse,
+    GetTaskRequest,
+    ListTasksRequest,
+    ListTasksResponse,
+    ServiceInfo,
+    Task,
+    strconv,
+)
+from tes.utils import TimeoutError, raise_for_status, unmarshal
 
 def process_url(value: str) -> str: ...
 
@@ -14,6 +24,18 @@ class HTTPClient:
     def create_task(self, task: Task) -> CreateTaskResponse: ...
     def get_task(self, task_id: str, view: str = ...) -> Task: ...
     def cancel_task(self, task_id: str) -> None: ...
-    def list_tasks(self, view: str = ..., page_size: Optional[int] = ..., page_token: Optional[str] = ...) -> ListTasksResponse: ...
+    def list_tasks(
+        self,
+        view: str = ...,
+        page_size: Optional[int] = ...,
+        page_token: Optional[str] = ...,
+    ) -> ListTasksResponse: ...
     def wait(self, task_id: str, timeout: Union[int, float, None] = ...) -> None: ...
-    def __init__(self, url: str, timeout: Optional[int], user: Optional[str], password: Optional[str], token: Optional[str]) -> None: ...
+    def __init__(
+        self,
+        url: str,
+        timeout: Optional[int],
+        user: Optional[str],
+        password: Optional[str],
+        token: Optional[str],
+    ) -> None: ...

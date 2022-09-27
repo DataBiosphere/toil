@@ -1,6 +1,8 @@
-from .annotations import annotationType as annotationType
-from _typeshed import Incomplete
 from typing import Sequence
+
+from _typeshed import Incomplete
+
+from .annotations import annotationType
 
 class Topic: ...
 
@@ -16,7 +18,9 @@ class MessageDataSpecError(RuntimeError):
 class ExcHandlerError(RuntimeError):
     badExcListenerID: Incomplete
     exc: Incomplete
-    def __init__(self, badExcListenerID: str, topicObj: Topic, origExc: Exception = ...) -> None: ...
+    def __init__(
+        self, badExcListenerID: str, topicObj: Topic, origExc: Exception = ...
+    ) -> None: ...
 
 class UnrecognizedSourceFormatError(ValueError):
     def __init__(self) -> None: ...

@@ -18,18 +18,16 @@ import shutil
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
-from typing import (
-    Any,
-    Callable,
-    ContextManager,
-    Dict,
-    Iterator,
-    List,
-    NamedTuple,
-    Optional,
-    TypeVar,
-    Union,
-)
+from typing import (Any,
+                    Callable,
+                    ContextManager,
+                    Dict,
+                    Iterator,
+                    List,
+                    NamedTuple,
+                    Optional,
+                    TypeVar,
+                    Union)
 
 from toil.bus import MessageBus
 from toil.common import Config, Toil, cacheDirName

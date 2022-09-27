@@ -31,11 +31,9 @@ from typing import Any, Callable, Iterator, List, Optional
 
 from toil import logProcessContext
 from toil.common import Config, Toil, safeUnpickleFromStream
-from toil.cwl.utils import (
-    CWL_INTERNAL_JOBS,
-    CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
-    CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
-)
+from toil.cwl.utils import (CWL_INTERNAL_JOBS,
+                            CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
+                            CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE)
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import CheckpointJobDescription, Job, JobDescription
