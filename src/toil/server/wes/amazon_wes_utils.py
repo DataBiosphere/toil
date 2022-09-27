@@ -246,7 +246,7 @@ def task_filter(task: TaskLog, annotations: Dict[str, str]) -> Optional[TaskLog]
     See <https://github.com/aws/amazon-genomics-cli/issues/494>.
 
     This encodes the AWSBatchJobID annotation, from the AmazonBatchBatchSystem,
-    into the task name of the givwn task, and returns the modified task. If no
+    into the task name of the given task, and returns the modified task. If no
     such annotation is available, the task is censored and None is returned.
     """
 

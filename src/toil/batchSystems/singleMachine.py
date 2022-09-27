@@ -30,6 +30,7 @@ from toil import worker as toil_worker
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
+from toil.bus import JobAnnotationMessage
 from toil.common import SYS_MAX_SIZE, Config, Toil, fC
 from toil.job import JobDescription
 from toil.lib.threading import cpu_count
@@ -214,9 +215,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                             #Result is a PID
 
                             if self._outbox is not None:
-                                # Annotate the job with the AWS Batch job ID it got.
+                                # Annotate the job with the PID generated.
                                 self._outbox.publish(
-                                    JobAnnotationMessage(str(job_desc.jobStoreID), "SingleMachinePID", result))
+                                    JobAnnotationMessage(jobID, "SingleMachinePID", result))
 
                         # Otherwise it's a PID if it succeeded, or False if it couldn't
                         # start.

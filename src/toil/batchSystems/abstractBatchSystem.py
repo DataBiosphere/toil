@@ -31,7 +31,7 @@ from typing import (
     Union,
 )
 
-from toil.bus import MessageBus
+from toil.bus import MessageBus, MessageOutbox
 from toil.common import Config, Toil, cacheDirName
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
