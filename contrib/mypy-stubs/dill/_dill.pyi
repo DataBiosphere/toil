@@ -1,8 +1,8 @@
 import sys
-from typing import IO, Any, Callable, Iterable, Protocol, TypeAlias, Union
+from typing import IO, Any, Callable, Iterable, Protocol, Union
 
 from _typeshed import ReadableBuffer
-from typing_extensions import final
+from typing_extensions import final, TypeAlias
 
 class _ReadableFileobj(Protocol):
     def read(self, __n: int) -> bytes: ...
