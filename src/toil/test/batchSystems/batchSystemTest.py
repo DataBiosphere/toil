@@ -70,7 +70,9 @@ numCores = 2
 
 preemptable = False
 
-defaultRequirements = dict(memory=int(100e6), cores=1, disk=1000, preemptable=preemptable)
+# Since we aren't always attaching the config to the jobs for these tests, we
+# need to use fully specified requirements.
+defaultRequirements = dict(memory=int(100e6), cores=1, disk=1000, preemptable=preemptable, accelerators=[])
 
 class BatchSystemPluginTest(ToilTest):
     """
@@ -301,19 +303,34 @@ class hidden:
         def testCheckResourceRequest(self):
             if isinstance(self.batchSystem, BatchSystemSupport):
                 check_resource_request = self.batchSystem.check_resource_request
+                # Assuming we have <2000 cores, this should be too many cores
                 self.assertRaises(InsufficientSystemResources, check_resource_request,
-                                  Requirer(dict(memory=1000, cores=200, disk='1G')))
+                                  Requirer(dict(memory=1000, cores=2000, disk='1G', accelerators=[])))
                 self.assertRaises(InsufficientSystemResources, check_resource_request,
-                                  Requirer(dict(memory=5, cores=200, disk='1G')))
+                                  Requirer(dict(memory=5, cores=2000, disk='1G', accelerators=[])))
+
+                # This should be too much memory
                 self.assertRaises(InsufficientSystemResources, check_resource_request,
-                                  Requirer(dict(memory='1001G', cores=1, disk='1G')))
+                                  Requirer(dict(memory='5000G', cores=1, disk='1G', accelerators=[])))
+
+                # This should be too much disk
                 self.assertRaises(InsufficientSystemResources, check_resource_request,
-                                  Requirer(dict(memory=5, cores=1, disk='2G')))
+                                  Requirer(dict(memory=5, cores=1, disk='2G', accelerators=[])))
+
+                # This should be an accelerator we don't have
+                self.assertRaises(InsufficientSystemResources, check_resource_request,
+                                  Requirer(dict(memory=5, cores=1, disk=100, accelerators=[{'kind': 'turbo-encabulator', 'count': 1}])))
+
+                # These should be missing attributes
                 self.assertRaises(AttributeError, check_resource_request,
-                                  Requirer(dict(cores=1, disk=1000)))
+                                  Requirer(dict(memory=5, cores=1, disk=1000)))
                 self.assertRaises(AttributeError, check_resource_request,
-                                  Requirer(dict(memory=10, disk=1000)))
-                check_resource_request(Requirer(dict(memory=10, cores=1, disk=100)))
+                                  Requirer(dict(cores=1, disk=1000, accelerators=[])))
+                self.assertRaises(AttributeError, check_resource_request,
+                                  Requirer(dict(memory=10, disk=1000, accelerators=[])))
+
+                # This should actually work
+                check_resource_request(Requirer(dict(memory=10, cores=1, disk=100, accelerators=[])))
 
         def testScalableBatchSystem(self):
             # If instance of scalable batch system

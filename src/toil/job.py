@@ -566,11 +566,6 @@ class Requirer:
                     f"in config: {self._config}"
                 )
             return value
-        elif requirement == 'accelerators':
-            # For accelerators specifically, we default to not using any, even
-            # if no default from the config is available and the job doesn't
-            # say anything.
-            return []
         else:
             raise AttributeError(
                 f"Default value for '{requirement}' requirement of {self} cannot be determined"
