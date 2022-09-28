@@ -36,6 +36,17 @@ There are several environment variables that affect the way Toil runs.
 |                                  | ``TOIL_WORKDIR`` and the  ``--workDir`` command    |
 |                                  | line option.                                       |
 +----------------------------------+----------------------------------------------------+
+| TOIL_COORDINATION_DIR            | An absolute path to a directory where Toil will    |
+|                                  | write its lock files. This directory must exist on |
+|                                  | each worker node and may be set to a different     |
+|                                  | value on each worker. The ``--coordinationDir``    |
+|                                  | command line option overrides this.                |
++----------------------------------+----------------------------------------------------+
+| TOIL_COORDINATION_DIR_OVERRIDE   | An absolute path to a directory where Toil will    |
+|                                  | write its lock files. This overrides               |
+|                                  | ``TOIL_COORDINATION_DIR`` and the                  |
+|                                  | ``--coordinationDir`` command    line option.      |
++----------------------------------+----------------------------------------------------+
 | TOIL_KUBERNETES_HOST_PATH        | A path on Kubernetes hosts that will be mounted as |
 |                                  | the Toil work directory in the workers, to allow   |
 |                                  | for shared caching. Will be created if it doesn't  |
