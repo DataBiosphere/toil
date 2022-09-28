@@ -19,6 +19,7 @@ from typing import Dict, List, Tuple, Union
 
 from toil import applianceSelf
 from toil.common import parser_with_common_options
+from toil.lib.aws.utils import build_tag_dict
 from toil.provisioners import check_valid_node_types, cluster_factory, parse_node_types
 from toil.statsAndLogging import set_logging_from_options
 
@@ -108,7 +109,7 @@ def main() -> None:
     options = parser.parse_args()
     set_logging_from_options(options)
 
-    tags = create_tags_dict(options.tags) if options.tags else dict()
+    tags = create_tags_dict(options.tags) if options.tags else build_tag_dict()
 
     # Get worker node types
     worker_node_types = parse_node_types(options.nodeTypes)

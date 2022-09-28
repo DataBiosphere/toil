@@ -213,10 +213,10 @@ There are several environment variables that affect the way Toil runs.
 |                                  | at UCSC to stop a bot we have that terminates      |
 |                                  | untagged resources.                                |
 +----------------------------------+----------------------------------------------------+
-| TOIL_AWS_TAG                     | This will tag cloud resources with any arbitrary   |
-|                                  | tags given in a JSON format. For information on    |
-|                                  | valid AWS tags, see 'AWS Tags'_.                   |
-+----------------------------------+----------------------------------------------------+
+| TOIL_AWS_TAGS                    | This will tag cloud resources with any arbitrary   |
+|                                  | tags given in a JSON format. These are overwritten |
+|                                  | in favor of CLI options when using launch cluster. |
+|                                  | For information on valid AWS tags, see `AWS Tags`_.|
 +----------------------------------+----------------------------------------------------+
 | SINGULARITY_DOCKER_HUB_MIRROR    | An http or https URL for the Singularity wrapper   |
 |                                  | in the Toil Docker container to use as a mirror    |

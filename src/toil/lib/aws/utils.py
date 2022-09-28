@@ -407,6 +407,8 @@ def build_tag_dict(environment: MutableMapping[str, str] =  os.environ) -> Dict[
             logger.error('TOIL_AWS_TAGS must be in JSON format: {"key" : "value", ...}')
             exit(1)
     return tags
+
+
 def flatten_tags(tags: Dict[str, str]) -> List[Dict[str, str]]:
     """
     Convert tags from a key to value dict into a list of 'Key': xxx, 'Value': xxx dicts.
