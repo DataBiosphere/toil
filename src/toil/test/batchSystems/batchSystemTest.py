@@ -41,7 +41,7 @@ from toil.batchSystems.registry import (
 )
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config, Toil
-from toil.job import Job, JobDescription
+from toil.job import Job, JobDescription, Requirer
 from toil.lib.retry import retry_flaky_test
 from toil.lib.threading import cpu_count
 from toil.test import (ToilTest,
@@ -302,13 +302,13 @@ class hidden:
             if isinstance(self.batchSystem, BatchSystemSupport):
                 check_resource_request = self.batchSystem.check_resource_request
                 self.assertRaises(InsufficientSystemResources, check_resource_request,
-                                  Requirer(dict(memory=1000, cores=200, disk=1e9)))
+                                  Requirer(dict(memory=1000, cores=200, disk='1G')))
                 self.assertRaises(InsufficientSystemResources, check_resource_request,
-                                  Requirer(dict(memory=5, cores=200, disk=1e9)))
+                                  Requirer(dict(memory=5, cores=200, disk='1G')))
                 self.assertRaises(InsufficientSystemResources, check_resource_request,
-                                  Requirer(dict(memory=1001e9, cores=1, disk=1e9)))
+                                  Requirer(dict(memory='1001G', cores=1, disk='1G')))
                 self.assertRaises(InsufficientSystemResources, check_resource_request,
-                                  Requirer(dict(memory=5, cores=1, disk=2e9)))
+                                  Requirer(dict(memory=5, cores=1, disk='2G')))
                 self.assertRaises(AttributeError, check_resource_request,
                                   Requirer(dict(cores=1, disk=1000)))
                 self.assertRaises(AttributeError, check_resource_request,
