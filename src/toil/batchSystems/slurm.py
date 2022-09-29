@@ -303,6 +303,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     raise ValueError(f"Some resource arguments are incompatible: {nativeConfig}")
 
                 sbatch_line.extend(nativeConfig.split())
+                if "--export" not in nativeConfig:
+                    sbatch_line.extend(["--export=ALL"])
 
             return sbatch_line
 
