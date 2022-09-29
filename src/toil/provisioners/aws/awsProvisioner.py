@@ -21,6 +21,7 @@ import textwrap
 import time
 import uuid
 from functools import wraps
+from shlex import quote
 from typing import Any, Callable, Collection, Dict, Iterable, List, Optional, Set
 from urllib.parse import unquote
 
@@ -398,6 +399,17 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Download credentials
         self._setLeaderWorkerAuthentication(leaderNode)
+
+    def getBaseInstanceConfiguration(self) -> AbstractProvisioner.InstanceConfiguration:
+        """
+        Propogates tags set by user down to instances
+        """
+        config = super().getBaseInstanceConfiguration()
+        #self._tags has all user set tags as launch cluster runs before this method is called
+        instance_base_tags = json.dumps(self._tags)
+        #Sets TOIL_AWS_TAGS as a default environment variable containing all user defined tags
+        config.addFile("/etc/profile", mode='0644', contents="TOIL_AWS_TAGS=" + quote(instance_base_tags) + "\n", append=True)
+        return config
 
     def _get_worker_subnets(self) -> List[str]:
         """

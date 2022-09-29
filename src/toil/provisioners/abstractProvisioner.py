@@ -513,7 +513,7 @@ class AbstractProvisioner(ABC):
             # Holds strings like "ssh-rsa actualKeyData" for keys to authorize (independently of cloud provider's system)
             self.sshPublicKeys = []
 
-        def addFile(self, path: str, filesystem: str = 'root', mode: Union[str, int] = '0755', contents: str = ''):
+        def addFile(self, path: str, filesystem: str = 'root', mode: Union[str, int] = '0755', contents: str = '', append: bool = False):
             """
             Make a file on the instance with the given filesystem, mode, and contents.
 
@@ -527,7 +527,12 @@ class AbstractProvisioner(ABC):
 
             contents = 'data:,' + quote(contents.encode('utf-8'))
 
-            self.files.append({'path': path, 'filesystem': filesystem, 'mode': mode, 'contents': {'source': contents}})
+            ignition_file = {'path': path, 'filesystem': filesystem, 'mode': mode, 'contents': {'source': contents}}
+
+            if append:
+                ignition_file["append"] = append
+
+            self.files.append(ignition_file)
 
         def addUnit(self, name: str, enabled: bool = True, contents: str = ''):
             """
