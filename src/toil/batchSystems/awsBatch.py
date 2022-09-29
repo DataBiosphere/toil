@@ -161,7 +161,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         self._outbox = message_bus.outbox()
 
     # setEnv is provided by BatchSystemSupport, updates self.environment
-    
+
     def check_resource_request(self, requirer: Requirer, job_name: str = '', detail: str = '') -> None:
         super().check_resource_request(requirer, job_name, detail)
         for accelerator in requirer.accelerators:
@@ -236,7 +236,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             if self.owner_tag:
                 # We are meant to tag everything with an owner
                 job_spec['tags'] = {'Owner': self.owner_tag}
-            
+
 
             # Launch it and get back the AWS ID that we can use to poll the task.
             # TODO: retry!

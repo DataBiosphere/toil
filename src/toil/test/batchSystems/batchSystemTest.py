@@ -847,6 +847,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                                                                            requirements=dict(
                                                                                cores=float(coresPerJob),
                                                                                memory=1, disk=1,
+                                                                               accelerators=[],
                                                                                preemptable=preemptable),
                                                                            jobName=str(i), unitName='')))
                             self.assertEqual(len(jobIds), jobs)
@@ -951,13 +952,15 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
     def testBatchResourceLimits(self):
         jobDesc1 = JobDescription(command="sleep 1000",
                                   requirements=dict(memory=1 << 30, cores=1,
-                                                    disk=1000, preemptable=preemptable),
+                                                    disk=1000, accelerators=[],
+                                                    preemptable=preemptable),
                                   jobName='testResourceLimits')
         job1 = self.batchSystem.issueBatchJob(jobDesc1)
         self.assertIsNotNone(job1)
         jobDesc2 = JobDescription(command="sleep 1000",
                                   requirements=dict(memory=2 << 30, cores=1,
-                                                    disk=1000, preemptable=preemptable),
+                                                    disk=1000, accelerators=[],
+                                                    preemptable=preemptable),
                                   jobName='testResourceLimits')
         job2 = self.batchSystem.issueBatchJob(jobDesc2)
         self.assertIsNotNone(job2)
