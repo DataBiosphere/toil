@@ -139,7 +139,7 @@ There are several environment variables that affect the way Toil runs.
 | TOIL_SLURM_ARGS                  | Arguments for sbatch for the slurm batch system.   |
 |                                  | Do not pass CPU or memory specifications here.     |
 |                                  | Instead, define resource requirements for the job. |
-|                                  | There is no default value for this variable.       |
+|                                  | By default, "--export=ALL" is set.                 |
 +----------------------------------+----------------------------------------------------+
 | TOIL_SLURM_PE                    | Name of the slurm partition to use for parallel    |
 |                                  | jobs.                                              |
