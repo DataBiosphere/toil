@@ -636,8 +636,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         else:
             # We actually want to send to the cluster
 
-            # Check resource requirements (managed by BatchSystemSupport)
-            self.check_resource_request(job_desc.memory, job_desc.cores, job_desc.disk)
+            # Check resource requirements 
+            self.check_resource_request(job_desc)
 
             # Make a pod that describes running the job
             pod_spec = self._create_pod_spec(job_desc, job_environment=job_environment)
