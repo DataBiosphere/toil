@@ -481,7 +481,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             # Tack the scale onto the exception
             e.details.append(f'Scale is set to {self.scale}.')
             raise e
-            
+
     def _check_accelerator_request(self, requirer: Requirer) -> None:
         _, problem = self._identify_sucfficient_accelerators(requirer.accelerators, set(range(len(self.accelerator_identities))))
         if problem is not None:

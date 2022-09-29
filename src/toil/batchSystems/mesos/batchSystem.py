@@ -179,7 +179,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         localID = self.handleLocalJob(jobNode)
         if localID:
             return localID
-        
+
         self.check_resource_request(jobNode)
         mesos_resources = {
             "memory": jobNode.memory,

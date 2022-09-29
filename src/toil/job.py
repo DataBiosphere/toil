@@ -266,7 +266,7 @@ class AcceleratorRequirement(TypedDict):
             # TODO: make sure they didn't misspell keys or something
         else:
             raise TypeError(f"Cannot parse value of type {type(spec)} as an AcceleratorRequirement")
-            
+
         if parsed['kind'] == 'gpu':
             # Use some smarts about what current GPUs are like to elaborate the
             # description.
@@ -289,13 +289,13 @@ class AcceleratorRequirement(TypedDict):
                     parsed['brand'] = 'amd'
 
         return parsed
-        
+
     @staticmethod
     def satisfies(candidate: 'AcceleratorRequirement', requirement: 'AcceleratorRequirement') -> bool:
         """
         Return True if the given candidate at least partially satisfies the given requirement (i.e. check all fields other than count).
         """
-        
+
         for key in ['kind', 'brand', 'api', 'model']:
             if key in requirement:
                 if key not in candidate:
@@ -398,10 +398,10 @@ class Requirer:
         # __copy__. So we try the method of
         # <https://stackoverflow.com/a/51043609>. But we go through the
         # pickling state hook.
-        
+
         clone = type(self).__new__(self.__class__)
         clone.__dict__.update(self.__getstate__())
-        
+
         if self._config is not None:
             # Share a config reference
             clone.assignConfig(self._config)
@@ -2801,7 +2801,7 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
         - cores
         - accelerators
         - preemptible
-        
+
     Note that the *argument* is named "preemptible" but internally the
     *requirement* is "preemptable".
 

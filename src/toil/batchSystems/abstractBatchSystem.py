@@ -340,12 +340,12 @@ class BatchSystemSupport(AbstractBatchSystem):
             e.batch_system = self.__class__.__name__ or None
             e.source = self.config.workDir if e.resource == 'disk' else None
             raise e
-            
+
     def _check_accelerator_request(self, requirer: Requirer) -> None:
         """
         Raise an InsufficientSystemResources error if the batch system can't
         provide the accelerators that are required.
-        
+
         If a batch system *can* provide accelerators, it should override this
         to say so.
         """
@@ -354,7 +354,7 @@ class BatchSystemSupport(AbstractBatchSystem):
             raise InsufficientSystemResources(requirer, 'accelerators', [], details=[
                 'The batch system does not support any accelerators.'
             ])
-    
+
     def setEnv(self, name: str, value: Optional[str] = None) -> None:
         """
         Set an environment variable for the worker process before it is launched. The worker
@@ -514,7 +514,7 @@ class InsufficientSystemResources(Exception):
     def __init__(self, requirer: Requirer, resource: str, available: Optional[ParsedRequirement] = None, batch_system: Optional[str] = None, source: Optional[str] = None, details: List[str] = []) -> None:
         """
         Make a new exception about how we couldn't get enough of something.
-        
+
         :param requirer: What needed the resources. May have a .jobName string.
         :param resource: The kind of resource requested (cores, memory, disk, accelerators).
         :param requested: The amount requested.
@@ -523,28 +523,28 @@ class InsufficientSystemResources(Exception):
         :param source: The place where the resource was to be gotten from. For disk, should be a path.
         :param details: Any extra details about the problem that can be attached to the error.
         """
-        
+
         self.job_name : Optional[str] = None
         if hasattr(requirer, 'jobName') and isinstance(getattr(requirer, 'jobName'), str):
             # Keep the job name if any
             self.job_name = cast(str, getattr(requirer, 'jobName'))
-        
+
         self.resource = resource
         self.requested = cast(ParsedRequirement, getattr(requirer, resource))
         self.available = available
         self.batch_system = batch_system
         self.source = source
         self.details = details
-        
+
     def __str__(self) -> str:
         """
         Explain the exception.
         """
-        
+
         unit = 'bytes of ' if self.resource in ('disk', 'memory') else ''
         purpose = ' for temporary space' if self.resource == 'disk' else ''
         qualifier = ' free on {self.source}' if self.resource == 'disk' and self.source is not None else ''
-        
+
         msg = []
         if self.job_name is not None:
             msg.append(f'The job {self.job_name} is requesting ')
@@ -559,13 +559,13 @@ class InsufficientSystemResources(Exception):
         else:
             msg.append(', but that is not available')
         msg.append('.')
-        
+
         if self.resource == 'disk':
             msg.append(' Try setting/changing the toil option "--workDir" or changing the base temporary directory by setting TMPDIR.')
-        
+
         for detail in self.details:
             msg.append(' ')
             msg.append(detail)
-            
+
         return ''.join(msg)
 

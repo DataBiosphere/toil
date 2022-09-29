@@ -45,7 +45,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
 from toil.common import Toil
-from toil.job import JobDescription, Requirer 
+from toil.job import JobDescription, Requirer
 from toil.lib.conversions import human2bytes
 from toil.lib.misc import slow_down, utc_now, get_user_name
 from toil.lib.retry import ErrorCondition, retry
@@ -345,26 +345,32 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
     # setEnv is provided by BatchSystemSupport, updates self.environment
 
-    class Placement(NamedTuple):
+    class Placement:
         """
         Internal format for pod placement constraints and preferences.
         """
-        required_labels: KeyValuesList
-        """
-        Labels which are required to be present (with these values).
-        """
-        desired_labels: KeyValuesList
-        """
-        Labels which are optional, but preferred to be present (with these values).
-        """
-        prohibited_labels: KeyValuesList
-        """
-        Labels which are not allowed to be present (with these values).
-        """
-        tolerated_taints: KeyValuesList
-        """
-        Taints which are allowed to be present (with these values).
-        """
+
+        def __init__(self):
+            """
+            Make a new empty set of placement constraints.
+            """
+            
+            self.required_labels: KeyValuesList = []
+            """
+            Labels which are required to be present (with these values).
+            """
+            self.desired_labels: KeyValuesList = []
+            """
+            Labels which are optional, but preferred to be present (with these values).
+            """
+            self.prohibited_labels: KeyValuesList = []
+            """
+            Labels which are not allowed to be present (with these values).
+            """
+            self.tolerated_taints: KeyValuesList = []
+            """
+            Taints which are allowed to be present (with these values).
+            """
 
         def set_preemptable(self, preemptable: bool) -> None:
             """
@@ -392,7 +398,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
             if preemptable:
                 # We want to seek preemptable labels and tolerate preemptable taints.
-                self.required_labels += PREEMPTABLE_SCHEMES['labels']
+                self.desired_labels += PREEMPTABLE_SCHEMES['labels']
                 self.tolerated_taints += PREEMPTABLE_SCHEMES['taints']
             else:
                 # We want to prohibit preemptable labels
@@ -435,7 +441,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 preference = kubernetes.client.V1PreferredSchedulingTerm(weight=1,
                                                                          preference=selector)
 
-                preferred_selector_terms.append(preference)
+                preferred_scheduling_terms.append(preference)
             for label, values in self.prohibited_labels:
                 # So we need to say that each label either doesn't
                 # have any of the banned values, or doesn't exist.
@@ -456,19 +462,21 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     tolerations.append(taint_ok)
 
             # Now combine everything
-            if preferred_selector_terms or required_selector_requirements:
+            if preferred_scheduling_terms or required_selector_requirements:
                 # We prefer or require something about labels.
-
-                # Make a term that says we match all the requirements
-                requirements_term = kubernetes.client.V1NodeSelectorTerm(
-                    match_expressions=required_selector_requirements
-                )
-                # And a selector to hold the term
-                requirements_selector = kubernetes.client.V1NodeSelector(node_selector_terms=[requirements_term])
+                
+                requirements_selector: Optional[kubernetes.client.V1NodeSelector] = None
+                if required_selector_requirements:
+                    # Make a term that says we match all the requirements
+                    requirements_term = kubernetes.client.V1NodeSelectorTerm(
+                        match_expressions=required_selector_requirements
+                    )
+                    # And a selector to hold the term
+                    requirements_selector = kubernetes.client.V1NodeSelector(node_selector_terms=[requirements_term])
 
                 # Make an affinity that prefers the preferences and requires the requirements
                 node_affinity = kubernetes.client.V1NodeAffinity(
-                    preferred_during_scheduling_ignored_during_execution=preferred_selector_terms,
+                    preferred_during_scheduling_ignored_during_execution=preferred_scheduling_terms if preferred_scheduling_terms else None,
                     required_during_scheduling_ignored_during_execution=requirements_selector
                 )
 
@@ -487,7 +495,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     f'The accelerator {accelerator} could not be provided.',
                     'The Toil Kubernetes batch system only knows how to request gpu accelerators or accelerators with a defined model.'
                 ])
-    
+
     def _create_pod_spec(
             self,
             job_desc: JobDescription,
@@ -543,7 +551,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             if 'model' in accelerator:
                 # TODO: What if the cluster uses some other accelerator model labeling scheme?
                 placement.required_labels.append(('accelerator', [accelerator['model']]))
-            
+
             # TODO: Support AMD's labeling scheme: https://github.com/RadeonOpenCompute/k8s-device-plugin/tree/master/cmd/k8s-node-labeller
             # That just has each trait of the accelerator as a separate label, but nothing that quite corresponds to a model.
 
@@ -632,7 +640,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         else:
             # We actually want to send to the cluster
 
-            # Check resource requirements 
+            # Check resource requirements
             self.check_resource_request(job_desc)
 
             # Make a pod that describes running the job

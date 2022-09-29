@@ -495,7 +495,9 @@ class KubernetesBatchSystemBenchTest(ToilTest):
         from toil.batchSystems.kubernetes import KubernetesBatchSystem
 
         normal_spec = V1PodSpec(containers=[])
-        KubernetesBatchSystem._apply_placement_constraints(False, normal_spec)
+        constraints = KubernetesBatchSystem.Placement()
+        constraints.set_preemptable(False)
+        constraints.apply(normal_spec)
         self.assertEqual(str(normal_spec.affinity), textwrap.dedent("""
         {'preferred_during_scheduling_ignored_during_execution': None,
          'required_during_scheduling_ignored_during_execution': {'node_selector_terms': [{'match_expressions': [{'key': 'eks.amazonaws.com/capacityType',
@@ -509,13 +511,16 @@ class KubernetesBatchSystemBenchTest(ToilTest):
         self.assertEqual(str(normal_spec.tolerations), "None")
 
         spot_spec = V1PodSpec(containers=[])
-        KubernetesBatchSystem._apply_placement_constraints(True, spot_spec)
+        constraints = KubernetesBatchSystem.Placement()
+        constraints.set_preemptable(True)
+        constraints.apply(spot_spec)
         self.assertEqual(str(spot_spec.affinity), textwrap.dedent("""
         {'preferred_during_scheduling_ignored_during_execution': [{'preference': {'node_selector_terms': [{'match_expressions': [{'key': 'eks.amazonaws.com/capacityType',
                                                                                                                                   'operator': 'In',
                                                                                                                                   'values': ['SPOT']}],
-                                                                                                           'match_fields': None},
-                                                                                                          {'match_expressions': [{'key': 'cloud.google.com/gke-preemptible',
+                                                                                                           'match_fields': None}]},
+                                                                   'weight': 1},
+                                                                  {'preference': {'node_selector_terms': [{'match_expressions': [{'key': 'cloud.google.com/gke-preemptible',
                                                                                                                                   'operator': 'In',
                                                                                                                                   'values': ['true']}],
                                                                                                            'match_fields': None}]},
@@ -529,6 +534,39 @@ class KubernetesBatchSystemBenchTest(ToilTest):
          'toleration_seconds': None,
          'value': 'true'}]
         """).strip())
+        
+    def test_label_constraints(self):
+        """
+        Make sure we generate the right preemptability constraints.
+        """
+
+        # Make sure we can print diffs of these long strings
+        self.maxDiff = 10000
+
+        from kubernetes.client import V1PodSpec
+        from toil.batchSystems.kubernetes import KubernetesBatchSystem
+
+        spec = V1PodSpec(containers=[])
+        constraints = KubernetesBatchSystem.Placement()
+        constraints.required_labels = [('GottaBeSetTo', ['This'])]
+        constraints.desired_labels = [('OutghtToBeSetTo', ['That'])]
+        constraints.prohibited_labels = [('CannotBe', ['ABadThing'])]
+        constraints.apply(spec)
+        self.assertEqual(str(spec.affinity), textwrap.dedent("""
+        {'preferred_during_scheduling_ignored_during_execution': [{'preference': {'node_selector_terms': [{'match_expressions': [{'key': 'OutghtToBeSetTo',
+                                                                                                                                  'operator': 'In',
+                                                                                                                                  'values': ['That']}],
+                                                                                                           'match_fields': None}]},
+                                                                   'weight': 1}],
+         'required_during_scheduling_ignored_during_execution': {'node_selector_terms': [{'match_expressions': [{'key': 'GottaBeSetTo',
+                                                                                                                 'operator': 'In',
+                                                                                                                 'values': ['This']},
+                                                                                                                {'key': 'CannotBe',
+                                                                                                                 'operator': 'NotIn',
+                                                                                                                 'values': ['ABadThing']}],
+                                                                                          'match_fields': None}]}}
+        """).strip())
+        self.assertEqual(str(spec.tolerations), "None")
 
 
 @needs_tes
