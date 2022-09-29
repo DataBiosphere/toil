@@ -728,7 +728,10 @@ class AbstractProvisioner(ABC):
             WantedBy=multi-user.target
             '''))
 
-    def addToilService(self, config: InstanceConfiguration, role: str, keyPath: str = None, preemptable: bool = False):
+    def toil_service_env_options(self) -> str:
+        return "-e TMPDIR=/var/tmp"
+
+    def add_toil_service(self, config: InstanceConfiguration, role: str, keyPath: str = None, preemptable: bool = False):
         """
         Add the Toil leader or worker service to an instance configuration.
 
@@ -796,7 +799,7 @@ class AbstractProvisioner(ABC):
             ExecStartPre=-/usr/bin/docker rm toil_{role}
             ExecStartPre=-/usr/bin/bash -c '{customInitCmd()}'
             ExecStart=/usr/bin/docker run \\
-                -e TMPDIR=/var/tmp \\
+                {self.toil_service_env_options()} \\
                 --entrypoint={entryPoint} \\
                 --net=host \\
                 --init \\
@@ -1215,7 +1218,7 @@ class AbstractProvisioner(ABC):
 
         if self.clusterType == 'mesos' or role == 'leader':
             # Leaders, and all nodes in a Mesos cluster, need a Toil service
-            self.addToilService(config, role, keyPath, preemptable)
+            self.add_toil_service(config, role, keyPath, preemptable)
 
         if role == 'worker' and self._leaderWorkerAuthentication is not None:
             # We need to connect the worker to the leader.
