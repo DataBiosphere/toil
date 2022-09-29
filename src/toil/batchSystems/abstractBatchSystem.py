@@ -19,6 +19,7 @@ from abc import ABC, abstractmethod
 from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
 from typing import (
+    cast,
     Any,
     Callable,
     ContextManager,
@@ -348,9 +349,9 @@ class BatchSystemSupport(AbstractBatchSystem):
         If a batch system *can* provide accelerators, it should override this
         to say so.
         """
-        if len(requierer.accelerators) > 0:
+        if len(requirer.accelerators) > 0:
             # By default we assume we can't fulfil any of these
-            raise InsufficientSystemResources(requirer, 'accelerators', requierer.accelerators, [])
+            raise InsufficientSystemResources(requirer, 'accelerators', requirer.accelerators, [])
     
     def setEnv(self, name: str, value: Optional[str] = None) -> None:
         """
@@ -520,11 +521,11 @@ class InsufficientSystemResources(Exception):
         :param source: The place where the resource was to be gotten from. For disk, should be a path.
         :param details: Any extra details about the problem that can be attached to the error.
         """
-        if hasattr(requirer, 'jobName') and isinstance(requirer.jobName, str):
+        
+        self.job_name : Optional[str] = None
+        if hasattr(requirer, 'jobName') and isinstance(getattr(requirer, 'jobName'), str):
             # Keep the job name if any
-            self.job_name = requirer.jobName
-        else:
-            self.job_name = None
+            self.job_name = cast(str, getattr(requirer, 'jobName'))
         
         self.resource = resource
         self.requested = requested
@@ -540,11 +541,11 @@ class InsufficientSystemResources(Exception):
         
         unit = 'bytes of ' if self.resource in ('disk', 'memory') else ''
         purpose = ' for temporary space' if self.resource == 'disk' else ''
-        qualifier = ' free on {self.source}' if self.resource == disk and self.source is not None else ''
+        qualifier = ' free on {self.source}' if self.resource == 'disk' and self.source is not None else ''
         
         msg = []
         if self.job_name is not None:
-            msg.append(f'The job {job_name} is requesting ')
+            msg.append(f'The job {self.job_name} is requesting ')
         else:
             msg.append(f'Requesting ')
         if self.requested is not None:
@@ -552,9 +553,9 @@ class InsufficientSystemResources(Exception):
             msg.append(f' {unit}{self.resource}')
         msg.append(purpose)
         if self.available is not None:
-            msg.append(f', more than the maximum of {available} {unit}{self.resource}{qualifier} that {self.batch_system or "this batch system"} was configured with')
+            msg.append(f', more than the maximum of {self.available} {unit}{self.resource}{qualifier} that {self.batch_system or "this batch system"} was configured with')
             if self.resource in ('cores', 'memory', 'disk'):
-                msg.append(f', or enforced by --max{resource.capitalize()}')
+                msg.append(f', or enforced by --max{self.resource.capitalize()}')
         else:
             msg.append(', but that is not available')
         msg.append('.')
@@ -562,7 +563,7 @@ class InsufficientSystemResources(Exception):
         if self.resource == 'disk':
             msg.append(' Try setting/changing the toil option "--workDir" or changing the base temporary directory by setting TMPDIR.')
         
-        for detail in details:
+        for detail in self.details:
             msg.append(' ')
             msg.append(detail)
             

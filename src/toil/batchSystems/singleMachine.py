@@ -486,7 +486,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         _, problem = self._identify_sucfficient_accelerators(requirer.accelerators, set(range(len(self.accelerator_identities))))
         if problem is not None:
             # We can't get the accelerators
-            raise InsufficientSystemResources(requirer, 'accelerators', problem, self.accelerator_identities)
+            raise InsufficientSystemResources(requirer, 'accelerators', requirer.accelerators, self.accelerator_identities, details=[
+                f'The accelerator {problem} could not be provided.'
+            ])
 
 
     def _release_acquired_resources(self, resources: List[Union[int, Set[int]]]) -> None:
