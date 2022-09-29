@@ -35,7 +35,7 @@ from toil.bus import MessageBus
 from toil.common import Config, Toil, cacheDirName
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.job import JobDescription, Requirer
+from toil.job import JobDescription, Requirer, ParsedRequirement
 from toil.resource import Resource
 
 logger = logging.getLogger(__name__)
@@ -312,7 +312,7 @@ class BatchSystemSupport(AbstractBatchSystem):
                 clean_work_dir=config.cleanWorkDir,
             )
 
-    def check_resource_request(self, requirer: Requirer, job_name: str = '', detail: str = '') -> None:
+    def check_resource_request(self, requirer: Requirer) -> None:
         """
         Check resource request is not greater than that available or allowed.
 
@@ -325,29 +325,33 @@ class BatchSystemSupport(AbstractBatchSystem):
         :raise InsufficientSystemResources: raised when a resource is requested in an amount
                greater than allowed
         """
-        batch_system = self.__class__.__name__ or 'this batch system'
-        for resource, requested, available in [('cores', requirer.cores, self.maxCores),
-                                               ('memory', requirer.memory, self.maxMemory),
-                                               ('disk', requirer.disk, self.maxDisk)]:
-            assert requested is not None
-            if requested > available:
-                unit = 'bytes of ' if resource in ('disk', 'memory') else ''
-                R = f'The job {job_name} is r' if job_name else 'R'
-                if resource == 'disk':
-                    msg = (f'{R}equesting {requested} {unit}{resource} for temporary space, '
-                           f'more than the maximum of {available} {unit}{resource} of free space on '
-                           f'{self.config.workDir} that {batch_system} was configured with, or enforced '
-                           f'by --max{resource.capitalize()}.  Try setting/changing the toil option '
-                           f'"--workDir" or changing the base temporary directory by setting TMPDIR.')
-                else:
-                    msg = (f'{R}equesting {requested} {unit}{resource}, more than the maximum of '
-                           f'{available} {unit}{resource} that {batch_system} was configured with, '
-                           f'or enforced by --max{resource.capitalize()}.')
-                if detail:
-                    msg += detail
-
-                raise InsufficientSystemResources(msg)
-
+        try:
+            for resource, requested, available in [('cores', requirer.cores, self.maxCores),
+                                                   ('memory', requirer.memory, self.maxMemory),
+                                                   ('disk', requirer.disk, self.maxDisk)]:
+                assert requested is not None
+                if requested > available:
+                    raise InsufficientSystemResources(requirer, resource, requested, available)
+            # Handle accelerators in another method that can be overridden separately
+            self._check_accelerator_request(requirer)
+        except InsufficientSystemResources as e:
+            # Add more annotation info to the error
+            e.batch_system = self.__class__.__name__ or None
+            e.source = self.config.workDir if e.resource == 'disk' else None
+            raise e
+            
+    def _check_accelerator_request(self, requirer: Requirer) -> None:
+        """
+        Raise an InsufficientSystemResources error if the batch system can't
+        provide the accelerators that are required.
+        
+        If a batch system *can* provide accelerators, it should override this
+        to say so.
+        """
+        if len(requierer.accelerators) > 0:
+            # By default we assume we can't fulfil any of these
+            raise InsufficientSystemResources(requirer, 'accelerators', requierer.accelerators, [])
+    
     def setEnv(self, name: str, value: Optional[str] = None) -> None:
         """
         Set an environment variable for the worker process before it is launched. The worker
@@ -504,4 +508,63 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
 
 
 class InsufficientSystemResources(Exception):
-    pass
+    def __init__(self, requirer: Requirer, resource: str, requested: Optional[ParsedRequirement] = None, available: Optional[ParsedRequirement] = None, batch_system: Optional[str] = None, source: Optional[str] = None, details: List[str] = []) -> None:
+        """
+        Make a new exception about how we couldn't get enough of something.
+        
+        :param requirer: What needed the resources. May have a .jobName string.
+        :param resource: The kind of resource requested (cores, memory, disk, accelerators).
+        :param requested: The amount requested.
+        :param available: The amount actually available.
+        :param batch_system: The batch system that could not provide the resource.
+        :param source: The place where the resource was to be gotten from. For disk, should be a path.
+        :param details: Any extra details about the problem that can be attached to the error.
+        """
+        if hasattr(requirer, 'jobName') and isinstance(requirer.jobName, str):
+            # Keep the job name if any
+            self.job_name = requirer.jobName
+        else:
+            self.job_name = None
+        
+        self.resource = resource
+        self.requested = requested
+        self.available = available
+        self.batch_system = batch_system
+        self.source = source
+        self.details = details
+        
+    def __str__(self) -> str:
+        """
+        Explain the exception.
+        """
+        
+        unit = 'bytes of ' if self.resource in ('disk', 'memory') else ''
+        purpose = ' for temporary space' if self.resource == 'disk' else ''
+        qualifier = ' free on {self.source}' if self.resource == disk and self.source is not None else ''
+        
+        msg = []
+        if self.job_name is not None:
+            msg.append(f'The job {job_name} is requesting ')
+        else:
+            msg.append(f'Requesting ')
+        if self.requested is not None:
+            msg.append(str(self.requested))
+            msg.append(f' {unit}{self.resource}')
+        msg.append(purpose)
+        if self.available is not None:
+            msg.append(f', more than the maximum of {available} {unit}{self.resource}{qualifier} that {self.batch_system or "this batch system"} was configured with')
+            if self.resource in ('cores', 'memory', 'disk'):
+                msg.append(f', or enforced by --max{resource.capitalize()}')
+        else:
+            msg.append(', but that is not available')
+        msg.append('.')
+        
+        if self.resource == 'disk':
+            msg.append(' Try setting/changing the toil option "--workDir" or changing the base temporary directory by setting TMPDIR.')
+        
+        for detail in details:
+            msg.append(' ')
+            msg.append(detail)
+            
+        return ''.join(msg)
+

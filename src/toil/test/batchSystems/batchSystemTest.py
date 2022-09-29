@@ -317,7 +317,8 @@ class hidden:
                 self.assertRaises(InsufficientSystemResources, check_resource_request,
                                   Requirer(dict(memory=5, cores=1, disk='2G', accelerators=[])))
 
-                # This should be an accelerator we don't have
+                # This should be an accelerator we don't have.
+                # All the batch systems need code to know they don't have these accelerators.
                 self.assertRaises(InsufficientSystemResources, check_resource_request,
                                   Requirer(dict(memory=5, cores=1, disk=100, accelerators=[{'kind': 'turbo-encabulator', 'count': 1}])))
 

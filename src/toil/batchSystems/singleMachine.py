@@ -474,17 +474,19 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         self.schedulingStatusMessage = message
 
-    def check_resource_request(self, requirer: Requirer, job_name: str = '', detail: str = '') -> None:
-        super().check_resource_request(requirer, job_name, detail)
+    def check_resource_request(self, requirer: Requirer) -> None:
+        try:
+            super().check_resource_request(requirer)
+        except InsufficientSystemResources as e:
+            # Tack the scale onto the exception
+            e.details.append(f'Scale is set to {self.scale}.')
+            raise e
+            
+    def _check_accelerator_request(self, requirer: Requirer) -> None:
         _, problem = self._identify_sucfficient_accelerators(requirer.accelerators, set(range(len(self.accelerator_identities))))
         if problem is not None:
             # We can't get the accelerators
-            msg = [job_name if job_name else 'A job',
-                   f' is requesting accelerator {problem} but the current machine only has: {self.accelerator_identities}.']
-            if detail:
-                msg.append(' ')
-                msg.append(detail)
-            raise InsufficientSystemResources(''.join(msg))
+            raise InsufficientSystemResources(requirer, 'accelerators', problem, self.accelerator_identities)
 
 
     def _release_acquired_resources(self, resources: List[Union[int, Set[int]]]) -> None:
@@ -717,8 +719,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         # Don't do our own assertions about job size vs. our configured size.
         # The abstract batch system can handle it.
-        self.check_resource_request(scaled_desc, job_name=jobDesc.jobName,
-                                    detail=f'Scale is set to {self.scale}.')
+        self.check_resource_request(scaled_desc)
         logger.debug(f"Issuing the command: {jobDesc.command} with {scaled_desc.requirements_string()}")
         with self.jobIndexLock:
             jobID = self.jobIndex

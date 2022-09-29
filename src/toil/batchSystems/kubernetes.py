@@ -479,18 +479,13 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # Apply the tolerations
                 pod_spec.tolerations = tolerations
 
-    def check_resource_request(self, requirer: Requirer, job_name: str = '', detail: str = '') -> None:
-        super().check_resource_request(requirer, job_name, detail)
+    def _check_accelerator_request(self, requirer: Requirer) -> None:
         for accelerator in requirer.accelerators:
             if accelerator['kind'] != 'gpu' and 'model' not in accelerator:
                 # We can only provide GPUs or things with a model right now
-                msg = [job_name if job_name else 'A job',
-                       f' is requesting accelerator {accelerator} but the Toil Kubernetes batch system'
-                       'only knows how to request gpu accelerators or accelerators with a defined model.']
-                if detail:
-                    msg.append(' ')
-                    msg.append(detail)
-                raise InsufficientSystemResources(''.join(msg)) 
+                raise InsufficientSystemResources(requirer, 'accelerators', accelerator, details=[
+                    'The Toil Kubernetes batch system only knows how to request gpu accelerators or accelerators with a defined model.'
+                ])
     
     def _create_pod_spec(
             self,

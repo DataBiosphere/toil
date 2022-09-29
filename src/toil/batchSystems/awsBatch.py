@@ -162,17 +162,11 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
     # setEnv is provided by BatchSystemSupport, updates self.environment
 
-    def check_resource_request(self, requirer: Requirer, job_name: str = '', detail: str = '') -> None:
-        super().check_resource_request(requirer, job_name, detail)
+    def _check_accelerator_request(self, requirer: Requirer) -> None:
         for accelerator in requirer.accelerators:
             if accelerator['kind'] != 'gpu' or accelerator.get('brand', 'nvidia') != 'nvidia':
                 # We can only provide GPUs, and of those only nvidia ones.
-                msg = [job_name if job_name else 'A job',
-                       f' is requesting accelerator {accelerator} but AWS Batch can only provide nvidia gpu accelerators.']
-                if detail:
-                    msg.append(' ')
-                    msg.append(detail)
-                raise InsufficientSystemResources(''.join(msg))
+                raise InsufficientSystemResources(requirer, 'accelerators', accelerator, details=['AWS Batch can only provide nvidia gpu accelerators.'])
 
     def issueBatchJob(self, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
         # Try the job as local
@@ -225,8 +219,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                     # on AWS Batch because there's no way to tell AWS Batch to
                     # send us to one or another.
                     gpus_needed += accelerator['count']
-                else:
-                    logger.error('Cannot express accelerator requirement: %s on job %s. Ignoring requirement!', accelerator, job_desc)
+                # Other accelerators are rejected by check_resource_request
             if gpus_needed > 0:
                 # We need some GPUs so ask for them.
                 job_spec['containerOverrides']['resourceRequirements'].append({
