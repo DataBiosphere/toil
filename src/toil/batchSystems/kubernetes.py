@@ -483,7 +483,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         for accelerator in requirer.accelerators:
             if accelerator['kind'] != 'gpu' and 'model' not in accelerator:
                 # We can only provide GPUs or things with a model right now
-                raise InsufficientSystemResources(requirer, 'accelerators', requirer.accelerators, details=[
+                raise InsufficientSystemResources(requirer, 'accelerators', details=[
                     f'The accelerator {accelerator} could not be provided.',
                     'The Toil Kubernetes batch system only knows how to request gpu accelerators or accelerators with a defined model.'
                 ])

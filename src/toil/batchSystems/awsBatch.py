@@ -166,7 +166,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         for accelerator in requirer.accelerators:
             if accelerator['kind'] != 'gpu' or accelerator.get('brand', 'nvidia') != 'nvidia':
                 # We can only provide GPUs, and of those only nvidia ones.
-                raise InsufficientSystemResources(requirer, 'accelerators', requirer.accelerators, details=[
+                raise InsufficientSystemResources(requirer, 'accelerators', details=[
                     f'The accelerator {accelerator} could not be provided.',
                     'AWS Batch can only provide nvidia gpu accelerators.'
                 ])

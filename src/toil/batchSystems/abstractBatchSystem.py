@@ -332,7 +332,7 @@ class BatchSystemSupport(AbstractBatchSystem):
                                                    ('disk', requirer.disk, self.maxDisk)]:
                 assert requested is not None
                 if requested > available:
-                    raise InsufficientSystemResources(requirer, resource, requested, available)
+                    raise InsufficientSystemResources(requirer, resource, available)
             # Handle accelerators in another method that can be overridden separately
             self._check_accelerator_request(requirer)
         except InsufficientSystemResources as e:
@@ -351,7 +351,9 @@ class BatchSystemSupport(AbstractBatchSystem):
         """
         if len(requirer.accelerators) > 0:
             # By default we assume we can't fulfil any of these
-            raise InsufficientSystemResources(requirer, 'accelerators', requirer.accelerators, [])
+            raise InsufficientSystemResources(requirer, 'accelerators', [], details=[
+                'The batch system does not support any accelerators.'
+            ])
     
     def setEnv(self, name: str, value: Optional[str] = None) -> None:
         """
@@ -509,7 +511,7 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
 
 
 class InsufficientSystemResources(Exception):
-    def __init__(self, requirer: Requirer, resource: str, requested: Optional[ParsedRequirement] = None, available: Optional[ParsedRequirement] = None, batch_system: Optional[str] = None, source: Optional[str] = None, details: List[str] = []) -> None:
+    def __init__(self, requirer: Requirer, resource: str, available: Optional[ParsedRequirement] = None, batch_system: Optional[str] = None, source: Optional[str] = None, details: List[str] = []) -> None:
         """
         Make a new exception about how we couldn't get enough of something.
         
@@ -528,7 +530,7 @@ class InsufficientSystemResources(Exception):
             self.job_name = cast(str, getattr(requirer, 'jobName'))
         
         self.resource = resource
-        self.requested = requested
+        self.requested = cast(ParsedRequirement, getattr(requirer, resource))
         self.available = available
         self.batch_system = batch_system
         self.source = source
@@ -548,9 +550,7 @@ class InsufficientSystemResources(Exception):
             msg.append(f'The job {self.job_name} is requesting ')
         else:
             msg.append(f'Requesting ')
-        if self.requested is not None:
-            msg.append(str(self.requested))
-            msg.append(f' {unit}{self.resource}')
+        msg.append(f'{self.requested} {unit}{self.resource}')
         msg.append(purpose)
         if self.available is not None:
             msg.append(f', more than the maximum of {self.available} {unit}{self.resource}{qualifier} that {self.batch_system or "this batch system"} was configured with')
