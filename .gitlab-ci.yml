@@ -161,6 +161,14 @@ batch_systems:
     - make test tests=src/toil/test/mesos/MesosDataStructuresTest.py
     - kill $(jobs -p) || true
 
+slurm_test:
+  stage: main_tests
+  script:
+    - pwd
+    - cd contrib/slurm-test/
+    - pip install docker-compose
+    - ./slurm_test.sh
+
 cwl_v1.0:
   stage: main_tests
   only: []
@@ -222,7 +230,7 @@ cwl_v1.0_kubernetes:
     - mkdir -p ${TOIL_WORKDIR}
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance
     - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance_with_caching
-    
+
 cwl_v1.1_kubernetes:
   stage: main_tests
   only: []
