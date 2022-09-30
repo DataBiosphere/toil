@@ -41,6 +41,7 @@ from typing import (
     Literal,
     NamedTuple,
     Optional,
+    Sequence,
     Tuple,
     TypeVar,
     Union
@@ -58,7 +59,10 @@ else:
 from typing_extensions import NotRequired
 
 import kubernetes
+# Importing the main module provides these, but the stubs don't know it. See <https://github.com/MaterializeInc/kubernetes-stubs/issues/10>
 import kubernetes.client
+import kubernetes.config
+
 import urllib3
 from  kubernetes.client.exceptions import ApiException
 
@@ -78,9 +82,11 @@ from toil.resource import Resource
 from toil.statsAndLogging import configure_root_logger, set_log_level
 
 logger = logging.getLogger(__name__)
-retryable_kubernetes_errors = [urllib3.exceptions.MaxRetryError,
-                               urllib3.exceptions.ProtocolError,
-                               ApiException]
+retryable_kubernetes_errors: Sequence[Union[ErrorCondition, Type[Exception]]] = [
+    urllib3.exceptions.MaxRetryError,
+    urllib3.exceptions.ProtocolError,
+    ApiException
+]
 
 
 def is_retryable_kubernetes_error(e: Exception) -> bool:
@@ -126,7 +132,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         logging.getLogger('requests_oauthlib').setLevel(logging.ERROR)
 
         # This will hold the last time our Kubernetes credentials were refreshed
-        self.credential_time = None
+        self.credential_time: Optional[datetime.datetime] = None
         # And this will hold our cache of API objects
         self._apis: KubernetesBatchSystem._ApiStorageDict = {}
 
@@ -218,7 +224,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Convert to a dict
         root_dict = api_client.sanitize_for_serialization(kubernetes_object)
 
-        def drop_boring(here):
+        def drop_boring(here: Dict[str, Any]) -> None:
             """
             Drop boring fields recursively.
             """
@@ -232,29 +238,29 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 del here[k]
 
         drop_boring(root_dict)
-        return yaml.dump(root_dict)
+        return cast(str, yaml.dump(root_dict))
 
     @overload
     def _api(
-        self, name: Literal['batch'], max_age_seconds: float = 5 * 60
+        self, kind: Literal['batch'], max_age_seconds: float = 5 * 60
     ) -> kubernetes.client.BatchV1Api:
         ...
         
     @overload
     def _api(
-        self, name: Literal['core'], max_age_seconds: float = 5 * 60
+        self, kind: Literal['core'], max_age_seconds: float = 5 * 60
     ) -> kubernetes.client.CoreV1Api:
         ...
         
     @overload
     def _api(
-        self, name: Literal['customObjects'], max_age_seconds: float = 5 * 60
+        self, kind: Literal['customObjects'], max_age_seconds: float = 5 * 60
     ) -> kubernetes.client.CustomObjectsApi:
         ...
         
     @overload
     def _api(
-        self, name: Literal['namespace'], max_age_seconds: float = 5 * 60
+        self, kind: Literal['namespace'], max_age_seconds: float = 5 * 60
     ) -> str:
         ...
 
@@ -320,7 +326,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     raise RuntimeError("No Kubernetes contexts available in ~/.kube/config or $KUBECONFIG")
 
                 # Identify the namespace to work in
-                return activeContext.get('context', {}).get('namespace', 'default')
+                namespace = activeContext.get('context', {}).get('namespace', 'default')
+                assert isinstance(namespace, str)
+                return namespace
 
         else:
             # We need an API object

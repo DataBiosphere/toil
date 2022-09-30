@@ -142,6 +142,7 @@ from typing import (
     Optional,
     Sequence,
     Tuple,
+    Type,
     Union,
 )
 
@@ -228,7 +229,7 @@ class ErrorCondition:
 def retry(
     intervals: Optional[List] = None,
     infinite_retries: bool = False,
-    errors: Optional[Sequence[Union[ErrorCondition, Exception, Any]]] = None,
+    errors: Optional[Sequence[Union[ErrorCondition, Type[Exception]]]] = None,
     log_message: Optional[Tuple[Callable, str]] = None,
     prepare: Optional[List[Callable]] = None,
 ) -> Callable[[Any], Any]:
