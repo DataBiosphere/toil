@@ -15,6 +15,7 @@ import enum
 import logging
 import os
 import shutil
+import sys
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
@@ -31,6 +32,10 @@ from typing import (
     TypeVar,
     Union,
 )
+if sys.version_info >= (3, 8):
+    from typing import Protocol
+else:
+    from typing_extensions import Protocol
 
 from toil.bus import MessageBus
 from toil.common import Config, Toil, cacheDirName
@@ -81,6 +86,25 @@ class WorkerCleanupInfo(NamedTuple):
     'onSuccess', 'onError', 'never')
     """
 
+class OptionSetter(Protocol):
+    """
+    Protocol for the setOption function we get to let us set up CLI options for
+    each batch system.
+    
+    Actual functionality is defined in the Config class.
+    """
+    
+    OptionType = TypeVar('OptionType')
+    def __call__(
+        self,
+        option_name: str,
+        parsing_function: Optional[Callable[[Any], OptionType]] = None,
+        check_function: Optional[Callable[[OptionType], Union[None, bool]]] = None,
+        default: Optional[OptionType] = None,
+        env: Optional[List[str]] = None,
+        old_names: Optional[List[str]] = None
+    ) -> bool:
+        ...
 
 class AbstractBatchSystem(ABC):
     """An abstract base class to represent the interface the batch system must provide to Toil."""
@@ -251,9 +275,8 @@ class AbstractBatchSystem(ABC):
         If this batch system provides any command line options, add them to the given parser.
         """
 
-    OptionType = TypeVar('OptionType')
     @classmethod
-    def setOptions(cls, setOption: Callable[[str, Optional[Callable[[Any], OptionType]], Optional[Callable[[OptionType], None]], Optional[OptionType], Optional[List[str]]], None]) -> None:
+    def setOptions(cls, setOption: OptionSetter) -> None:
         """
         Process command line or configuration options relevant to this batch system.
 
@@ -261,8 +284,7 @@ class AbstractBatchSystem(ABC):
             setOption(option_name, parsing_function=None, check_function=None, default=None, env=None)
             returning nothing, used to update run configuration as a side effect.
         """
-        # TODO: change type to a Protocol to express kwarg names, or else use a
-        # different interface (generator?)
+        pass
 
     def getWorkerContexts(self) -> List[ContextManager[Any]]:
         """

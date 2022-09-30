@@ -35,6 +35,7 @@ from requests.exceptions import HTTPError
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchJobExitReason,
+                                                   OptionSetter,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
@@ -448,7 +449,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                             help="Bearer token to use for authentication to TES server.")
 
     @classmethod
-    def setOptions(cls, setOption: Callable[..., None]) -> None:
+    def setOptions(cls, setOption: OptionSetter) -> None:
         # Because we use the keyword arguments, we can't specify a type for setOption without using Protocols.
         # TODO: start using Protocols, or just start returning objects to represent the options.
         # When actually parsing options, remember to check the environment variables

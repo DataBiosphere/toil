@@ -29,6 +29,7 @@ import toil
 from toil import worker as toil_worker
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchSystemSupport,
+                                                   OptionSetter,
                                                    UpdatedBatchJobInfo,
                                                    InsufficientSystemResources)
 from toil.common import SYS_MAX_SIZE, Config, Toil, fC
@@ -819,7 +820,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                                  "(default: %(default)s)")
 
     @classmethod
-    def setOptions(cls, setOption):
+    def setOptions(cls, setOption: OptionSetter):
         setOption("scale", float, fC(0.0), default=1)
 
 

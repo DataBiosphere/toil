@@ -36,6 +36,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
                                                    AbstractScalableBatchSystem,
                                                    BatchJobExitReason,
                                                    NodeInfo,
+                                                   OptionSetter,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.local_support import BatchSystemLocalSupport
 from toil.batchSystems.mesos import JobQueue, MesosShape, TaskData, ToilJob
@@ -840,6 +841,6 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                             help="The host and port of the Mesos master separated by colon.  (default: %(default)s)")
 
     @classmethod
-    def setOptions(cls, setOption):
+    def setOptions(cls, setOption: OptionSetter):
         setOption("mesos_endpoint", None, None, cls.get_default_mesos_endpoint(), old_names=["mesosMasterAddress"])
 

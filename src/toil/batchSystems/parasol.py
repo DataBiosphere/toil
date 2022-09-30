@@ -24,7 +24,8 @@ from shutil import which
 from threading import Thread
 from typing import Dict, Optional, Union
 
-from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
+from toil.batchSystems.abstractBatchSystem import (OptionSetter,
+                                                   BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
 from toil.common import SYS_MAX_SIZE, Toil
 from toil.lib.iterables import concat
@@ -375,7 +376,7 @@ class ParasolBatchSystem(BatchSystemSupport):
                                  "created for jobs with a a unique set of resource requirements.  (default: %(default)s).")
 
     @classmethod
-    def setOptions(cls, setOption):
+    def setOptions(cls, setOption: OptionSetter):
         from toil.common import iC
         setOption("parasolCommand", None, None, 'parasol')
         setOption("parasolMaxBatches", int, iC(1), 10000)

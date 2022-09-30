@@ -41,6 +41,7 @@ from boto.exception import BotoServerError
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchJobExitReason,
+                                                   OptionSetter,
                                                    UpdatedBatchJobInfo,
                                                    InsufficientSystemResources)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
@@ -585,7 +586,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                                   "ecs-tasks.amazonaws.com."))
 
     @classmethod
-    def setOptions(cls, setOption: Callable[..., None]) -> None:
+    def setOptions(cls, setOption: OptionSetter) -> None:
         setOption("aws_batch_region", default=None)
         setOption("aws_batch_queue", default=None, env=["TOIL_AWS_BATCH_QUEUE"])
         setOption("aws_batch_job_role_arn", default=None, env=["TOIL_AWS_BATCH_JOB_ROLE_ARN"])
