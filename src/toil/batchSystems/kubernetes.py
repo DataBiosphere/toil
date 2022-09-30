@@ -31,11 +31,36 @@ import time
 import uuid
 import yaml
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, TypeVar, Union
+from typing import (
+    overload,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Literal,
+    NamedTuple,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union
+)
+if sys.version_info < (3, 10):
+    from typing_extensions import ParamSpec
+else:
+    from typing import ParamSpec
+if sys.version_info >= (3, 8):
+    from typing import TypedDict, Protocol, runtime_checkable
+else:
+    from typing_extensions import TypedDic, Protocol, runtime_checkable
+# TODO: When this gets into the standard library, get it from there and drop
+# typing-extensions dependency on Pythons that are new enough.
+from typing_extensions import NotRequired
 
 import kubernetes
+import kubernetes.client
 import urllib3
-from kubernetes.client.rest import ApiException
+from  kubernetes.client.exceptions import ApiException
 
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
@@ -44,7 +69,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
                                                    InsufficientSystemResources)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
-from toil.common import Toil
+from toil.common import Config, Toil
 from toil.job import JobDescription, Requirer
 from toil.lib.conversions import human2bytes
 from toil.lib.misc import slow_down, utc_now, get_user_name
@@ -58,7 +83,7 @@ retryable_kubernetes_errors = [urllib3.exceptions.MaxRetryError,
                                ApiException]
 
 
-def is_retryable_kubernetes_error(e):
+def is_retryable_kubernetes_error(e: Exception) -> bool:
     """
     A function that determines whether or not Toil should retry or stop given
     exceptions thrown by Kubernetes.
@@ -73,11 +98,25 @@ KeyValuesList = List[Tuple[str, List[str]]]
 
 class KubernetesBatchSystem(BatchSystemCleanupSupport):
     @classmethod
-    def supportsAutoDeployment(cls):
+    def supportsAutoDeployment(cls) -> bool:
         return True
 
-    def __init__(self, config, maxCores, maxMemory, maxDisk):
+    class _ApiStorageDict(TypedDict):
+        """
+        Type-enforcing dict for our API object cache.
+        """
+        
+        namespace: NotRequired[str]
+        batch: NotRequired[kubernetes.client.BatchV1Api]
+        core: NotRequired[kubernetes.client.CoreV1Api]
+        customObjects: NotRequired[kubernetes.client.CustomObjectsApi]
+        
+        
+    def __init__(self, config: Config, maxCores: int, maxMemory: int, maxDisk: int) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
+        
+        # Re-type the config to make sure it has all the fields we need.
+        assert isinstance(config, KubernetesBatchSystem.KubernetesConfig)
 
         # Turn down log level for Kubernetes modules and dependencies.
         # Otherwise if we are at debug log level, we dump every
@@ -89,7 +128,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # This will hold the last time our Kubernetes credentials were refreshed
         self.credential_time = None
         # And this will hold our cache of API objects
-        self._apis = {}
+        self._apis: KubernetesBatchSystem._ApiStorageDict = {}
 
         # Get our namespace (and our Kubernetes credentials to make sure they exist)
         self.namespace = self._api('namespace')
@@ -173,7 +212,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # We need a Kubernetes widget that knows how to translate
         # its data structures to nice YAML-able dicts. See:
         # <https://github.com/kubernetes-client/python/issues/1117#issuecomment-939957007>
-        api_client = kubernetes.client.ApiClient()
+        # Also, this definitely exists but the stubs forget to expose it properly. See <https://github.com/MaterializeInc/kubernetes-stubs/issues/9>.
+        api_client: kubernetes.client.ApiClient = kubernetes.client.ApiClient() # type: ignore
 
         # Convert to a dict
         root_dict = api_client.sanitize_for_serialization(kubernetes_object)
@@ -194,7 +234,31 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         drop_boring(root_dict)
         return yaml.dump(root_dict)
 
-    def _api(self, kind, max_age_seconds = 5 * 60):
+    @overload
+    def _api(
+        self, name: Literal['batch'], max_age_seconds: float = 5 * 60
+    ) -> kubernetes.client.BatchV1Api:
+        ...
+        
+    @overload
+    def _api(
+        self, name: Literal['core'], max_age_seconds: float = 5 * 60
+    ) -> kubernetes.client.CoreV1Api:
+        ...
+        
+    @overload
+    def _api(
+        self, name: Literal['customObjects'], max_age_seconds: float = 5 * 60
+    ) -> kubernetes.client.CustomObjectsApi:
+        ...
+        
+    @overload
+    def _api(
+        self, name: Literal['namespace'], max_age_seconds: float = 5 * 60
+    ) -> str:
+        ...
+
+    def _api(self, kind: Union[Literal['batch'], Literal['core'], Literal['customObjects'], Literal['namespace']], max_age_seconds: float = 5 * 60) -> Union[kubernetes.client.BatchV1Api, kubernetes.client.CoreV1Api, kubernetes.client.CustomObjectsApi, str]:
         """
         The Kubernetes module isn't clever enough to renew its credentials when
         they are about to expire. See
@@ -265,8 +329,15 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             except KeyError:
                 raise RuntimeError(f"Unknown Kubernetes API type: {kind}")
 
+    # We have a bunch of functions that wrap other functions, so we use the new
+    # ParamSpec to be able to type ourselves with those functions args and
+    # kwargs.
+    # See <https://sobolevn.me/2021/12/paramspec-guide>
+    P = ParamSpec("P")
+    R = TypeVar("R")
+
     @retry(errors=retryable_kubernetes_errors)
-    def _try_kubernetes(self, method, *args, **kwargs):
+    def _try_kubernetes(self, method: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
         """
         Kubernetes API can end abruptly and fail when it could dynamically backoff and retry.
 
@@ -284,7 +355,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                    error_codes=[404],
                    retry_on_this_condition=False
                )])
-    def _try_kubernetes_expecting_gone(self, method, *args, **kwargs):
+    def _try_kubernetes_expecting_gone(self, method: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
         """
         Same as _try_kubernetes, but raises 404 errors as soon as they are
         encountered (because we are waiting for them) instead of retrying on
@@ -292,7 +363,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         """
         return method(*args, **kwargs)
 
-    def _try_kubernetes_stream(self, method, *args, **kwargs):
+    def _try_kubernetes_stream(self, method: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> R:
         """
         Kubernetes kubernetes.watch.Watch().stream() streams can fail and raise
         errors. We don't want to have those errors fail the entire workflow, so
@@ -339,7 +410,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     raise
 
 
-    def setUserScript(self, userScript):
+    def setUserScript(self, userScript: Resource) -> None:
         logger.info(f'Setting user script for deployment: {userScript}')
         self.user_script = userScript
 
@@ -350,7 +421,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         Internal format for pod placement constraints and preferences.
         """
 
-        def __init__(self):
+        def __init__(self) -> None:
             """
             Make a new empty set of placement constraints.
             """
@@ -631,7 +702,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         return pod_spec
 
-    def issueBatchJob(self, job_desc, job_environment: Optional[Dict[str, str]] = None):
+    def issueBatchJob(self, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
         # Try the job as local
         localID = self.handleLocalJob(job_desc)
         if localID is not None:
@@ -680,7 +751,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
             return jobID
 
-    def _ourJobObject(self, onlySucceeded=False):
+    def _ourJobObject(self, onlySucceeded: bool = False) -> Iterator[kubernetes.client.V1Job]:
         """
         Yield Kubernetes V1Job objects that we are responsible for that the
         cluster knows about.
@@ -729,7 +800,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 break
 
 
-    def _ourPodObject(self):
+    def _ourPodObject(self) -> Iterator[kubernetes.client.V1Pod]:
         """
         Yield Kubernetes V1Pod objects that we are responsible for that the
         cluster knows about.
@@ -757,7 +828,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 break
 
 
-    def _getPodForJob(self, jobObject):
+    def _getPodForJob(self, jobObject: kubernetes.client.V1Job) -> kubernetes.client.V1Pod:
         """
         Get the pod that belongs to the given job, or None if the job's pod is
         missing. The pod knows about things like the job's exit code.
@@ -799,7 +870,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # If we get here, no pages had any pods.
         return None
 
-    def _getLogForPod(self, podObject):
+    def _getLogForPod(self, podObject: kubernetes.client.V1Pod) -> str:
         """
         Get the log for a pod.
 
@@ -814,7 +885,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         return self._try_kubernetes(self._api('core').read_namespaced_pod_log, podObject.metadata.name,
                                                          namespace=self.namespace)
 
-    def _isPodStuckOOM(self, podObject, minFreeBytes=1024 * 1024 * 2):
+    def _isPodStuckOOM(self, podObject: kubernetes.client.V1Pod, minFreeBytes: float = 1024 * 1024 * 2) -> bool:
         """
         Poll the current memory usage for the pod from the cluster.
 
@@ -932,7 +1003,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         return True
 
-    def _getIDForOurJob(self, jobObject):
+    def _getIDForOurJob(self, jobObject: kubernetes.client.V1Job) -> int:
         """
         Get the JobID number that belongs to the given job that we own.
 
@@ -945,7 +1016,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         return int(jobObject.metadata.name[len(self.job_prefix):])
 
 
-    def getUpdatedBatchJob(self, maxWait):
+    def getUpdatedBatchJob(self, maxWait: float) -> Optional[UpdatedBatchJobInfo]:
 
         entry = datetime.datetime.now()
 
@@ -1024,7 +1095,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             return result
 
 
-    def _getUpdatedBatchJobImmediately(self):
+    def _getUpdatedBatchJobImmediately(self) -> Optional[UpdatedBatchJobInfo]:
         """
         Return None if no updated (completed or failed) batch job is currently
         available, and jobID, exitCode, runtime if such a job can be found.
@@ -1226,7 +1297,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Return the one finished job we found
         return UpdatedBatchJobInfo(jobID=jobID, exitStatus=exitCode, wallTime=runtime, exitReason=None)
 
-    def _waitForJobDeath(self, jobName):
+    def _waitForJobDeath(self, jobName: str) -> None:
         """
         Block until the job with the given name no longer exists.
         """
@@ -1293,7 +1364,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                         logger.error("Exception when calling CoreV1Api->delete_namespaced_pod: %s" % e)
 
 
-    def _getIssuedNonLocalBatchJobIDs(self):
+    def _getIssuedNonLocalBatchJobIDs(self) -> List[int]:
         """
         Get the issued batch job IDs that are not for local jobs.
         """
@@ -1304,11 +1375,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             jobIDs.append(self._getIDForOurJob(job))
         return jobIDs
 
-    def getIssuedBatchJobIDs(self):
+    def getIssuedBatchJobIDs(self) -> List[int]:
         # Make sure to send the local jobs also
         return self._getIssuedNonLocalBatchJobIDs() + list(self.getIssuedLocalJobIDs())
 
-    def getRunningBatchJobIDs(self):
+    def getRunningBatchJobIDs(self) -> Dict[int, float]:
         # We need a dict from jobID (integer) to seconds it has been running
         secondsPerJob = dict()
         for job in self._ourJobObject():
@@ -1332,7 +1403,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         secondsPerJob.update(self.getRunningLocalJobIDs())
         return secondsPerJob
 
-    def killBatchJobs(self, jobIDs):
+    def killBatchJobs(self, jobIDs: List[int]) -> None:
 
         # Kill all the ones that are local
         self.killLocalJobs(jobIDs)
@@ -1379,6 +1450,22 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         acceptable_chars = set(string.ascii_lowercase + string.digits + '-.')
 
         return ''.join([c for c in get_user_name().lower() if c in acceptable_chars])[:100]
+    
+    @runtime_checkable
+    class KubernetesConfig(Protocol):
+        """
+        Type-enforcing protocol for TOil configs that have the extra Kubernetes
+        batch system fields.
+        
+        TODO: Until MyPY lets protocols inherit form non-protocols, we will
+        have to let the fact that this also has to be a Config just be manually
+        enforced.
+        """
+        kubernetes_host_path: Optional[str]
+        kubernetes_owner: str
+        kubernetes_service_account: Optional[str]
+        kubernetes_pod_timeout: float 
+        
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
