@@ -43,7 +43,13 @@ from typing import (
     cast,
     overload
 )
-from typing_extensions import NotRequired, TypedDict
+if sys.version_info >= (3, 8):
+    from typing import TypedDict
+else:
+    from typing_extensions import TypedDic
+# TODO: When this gets into the standard library, get it from there and drop
+# typing-extensions dependency on Pythons that are new enough.
+from typing_extensions import NotRequired
 
 import dill
 
