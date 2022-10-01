@@ -83,7 +83,7 @@ from toil.statsAndLogging import (
 from toil.version import dockerRegistry, dockerTag, version
 
 if TYPE_CHECKING:
-    from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
+    from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem, OptionSetter
     from toil.job import Job, JobDescription, TemporaryID, AcceleratorRequirement
     from toil.jobStores.abstractJobStore import AbstractJobStore
     from toil.provisioners.abstractProvisioner import AbstractProvisioner
@@ -328,7 +328,7 @@ class Config:
 
         # Batch system options
         set_option("batchSystem")
-        set_batchsystem_options(self.batchSystem, set_option)
+        set_batchsystem_options(self.batchSystem, cast("OptionSetter", set_option))
 
         # File store options
         set_option("linkImports", bool, default=True)
