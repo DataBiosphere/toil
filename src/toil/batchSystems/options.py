@@ -21,11 +21,12 @@ from toil.batchSystems.registry import (
     BATCH_SYSTEMS,
     DEFAULT_BATCH_SYSTEM,
 )
+from toil.batchSystems.abstractBatchSystem import OptionSetter
 from toil.lib.threading import cpu_count
 
 logger = logging.getLogger(__name__)
 
-def set_batchsystem_options(batch_system: Optional[str], set_option: Callable) -> None:
+def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSetter) -> None:
     """
     Call set_option for all the options for the given named batch system, or
     all batch systems if no name is provided.
@@ -191,6 +192,6 @@ def set_batchsystem_config_defaults(config) -> None:
             setattr(config, option_name, option_value)
 
     # Set up defaults from all the batch systems
-    set_batchsystem_options(None, set_option)
+    set_batchsystem_options(None, cast(OptionSetter, set_option))
 
     
