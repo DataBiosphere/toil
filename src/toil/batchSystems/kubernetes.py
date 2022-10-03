@@ -437,7 +437,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         """
         Anything that has a .items that is a list of something.
         """
-        items: List[KubernetesBatchSystem.ItemT]
+        # KubernetesBatchSystem isn't defined until the class executes, so any
+        # up-references to types from there that are in signatures (and not
+        # method code) need to be quoted
+        items: List["KubernetesBatchSystem.ItemT"]
 
     CovItemT = TypeVar("CovItemT", covariant=True)
     class _WatchEvent(Protocol[CovItemT]):
@@ -455,7 +458,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             ...
 
         @overload
-        def __getitem__(self, name: Literal['object']) -> KubernetesBatchSystem.CovItemT:
+        def __getitem__(self, name: Literal['object']) -> "KubernetesBatchSystem.CovItemT":
             ...
 
         @overload

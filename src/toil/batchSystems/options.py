@@ -15,7 +15,7 @@ import logging
 import os
 import sys
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, List, Optional, TypeVar, Union
+from typing import cast, Any, Callable, List, Optional, TypeVar, Union
 if sys.version_info >= (3, 8):
     from typing import Protocol
 else:

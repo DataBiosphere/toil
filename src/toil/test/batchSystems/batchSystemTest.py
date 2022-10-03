@@ -498,42 +498,46 @@ class KubernetesBatchSystemBenchTest(ToilTest):
         constraints = KubernetesBatchSystem.Placement()
         constraints.set_preemptable(False)
         constraints.apply(normal_spec)
-        self.assertEqual(str(normal_spec.affinity), textwrap.dedent("""
-        {'preferred_during_scheduling_ignored_during_execution': None,
-         'required_during_scheduling_ignored_during_execution': {'node_selector_terms': [{'match_expressions': [{'key': 'eks.amazonaws.com/capacityType',
-                                                                                                                 'operator': 'NotIn',
-                                                                                                                 'values': ['SPOT']},
-                                                                                                                {'key': 'cloud.google.com/gke-preemptible',
-                                                                                                                 'operator': 'NotIn',
-                                                                                                                 'values': ['true']}],
-                                                                                          'match_fields': None}]}}
-        """).strip())
+        self.assertEqual(textwrap.dedent("""
+        {'node_affinity': {'preferred_during_scheduling_ignored_during_execution': None,
+                           'required_during_scheduling_ignored_during_execution': {'node_selector_terms': [{'match_expressions': [{'key': 'eks.amazonaws.com/capacityType',
+                                                                                                                                   'operator': 'NotIn',
+                                                                                                                                   'values': ['SPOT']},
+                                                                                                                                  {'key': 'cloud.google.com/gke-preemptible',
+                                                                                                                                   'operator': 'NotIn',
+                                                                                                                                   'values': ['true']}],
+                                                                                                            'match_fields': None}]}},
+         'pod_affinity': None,
+         'pod_anti_affinity': None}
+        """).strip(), str(normal_spec.affinity))
         self.assertEqual(str(normal_spec.tolerations), "None")
 
         spot_spec = V1PodSpec(containers=[])
         constraints = KubernetesBatchSystem.Placement()
         constraints.set_preemptable(True)
         constraints.apply(spot_spec)
-        self.assertEqual(str(spot_spec.affinity), textwrap.dedent("""
-        {'preferred_during_scheduling_ignored_during_execution': [{'preference': {'node_selector_terms': [{'match_expressions': [{'key': 'eks.amazonaws.com/capacityType',
-                                                                                                                                  'operator': 'In',
-                                                                                                                                  'values': ['SPOT']}],
-                                                                                                           'match_fields': None}]},
-                                                                   'weight': 1},
-                                                                  {'preference': {'node_selector_terms': [{'match_expressions': [{'key': 'cloud.google.com/gke-preemptible',
-                                                                                                                                  'operator': 'In',
-                                                                                                                                  'values': ['true']}],
-                                                                                                           'match_fields': None}]},
-                                                                   'weight': 1}],
-         'required_during_scheduling_ignored_during_execution': None}
-        """).strip())
-        self.assertEqual(str(spot_spec.tolerations), textwrap.dedent("""
+        self.assertEqual(textwrap.dedent("""
+        {'node_affinity': {'preferred_during_scheduling_ignored_during_execution': [{'preference': {'match_expressions': [{'key': 'eks.amazonaws.com/capacityType',
+                                                                                                                           'operator': 'In',
+                                                                                                                           'values': ['SPOT']}],
+                                                                                                    'match_fields': None},
+                                                                                     'weight': 1},
+                                                                                    {'preference': {'match_expressions': [{'key': 'cloud.google.com/gke-preemptible',
+                                                                                                                           'operator': 'In',
+                                                                                                                           'values': ['true']}],
+                                                                                                    'match_fields': None},
+                                                                                     'weight': 1}],
+                           'required_during_scheduling_ignored_during_execution': None},
+         'pod_affinity': None,
+         'pod_anti_affinity': None}
+        """).strip(), str(spot_spec.affinity), )
+        self.assertEqual(textwrap.dedent("""
         [{'effect': None,
          'key': 'cloud.google.com/gke-preemptible',
          'operator': None,
          'toleration_seconds': None,
          'value': 'true'}]
-        """).strip())
+        """).strip(), str(spot_spec.tolerations))
         
     def test_label_constraints(self):
         """
@@ -552,20 +556,22 @@ class KubernetesBatchSystemBenchTest(ToilTest):
         constraints.desired_labels = [('OutghtToBeSetTo', ['That'])]
         constraints.prohibited_labels = [('CannotBe', ['ABadThing'])]
         constraints.apply(spec)
-        self.assertEqual(str(spec.affinity), textwrap.dedent("""
-        {'preferred_during_scheduling_ignored_during_execution': [{'preference': {'node_selector_terms': [{'match_expressions': [{'key': 'OutghtToBeSetTo',
-                                                                                                                                  'operator': 'In',
-                                                                                                                                  'values': ['That']}],
-                                                                                                           'match_fields': None}]},
-                                                                   'weight': 1}],
-         'required_during_scheduling_ignored_during_execution': {'node_selector_terms': [{'match_expressions': [{'key': 'GottaBeSetTo',
-                                                                                                                 'operator': 'In',
-                                                                                                                 'values': ['This']},
-                                                                                                                {'key': 'CannotBe',
-                                                                                                                 'operator': 'NotIn',
-                                                                                                                 'values': ['ABadThing']}],
-                                                                                          'match_fields': None}]}}
-        """).strip())
+        self.assertEqual(textwrap.dedent("""
+        {'node_affinity': {'preferred_during_scheduling_ignored_during_execution': [{'preference': {'match_expressions': [{'key': 'OutghtToBeSetTo',
+                                                                                                                           'operator': 'In',
+                                                                                                                           'values': ['That']}],
+                                                                                                    'match_fields': None},
+                                                                                     'weight': 1}],
+                           'required_during_scheduling_ignored_during_execution': {'node_selector_terms': [{'match_expressions': [{'key': 'GottaBeSetTo',
+                                                                                                                                   'operator': 'In',
+                                                                                                                                   'values': ['This']},
+                                                                                                                                  {'key': 'CannotBe',
+                                                                                                                                   'operator': 'NotIn',
+                                                                                                                                   'values': ['ABadThing']}],
+                                                                                                            'match_fields': None}]}},
+         'pod_affinity': None,
+         'pod_anti_affinity': None}
+        """).strip(), str(spec.affinity),)
         self.assertEqual(str(spec.tolerations), "None")
 
 

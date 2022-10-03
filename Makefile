@@ -131,10 +131,10 @@ test_offline: check_venv check_build_reqs
 	TOIL_SKIP_DOCKER=True \
 	    python -m pytest -vv --timeout=600 --strict-markers --log-level DEBUG --log-cli-level INFO $(cov) $(tests)
 
-# This target will run about 1 minute of tests
+# This target will run about 1 minute of tests, and stop at the first failure
 test_1min: check_venv check_build_reqs
 	TOIL_SKIP_DOCKER=True \
-	    python -m pytest -vv --timeout=10 --strict-markers --log-level DEBUG --log-cli-level INFO src/toil/test/batchSystems/batchSystemTest.py::SingleMachineBatchSystemTest::test_run_jobs src/toil/test/batchSystems/batchSystemTest.py::KubernetesBatchSystemBenchTest src/toil/test/server/serverTest.py::ToilWESServerWorkflowTest::test_run_workflow_multi_file_zip src/toil/test/jobStores/jobStoreTest.py::FileJobStoreTest::testUpdateBehavior
+	    python -m pytest -vv --timeout=10 --strict-markers --log-level DEBUG --log-cli-level INFO --maxfail=1 src/toil/test/batchSystems/batchSystemTest.py::SingleMachineBatchSystemTest::test_run_jobs src/toil/test/batchSystems/batchSystemTest.py::KubernetesBatchSystemBenchTest src/toil/test/server/serverTest.py::ToilWESServerBenchTest::test_get_service_info src/toil/test/cwl/cwlTest.py::CWLWorkflowTest::test_run_colon_output src/toil/test/jobStores/jobStoreTest.py::FileJobStoreTest::testUpdateBehavior
 
 
 
