@@ -15,7 +15,6 @@ import enum
 import logging
 import os
 import shutil
-import sys
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
@@ -32,11 +31,8 @@ from typing import (
     TypeVar,
     Union,
 )
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    from typing_extensions import Protocol
 
+from toil.batchSystems.options import OptionSetter
 from toil.bus import MessageBus
 from toil.common import Config, Toil, cacheDirName
 from toil.deferred import DeferredFunctionManager
@@ -85,26 +81,6 @@ class WorkerCleanupInfo(NamedTuple):
     When to clean up the work and coordination directories for a job ('always',
     'onSuccess', 'onError', 'never')
     """
-
-class OptionSetter(Protocol):
-    """
-    Protocol for the setOption function we get to let us set up CLI options for
-    each batch system.
-    
-    Actual functionality is defined in the Config class.
-    """
-    
-    OptionType = TypeVar('OptionType')
-    def __call__(
-        self,
-        option_name: str,
-        parsing_function: Optional[Callable[[Any], OptionType]] = None,
-        check_function: Optional[Callable[[OptionType], Union[None, bool]]] = None,
-        default: Optional[OptionType] = None,
-        env: Optional[List[str]] = None,
-        old_names: Optional[List[str]] = None
-    ) -> bool:
-        ...
 
 class AbstractBatchSystem(ABC):
     """An abstract base class to represent the interface the batch system must provide to Toil."""

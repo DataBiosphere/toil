@@ -104,11 +104,11 @@ import urllib3
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchJobExitReason,
-                                                   OptionSetter,
                                                    UpdatedBatchJobInfo,
                                                    InsufficientSystemResources)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
+from toil.batchSystems.options import OptionSetter
 from toil.common import Config, Toil
 from toil.job import JobDescription, Requirer
 from toil.lib.conversions import human2bytes
@@ -148,16 +148,16 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         """
         Type-enforcing dict for our API object cache.
         """
-        
+
         namespace: NotRequired[str]
         batch: NotRequired[BatchV1Api]
         core: NotRequired[CoreV1Api]
         customObjects: NotRequired[CustomObjectsApi]
-        
-        
+
+
     def __init__(self, config: Config, maxCores: int, maxMemory: int, maxDisk: int) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
-        
+
         # Re-type the config to make sure it has all the fields we need.
         assert isinstance(config, KubernetesBatchSystem.KubernetesConfig)
 
@@ -281,19 +281,19 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self, kind: Literal['batch'], max_age_seconds: float = 5 * 60, errors: Optional[List[int]] = None
     ) -> BatchV1Api:
         ...
-        
+
     @overload
     def _api(
         self, kind: Literal['core'], max_age_seconds: float = 5 * 60, errors: Optional[List[int]] = None
     ) -> CoreV1Api:
         ...
-        
+
     @overload
     def _api(
         self, kind: Literal['customObjects'], max_age_seconds: float = 5 * 60, errors: Optional[List[int]] = None
     ) -> CustomObjectsApi:
         ...
-        
+
     @overload
     def _api(
         self, kind: Literal['namespace'], max_age_seconds: float = 5 * 60
@@ -301,7 +301,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         ...
 
     def _api(
-        self, 
+        self,
         kind: Union[Literal['batch'], Literal['core'], Literal['customObjects'], Literal['namespace']],
         max_age_seconds: float = 5 * 60,
         errors: Optional[List[int]] = None
@@ -326,7 +326,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         It also recognizes 'namespace' and returns our namespace as a string.
 
         max_age_seconds needs to be << your cluster's credential expiry time.
-        
+
         :param errors: If set, API calls made on the returned object will be retried
                if they produce retriable errors, except that Kubernetes API
                exceptions with HTTP status codes in the list will not be
@@ -407,8 +407,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         """
         Class to wrap an object so all its methods are decorated.
         """
-        
-        P = ParamSpec("P") 
+
+        P = ParamSpec("P")
         def __init__(self, to_wrap: Any, decorator: Callable[[Callable[P, Any]], Callable[P, Any]]) -> None:
             """
             Make a wrapper around the given object.
@@ -417,13 +417,13 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             """
             self._wrapped = to_wrap
             self._decorator = decorator
-            
+
         def __getattr__(self, name: str) -> Any:
             """
             Get a member as if we are actually the wrapped object.
             If it looks callable, we will decorate it.
             """
-            
+
             attr = getattr(self._wrapped, name)
             if callable(attr):
                 # Can be called, so return a wrapped version
@@ -431,40 +431,40 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             else:
                 # Can't be called, so pass it by itself
                 return attr
-     
+
     ItemT = TypeVar("ItemT")
     class _ItemsHaver(Protocol[ItemT]):
         """
         Anything that has a .items that is a list of something.
         """
         items: List[KubernetesBatchSystem.ItemT]
-    
+
     CovItemT = TypeVar("CovItemT", covariant=True)
     class _WatchEvent(Protocol[CovItemT]):
         """
         An event from a Kubernetes watch stream.
         See https://github.com/kubernetes-client/python/blob/1271465acdb80bf174c50564a384fd6898635ea6/kubernetes/base/watch/watch.py#L130-L136.
         """
-        
+
         # TODO: this can't be a TypedDict because of
         # https://stackoverflow.com/a/71945477 so we go with an overloaded
         # __getitem__ instead.
-        
+
         @overload
         def __getitem__(self, name: Literal['type']) -> str:
             ...
-            
+
         @overload
         def __getitem__(self, name: Literal['object']) -> KubernetesBatchSystem.CovItemT:
             ...
-        
+
         @overload
         def __getitem__(self, name: Literal['raw_object']) -> Dict[str, Any]:
             ...
-        
+
         def __getitem__(self, name: Union[Literal['type'], Literal['object'], Literal['raw_object']]) -> Any:
             ...
-            
+
     P = ParamSpec("P")
     R = TypeVar("R")
     def _stream_until_error(self, method: Callable[P, _ItemsHaver[R]], *args: P.args, **kwargs: P.kwargs) -> Iterator[_WatchEvent[R]]:
@@ -512,7 +512,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 else:
                     # Something actually weird is happening.
                     raise
-                    
+
     def setUserScript(self, userScript: Resource) -> None:
         logger.info(f'Setting user script for deployment: {userScript}')
         self.user_script = userScript
@@ -528,7 +528,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             """
             Make a new empty set of placement constraints.
             """
-            
+
             self.required_labels: KeyValuesList = []
             """
             Labels which are required to be present (with these values).
@@ -635,7 +635,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Now combine everything
             if preferred_scheduling_terms or required_selector_requirements:
                 # We prefer or require something about labels.
-                
+
                 requirements_selector: Optional[V1NodeSelector] = None
                 if required_selector_requirements:
                     # Make a term that says we match all the requirements
@@ -650,7 +650,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     preferred_during_scheduling_ignored_during_execution=preferred_scheduling_terms if preferred_scheduling_terms else None,
                     required_during_scheduling_ignored_during_execution=requirements_selector
                 )
-                
+
                 # Apply the affinity
                 pod_spec.affinity = V1Affinity(node_affinity = node_affinity)
 
@@ -728,7 +728,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Make all the resource requests into strings
         requests_dict = {k: str(v) for k, v in requirements_dict.items()}
-        
+
         # Use the requests as the limits, for predictable behavior, and because
         # the UCSC Kubernetes admins want it that way. For GPUs, Kubernetes
         # requires them to be equal.
@@ -858,7 +858,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         """
         Dict for kwargs to list_namespaced_job/pod, so MyPy can know we're
         passign the right types when we make a dict and unpack it into kwargs.
-        
+
         We need to do unpacking because the methods inspect the keys in their
         kwargs, so we can't just set unused ones to None. But we also don't
         want to duplicate code for every combination of possible present keys.
@@ -893,18 +893,18 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         while True:
             kwargs: KubernetesBatchSystem._ArgsDict = {'label_selector': f"toil_run={self.run_id}"}
-            
+
             if onlySucceeded:
                 kwargs['field_selector'] = "status.successful==1"
 
             if token is not None:
                 kwargs['_continue'] = token
-                
+
             results = self._api('batch', errors=[]).list_namespaced_job(
                 self.namespace,
                 **kwargs
             )
-            
+
             yield from results.items  # These jobs belong to us
 
             # Remember the continuation token, if any
@@ -991,7 +991,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         :rtype: str
 
         """
-        
+
         assert podObject.metadata is not None
         assert podObject.metadata.name is not None
 
@@ -1025,7 +1025,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         :return: True if the pod is OOM, False otherwise.
         :rtype: bool
         """
-        
+
         assert podObject.metadata is not None
         assert podObject.metadata.name is not None
 
@@ -1099,7 +1099,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         :return: True if the pod is probably stuck, False otherwise.
         """
-        
+
         if pod_object.status is None:
             return False
 
@@ -1139,7 +1139,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         :return: The JobID for the job.
         :rtype: int
         """
-        
+
         assert jobObject.metadata is not None
         assert jobObject.metadata.name is not None
         return int(jobObject.metadata.name[len(self.job_prefix):])
@@ -1153,7 +1153,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         if result is not None or maxWait == 0:
             # We got something on the first try, or we only get one try.
-            # If we wait 
+            # If we wait
             return result
 
         # Otherwise we need to maybe wait.
@@ -1179,7 +1179,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 condition: Optional[V1JobCondition] = None
                 if jobObject.status.conditions is not None and len(jobObject.status.conditions) > 0:
                     condition = jobObject.status.conditions[0]
-                    
+
                 totalPods = active_pods + succeeded_pods + failed_pods
                 # Exit Reason defaults to 'Successfully Finished` unless said otherwise
                 exitReason = BatchJobExitReason.FINISHED
@@ -1199,7 +1199,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     # Log out reason of failure and pod exit code
                     if failed_pods > 0:
                         exitReason = BatchJobExitReason.FAILED
-                        exitCode = EXIT_STATUS_UNAVAILABLE_VALUE 
+                        exitCode = EXIT_STATUS_UNAVAILABLE_VALUE
                         logger.debug("Failed job %s", self._pretty_print(jobObject))
                         if condition is not None:
                             logger.warning("Failed Job Message: %s", condition.message)
@@ -1527,12 +1527,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
     def getIssuedBatchJobIDs(self) -> List[int]:
         # Make sure to send the local jobs also
         return self._getIssuedNonLocalBatchJobIDs() + list(self.getIssuedLocalJobIDs())
-    
+
     def _get_start_time(self, pod: Optional[V1Pod] = None, job: Optional[V1Job] = None) -> datetime.datetime:
         """
         Get an actual or estimated start time for a pod.
         """
-        
+
         # Get when the pod started (reached the Kubelet) as a datetime
         start_time = getattr(getattr(pod, 'status', None), 'start_time', None)
         if start_time is None:
@@ -1543,7 +1543,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # If this is still unset, say it was just now.
             start_time = utc_now()
         return start_time
-    
+
     def getRunningBatchJobIDs(self) -> Dict[int, float]:
         # We need a dict from jobID (integer) to seconds it has been running
         secondsPerJob = dict()
@@ -1616,13 +1616,13 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         acceptable_chars = set(string.ascii_lowercase + string.digits + '-.')
 
         return ''.join([c for c in get_user_name().lower() if c in acceptable_chars])[:100]
-    
+
     @runtime_checkable
     class KubernetesConfig(Protocol):
         """
         Type-enforcing protocol for TOil configs that have the extra Kubernetes
         batch system fields.
-        
+
         TODO: Until MyPY lets protocols inherit form non-protocols, we will
         have to let the fact that this also has to be a Config just be manually
         enforced.
@@ -1630,8 +1630,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         kubernetes_host_path: Optional[str]
         kubernetes_owner: str
         kubernetes_service_account: Optional[str]
-        kubernetes_pod_timeout: float 
-        
+        kubernetes_pod_timeout: float
+
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:

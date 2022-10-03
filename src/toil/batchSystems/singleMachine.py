@@ -29,9 +29,9 @@ import toil
 from toil import worker as toil_worker
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchSystemSupport,
-                                                   OptionSetter,
                                                    UpdatedBatchJobInfo,
                                                    InsufficientSystemResources)
+from toil.batchSystems.options import OptionSetter
 from toil.common import SYS_MAX_SIZE, Config, Toil, fC
 from toil.job import JobDescription, AcceleratorRequirement, Requirer
 from toil.lib.accelerators import get_individual_local_accelerators, get_restrictive_environment_for_local_accelerators

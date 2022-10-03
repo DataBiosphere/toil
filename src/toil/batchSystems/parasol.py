@@ -24,9 +24,9 @@ from shutil import which
 from threading import Thread
 from typing import Dict, Optional, Union
 
-from toil.batchSystems.abstractBatchSystem import (OptionSetter,
-                                                   BatchSystemSupport,
+from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
+from toil.batchSystems.options import OptionSetter
 from toil.common import SYS_MAX_SIZE, Toil
 from toil.lib.iterables import concat
 from toil.test import get_temp_file

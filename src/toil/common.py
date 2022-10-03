@@ -83,7 +83,8 @@ from toil.statsAndLogging import (
 from toil.version import dockerRegistry, dockerTag, version
 
 if TYPE_CHECKING:
-    from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem, OptionSetter
+    from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
+    from toil.batchSystems.options import OptionSetter
     from toil.job import Job, JobDescription, TemporaryID, AcceleratorRequirement
     from toil.jobStores.abstractJobStore import AbstractJobStore
     from toil.provisioners.abstractProvisioner import AbstractProvisioner

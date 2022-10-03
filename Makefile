@@ -131,6 +131,13 @@ test_offline: check_venv check_build_reqs
 	TOIL_SKIP_DOCKER=True \
 	    python -m pytest -vv --timeout=600 --strict-markers --log-level DEBUG --log-cli-level INFO $(cov) $(tests)
 
+# This target will run about 1 minute of tests
+test_1min: check_venv check_build_reqs
+	TOIL_SKIP_DOCKER=True \
+	    python -m pytest -vv --timeout=10 --strict-markers --log-level DEBUG --log-cli-level INFO src/toil/test/batchSystems/batchSystemTest.py::SingleMachineBatchSystemTest::test_run_jobs src/toil/test/batchSystems/batchSystemTest.py::KubernetesBatchSystemBenchTest src/toil/test/server/serverTest.py::ToilWESServerWorkflowTest::test_run_workflow_multi_file_zip src/toil/test/jobStores/jobStoreTest.py::FileJobStoreTest::testUpdateBehavior
+
+
+
 ifdef TOIL_DOCKER_REGISTRY
 
 docker_image:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME)
@@ -277,7 +284,7 @@ flake8: $(PYSOURCES)
 		check_cpickle \
 		develop clean_develop \
 		sdist clean_sdist \
-		test test_offline \
+		test test_offline test_1min \
 		docs clean_docs \
 		clean \
 		format mypy sort_imports remove_unused_imports \

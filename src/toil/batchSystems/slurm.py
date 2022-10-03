@@ -18,10 +18,10 @@ from argparse import ArgumentParser, _ArgumentGroup
 from pipes import quote
 from typing import Callable, Dict, List, Optional, TypeVar, Union
 
-from toil.batchSystems.abstractBatchSystem import OptionSetter
 from toil.batchSystems.abstractGridEngineBatchSystem import (
     AbstractGridEngineBatchSystem,
 )
+from toil.batchSystems.options import OptionSetter
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)

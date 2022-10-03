@@ -41,9 +41,9 @@ from boto.exception import BotoServerError
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchJobExitReason,
-                                                   OptionSetter,
                                                    UpdatedBatchJobInfo,
                                                    InsufficientSystemResources)
+from toil.batchSystems.options import OptionSetter
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
 from toil.bus import MessageBus, MessageOutbox, JobAnnotationMessage
