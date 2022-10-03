@@ -173,7 +173,7 @@ class Config:
         # TODO: These names are generated programmatically in
         # Requirer._fetchRequirement so we can't use snake_case until we fix
         # that (and add compatibility getters/setters?)
-        self.defaultAccelerators: List[AcceleratorRequirement] = []
+        self.defaultAccelerators: List['AcceleratorRequirement'] = []
         self.maxCores: int = SYS_MAX_SIZE
         self.maxMemory: int = SYS_MAX_SIZE
         self.maxDisk: int = SYS_MAX_SIZE

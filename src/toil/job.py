@@ -46,7 +46,7 @@ from typing import (
 if sys.version_info >= (3, 8):
     from typing import TypedDict
 else:
-    from typing_extensions import TypedDic
+    from typing_extensions import TypedDict
 # TODO: When this gets into the standard library, get it from there and drop
 # typing-extensions dependency on Pythons that are new enough.
 from typing_extensions import NotRequired
@@ -263,7 +263,7 @@ class AcceleratorRequirement(TypedDict):
             elif possible_description in BRANDS:
                 parsed['brand'] = possible_description
             elif possible_description in APIS:
-                parsd['api'] = possible_description
+                parsed['api'] = possible_description
             else:
                 parsed['model'] = possible_description
         elif isinstance(spec, dict):
