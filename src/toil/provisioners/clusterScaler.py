@@ -18,12 +18,10 @@ import time
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
 
-from toil.batchSystems.abstractBatchSystem import (
-    AbstractBatchSystem,
-    AbstractScalableBatchSystem,
-    NodeInfo,
-)
-from toil.bus import ClusterSizeMessage, ClusterDesiredSizeMessage
+from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
+                                                   AbstractScalableBatchSystem,
+                                                   NodeInfo)
+from toil.bus import ClusterDesiredSizeMessage, ClusterSizeMessage
 from toil.common import Config, defaultTargetTime
 from toil.job import JobDescription, ServiceJobDescription
 from toil.lib.retry import old_retry
@@ -462,7 +460,7 @@ class ClusterScaler:
         self.totalAvgRuntime = float(self.totalAvgRuntime * (self.totalJobsCompleted - 1) + \
                                      wallTime)/self.totalJobsCompleted
 
-    def setStaticNodes(self, nodes: List["Node"], preemptable: bool) -> bool:
+    def setStaticNodes(self, nodes: List["Node"], preemptable: bool) -> None:
         """
         Used to track statically provisioned nodes. This method must be called
         before any auto-scaled nodes are provisioned.

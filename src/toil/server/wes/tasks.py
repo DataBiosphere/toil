@@ -21,21 +21,22 @@ import subprocess
 import sys
 import tempfile
 import zipfile
-from typing import Dict, Any, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import urldefrag
 
 from celery.exceptions import SoftTimeLimitExceeded  # type: ignore
+
+import toil.server.wes.amazon_wes_utils as amazon_wes_utils
 from toil.common import Toil
 from toil.jobStores.utils import generate_locator
 from toil.server.celery_app import celery
-from toil.server.utils import (get_iso_time,
-                               link_file,
+from toil.server.utils import (WorkflowStateMachine,
+                               connect_to_workflow_state_store,
                                download_file_from_internet,
                                download_file_from_s3,
                                get_file_class,
-                               connect_to_workflow_state_store,
-                               WorkflowStateMachine)
-import toil.server.wes.amazon_wes_utils as amazon_wes_utils
+                               get_iso_time,
+                               link_file)
 
 logger = logging.getLogger(__name__)
 

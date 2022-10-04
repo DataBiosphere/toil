@@ -26,21 +26,19 @@ from abc import ABCMeta, abstractmethod
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
 from contextlib import contextmanager
 from io import BytesIO
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    Iterator,
-    List,
-    Mapping,
-    Optional,
-    Set,
-    Tuple,
-    Union,
-    cast,
-    overload
-)
+from typing import (TYPE_CHECKING,
+                    Any,
+                    Callable,
+                    Dict,
+                    Iterator,
+                    List,
+                    Mapping,
+                    Optional,
+                    Set,
+                    Tuple,
+                    Union,
+                    cast,
+                    overload)
 
 import dill
 

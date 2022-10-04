@@ -31,34 +31,33 @@ from contextlib import contextmanager
 from inspect import getsource
 from shutil import which
 from textwrap import dedent
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Generator,
-    List,
-    Optional,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-    cast,
-)
+from typing import (Any,
+                    Callable,
+                    Dict,
+                    Generator,
+                    List,
+                    Optional,
+                    Tuple,
+                    Type,
+                    TypeVar,
+                    Union,
+                    cast)
 from unittest.util import strclass
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 import pytz
+
 if sys.version_info >= (3, 8):
     from typing import Literal
 else:
     from typing_extensions import Literal
 
 from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
+from toil.lib.aws import running_on_ec2
 from toil.lib.iterables import concat
 from toil.lib.memoize import memoize
 from toil.lib.threading import ExceptionalThread, cpu_count
-from toil.lib.aws import running_on_ec2
 from toil.version import distVersion
 
 logger = logging.getLogger(__name__)

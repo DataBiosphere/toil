@@ -29,12 +29,12 @@ import sys
 import tempfile
 import time
 import uuid
-import yaml
 from argparse import ArgumentParser, _ArgumentGroup
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import kubernetes
 import urllib3
+import yaml
 from kubernetes.client.rest import ApiException
 
 from toil import applianceSelf
@@ -46,7 +46,7 @@ from toil.batchSystems.contained_executor import pack_job
 from toil.common import Toil
 from toil.job import JobDescription
 from toil.lib.conversions import human2bytes
-from toil.lib.misc import slow_down, utc_now, get_user_name
+from toil.lib.misc import get_user_name, slow_down, utc_now
 from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
 from toil.statsAndLogging import configure_root_logger, set_log_level

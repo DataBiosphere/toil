@@ -32,7 +32,10 @@ from toil.job import Job, JobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human
-from toil.lib.io import atomic_copy, atomic_copyobj, make_public_dir, robust_rmtree
+from toil.lib.io import (atomic_copy,
+                         atomic_copyobj,
+                         make_public_dir,
+                         robust_rmtree)
 from toil.lib.retry import ErrorCondition, retry
 from toil.lib.threading import get_process_name, process_name_exists
 

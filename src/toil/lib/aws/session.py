@@ -19,29 +19,26 @@ import re
 import socket
 import threading
 from functools import lru_cache
-from urllib.request import urlopen
+from typing import (Any,
+                    Callable,
+                    Dict,
+                    Iterable,
+                    List,
+                    Optional,
+                    Tuple,
+                    TypeVar,
+                    Union,
+                    cast)
 from urllib.error import URLError
-
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Iterable,
-    List,
-    Optional,
-    Tuple,
-    TypeVar,
-    Union,
-    cast
-)
+from urllib.request import urlopen
 
 import boto3
 import boto3.resources.base
-from boto3 import Session
+import boto.connection
 import botocore
+from boto3 import Session
 from botocore.credentials import JSONFileCache
 from botocore.session import get_session
-import boto.connection
 
 logger = logging.getLogger(__name__)
 

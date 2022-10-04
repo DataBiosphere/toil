@@ -21,10 +21,8 @@ from pipes import quote
 from queue import Empty
 from typing import Dict, List, Optional
 
-from toil.batchSystems.abstractGridEngineBatchSystem import (
-    AbstractGridEngineBatchSystem,
-    UpdatedBatchJobInfo,
-)
+from toil.batchSystems.abstractGridEngineBatchSystem import (AbstractGridEngineBatchSystem,
+                                                             UpdatedBatchJobInfo)
 from toil.lib.conversions import hms_duration_to_seconds
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 

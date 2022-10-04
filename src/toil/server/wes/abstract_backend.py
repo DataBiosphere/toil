@@ -1,11 +1,11 @@
 # Modified from: https://github.com/common-workflow-language/workflow-service
 import functools
 import json
-import os
 import logging
+import os
 import tempfile
 from abc import abstractmethod
-from typing import Optional, List, Dict, Any, Tuple, Union, Callable
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from urllib.parse import urldefrag
 
 import connexion  # type: ignore

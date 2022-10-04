@@ -22,8 +22,7 @@ logger = logging.getLogger(__name__)
 
 def main() -> None:
     try:
-        from toil.server.app import (parser_with_server_options,
-                                     start_server)
+        from toil.server.app import parser_with_server_options, start_server
     except ImportError:
         logger.warning("The toil[server] extra is not installed.")
         sys.exit(1)
