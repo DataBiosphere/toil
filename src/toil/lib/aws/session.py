@@ -64,9 +64,9 @@ def establish_boto3_session(region_name: Optional[str] = None) -> Session:
 
     if os.environ.get("TOIL_AWS_PROFILE"):
         profile_name = os.environ.get("TOIL_AWS_PROFILE")
-        return Session(botocore_session=botocore_session, region_name=region_name, profile_name=profile_name)
     else:
-        return Session(botocore_session=botocore_session, region_name=region_name)
+        profile_name = "default"
+    return Session(botocore_session=botocore_session, region_name=region_name, profile_name=profile_name)
 
 @lru_cache(maxsize=None)
 def client(service_name: str, *args: List[Any], region_name: Optional[str] = None, **kwargs: Dict[str, Any]) -> botocore.client.BaseClient:
@@ -181,7 +181,7 @@ class AWSConnectionManager:
         if not hasattr(storage, 'item'):
             if os.environ.get("TOIL_AWS_PROFILE"):
                 profile_name = os.environ.get("TOIL_AWS_PROFILE")
-                storage.item = getattr(boto, service_name).connect_to_region(region, profile_name=profile_name)
             else:
-                storage.item = getattr(boto, service_name).connect_to_region(region)
+                profile_name = "default"
+            storage.item = getattr(boto, service_name).connect_to_region(region, profile_name=profile_name)
         return cast(boto.connection.AWSAuthConnection, storage.item)
