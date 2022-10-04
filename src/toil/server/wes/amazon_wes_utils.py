@@ -24,14 +24,18 @@ import os
 import sys
 import zipfile
 from os import path
-from typing import Any, Dict, IO, List, Optional, Union, cast
+from typing import IO, Any, Dict, List, Optional, Union, cast
+
 if sys.version_info >= (3, 8):
     from typing import TypedDict
 else:
     from typing_extensions import TypedDict
-from urllib.parse import urlparse, ParseResult
 
-from toil.server.wes.abstract_backend import TaskLog, MalformedRequestException as InvalidRequestError
+from urllib.parse import ParseResult, urlparse
+
+from toil.server.wes.abstract_backend import \
+    MalformedRequestException as InvalidRequestError
+from toil.server.wes.abstract_backend import TaskLog
 
 logger = logging.getLogger(__name__)
 

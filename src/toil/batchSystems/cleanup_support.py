@@ -15,7 +15,8 @@ import logging
 from types import TracebackType
 from typing import Any, ContextManager, List, Optional, Type
 
-from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, WorkerCleanupInfo
+from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
+                                                   WorkerCleanupInfo)
 from toil.batchSystems.local_support import BatchSystemLocalSupport
 from toil.common import Config, Toil
 from toil.lib.threading import LastProcessStandingArena

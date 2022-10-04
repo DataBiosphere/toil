@@ -16,22 +16,21 @@ import os
 import subprocess
 import tempfile
 import time
-import pytest
 from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent
 from uuid import uuid4
 
+import pytest
+
 from toil.provisioners import cluster_factory
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-from toil.test import (
-    ToilTest,
-    integrative,
-    needs_aws_ec2,
-    needs_fetchable_appliance,
-    slow,
-    timeLimit,
-)
+from toil.test import (ToilTest,
+                       integrative,
+                       needs_aws_ec2,
+                       needs_fetchable_appliance,
+                       slow,
+                       timeLimit)
 from toil.test.provisioners.clusterTest import AbstractClusterTest
 from toil.version import exactPython
 
