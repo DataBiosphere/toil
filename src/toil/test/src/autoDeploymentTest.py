@@ -4,7 +4,10 @@ import time
 from contextlib import contextmanager
 
 from toil.lib.iterables import concat
-from toil.test import ApplianceTestSupport, needs_local_appliance, needs_mesos, slow
+from toil.test import (ApplianceTestSupport,
+                       needs_local_appliance,
+                       needs_mesos,
+                       slow)
 from toil.version import exactPython
 
 logger = logging.getLogger(__name__)

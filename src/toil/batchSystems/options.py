@@ -16,11 +16,9 @@ import os
 from argparse import ArgumentParser, _ArgumentGroup
 from typing import Any, Callable, List, Optional, TypeVar, Union
 
-from toil.batchSystems.registry import (
-    BATCH_SYSTEM_FACTORY_REGISTRY,
-    BATCH_SYSTEMS,
-    DEFAULT_BATCH_SYSTEM,
-)
+from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
+                                        BATCH_SYSTEMS,
+                                        DEFAULT_BATCH_SYSTEM)
 from toil.lib.threading import cpu_count
 
 logger = logging.getLogger(__name__)

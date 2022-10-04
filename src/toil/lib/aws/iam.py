@@ -1,18 +1,19 @@
 
-import logging
-import boto3
 import fnmatch
 import json
-from toil.lib.aws import zone_to_region
-from toil.provisioners.aws import get_best_aws_zone
-from functools import lru_cache
-from typing import Any, Optional, List, Dict, Set, cast
-
-from mypy_boto3_iam import IAMClient
-from mypy_boto3_sts import STSClient
-from mypy_boto3_iam.type_defs import AttachedPolicyTypeDef
-from toil.lib.aws.session import client as get_client
+import logging
 from collections import defaultdict
+from functools import lru_cache
+from typing import Any, Dict, List, Optional, Set, cast
+
+import boto3
+from mypy_boto3_iam import IAMClient
+from mypy_boto3_iam.type_defs import AttachedPolicyTypeDef
+from mypy_boto3_sts import STSClient
+
+from toil.lib.aws import zone_to_region
+from toil.lib.aws.session import client as get_client
+from toil.provisioners.aws import get_best_aws_zone
 
 logger = logging.getLogger(__name__)
 

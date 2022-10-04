@@ -22,34 +22,31 @@ import tempfile
 import time
 import uuid
 import warnings
-from argparse import (
-    ArgumentDefaultsHelpFormatter,
-    ArgumentParser,
-    Namespace,
-    _ArgumentGroup,
-)
+from argparse import (ArgumentDefaultsHelpFormatter,
+                      ArgumentParser,
+                      Namespace,
+                      _ArgumentGroup)
 from functools import lru_cache
 from types import TracebackType
-from typing import (
-    IO,
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    ContextManager,
-    Dict,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-    overload,
-    cast
-)
+from typing import (IO,
+                    TYPE_CHECKING,
+                    Any,
+                    Callable,
+                    ContextManager,
+                    Dict,
+                    List,
+                    Optional,
+                    Set,
+                    Tuple,
+                    Type,
+                    TypeVar,
+                    Union,
+                    cast,
+                    overload)
 from urllib.parse import urlparse
 
 import requests
+
 if sys.version_info >= (3, 8):
     from typing import Literal
 else:
@@ -59,27 +56,27 @@ from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import (add_all_batchsystem_options,
                                        set_batchsystem_config_defaults,
                                        set_batchsystem_options)
-from toil.bus import (MessageBus,
-                      JobIssuedMessage,
+from toil.bus import (ClusterDesiredSizeMessage,
+                      ClusterSizeMessage,
                       JobCompletedMessage,
                       JobFailedMessage,
+                      JobIssuedMessage,
                       JobMissingMessage,
-                      QueueSizeMessage,
-                      ClusterSizeMessage,
-                      ClusterDesiredSizeMessage)
+                      MessageBus,
+                      QueueSizeMessage)
 from toil.fileStores import FileID
 from toil.lib.aws import zone_to_region
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.io import try_path
 from toil.lib.retry import retry
-from toil.provisioners import add_provisioner_options, cluster_factory, parse_node_types
+from toil.provisioners import (add_provisioner_options,
+                               cluster_factory,
+                               parse_node_types)
 from toil.realtimeLogger import RealtimeLogger
-from toil.statsAndLogging import (
-    add_logging_options,
-    root_logger,
-    set_logging_from_options,
-)
+from toil.statsAndLogging import (add_logging_options,
+                                  root_logger,
+                                  set_logging_from_options)
 from toil.version import dockerRegistry, dockerTag, version
 
 if TYPE_CHECKING:
