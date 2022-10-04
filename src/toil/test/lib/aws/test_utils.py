@@ -17,7 +17,7 @@ import uuid
 from typing import Optional
 import pytest
 
-from toil.lib.aws.utils import build_tag_dict
+from toil.lib.aws.utils import build_tag_dict_from_env
 from toil.test import ToilTest
 
 
@@ -32,14 +32,14 @@ class TagGenerationTest(ToilTest):
         environment = dict()
         environment["TOIL_OWNER_TAG"] = "😀"
         environment["TOIL_AWS_TAGS"] = None
-        tag_dict = build_tag_dict(environment)
+        tag_dict = build_tag_dict_from_env(environment)
         assert(tag_dict == {'Owner': '😀'})
 
     def test_empty_aws_tags(self):
         environment = dict()
         environment["TOIL_OWNER_TAG"] = None
         environment["TOIL_AWS_TAGS"] = "{}"
-        tag_dict = build_tag_dict(environment)
+        tag_dict = build_tag_dict_from_env(environment)
         assert (tag_dict == dict())
 
     def test_incorrect_json_object(self):
@@ -47,20 +47,20 @@ class TagGenerationTest(ToilTest):
             environment = dict()
             environment["TOIL_OWNER_TAG"] = None
             environment["TOIL_AWS_TAGS"] = "231"
-            tag_dict = build_tag_dict(environment)
+            tag_dict = build_tag_dict_from_env(environment)
 
     def test_incorrect_json_emoji(self):
         with pytest.raises(SystemExit):
             environment = dict()
             environment["TOIL_OWNER_TAG"] = None
             environment["TOIL_AWS_TAGS"] = "😀"
-            tag_dict = build_tag_dict(environment)
+            tag_dict = build_tag_dict_from_env(environment)
 
     def test_build_tag_with_tags(self):
         environment = dict()
         environment["TOIL_OWNER_TAG"] = "😀"
         environment["TOIL_AWS_TAGS"] = '{"1": "2", " ":")"}'
-        tag_dict = build_tag_dict(environment)
+        tag_dict = build_tag_dict_from_env(environment)
         assert(tag_dict == {'Owner': '😀', '1': '2', ' ': ')'})
 
 

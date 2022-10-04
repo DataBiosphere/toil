@@ -67,7 +67,7 @@ from toil.lib.aws.utils import (
 )
 from toil.lib.compatibility import compat_bytes
 from toil.lib.aws.session import establish_boto3_session
-from toil.lib.aws.utils import flatten_tags, build_tag_dict
+from toil.lib.aws.utils import flatten_tags, build_tag_dict_from_env
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.exceptions import panic
 from toil.lib.io import AtomicFileCreate
@@ -749,7 +749,7 @@ class AWSJobStore(AbstractJobStore):
                                 get_bucket_region(bucket_name) == self.region
                             ), f"bucket_name: {bucket_name}, {get_bucket_region(bucket_name)} != {self.region}"
 
-                            tags = build_tag_dict()
+                            tags = build_tag_dict_from_env()
 
                             if tags:
                                 flat_tags = flatten_tags(tags)
