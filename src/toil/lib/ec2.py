@@ -12,13 +12,11 @@ from botocore.client import BaseClient
 from toil.lib.aws.session import establish_boto3_session
 from toil.lib.aws.utils import flatten_tags
 from toil.lib.exceptions import panic
-from toil.lib.retry import (
-    ErrorCondition,
-    get_error_code,
-    get_error_message,
-    old_retry,
-    retry,
-)
+from toil.lib.retry import (ErrorCondition,
+                            get_error_code,
+                            get_error_message,
+                            old_retry,
+                            retry)
 
 a_short_time = 5
 a_long_time = 60 * 60

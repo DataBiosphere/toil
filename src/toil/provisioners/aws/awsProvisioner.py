@@ -22,14 +22,22 @@ import time
 import uuid
 from functools import wraps
 from shlex import quote
-from typing import Any, Callable, Collection, Dict, Iterable, List, Optional, Set
+from typing import (Any,
+                    Callable,
+                    Collection,
+                    Dict,
+                    Iterable,
+                    List,
+                    Optional,
+                    Set)
 from urllib.parse import unquote
 
 # We need these to exist as attributes we can get off of the boto object
 import boto.ec2
 import boto.iam
 import boto.vpc
-from boto.ec2.blockdevicemapping import BlockDeviceMapping as Boto2BlockDeviceMapping
+from boto.ec2.blockdevicemapping import \
+    BlockDeviceMapping as Boto2BlockDeviceMapping
 from boto.ec2.blockdevicemapping import BlockDeviceType as Boto2BlockDeviceType
 from boto.ec2.instance import Instance as Boto2Instance
 from boto.exception import BotoServerError, EC2ResponseError
@@ -38,9 +46,11 @@ from botocore.exceptions import ClientError
 
 from toil.lib.aws import zone_to_region
 from toil.lib.aws.ami import get_flatcar_ami
-from toil.lib.aws.utils import create_s3_bucket
+from toil.lib.aws.iam import (CLUSTER_LAUNCHING_PERMISSIONS,
+                              get_policy_permissions,
+                              policy_permissions_allow)
 from toil.lib.aws.session import AWSConnectionManager
-from toil.lib.aws.iam import get_policy_permissions, policy_permissions_allow, CLUSTER_LAUNCHING_PERMISSIONS
+from toil.lib.aws.utils import create_s3_bucket
 from toil.lib.conversions import human2bytes
 from toil.lib.ec2 import (a_short_time,
                           create_auto_scaling_group,
@@ -55,20 +65,17 @@ from toil.lib.ec2nodes import InstanceType
 from toil.lib.generatedEC2Lists import E2Instances
 from toil.lib.memoize import memoize
 from toil.lib.misc import truncExpBackoff
-from toil.lib.retry import (
-    ErrorCondition,
-    get_error_body,
-    get_error_code,
-    get_error_status,
-    old_retry,
-    retry,
-)
-from toil.provisioners import NoSuchClusterException, ClusterCombinationNotSupportedException
-from toil.provisioners.abstractProvisioner import (
-    AbstractProvisioner,
-    ManagedNodesNotSupportedException,
-    Shape,
-)
+from toil.lib.retry import (ErrorCondition,
+                            get_error_body,
+                            get_error_code,
+                            get_error_status,
+                            old_retry,
+                            retry)
+from toil.provisioners import (ClusterCombinationNotSupportedException,
+                               NoSuchClusterException)
+from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
+                                                   ManagedNodesNotSupportedException,
+                                                   Shape)
 from toil.provisioners.aws import get_best_aws_zone
 from toil.provisioners.node import Node
 

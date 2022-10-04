@@ -10,7 +10,6 @@ import pkg_resources
 from toil.version import version
 
 
-
 def main() -> None:
     modules = loadModules()
 
@@ -54,10 +53,10 @@ def loadModules() -> Dict[str, types.ModuleType]:
     from toil.utils import toilKill  # noqa
     from toil.utils import toilLaunchCluster  # noqa
     from toil.utils import toilRsyncCluster  # noqa
+    from toil.utils import toilServer  # noqa
     from toil.utils import toilSshCluster  # noqa
     from toil.utils import toilStats  # noqa
     from toil.utils import toilStatus  # noqa
-    from toil.utils import toilServer  # noqa
 
     return {'-'.join([i.lower() for i in re.findall('[A-Z][^A-Z]*', name)]): module for name, module in locals().items()}
 

@@ -17,19 +17,28 @@ import logging
 import os
 import socket
 import sys
-from typing import Any, Callable, ContextManager, Dict, Hashable, Iterable, Iterator, List, Optional, Set, Union, cast
+from typing import (Any,
+                    Callable,
+                    ContextManager,
+                    Dict,
+                    Hashable,
+                    Iterable,
+                    Iterator,
+                    List,
+                    Optional,
+                    Set,
+                    Union,
+                    cast)
 from urllib.parse import ParseResult
 
 from toil.lib.aws import session
 from toil.lib.misc import printq
-from toil.lib.retry import (
-    retry,
-    old_retry,
-    get_error_status,
-    get_error_code,
-    DEFAULT_DELAYS,
-    DEFAULT_TIMEOUT
-)
+from toil.lib.retry import (DEFAULT_DELAYS,
+                            DEFAULT_TIMEOUT,
+                            get_error_code,
+                            get_error_status,
+                            old_retry,
+                            retry)
 
 if sys.version_info >= (3, 8):
     from typing import Literal, MutableMapping
@@ -39,11 +48,11 @@ else:
 try:
     from boto.exception import BotoServerError, S3ResponseError
     from botocore.exceptions import ClientError
+    from mypy_boto3_iam import IAMClient, IAMServiceResource
     from mypy_boto3_s3 import S3Client, S3ServiceResource
     from mypy_boto3_s3.literals import BucketLocationConstraintType
     from mypy_boto3_s3.service_resource import Bucket, Object
     from mypy_boto3_sdb import SimpleDBClient
-    from mypy_boto3_iam import IAMClient, IAMServiceResource
 except ImportError:
     BotoServerError = None  # type: ignore
     # AWS/boto extra is not installed
@@ -74,6 +83,7 @@ def delete_iam_role(
     role_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
     from boto.iam.connection import IAMConnection
+
     # TODO: the Boto3 type hints are a bit oversealous here; they want hundreds
     # of overloads of the client-getting methods to exist based on the literal
     # string passed in, to return exactly the right kind of client or resource.
