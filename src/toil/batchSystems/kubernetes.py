@@ -1088,7 +1088,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                            podObject.metadata.name, bytesUsed, bytesAllowed)
 
             return True
-
+        else:
+            return False
 
     def _isPodStuckWaiting(self, pod_object: V1Pod, reason: Optional[str] = None, timeout: Optional[float] = None) -> bool:
         """
