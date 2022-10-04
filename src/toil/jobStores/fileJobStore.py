@@ -24,8 +24,9 @@ import tempfile
 import time
 import uuid
 from contextlib import contextmanager
-from urllib.parse import quote, unquote, ParseResult
 from typing import IO, Iterator, List, Optional, Union, overload
+from urllib.parse import ParseResult, quote, unquote
+
 if sys.version_info >= (3, 8):
     from typing import Literal
 else:
@@ -33,14 +34,15 @@ else:
 
 from toil.fileStores import FileID
 from toil.job import TemporaryID
-from toil.jobStores.abstractJobStore import (
-    AbstractJobStore,
-    JobStoreExistsException,
-    NoSuchFileException,
-    NoSuchJobException,
-    NoSuchJobStoreException,
-)
-from toil.lib.io import AtomicFileCreate, atomic_copy, atomic_copyobj, robust_rmtree
+from toil.jobStores.abstractJobStore import (AbstractJobStore,
+                                             JobStoreExistsException,
+                                             NoSuchFileException,
+                                             NoSuchJobException,
+                                             NoSuchJobStoreException)
+from toil.lib.io import (AtomicFileCreate,
+                         atomic_copy,
+                         atomic_copyobj,
+                         robust_rmtree)
 
 logger = logging.getLogger(__name__)
 

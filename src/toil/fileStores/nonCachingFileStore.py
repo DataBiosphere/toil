@@ -18,19 +18,17 @@ import os
 import tempfile
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import (
-    Any,
-    Callable,
-    DefaultDict,
-    Dict,
-    Generator,
-    IO,
-    Iterator,
-    List,
-    Optional,
-    Union,
-    cast,
-)
+from typing import (IO,
+                    Any,
+                    Callable,
+                    DefaultDict,
+                    Dict,
+                    Generator,
+                    Iterator,
+                    List,
+                    Optional,
+                    Union,
+                    cast)
 
 import dill
 
