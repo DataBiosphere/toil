@@ -21,11 +21,9 @@ if sys.version_info >= (3, 8):
 else:
     from typing_extensions import Protocol
 
-from toil.batchSystems.registry import (
-    BATCH_SYSTEM_FACTORY_REGISTRY,
-    BATCH_SYSTEMS,
-    DEFAULT_BATCH_SYSTEM,
-)
+from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
+                                        BATCH_SYSTEMS,
+                                        DEFAULT_BATCH_SYSTEM)
 from toil.lib.threading import cpu_count
 
 logger = logging.getLogger(__name__)

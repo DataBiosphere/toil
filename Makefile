@@ -247,7 +247,7 @@ PYSOURCES=$(shell find src -name '*.py') setup.py version_template.py
 # Linting and code style related targets
 ## sorting imports using isort: https://github.com/timothycrosley/isort
 sort_imports: $(PYSOURCES)
-	isort -m VERTICAL $^
+	isort -m VERTICAL $^ contrib/mypy-stubs
 	make format
 
 remove_unused_imports: $(PYSOURCES)
@@ -258,7 +258,7 @@ remove_trailing_whitespace:
 	$(CURDIR)/contrib/admin/remove_trailing_whitespace.py
 
 format: $(wildcard src/toil/cwl/*.py)
-	black $^
+	black $^ contrib/mypy-stubs
 
 mypy:
 	$(CURDIR)/contrib/admin/mypy-with-ignore.py

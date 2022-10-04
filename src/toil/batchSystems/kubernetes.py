@@ -31,7 +31,6 @@ import sys
 import tempfile
 import time
 import uuid
-import yaml
 from argparse import ArgumentParser, _ArgumentGroup
 from typing import (
     cast,
@@ -99,7 +98,7 @@ from kubernetes.client import (
 from kubernetes.watch import Watch # type: ignore
 
 import urllib3
-
+import yaml
 
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
@@ -112,9 +111,8 @@ from toil.batchSystems.options import OptionSetter
 from toil.common import Config, Toil
 from toil.job import JobDescription, Requirer
 from toil.lib.conversions import human2bytes
-from toil.lib.misc import slow_down, utc_now, get_user_name
-from toil.lib.retry import ErrorCondition
-from toil.lib.retry import retry
+from toil.lib.misc import get_user_name, slow_down, utc_now
+from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
 from toil.statsAndLogging import configure_root_logger, set_log_level
 

@@ -19,7 +19,9 @@ from typing import Dict, List, Tuple, Union
 
 from toil import applianceSelf
 from toil.common import parser_with_common_options
-from toil.provisioners import check_valid_node_types, cluster_factory, parse_node_types
+from toil.provisioners import (check_valid_node_types,
+                               cluster_factory,
+                               parse_node_types)
 from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)

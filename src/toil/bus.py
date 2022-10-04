@@ -20,20 +20,18 @@ import collections
 import inspect
 import logging
 import sys
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    IO,
-    Iterator,
-    List,
-    NamedTuple,
-    Optional,
-    Type,
-    TypeVar,
-    Union,
-    cast
-)
+from typing import (IO,
+                    Any,
+                    Callable,
+                    Dict,
+                    Iterator,
+                    List,
+                    NamedTuple,
+                    Optional,
+                    Type,
+                    TypeVar,
+                    Union,
+                    cast)
 
 from pubsub.core import Publisher
 from pubsub.core.listener import Listener

@@ -27,22 +27,20 @@ from abc import ABCMeta, abstractmethod
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
 from contextlib import contextmanager
 from io import BytesIO
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    Iterator,
-    List,
-    Mapping,
-    Optional,
-    Set,
-    Sequence,
-    Tuple,
-    Union,
-    cast,
-    overload
-)
+from typing import (TYPE_CHECKING,
+                    Any,
+                    Callable,
+                    Dict,
+                    Iterator,
+                    List,
+                    Mapping,
+                    Optional,
+                    Set,
+                    Sequence,
+                    Tuple,
+                    Union,
+                    cast,
+                    overload)
 if sys.version_info >= (3, 8):
     from typing import TypedDict
 else:
@@ -50,6 +48,7 @@ else:
 # TODO: When this gets into the standard library, get it from there and drop
 # typing-extensions dependency on Pythons that are new enough.
 from typing_extensions import NotRequired
+
 
 import dill
 

@@ -20,10 +20,16 @@ import re
 import socket
 import threading
 from functools import lru_cache
-from urllib.request import urlopen
+from typing import (Any,
+                    Callable,
+                    Dict,
+                    Iterable,
+                    List,
+                    Optional,
+                    TypeVar,
+                    Union)
 from urllib.error import URLError
-
-from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union
+from urllib.request import urlopen
 
 logger = logging.getLogger(__name__)
 

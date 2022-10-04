@@ -132,19 +132,17 @@ import time
 import traceback
 import urllib.error
 from contextlib import contextmanager
-from typing import (
-    Any,
-    Callable,
-    ContextManager,
-    Generator,
-    Iterable,
-    List,
-    Optional,
-    Sequence,
-    Tuple,
-    Type,
-    Union,
-)
+from typing import (Any,
+                    Callable,
+                    ContextManager,
+                    Generator,
+                    Iterable,
+                    List,
+                    Optional,
+                    Sequence,
+                    Tuple,
+                    Type,
+                    Union)
 
 import requests.exceptions
 import urllib3.exceptions

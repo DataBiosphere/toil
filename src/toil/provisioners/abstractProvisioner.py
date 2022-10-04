@@ -15,10 +15,10 @@ import configparser
 import json
 import logging
 import os.path
+import platform
 import subprocess
 import tempfile
 import textwrap
-import platform
 from abc import ABC, abstractmethod
 from functools import total_ordering
 from typing import Any, Dict, List, Optional, Set, Tuple, Union

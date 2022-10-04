@@ -18,19 +18,17 @@ import shutil
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
-from typing import (
-    cast,
-    Any,
-    Callable,
-    ContextManager,
-    Dict,
-    Iterator,
-    List,
-    NamedTuple,
-    Optional,
-    TypeVar,
-    Union,
-)
+from typing import (cast,
+                    Any,
+                    Callable,
+                    ContextManager,
+                    Dict,
+                    Iterator,
+                    List,
+                    NamedTuple,
+                    Optional,
+                    TypeVar,
+                    Union)
 
 from toil.batchSystems.options import OptionSetter
 from toil.bus import MessageBus

@@ -29,24 +29,24 @@ import enlighten
 
 from toil import resolveEntryPoint
 from toil.batchSystems import DeadlockException
-from toil.batchSystems.abstractBatchSystem import (
-    AbstractBatchSystem,
-    BatchJobExitReason,
-)
-from toil.bus import JobIssuedMessage, JobUpdatedMessage, JobCompletedMessage, JobFailedMessage, JobMissingMessage, QueueSizeMessage
+from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
+                                                   BatchJobExitReason)
+from toil.bus import (JobCompletedMessage,
+                      JobFailedMessage,
+                      JobIssuedMessage,
+                      JobMissingMessage,
+                      JobUpdatedMessage,
+                      QueueSizeMessage)
 from toil.common import Config, Toil, ToilMetrics
-from toil.cwl.utils import CWL_INTERNAL_JOBS, CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
-from toil.job import (
-    CheckpointJobDescription,
-    JobDescription,
-    ServiceJobDescription,
-    TemporaryID,
-)
-from toil.jobStores.abstractJobStore import (
-    AbstractJobStore,
-    NoSuchJobException,
-    NoSuchFileException
-)
+from toil.cwl.utils import (CWL_INTERNAL_JOBS,
+                            CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE)
+from toil.job import (CheckpointJobDescription,
+                      JobDescription,
+                      ServiceJobDescription,
+                      TemporaryID)
+from toil.jobStores.abstractJobStore import (AbstractJobStore,
+                                             NoSuchFileException,
+                                             NoSuchJobException)
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
 from toil.provisioners.clusterScaler import ScalerThread

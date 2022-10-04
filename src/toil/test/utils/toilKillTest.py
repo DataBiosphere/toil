@@ -12,18 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from __future__ import absolute_import
-import unittest
+
 import os
+import shutil
 import sys
 import time
-import shutil
+import unittest
 
-from toil.common import Toil
-from toil.jobStores.abstractJobStore import (NoSuchJobStoreException,
-                                             NoSuchFileException)
-from toil.jobStores.utils import generate_locator
 from toil import subprocess
-from toil.test import ToilTest, needs_cwl, needs_aws_s3
+from toil.common import Toil
+from toil.jobStores.abstractJobStore import (NoSuchFileException,
+                                             NoSuchJobStoreException)
+from toil.jobStores.utils import generate_locator
+from toil.test import ToilTest, needs_aws_s3, needs_cwl
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa

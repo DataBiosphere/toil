@@ -16,7 +16,8 @@ from typing import Dict, Optional, Set
 
 from toil.bus import JobUpdatedMessage, MessageBus
 from toil.job import CheckpointJobDescription, JobDescription
-from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
+from toil.jobStores.abstractJobStore import (AbstractJobStore,
+                                             NoSuchJobException)
 
 logger = logging.getLogger(__name__)
 
