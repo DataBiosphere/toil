@@ -928,6 +928,14 @@ class AbstractJobStoreTest:
                     hashOut.update(buf)
             self.assertEqual(hashIn.digest(), hashOut.digest())
 
+        @retry(errors=[ConnectionError])
+        def fetch_url(self, url: str) -> None:
+            """
+            Fetch the given URL. Throw an error if it cannot be fetched in a
+            reasonable number of attempts.
+            """
+            urlopen(Request(url))
+
         def assertUrl(self, url):
 
             prefix, path = url.split(':', 1)
@@ -935,7 +943,7 @@ class AbstractJobStoreTest:
                 self.assertTrue(os.path.exists(path))
             else:
                 try:
-                    urlopen(Request(url))
+                    self.fetch_url(url)
                 except:
                     self.fail()
 
