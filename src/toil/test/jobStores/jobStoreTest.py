@@ -42,6 +42,7 @@ from toil.jobStores.abstractJobStore import (NoSuchFileException,
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.lib.aws.utils import create_s3_bucket, get_object_for_url
 from toil.lib.memoize import memoize
+from toil.lib.retry import retry
 from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
                        make_tests,
