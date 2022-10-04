@@ -5,6 +5,7 @@ import logging
 from collections import defaultdict
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Set, cast
+from urllib.parse import urlparse
 
 import boto3
 from mypy_boto3_iam import IAMClient
@@ -21,8 +22,8 @@ logger = logging.getLogger(__name__)
 CLUSTER_LAUNCHING_PERMISSIONS = ["iam:CreateRole",
                                   "iam:CreateInstanceProfile",
                                   "iam:TagInstanceProfile",
+                                  "iam:DeleteInstanceProfile"
                                   "iam:DeleteRole",
-                                  "iam:DeleteRoleProfile",
                                   "iam:ListAttatchedRolePolicies",
                                   "iam:ListPolicies",
                                   "iam:ListRoleTags",
@@ -160,7 +161,7 @@ def allowed_actions_attached(iam: IAMClient, attached_policies: List[AttachedPol
     for policy in attached_policies:
         policy_desc = iam.get_policy(PolicyArn=policy['PolicyArn'])
         policy_ver = iam.get_policy_version(PolicyArn=policy_desc['Policy']['Arn'], VersionId=policy_desc['Policy']['DefaultVersionId'])
-        policy_document = json.loads(policy_ver['PolicyVersion']['Document'])
+        policy_document = policy_ver['PolicyVersion']['Document']
         allowed_actions = add_to_action_collection(allowed_actions, get_actions_from_policy_document(policy_document))
 
     return allowed_actions
