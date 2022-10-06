@@ -684,7 +684,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
                                   help=resource_help_msg.format('default', 'cpu', cpu_note, str(config.defaultCores)))
     resource_options.add_argument('--defaultDisk', dest='defaultDisk', default=None, metavar='INT',
                                   help=resource_help_msg.format('default', 'disk', disk_mem_note, bytes2human(config.defaultDisk)))
-    resource_options.add_argument('--defaultAccelerators', dest='defaultAccelerators', default='None', metavar='ACCELERATOR[,ACCELERATOR...]',
+    resource_options.add_argument('--defaultAccelerators', dest='defaultAccelerators', default=None, metavar='ACCELERATOR[,ACCELERATOR...]',
                                   help=resource_help_msg.format('default', 'accelerators', accelerators_note, config.defaultAccelerators))
     resource_options.add_argument('--defaultPreemptable', dest='defaultPreemptable', metavar='BOOL',
                                   type=bool, nargs='?', const=True, default=False,
