@@ -346,7 +346,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         to say so.
         """
         if len(requirer.accelerators) > 0:
-            # By default we assume we can't fulfil any of these
+            # By default we assume we can't fulfill any of these
             raise InsufficientSystemResources(requirer, 'accelerators', [], details=[
                 'The batch system does not support any accelerators.'
             ])

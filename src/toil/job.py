@@ -653,7 +653,7 @@ class Requirer:
             return scaled
         else:
             # We can't scale some requirements.
-            raise ValueError("Cannot scale {requirement} requirements!")
+            raise ValueError(f"Cannot scale {requirement} requirements!")
 
     def requirements_string(self) -> str:
         """

@@ -328,7 +328,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         :param errors: If set, API calls made on the returned object will be retried
                if they produce retriable errors, except that Kubernetes API
                exceptions with HTTP status codes in the list will not be
-               retried. Useful values are [] to trtry on all errors, and [404]
+               retried. Useful values are [] to retry on all errors, and [404]
                to retry on errors not caused by the thing in question not
                existing.
         """
@@ -582,8 +582,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         def apply(self, pod_spec: V1PodSpec) -> None:
             """
-            Set .affinity and/or .tolerations on the given pod spec, so that it
-            runs on the right kind of nodes for the given constraints.
+            Set ``affinity`` and/or ``tolerations`` fields on pod_spec, so that
+            it runs on the right kind of nodes for the constraints we represent.
             """
 
             # Convert our collections to Kubernetes expressions.
@@ -715,7 +715,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # Kubernetes resources are <brand>.com/gpu. If no brand is
                 # specified, default to nvidia, which is very popular.
                 vendor = accelerator.get('brand', 'nvidia')
-                key = f'{accelerator["brand"]}.com/{accelerator["kind"]}'
+                key = f'{vendor}.com/{accelerator["kind"]}'
                 if key not in requirements_dict:
                     requirements_dict[key] = 0
                 requirements_dict[key] += accelerator['count']
@@ -1173,7 +1173,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 if jobObject.status is None:
                     # Can't tell what is up with this job.
                     continue
-                # Fetch out the pod counts, amke sure they are numbers
+                # Fetch out the pod counts, make sure they are numbers
                 active_pods = jobObject.status.active or 0
                 succeeded_pods = jobObject.status.succeeded or 0
                 failed_pods = jobObject.status.failed or 0
@@ -1622,7 +1622,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
     @runtime_checkable
     class KubernetesConfig(Protocol):
         """
-        Type-enforcing protocol for TOil configs that have the extra Kubernetes
+        Type-enforcing protocol for Toil configs that have the extra Kubernetes
         batch system fields.
 
         TODO: Until MyPY lets protocols inherit form non-protocols, we will

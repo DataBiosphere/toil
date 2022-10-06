@@ -1798,7 +1798,7 @@ class CWLNamedJob(Job):
         cores: Union[float, None] = 1,
         memory: Union[int, str, None] = "1GiB",
         disk: Union[int, str, None] = "1MiB",
-        accelerators: List[AcceleratorRequirement] = [],
+        accelerators: Optional[List[AcceleratorRequirement]] = None,
         tool_id: Optional[str] = None,
         parent_name: Optional[str] = None,
         subjob_name: Optional[str] = None,
@@ -2106,11 +2106,11 @@ class CWLJob(CWLNamedJob):
 
         req = tool.evalResources(self.builder, runtime_context)
         
-        accelerators: List[AcceleratorRequirement] = []
+        accelerators: Optional[List[AcceleratorRequirement]] = None
         if req.get('cudaDeviceCount', 0) > 0:
             # There's a CUDARequirement
             # TODO: How is cwltool deciding what value to use between min and max?
-            accelerators.append({'kind': 'gpu', 'api': 'cuda', 'count': cast(int, req['cudaDeviceCount'])})
+            accelerators = [{'kind': 'gpu', 'api': 'cuda', 'count': cast(int, req['cudaDeviceCount'])}]
         
         super().__init__(
             cores=req["cores"],
@@ -2385,7 +2385,7 @@ def makeJob(
                             conditional=conditional,
                         )
                         return job_wrapper, job_wrapper
-        # Otherwise, all requirements are know now.
+        # Otherwise, all requirements are known now.
         job = CWLJob(
             tool,
             jobobj,

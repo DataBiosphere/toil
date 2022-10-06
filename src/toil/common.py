@@ -373,6 +373,7 @@ class Config:
         set_option("defaultMemory", h2b, iC(1))
         set_option("defaultCores", float, fC(1.0))
         set_option("defaultDisk", h2b, iC(1))
+        set_option("defaultAccelerators", parse_accelerator_list)
         set_option("readGlobalFileMutableByDefault")
         set_option("maxCores", int, iC(1))
         set_option("maxMemory", h2b, iC(1))
@@ -673,12 +674,18 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
                          'Default is {}.')
     cpu_note = 'Fractions of a core (for example 0.1) are supported on some batch systems [mesos, single_machine]'
     disk_mem_note = 'Standard suffixes like K, Ki, M, Mi, G or Gi are supported'
+    accelerators_note = ('Each accelerator specification can have a type (gpu [default], nvidia, amd, cuda, rocm, opencl, '
+                         'or a specific model like nvidia-tesla-k80), and a count [default: 1]. If both a type and a count '
+                         'are used, they must be separated by a colon. If multiple types of accelerators are '
+                         'used, the specifications are separated by commas')
     resource_options.add_argument('--defaultMemory', dest='defaultMemory', default=None, metavar='INT',
                                   help=resource_help_msg.format('default', 'memory', disk_mem_note, bytes2human(config.defaultMemory)))
     resource_options.add_argument('--defaultCores', dest='defaultCores', default=None, metavar='FLOAT',
                                   help=resource_help_msg.format('default', 'cpu', cpu_note, str(config.defaultCores)))
     resource_options.add_argument('--defaultDisk', dest='defaultDisk', default=None, metavar='INT',
                                   help=resource_help_msg.format('default', 'disk', disk_mem_note, bytes2human(config.defaultDisk)))
+    resource_options.add_argument('--defaultAccelerators', dest='defaultAccelerators', default='None', metavar='ACCELERATOR[,ACCELERATOR...]',
+                                  help=resource_help_msg.format('default', 'accelerators', accelerators_note, config.defaultAccelerators))
     resource_options.add_argument('--defaultPreemptable', dest='defaultPreemptable', metavar='BOOL',
                                   type=bool, nargs='?', const=True, default=False,
                                   help='Make all jobs able to run on preemptable (spot) nodes by default.')
@@ -1707,6 +1714,18 @@ def fC(minValue: float, maxValue: Optional[float] = None) -> Callable[[float], b
         return lambda x: minValue <= x
     assert isinstance(maxValue, float)
     return lambda x: minValue <= x < maxValue  # type: ignore
+    
+def parse_accelerator_list(specs: Optional[str]) -> List['AcceleratorRequirement']:
+    """
+    Parse a string description of one or more accelerator requirements.
+    """
+    
+    if specs is None or len(specs) == 0:
+        # Not specified, so the default default is to not need any.
+        return []
+    # Otherwise parse each requirement.
+    from toil.job import AcceleratorRequirement
+    return [AcceleratorRequirement.parse(r) for r in specs.split(',')]
 
 
 def cacheDirName(workflowID: str) -> str:

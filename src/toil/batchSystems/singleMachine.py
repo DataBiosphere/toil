@@ -484,7 +484,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             raise e
 
     def _check_accelerator_request(self, requirer: Requirer) -> None:
-        _, problem = self._identify_sucfficient_accelerators(requirer.accelerators, set(range(len(self.accelerator_identities))))
+        _, problem = self._identify_sufficient_accelerators(requirer.accelerators, set(range(len(self.accelerator_identities))))
         if problem is not None:
             # We can't get the accelerators
             raise InsufficientSystemResources(requirer, 'accelerators', self.accelerator_identities, details=[
@@ -505,7 +505,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     (isinstance(resource, ResourceSet) and isinstance(request, set)))
             resource.release(request)
 
-    def _identify_sucfficient_accelerators(self, needed_accelerators: List[AcceleratorRequirement], available_accelerator_ids: Set[int]) -> Tuple[Optional[Set[int]], Optional[AcceleratorRequirement]]:
+    def _identify_sufficient_accelerators(self, needed_accelerators: List[AcceleratorRequirement], available_accelerator_ids: Set[int]) -> Tuple[Optional[Set[int]], Optional[AcceleratorRequirement]]:
         """
         Given the accelerator requirements of a job, and the set of available
         accelerators out of our associated collection of accelerators, find a
@@ -574,7 +574,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             accelerator_set : ResourceSet = self.resource_sources[3]
             snapshot = accelerator_set.get_free_snapshot()
             # And build a plan of the ones we want
-            accelerators_needed, problem = self._identify_sucfficient_accelerators(job_accelerators, snapshot)
+            accelerators_needed, problem = self._identify_sufficient_accelerators(job_accelerators, snapshot)
             if accelerators_needed is not None:
                 # Now we have a plan to get the accelerators we need.
                 resource_requests.append(accelerators_needed)
@@ -966,7 +966,6 @@ class ResourceSet:
             if subset > self.value:
                 return False
             self.value -= subset
-            self.__validate()
             return True
 
     def acquire(self, subset: Set[int]):
@@ -990,12 +989,10 @@ class ResourceSet:
                 # are still honored.
                 self.condition.wait(timeout=self.timeout)
             self.value -= subset
-            self.__validate()
 
     def release(self, subset: Set[int]):
         with self.condition:
             self.value |= subset
-            self.__validate()
             self.condition.notify_all()
 
     def get_free_snapshot(self) -> Set[int]:
@@ -1005,10 +1002,6 @@ class ResourceSet:
         to try and do an acquire.
         """
         return set(self.value)
-
-    def __validate(self):
-        # Nothing to do!
-        pass
 
     def __str__(self):
         return str(self.value)
