@@ -1725,7 +1725,9 @@ def parse_accelerator_list(specs: Optional[str]) -> List['AcceleratorRequirement
         return []
     # Otherwise parse each requirement.
     from toil.job import AcceleratorRequirement
-    return [AcceleratorRequirement.parse(r) for r in specs.split(',')]
+    # TODO: MyPy doesn't think AcceleratorRequirement has a parse()
+    parser: Callable[[str], AcceleratorRequirement] = AcceleratorRequirement.parse  # type: ignore
+    return [parser(r) for r in specs.split(',')]
 
 
 def cacheDirName(workflowID: str) -> str:
