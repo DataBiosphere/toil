@@ -20,8 +20,8 @@ import uuid
 from contextlib import contextmanager
 from functools import wraps
 from io import BytesIO
-from urllib.parse import ParseResult
 from typing import List
+from urllib.parse import ParseResult
 
 from google.api_core.exceptions import (GoogleAPICallError,
                                         InternalServerError,
