@@ -32,13 +32,11 @@ from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
 # protected by annotations.
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
-from toil.batchSystems.registry import (
-    BATCH_SYSTEM_FACTORY_REGISTRY,
-    BATCH_SYSTEMS,
-    addBatchSystemFactory,
-    restore_batch_system_plugin_state,
-    save_batch_system_plugin_state,
-)
+from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
+                                        BATCH_SYSTEMS,
+                                        addBatchSystemFactory,
+                                        restore_batch_system_plugin_state,
+                                        save_batch_system_plugin_state)
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config, Toil
 from toil.job import Job, JobDescription
@@ -50,8 +48,8 @@ from toil.test import (ToilTest,
                        needs_fetchable_appliance,
                        needs_gridengine,
                        needs_htcondor,
-                       needs_kubernetes_installed,
                        needs_kubernetes,
+                       needs_kubernetes_installed,
                        needs_lsf,
                        needs_mesos,
                        needs_parasol,
@@ -437,6 +435,7 @@ class hidden:
 
         def _createConfig(self):
             config = super(hidden.AbstractGridEngineBatchSystemTest, self)._createConfig()
+            config.statePollingWait = 0.5  # Reduce polling wait so tests run faster
             # can't use _getTestJobStorePath since that method removes the directory
             config.jobStore = 'file:' + self._createTempDir('jobStore')
             return config
@@ -473,6 +472,7 @@ class KubernetesBatchSystemBenchTest(ToilTest):
         self.maxDiff = 10000
 
         from kubernetes.client import V1PodSpec
+
         from toil.batchSystems.kubernetes import KubernetesBatchSystem
 
         normal_spec = V1PodSpec(containers=[])

@@ -20,29 +20,43 @@ from collections import Counter, defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
 from tempfile import NamedTemporaryFile
-from typing import Callable, Optional, List, Dict, Any, overload, Generator, TextIO, Tuple, Type, Union
+from typing import (Any,
+                    Callable,
+                    Dict,
+                    Generator,
+                    List,
+                    Optional,
+                    TextIO,
+                    Tuple,
+                    Type,
+                    Union,
+                    overload)
 
 from flask import send_from_directory
 from flask.globals import request as flask_request
 from werkzeug.utils import redirect
 from werkzeug.wrappers.response import Response
 
-
-from toil.bus import MessageBus, JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage, JobFailedMessage, JobAnnotationMessage
-from toil.server.utils import WorkflowStateMachine, connect_to_workflow_state_store
-from toil.server.wes.abstract_backend import (WESBackend,
-                                              handle_errors,
-                                              WorkflowNotFoundException,
-                                              WorkflowConflictException,
-                                              VersionNotImplementedException,
-                                              WorkflowExecutionException,
-                                              OperationForbidden,
-                                              TaskLog)
-from toil.server.wes.tasks import TaskRunner, MultiprocessingTaskRunner
 import toil.server.wes.amazon_wes_utils as amazon_wes_utils
-
-from toil.lib.threading import global_mutex
+from toil.bus import (JobAnnotationMessage,
+                      JobCompletedMessage,
+                      JobFailedMessage,
+                      JobIssuedMessage,
+                      JobUpdatedMessage,
+                      MessageBus)
 from toil.lib.io import AtomicFileCreate
+from toil.lib.threading import global_mutex
+from toil.server.utils import (WorkflowStateMachine,
+                               connect_to_workflow_state_store)
+from toil.server.wes.abstract_backend import (OperationForbidden,
+                                              TaskLog,
+                                              VersionNotImplementedException,
+                                              WESBackend,
+                                              WorkflowConflictException,
+                                              WorkflowExecutionException,
+                                              WorkflowNotFoundException,
+                                              handle_errors)
+from toil.server.wes.tasks import MultiprocessingTaskRunner, TaskRunner
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)

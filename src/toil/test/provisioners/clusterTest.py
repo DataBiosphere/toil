@@ -16,9 +16,9 @@ import logging
 import os
 import subprocess
 import time
-import boto.ec2
-
 from uuid import uuid4
+
+import boto.ec2
 
 from toil.lib.aws import zone_to_region
 from toil.provisioners.aws import get_best_aws_zone
