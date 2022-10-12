@@ -392,6 +392,9 @@ def list_objects_for_url(url: ParseResult) -> List[str]:
                 listing.append(prefix_item['Prefix'][len(key_name):])
         if 'Contents' in page:
             for content_item in page['Contents']:
+                if content_item['Key'] == key_name:
+                    # Folders created on AWS Console will return an additional key for the folder name itself here. We ignore that.
+                    continue
                 listing.append(content_item['Key'][len(key_name):])
 
     logger.debug('Found in %s items: %s', url, listing)
