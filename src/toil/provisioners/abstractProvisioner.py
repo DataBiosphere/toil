@@ -513,7 +513,7 @@ class AbstractProvisioner(ABC):
             # Holds strings like "ssh-rsa actualKeyData" for keys to authorize (independently of cloud provider's system)
             self.sshPublicKeys = []
 
-        def addFile(self, path: str, filesystem: str = 'root', mode: Union[str, int] = '0755', contents: str = ''):
+        def addFile(self, path: str, filesystem: str = 'root', mode: Union[str, int] = '0755', contents: str = '', append: bool = False):
             """
             Make a file on the instance with the given filesystem, mode, and contents.
 
@@ -527,7 +527,12 @@ class AbstractProvisioner(ABC):
 
             contents = 'data:,' + quote(contents.encode('utf-8'))
 
-            self.files.append({'path': path, 'filesystem': filesystem, 'mode': mode, 'contents': {'source': contents}})
+            ignition_file = {'path': path, 'filesystem': filesystem, 'mode': mode, 'contents': {'source': contents}}
+
+            if append:
+                ignition_file["append"] = append
+
+            self.files.append(ignition_file)
 
         def addUnit(self, name: str, enabled: bool = True, contents: str = ''):
             """
@@ -723,7 +728,10 @@ class AbstractProvisioner(ABC):
             WantedBy=multi-user.target
             '''))
 
-    def addToilService(self, config: InstanceConfiguration, role: str, keyPath: str = None, preemptable: bool = False):
+    def toil_service_env_options(self) -> str:
+        return "-e TMPDIR=/var/tmp"
+
+    def add_toil_service(self, config: InstanceConfiguration, role: str, keyPath: str = None, preemptable: bool = False):
         """
         Add the Toil leader or worker service to an instance configuration.
 
@@ -791,7 +799,7 @@ class AbstractProvisioner(ABC):
             ExecStartPre=-/usr/bin/docker rm toil_{role}
             ExecStartPre=-/usr/bin/bash -c '{customInitCmd()}'
             ExecStart=/usr/bin/docker run \\
-                -e TMPDIR=/var/tmp \\
+                {self.toil_service_env_options()} \\
                 --entrypoint={entryPoint} \\
                 --net=host \\
                 --init \\
@@ -1210,7 +1218,7 @@ class AbstractProvisioner(ABC):
 
         if self.clusterType == 'mesos' or role == 'leader':
             # Leaders, and all nodes in a Mesos cluster, need a Toil service
-            self.addToilService(config, role, keyPath, preemptable)
+            self.add_toil_service(config, role, keyPath, preemptable)
 
         if role == 'worker' and self._leaderWorkerAuthentication is not None:
             # We need to connect the worker to the leader.
