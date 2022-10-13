@@ -58,7 +58,8 @@ def establish_boto3_session(region_name: Optional[str] = None) -> Session:
     botocore_session = get_session()
     botocore_session.get_component('credential_provider').get_provider(
         'assume-role').cache = JSONFileCache()
-    return Session(botocore_session=botocore_session, region_name=region_name)
+
+    return Session(botocore_session=botocore_session, region_name=region_name, profile_name=os.environ.get("TOIL_AWS_PROFILE", None))
 
 @lru_cache(maxsize=None)
 def client(service_name: str, *args: List[Any], region_name: Optional[str] = None, **kwargs: Dict[str, Any]) -> botocore.client.BaseClient:
@@ -171,5 +172,5 @@ class AWSConnectionManager:
         key = (region, service_name)
         storage = self.boto2_cache[key]
         if not hasattr(storage, 'item'):
-            storage.item = getattr(boto, service_name).connect_to_region(region)
+            storage.item = getattr(boto, service_name).connect_to_region(region, profile_name=os.environ.get("TOIL_AWS_PROFILE", None))
         return cast(boto.connection.AWSAuthConnection, storage.item)

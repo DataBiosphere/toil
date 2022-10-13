@@ -108,6 +108,7 @@ def main() -> None:
                         help="Any additional security groups to attach to EC2 instances. Note that a security group "
                              "with its name equal to the cluster name will always be created, thus ensure that "
                              "the extra security groups do not have the same name as the cluster name.")
+    #TODO Set Aws Profile in CLI options
     options = parser.parse_args()
     set_logging_from_options(options)
 

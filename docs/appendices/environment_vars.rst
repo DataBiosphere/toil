@@ -224,6 +224,8 @@ There are several environment variables that affect the way Toil runs.
 |                                  | at UCSC to stop a bot we have that terminates      |
 |                                  | untagged resources.                                |
 +----------------------------------+----------------------------------------------------+
+| TOIL_AWS_PROFILE                 | The name of an AWS profile to run TOIL with.       |
++----------------------------------+----------------------------------------------------+
 | TOIL_AWS_TAGS                    | This will tag cloud resources with any arbitrary   |
 |                                  | tags given in a JSON format. These are overwritten |
 |                                  | in favor of CLI options when using launch cluster. |
