@@ -21,6 +21,7 @@ import textwrap
 import time
 import uuid
 from functools import wraps
+from shlex import quote
 from typing import (Any,
                     Callable,
                     Collection,
@@ -342,20 +343,21 @@ class AWSProvisioner(AbstractProvisioner):
         createdSGs = self._createSecurityGroups()
         bdms = self._getBoto3BlockDeviceMappings(leader_type, rootVolSize=leaderStorage)
 
-        userData = self._getIgnitionUserData('leader', architecture=self._architecture)
-
         # Make up the tags
         self._tags = {'Name': self.clusterName,
                       'Owner': owner,
                       _TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName}
 
+        if userTags is not None:
+            self._tags.update(userTags)
+
+        #All user specified tags have been set
+        userData = self._getIgnitionUserData('leader', architecture=self._architecture)
+
         if self.clusterType == 'kubernetes':
             # All nodes need a tag putting them in the cluster.
             # This tag needs to be on there before the a leader can finish its startup.
             self._tags['kubernetes.io/cluster/' + self.clusterName] = ''
-
-        if userTags is not None:
-            self._tags.update(userTags)
 
         # Make tags for the leader specifically
         leader_tags = dict(self._tags)
@@ -405,6 +407,14 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Download credentials
         self._setLeaderWorkerAuthentication(leaderNode)
+
+    def toil_service_env_options(self) -> str:
+        """
+        Set AWS tags in user docker container
+        """
+        config = super().toil_service_env_options()
+        instance_base_tags = json.dumps(self._tags)
+        return config + " -e TOIL_AWS_TAGS=" + quote(instance_base_tags)
 
     def _get_worker_subnets(self) -> List[str]:
         """
