@@ -10,14 +10,13 @@ from boto.ec2.spotinstancerequest import SpotInstanceRequest
 from botocore.client import BaseClient
 
 from toil.lib.aws.session import establish_boto3_session
+from toil.lib.aws.utils import flatten_tags
 from toil.lib.exceptions import panic
-from toil.lib.retry import (
-    ErrorCondition,
-    get_error_code,
-    get_error_message,
-    old_retry,
-    retry,
-)
+from toil.lib.retry import (ErrorCondition,
+                            get_error_code,
+                            get_error_message,
+                            old_retry,
+                            retry)
 
 a_short_time = 5
 a_long_time = 60 * 60
@@ -295,12 +294,6 @@ def wait_until_instance_profile_arn_exists(instance_profile_arn: str):
     logger.debug("Checking for instance profile %s...", instance_profile_name)
     iam_client.get_instance_profile(InstanceProfileName=instance_profile_name)
     logger.debug("Instance profile found")
-
-def flatten_tags(tags: Dict[str, str]) -> List[Dict[str, str]]:
-    """
-    Convert tags from a key to value dict into a list of 'Key': xxx, 'Value': xxx dicts.
-    """
-    return [{'Key': k, 'Value': v} for k, v in tags.items()]
 
 
 @retry(intervals=[5, 5, 10, 20, 20, 20, 20], errors=INCONSISTENCY_ERRORS)

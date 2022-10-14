@@ -14,16 +14,15 @@
 import argparse
 import logging
 import os
-
 from typing import Type
 
 import connexion  # type: ignore
 
+from toil.lib.aws import get_current_aws_region, running_on_ec2, running_on_ecs
 from toil.lib.misc import get_public_ip
 from toil.server.wes.toil_backend import ToilBackend
 from toil.server.wsgi_app import run_app
 from toil.version import version
-from toil.lib.aws import running_on_ec2, running_on_ecs, get_current_aws_region
 
 logger = logging.getLogger(__name__)
 

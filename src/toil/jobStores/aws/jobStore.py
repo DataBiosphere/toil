@@ -13,6 +13,7 @@
 # limitations under the License.
 import hashlib
 import itertools
+import json
 import logging
 import os
 import pickle
@@ -25,8 +26,8 @@ import urllib.request
 import uuid
 from contextlib import contextmanager
 from io import BytesIO
-from typing import Optional, List
-from urllib.parse import ParseResult, urlsplit, urlunsplit, urlencode, parse_qs
+from typing import List, Optional
+from urllib.parse import ParseResult, parse_qs, urlencode, urlsplit, urlunsplit
 
 import boto.s3.connection
 import boto.sdb
@@ -35,43 +36,41 @@ from botocore.exceptions import ClientError
 
 import toil.lib.encryption as encryption
 from toil.fileStores import FileID
-from toil.jobStores.abstractJobStore import (
-    AbstractJobStore,
-    ConcurrentFileModificationException,
-    JobStoreExistsException,
-    NoSuchFileException,
-    NoSuchJobException,
-    NoSuchJobStoreException,
-)
-from toil.jobStores.aws.utils import (
-    SDBHelper,
-    ServerSideCopyProhibitedError,
-    copyKeyMultipart,
-    fileSizeAndTime,
-    monkeyPatchSdbConnection,
-    no_such_sdb_domain,
-    retry_sdb,
-    sdb_unavailable,
-    uploadFile,
-    uploadFromPath,
-)
-from toil.jobStores.utils import ReadablePipe, ReadableTransformingPipe, WritablePipe
-from toil.lib.aws.utils import (
-    create_s3_bucket,
-    get_bucket_region,
-    get_object_for_url,
-    list_objects_for_url,
-    retry_s3,
-    retryable_s3_errors
-)
-from toil.lib.compatibility import compat_bytes
+from toil.jobStores.abstractJobStore import (AbstractJobStore,
+                                             ConcurrentFileModificationException,
+                                             JobStoreExistsException,
+                                             NoSuchFileException,
+                                             NoSuchJobException,
+                                             NoSuchJobStoreException)
+from toil.jobStores.aws.utils import (SDBHelper,
+                                      ServerSideCopyProhibitedError,
+                                      copyKeyMultipart,
+                                      fileSizeAndTime,
+                                      monkeyPatchSdbConnection,
+                                      no_such_sdb_domain,
+                                      retry_sdb,
+                                      sdb_unavailable,
+                                      uploadFile,
+                                      uploadFromPath)
+from toil.jobStores.utils import (ReadablePipe,
+                                  ReadableTransformingPipe,
+                                  WritablePipe)
 from toil.lib.aws.session import establish_boto3_session
+from toil.lib.aws.utils import (build_tag_dict_from_env,
+                                create_s3_bucket,
+                                flatten_tags,
+                                get_bucket_region,
+                                get_object_for_url,
+                                list_objects_for_url,
+                                retry_s3,
+                                retryable_s3_errors)
+from toil.lib.compatibility import compat_bytes
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.exceptions import panic
 from toil.lib.io import AtomicFileCreate
 from toil.lib.memoize import strict_bool
 from toil.lib.objects import InnerClass
-from toil.lib.retry import retry, get_error_status, get_error_code
+from toil.lib.retry import get_error_code, get_error_status, retry
 
 boto3_session = establish_boto3_session()
 s3_boto3_resource = boto3_session.resource('s3')
@@ -747,10 +746,12 @@ class AWSJobStore(AbstractJobStore):
                                 get_bucket_region(bucket_name) == self.region
                             ), f"bucket_name: {bucket_name}, {get_bucket_region(bucket_name)} != {self.region}"
 
-                            owner_tag = os.environ.get('TOIL_OWNER_TAG')
-                            if owner_tag:
+                            tags = build_tag_dict_from_env()
+
+                            if tags:
+                                flat_tags = flatten_tags(tags)
                                 bucket_tagging = self.s3_resource.BucketTagging(bucket_name)
-                                bucket_tagging.put(Tagging={'TagSet': [{'Key': 'Owner', 'Value': owner_tag}]})
+                                bucket_tagging.put(Tagging={'TagSet': flat_tags})
                         elif block:
                             raise
                         else:

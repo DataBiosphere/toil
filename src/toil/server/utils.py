@@ -12,17 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import fcntl
+import logging
 import os
 from abc import abstractmethod
 from datetime import datetime
 from typing import Dict, Optional, Tuple
 from urllib.parse import urlparse
 
-import logging
 import requests
 
-from toil.lib.retry import retry
 from toil.lib.io import AtomicFileCreate
+from toil.lib.retry import retry
 
 try:
     from toil.lib.aws import get_current_aws_region

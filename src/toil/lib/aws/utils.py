@@ -12,37 +12,48 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import errno
+import json
 import logging
 import os
 import socket
 import sys
-from typing import Any, Callable, ContextManager, Dict, Hashable, Iterable, Iterator, List, Optional, Set, Union, cast
+from typing import (Any,
+                    Callable,
+                    ContextManager,
+                    Dict,
+                    Hashable,
+                    Iterable,
+                    Iterator,
+                    List,
+                    Optional,
+                    Set,
+                    Union,
+                    cast)
 from urllib.parse import ParseResult
 
 from toil.lib.aws import session
 from toil.lib.misc import printq
-from toil.lib.retry import (
-    retry,
-    old_retry,
-    get_error_status,
-    get_error_code,
-    DEFAULT_DELAYS,
-    DEFAULT_TIMEOUT
-)
+from toil.lib.retry import (DEFAULT_DELAYS,
+                            DEFAULT_TIMEOUT,
+                            get_error_code,
+                            get_error_status,
+                            old_retry,
+                            retry)
 
 if sys.version_info >= (3, 8):
-    from typing import Literal
+    from typing import Literal, MutableMapping
 else:
     from typing_extensions import Literal
+    from typing import MutableMapping
 
 try:
     from boto.exception import BotoServerError, S3ResponseError
     from botocore.exceptions import ClientError
+    from mypy_boto3_iam import IAMClient, IAMServiceResource
     from mypy_boto3_s3 import S3Client, S3ServiceResource
     from mypy_boto3_s3.literals import BucketLocationConstraintType
     from mypy_boto3_s3.service_resource import Bucket, Object
     from mypy_boto3_sdb import SimpleDBClient
-    from mypy_boto3_iam import IAMClient, IAMServiceResource
 except ImportError:
     BotoServerError = None  # type: ignore
     # AWS/boto extra is not installed
@@ -73,6 +84,7 @@ def delete_iam_role(
     role_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
     from boto.iam.connection import IAMConnection
+
     # TODO: the Boto3 type hints are a bit oversealous here; they want hundreds
     # of overloads of the client-getting methods to exist based on the literal
     # string passed in, to return exactly the right kind of client or resource.
@@ -388,3 +400,29 @@ def list_objects_for_url(url: ParseResult) -> List[str]:
         return listing
 
 
+def build_tag_dict_from_env(environment: MutableMapping[str, str] = os.environ) -> Dict[str, str]:
+    tags = dict()
+    owner_tag = environment.get('TOIL_OWNER_TAG')
+    if owner_tag:
+        tags.update({'Owner': owner_tag})
+
+    user_tags = environment.get('TOIL_AWS_TAGS')
+    if user_tags:
+        try:
+            json_user_tags = json.loads(user_tags)
+            if isinstance(json_user_tags, dict):
+                tags.update(json.loads(user_tags))
+            else:
+                logger.error('TOIL_AWS_TAGS must be in JSON format: {"key" : "value", ...}')
+                exit(1)
+        except json.decoder.JSONDecodeError:
+            logger.error('TOIL_AWS_TAGS must be in JSON format: {"key" : "value", ...}')
+            exit(1)
+    return tags
+
+
+def flatten_tags(tags: Dict[str, str]) -> List[Dict[str, str]]:
+    """
+    Convert tags from a key to value dict into a list of 'Key': xxx, 'Value': xxx dicts.
+    """
+    return [{'Key': k, 'Value': v} for k, v in tags.items()]

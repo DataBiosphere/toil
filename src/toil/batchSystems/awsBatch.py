@@ -44,13 +44,13 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
-from toil.bus import MessageBus, MessageOutbox, JobAnnotationMessage
+from toil.bus import JobAnnotationMessage, MessageBus, MessageOutbox
 from toil.common import Config, Toil
 from toil.job import JobDescription
 from toil.lib.aws import get_current_aws_region, zone_to_region
 from toil.lib.aws.session import establish_boto3_session
 from toil.lib.conversions import b_to_mib, mib_to_b
-from toil.lib.misc import slow_down, utc_now, unix_now_ms
+from toil.lib.misc import slow_down, unix_now_ms, utc_now
 from toil.lib.retry import retry
 from toil.resource import Resource
 

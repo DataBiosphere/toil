@@ -30,16 +30,14 @@ from toil import resolveEntryPoint
 from toil.common import Config, Toil
 from toil.job import Job
 from toil.lib.bioio import system
-from toil.test import (
-    ToilTest,
-    get_temp_file,
-    integrative,
-    needs_aws_ec2,
-    needs_cwl,
-    needs_docker,
-    needs_rsync3,
-    slow
-)
+from toil.test import (ToilTest,
+                       get_temp_file,
+                       integrative,
+                       needs_aws_ec2,
+                       needs_cwl,
+                       needs_docker,
+                       needs_rsync3,
+                       slow)
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.utils.toilStatus import ToilStatus

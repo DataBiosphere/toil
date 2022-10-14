@@ -364,7 +364,6 @@ def generate_locator(
         elif job_store_type == "aws":
             # Make sure we have AWS
             from toil.jobStores.aws.jobStore import AWSJobStore  # noqa
-
             # Find a region
             from toil.lib.aws import get_current_aws_region
 

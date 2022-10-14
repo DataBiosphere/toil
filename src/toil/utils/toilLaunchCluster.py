@@ -19,7 +19,10 @@ from typing import Dict, List, Tuple, Union
 
 from toil import applianceSelf
 from toil.common import parser_with_common_options
-from toil.provisioners import check_valid_node_types, cluster_factory, parse_node_types
+from toil.lib.aws.utils import build_tag_dict_from_env
+from toil.provisioners import (check_valid_node_types,
+                               cluster_factory,
+                               parse_node_types)
 from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
@@ -105,10 +108,11 @@ def main() -> None:
                         help="Any additional security groups to attach to EC2 instances. Note that a security group "
                              "with its name equal to the cluster name will always be created, thus ensure that "
                              "the extra security groups do not have the same name as the cluster name.")
+    #TODO Set Aws Profile in CLI options
     options = parser.parse_args()
     set_logging_from_options(options)
 
-    tags = create_tags_dict(options.tags) if options.tags else dict()
+    tags = create_tags_dict(options.tags) if options.tags else build_tag_dict_from_env()
 
     # Get worker node types
     worker_node_types = parse_node_types(options.nodeTypes)

@@ -21,40 +21,39 @@ from abc import ABC, ABCMeta, abstractmethod
 from contextlib import closing, contextmanager
 from datetime import timedelta
 from http.client import BadStatusLine
-from typing import (
-    IO,
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    ContextManager,
-    Dict,
-    Iterator,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Union,
-    ValuesView,
-    cast,
-    overload
-)
+from typing import (IO,
+                    TYPE_CHECKING,
+                    Any,
+                    Callable,
+                    ContextManager,
+                    Dict,
+                    Iterator,
+                    List,
+                    Optional,
+                    Set,
+                    Tuple,
+                    Union,
+                    ValuesView,
+                    cast,
+                    overload)
+
 if sys.version_info >= (3, 8):
     from typing import Literal
 else:
     from typing_extensions import Literal
+
 from urllib.parse import ParseResult, urlparse
 from urllib.request import urlopen
 from uuid import uuid4
+
 from requests.exceptions import HTTPError
 
-from toil.common import Config, safeUnpickleFromStream, getNodeID
+from toil.common import Config, getNodeID, safeUnpickleFromStream
 from toil.fileStores import FileID
-from toil.job import (
-    CheckpointJobDescription,
-    JobDescription,
-    JobException,
-    ServiceJobDescription,
-)
+from toil.job import (CheckpointJobDescription,
+                      JobDescription,
+                      JobException,
+                      ServiceJobDescription)
 from toil.lib.compatibility import deprecated
 from toil.lib.io import WriteWatchingStream
 from toil.lib.memoize import memoize

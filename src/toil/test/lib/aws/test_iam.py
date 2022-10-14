@@ -15,13 +15,14 @@ import logging
 import os
 import uuid
 from typing import Optional
+
 import pytest
 
 from toil.jobStores.aws.jobStore import AWSJobStore
+from toil.lib.aws import iam
 from toil.lib.aws.utils import create_s3_bucket
 from toil.lib.ec2 import establish_boto3_session
 from toil.test import ToilTest, needs_aws_s3
-from toil.lib.aws import iam
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)

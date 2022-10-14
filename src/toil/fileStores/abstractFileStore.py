@@ -17,27 +17,25 @@ import tempfile
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from threading import Event, Semaphore
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    ContextManager,
-    Dict,
-    Generator,
-    IO,
-    Iterator,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Type,
-    Union,
-    cast,
-)
+from typing import (IO,
+                    TYPE_CHECKING,
+                    Any,
+                    Callable,
+                    ContextManager,
+                    Dict,
+                    Generator,
+                    Iterator,
+                    List,
+                    Optional,
+                    Set,
+                    Tuple,
+                    Type,
+                    Union,
+                    cast)
 
 import dill
 
-from toil.common import cacheDirName, Toil
+from toil.common import Toil, cacheDirName
 from toil.fileStores import FileID
 from toil.job import Job, JobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore

@@ -282,6 +282,7 @@ jobstore_and_provisioning:
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages=htcondor
+    - make test tests=src/toil/test/lib/aws/
     - make test tests=src/toil/test/jobStores/jobStoreTest.py
     - make test tests=src/toil/test/sort/sortTest.py
     - make test tests=src/toil/test/provisioners/aws/awsProvisionerTest.py

@@ -1,22 +1,22 @@
-import os
-import sys
-import time
+import argparse
 import json
 import logging
-import argparse
-import requests
+import os
 import subprocess
+import sys
+import time
+from base64 import b64encode
+from io import BytesIO
+from typing import Any, Dict, Iterable, List, Optional, Tuple, cast
+from urllib.parse import urldefrag, urljoin, urlparse
+
+import requests
 import ruamel.yaml
 import schema_salad
-
-from io import BytesIO
-from base64 import b64encode
-from urllib.parse import urlparse, urldefrag, urljoin
-from typing import Optional, Dict, Any, List, Tuple, Iterable, cast
+from wes_client.util import WESClient  # type: ignore
+from wes_client.util import wes_reponse as wes_response
 
 from toil.wdl.utils import get_version as get_wdl_version
-from wes_client.util import WESClient, wes_reponse as wes_response  # type: ignore
-
 
 """
 A CWL runner that submits a workflow to a WES server, waits for it to finish,
