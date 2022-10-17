@@ -1721,7 +1721,6 @@ def upload_directory(
                 "Directory is missing: %s" % directory_metadata["location"]
             )
 
-    logger.warning(f"{directory_metadata}")
     logger.debug(
         "Uploading directory at %s with contents %s",
         directory_metadata["location"],

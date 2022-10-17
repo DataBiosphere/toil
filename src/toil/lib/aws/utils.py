@@ -302,102 +302,100 @@ def bucket_location_to_region(location: Optional[str]) -> str:
     return "us-east-1" if location == "" or location is None else location
 
 def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> Object:
-    """
-    Extracts a key (object) from a given parsed s3:// URL.
+        """
+        Extracts a key (object) from a given parsed s3:// URL.
 
-    :param bool existing: If True, key is expected to exist. If False, key is expected not to
-            exists and it will be created. If None, the key will be created if it doesn't exist.
-    """
+        :param bool existing: If True, key is expected to exist. If False, key is expected not to
+                exists and it will be created. If None, the key will be created if it doesn't exist.
+        """
 
-    key_name = url.path[1:]
-    bucket_name = url.netloc
+        key_name = url.path[1:]
+        bucket_name = url.netloc
 
-    # Decide if we need to override Boto's built-in URL here.
-    endpoint_url: Optional[str] = None
-    host = os.environ.get('TOIL_S3_HOST', None)
-    port = os.environ.get('TOIL_S3_PORT', None)
-    protocol = 'https'
-    if os.environ.get('TOIL_S3_USE_SSL', True) == 'False':
-        protocol = 'http'
-    if host:
-        endpoint_url = f'{protocol}://{host}' + f':{port}' if port else ''
+        # Decide if we need to override Boto's built-in URL here.
+        endpoint_url: Optional[str] = None
+        host = os.environ.get('TOIL_S3_HOST', None)
+        port = os.environ.get('TOIL_S3_PORT', None)
+        protocol = 'https'
+        if os.environ.get('TOIL_S3_USE_SSL', True) == 'False':
+            protocol = 'http'
+        if host:
+            endpoint_url = f'{protocol}://{host}' + f':{port}' if port else ''
 
-    # TODO: OrdinaryCallingFormat equivalent in boto3?
-    # if botoargs:
-    #     botoargs['calling_format'] = boto.s3.connection.OrdinaryCallingFormat()
+        # TODO: OrdinaryCallingFormat equivalent in boto3?
+        # if botoargs:
+        #     botoargs['calling_format'] = boto.s3.connection.OrdinaryCallingFormat()
 
-    try:
-        # Get the bucket's region to avoid a redirect per request
-        region = get_bucket_region(bucket_name, endpoint_url=endpoint_url)
-        s3 = cast(S3ServiceResource, session.resource('s3', region_name=region, endpoint_url=endpoint_url))
-    except ClientError:
-        # Probably don't have permission.
-        # TODO: check if it is that
-        s3 = cast(S3ServiceResource, session.resource('s3', endpoint_url=endpoint_url))
+        try:
+            # Get the bucket's region to avoid a redirect per request
+            region = get_bucket_region(bucket_name, endpoint_url=endpoint_url)
+            s3 = cast(S3ServiceResource, session.resource('s3', region_name=region, endpoint_url=endpoint_url))
+        except ClientError:
+            # Probably don't have permission.
+            # TODO: check if it is that
+            s3 = cast(S3ServiceResource, session.resource('s3', endpoint_url=endpoint_url))
 
-    obj = s3.Object(bucket_name, key_name)
-    objExists = True
+        obj = s3.Object(bucket_name, key_name)
+        objExists = True
 
-    try:
-        obj.load()
-    except ClientError as e:
-        if get_error_status(e) == 404:
-            objExists = False
-        else:
-            raise
-    if existing is True and not objExists:
-        raise RuntimeError(f"Key '{key_name}' does not exist in bucket '{bucket_name}'.")
-    elif existing is False and objExists:
-        raise RuntimeError(f"Key '{key_name}' exists in bucket '{bucket_name}'.")
+        try:
+            obj.load()
+        except ClientError as e:
+            if get_error_status(e) == 404:
+                objExists = False
+            else:
+                raise
+        if existing is True and not objExists:
+            raise RuntimeError(f"Key '{key_name}' does not exist in bucket '{bucket_name}'.")
+        elif existing is False and objExists:
+            raise RuntimeError(f"Key '{key_name}' exists in bucket '{bucket_name}'.")
 
-    if not objExists:
-        obj.put()  # write an empty file
-    return obj
+        if not objExists:
+            obj.put()  # write an empty file
+        return obj
 
 
 @retry(errors=[BotoServerError])
 def list_objects_for_url(url: ParseResult) -> List[str]:
-    """
-    Extracts a key (object) from a given parsed s3:// URL. The URL will be
-    supplemented with a trailing slash if it is missing.
-    """
-    key_name = url.path[1:]
-    bucket_name = url.netloc
+        """
+        Extracts a key (object) from a given parsed s3:// URL. The URL will be
+        supplemented with a trailing slash if it is missing.
+        """
+        key_name = url.path[1:]
+        bucket_name = url.netloc
 
-    if key_name != '' and not key_name.endswith('/'):
-        # Make sure to put the trailing slash on the key, or else we'll see
-        # a prefix of just it.
-        key_name = key_name + '/'
+        if key_name != '' and not key_name.endswith('/'):
+            # Make sure to put the trailing slash on the key, or else we'll see
+            # a prefix of just it.
+            key_name = key_name + '/'
 
-    # Decide if we need to override Boto's built-in URL here.
-    # TODO: Deduplicate with get_object_for_url, or push down into session module
-    endpoint_url: Optional[str] = None
-    host = os.environ.get('TOIL_S3_HOST', None)
-    port = os.environ.get('TOIL_S3_PORT', None)
-    protocol = 'https'
-    if os.environ.get('TOIL_S3_USE_SSL', True) == 'False':
-        protocol = 'http'
-    if host:
-        endpoint_url = f'{protocol}://{host}' + f':{port}' if port else ''
+        # Decide if we need to override Boto's built-in URL here.
+        # TODO: Deduplicate with get_object_for_url, or push down into session module
+        endpoint_url: Optional[str] = None
+        host = os.environ.get('TOIL_S3_HOST', None)
+        port = os.environ.get('TOIL_S3_PORT', None)
+        protocol = 'https'
+        if os.environ.get('TOIL_S3_USE_SSL', True) == 'False':
+            protocol = 'http'
+        if host:
+            endpoint_url = f'{protocol}://{host}' + f':{port}' if port else ''
 
-    client = cast(S3Client, session.client('s3', endpoint_url=endpoint_url))
+        client = cast(S3Client, session.client('s3', endpoint_url=endpoint_url))
 
-    listing = []
+        listing = []
 
-    paginator = client.get_paginator('list_objects_v2')
-    result = paginator.paginate(Bucket=bucket_name, Prefix=key_name, Delimiter='/')
-    for page in result:
-        if 'CommonPrefixes' in page:
-            for prefix_item in page['CommonPrefixes']:
-                listing.append(prefix_item['Prefix'][len(key_name):])
-        if 'Contents' in page:
-            for content_item in page['Contents']:
-                if content_item['Key'] == key_name:
-                    # Folders created on AWS Console will return an additional key for the folder name itself here. We ignore that.
-                    continue
-                listing.append(content_item['Key'][len(key_name):])
+        paginator = client.get_paginator('list_objects_v2')
+        result = paginator.paginate(Bucket=bucket_name, Prefix=key_name, Delimiter='/')
+        for page in result:
+            if 'CommonPrefixes' in page:
+                for prefix_item in page['CommonPrefixes']:
+                    listing.append(prefix_item['Prefix'][len(key_name):])
+            if 'Contents' in page:
+                for content_item in page['Contents']:
+                    if content_item['Key'] == key_name:
+                        # Ignore folder name itself
+                        continue
+                    listing.append(content_item['Key'][len(key_name):])
 
-    logger.debug('Found in %s items: %s', url, listing)
-    return listing
-
-
+        logger.debug('Found in %s items: %s', url, listing)
+        return listing
