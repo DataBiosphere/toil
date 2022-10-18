@@ -600,7 +600,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
     def _ourJobObject(self, onlySucceeded=False):
         """
         Yield Kubernetes V1Job objects that we are responsible for that the
-        cluster knows about.
+        cluster knows about. Ignores jobs in the process of being deleted.
 
         Doesn't support a free-form selector, because there's only about 3
         things jobs can be selected on: https://stackoverflow.com/a/55808444
@@ -636,7 +636,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             else:
                 results = self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace,
                                                 label_selector=f"toil_run={self.run_id}", **kwargs)
-            yield from results.items  # These jobs belong to us
+            yield from (j for j in results.items if not self._is_deleted(j))
 
             # Remember the continuation token, if any
             token = getattr(results.metadata, 'continue', None)
@@ -849,6 +849,20 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         return True
 
+    def _is_deleted(self, kube_thing: Union['V1Job', 'V1Pod']) -> bool:
+        """
+        Determine if a job or pod is in the process od being deleted, and
+        shouldn't count anymore.
+        """
+
+        # Kubernetes "Terminating" is the same as having the deletion_timestamp
+        # set in the metadata of the object.
+
+        deletion_timestamp: Optional[datetime.datetime] = getattr(getattr(kube_thing, 'metadata', None), 'deletion_timestamp', None)
+        # If the deletion timestamp is set to anything, it is in the process of
+        # being deleted. We will treat that as as good as gone.
+        return deletion_timestamp is not None
+
     def _getIDForOurJob(self, jobObject):
         """
         Get the JobID number that belongs to the given job that we own.
@@ -879,6 +893,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                                                         timeout_seconds=maxWait):
                 # Grab the metadata data, ID, the list of conditions of the current job, and the total pods
                 jobObject = event['object']
+                if self._is_deleted(jobObject):
+                    # Job is already deleted, so ignore it.
+                    logger.warning('Kubernetes job %s is deleted; ignore its update', getattr(getattr(jobObject, 'metadata', None), 'name', None))
+                    continue
                 jobID = int(jobObject.metadata.name[len(self.job_prefix):])
                 jobObjectListConditions =jobObject.status.conditions
                 totalPods = jobObject.status.active + jobObject.status.finished + jobObject.status.failed
@@ -917,6 +935,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                                             jobObject.metadata.name,
                                             self.namespace,
                                             propagation_policy='Foreground')
+                        # Make sure the job is deleted so we won't see it again.
                         self._waitForJobDeath(jobObject.metadata.name)
                         return result
                     continue
@@ -1127,11 +1146,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # That just kicks off the deletion process. Foreground doesn't
             # actually block. See
             # https://kubernetes.io/docs/concepts/workloads/controllers/garbage-collection/#foreground-cascading-deletion
-            # We have to either wait until the deletion is done and we can't
-            # see the job anymore, or ban the job from being "updated" again if
-            # we see it. If we don't block on deletion, we can't use limit=1
-            # on our query for succeeded jobs. So we poll for the job's
-            # non-existence.
+            # We wait for the job to vanish, or at least pass _is_deleted so
+            # we ignore it later.
             self._waitForJobDeath(jobObject.metadata.name)
 
         except ApiException as e:
@@ -1155,8 +1171,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         while True:
             try:
                 # Look for the job
-                self._try_kubernetes_expecting_gone(self._api('batch').read_namespaced_job, jobName, self.namespace)
-                # If we didn't 404, wait a bit with exponential backoff
+                job_object = self._try_kubernetes_expecting_gone(self._api('batch').read_namespaced_job, jobName, self.namespace)
+                if self._is_deleted(job_object):
+                    # The job looks deleted, so we can treat it as not being there.
+                    return
+                # If we didn't 404, and the job doesn't look deleted, wait a
+                # bit with exponential backoff
                 time.sleep(backoffTime)
                 if backoffTime < maxBackoffTime:
                     backoffTime *= 2
@@ -1282,7 +1302,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Work out what the job would be named
             jobName = self.job_prefix + str(jobID)
 
-            # Block until it doesn't exist
+            # Block until the delete takes.
+            # The user code technically might stay running forever, but we push
+            # the potential deadlock (if the user code needs exclusive access to
+            # a resource) onto the user code, instead of always hanging
+            # whenever we can't certify that a faulty node is no longer running
+            # the user code. 
             self._waitForJobDeath(jobName)
 
     @classmethod
