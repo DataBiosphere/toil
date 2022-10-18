@@ -665,7 +665,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
             results = self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, label_selector=f"toil_run={self.run_id}", **kwargs)
 
-            yield from results.items
+            yield from (j for j in results.items if not self._is_deleted(j))
             # Remember the continuation token, if any
             token = getattr(results.metadata, 'continue', None)
 
