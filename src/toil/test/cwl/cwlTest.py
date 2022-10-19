@@ -132,6 +132,7 @@ def run_conformance_tests(
             "--clean=always",
             "--logDebug",
             "--statusWait=10",
+            "--retryCount=2"
         ]
         if not caching:
             # Turn off caching for the run
