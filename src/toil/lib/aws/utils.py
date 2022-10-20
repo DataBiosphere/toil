@@ -308,7 +308,7 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> Obj
         Extracts a key (object) from a given parsed s3:// URL.
 
         :param bool existing: If True, key is expected to exist. If False, key is expected not to
-               exists and it will be created. If None, the key will be created if it doesn't exist.
+                exists and it will be created. If None, the key will be created if it doesn't exist.
         """
 
         key_name = url.path[1:]
@@ -372,7 +372,7 @@ def list_objects_for_url(url: ParseResult) -> List[str]:
             key_name = key_name + '/'
 
         # Decide if we need to override Boto's built-in URL here.
-        # TODO: Decuplicate with get_object_for_url, or push down into session module
+        # TODO: Deduplicate with get_object_for_url, or push down into session module
         endpoint_url: Optional[str] = None
         host = os.environ.get('TOIL_S3_HOST', None)
         port = os.environ.get('TOIL_S3_PORT', None)
@@ -394,6 +394,9 @@ def list_objects_for_url(url: ParseResult) -> List[str]:
                     listing.append(prefix_item['Prefix'][len(key_name):])
             if 'Contents' in page:
                 for content_item in page['Contents']:
+                    if content_item['Key'] == key_name:
+                        # Ignore folder name itself
+                        continue
                     listing.append(content_item['Key'][len(key_name):])
 
         logger.debug('Found in %s items: %s', url, listing)
