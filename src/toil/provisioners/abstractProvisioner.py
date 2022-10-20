@@ -684,6 +684,7 @@ class AbstractProvisioner(ABC):
                 sudo mount --bind /mnt/ephemeral/var/$directory /var/$directory
             done
             """))
+        # TODO: Make this retry?
         config.addUnit("volume-mounting.service", contents=textwrap.dedent("""\
             [Unit]
             Description=mounts ephemeral volumes & bind mounts toil directories
@@ -832,6 +833,7 @@ class AbstractProvisioner(ABC):
             CRICTL_VERSION="v1.17.0",
             CNI_DIR="/opt/cni/bin",
             DOWNLOAD_DIR="/opt/bin",
+            SETUP_STATE_DIR="/etc/toil/kubernetes",
             # This is the version of Kubernetes to use
             # Get current from: curl -sSL https://dl.k8s.io/release/stable.txt
             # Make sure it is compatible with the kubelet.service unit we ship, or update that too.
@@ -901,9 +903,18 @@ class AbstractProvisioner(ABC):
             ''').format(**values))
 
         # Before we let the kubelet try to start, we have to actually download it (and kubeadm)
+        # We set up this service so it can restart on failure despite not
+        # leaving a process running, see
+        # <https://github.com/openshift/installer/pull/604> and
+        # <https://github.com/litew/droid-config-ham/commit/26601d85d9d972dc1560096db1c419fd6fd9b238>
+        # We use a forking service with RemainAfterExit, since that lets
+        # restarts work if the script fails. We also use a condition which
+        # treats the service as successful and skips it if it made a file to
+        # say it already ran.
         config.addFile("/home/core/install-kubernetes.sh", contents=textwrap.dedent('''\
             #!/usr/bin/env bash
             set -e
+            FLAG_FILE="{SETUP_STATE_DIR}/install-kubernetes.done"
 
             # Make sure we have Docker enabled; Kubeadm later might complain it isn't.
             systemctl enable docker.service
@@ -916,6 +927,9 @@ class AbstractProvisioner(ABC):
             cd {DOWNLOAD_DIR}
             curl -L --remote-name-all https://storage.googleapis.com/kubernetes-release/release/{KUBERNETES_VERSION}/bin/linux/{ARCHITECTURE}/{{kubeadm,kubelet,kubectl}}
             chmod +x {{kubeadm,kubelet,kubectl}}
+
+            mkdir -p "{SETUP_STATE_DIR}"
+            touch "$FLAG_FILE"
             ''').format(**values))
         config.addUnit("install-kubernetes.service", contents=textwrap.dedent('''\
             [Unit]
@@ -923,15 +937,19 @@ class AbstractProvisioner(ABC):
             Wants=network-online.target
             After=network-online.target
             Before=kubelet.service
+            ConditionPathExists=!{SETUP_STATE_DIR}/install-kubernetes.done
 
             [Service]
-            Type=oneshot
-            Restart=no
             ExecStart=/usr/bin/bash /home/core/install-kubernetes.sh
+            Type=forking
+            RemainAfterExit=yes
+            Restart=on-failure
+            RestartSec=5s
 
             [Install]
             WantedBy=multi-user.target
-            '''))
+            RequiredBy=kubelet.service
+            ''').format(**values))
 
         # Now we should have the kubeadm command, and the bootlooping kubelet
         # waiting for kubeadm to configure it.
@@ -1031,6 +1049,8 @@ class AbstractProvisioner(ABC):
             #!/usr/bin/env bash
             set -e
 
+            FLAG_FILE="{SETUP_STATE_DIR}/create-kubernetes-cluster.done"
+
             export PATH="$PATH:{DOWNLOAD_DIR}"
 
             # We need the kubelet being restarted constantly by systemd while kubeadm is setting up.
@@ -1040,7 +1060,10 @@ class AbstractProvisioner(ABC):
             # We also need to set the hostname for 'kubeadm init' to work properly.
             /bin/sh -c "/usr/bin/hostnamectl set-hostname $(curl -s http://169.254.169.254/latest/meta-data/hostname)"
 
-            kubeadm init --config /home/core/kubernetes-leader.yml
+            if [[ ! -e /etc/kubernetes/admin.conf ]] ; then
+                # Only run this once, it isn't idempotent
+                kubeadm init --config /home/core/kubernetes-leader.yml
+            fi
 
             mkdir -p $HOME/.kube
             cp /etc/kubernetes/admin.conf $HOME/.kube/config
@@ -1066,6 +1089,9 @@ class AbstractProvisioner(ABC):
             echo "JOIN_TOKEN=$(kubeadm token create --ttl 0)" >>/etc/kubernetes/worker.ini
             echo "JOIN_CERT_HASH=sha256:$(openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //')" >>/etc/kubernetes/worker.ini
             echo "JOIN_ENDPOINT=$(hostname):6443" >>/etc/kubernetes/worker.ini
+
+            mkdir -p "{SETUP_STATE_DIR}"
+            touch "$FLAG_FILE"
             ''').format(**values))
         config.addUnit("create-kubernetes-cluster.service", contents=textwrap.dedent('''\
             [Unit]
@@ -1074,15 +1100,19 @@ class AbstractProvisioner(ABC):
             After=docker.service
             Before=toil-leader.service
             # Can't be before kubelet.service because Kubelet has to come up as we run this.
+            ConditionPathExists=!{SETUP_STATE_DIR}/create-kubernetes-cluster.done
 
             [Service]
-            Type=oneshot
-            Restart=no
             ExecStart=/usr/bin/bash /home/core/create-kubernetes-cluster.sh
+            Type=forking
+            RemainAfterExit=yes
+            Restart=on-failure
+            RestartSec=5s
 
             [Install]
             WantedBy=multi-user.target
-            '''))
+            RequiredBy=toil-leader.service
+            ''').format(**values))
 
         # We also need a node cleaner service
         config.addFile("/home/core/cleanup-nodes.sh", contents=textwrap.dedent('''\
@@ -1108,7 +1138,8 @@ class AbstractProvisioner(ABC):
         config.addUnit("cleanup-nodes.service", contents=textwrap.dedent('''\
             [Unit]
             Description=Remove scaled-in nodes
-            After=install-kubernetes.service
+            After=create-kubernetes-cluster.service
+            Requires=create-kubernetes-cluster.service
             [Service]
             ExecStart=/home/core/cleanup-nodes.sh
             Restart=always
@@ -1165,6 +1196,7 @@ class AbstractProvisioner(ABC):
         config.addFile("/home/core/join-kubernetes-cluster.sh", contents=textwrap.dedent('''\
             #!/usr/bin/env bash
             set -e
+            FLAG_FILE="{SETUP_STATE_DIR}/join-kubernetes-cluster.done"
 
             export PATH="$PATH:{DOWNLOAD_DIR}"
 
@@ -1173,6 +1205,9 @@ class AbstractProvisioner(ABC):
             systemctl start kubelet
 
             kubeadm join {JOIN_ENDPOINT} --config /home/core/kubernetes-worker.yml
+
+            mkdir -p "{SETUP_STATE_DIR}"
+            touch "$FLAG_FILE"
             ''').format(**values))
 
         config.addUnit("join-kubernetes-cluster.service", contents=textwrap.dedent('''\
@@ -1181,15 +1216,19 @@ class AbstractProvisioner(ABC):
             After=install-kubernetes.service
             After=docker.service
             # Can't be before kubelet.service because Kubelet has to come up as we run this.
+            Requires=install-kubernetes.service
+            ConditionPathExists=!{SETUP_STATE_DIR}/join-kubernetes-cluster.done
 
             [Service]
-            Type=oneshot
-            Restart=no
             ExecStart=/usr/bin/bash /home/core/join-kubernetes-cluster.sh
+            Type=forking
+            RemainAfterExit=yes
+            Restart=on-failure
+            RestartSec=5s
 
             [Install]
             WantedBy=multi-user.target
-            '''))
+            ''').format(**values))
 
     def _getIgnitionUserData(self, role, keyPath=None, preemptable=False, architecture='amd64'):
         """

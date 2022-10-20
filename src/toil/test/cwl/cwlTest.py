@@ -132,6 +132,7 @@ def run_conformance_tests(
             "--clean=always",
             "--logDebug",
             "--statusWait=10",
+            "--retryCount=2"
         ]
         if not caching:
             # Turn off caching for the run
@@ -668,6 +669,7 @@ class CWLv10Test(ToilTest):
     def test_kubernetes_cwl_conformance(self, **kwargs):
         return self.test_run_conformance(
             batchSystem="kubernetes",
+            extra_args=["--retryCount=3"],
             # This test doesn't work with
             # Singularity; see
             # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
@@ -756,6 +758,7 @@ class CWLv11Test(ToilTest):
     def test_kubernetes_cwl_conformance(self, **kwargs):
         return self.test_run_conformance(
             batchSystem="kubernetes",
+            extra_args=["--retryCount=3"],
             # These tests don't work with
             # Singularity; see
             # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
@@ -825,6 +828,7 @@ class CWLv12Test(ToilTest):
             )
         return self.test_run_conformance(
             batchSystem="kubernetes",
+            extra_args=["--retryCount=3"],
             # This test doesn't work with
             # Singularity; see
             # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
