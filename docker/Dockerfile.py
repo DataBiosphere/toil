@@ -31,7 +31,7 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'python3.7-distutils' if python == 'python3.7' else '',
                          'python3.8-distutils' if python == 'python3.8' else '',
                          'python3.9-distutils' if python == 'python3.9' else '',
-                         # 'python3.9-venv' if python == 'python3.9' else '',
+                         'python3.10-distutils' if python == 'python3.10' else '',
                          'python3-pip',
                          'libssl-dev',
                          'wget',
@@ -139,7 +139,7 @@ print(heredoc('''
     RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/local/bin/singularity
 
     # The stock pip is too old and can't install from sdist with extras
-    RUN {pip} install --upgrade pip==21.3.1
+    RUN curl -sS https://bootstrap.pypa.io/get-pip.py | {python}
 
     # Default setuptools is too old
     RUN {pip} install --upgrade setuptools==59.7.0
