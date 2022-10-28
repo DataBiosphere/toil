@@ -591,18 +591,22 @@ class Leader:
                          readyJob)
             self.serviceManager.kill_services(self.toilState.servicesIssued[readyJob.jobStoreID], error=False)
         else:
-            #There are no remaining tasks to schedule within the job, but
-            #we schedule it anyway to allow it to be deleted. Remove the job
+            # There are no remaining tasks to schedule within the job
 
+            # previous suggestions -- resizing works, or delete here... this branch is deleting the job
+            # -----------------------------------------------------------------------------------------
             # TODO: resize down here so it doesn't schedule at full original size just to delete itself!
+            # TODO: An alternative would be simple delete it here and add it to the
+            # list of jobs to process, or (better) to create an asynchronous
+            # process that deletes jobs and then feeds them back into the set
+            # of jobs to be processed
 
-            #TODO: An alternative would be simple delete it here and add it to the
-            #list of jobs to process, or (better) to create an asynchronous
-            #process that deletes jobs and then feeds them back into the set
-            #of jobs to be processed
-            if readyJob.remainingTryCount > 0:
-                self.issueJob(readyJob)
-                logger.debug("Job: %s is empty, we are scheduling to clean it up", readyJob.jobStoreID)
+            if jobGraph.remainingRetryCount > 0:
+                # add attribute to let issueJob know that this is an empty job and should be deleted
+                node = JobNode.fromJobGraph(jobGraph)
+                node.empty = True
+                logger.info("Job: %s is empty, we are scheduling to clean it up", node)
+                self.issueJob(node)
             else:
                 self.processTotallyFailedJob(job_id)
                 logger.warning("Job: %s is empty but completely failed - something is very wrong", readyJob.jobStoreID)
@@ -902,6 +906,18 @@ class Leader:
         # Never issue the same job multiple times simultaneously
         assert jobNode.jobStoreID not in self.toilState.jobs_issued, \
             f"Attempted to issue {jobNode} multiple times simultaneously!"
+
+        # TODO: this is probably not the right way to delete the job, but leaving it here as a starting point
+        # ---------------------------------------------------------------------------------------------------
+        if getattr(jobNode, "empty", False):
+            from uuid import uuid4
+            from toil import subprocess
+            subprocess.check_call(jobNode.command.split())
+            jobBatchSystemID = str(uuid4())
+            self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = jobNode
+            self.processFinishedJob(jobBatchSystemID, 0, 0)
+            logger.info("Succesfully deleted empty job %s", jobNode)
+            return
 
         # jobBatchSystemID is an int for each job
         jobBatchSystemID = self.batchSystem.issueBatchJob(jobNode, job_environment=job_environment)
