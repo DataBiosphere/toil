@@ -69,7 +69,7 @@ from toil.statsAndLogging import set_logging_from_options
 
 if TYPE_CHECKING:
     from toil.fileStores.abstractFileStore import AbstractFileStore
-    from toil.jobStores.abstractJobStore import AbstractJobStore
+    from toil.jobStores.abstractJobStore import AbstractJobStore, BatchJobExitReason
 
 logger = logging.getLogger(__name__)
 
@@ -931,11 +931,29 @@ class JobDescription(Requirer):
             if k not in toRemove
         }
 
-    def clearSuccessorsAndServiceHosts(self) -> None:
+    def clear_nonexistent_dependents(self, job_store: "AbstractJobStore") -> None:
+        """
+        Remove all references to child, follow-on, and associated service jobs
+        that do not exist (i.e. have been completed and removed) in the given
+        job store.
+        """
+        predicate = lambda j: job_store.job_exists(j)
+        self.filterSuccessors(predicate)
+        self.filterServiceHosts(predicate)
+
+    def clear_dependents(self) -> None:
         """Remove all references to child, follow-on, and associated service jobs."""
         self.childIDs = set()
         self.followOnIDs = set()
         self.serviceTree = {}
+    
+    def is_subtree_done() -> bool:
+        """
+        Return True if the job appears to be done, and and all related child,
+        follow-on, and service jobs appear to be finished and removed.
+        """
+        
+        return self.command == None and next(self.successorsAndServiceHosts(), None) is None
 
     def replace(self, other: "JobDescription") -> None:
         """
@@ -1022,7 +1040,7 @@ class JobDescription(Requirer):
         :param jobStore: The job store we are being placed into
         """
 
-    def setupJobAfterFailure(self, exitStatus=None):
+    def setupJobAfterFailure(self, exit_status: Optional[int] = None, exit_reason: Optional["BatchJobExitReason"] = None):
         """
         Reduce the remainingTryCount if greater than zero and set the memory
         to be at least as big as the default memory (in case of exhaustion of memory,
@@ -1030,7 +1048,8 @@ class JobDescription(Requirer):
 
         Requires a configuration to have been assigned (see :meth:`toil.job.Requirer.assignConfig`).
 
-        :param toil.batchSystems.abstractBatchSystem.BatchJobExitReason exitReason: The configuration for the current workflow run.
+        :param exit_status: The exit code from the job.
+        :param exit_reason: The reason the job stopped, if available from the batch system.
 
         """
 
@@ -1038,11 +1057,11 @@ class JobDescription(Requirer):
         from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 
         # Old version of this function used to take a config. Make sure that isn't happening.
-        assert not isinstance(exitStatus, Config), "Passing a Config as an exit reason"
+        assert not isinstance(exit_status, Config), "Passing a Config as an exit status"
         # Make sure we have an assigned config.
         assert self._config is not None
 
-        if self._config.enableUnlimitedPreemptableRetries and exitStatus == BatchJobExitReason.LOST:
+        if self._config.enableUnlimitedPreemptableRetries and exit_reason == BatchJobExitReason.LOST:
             logger.info("*Not* reducing try count (%s) of job %s with ID %s",
                         self.remainingTryCount, self, self.jobStoreID)
         else:
@@ -1052,7 +1071,7 @@ class JobDescription(Requirer):
         # Set the default memory to be at least as large as the default, in
         # case this was a malloc failure (we do this because of the combined
         # batch system)
-        if exitStatus == BatchJobExitReason.MEMLIMIT and self._config.doubleMem:
+        if exit_reason == BatchJobExitReason.MEMLIMIT and self._config.doubleMem:
             self.memory = self.memory * 2
             logger.warning("We have doubled the memory of the failed job %s to %s bytes due to doubleMem flag",
                            self, self.memory)
@@ -1242,7 +1261,7 @@ class CheckpointJobDescription(JobDescription):
                 recursiveDelete(self)
 
                 # Cut links to the jobs we deleted.
-                self.clearSuccessorsAndServiceHosts()
+                self.clear_dependents()
 
                 # Update again to commit the removal of successors.
                 jobStore.update_job(self)
