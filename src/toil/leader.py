@@ -603,10 +603,9 @@ class Leader:
 
             if jobGraph.remainingRetryCount > 0:
                 # add attribute to let issueJob know that this is an empty job and should be deleted
-                node = JobNode.fromJobGraph(jobGraph)
-                node.empty = True
-                logger.info("Job: %s is empty, we are scheduling to clean it up", node)
-                self.issueJob(node)
+                readyJob.empty = True
+                logger.info("Job: %s is empty, we are scheduling to clean it up", readyJob)
+                self.issueJob(readyJob)
             else:
                 self.processTotallyFailedJob(job_id)
                 logger.warning("Job: %s is empty but completely failed - something is very wrong", readyJob.jobStoreID)
