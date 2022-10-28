@@ -406,7 +406,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         """
         file_glob: str = f'toil_{self.config.workflowID}.{toil_job_id}.*.log'
         work_dir: str = Toil.getToilWorkDir(self.config.workDir)
-        return os.path.join(workDir, fileName)
+        return os.path.join(work_dir, file_glob)
         
     @staticmethod
     def workerCleanup(info: WorkerCleanupInfo) -> None:

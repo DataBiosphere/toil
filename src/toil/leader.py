@@ -621,7 +621,7 @@ class Leader:
                 try:
                     self.toilState.delete_job(readyJob.jobStoreID)
                 except Exception as e:
-                    logger.exception("Re-processing success for job we could not remove: %s", jobNode)
+                    logger.exception("Re-processing success for job we could not remove: %s", readyJob)
                     # Kick it back to being handled as succeeded again. We
                     # don't want to have a failure here cause a Toil-level
                     # retry which causes more actual jobs to try to run.
@@ -743,7 +743,7 @@ class Leader:
                     self.recommended_fail_exit_code = CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
             # Tell everyone it stopped running.
             self._messages.publish(JobCompletedMessage(updatedJob.unitName, updatedJob.jobStoreID))
-            self.processFinishedJob(bsID, exitStatus, wallTime=wallTime, exitReason=exitReason)
+            self.process_finished_job(bsID, exitStatus, wall_time=wallTime, exit_reason=exitReason)
 
     def _processLostJobs(self):
         """Process jobs that have gone awry"""
@@ -1089,7 +1089,7 @@ class Leader:
             self.batchSystem.killBatchJobs(jobsToKill)
             for jobBatchSystemID in jobsToKill:
                 # Reissue immediately, noting that we killed the job
-                willRerun = self.processFinishedJob(jobBatchSystemID, 1, exitReason=BatchJobExitReason.KILLED)
+                willRerun = self.process_finished_job(jobBatchSystemID, 1, exit_reason=BatchJobExitReason.KILLED)
 
                 if willRerun:
                     # Compose a list of all the jobs that will run again
@@ -1104,7 +1104,7 @@ class Leader:
         """
         Check each issued job - if it is running for longer than desirable
         issue a kill instruction.
-        Wait for the job to die then we pass the job to processFinishedJob.
+        Wait for the job to die then we pass the job to process_finished_job.
         """
         maxJobDuration = self.config.maxJobDuration
         jobsToKill = []
@@ -1128,7 +1128,7 @@ class Leader:
         Check all the current job ids are in the list of currently issued batch system jobs.
         If a job is missing, we mark it as so, if it is missing for a number of runs of
         this function (say 10).. then we try deleting the job (though its probably lost), we wait
-        then we pass the job to processFinishedJob.
+        then we pass the job to process_finished_job.
         """
         issuedJobs = set(self.batchSystem.getIssuedBatchJobIDs())
         jobBatchSystemIDsSet = set(list(self.issued_jobs_by_batch_system_id.keys()))
@@ -1164,7 +1164,7 @@ class Leader:
                         "job %s seems to have finished and been removed", issuedJob)
         self._updatePredecessorStatus(issuedJob.jobStoreID)
 
-    def processFinishedJob(self, batchSystemID, result_status, wallTime=None, exitReason=None):
+    def process_finished_job(self, batch_system_id, result_status, wall_time=None, exit_reason=None):
         """
         Called when an attempt to run a job finishes, either successfully or otherwise.
         
@@ -1176,7 +1176,7 @@ class Leader:
         """
         
         # De-issue the job.
-        issuedJob = self.removeJob(batchSystemID)
+        issued_job = self.removeJob(batch_system_id)
         
         if result_status != 0:
             # Show job as failed in progress (and take it from completed)
@@ -1184,7 +1184,7 @@ class Leader:
             self.progress_failed.update(incr=1)
         
         # Delegate to the vers
-        return self.process_finished_job_description(issuedJob, result_status, wallTime, exitReason, batch_system_id)
+        return self.process_finished_job_description(issued_job, result_status, wall_time, exit_reason, batch_system_id)
     
     def process_finished_job_description(self, finished_job: JobDescription, result_status: int,
                                          wall_time: Optional[float] = None,
@@ -1259,7 +1259,7 @@ class Leader:
                         try:
                             log_stream = open(log_file, 'rb')
                         except:
-                            logger.warning('The batch system left a file %s, but it could not be opened' % batchSystemFile)
+                            logger.warning('The batch system left a file %s, but it could not be opened' % log_file)
                         else:
                             with log_stream:
                                 if os.path.getsize(log_file) > 0:
