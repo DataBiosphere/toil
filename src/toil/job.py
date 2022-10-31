@@ -421,14 +421,14 @@ class Requirer:
 
         # Hide this override
         implementation = self.__deepcopy__
-        delattr(self, '__deepcopy__')
+        self.__deepcopy__ = None  # type: ignore[assignment]
 
         # Do the deepcopy which omits the config via __getstate__ override
         clone = copy.deepcopy(self, memo)
 
         # Put back the override on us and the copy
-        setattr(self, '__deepcopy__', implementation)
-        setattr(clone, '__deepcopy__', implementation)
+        self.__deepcopy__ = implementation  # type: ignore[assignment]
+        clone.__deepcopy__ = implementation  # type: ignore[assignment]
 
         if self._config is not None:
             # Share a config reference
@@ -947,13 +947,13 @@ class JobDescription(Requirer):
         self.childIDs = set()
         self.followOnIDs = set()
         self.serviceTree = {}
-    
+
     def is_subtree_done(self) -> bool:
         """
         Return True if the job appears to be done, and and all related child,
         follow-on, and service jobs appear to be finished and removed.
         """
-        
+
         return self.command == None and next(self.successorsAndServiceHosts(), None) is None
 
     def replace(self, other: "JobDescription") -> None:
