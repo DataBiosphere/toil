@@ -455,7 +455,7 @@ class ClusterScalerTest(ToilTest):
         If a node has a certain raw memory or disk capacity, that won't all be
         available when it actually comes up; some disk and memory will be used
         by the OS, and the backing scheduler (Mesos, Kubernetes, etc.).
-        
+
         Make sure this overhead is accounted for for large nodes.
         """
 
@@ -488,7 +488,7 @@ class ClusterScalerTest(ToilTest):
         If a node has a certain raw memory or disk capacity, that won't all be
         available when it actually comes up; some disk and memory will be used
         by the OS, and the backing scheduler (Mesos, Kubernetes, etc.).
-        
+
         Make sure this overhead is accounted for for small nodes.
         """
 
@@ -515,13 +515,13 @@ class ClusterScalerTest(ToilTest):
             )
         ]
         self._check_job_estimate([(t2_micro, 1), (r3_8xlarge, 0)], memory=h2b('1G') - h2b('384M'))
-        
+
     def test_overhead_accounting_observed(self):
         """
         If a node has a certain raw memory or disk capacity, that won't all be
         available when it actually comes up; some disk and memory will be used
         by the OS, and the backing scheduler (Mesos, Kubernetes, etc.).
-        
+
         Make sure this overhead is accounted for so that real-world observed
         failures cannot happen again.
         """
@@ -531,23 +531,23 @@ class ClusterScalerTest(ToilTest):
         # (r5.2xlarge?) with Mesos reporting "61.0 GB" available, and a
         # nominally 32 GiB node with Mesos reporting "29.9 GB" available. It's
         # not clear if Mesos is thinking in actual GB or GiB here.
-        
+
         # A 62.5Gi job is sent to the larger node
         self._check_job_estimate([(r5_2xlarge, 0), (r5_4xlarge, 1)], memory=h2b('62.5 Gi'))
-        
+
     def _check_job_estimate(self, nodes: List[Tuple[Shape, int]], cores=1, memory=1, disk=1) -> None:
         """
         Make sure that a job with the given requirements, when run on the given
         nodes, produces the given numbers of them.
         """
-        
+
         self.provisioner.setAutoscaledNodeTypes([({node}, None) for node, _ in nodes])
         self.config.targetTime = 1
         self.config.betaInertia = 0.0
         # We only need up to one node
-        self.config.maxNodes = [1] * len(nodes) 
+        self.config.maxNodes = [1] * len(nodes)
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
-        
+
         jobs = [
             Shape(
                 wallTime=3600,
@@ -557,7 +557,7 @@ class ClusterScalerTest(ToilTest):
                 preemptable=True
             )
         ]
-        
+
         logger.debug('Try and fit jobs: %s', jobs)
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         for node, count in nodes:
