@@ -447,8 +447,10 @@ class ClusterScaler:
         outputs.
         """
 
-        # See https://cloud.google.com/kubernetes-engine/docs/concepts/cluster-architecture#memory_cpu for how EKS works.
-        # We are going to just implement their scheme and hope it is a good enough overestimate of actual overhead.
+        # See
+        # https://cloud.google.com/kubernetes-engine/docs/concepts/cluster-architecture#memory_cpu
+        # for how EKS works. We are going to just implement their scheme and
+        # hope it is a good enough overestimate of actual overhead.
         smaller = copy.copy(full_node)
 
         # Take away some memory to account for how much the scheduler is going to use.
@@ -456,7 +458,7 @@ class ClusterScaler:
         # And some disk to account for the OS and possibly superuser reservation
         # TODO: Figure out if the disk is an OS disk of a scratch disk
         smaller.disk -= self._disk_overhead(smaller.disk)
-        
+
         logger.debug('Node shape %s can hold jobs of shape %s', full_node, smaller)
 
         return smaller

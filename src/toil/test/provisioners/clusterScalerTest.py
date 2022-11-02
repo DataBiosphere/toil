@@ -354,7 +354,7 @@ class ClusterScalerTest(ToilTest):
         # preemptableCompensation applies.
         self.config.nodeTypes = [c4_8xlarge_preemptable, c4_8xlarge]
         self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.nodeTypes])
-        
+
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         # Simulate a situation where a previous run caused a
         # "deficit" of 5 preemptable nodes (e.g. a spot bid was lost)
@@ -437,7 +437,7 @@ class ClusterScalerTest(ToilTest):
         for _ in range(1000):
             scaler.smoothEstimate(c4_8xlarge_preemptable, 100)
         self.assertEqual(scaler.smoothEstimate(c4_8xlarge_preemptable, 100), 100)
-    
+
     def test_overhead_accounting_large(self):
         """
         If a node has a certain raw memory or disk capacity, that won't all be
@@ -450,16 +450,16 @@ class ClusterScalerTest(ToilTest):
         # reporting "61.0 GB" available, and a nominally 32 GiB node with Mesos
         # reporting "29.9 GB" available. It's not clear if Mesos is thinking in
         # actual GB or GiB here.
-        
+
         # Set a small node (60G) and a big node (260G)
         self.provisioner.setAutoscaledNodeTypes([({c4_8xlarge}, None), ({r3_8xlarge}, None)])
         self.config.targetTime = 1
         self.config.betaInertia = 0.0
         self.config.maxNodes = [2, 2]
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
-        
+
         # If the job needs 100% of the memory of the instance type, it won't
-        # fit and will need a bigger node. 
+        # fit and will need a bigger node.
         jobs = [
             Shape(
                 wallTime=3600,
@@ -473,9 +473,9 @@ class ClusterScalerTest(ToilTest):
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         self.assertEqual(counts.get(c4_8xlarge, 0), 0)
         self.assertEqual(counts.get(r3_8xlarge, 0), 1)
-        
+
         # If the job needs 98% of the memory of the instance type, it won't
-        # fit and will need a bigger node. 
+        # fit and will need a bigger node.
         jobs = [
             Shape(
                 wallTime=3600,
@@ -489,7 +489,7 @@ class ClusterScalerTest(ToilTest):
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         self.assertEqual(counts.get(c4_8xlarge, 0), 0)
         self.assertEqual(counts.get(r3_8xlarge, 0), 1)
-        
+
         # If the job needs 90% of the memory of the instance type, it will fit.
         jobs = [
             Shape(
@@ -504,9 +504,9 @@ class ClusterScalerTest(ToilTest):
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         self.assertEqual(counts.get(c4_8xlarge, 0), 1)
         self.assertEqual(counts.get(r3_8xlarge, 0), 0)
-        
+
         # If the job needs 100% of the disk of the instance type, it won't
-        # fit and will need a bigger node. 
+        # fit and will need a bigger node.
         jobs = [
             Shape(
                 wallTime=3600,
@@ -520,9 +520,9 @@ class ClusterScalerTest(ToilTest):
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         self.assertEqual(counts.get(c4_8xlarge, 0), 0)
         self.assertEqual(counts.get(r3_8xlarge, 0), 1)
-        
+
         # If the job needs all but 7G of the disk of the instance type, it won't
-        # fit and will need a bigger node. 
+        # fit and will need a bigger node.
         jobs = [
             Shape(
                 wallTime=3600,
@@ -536,7 +536,7 @@ class ClusterScalerTest(ToilTest):
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         self.assertEqual(counts.get(c4_8xlarge, 0), 0)
         self.assertEqual(counts.get(r3_8xlarge, 0), 1)
-        
+
         # If the job leaves 10% and 10G of the disk free, it fits
         jobs = [
             Shape(
@@ -551,7 +551,7 @@ class ClusterScalerTest(ToilTest):
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         self.assertEqual(counts.get(c4_8xlarge, 0), 1)
         self.assertEqual(counts.get(r3_8xlarge, 0), 0)
-        
+
     def test_overhead_accounting_small(self):
         """
         If a node has a certain raw memory or disk capacity, that won't all be
@@ -564,16 +564,16 @@ class ClusterScalerTest(ToilTest):
         # reporting "61.0 GB" available, and a nominally 32 GiB node with Mesos
         # reporting "29.9 GB" available. It's not clear if Mesos is thinking in
         # actual GB or GiB here.
-        
+
         # Set a small node (1G) and a big node (260G)
         self.provisioner.setAutoscaledNodeTypes([({t2_micro}, None), ({r3_8xlarge}, None)])
         self.config.targetTime = 1
         self.config.betaInertia = 0.0
         self.config.maxNodes = [2, 2]
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
-        
+
         # If the job needs 100% of the memory of the instance type, it won't
-        # fit and will need a bigger node. 
+        # fit and will need a bigger node.
         jobs = [
             Shape(
                 wallTime=3600,
@@ -587,9 +587,9 @@ class ClusterScalerTest(ToilTest):
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         self.assertEqual(counts.get(t2_micro, 0), 0)
         self.assertEqual(counts.get(r3_8xlarge, 0), 1)
-        
+
         # If the job needs all but 100M of the memory of the instance type, it
-        # won't fit and will need a bigger node. 
+        # won't fit and will need a bigger node.
         jobs = [
             Shape(
                 wallTime=3600,
@@ -603,7 +603,7 @@ class ClusterScalerTest(ToilTest):
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         self.assertEqual(counts.get(t2_micro, 0), 0)
         self.assertEqual(counts.get(r3_8xlarge, 0), 1)
-        
+
         # If the job needs no more than 90% of the memory on the node *and*
         # leaves at least 384M free for overhead, we can rely on it fitting on a 1G
         # memory node.
@@ -620,7 +620,7 @@ class ClusterScalerTest(ToilTest):
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         self.assertEqual(counts.get(t2_micro, 0), 0)
         self.assertEqual(counts.get(r3_8xlarge, 0), 1)
-        
+
 class ScalerThreadTest(ToilTest):
     def _testClusterScaling(self, config, numJobs, numPreemptableJobs, jobShape):
         """
