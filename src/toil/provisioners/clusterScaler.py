@@ -11,12 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import copy
 import json
 import logging
+import math
 import os
 import time
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    AbstractScalableBatchSystem,
@@ -24,6 +26,7 @@ from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
 from toil.bus import ClusterDesiredSizeMessage, ClusterSizeMessage
 from toil.common import Config, defaultTargetTime
 from toil.job import JobDescription, ServiceJobDescription
+from toil.lib.conversions import human2bytes, bytes2human
 from toil.lib.retry import old_retry
 from toil.lib.threading import ExceptionalThread
 from toil.lib.throttle import throttle
@@ -34,6 +37,16 @@ if TYPE_CHECKING:
     from toil.provisioners.node import Node
 
 logger = logging.getLogger(__name__)
+
+# Properties of GKE's memory overhead algorithm
+EVICTION_THRESHOLD = human2bytes('100MiB')
+RESERVE_SMALL_LIMIT = human2bytes('1GiB')
+RESERVE_SMALL_AMOUNT = human2bytes('255MiB')
+RESERVE_BREAKPOINTS: List[Union[int, float]] = [human2bytes('4GiB'), human2bytes('8GiB'), human2bytes('16GiB'), human2bytes('128GiB'), math.inf]
+RESERVE_FRACTIONS = [0.25, 0.2, 0.1, 0.06, 0.02]
+
+# Guess of how much disk space on the root volume is used for the OS and essential container images
+OS_SIZE = human2bytes('5G')
 
 
 class BinPackedFit:
@@ -370,11 +383,15 @@ class ClusterScaler:
 
         self.nodeShapes.sort()
 
+        # Nodes might not actually provide all the resources of their nominal shapes
+        self.node_shapes_after_overhead = [self._reserve_overhead(s) for s in self.nodeShapes]
+        self.without_overhead = {k: v for k, v in zip(self.node_shapes_after_overhead, self.nodeShapes)}
+
         #Node shape to number of currently provisioned nodes
         totalNodes: Dict[Shape, int] = defaultdict(int)
         if isinstance(leader.batchSystem, AbstractScalableBatchSystem) and leader.provisioner:
             for preemptable in (True, False):
-                nodes: List[Node] = []
+                nodes: List["Node"] = []
                 for nodeShape, instance_type in self.nodeShapeToType.items():
                     nodes_thisType = leader.provisioner.getProvisionedWorkers(instance_type=instance_type,
                                                                               preemptable=preemptable)
@@ -415,6 +432,89 @@ class ClusterScaler:
         else:
             # If we get here, something has gone wrong.
             raise RuntimeError(f"Could not round {number}")
+
+    def _reserve_overhead(self, full_node: Shape) -> Shape:
+        """
+        Given the shape of an entire virtual machine, return the Shape of the
+        resources we expect to actually be available to the backing scheduler
+        (i.e. Mesos or Kubernetes) to run jobs on. Some disk may need to be
+        used to install the OS, and some memory may be needed to run the
+        kernel, Mesos, a Kubelet, Kubernetes system pods, and so on.
+
+        Because shapes are used as dictionary keys, this function must be 1 to
+        1: any two distinct inputs (that are actual node shapes and not
+        pathological inputs off by a single byte) must produce distinct
+        outputs.
+        """
+
+        # See https://cloud.google.com/kubernetes-engine/docs/concepts/cluster-architecture#memory_cpu for how EKS works.
+        # We are going to just implement their scheme and hope it is a good enough overestimate of actual overhead.
+        smaller = copy.copy(full_node)
+
+        # Take away some memory to account for how much the scheduler is going to use.
+        smaller.memory -= self._gke_overhead(smaller.memory)
+        # And some disk to account for the OS and possibly superuser reservation
+        # TODO: Figure out if the disk is an OS disk of a scratch disk
+        smaller.disk -= self._disk_overhead(smaller.disk)
+        
+        logger.debug('Node shape %s can hold jobs of shape %s', full_node, smaller)
+
+        return smaller
+
+    def _gke_overhead(self, memory_bytes: int) -> int:
+        """
+        Get the number of bytes of memory that Google Kubernetes Engine would
+        reserve or lose to the eviction threshold on a machine with the given
+        number of bytes of memory, according to
+        <https://cloud.google.com/kubernetes-engine/docs/concepts/cluster-architecture#memory_cpu>.
+
+        We assume that this is a good estimate of how much memory will be lost
+        to overhead in a Toil cluster, even though we aren't actually running a
+        GKE cluster.
+        """
+
+        if memory_bytes < RESERVE_SMALL_LIMIT:
+            # On machines with just a little memory, use a flat amount of it.
+            return RESERVE_SMALL_AMOUNT
+
+        # How many bytes are reserved so far?
+        reserved = 0.0
+        # How many bytes of memory have we accounted for so far?
+        accounted: Union[float, int] = 0
+        for breakpoint, fraction in zip(RESERVE_BREAKPOINTS, RESERVE_FRACTIONS):
+            # Below each breakpoint, reserve the matching portion of the memory
+            # since the previous breakpoint, like a progressive income tax.
+            limit = min(breakpoint, memory_bytes)
+            reservation = fraction * (limit - accounted)
+            logger.debug('Reserve %sB of memory between %sB and %sB', bytes2human(reservation), bytes2human(accounted), bytes2human(limit))
+            reserved += reservation
+            accounted = limit
+            if accounted >= memory_bytes:
+                break
+        logger.debug('Reserved %sB/%sB memory for overhead', bytes2human(reserved), bytes2human(memory_bytes))
+
+        return int(reserved)
+
+    def _disk_overhead(self, disk_bytes: int) -> int:
+        """
+        Get the number of bytes of disk that are probably not usable on a
+        machine with a disk of the given size.
+        """
+
+        # How much do we think we need for OS and possible super-user
+        # reservation?
+        disk_needed = OS_SIZE + int(0.05 * disk_bytes)
+
+        if disk_bytes <= disk_needed:
+            # We don't think we can actually use any of this disk
+            logger.warning('All %sB of disk on a node type are likely to be needed by the OS! The node probably cannot do any useful work!', bytes2human(disk_bytes))
+            return disk_bytes
+
+        if disk_needed * 2 > disk_bytes:
+            logger.warning('A node type has only %sB disk, of which more than half are expected to be used by the OS. Consider using a larger --nodeStorage', bytes2human(disk_bytes))
+
+        return disk_needed
+
 
     def getAverageRuntime(self, jobName: str, service: bool = False) -> float:
         if service:
@@ -503,9 +603,15 @@ class ClusterScaler:
 
         Returns a dict mapping from nodeShape to the number of nodes we want in the cluster right now.
         """
+
+        # Do the bin packing with overhead reserved
         nodesToRunQueuedJobs = binPacking(jobShapes=queuedJobShapes,
-                                          nodeShapes=self.nodeShapes,
+                                          nodeShapes=self.node_shapes_after_overhead,
                                           goalTime=self.targetTime)
+
+        # Then translate back to get results in terms of full nodes without overhead.
+        nodesToRunQueuedJobs = {self.without_overhead[k]: v for k, v in nodesToRunQueuedJobs.items()}
+
         estimatedNodeCounts = {}
         for nodeShape in self.nodeShapes:
             instance_type = self.nodeShapeToType[nodeShape]

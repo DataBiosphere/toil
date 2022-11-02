@@ -452,7 +452,7 @@ class ClusterScalerTest(ToilTest):
         # actual GB or GiB here.
         
         # Set a small node (60G) and a big node (260G)
-        self.provisioner.setAutoscaledNodeTypes([({c4_8xlarge}, {r3_8xlarge})])
+        self.provisioner.setAutoscaledNodeTypes([({c4_8xlarge}, None), ({r3_8xlarge}, None)])
         self.config.targetTime = 1
         self.config.betaInertia = 0.0
         self.config.maxNodes = [2, 2]
@@ -469,6 +469,7 @@ class ClusterScalerTest(ToilTest):
                 preemptable=True
             )
         ]
+        logger.debug('Try and fit jobs: %s', jobs)
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         self.assertEqual(counts.get(c4_8xlarge, 0), 0)
         self.assertEqual(counts.get(r3_8xlarge, 0), 1)
@@ -484,20 +485,22 @@ class ClusterScalerTest(ToilTest):
                 preemptable=True
             )
         ]
+        logger.debug('Try and fit jobs: %s', jobs)
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         self.assertEqual(counts.get(c4_8xlarge, 0), 0)
         self.assertEqual(counts.get(r3_8xlarge, 0), 1)
         
-        # If the job needs 92% of the memory of the instance type, it will fit.
+        # If the job needs 90% of the memory of the instance type, it will fit.
         jobs = [
             Shape(
                 wallTime=3600,
                 cores=2,
-                memory=int(h2b('60G') * 0.92),
+                memory=int(h2b('60G') * 0.90),
                 disk=h2b('2G'),
                 preemptable=True
             )
         ]
+        logger.debug('Try and fit jobs: %s', jobs)
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         self.assertEqual(counts.get(c4_8xlarge, 0), 1)
         self.assertEqual(counts.get(r3_8xlarge, 0), 0)
@@ -513,6 +516,7 @@ class ClusterScalerTest(ToilTest):
                 preemptable=True
             )
         ]
+        logger.debug('Try and fit jobs: %s', jobs)
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         self.assertEqual(counts.get(c4_8xlarge, 0), 0)
         self.assertEqual(counts.get(r3_8xlarge, 0), 1)
@@ -528,11 +532,12 @@ class ClusterScalerTest(ToilTest):
                 preemptable=True
             )
         ]
+        logger.debug('Try and fit jobs: %s', jobs)
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         self.assertEqual(counts.get(c4_8xlarge, 0), 0)
         self.assertEqual(counts.get(r3_8xlarge, 0), 1)
         
-        # If the job leaves 10% and 10GB of the disk free, it fits
+        # If the job leaves 10% and 10G of the disk free, it fits
         jobs = [
             Shape(
                 wallTime=3600,
@@ -542,6 +547,7 @@ class ClusterScalerTest(ToilTest):
                 preemptable=True
             )
         ]
+        logger.debug('Try and fit jobs: %s', jobs)
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         self.assertEqual(counts.get(c4_8xlarge, 0), 1)
         self.assertEqual(counts.get(r3_8xlarge, 0), 0)
@@ -560,7 +566,7 @@ class ClusterScalerTest(ToilTest):
         # actual GB or GiB here.
         
         # Set a small node (1G) and a big node (260G)
-        self.provisioner.setAutoscaledNodeTypes([({t2_micro}, {r3_8xlarge})])
+        self.provisioner.setAutoscaledNodeTypes([({t2_micro}, None), ({r3_8xlarge}, None)])
         self.config.targetTime = 1
         self.config.betaInertia = 0.0
         self.config.maxNodes = [2, 2]
@@ -577,6 +583,7 @@ class ClusterScalerTest(ToilTest):
                 preemptable=True
             )
         ]
+        logger.debug('Try and fit jobs: %s', jobs)
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         self.assertEqual(counts.get(t2_micro, 0), 0)
         self.assertEqual(counts.get(r3_8xlarge, 0), 1)
@@ -592,6 +599,7 @@ class ClusterScalerTest(ToilTest):
                 preemptable=True
             )
         ]
+        logger.debug('Try and fit jobs: %s', jobs)
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         self.assertEqual(counts.get(t2_micro, 0), 0)
         self.assertEqual(counts.get(r3_8xlarge, 0), 1)
@@ -608,6 +616,7 @@ class ClusterScalerTest(ToilTest):
                 preemptable=True
             )
         ]
+        logger.debug('Try and fit jobs: %s', jobs)
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         self.assertEqual(counts.get(t2_micro, 0), 0)
         self.assertEqual(counts.get(r3_8xlarge, 0), 1)
