@@ -495,7 +495,7 @@ class ClusterScaler:
                 break
         logger.debug('Reserved %sB/%sB memory for overhead', bytes2human(reserved), bytes2human(memory_bytes))
 
-        return int(reserved)
+        return int(reserved) + EVICTION_THRESHOLD
 
     def _disk_overhead(self, disk_bytes: int) -> int:
         """
