@@ -22,7 +22,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 from queue import Empty, Queue
 from threading import Event, Thread
-from typing import List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 from unittest.mock import MagicMock
 
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
@@ -58,6 +58,18 @@ r3_8xlarge = Shape(wallTime=3600,
                    memory=h2b('260G'),
                    cores=32,
                    disk=h2b('600G'),
+                   preemptable=False)
+# simplified r5.2xlarge (non-preemptable)
+r5_2xlarge = Shape(wallTime=3600,
+                   memory=h2b('64Gi'),
+                   cores=8,
+                   disk=h2b('50G'),
+                   preemptable=False)
+# simplified r5.4xlarge (non-preemptable)
+r5_4xlarge = Shape(wallTime=3600,
+                   memory=h2b('128Gi'),
+                   cores=16,
+                   disk=h2b('50G'),
                    preemptable=False)
 # simplified t2.micro (non-preemptable)
 t2_micro = Shape(wallTime=3600,
@@ -443,166 +455,52 @@ class ClusterScalerTest(ToilTest):
         If a node has a certain raw memory or disk capacity, that won't all be
         available when it actually comes up; some disk and memory will be used
         by the OS, and the backing scheduler (Mesos, Kubernetes, etc.).
+        
+        Make sure this overhead is accounted for for large nodes.
         """
-        # In
-        # https://github.com/DataBiosphere/toil/issues/4147#issuecomment-1179587561
-        # a user observed what seems to be a nominally 64 GiB node with Mesos
-        # reporting "61.0 GB" available, and a nominally 32 GiB node with Mesos
-        # reporting "29.9 GB" available. It's not clear if Mesos is thinking in
-        # actual GB or GiB here.
 
-        # Set a small node (60G) and a big node (260G)
-        self.provisioner.setAutoscaledNodeTypes([({c4_8xlarge}, None), ({r3_8xlarge}, None)])
-        self.config.targetTime = 1
-        self.config.betaInertia = 0.0
-        self.config.maxNodes = [2, 2]
-        scaler = ClusterScaler(self.provisioner, self.leader, self.config)
+        # Use a small node (60G) and a big node (260G)
 
         # If the job needs 100% of the memory of the instance type, it won't
         # fit and will need a bigger node.
-        jobs = [
-            Shape(
-                wallTime=3600,
-                cores=2,
-                memory=h2b('60G'),
-                disk=h2b('2G'),
-                preemptable=True
-            )
-        ]
-        logger.debug('Try and fit jobs: %s', jobs)
-        counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
-        self.assertEqual(counts.get(c4_8xlarge, 0), 0)
-        self.assertEqual(counts.get(r3_8xlarge, 0), 1)
+        self._check_job_estimate([(c4_8xlarge, 0), (r3_8xlarge, 1)], memory=h2b('60G'))
 
         # If the job needs 98% of the memory of the instance type, it won't
         # fit and will need a bigger node.
-        jobs = [
-            Shape(
-                wallTime=3600,
-                cores=2,
-                memory=int(h2b('60G') * 0.98),
-                disk=h2b('2G'),
-                preemptable=True
-            )
-        ]
-        logger.debug('Try and fit jobs: %s', jobs)
-        counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
-        self.assertEqual(counts.get(c4_8xlarge, 0), 0)
-        self.assertEqual(counts.get(r3_8xlarge, 0), 1)
+        self._check_job_estimate([(c4_8xlarge, 0), (r3_8xlarge, 1)], memory=int(h2b('60G') * 0.98))
 
         # If the job needs 90% of the memory of the instance type, it will fit.
-        jobs = [
-            Shape(
-                wallTime=3600,
-                cores=2,
-                memory=int(h2b('60G') * 0.90),
-                disk=h2b('2G'),
-                preemptable=True
-            )
-        ]
-        logger.debug('Try and fit jobs: %s', jobs)
-        counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
-        self.assertEqual(counts.get(c4_8xlarge, 0), 1)
-        self.assertEqual(counts.get(r3_8xlarge, 0), 0)
+        self._check_job_estimate([(c4_8xlarge, 1), (r3_8xlarge, 0)], memory=int(h2b('60G') * 0.90))
 
         # If the job needs 100% of the disk of the instance type, it won't
         # fit and will need a bigger node.
-        jobs = [
-            Shape(
-                wallTime=3600,
-                cores=2,
-                memory=h2b('1G'),
-                disk=h2b('100G'),
-                preemptable=True
-            )
-        ]
-        logger.debug('Try and fit jobs: %s', jobs)
-        counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
-        self.assertEqual(counts.get(c4_8xlarge, 0), 0)
-        self.assertEqual(counts.get(r3_8xlarge, 0), 1)
+        self._check_job_estimate([(c4_8xlarge, 0), (r3_8xlarge, 1)], disk=h2b('100G'))
 
         # If the job needs all but 7G of the disk of the instance type, it won't
         # fit and will need a bigger node.
-        jobs = [
-            Shape(
-                wallTime=3600,
-                cores=2,
-                memory=h2b('1G'),
-                disk=h2b('93G'),
-                preemptable=True
-            )
-        ]
-        logger.debug('Try and fit jobs: %s', jobs)
-        counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
-        self.assertEqual(counts.get(c4_8xlarge, 0), 0)
-        self.assertEqual(counts.get(r3_8xlarge, 0), 1)
+        self._check_job_estimate([(c4_8xlarge, 0), (r3_8xlarge, 1)], disk=h2b('93G'))
 
         # If the job leaves 10% and 10G of the disk free, it fits
-        jobs = [
-            Shape(
-                wallTime=3600,
-                cores=2,
-                memory=h2b('1G'),
-                disk=h2b('90G'),
-                preemptable=True
-            )
-        ]
-        logger.debug('Try and fit jobs: %s', jobs)
-        counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
-        self.assertEqual(counts.get(c4_8xlarge, 0), 1)
-        self.assertEqual(counts.get(r3_8xlarge, 0), 0)
+        self._check_job_estimate([(c4_8xlarge, 1), (r3_8xlarge, 0)], disk=h2b('90G'))
 
     def test_overhead_accounting_small(self):
         """
         If a node has a certain raw memory or disk capacity, that won't all be
         available when it actually comes up; some disk and memory will be used
         by the OS, and the backing scheduler (Mesos, Kubernetes, etc.).
+        
+        Make sure this overhead is accounted for for small nodes.
         """
-        # In
-        # https://github.com/DataBiosphere/toil/issues/4147#issuecomment-1179587561
-        # a user observed what seems to be a nominally 64 GiB node with Mesos
-        # reporting "61.0 GB" available, and a nominally 32 GiB node with Mesos
-        # reporting "29.9 GB" available. It's not clear if Mesos is thinking in
-        # actual GB or GiB here.
 
-        # Set a small node (1G) and a big node (260G)
-        self.provisioner.setAutoscaledNodeTypes([({t2_micro}, None), ({r3_8xlarge}, None)])
-        self.config.targetTime = 1
-        self.config.betaInertia = 0.0
-        self.config.maxNodes = [2, 2]
-        scaler = ClusterScaler(self.provisioner, self.leader, self.config)
+        # Use a small node (1G) and a big node (260G)
 
         # If the job needs 100% of the memory of the instance type, it won't
         # fit and will need a bigger node.
-        jobs = [
-            Shape(
-                wallTime=3600,
-                cores=2,
-                memory=h2b('1G'),
-                disk=h2b('2G'),
-                preemptable=True
-            )
-        ]
-        logger.debug('Try and fit jobs: %s', jobs)
-        counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
-        self.assertEqual(counts.get(t2_micro, 0), 0)
-        self.assertEqual(counts.get(r3_8xlarge, 0), 1)
+        self._check_job_estimate([(t2_micro, 0), (r3_8xlarge, 1)], memory=h2b('1G'))
 
         # If the job needs all but 100M of the memory of the instance type, it
         # won't fit and will need a bigger node.
-        jobs = [
-            Shape(
-                wallTime=3600,
-                cores=2,
-                memory=h2b('1G') - h2b('100M'),
-                disk=h2b('2G'),
-                preemptable=True
-            )
-        ]
-        logger.debug('Try and fit jobs: %s', jobs)
-        counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
-        self.assertEqual(counts.get(t2_micro, 0), 0)
-        self.assertEqual(counts.get(r3_8xlarge, 0), 1)
+        self._check_job_estimate([(t2_micro, 0), (r3_8xlarge, 1)], memory=h2b('1G') - h2b('100M'))
 
         # If the job needs no more than 90% of the memory on the node *and*
         # leaves at least 384M free for overhead, we can rely on it fitting on a 1G
@@ -610,16 +508,63 @@ class ClusterScalerTest(ToilTest):
         jobs = [
             Shape(
                 wallTime=3600,
-                cores=2,
+                cores=1,
                 memory=h2b('1G') - h2b('384M'),
                 disk=h2b('2G'),
                 preemptable=True
             )
         ]
+        self._check_job_estimate([(t2_micro, 1), (r3_8xlarge, 0)], memory=h2b('1G') - h2b('384M'))
+        
+    def test_overhead_accounting_observed(self):
+        """
+        If a node has a certain raw memory or disk capacity, that won't all be
+        available when it actually comes up; some disk and memory will be used
+        by the OS, and the backing scheduler (Mesos, Kubernetes, etc.).
+        
+        Make sure this overhead is accounted for so that real-world observed
+        failures cannot happen again.
+        """
+        # In
+        # https://github.com/DataBiosphere/toil/issues/4147#issuecomment-1179587561
+        # a user observed what seems to be a nominally 64 GiB node
+        # (r5.2xlarge?) with Mesos reporting "61.0 GB" available, and a
+        # nominally 32 GiB node with Mesos reporting "29.9 GB" available. It's
+        # not clear if Mesos is thinking in actual GB or GiB here.
+        
+        # A 62.5Gi job is sent to the larger node
+        self._check_job_estimate([(r5_2xlarge, 0), (r5_4xlarge, 1)], memory=h2b('62.5 Gi'))
+        
+    def _check_job_estimate(self, nodes: List[Tuple[Shape, int]], cores=1, memory=1, disk=1) -> None:
+        """
+        Make sure that a job with the given requirements, when run on the given
+        nodes, produces the given numbers of them.
+        """
+        
+        self.provisioner.setAutoscaledNodeTypes([({node}, None) for node, _ in nodes])
+        self.config.targetTime = 1
+        self.config.betaInertia = 0.0
+        # We only need up to one node
+        self.config.maxNodes = [1] * len(nodes) 
+        scaler = ClusterScaler(self.provisioner, self.leader, self.config)
+        
+        jobs = [
+            Shape(
+                wallTime=3600,
+                cores=cores,
+                memory=memory,
+                disk=disk,
+                preemptable=True
+            )
+        ]
+        
         logger.debug('Try and fit jobs: %s', jobs)
         counts = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
-        self.assertEqual(counts.get(t2_micro, 0), 0)
-        self.assertEqual(counts.get(r3_8xlarge, 0), 1)
+        for node, count in nodes:
+            seen_count = counts.get(node, 0)
+            if seen_count != count:
+                logger.error('Saw %s/%s instances of node %s', seen_count, count, node)
+            self.assertEqual(seen_count, count)
 
 class ScalerThreadTest(ToilTest):
     def _testClusterScaling(self, config, numJobs, numPreemptableJobs, jobShape):
