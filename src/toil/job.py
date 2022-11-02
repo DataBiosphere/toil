@@ -2635,7 +2635,8 @@ class Job:
                     time=str(time.time() - startTime),
                     clock=str(totalCpuTime - startClock),
                     class_name=self._jobName(),
-                    memory=str(totalMemoryUsage)
+                    memory=str(totalMemoryUsage),
+                    requested_cores=str(self.cores)
                 )
             )
 
