@@ -129,7 +129,7 @@ class BinPackedFit:
                     # the user to raise the memory on the smallest machine?
                     fewest_constraints = failures
             
-            return jobShape, fewest_constraints
+            return jobShape, fewest_constraints if fewest_constraints is not None else []
 
         # grab current list of job objects appended to this instance type
         nodeReservations = self.nodeReservations[chosenNodeShape]
@@ -1047,7 +1047,7 @@ class JobTooBigError(Exception):
         self.msg = ''.join(parts)
         super().__init__()
 
-    def __str__(self):
+    def __str__(self) -> str:
         """
         Stringify the exception, including the message.
         """
