@@ -445,7 +445,7 @@ class ClusterScaler:
         self.nodeShapes.sort()
 
         # Nodes might not actually provide all the resources of their nominal shapes
-        self.node_shapes_after_overhead = [self._reserve_overhead(s) for s in self.nodeShapes]
+        self.node_shapes_after_overhead = self.nodeShapes if config.assume_zero_overhead else [self._reserve_overhead(s) for s in self.nodeShapes]
         self.without_overhead = {k: v for k, v in zip(self.node_shapes_after_overhead, self.nodeShapes)}
 
         #Node shape to number of currently provisioned nodes
@@ -549,12 +549,12 @@ class ClusterScaler:
             # since the previous breakpoint, like a progressive income tax.
             limit = min(breakpoint, memory_bytes)
             reservation = fraction * (limit - accounted)
-            logger.debug('Reserve %sB of memory between %sB and %sB', bytes2human(reservation), bytes2human(accounted), bytes2human(limit))
+            logger.debug('Reserve %s of memory between %s and %s', bytes2human(reservation), bytes2human(accounted), bytes2human(limit))
             reserved += reservation
             accounted = limit
             if accounted >= memory_bytes:
                 break
-        logger.debug('Reserved %sB/%sB memory for overhead', bytes2human(reserved), bytes2human(memory_bytes))
+        logger.debug('Reserved %s/%s memory for overhead', bytes2human(reserved), bytes2human(memory_bytes))
 
         return int(reserved) + EVICTION_THRESHOLD
 
