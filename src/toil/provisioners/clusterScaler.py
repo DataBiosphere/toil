@@ -18,7 +18,7 @@ import math
 import os
 import time
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    AbstractScalableBatchSystem,
@@ -29,7 +29,7 @@ from toil.job import JobDescription, ServiceJobDescription
 from toil.lib.conversions import human2bytes, bytes2human
 from toil.lib.retry import old_retry
 from toil.lib.threading import ExceptionalThread
-from toil.lib.throttle import throttle
+from toil.lib.throttle import LocalThrottle, throttle
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 
 if TYPE_CHECKING:
@@ -47,7 +47,6 @@ RESERVE_FRACTIONS = [0.25, 0.2, 0.1, 0.06, 0.02]
 
 # Guess of how much disk space on the root volume is used for the OS and essential container images
 OS_SIZE = human2bytes('5G')
-
 
 class BinPackedFit:
     """
@@ -75,8 +74,14 @@ class BinPackedFit:
         self.targetTime = targetTime
         self.nodeReservations = {nodeShape: [] for nodeShape in nodeShapes}
 
-    def binPack(self, jobShapes: List[Shape]) -> None:
-        """Pack a list of jobShapes into the fewest nodes reasonable. Can be run multiple times."""
+    def binPack(self, jobShapes: List[Shape]) -> Set[Shape}:
+        """
+        Pack a list of jobShapes into the fewest nodes reasonable.
+        
+        Can be run multiple times.
+        
+        Returns any distinct Shapes that did not fit.
+        """
         # TODO: Check for redundancy with batchsystems.mesos.JobQueue() sorting
         logger.debug('Running bin packing for node shapes %s and %s job(s).',
                      self.nodeShapes, len(jobShapes))
@@ -85,14 +90,23 @@ class BinPackedFit:
         jobShapes.sort()
         jobShapes.reverse()
         assert len(jobShapes) == 0 or jobShapes[0] >= jobShapes[-1]
+        could_not_fit = set()
         for jS in jobShapes:
-            self.addJobShape(jS)
+            rejected = self.addJobShape(jS)
+            if rejected is not None:
+                # The job bounced because it didn't fit in any bin.
+                could_not_fit.add(rejected)
+        return could_not_fit
 
-    def addJobShape(self, jobShape: Shape) -> None:
+    def addJobShape(self, jobShape: Shape) -> Optional[Shape]:
         """
-        Add the job to the first node reservation in which it will fit.
-
-        (this is the bin-packing aspect).
+        Add the job to the first node reservation in which it will fit. (This
+        is the bin-packing aspect).
+        
+        Returns the job shape again if it did not fit. We could do this with
+        exceptions, but an uncaught exception in the scaler thread can be Bad
+        News for a workflow, because it is repsonsible for turning off a lot of
+        expensive machines.
         """
         chosenNodeShape = None
         for nodeShape in self.nodeShapes:
@@ -102,16 +116,16 @@ class BinPackedFit:
                 break
 
         if chosenNodeShape is None:
-            logger.warning("Couldn't fit job with requirements %r into any nodes in the nodeTypes "
-                           "list." % jobShape)
-            return
+            logger.debug("Couldn't fit job with requirements %s into any nodes in the nodeTypes "
+                         "list.", jobShape)
+            return jobShape
 
         # grab current list of job objects appended to this instance type
         nodeReservations = self.nodeReservations[chosenNodeShape]
         for nodeReservation in nodeReservations:
             if nodeReservation.attemptToAddJob(jobShape, chosenNodeShape, self.targetTime):
                 # We succeeded adding the job to this node reservation. Now we're done.
-                return
+                return None
 
         reservation = NodeReservation(chosenNodeShape)
         currentTimeAllocated = chosenNodeShape.wallTime
@@ -124,6 +138,7 @@ class BinPackedFit:
             currentTimeAllocated += chosenNodeShape.wallTime
             reservation.nReservation = extendThisReservation
             reservation = extendThisReservation
+        return None
 
     def getRequiredNodes(self) -> Dict[Shape, int]:
         """Return a dict from node shape to number of nodes required to run the packed jobs."""
@@ -303,10 +318,17 @@ def split(
                                   nodeShape.preemptable)))
 
 
-def binPacking(nodeShapes: List[Shape], jobShapes: List[Shape], goalTime: float) -> Dict[Shape, int]:
+def binPacking(nodeShapes: List[Shape], jobShapes: List[Shape], goalTime: float) -> Tuple[Dict[Shape, int], Set[Shape]]:
+    """
+    Using the given node shape bins, pack the given job shapes into nodes to
+    get them done in the given amount of time.
+    
+    Returns a dict saying how many of each node will be needed, and a list of
+    jobs that didn't fit in any nodes.
+    """
     bpf = BinPackedFit(nodeShapes, goalTime)
-    bpf.binPack(jobShapes)
-    return bpf.getRequiredNodes()
+    could_not_fit = bpf.binPack(jobShapes)
+    return bpf.getRequiredNodes(), could_not_fit
 
 
 class ClusterScaler:
@@ -324,6 +346,11 @@ class ClusterScaler:
         self.leader = leader
         self.config = config
         self.static: Dict[bool, Dict[str, "Node"]] = {}
+        
+        # If we encounter a Shape of job that we don't think we can run, call
+        # these callbacks with the Shape that didn't fit and the Shapes that
+        # were available.
+        self.on_too_big: List[Callable[[Shape, List[Shape]], Any]] = []
 
         # Dictionary of job names to their average runtime, used to estimate wall time of queued
         # jobs for bin-packing
@@ -607,9 +634,16 @@ class ClusterScaler:
         """
 
         # Do the bin packing with overhead reserved
-        nodesToRunQueuedJobs = binPacking(jobShapes=queuedJobShapes,
-                                          nodeShapes=self.node_shapes_after_overhead,
-                                          goalTime=self.targetTime)
+        nodesToRunQueuedJobs, could_not_fit = binPacking(
+            jobShapes=queuedJobShapes,
+            nodeShapes=self.node_shapes_after_overhead,
+            goalTime=self.targetTime
+        )
+        
+        for too_big_job_shape in could_not_fit:
+            # Dispatch complaints about jobs that could not fit.
+            for callback in self.on_too_big:
+                callback(too_big_job_shape, self.node_shapes_after_overhead)
 
         # Then translate back to get results in terms of full nodes without overhead.
         nodesToRunQueuedJobs = {self.without_overhead[k]: v for k, v in nodesToRunQueuedJobs.items()}
@@ -971,6 +1005,12 @@ class ScalerThread(ExceptionalThread):
     def __init__(self, provisioner: AbstractProvisioner, leader: "Leader", config: Config) -> None:
         super().__init__(name='scaler')
         self.scaler = ClusterScaler(provisioner, leader, config)
+        
+        # We want to warn the user if jobs are too big to ever schedule, but we
+        # don't want to yell constantly if we try to do the bin packing in a
+        # tight loop.
+        scaler.on_too_big.append(self.job_is_too_big)
+        self._warning_throttle = LocalThrottle(300)
 
         # Indicates that the scaling thread should shutdown
         self.stop = False
@@ -984,6 +1024,14 @@ class ScalerThread(ExceptionalThread):
             for preemptable in [True, False]:
                 self.stats.startStats(preemptable=preemptable)
             logger.debug("...Cluster stats started.")
+            
+    def job_is_too_big(self, big_job: Shape, node_space: List[Shape]):
+        """
+        Complain if the ClusterScaler says it can't fit a job.
+        """
+        if self._warning_throttle.throttle(wait=False):
+            logger.warning("Job with shape %s is too big and cannot fit in the usable space on any node type: %s", big_job, node_space)
+            logger.warning("The workflow may never finish!")
 
     def check(self) -> None:
         """

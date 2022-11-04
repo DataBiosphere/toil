@@ -636,15 +636,15 @@ class ScalerThreadTest(ToilTest):
         config = Config()
 
         # Make defaults dummy values
-        config.defaultMemory = 1
+        config.defaultMemory = h2b('1Gi')
         config.defaultCores = 1
-        config.defaultDisk = 1
+        config.defaultDisk = h2b('1Gi')
 
         # No preemptable nodes/jobs
         config.maxPreemptableNodes = []  # No preemptable nodes
 
         # Non-preemptable parameters
-        config.nodeTypes = [Shape(20, 10, 10, 10, False)]
+        config.nodeTypes = [Shape(20, h2b('10Gi'), 10, h2b('100Gi'), False)]
         config.minNodes = [0]
         config.maxNodes = [10]
 
@@ -659,18 +659,18 @@ class ScalerThreadTest(ToilTest):
     @slow
     def testClusterScalingMultipleNodeTypes(self):
 
-        smallNode = Shape(20, 5, 10, 10, False)
-        mediumNode = Shape(20, 10, 10, 10, False)
-        largeNode = Shape(20, 20, 10, 10, False)
+        smallNode = Shape(20, h2b('5Gi'), 10, h2b('10Gi'), False)
+        mediumNode = Shape(20, h2b('10Gi'), 10, h2b('10Gi'), False)
+        largeNode = Shape(20, h2b('20Gi'), 10, h2b('10Gi'), False)
 
         numJobs = 100
 
         config = Config()
 
         # Make defaults dummy values
-        config.defaultMemory = 1
+        config.defaultMemory = h2b('1Gi')
         config.defaultCores = 1
-        config.defaultDisk = 1
+        config.defaultDisk = h2b('1Gi')
 
         # No preemptable nodes/jobs
         config.preemptableNodeTypes = []
@@ -732,13 +732,13 @@ class ScalerThreadTest(ToilTest):
         """
         config = Config()
 
-        jobShape = Shape(20, 10, 10, 10, False)
-        preemptableJobShape = Shape(20, 10, 10, 10, True)
+        jobShape = Shape(20, h2b('10Gi'), 10, h2b('10Gi'), False)
+        preemptableJobShape = Shape(20, h2b('10Gi'), 10, h2b('10Gi'), True)
 
         # Make defaults dummy values
-        config.defaultMemory = 1
+        config.defaultMemory = h2b('1Gi')
         config.defaultCores = 1
-        config.defaultDisk = 1
+        config.defaultDisk = h2b('1Gi')
 
         # non-preemptable node parameters
         config.nodeTypes = [jobShape, preemptableJobShape]
