@@ -48,6 +48,10 @@ RESERVE_FRACTIONS = [0.25, 0.2, 0.1, 0.06, 0.02]
 # Guess of how much disk space on the root volume is used for the OS and essential container images
 OS_SIZE = human2bytes('5G')
 
+# Define a type for an explanation of why a job can't fit on a node.
+# Consists of a resource name and a constraining value for that resource.
+FailedConstraint = Tuple[str, Union[int, float, bool]]
+
 class BinPackedFit:
     """
     If jobShapes is a set of tasks with run requirements (mem/disk/cpu), and nodeShapes is a sorted
@@ -74,13 +78,13 @@ class BinPackedFit:
         self.targetTime = targetTime
         self.nodeReservations = {nodeShape: [] for nodeShape in nodeShapes}
 
-    def binPack(self, jobShapes: List[Shape]) -> Set[Shape}:
+    def binPack(self, jobShapes: List[Shape]) -> Dict[Shape, List[FailedConstraint]]:
         """
         Pack a list of jobShapes into the fewest nodes reasonable.
         
         Can be run multiple times.
         
-        Returns any distinct Shapes that did not fit.
+        Returns any distinct Shapes that did not fit, mapping to reasons they did not fit.
         """
         # TODO: Check for redundancy with batchsystems.mesos.JobQueue() sorting
         logger.debug('Running bin packing for node shapes %s and %s job(s).',
@@ -90,23 +94,20 @@ class BinPackedFit:
         jobShapes.sort()
         jobShapes.reverse()
         assert len(jobShapes) == 0 or jobShapes[0] >= jobShapes[-1]
-        could_not_fit = set()
+        could_not_fit = {}
         for jS in jobShapes:
-            rejected = self.addJobShape(jS)
-            if rejected is not None:
+            rejection = self.addJobShape(jS)
+            if rejection is not None:
                 # The job bounced because it didn't fit in any bin.
-                could_not_fit.add(rejected)
+                could_not_fit[rejection[0]] = rejection[1]
         return could_not_fit
 
-    def addJobShape(self, jobShape: Shape) -> Optional[Shape]:
+    def addJobShape(self, jobShape: Shape) -> Optional[Tuple[Shape, List[FailedConstraint]]]:
         """
         Add the job to the first node reservation in which it will fit. (This
         is the bin-packing aspect).
         
-        Returns the job shape again if it did not fit. We could do this with
-        exceptions, but an uncaught exception in the scaler thread can be Bad
-        News for a workflow, because it is repsonsible for turning off a lot of
-        expensive machines.
+        Returns the job shape again, and a list of failed constraints, if it did not fit.
         """
         chosenNodeShape = None
         for nodeShape in self.nodeShapes:
@@ -118,7 +119,17 @@ class BinPackedFit:
         if chosenNodeShape is None:
             logger.debug("Couldn't fit job with requirements %s into any nodes in the nodeTypes "
                          "list.", jobShape)
-            return jobShape
+            # Go back and debug why this happened.
+            fewest_constraints: Optional[List[FailedConstraint]] = None
+            for shape in self.nodeShapes:
+                failures = NodeReservation(nodeShape).get_failed_constraints(jobShape)
+                if fewest_constraints is None or len(failures) < len(fewest_constraints):
+                    # This was closer to fitting.
+                    # TODO: Check the actual constraint values so we don't tell
+                    # the user to raise the memory on the smallest machine?
+                    fewest_constraints = failures
+            
+            return jobShape, fewest_constraints
 
         # grab current list of job objects appended to this instance type
         nodeReservations = self.nodeReservations[chosenNodeShape]
@@ -193,6 +204,29 @@ class NodeReservation:
                 self.nReservation.shape.preemptable if self.nReservation is not None else str(None),
                 str(len(self.shapes())))
 
+    def get_failed_constraints(self, job_shape: Shape) -> List[FailedConstraint]:
+        """
+        Check if a job shape's resource requirements will fit within this allocation.
+        
+        If the job does *not* fit, returns the failing constraints: the resources
+        that can't be accomodated, and the limits that were hit.
+        
+        If the job *does* fit, returns an empty list.
+        
+        Must always agree with fits()! This codepath is slower and used for diagnosis.
+        """
+        
+        failures: List[FailedConstraint] = []
+        if job_shape.memory > self.shape.memory:
+            failures.append(("memory", self.shape.memory))
+        if job_shape.cores > self.shape.cores:
+            failures.append(("cores", self.shape.cores))
+        if job_shape.disk > self.shape.disk:
+            failures.append(("disk", self.shape.disk))
+        if not job_shape.preemptable and self.shape.preemptable:
+            failures.append(("preemptable", self.shape.preemptable))
+        return failures
+    
     def fits(self, jobShape: Shape) -> bool:
         """Check if a job shape's resource requirements will fit within this allocation."""
         return jobShape.memory <= self.shape.memory and \
@@ -318,13 +352,13 @@ def split(
                                   nodeShape.preemptable)))
 
 
-def binPacking(nodeShapes: List[Shape], jobShapes: List[Shape], goalTime: float) -> Tuple[Dict[Shape, int], Set[Shape]]:
+def binPacking(nodeShapes: List[Shape], jobShapes: List[Shape], goalTime: float) -> Tuple[Dict[Shape, int], Dict[Shape, List[FailedConstraint]]]:
     """
     Using the given node shape bins, pack the given job shapes into nodes to
     get them done in the given amount of time.
     
-    Returns a dict saying how many of each node will be needed, and a list of
-    jobs that didn't fit in any nodes.
+    Returns a dict saying how many of each node will be needed, a dict from job
+    shapes that could not fit to reasons why.
     """
     bpf = BinPackedFit(nodeShapes, goalTime)
     could_not_fit = bpf.binPack(jobShapes)
@@ -626,11 +660,13 @@ class ClusterScaler:
 
     def getEstimatedNodeCounts(
         self, queuedJobShapes: List[Shape], currentNodeCounts: Dict[Shape, int]
-    ) -> Dict[Shape, int]:
+    ) -> Tuple[Dict[Shape, int], Dict[Shape, List[FailedConstraint]]]:
         """
         Given the resource requirements of queued jobs and the current size of the cluster.
 
-        Returns a dict mapping from nodeShape to the number of nodes we want in the cluster right now.
+        Returns a dict mapping from nodeShape to the number of nodes we want in
+        the cluster right now, and a dict from job shapes that are too big to run
+        on any node to reasons why.
         """
 
         # Do the bin packing with overhead reserved
@@ -640,11 +676,6 @@ class ClusterScaler:
             goalTime=self.targetTime
         )
         
-        for too_big_job_shape in could_not_fit:
-            # Dispatch complaints about jobs that could not fit.
-            for callback in self.on_too_big:
-                callback(too_big_job_shape, self.node_shapes_after_overhead)
-
         # Then translate back to get results in terms of full nodes without overhead.
         nodesToRunQueuedJobs = {self.without_overhead[k]: v for k, v in nodesToRunQueuedJobs.items()}
 
@@ -698,7 +729,7 @@ class ClusterScaler:
                             self.minNodes[nodeShape])
                 estimatedNodeCount = self.minNodes[nodeShape]
             estimatedNodeCounts[nodeShape] = estimatedNodeCount
-        return estimatedNodeCounts
+        return estimatedNodeCounts, could_not_fit
 
     def updateClusterSize(self, estimatedNodeCounts: Dict[Shape, int]) -> Dict[Shape, int]:
         """
@@ -986,6 +1017,41 @@ class ClusterScaler:
             instance_type = self.nodeShapeToType[nodeShape]
             self.setNodeCount(instance_type=instance_type, numNodes=0, preemptable=preemptable, force=True)
 
+class JobTooBigError(Exception):
+    """
+    Raised in the scaler thread when a job cannot fit in any available node
+    type and is likely to lock up the workflow.
+    """
+    
+    def __init__(self, job: Optional[JobDescription] = None, shape: Optional[Shape] = None, constraints: Optional[List[FailedConstraint]] = None):
+        """
+        Make a JobTooBigError.
+        
+        Can have a job, the job's shape, and the limiting resources and amounts. All are optional.
+        """
+        self.job = job
+        self.shape = shape
+        self.constraints = constraints if constraints is not None else []
+        
+        parts = [
+            f"The job {self.job}" if self.job else "A job",
+            f" with shape {self.shape}" if self.shape else "",
+            " is too big for any available node type."
+        ]
+        
+        if self.constraints:
+            parts.append(" It could have fit if it only needed ")
+            parts.append(", ".join([f"{limit} {resource}" for resource, limit in self.constraints]))
+            parts.append(".") 
+        
+        self.msg = ''.join(parts)
+        super().__init__()
+
+    def __str__(self):
+        """
+        Stringify the exception, including the message.
+        """
+        return self.msg
 
 class ScalerThread(ExceptionalThread):
     """
@@ -1002,18 +1068,15 @@ class ScalerThread(ExceptionalThread):
     is made, else the size of the cluster is adapted. The beta factor is an inertia parameter
     that prevents continual fluctuations in the number of nodes.
     """
-    def __init__(self, provisioner: AbstractProvisioner, leader: "Leader", config: Config) -> None:
+    def __init__(self, provisioner: AbstractProvisioner, leader: "Leader", config: Config, stop_on_exception: bool = False) -> None:
         super().__init__(name='scaler')
         self.scaler = ClusterScaler(provisioner, leader, config)
         
-        # We want to warn the user if jobs are too big to ever schedule, but we
-        # don't want to yell constantly if we try to do the bin packing in a
-        # tight loop.
-        scaler.on_too_big.append(self.job_is_too_big)
-        self._warning_throttle = LocalThrottle(300)
-
         # Indicates that the scaling thread should shutdown
         self.stop = False
+        # Indicates that we should stop the thread if we encounter an error.
+        # Mostly for testing.
+        self.stop_on_exception = stop_on_exception
 
         self.stats = None
         if config.clusterStats:
@@ -1025,14 +1088,6 @@ class ScalerThread(ExceptionalThread):
                 self.stats.startStats(preemptable=preemptable)
             logger.debug("...Cluster stats started.")
             
-    def job_is_too_big(self, big_job: Shape, node_space: List[Shape]):
-        """
-        Complain if the ClusterScaler says it can't fit a job.
-        """
-        if self._warning_throttle.throttle(wait=False):
-            logger.warning("Job with shape %s is too big and cannot fit in the usable space on any node type: %s", big_job, node_space)
-            logger.warning("The workflow may never finish!")
-
     def check(self) -> None:
         """
         Attempt to join any existing scaler threads that may have died or finished.
@@ -1080,15 +1135,36 @@ class ScalerThread(ExceptionalThread):
                                 preemptable=nodeShape.preemptable,
                             )
                         )
-                    estimatedNodeCounts = self.scaler.getEstimatedNodeCounts(
+                    estimatedNodeCounts, could_not_fit = self.scaler.getEstimatedNodeCounts(
                         queuedJobShapes, currentNodeCounts
                     )
                     self.scaler.updateClusterSize(estimatedNodeCounts)
                     if self.stats:
                         self.stats.checkStats()
+                    
+                    if len(could_not_fit) != 0: 
+                        # If we have any jobs left over that we couldn't fit, complain.
+                        bad_job: Optional[JobDescription] = None
+                        bad_shape: Optional[Shape] = None
+                        for job, shape in zip(queuedJobs, queuedJobShapes):
+                            # Try and find an example job with an offending shape
+                            if shape in could_not_fit:
+                                bad_job = job
+                                bad_shape = shape
+                                break
+                        if bad_shape is None:
+                            # If we can't find an offending job, grab an arbitrary offending shape.
+                            bad_shape = next(iter(could_not_fit))
+                        
+                        raise JobTooBigError(job=bad_job, shape=bad_shape, constraints=could_not_fit[bad_shape])
+                        
                 except:
-                    logger.exception("Exception encountered in scaler thread. Making a best-effort "
-                                     "attempt to keep going, but things may go wrong from now on.")
+                    if self.stop_on_exception:
+                        logger.critical("Stopping ScalerThread due to an error.")
+                        raise
+                    else:
+                        logger.exception("Exception encountered in scaler thread. Making a best-effort "
+                                         "attempt to keep going, but things may go wrong from now on.")
         self.scaler.shutDown()
 
 class ClusterStats:
