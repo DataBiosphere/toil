@@ -18,6 +18,7 @@ import sys
 from functools import reduce
 from typing import Any, Dict, List, Optional, Set
 
+from toil.bus import replay_message_bus
 from toil.common import Config, Toil, parser_with_common_options
 from toil.job import JobDescription, JobException, ServiceJobDescription
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
@@ -226,6 +227,7 @@ class ToilStatus:
         Goes through bus messages, returns a list of tuples which have correspondence between
         PID on assigned batch system and
         """
+        replayed_messages = replay_message_bus(self.jobStore.config)
         return None
 
     def fetchRootJob(self) -> JobDescription:
