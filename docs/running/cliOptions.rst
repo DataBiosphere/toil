@@ -249,6 +249,8 @@ the logging module:
                         where some tasks require much more disk than others.
   --metrics             Enable the prometheus/grafana dashboard for monitoring
                         CPU/RAM usage, queue size, and issued jobs.
+  --assumeZeroOverhead  Ignore scheduler and OS overhead and assume jobs can use every
+                        last byte of memory and disk on a node when autoscaling.
   --defaultMemory INT   The default amount of memory to request for a job.
                         Only applicable to jobs that do not specify an
                         explicit value for this requirement. Standard suffixes
