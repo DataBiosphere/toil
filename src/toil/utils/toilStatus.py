@@ -41,6 +41,7 @@ class ToilStatus:
         else:
             self.jobsToReport = self.fetchUserJobs(specifiedJobs)
 
+        message_bus_path = self.jobstore.config.write_messages
     def print_dot_chart(self) -> None:
         """Print a dot output graph representing the workflow."""
         print("digraph toil_graph {")
@@ -159,7 +160,7 @@ class ToilStatus:
     @staticmethod
     def getPIDStatus(jobStoreName: str) -> str:
         """
-        Determine the status of a process with a particular pid.
+        Determine the status of a process with a particular local pid.
 
         Checks to see if a process exists or not.
 

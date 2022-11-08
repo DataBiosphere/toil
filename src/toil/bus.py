@@ -62,8 +62,10 @@ MessageBus.scan_bus_messages().
 """
 
 import collections
+from dataclasses import dataclass
 import inspect
 import logging
+import os
 import sys
 from typing import (IO,
                     Any,
@@ -82,6 +84,8 @@ from pubsub.core import Publisher
 from pubsub.core.listener import Listener
 from pubsub.core.topicobj import Topic
 from pubsub.core.topicutils import ALL_TOPICS
+
+from toil.server.wes.abstract_backend import TaskLog
 
 logger = logging.getLogger( __name__ )
 
@@ -546,5 +550,60 @@ class MessageBusConnection(MessageInbox, MessageOutbox):
         self._set_bus(bus)
 
 
+def replay_message_bus(path: str):
+    """
+    Replay all the messages and work out what they mean for jobs.
+
+    We track the state and name of jobs here, by ID.
+    We would use a list of two items but MyPy can't understand a lits
+    of items of multiple types, so we need to define a new class.
+    """
+    @dataclass
+    class JobStatus:
+        """
+        Records the status of a job.
+        """
+        name: str
+        exit_code: int
+        annotations: Dict[str, str]
+
+    job_statuses: Dict[str, JobStatus] = collections.defaultdict(lambda: JobStatus('', -1, {}))
+
+    with open(path, 'rb') as log_stream:
+        # Read all the full, properly-terminated messages about job updates
+        for event in MessageBus.scan_bus_messages(log_stream, [JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage,
+                                                               JobFailedMessage, JobAnnotationMessage]):
+            # And for each of them
+            logger.info('Got message from workflow: %s', event)
+
+            if isinstance(event, JobUpdatedMessage):
+                # Apply the latest return code from the job with this ID.
+                job_statuses[event.job_id].exit_code = event.result_status
+            elif isinstance(event, JobIssuedMessage):
+                job_statuses[event.job_id].name = event.job_type
+            elif isinstance(event, JobCompletedMessage):
+                job_statuses[event.job_id].name = event.job_type
+            elif isinstance(event, JobFailedMessage):
+                job_statuses[event.job_id].name = event.job_type
+                if job_statuses[event.job_id].exit_code == 0:
+                    # Record the failure if we never got a failed exit code.
+                    job_statuses[event.job_id].exit_code = 1
+            elif isinstance(event, JobAnnotationMessage):
+                # Remember the last value of any annotation that is set
+                job_statuses[event.job_id].annotations[event.annotation_name] = event.annotation_value
+
+    return job_statuses
 
 
+
+def gen_messBus_path(path: Optional[str]) -> str:
+    """
+    If given a path, return absolute path otherwise generate path to store message bus at
+    """
+    if path:
+        return os.path.abspath(path)
+    else:
+        fd, path = os.mkstemp()
+        os.close(fd)
+        return path
+    #TODO Might want to clean up the tmpfile at some point after running the workflow
