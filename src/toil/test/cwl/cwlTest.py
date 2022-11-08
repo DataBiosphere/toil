@@ -47,11 +47,13 @@ from toil.test import (ToilTest,
                        needs_aws_s3,
                        needs_cwl,
                        needs_docker,
+                       needs_docker_cuda,
                        needs_env_var,
                        needs_fetchable_appliance,
                        needs_gridengine,
                        needs_kubernetes,
                        needs_lsf,
+                       needs_local_cuda,
                        needs_mesos,
                        needs_parasol,
                        needs_slurm,
@@ -132,6 +134,7 @@ def run_conformance_tests(
             "--clean=always",
             "--logDebug",
             "--statusWait=10",
+            "--retryCount=2"
         ]
         if not caching:
             # Turn off caching for the run
@@ -223,9 +226,9 @@ class CWLWorkflowTest(ToilTest):
         )
         cwltoil.main(main_args, stdout=st)
         out = json.loads(st.getvalue())
-        out[out_name].pop("http://commonwl.org/cwltool#generation", None)
-        out[out_name].pop("nameext", None)
-        out[out_name].pop("nameroot", None)
+        out.get(out_name, {}).pop("http://commonwl.org/cwltool#generation", None)
+        out.get(out_name, {}).pop("nameext", None)
+        out.get(out_name, {}).pop("nameroot", None)
         self.assertEqual(out, expect)
 
     def _debug_worker_tester(self, cwlfile, jobfile, expect):
@@ -409,6 +412,17 @@ class CWLWorkflowTest(ToilTest):
             self._expected_seqtk_output(self.outDir),
             main_args=["--beta-use-biocontainers"],
             out_name="output1",
+        )
+    
+    @needs_docker
+    @needs_docker_cuda
+    @needs_local_cuda
+    def test_cuda(self):
+        self._tester(
+            "src/toil/test/cwl/nvidia_smi.cwl",
+            "src/toil/test/cwl/empty.json",
+            {},
+            out_name="result",
         )
 
     @slow
@@ -668,6 +682,7 @@ class CWLv10Test(ToilTest):
     def test_kubernetes_cwl_conformance(self, **kwargs):
         return self.test_run_conformance(
             batchSystem="kubernetes",
+            extra_args=["--retryCount=3"],
             # This test doesn't work with
             # Singularity; see
             # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
@@ -756,6 +771,7 @@ class CWLv11Test(ToilTest):
     def test_kubernetes_cwl_conformance(self, **kwargs):
         return self.test_run_conformance(
             batchSystem="kubernetes",
+            extra_args=["--retryCount=3"],
             # These tests don't work with
             # Singularity; see
             # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
@@ -825,6 +841,7 @@ class CWLv12Test(ToilTest):
             )
         return self.test_run_conformance(
             batchSystem="kubernetes",
+            extra_args=["--retryCount=3"],
             # This test doesn't work with
             # Singularity; see
             # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117

@@ -20,6 +20,7 @@ from typing import Callable, Dict, List, Optional, TypeVar, Union
 
 from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
+from toil.batchSystems.options import OptionSetter
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)
@@ -356,6 +357,6 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
     OptionType = TypeVar('OptionType')
     @classmethod
-    def setOptions(cls, setOption: Callable[[str, Optional[Callable[[str], OptionType]], Optional[Callable[[OptionType], None]], Optional[OptionType]], None]) -> None:
+    def setOptions(cls, setOption: OptionSetter) -> None:
         setOption("allocate_mem", bool, default=False)
 

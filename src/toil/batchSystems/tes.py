@@ -36,6 +36,7 @@ from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchJobExitReason,
                                                    UpdatedBatchJobInfo)
+from toil.batchSystems.options import OptionSetter
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
 from toil.common import Config, Toil
@@ -151,7 +152,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
     # setEnv is provided by BatchSystemSupport, updates self.environment
 
     def issueBatchJob(self, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
-        # TODO: get a sensible self.maxCores, etc. so we can checkResourceRequest.
+        # TODO: get a sensible self.maxCores, etc. so we can check_resource_request.
         # How do we know if the cluster will autoscale?
 
         # Try the job as local
@@ -163,7 +164,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
             # We actually want to send to the cluster
 
             # Check resource requirements (managed by BatchSystemSupport)
-            self.checkResourceRequest(job_desc.memory, job_desc.cores, job_desc.disk)
+            self.check_resource_request(job_desc)
 
             # Make a batch system scope job ID
             bs_id = self.getNextJobID()
@@ -448,7 +449,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                             help="Bearer token to use for authentication to TES server.")
 
     @classmethod
-    def setOptions(cls, setOption: Callable[..., None]) -> None:
+    def setOptions(cls, setOption: OptionSetter) -> None:
         # Because we use the keyword arguments, we can't specify a type for setOption without using Protocols.
         # TODO: start using Protocols, or just start returning objects to represent the options.
         # When actually parsing options, remember to check the environment variables

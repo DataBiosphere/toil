@@ -39,7 +39,7 @@ from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
                                         save_batch_system_plugin_state)
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config, Toil
-from toil.job import Job, JobDescription
+from toil.job import Job, JobDescription, Requirer
 from toil.lib.retry import retry_flaky_test
 from toil.lib.threading import cpu_count
 from toil.test import (ToilTest,
@@ -68,7 +68,9 @@ numCores = 2
 
 preemptable = False
 
-defaultRequirements = dict(memory=int(100e6), cores=1, disk=1000, preemptable=preemptable)
+# Since we aren't always attaching the config to the jobs for these tests, we
+# need to use fully specified requirements.
+defaultRequirements = dict(memory=int(100e6), cores=1, disk=1000, preemptable=preemptable, accelerators=[])
 
 class BatchSystemPluginTest(ToilTest):
     """
@@ -298,20 +300,36 @@ class hidden:
 
         def testCheckResourceRequest(self):
             if isinstance(self.batchSystem, BatchSystemSupport):
-                checkResourceRequest = self.batchSystem.checkResourceRequest
-                self.assertRaises(InsufficientSystemResources, checkResourceRequest,
-                                  memory=1000, cores=200, disk=1e9)
-                self.assertRaises(InsufficientSystemResources, checkResourceRequest,
-                                  memory=5, cores=200, disk=1e9)
-                self.assertRaises(InsufficientSystemResources, checkResourceRequest,
-                                  memory=1001e9, cores=1, disk=1e9)
-                self.assertRaises(InsufficientSystemResources, checkResourceRequest,
-                                  memory=5, cores=1, disk=2e9)
-                self.assertRaises(AssertionError, checkResourceRequest,
-                                  memory=None, cores=1, disk=1000)
-                self.assertRaises(AssertionError, checkResourceRequest,
-                                  memory=10, cores=None, disk=1000)
-                checkResourceRequest(memory=10, cores=1, disk=100)
+                check_resource_request = self.batchSystem.check_resource_request
+                # Assuming we have <2000 cores, this should be too many cores
+                self.assertRaises(InsufficientSystemResources, check_resource_request,
+                                  Requirer(dict(memory=1000, cores=2000, disk='1G', accelerators=[])))
+                self.assertRaises(InsufficientSystemResources, check_resource_request,
+                                  Requirer(dict(memory=5, cores=2000, disk='1G', accelerators=[])))
+
+                # This should be too much memory
+                self.assertRaises(InsufficientSystemResources, check_resource_request,
+                                  Requirer(dict(memory='5000G', cores=1, disk='1G', accelerators=[])))
+
+                # This should be too much disk
+                self.assertRaises(InsufficientSystemResources, check_resource_request,
+                                  Requirer(dict(memory=5, cores=1, disk='2G', accelerators=[])))
+
+                # This should be an accelerator we don't have.
+                # All the batch systems need code to know they don't have these accelerators.
+                self.assertRaises(InsufficientSystemResources, check_resource_request,
+                                  Requirer(dict(memory=5, cores=1, disk=100, accelerators=[{'kind': 'turbo-encabulator', 'count': 1}])))
+
+                # These should be missing attributes
+                self.assertRaises(AttributeError, check_resource_request,
+                                  Requirer(dict(memory=5, cores=1, disk=1000)))
+                self.assertRaises(AttributeError, check_resource_request,
+                                  Requirer(dict(cores=1, disk=1000, accelerators=[])))
+                self.assertRaises(AttributeError, check_resource_request,
+                                  Requirer(dict(memory=10, disk=1000, accelerators=[])))
+
+                # This should actually work
+                check_resource_request(Requirer(dict(memory=10, cores=1, disk=100, accelerators=[])))
 
         def testScalableBatchSystem(self):
             # If instance of scalable batch system
@@ -476,40 +494,84 @@ class KubernetesBatchSystemBenchTest(ToilTest):
         from toil.batchSystems.kubernetes import KubernetesBatchSystem
 
         normal_spec = V1PodSpec(containers=[])
-        KubernetesBatchSystem._apply_placement_constraints(False, normal_spec)
-        self.assertEqual(str(normal_spec.affinity), textwrap.dedent("""
-        {'preferred_during_scheduling_ignored_during_execution': None,
-         'required_during_scheduling_ignored_during_execution': {'node_selector_terms': [{'match_expressions': [{'key': 'eks.amazonaws.com/capacityType',
-                                                                                                                 'operator': 'NotIn',
-                                                                                                                 'values': ['SPOT']},
-                                                                                                                {'key': 'cloud.google.com/gke-preemptible',
-                                                                                                                 'operator': 'NotIn',
-                                                                                                                 'values': ['true']}],
-                                                                                          'match_fields': None}]}}
-        """).strip())
+        constraints = KubernetesBatchSystem.Placement()
+        constraints.set_preemptable(False)
+        constraints.apply(normal_spec)
+        self.assertEqual(textwrap.dedent("""
+        {'node_affinity': {'preferred_during_scheduling_ignored_during_execution': None,
+                           'required_during_scheduling_ignored_during_execution': {'node_selector_terms': [{'match_expressions': [{'key': 'eks.amazonaws.com/capacityType',
+                                                                                                                                   'operator': 'NotIn',
+                                                                                                                                   'values': ['SPOT']},
+                                                                                                                                  {'key': 'cloud.google.com/gke-preemptible',
+                                                                                                                                   'operator': 'NotIn',
+                                                                                                                                   'values': ['true']}],
+                                                                                                            'match_fields': None}]}},
+         'pod_affinity': None,
+         'pod_anti_affinity': None}
+        """).strip(), str(normal_spec.affinity))
         self.assertEqual(str(normal_spec.tolerations), "None")
 
         spot_spec = V1PodSpec(containers=[])
-        KubernetesBatchSystem._apply_placement_constraints(True, spot_spec)
-        self.assertEqual(str(spot_spec.affinity), textwrap.dedent("""
-        {'preferred_during_scheduling_ignored_during_execution': [{'preference': {'node_selector_terms': [{'match_expressions': [{'key': 'eks.amazonaws.com/capacityType',
-                                                                                                                                  'operator': 'In',
-                                                                                                                                  'values': ['SPOT']}],
-                                                                                                           'match_fields': None},
-                                                                                                          {'match_expressions': [{'key': 'cloud.google.com/gke-preemptible',
-                                                                                                                                  'operator': 'In',
-                                                                                                                                  'values': ['true']}],
-                                                                                                           'match_fields': None}]},
-                                                                   'weight': 1}],
-         'required_during_scheduling_ignored_during_execution': None}
-        """).strip())
-        self.assertEqual(str(spot_spec.tolerations), textwrap.dedent("""
+        constraints = KubernetesBatchSystem.Placement()
+        constraints.set_preemptable(True)
+        constraints.apply(spot_spec)
+        self.assertEqual(textwrap.dedent("""
+        {'node_affinity': {'preferred_during_scheduling_ignored_during_execution': [{'preference': {'match_expressions': [{'key': 'eks.amazonaws.com/capacityType',
+                                                                                                                           'operator': 'In',
+                                                                                                                           'values': ['SPOT']}],
+                                                                                                    'match_fields': None},
+                                                                                     'weight': 1},
+                                                                                    {'preference': {'match_expressions': [{'key': 'cloud.google.com/gke-preemptible',
+                                                                                                                           'operator': 'In',
+                                                                                                                           'values': ['true']}],
+                                                                                                    'match_fields': None},
+                                                                                     'weight': 1}],
+                           'required_during_scheduling_ignored_during_execution': None},
+         'pod_affinity': None,
+         'pod_anti_affinity': None}
+        """).strip(), str(spot_spec.affinity), )
+        self.assertEqual(textwrap.dedent("""
         [{'effect': None,
          'key': 'cloud.google.com/gke-preemptible',
          'operator': None,
          'toleration_seconds': None,
          'value': 'true'}]
-        """).strip())
+        """).strip(), str(spot_spec.tolerations))
+        
+    def test_label_constraints(self):
+        """
+        Make sure we generate the right preemptability constraints.
+        """
+
+        # Make sure we can print diffs of these long strings
+        self.maxDiff = 10000
+
+        from kubernetes.client import V1PodSpec
+        from toil.batchSystems.kubernetes import KubernetesBatchSystem
+
+        spec = V1PodSpec(containers=[])
+        constraints = KubernetesBatchSystem.Placement()
+        constraints.required_labels = [('GottaBeSetTo', ['This'])]
+        constraints.desired_labels = [('OutghtToBeSetTo', ['That'])]
+        constraints.prohibited_labels = [('CannotBe', ['ABadThing'])]
+        constraints.apply(spec)
+        self.assertEqual(textwrap.dedent("""
+        {'node_affinity': {'preferred_during_scheduling_ignored_during_execution': [{'preference': {'match_expressions': [{'key': 'OutghtToBeSetTo',
+                                                                                                                           'operator': 'In',
+                                                                                                                           'values': ['That']}],
+                                                                                                    'match_fields': None},
+                                                                                     'weight': 1}],
+                           'required_during_scheduling_ignored_during_execution': {'node_selector_terms': [{'match_expressions': [{'key': 'GottaBeSetTo',
+                                                                                                                                   'operator': 'In',
+                                                                                                                                   'values': ['This']},
+                                                                                                                                  {'key': 'CannotBe',
+                                                                                                                                   'operator': 'NotIn',
+                                                                                                                                   'values': ['ABadThing']}],
+                                                                                                            'match_fields': None}]}},
+         'pod_affinity': None,
+         'pod_anti_affinity': None}
+        """).strip(), str(spec.affinity),)
+        self.assertEqual(str(spec.tolerations), "None")
 
 
 @needs_tes
@@ -829,6 +891,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                                                                            requirements=dict(
                                                                                cores=float(coresPerJob),
                                                                                memory=1, disk=1,
+                                                                               accelerators=[],
                                                                                preemptable=preemptable),
                                                                            jobName=str(i), unitName='')))
                             self.assertEqual(len(jobIds), jobs)
@@ -933,13 +996,15 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
     def testBatchResourceLimits(self):
         jobDesc1 = JobDescription(command="sleep 1000",
                                   requirements=dict(memory=1 << 30, cores=1,
-                                                    disk=1000, preemptable=preemptable),
+                                                    disk=1000, accelerators=[],
+                                                    preemptable=preemptable),
                                   jobName='testResourceLimits')
         job1 = self.batchSystem.issueBatchJob(jobDesc1)
         self.assertIsNotNone(job1)
         jobDesc2 = JobDescription(command="sleep 1000",
                                   requirements=dict(memory=2 << 30, cores=1,
-                                                    disk=1000, preemptable=preemptable),
+                                                    disk=1000, accelerators=[],
+                                                    preemptable=preemptable),
                                   jobName='testResourceLimits')
         job2 = self.batchSystem.issueBatchJob(jobDesc2)
         self.assertIsNotNone(job2)

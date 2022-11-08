@@ -43,7 +43,7 @@ class ColumnWidths:
     def title(self, category: str) -> int:
         """ Return the total printed length of this category item.
         """
-        return sum([self.getWidth(category, x) for x in self.fields])
+        return sum(self.getWidth(category, x) for x in self.fields)
 
     def getWidth(self, category: str, field: str ) -> int:
         category = category.lower()
@@ -321,7 +321,8 @@ def reportPrettyData(root: Expando, worker: List[Job], job: List[Job], job_types
     out_str += "Job\n"
     out_str += sprintTag("job", job, options, columnWidths=columnWidths)
     for t in job_types:
-        out_str += " %s\n" % t.name
+        out_str += f" {t.name}\n"
+        out_str += f"    Total Cores: {t.total_cores}\n"
         out_str += sprintTag(t.name, t, options, columnWidths=columnWidths)
     return out_str
 
@@ -369,18 +370,23 @@ def buildElement(element: Expando, items: List[Job], itemName: str) -> Expando:
         else:
             return float(i)
 
+    totalCores = 0
+
     itemTimes = []
     itemClocks = []
     itemMemory = []
+
     for item in items:
         # If something lacks an entry, assume it used none of that thing.
         # This avoids crashing when jobs e.g. aren't done.
         itemTimes.append(assertNonnegative(float(item.get("time", 0)), "time"))
         itemClocks.append(assertNonnegative(float(item.get("clock", 0)), "clock"))
         itemMemory.append(assertNonnegative(float(item.get("memory", 0)), "memory"))
+        totalCores += assertNonnegative(float(item.get("requested_cores", 0)), "requested_cores")
+
     assert len(itemClocks) == len(itemTimes) == len(itemMemory)
 
-    itemWaits=[]
+    itemWaits = []
     for index in range(0,len(itemTimes)):
         itemWaits.append(itemTimes[index] - itemClocks[index])
 
@@ -417,6 +423,7 @@ def buildElement(element: Expando, items: List[Job], itemName: str) -> Expando:
         average_memory=float(sum(itemMemory) / len(itemMemory)),
         min_memory=float(min(itemMemory)),
         max_memory=float(max(itemMemory)),
+        total_cores=totalCores,
         name=itemName
     )
     return element[itemName]
@@ -464,8 +471,8 @@ def processData(config: Config, stats: Expando) -> Expando:
         stats.total_time = [0.0]
         stats.total_clock = [0.0]
 
-    stats.total_time = sum([float(number) for number in stats.total_time])
-    stats.total_clock = sum([float(number) for number in stats.total_clock])
+    stats.total_time = sum(float(number) for number in stats.total_time)
+    stats.total_clock = sum(float(number) for number in stats.total_clock)
 
     collatedStatsTag = Expando(total_run_time=stats.total_time,
                                total_clock=stats.total_clock,
@@ -509,9 +516,8 @@ def reportData(tree: Expando, options: Namespace) -> None:
     else:
         out_str = reportPrettyData(tree, tree.worker, tree.jobs, tree.job_types.values(), options)
     if options.outputFile is not None:
-        fileHandle = open(options.outputFile, "w")
-        fileHandle.write(out_str)
-        fileHandle.close()
+        with open(options.outputFile, "w") as f:
+            f.write(out_str)
     # Now dump onto the screen
     print(out_str)
 
