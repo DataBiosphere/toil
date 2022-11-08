@@ -26,6 +26,7 @@ from typing import Dict, Optional, Union
 
 from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
+from toil.batchSystems.options import OptionSetter
 from toil.common import SYS_MAX_SIZE, Toil
 from toil.lib.iterables import concat
 from toil.test import get_temp_file
@@ -128,7 +129,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         """
         Issues parasol with job commands.
         """
-        self.checkResourceRequest(jobDesc.memory, jobDesc.cores, jobDesc.disk)
+        self.check_resource_request(jobDesc)
 
         MiB = 1 << 20
         truncatedMemory = jobDesc.memory // MiB * MiB
@@ -375,7 +376,7 @@ class ParasolBatchSystem(BatchSystemSupport):
                                  "created for jobs with a a unique set of resource requirements.  (default: %(default)s).")
 
     @classmethod
-    def setOptions(cls, setOption):
+    def setOptions(cls, setOption: OptionSetter):
         from toil.common import iC
         setOption("parasolCommand", None, None, 'parasol')
         setOption("parasolMaxBatches", int, iC(1), 10000)

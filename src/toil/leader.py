@@ -47,7 +47,6 @@ from toil.job import (CheckpointJobDescription,
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchFileException,
                                              NoSuchJobException)
-from toil.lib.conversions import bytes2human
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
 from toil.provisioners.clusterScaler import ScalerThread
@@ -916,9 +915,8 @@ class Leader:
             self.preemptableJobsIssued += 1
         cur_logger = logger.debug if jobNode.jobName.startswith(CWL_INTERNAL_JOBS) else logger.info
         cur_logger("Issued job %s with job batch system ID: "
-                   "%s and cores: %s, disk: %s, and memory: %s",
-                   jobNode, str(jobBatchSystemID), int(jobNode.cores),
-                   bytes2human(jobNode.disk), bytes2human(jobNode.memory))
+                   "%s and %s",
+                   jobNode, str(jobBatchSystemID), jobNode.requirements_string())
         # Tell everyone it is issued and the queue size changed
         self._messages.publish(JobIssuedMessage(jobNode.unitName, jobNode.jobStoreID))
         self._messages.publish(QueueSizeMessage(self.getNumberOfJobsIssued()))

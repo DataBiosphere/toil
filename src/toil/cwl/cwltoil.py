@@ -109,7 +109,7 @@ from toil.cwl.utils import (
 )
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.job import Job, Promise
+from toil.job import Job, Promise, AcceleratorRequirement
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchFileException
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
@@ -1798,6 +1798,7 @@ class CWLNamedJob(Job):
         cores: Union[float, None] = 1,
         memory: Union[int, str, None] = "1GiB",
         disk: Union[int, str, None] = "1MiB",
+        accelerators: Optional[List[AcceleratorRequirement]] = None,
         tool_id: Optional[str] = None,
         parent_name: Optional[str] = None,
         subjob_name: Optional[str] = None,
@@ -1840,6 +1841,7 @@ class CWLNamedJob(Job):
             cores=cores,
             memory=memory,
             disk=disk,
+            accelerators=accelerators,
             unitName=unit_name,
             displayName=display_name,
         )
@@ -2103,7 +2105,13 @@ class CWLJob(CWLNamedJob):
             )
 
         req = tool.evalResources(self.builder, runtime_context)
-
+        
+        accelerators: Optional[List[AcceleratorRequirement]] = None
+        if req.get('cudaDeviceCount', 0) > 0:
+            # There's a CUDARequirement
+            # TODO: How is cwltool deciding what value to use between min and max?
+            accelerators = [{'kind': 'gpu', 'api': 'cuda', 'count': cast(int, req['cudaDeviceCount'])}]
+        
         super().__init__(
             cores=req["cores"],
             memory=int(req["ram"] * (2**20)),
@@ -2111,6 +2119,7 @@ class CWLJob(CWLNamedJob):
                 (cast(int, req["tmpdirSize"]) * (2**20))
                 + (cast(int, req["outdirSize"]) * (2**20))
             ),
+            accelerators=accelerators,
             tool_id=self.cwltool.tool["id"],
             parent_name=parent_name,
         )
@@ -2357,29 +2366,26 @@ def makeJob(
         wfjob.addFollowOn(followOn)
         return wfjob, followOn
     else:
-        resourceReq, _ = tool.get_requirement("ResourceRequirement")
-        if resourceReq:
-            for req in (
-                "coresMin",
-                "coresMax",
-                "ramMin",
-                "ramMax",
-                "tmpdirMin",
-                "tmpdirMax",
-                "outdirMin",
-                "outdirMax",
-            ):
-                r = resourceReq.get(req)
-                if isinstance(r, str) and ("$(" in r or "${" in r):
-                    # Found a dynamic resource requirement so use a job wrapper
-                    job_wrapper = CWLJobWrapper(
-                        cast(ToilCommandLineTool, tool),
-                        jobobj,
-                        runtime_context,
-                        parent_name=parent_name,
-                        conditional=conditional,
-                    )
-                    return job_wrapper, job_wrapper
+        # Decied if we have any requirements we care about that are dynamic
+        REQUIREMENT_TYPES = ["ResourceRequirement", "http://commonwl.org/cwltool#CUDARequirement"]
+        for requirement_type in REQUIREMENT_TYPES:
+            req, _ = tool.get_requirement(requirement_type)
+            if req:
+                for r in req.values():
+                    if isinstance(r, str) and ("$(" in r or "${" in r):
+                        # One of the keys in this requirement has a text substitution in it.
+                        # TODO: This is not a real lex!
+                
+                        # Found a dynamic resource requirement so use a job wrapper
+                        job_wrapper = CWLJobWrapper(
+                            cast(ToilCommandLineTool, tool),
+                            jobobj,
+                            runtime_context,
+                            parent_name=parent_name,
+                            conditional=conditional,
+                        )
+                        return job_wrapper, job_wrapper
+        # Otherwise, all requirements are known now.
         job = CWLJob(
             tool,
             jobobj,

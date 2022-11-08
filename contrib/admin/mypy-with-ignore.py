@@ -51,7 +51,6 @@ def main():
         'src/toil/batchSystems/gridengine.py',
         'src/toil/batchSystems/singleMachine.py',
         'src/toil/batchSystems/parasol.py',
-        'src/toil/batchSystems/kubernetes.py',
         'src/toil/batchSystems/torque.py',
         'src/toil/batchSystems/options.py',
         'src/toil/batchSystems/registry.py',
@@ -99,7 +98,7 @@ def main():
     for file_path in all_files_to_check:
         if file_path not in ignore_paths and 'src/toil/test' not in file_path:
             filtered_files_to_check.append(file_path)
-    args = ['mypy', '--color-output'] + filtered_files_to_check
+    args = ['mypy', '--color-output', '--show-traceback'] + filtered_files_to_check
     p = subprocess.run(args=args)
     exit(p.returncode)
 

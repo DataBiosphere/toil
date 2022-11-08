@@ -13,6 +13,7 @@
 # limitations under the License.
 import hashlib
 import itertools
+import json
 import logging
 import os
 import pickle
@@ -55,7 +56,9 @@ from toil.jobStores.utils import (ReadablePipe,
                                   ReadableTransformingPipe,
                                   WritablePipe)
 from toil.lib.aws.session import establish_boto3_session
-from toil.lib.aws.utils import (create_s3_bucket,
+from toil.lib.aws.utils import (build_tag_dict_from_env,
+                                create_s3_bucket,
+                                flatten_tags,
                                 get_bucket_region,
                                 get_object_for_url,
                                 list_objects_for_url,
@@ -743,10 +746,12 @@ class AWSJobStore(AbstractJobStore):
                                 get_bucket_region(bucket_name) == self.region
                             ), f"bucket_name: {bucket_name}, {get_bucket_region(bucket_name)} != {self.region}"
 
-                            owner_tag = os.environ.get('TOIL_OWNER_TAG')
-                            if owner_tag:
+                            tags = build_tag_dict_from_env()
+
+                            if tags:
+                                flat_tags = flatten_tags(tags)
                                 bucket_tagging = self.s3_resource.BucketTagging(bucket_name)
-                                bucket_tagging.put(Tagging={'TagSet': [{'Key': 'Owner', 'Value': owner_tag}]})
+                                bucket_tagging.put(Tagging={'TagSet': flat_tags})
                         elif block:
                             raise
                         else:

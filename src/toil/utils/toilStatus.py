@@ -220,6 +220,14 @@ class ToilStatus:
                 pass
         return 'RUNNING'
 
+
+    def readBusMessages(self) -> List[str]:
+        """
+        Goes through bus messages, returns a list of tuples which have correspondence between
+        PID on assigned batch system and
+        """
+        return None
+
     def fetchRootJob(self) -> JobDescription:
         """
         Fetches the root job from the jobStore that provides context for all other jobs.

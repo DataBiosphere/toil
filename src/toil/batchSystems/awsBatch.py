@@ -41,12 +41,14 @@ from boto.exception import BotoServerError
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchJobExitReason,
-                                                   UpdatedBatchJobInfo)
+                                                   UpdatedBatchJobInfo,
+                                                   InsufficientSystemResources)
+from toil.batchSystems.options import OptionSetter
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
 from toil.bus import JobAnnotationMessage, MessageBus, MessageOutbox
 from toil.common import Config, Toil
-from toil.job import JobDescription
+from toil.job import JobDescription, Requirer
 from toil.lib.aws import get_current_aws_region, zone_to_region
 from toil.lib.aws.session import establish_boto3_session
 from toil.lib.conversions import b_to_mib, mib_to_b
@@ -145,6 +147,15 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
     # setEnv is provided by BatchSystemSupport, updates self.environment
 
+    def _check_accelerator_request(self, requirer: Requirer) -> None:
+        for accelerator in requirer.accelerators:
+            if accelerator['kind'] != 'gpu' or accelerator.get('brand', 'nvidia') != 'nvidia':
+                # We can only provide GPUs, and of those only nvidia ones.
+                raise InsufficientSystemResources(requirer, 'accelerators', details=[
+                    f'The accelerator {accelerator} could not be provided.',
+                    'AWS Batch can only provide nvidia gpu accelerators.'
+                ])
+
     def issueBatchJob(self, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
         # Try the job as local
         local_id = self.handleLocalJob(job_desc)
@@ -154,8 +165,8 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         else:
             # We actually want to send to the cluster
 
-            # Check resource requirements (managed by BatchSystemSupport)
-            self.checkResourceRequest(job_desc.memory, job_desc.cores, job_desc.disk)
+            # Check resource requirements
+            self.check_resource_request(job_desc)
 
             # Make a batch system scope job ID
             bs_id = self.getNextJobID()
@@ -189,9 +200,24 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                     ]
                 }
             }
+            gpus_needed = 0
+            for accelerator in job_desc.accelerators:
+                if accelerator['kind'] == 'gpu':
+                    # We just assume that all GPUs are equivalent when running
+                    # on AWS Batch because there's no way to tell AWS Batch to
+                    # send us to one or another.
+                    gpus_needed += accelerator['count']
+                # Other accelerators are rejected by check_resource_request
+            if gpus_needed > 0:
+                # We need some GPUs so ask for them.
+                job_spec['containerOverrides']['resourceRequirements'].append({
+                    'type': 'GPU',
+                    'value': gpus_needed
+                })
             if self.owner_tag:
                 # We are meant to tag everything with an owner
                 job_spec['tags'] = {'Owner': self.owner_tag}
+
 
             # Launch it and get back the AWS ID that we can use to poll the task.
             # TODO: retry!
@@ -544,7 +570,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                                   "ecs-tasks.amazonaws.com."))
 
     @classmethod
-    def setOptions(cls, setOption: Callable[..., None]) -> None:
+    def setOptions(cls, setOption: OptionSetter) -> None:
         setOption("aws_batch_region", default=None)
         setOption("aws_batch_queue", default=None, env=["TOIL_AWS_BATCH_QUEUE"])
         setOption("aws_batch_job_role_arn", default=None, env=["TOIL_AWS_BATCH_JOB_ROLE_ARN"])
