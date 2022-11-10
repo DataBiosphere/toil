@@ -227,7 +227,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                             if self._outbox is not None:
                                 # Annotate the job with the PID generated.
                                 self._outbox.publish(
-                                    JobAnnotationMessage(jobID, "SingleMachinePID", result))
+                                    JobAnnotationMessage(jobID, " has SingleMachinePID ", result))
 
                         # Otherwise it's a PID if it succeeded, or False if it couldn't
                         # start.

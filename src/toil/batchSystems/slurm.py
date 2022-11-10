@@ -20,7 +20,6 @@ from typing import Callable, Dict, List, Optional, TypeVar, Union
 
 from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
-from toil.bus import JobAnnotationMessage
 from toil.batchSystems.options import OptionSetter
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 

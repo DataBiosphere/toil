@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Union
 from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
+from toil.bus import JobAnnotationMessage
 from toil.lib.misc import CalledProcessErrorStderr
 
 logger = logging.getLogger(__name__)
@@ -113,6 +114,9 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 subLine = self.prepareSubmission(cpu, memory, jobID, command, jobName, environment)
                 logger.debug("Running %r", subLine)
                 batchJobID = self.boss.with_retries(self.submitJob, subLine)
+                # TODO Publish id to message bus here?
+                self.boss._outbox.publish(JobAnnotationMessage(jobID, " has BatchSystemID ", batchJobID))
+
                 logger.debug("Submitted job %s", str(batchJobID))
 
                 # Store dict for mapping Toil job ID to batch job ID
