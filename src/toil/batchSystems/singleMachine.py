@@ -19,7 +19,7 @@ import signal
 import subprocess
 import time
 import traceback
-from argparse import ArgumentParser
+from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
 from queue import Empty, Queue
 from threading import Condition, Event, Lock, Thread
@@ -27,7 +27,7 @@ from typing import Dict, List, Optional, Set, Sequence, Tuple, Union
 
 import toil
 from toil import worker as toil_worker
-from toil.batchSystems.abstractBatchSystem import EXIT_STATUS_UNAVAILABLE_VALUE, BatchSystemSupport
+from toil.batchSystems.abstractBatchSystem import EXIT_STATUS_UNAVAILABLE_VALUE, BatchSystemSupport, UpdatedBatchJobInfo, InsufficientSystemResources
 
 from toil.bus import JobAnnotationMessage
 from toil.batchSystems.options import OptionSetter
