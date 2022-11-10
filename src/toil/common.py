@@ -156,6 +156,7 @@ class Config:
         self.nodeStorage: int = 50
         self.nodeStorageOverrides: List[str] = []
         self.metrics: bool = False
+        self.assume_zero_overhead: bool = False
 
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
         self.maxPreemptableServiceJobs: int = sys.maxsize
@@ -347,6 +348,7 @@ class Config:
             raise RuntimeError(f'betaInertia ({self.betaInertia}) must be between 0.0 and 0.9!')
         set_option("scaleInterval", float)
         set_option("metrics")
+        set_option("assume_zero_overhead")
         set_option("preemptableCompensation", float)
         if not 0.0 <= self.preemptableCompensation <= 1.0:
             raise RuntimeError(f'preemptableCompensation ({self.preemptableCompensation}) must be between 0.0 and 1.0!')
@@ -636,6 +638,9 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
     autoscaling_options.add_argument("--metrics", dest="metrics", default=False, action="store_true",
                                      help="Enable the prometheus/grafana dashboard for monitoring CPU/RAM usage, "
                                           "queue size, and issued jobs.")
+    autoscaling_options.add_argument("--assumeZeroOverhead", dest="assume_zero_overhead", default=False, action="store_true",
+                                     help="Ignore scheduler and OS overhead and assume jobs can use every last byte "
+                                          "of memory and disk on a node when autoscaling.")
 
     # Parameters to limit service jobs / detect service deadlocks
     if not config.cwl:
