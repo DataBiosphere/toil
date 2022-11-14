@@ -950,7 +950,7 @@ class JobDescription(Requirer):
 
     def is_subtree_done(self) -> bool:
         """
-        Return True if the job appears to be done, and and all related child,
+        Return True if the job appears to be done, and all related child,
         follow-on, and service jobs appear to be finished and removed.
         """
 
