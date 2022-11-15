@@ -159,6 +159,8 @@ class Leader:
             # Message bus messages need to go to the given file.
             # Keep a reference to the return value so the listener stays alive.
             self._message_subscription = self.toilState.bus.connect_output_file(self.config.write_messages)
+        else:
+            raise RuntimeError("Write messages not set")
 
         # Connect to the message bus, so we will get all the messages of these
         # types in an inbox.
@@ -166,7 +168,7 @@ class Leader:
 
         # Connect the batch system to the bus so it can e.g. annotate jobs
         batchSystem.set_message_bus(self.toilState.bus)
-        logger.log(self.toilState.bus)
+        logger.log()
         # Load the jobs into the ToilState, now that we are able to receive any
         # resulting messages.
         # TODO: Give other components a chance to connect to the bus before
