@@ -217,6 +217,12 @@ class AbstractFileStore(ABC):
         """
         Get a new local temporary file that will persist for the duration of the job.
 
+        :param suffix: If not None, the file name will end with this string.
+               Otherwise, default value ".tmp" will be used
+
+        :param prefix: If not None, the file name will start with this string.
+               Otherwise, default value "tmp" will be used
+
         :return: The absolute path to a local temporary file. This file will exist
                  for the duration of the job only, and is guaranteed to be deleted
                  once the job terminates.
@@ -232,6 +238,12 @@ class AbstractFileStore(ABC):
     def getLocalTempFileName(self, suffix: str = None, prefix: str = None) -> str:
         """
         Get a valid name for a new local file. Don't actually create a file at the path.
+
+        :param suffix: If not None, the file name will end with this string.
+               Otherwise, default value ".tmp" will be used
+
+        :param prefix: If not None, the file name will start with this string.
+               Otherwise, default value "tmp" will be used
 
         :return: Path to valid file
         """
