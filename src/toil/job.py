@@ -1158,6 +1158,17 @@ class JobDescription(Requirer):
         self._job_version += 1
         logger.debug("New job version: %s", self)
 
+    def get_job_type(self) -> str:
+
+        if self.unitName:
+            return self.unitName
+        elif self.jobName:
+            return self.jobName
+        elif self.displayName:
+            return self.displayName
+        else:
+            return "Unknown Job"
+
 
 class ServiceJobDescription(JobDescription):
     """
