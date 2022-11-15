@@ -115,7 +115,10 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 logger.debug("Running %r", subLine)
                 batchJobID = self.boss.with_retries(self.submitJob, subLine)
                 # TODO Publish id to message bus here?
-                self.boss._outbox.publish(JobAnnotationMessage(jobID, " has BatchSystemID ", batchJobID))
+                if self.boss._outbox is not None:
+                    #JobID corresponds to the toil version of the jobID, dif from jobstore idea of the id, batchjobid is what we get from slurm
+                    self.boss._outbox.publish(JobAnnotationMessage(jobID, " has BatchSystemID ", batchJobID))
+
 
                 logger.debug("Submitted job %s", str(batchJobID))
 
