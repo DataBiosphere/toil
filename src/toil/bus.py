@@ -67,6 +67,7 @@ import inspect
 import logging
 import os
 import sys
+import tempfile
 from typing import (IO,
                     Any,
                     Callable,
@@ -600,7 +601,7 @@ def gen_messBus_path() -> str:
     """
     If given a path, return absolute path otherwise generate path to store message bus at
     """
-    fd, path = os.mkstemp()
+    fd, path = tempfile.mkstemp()
     os.close(fd)
     return path
     #TODO Might want to clean up the tmpfile at some point after running the workflow
