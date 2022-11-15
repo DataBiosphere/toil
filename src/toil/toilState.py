@@ -46,20 +46,20 @@ class ToilState:
     ) -> None:
         """
         Create an empty ToilState over the given job store.
-        
+
         After calling this, you probably want to call load_workflow() to
         initialize the state given the root job, correct jobs to reflect a
         consistent state, and find jobs that need leader attention.
 
         :param jobStore: The job store to use.
         """
-        
+
         # We have a public bus for messages about job state changes.
         self.bus = MessageBus()
-        
+
         # We need to keep the job store so we can load and save jobs.
         self.__job_store = jobStore
-        
+
         # This holds the one true copy of every JobDescription in the leader.
         # TODO: Do in-place update instead of assignment when we load so we
         # can't let any non-true copies escape.
@@ -107,10 +107,10 @@ class ToilState:
     ) -> None:
         """
         Load the workflow rooted at the given job.
-        
+
         If jobs are loaded that have updated and need to be dealt with by the
-        leader, JobUpdatedMessage messages will be sent to the message bus. 
-        
+        leader, JobUpdatedMessage messages will be sent to the message bus.
+
         The jobCache is a map from jobStoreID to JobDescription or None. Is
         used to speed up the building of the state when loading initially from
         the JobStore, and is not preserved.
@@ -153,6 +153,20 @@ class ToilState:
         (one retrieved from get_job())
         """
         self.__job_store.update_job(self.__job_database[job_id])
+
+    def delete_job(self, job_id: str) -> None:
+        """
+        Destroy a JobDescription.
+
+        May raise an exception if the job could not be cleaned up (i.e. files
+        belonging to it failed to delete).
+        """
+
+        # Do the backing delete first
+        self.__job_store.delete_job(job_id)
+        # If that succeeds, drop from cache
+        if job_id in self.__job_database:
+            del self.__job_database[job_id]
 
     def reset_job(self, job_id: str) -> None:
         """
@@ -226,7 +240,7 @@ class ToilState:
         """
         Traverses tree of jobs down from the subtree root JobDescription
         (jobDesc), building the ToilState class.
-        
+
         Updated jobs that the leader needs to deal with will have messages sent
         to the message bus.
 
