@@ -120,6 +120,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                     self.boss._outbox.publish(JobAnnotationMessage(jobID, " has BatchSystemID ", batchJobID))
 
 
+
                 logger.debug("Submitted job %s", str(batchJobID))
 
                 # Store dict for mapping Toil job ID to batch job ID
