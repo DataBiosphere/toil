@@ -396,7 +396,9 @@ class Config:
         set_option("writeLogsGzip")
         set_option("writeLogsFromAllJobs")
 
-        set_option("write_messages", gen_messBus_path)
+        set_option("write_messages", os.path.abspath)
+        if self.write_messages is None:
+            self.write_messages = gen_messBus_path()
 
         assert not (self.writeLogs and self.writeLogsGzip), \
             "Cannot use both --writeLogs and --writeLogsGzip at the same time."

@@ -596,14 +596,11 @@ def replay_message_bus(path: str):
 
 
 
-def gen_messBus_path(path: Optional[str]) -> str:
+def gen_messBus_path() -> str:
     """
     If given a path, return absolute path otherwise generate path to store message bus at
     """
-    if path:
-        return os.path.abspath(path)
-    else:
-        fd, path = os.mkstemp()
-        os.close(fd)
-        return path
+    fd, path = os.mkstemp()
+    os.close(fd)
+    return path
     #TODO Might want to clean up the tmpfile at some point after running the workflow
