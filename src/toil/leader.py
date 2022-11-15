@@ -168,7 +168,7 @@ class Leader:
 
         # Connect the batch system to the bus so it can e.g. annotate jobs
         batchSystem.set_message_bus(self.toilState.bus)
-        logger.log()
+
         # Load the jobs into the ToilState, now that we are able to receive any
         # resulting messages.
         # TODO: Give other components a chance to connect to the bus before
