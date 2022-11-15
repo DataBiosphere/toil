@@ -188,7 +188,7 @@ def message_to_bytes(message: NamedTuple) -> bytes:
     parts = []
     for item in message:
         item_type = type(item)
-        if item_type in [int, float, bool]:
+        if item_type in [int, float, bool] or item is None:
             parts.append(str(item).encode('utf-8'))
         elif item_type == str:
             parts.append(item.encode('unicode_escape'))
