@@ -213,7 +213,7 @@ class AbstractFileStore(ABC):
         """
         return os.path.abspath(tempfile.mkdtemp(dir=self.localTempDir))
 
-    def getLocalTempFile(self, suffix: str = None, prefix: str = None) -> str:
+    def getLocalTempFile(self, suffix: Optional[str] = None, prefix: Optional[str] = None) -> str:
         """
         Get a new local temporary file that will persist for the duration of the job.
 
@@ -235,7 +235,7 @@ class AbstractFileStore(ABC):
         os.close(handle)
         return os.path.abspath(tmpFile)
 
-    def getLocalTempFileName(self, suffix: str = None, prefix: str = None) -> str:
+    def getLocalTempFileName(self, suffix: Optional[str] = None, prefix: Optional[str] = None) -> str:
         """
         Get a valid name for a new local file. Don't actually create a file at the path.
 
