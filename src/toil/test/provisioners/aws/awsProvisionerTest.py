@@ -113,7 +113,7 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
         subprocess.check_call(['toil', 'rsync-cluster', '--insecure', '-p=aws', '-z', self.zone, self.clusterName] + [src, dest])
 
     def getRootVolID(self):
-        instances = self.cluster._getNodesInCluster(both=True)
+        instances = self.cluster._get_nodes_in_cluster()
         instances.sort(key=lambda x: x.launch_time)
         leader = instances[0]  # assume leader was launched first
 
@@ -303,7 +303,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         # visible to EC2 read requests immediately after the create returns,
         # which is the last thing that starting the cluster does.
         time.sleep(10)
-        nodes = self.cluster._getNodesInCluster(both=True)
+        nodes = self.cluster._get_nodes_in_cluster()
         nodes.sort(key=lambda x: x.launch_time)
         # assuming that leader is first
         workers = nodes[1:]
