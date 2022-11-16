@@ -619,7 +619,7 @@ class AWSProvisioner(AbstractProvisioner):
         # Do the workers after the ASGs because some may belong to ASGs
         logger.info('Terminating any remaining workers ...')
         removed = False
-        instances = self._getNodesInCluster(both=True)
+        instances = self._get_nodes_in_cluster(include_stopped_nodes=True)
         spotIDs = self._getSpotRequestIDs()
         if spotIDs:
             self.aws.boto2(self._region, 'ec2').cancel_spot_instance_requests(request_ids=spotIDs)
@@ -869,7 +869,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptable: Optional[bool] = None) -> List[Node]:
         assert self._leaderPrivateIP
-        entireCluster = self._getNodesInCluster(instance_type=instance_type, both=True)
+        entireCluster = self._get_nodes_in_cluster(instance_type=instance_type)
         logger.debug('All nodes in cluster: %s', entireCluster)
         workerInstances = [i for i in entireCluster if i.private_ip_address != self._leaderPrivateIP]
         logger.debug('All workers found in cluster: %s', workerInstances)
@@ -925,7 +925,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
         Get the Boto 2 instance for the cluster's leader.
         """
-        instances = self._getNodesInCluster(both=True)
+        instances = self._get_nodes_in_cluster(include_stopped_nodes=True)
         instances.sort(key=lambda x: x.launch_time)
         try:
             leader = instances[0]  # assume leader was launched first
@@ -988,7 +988,7 @@ class AWSProvisioner(AbstractProvisioner):
         self._terminateIDs(instanceIDs)
         logger.info('... Waiting for instance(s) to shut down...')
         for instance in instances:
-            wait_transition(instance, {'pending', 'running', 'shutting-down'}, 'terminated')
+            wait_transition(instance, {'pending', 'running', 'shutting-down', 'stopping', 'stopped'}, 'terminated')
         logger.info('Instance(s) terminated.')
 
     @awsRetry
@@ -1089,24 +1089,34 @@ class AWSProvisioner(AbstractProvisioner):
         return bdms
 
     @awsRetry
-    def _getNodesInCluster(self, instance_type: Optional[str] = None, preemptable=False, both=False) -> List[Boto2Instance]:
+    def _get_nodes_in_cluster(self, instance_type: Optional[str] = None, include_stopped_nodes=False) -> List[Boto2Instance]:
         """
         Get Boto2 instance objects for all nodes in the cluster.
         """
 
-        allInstances = self.aws.boto2(self._region, 'ec2').get_only_instances(filters={'instance.group-name': self.clusterName})
+        all_instances = self.aws.boto2(self._region, 'ec2').get_only_instances(filters={'instance.group-name': self.clusterName})
+
         def instanceFilter(i):
             # filter by type only if nodeType is true
             rightType = not instance_type or i.instance_type == instance_type
             rightState = i.state == 'running' or i.state == 'pending'
+            if include_stopped_nodes:
+                rightState = rightState or i.state == 'stopping' or i.state == 'stopped'
             return rightType and rightState
-        filteredInstances = [i for i in allInstances if instanceFilter(i)]
-        if not preemptable and not both:
-            return [i for i in filteredInstances if i.spot_instance_request_id is None]
-        elif preemptable and not both:
-            return [i for i in filteredInstances if i.spot_instance_request_id is not None]
-        elif both:
-            return filteredInstances
+
+        return [i for i in all_instances if instanceFilter(i)]
+
+    def _filter_nodes_in_cluster(self, instance_type: Optional[str] = None, preemptable: bool = False) -> List[Boto2Instance]:
+        """
+        Get Boto2 instance objects for the nodes in the cluster filtered by preemptability.
+        """
+
+        instances = self._get_nodes_in_cluster(instance_type, include_stopped_nodes=False)
+
+        if preemptable:
+            return [i for i in instances if i.spot_instance_request_id is not None]
+
+        return [i for i in instances if i.spot_instance_request_id is None]
 
     def _getSpotRequestIDs(self) -> List[str]:
         """
