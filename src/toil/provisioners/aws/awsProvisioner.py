@@ -389,7 +389,11 @@ class AWSProvisioner(AbstractProvisioner):
         leader.reload()
 
         if leader.public_ip_address is None:
-            raise RuntimeError("AWS did not assign a public IP to the cluster leader! Leader is lost!")
+            # Sometimes AWS just fails to assign a public IP when we really need one.
+            # But sometimes people intend to use private IPs only in Toil-managed clusters.
+            # TODO: detect if we have a route to the private IP and fail fast if not.
+            logger.warning("AWS did not assign a public IP to the cluster leader. If you aren't "
+                           "connected to the private subnet, cluster setup will fail!")
 
         # Remember enough about the leader to let us launch workers in its
         # cluster.
