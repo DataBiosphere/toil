@@ -42,7 +42,7 @@ class ToilStatus:
         else:
             self.jobsToReport = self.fetchUserJobs(specifiedJobs)
 
-        self.message_bus_path = self.jobstore.config.write_messages
+        self.message_bus_path = self.jobStore.config.write_messages
     def print_dot_chart(self) -> None:
         """Print a dot output graph representing the workflow."""
         print("digraph toil_graph {")
