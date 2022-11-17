@@ -42,7 +42,7 @@ class ToilStatus:
         else:
             self.jobsToReport = self.fetchUserJobs(specifiedJobs)
 
-        message_bus_path = self.jobstore.config.write_messages
+        self.message_bus_path = self.jobstore.config.write_messages
     def print_dot_chart(self) -> None:
         """Print a dot output graph representing the workflow."""
         print("digraph toil_graph {")
@@ -227,7 +227,8 @@ class ToilStatus:
         Goes through bus messages, returns a list of tuples which have correspondence between
         PID on assigned batch system and
         """
-        replayed_messages = replay_message_bus(self.jobStore.config)
+        replayed_messages = replay_message_bus(self.message_bus_path)
+        print(replayed_messages)
         return None
 
     def fetchRootJob(self) -> JobDescription:
