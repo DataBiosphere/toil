@@ -226,10 +226,38 @@ class ToilStatus:
         """
         Goes through bus messages, returns a list of tuples which have correspondence between
         PID on assigned batch system and
+
+        Prints a list of the currently running jobs
         """
+        issued_job_ids = []
+        annotated_batch_ids = []
+        completed_job_ids = []
+
         replayed_messages = replay_message_bus(self.message_bus_path)
         for message in replayed_messages:
-            print(message.type, message)
+            print(message)
+            if "JobIssuedMessage" in message:
+                job_id_index = message.find("job_id=") + 8
+                job_id = message[job_id_index:-2]
+                issued_job_ids.append(job_id)
+            elif "JobCompletedMessage" in message:
+                job_id_index = message.find("job_id=") + 8
+                job_id = message[job_id_index:-2]
+                completed_job_ids.append(job_id)
+            elif "JobAnnotationMessage" in message:
+                local_id_index = message.find("job_id=") + 8
+                batch_id_index = message.find("annotation_value=") + 18
+                local_id = message[local_id_index: message.find("', annotation_name")]
+                batch_id = message[batch_id_index: message.find("')")]
+                annotated_batch_ids.append((local_id, batch_id))
+
+        for annotation in annotated_batch_ids:
+            #Annotation[0] is the index of an issued job
+            if issued_job_ids[annotation[0]] in completed_job_ids:
+                continue
+            else:
+                print(issued_job_ids[annotation[0]], " has local toil id ", annotation[0], " and batch system id ", annotation[1])
+
         return None
 
     def fetchRootJob(self) -> JobDescription:
