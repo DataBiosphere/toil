@@ -6,6 +6,7 @@ services:
         volumes:
                 - shared-vol:/home/admin
                 - ${PWD}/slurm.conf:/etc/slurm-llnl/slurm.conf
+                - ${PWD}/../..:/home/admin/toil
 
 
         ports:
@@ -24,6 +25,7 @@ services:
         volumes:
                 - shared-vol:/home/admin
                 - ${PWD}/slurm.conf:/etc/slurm-llnl/slurm.conf
+                - ${PWD}/../..:/home/admin/toil
         environment:
                 - SLURM_NODENAME=slurmnode1
         links:
@@ -40,6 +42,7 @@ services:
         volumes:
                 - shared-vol:/home/admin
                 - ${PWD}/slurm.conf:/etc/slurm-llnl/slurm.conf
+                - ${PWD}/../..:/home/admin/toil
         environment:
                 - SLURM_NODENAME=slurmnode2
         links:
@@ -56,6 +59,7 @@ services:
         volumes:
                 - shared-vol:/home/admin
                 - ${PWD}/slurm.conf:/etc/slurm-llnl/slurm.conf
+                - ${PWD}/../..:/home/admin/toil
         environment:
                 - SLURM_NODENAME=slurmnode3
         links:

@@ -233,8 +233,8 @@ class ToilStatus:
         annotated_batch_ids = []
         completed_job_ids = []
 
+        print("\nMessage bus path: ", self.message_bus_path)
         replayed_messages = replay_message_bus(self.message_bus_path)
-        print("Message bus path: ", self.message_bus_path)
         for message in replayed_messages:
             #print(message)
             if "JobIssuedMessage" in message:
