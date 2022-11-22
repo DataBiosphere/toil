@@ -228,7 +228,8 @@ class ToilStatus:
         PID on assigned batch system and
         """
         replayed_messages = replay_message_bus(self.message_bus_path)
-        print(replayed_messages)
+        for message in replayed_messages:
+            print(message.type, message)
         return None
 
     def fetchRootJob(self) -> JobDescription:
