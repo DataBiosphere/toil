@@ -234,9 +234,9 @@ class ToilStatus:
         completed_job_ids = []
 
         replayed_messages = replay_message_bus(self.message_bus_path)
-        print(self.message_bus_path)
+        print("Message bus path: ", self.message_bus_path)
         for message in replayed_messages:
-            print(message)
+            #print(message)
             if "JobIssuedMessage" in message:
                 job_id_index = message.find("job_id=") + 8
                 job_id = message[job_id_index:-2]

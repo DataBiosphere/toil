@@ -388,6 +388,7 @@ class MessageBus:
             stream.write(b'\t')
             stream.write(message_to_bytes(message))
             stream.write(b'\n')
+            stream.flush()
 
         listener, _ = self._pubsub.subscribe(handler, ALL_TOPICS)
 
