@@ -341,6 +341,8 @@ def main() -> None:
                         help="Print children of each job. default=%(default)s",
                         default=False)
 
+    parser.add_argument("--replayBus", action="store_true",
+                        help="Determine which jobs are currently running and the associated batch system ID")
     options = parser.parse_args()
     set_logging_from_options(options)
 
@@ -389,7 +391,8 @@ def main() -> None:
               'and %i jobs with log files currently in %s.' %
               (len(status.jobsToReport), len(hasChildren), len(readyToRun), len(zombies),
                len(hasServices), len(services), len(hasLogFile), status.jobStore))
-
+    if options.replayBus:
+        status.readBusMessages()
     if len(status.jobsToReport) > 0 and options.failIfNotComplete:
         # Upon workflow completion, all jobs will have been removed from job store
         exit(1)

@@ -333,6 +333,7 @@ class MessageBus:
         somewhere or delete it.
         """
 
+
         stream = open(file_path, 'wb')
 
         # Type of the ** is the value type of the dictionary; key type is always string.
