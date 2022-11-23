@@ -501,6 +501,9 @@ class FileJobStore(AbstractJobStore):
                     # Now we succeeded and don't need to copy
                     return
                 else:
+                    logger.critical(f'Unexpected OSError when reading file from job store: {errno.errorcode[e.errno]}')
+                    logger.critical(f'jobStoreFilePath: {jobStoreFilePath} {os.path.exists(jobStoreFilePath)}')
+                    logger.critical(f'localFilePath: {local_path} {os.path.exists(local_path)}')
                     raise
 
         # If we get here, symlinking isn't an option.
@@ -530,10 +533,14 @@ class FileJobStore(AbstractJobStore):
                     # It's a cross-device link even though it didn't appear to be.
                     # Just keep going and hit the file copy case.
                     pass
+                elif e.errno == errno.EPERM:
+                    # On some filesystems, hardlinking could be disallowed by permissions.
+                    # In this case, we also fall back to making a complete copy.
+                    pass
                 else:
-                    logger.critical('Unexpected OSError when reading file from job store')
-                    logger.critical('jobStoreFilePath: ' + jobStoreFilePath + ' ' + str(os.path.exists(jobStoreFilePath)))
-                    logger.critical('localFilePath: ' + local_path + ' ' + str(os.path.exists(local_path)))
+                    logger.critical(f'Unexpected OSError when reading file from job store: {errno.errorcode[e.errno]}')
+                    logger.critical(f'jobStoreFilePath: {jobStoreFilePath} {os.path.exists(jobStoreFilePath)}')
+                    logger.critical(f'localFilePath: {local_path} {os.path.exists(local_path)}')
                     raise
 
         # If we get here, neither a symlink nor a hardlink will work.
