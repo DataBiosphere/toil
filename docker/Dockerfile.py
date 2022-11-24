@@ -53,6 +53,7 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'less',
                          'vim',
                          'git',
+                         'time',
                          # Dependencies for Mesos which the deb doesn't actually list
                          'libsvn1',
                          'libcurl4-nss-dev',
