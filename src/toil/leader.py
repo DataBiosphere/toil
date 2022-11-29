@@ -952,8 +952,7 @@ class Leader:
                    "%s and %s",
                    jobNode, str(jobBatchSystemID), jobNode.requirements_string())
         # Tell everyone it is issued and the queue size changed
-        self._messages.publish(JobIssuedMessage(jobNode.get_job_type(), jobNode.jobStoreID))
-        self._messages.publish(JobAnnotationMessage(jobNode.jobStoreID, " has batch system ID ", jobBatchSystemID))
+        self._messages.publish(JobIssuedMessage(jobNode.get_job_type(), jobNode.jobStoreID, jobBatchSystemID))
         self._messages.publish(QueueSizeMessage(self.getNumberOfJobsIssued()))
         # Tell the user there's another job to do
         self.progress_overall.total += 1

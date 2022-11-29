@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Tool for reporting on job status."""
+from collections import defaultdict
 import logging
 import os
 import sys
@@ -235,45 +236,15 @@ class ToilStatus:
 
         print("\nMessage bus path: ", self.message_bus_path)
         replayed_messages = replay_message_bus(self.message_bus_path)
-
         replayed_messages_keys = replayed_messages.keys()
 
+        #jobstore_to_batchsystem = defaultdict()
         for key in replayed_messages_keys:
 
-            if replayed_messages[key].exit_code == -1 and replayed_messages[key].annotations == {}:
+            if replayed_messages[key].exit_code == -1:
                 #Job is either issued or running
-                print("\nkey, ", key, " name: ", replayed_messages[key].name, " exit_code: ", replayed_messages[key].exit_code, " annotations: ", replayed_messages[key].annotations)
-                #Other jobs we don't particularly care about
-                #The key is the Assigned job store ID, the name is the job type and exit code tells us if we've completed it or not
-                #If we have annotations, those correspond to the batch system id which we arent told in issued or completed messages
+                print(replayed_messages[key])
 
-            #Problem with annotations don't actually correspond to the toil job store id, they correpsond to the assigned batch id
-            #I could add another annotation when the leader assigns the batch id and then make a nice dictionary?
-
-
-        #for message in replayed_messages:
-            #print(message)
-            # if "JobIssuedMessage" in message:
-            #     job_id_index = message.find("job_id=") + 8
-            #     job_id = message[job_id_index:-2]
-            #     issued_job_ids.append(job_id)
-            # elif "JobCompletedMessage" in message:
-            #     job_id_index = message.find("job_id=") + 8
-            #     job_id = message[job_id_index:-2]
-            #     completed_job_ids.append(job_id)
-            # elif "JobAnnotationMessage" in message:
-            #     local_id_index = message.find("job_id=") + 8
-            #     batch_id_index = message.find("annotation_value=") + 18
-            #     local_id = message[local_id_index: message.find("', annotation_name")]
-            #     batch_id = message[batch_id_index: message.find("')")]
-            #     annotated_batch_ids.append((local_id, batch_id))
-
-            # for annotation in annotated_batch_ids:
-            #     #Annotation[0] is the index of an issued job
-            #     if issued_job_ids[annotation[0]] in completed_job_ids:
-            #         continue
-            #     else:
-            #         print(issued_job_ids[annotation[0]], " has local toil id ", annotation[0], " and batch system id ", annotation[1])
 
         return None
 

@@ -102,6 +102,8 @@ class JobIssuedMessage(NamedTuple):
     job_type: str
     # The job store ID of the job
     job_id: str
+    # The toil batch ID of the job
+    toil_batch_id: int
 
 class JobUpdatedMessage(NamedTuple):
     """
@@ -149,6 +151,18 @@ class JobAnnotationMessage(NamedTuple):
     annotation_name: str
     # The annotation data
     annotation_value: str
+
+class BatchSystemMessage(NamedTuple):
+    """
+    Produced when using a batch system, links toil assigned batch ID to
+    Batch system ID (Whatever's returned by local implementation, PID, batch ID, etc)
+    """
+    #Assigned toil batch job id
+    toil_batch_id: int
+    #Batch system scheduler identity
+    external_batch_id: str
+    #Batch system name
+    batch_system: str
 
 class QueueSizeMessage(NamedTuple):
     """
@@ -634,13 +648,17 @@ def replay_message_bus(path: str):
         name: str
         exit_code: int
         annotations: Dict[str, str]
+        toil_batch_id: int
+        external_batch_id: str
+        batch_system: str
+
 
     job_statuses: Dict[str, JobStatus] = collections.defaultdict(lambda: JobStatus('', -1, {}))
-
+    batch_to_job_id = {}
     with open(path, 'rb') as log_stream:
         # Read all the full, properly-terminated messages about job updates
         for event in MessageBus.scan_bus_messages(log_stream, [JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage,
-                                                               JobFailedMessage, JobAnnotationMessage]):
+                                                               JobFailedMessage, JobAnnotationMessage, BatchSystemMessage]):
             # And for each of them
             logger.info('Got message from workflow: %s', event)
 
@@ -649,6 +667,8 @@ def replay_message_bus(path: str):
                 job_statuses[event.job_id].exit_code = event.result_status
             elif isinstance(event, JobIssuedMessage):
                 job_statuses[event.job_id].name = event.job_type
+                job_statuses[event.job_id].toil_batch_id = event.toil_batch_id
+                batch_to_job_id[event.toil_batch_id] = event.job_id
             elif isinstance(event, JobCompletedMessage):
                 job_statuses[event.job_id].name = event.job_type
             elif isinstance(event, JobFailedMessage):
@@ -659,6 +679,10 @@ def replay_message_bus(path: str):
             elif isinstance(event, JobAnnotationMessage):
                 # Remember the last value of any annotation that is set
                 job_statuses[event.job_id].annotations[event.annotation_name] = event.annotation_value
+            elif isinstance(event, BatchSystemMessage):
+                if event.toil_batch_id in batch_to_job_id:
+                    job_statuses[batch_to_job_id[event.toil_batch_id]].external_batch_id = event.external_batch_id
+                    job_statuses[batch_to_job_id[event.toil_batch_id]].batch_system = event.batch_system
 
     return job_statuses
 

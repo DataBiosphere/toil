@@ -29,7 +29,7 @@ import toil
 from toil import worker as toil_worker
 from toil.batchSystems.abstractBatchSystem import EXIT_STATUS_UNAVAILABLE_VALUE, BatchSystemSupport, UpdatedBatchJobInfo, InsufficientSystemResources
 
-from toil.bus import JobAnnotationMessage
+from toil.bus import BatchSystemMessage
 from toil.batchSystems.options import OptionSetter
 
 from toil.common import SYS_MAX_SIZE, Config, Toil, fC
@@ -227,7 +227,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                             if self._outbox is not None:
                                 # Annotate the job with the PID generated.
                                 self._outbox.publish(
-                                    JobAnnotationMessage(jobID, " has SingleMachinePID ", result))
+                                   BatchSystemMessage(jobID, result, self.__class__.__name__))
 
                         # Otherwise it's a PID if it succeeded, or False if it couldn't
                         # start.
