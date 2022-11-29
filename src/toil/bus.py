@@ -653,7 +653,7 @@ def replay_message_bus(path: str):
         batch_system: str
 
 
-    job_statuses: Dict[str, JobStatus] = collections.defaultdict(lambda: JobStatus('', -1, {}))
+    job_statuses: Dict[str, JobStatus] = collections.defaultdict(lambda: JobStatus('', -1, {}, -1, '', ''))
     batch_to_job_id = {}
     with open(path, 'rb') as log_stream:
         # Read all the full, properly-terminated messages about job updates
