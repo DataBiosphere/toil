@@ -239,7 +239,18 @@ class ToilStatus:
         replayed_messages_keys = replayed_messages.keys()
 
         for key in replayed_messages_keys:
-            print("\nkey, ", key, "\nname: ", replayed_messages[key].name, "\nexit_code: ", replayed_messages[key].exit_code, "\nannotations: ", replayed_messages[key].annotations)
+
+            if replayed_messages[key].exit_code == -1 and replayed_messages[key].annotations == None:
+                #Job is either issued or running
+                print("\nkey, ", key, "\nname: ", replayed_messages[key].name, "\nexit_code: ", replayed_messages[key].exit_code, "\nannotations: ", replayed_messages[key].annotations)
+                #Other jobs we don't particularly care about
+                #The key is the Assigned job store ID, the name is the job type and exit code tells us if we've completed it or not
+                #If we have annotations, those correspond to the batch system id which we arent told in issued or completed messages
+
+            #Problem with annotations don't actually correspond to the toil job store id, they correpsond to the assigned batch id
+            #I could add another annotation when the leader assigns the batch id and then make a nice dictionary?
+
+
         #for message in replayed_messages:
             #print(message)
             # if "JobIssuedMessage" in message:
