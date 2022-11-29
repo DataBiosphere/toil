@@ -61,6 +61,11 @@ the appliance images to, for example:
 
 	TOIL_DOCKER_REGISTRY=quay.io/USER make docker
 
+You might also want to build just for one architecture and load into your
+Docker daemon. We have a 'load_docker' target for this.
+
+    make load_docker arch=amd64
+
 If Docker is not installed, Docker-related targets tasks and tests will be skipped. The
 same can be achieved by setting TOIL_DOCKER_REGISTRY to an empty string.
 
@@ -196,9 +201,15 @@ push_docker: docker
 	cd dashboard/grafana ; for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker buildx build --platform $(arch) --push --tag=$(grafana_image):$(TOIL_DOCKER_TAG) -f Dockerfile . && break || sleep 60; done
 	cd dashboard/mtail ; for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker buildx build --platform $(arch) --push --tag=$(mtail_image):$(TOIL_DOCKER_TAG) -f Dockerfile . && break || sleep 60; done
 
+load_docker: docker
+	cd docker ; docker buildx build --platform $(arch) --load --tag=$(docker_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
+	cd dashboard/prometheus ; docker buildx build --platform $(arch) --load --tag=$(prometheus_image):$(TOIL_DOCKER_TAG) -f Dockerfile . 
+	cd dashboard/grafana ; docker buildx build --platform $(arch) --load --tag=$(grafana_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
+	cd dashboard/mtail ; docker buildx build --platform $(arch) --load --tag=$(mtail_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
+
 else
 
-docker docker_push clean_docker:
+docker push_docker load_docker clean_docker:
 	@printf "$(cyan)Skipping '$@' target as TOIL_DOCKER_REGISTRY is empty or Docker is not installed.$(normal)\n"
 
 endif
