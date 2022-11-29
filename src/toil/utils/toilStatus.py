@@ -239,7 +239,7 @@ class ToilStatus:
         replayed_messages_keys = replayed_messages.keys()
 
         for key in replayed_messages_keys:
-            print(replayed_messages[key].name, replayed_messages[key].exit_code, replayed_messages[key].annotations)
+            print("\nkey, ", key, "\nname: ", replayed_messages[key].name, "\nexit_code: ", replayed_messages[key].exit_code, "\nannotations: ", replayed_messages[key].annotations)
         #for message in replayed_messages:
             #print(message)
             # if "JobIssuedMessage" in message:
