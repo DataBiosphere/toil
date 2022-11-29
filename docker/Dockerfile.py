@@ -53,6 +53,7 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'less',
                          'vim',
                          'git',
+                         'docker.io',
                          'time',
                          # Dependencies for Mesos which the deb doesn't actually list
                          'libsvn1',
@@ -153,12 +154,6 @@ print(heredoc('''
     RUN virtualenv --python {python} --never-download /home/s3am \
         && /home/s3am/bin/pip install s3am==2.0 \
         && ln -s /home/s3am/bin/s3am /usr/local/bin/
-
-    # Install statically linked version of docker client
-    RUN curl https://download.docker.com/linux/static/stable/$(if [ $TARGETARCH = amd64 ] ; then echo x86_64 ; else echo aarch64 ; fi)/docker-18.06.1-ce.tgz \
-        | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ \
-        && chmod u+x /usr/local/bin/docker \
-        && /usr/local/bin/docker -v
 
     # Fix for https://issues.apache.org/jira/browse/MESOS-3793
     ENV MESOS_LAUNCHER=posix
