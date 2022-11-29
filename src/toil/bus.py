@@ -623,7 +623,7 @@ def replay_message_bus(path: str):
     Replay all the messages and work out what they mean for jobs.
 
     We track the state and name of jobs here, by ID.
-    We would use a list of two items but MyPy can't understand a lits
+    We would use a list of two items but MyPy can't understand a list
     of items of multiple types, so we need to define a new class.
     """
     @dataclass

@@ -235,29 +235,34 @@ class ToilStatus:
 
         print("\nMessage bus path: ", self.message_bus_path)
         replayed_messages = replay_message_bus(self.message_bus_path)
-        for message in replayed_messages:
-            #print(message)
-            if "JobIssuedMessage" in message:
-                job_id_index = message.find("job_id=") + 8
-                job_id = message[job_id_index:-2]
-                issued_job_ids.append(job_id)
-            elif "JobCompletedMessage" in message:
-                job_id_index = message.find("job_id=") + 8
-                job_id = message[job_id_index:-2]
-                completed_job_ids.append(job_id)
-            elif "JobAnnotationMessage" in message:
-                local_id_index = message.find("job_id=") + 8
-                batch_id_index = message.find("annotation_value=") + 18
-                local_id = message[local_id_index: message.find("', annotation_name")]
-                batch_id = message[batch_id_index: message.find("')")]
-                annotated_batch_ids.append((local_id, batch_id))
 
-        for annotation in annotated_batch_ids:
-            #Annotation[0] is the index of an issued job
-            if issued_job_ids[annotation[0]] in completed_job_ids:
-                continue
-            else:
-                print(issued_job_ids[annotation[0]], " has local toil id ", annotation[0], " and batch system id ", annotation[1])
+        replayed_messages_keys = replayed_messages.keys()
+
+        for key in replayed_messages_keys:
+            print(replayed_messages[key].name, replayed_messages[key].exit_code, replayed_messages[key].annotations)
+        #for message in replayed_messages:
+            #print(message)
+            # if "JobIssuedMessage" in message:
+            #     job_id_index = message.find("job_id=") + 8
+            #     job_id = message[job_id_index:-2]
+            #     issued_job_ids.append(job_id)
+            # elif "JobCompletedMessage" in message:
+            #     job_id_index = message.find("job_id=") + 8
+            #     job_id = message[job_id_index:-2]
+            #     completed_job_ids.append(job_id)
+            # elif "JobAnnotationMessage" in message:
+            #     local_id_index = message.find("job_id=") + 8
+            #     batch_id_index = message.find("annotation_value=") + 18
+            #     local_id = message[local_id_index: message.find("', annotation_name")]
+            #     batch_id = message[batch_id_index: message.find("')")]
+            #     annotated_batch_ids.append((local_id, batch_id))
+
+            # for annotation in annotated_batch_ids:
+            #     #Annotation[0] is the index of an issued job
+            #     if issued_job_ids[annotation[0]] in completed_job_ids:
+            #         continue
+            #     else:
+            #         print(issued_job_ids[annotation[0]], " has local toil id ", annotation[0], " and batch system id ", annotation[1])
 
         return None
 
