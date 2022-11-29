@@ -240,9 +240,9 @@ class ToilStatus:
 
         for key in replayed_messages_keys:
 
-            if replayed_messages[key].exit_code == -1 and replayed_messages[key].annotations == None:
+            if replayed_messages[key].exit_code == -1 and replayed_messages[key].annotations == {}:
                 #Job is either issued or running
-                print("\nkey, ", key, "\nname: ", replayed_messages[key].name, "\nexit_code: ", replayed_messages[key].exit_code, "\nannotations: ", replayed_messages[key].annotations)
+                print("\nkey, ", key, " name: ", replayed_messages[key].name, " exit_code: ", replayed_messages[key].exit_code, " annotations: ", replayed_messages[key].annotations)
                 #Other jobs we don't particularly care about
                 #The key is the Assigned job store ID, the name is the job type and exit code tells us if we've completed it or not
                 #If we have annotations, those correspond to the batch system id which we arent told in issued or completed messages
