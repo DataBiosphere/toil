@@ -31,7 +31,8 @@ from toil import resolveEntryPoint
 from toil.batchSystems import DeadlockException
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    BatchJobExitReason)
-from toil.bus import (JobCompletedMessage,
+from toil.bus import (JobAnnotationMessage,
+                      JobCompletedMessage,
                       JobFailedMessage,
                       JobIssuedMessage,
                       JobMissingMessage,
@@ -952,6 +953,7 @@ class Leader:
                    jobNode, str(jobBatchSystemID), jobNode.requirements_string())
         # Tell everyone it is issued and the queue size changed
         self._messages.publish(JobIssuedMessage(jobNode.get_job_type(), jobNode.jobStoreID))
+        self._messages.publish(JobAnnotationMessage(jobNode.jobStoreID, " has batch system ID ", jobBatchSystemID))
         self._messages.publish(QueueSizeMessage(self.getNumberOfJobsIssued()))
         # Tell the user there's another job to do
         self.progress_overall.total += 1
