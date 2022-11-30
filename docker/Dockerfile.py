@@ -121,7 +121,8 @@ print(heredoc('''
         rm -rf /var/lib/apt/lists/*
     
     # Install a particular old Debian Sid Singularity from somewhere.
-    # It's 3.10, which is new enough to use cgroups2, but it needs a newer libc than Ubuntu 20.04 ships.
+    # It's 3.10, which is new enough to use cgroups2, but it needs a newer libc
+    # than Ubuntu 20.04 ships. So we need a 22.04+ base.
     ADD extra-debs.tsv /etc/singularity/extra-debs.tsv
     RUN wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^singularity-container.$TARGETARCH" | cut -f4)" && \
         dpkg -i singularity-container_*.deb && \
@@ -138,6 +139,7 @@ print(heredoc('''
 
     ADD customDockerInit.sh /usr/bin/customDockerInit.sh
 
+    # Wrap Singularity to use a Docker mirror instead of always Docker Hub
     ADD singularity-wrapper.sh /usr/local/bin/singularity
 
     RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/local/bin/singularity
