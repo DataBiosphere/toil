@@ -121,10 +121,14 @@ print(heredoc('''
         rm -rf /var/lib/apt/lists/*
     
     # Install a particular old Debian Sid Singularity from somewhere.
-    ADD singularity-sources.tsv /etc/singularity/singularity-sources.tsv
-    RUN wget -q "$(cat /etc/singularity/singularity-sources.tsv | grep "^$TARGETARCH" | cut -f3)" && \
-        dpkg -i singularity-container_3*.deb && \
-        rm singularity-container_3*.deb && \
+    # It's 3.10, which is new enough to use cgroups2, but it needs a newer libc than Ubuntu 20.04 ships.
+    ADD extra-debs.tsv /etc/singularity/extra-debs.tsv
+    RUN wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^libc6.$TARGETARCH" | cut -f4)" && \
+        dpkg -i libc6_*.deb && \
+        rm libc6_*.deb && \
+        wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^singularity-container.$TARGETARCH" | cut -f4)" && \
+        dpkg -i singularity-container_*.deb && \
+        rm singularity-container_*.deb && \
         sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf && \
         mkdir -p /usr/local/libexec/toil && \
         mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real \
