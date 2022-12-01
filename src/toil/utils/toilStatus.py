@@ -243,7 +243,7 @@ class ToilStatus:
 
             if replayed_messages[key].exit_code == -1:
                 #Job is either issued or running
-                print(replayed_messages[key])
+                print(key, replayed_messages[key])
 
 
         return None

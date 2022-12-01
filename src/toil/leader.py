@@ -745,7 +745,7 @@ class Leader:
                     logger.warning("This indicates an unsupported CWL requirement!")
                     self.recommended_fail_exit_code = CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
             # Tell everyone it stopped running.
-            self._messages.publish(JobCompletedMessage(updatedJob.get_job_type(), updatedJob.jobStoreID))
+            self._messages.publish(JobCompletedMessage(updatedJob.get_job_type(), updatedJob.jobStoreID, exitStatus))
             self.process_finished_job(bsID, exitStatus, wall_time=wallTime, exit_reason=exitReason)
 
     def _processLostJobs(self):

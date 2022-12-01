@@ -123,6 +123,8 @@ class JobCompletedMessage(NamedTuple):
     job_type: str
     # The job store ID of the job
     job_id: str
+    # Exit code for job_id
+    exit_code: int
 
 class JobFailedMessage(NamedTuple):
     """
@@ -668,9 +670,11 @@ def replay_message_bus(path: str):
             elif isinstance(event, JobIssuedMessage):
                 job_statuses[event.job_id].name = event.job_type
                 job_statuses[event.job_id].toil_batch_id = event.toil_batch_id
+                job_statuses[event.job_id].exit_code = -1
                 batch_to_job_id[event.toil_batch_id] = event.job_id
             elif isinstance(event, JobCompletedMessage):
                 job_statuses[event.job_id].name = event.job_type
+                job_statuses[event.job_id].exit_code = event.exit_code
             elif isinstance(event, JobFailedMessage):
                 job_statuses[event.job_id].name = event.job_type
                 if job_statuses[event.job_id].exit_code == 0:
