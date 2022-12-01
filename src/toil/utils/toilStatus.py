@@ -17,6 +17,7 @@ import logging
 import os
 import sys
 from functools import reduce
+import json
 from typing import Any, Dict, List, Optional, Set
 
 from toil.bus import replay_message_bus
@@ -230,21 +231,14 @@ class ToilStatus:
 
         Prints a list of the currently running jobs
         """
-        issued_job_ids = []
-        annotated_batch_ids = []
-        completed_job_ids = []
 
         print("\nMessage bus path: ", self.message_bus_path)
         replayed_messages = replay_message_bus(self.message_bus_path)
         replayed_messages_keys = replayed_messages.keys()
 
         #jobstore_to_batchsystem = defaultdict()
-        for key in replayed_messages_keys:
-
-            if replayed_messages[key].exit_code == -1:
-                #Job is either issued or running
-                print(key, replayed_messages[key])
-
+        running_jobs = json.dumps(replayed_messages, indent=4)
+        print(running_jobs)
 
         return None
 

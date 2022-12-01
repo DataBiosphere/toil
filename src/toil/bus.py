@@ -634,7 +634,7 @@ class MessageBusConnection(MessageInbox, MessageOutbox):
         self._set_bus(bus)
 
 
-def replay_message_bus(path: str):
+def replay_message_bus(path: str) -> Dict[str, Any]:
     """
     Replay all the messages and work out what they mean for jobs.
 
@@ -653,7 +653,6 @@ def replay_message_bus(path: str):
         toil_batch_id: int
         external_batch_id: str
         batch_system: str
-
 
     job_statuses: Dict[str, JobStatus] = collections.defaultdict(lambda: JobStatus('', -1, {}, -1, '', ''))
     batch_to_job_id = {}
