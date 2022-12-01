@@ -234,10 +234,9 @@ class ToilStatus:
 
         print("\nMessage bus path: ", self.message_bus_path)
         replayed_messages = replay_message_bus(self.message_bus_path)
-        replayed_messages_keys = replayed_messages.keys()
-
-        #jobstore_to_batchsystem = defaultdict()
-        running_jobs = json.dumps(replayed_messages.toJSON(), indent=4)
+        for key in replayed_messages:
+            replayed_messages[key] = replayed_messages[key].toJSON()
+        running_jobs = json.dumps(replayed_messages, indent=4)
         print(running_jobs)
 
         return None
