@@ -234,12 +234,9 @@ class ToilStatus:
 
         print("\nMessage bus path: ", self.message_bus_path)
         replayed_messages = replay_message_bus(self.message_bus_path)
-        filtered_jobs = {}
         for key in replayed_messages:
             if replayed_messages[key].exit_code != 0:
-                filtered_jobs[key] = replayed_messages[key].toJSON()
-        running_jobs = json.dumps(filtered_jobs, indent=4)
-        print(running_jobs)
+                print(replayed_messages[key].toJSON())
 
         return None
 
