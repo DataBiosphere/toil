@@ -67,6 +67,7 @@ import logging
 
 import os
 import queue
+import json
 import tempfile
 import threading
 from typing import (IO,
@@ -653,6 +654,9 @@ def replay_message_bus(path: str) -> Dict[str, Any]:
         toil_batch_id: int
         external_batch_id: str
         batch_system: str
+
+        def toJSON(self):
+            return json.dumps(self, default= lambda o: o.__dict__, indent=4)
 
     job_statuses: Dict[str, JobStatus] = collections.defaultdict(lambda: JobStatus('', -1, {}, -1, '', ''))
     batch_to_job_id = {}

@@ -237,7 +237,7 @@ class ToilStatus:
         replayed_messages_keys = replayed_messages.keys()
 
         #jobstore_to_batchsystem = defaultdict()
-        running_jobs = json.dumps(replayed_messages, indent=4)
+        running_jobs = json.dumps(replayed_messages.toJSON(), indent=4)
         print(running_jobs)
 
         return None
