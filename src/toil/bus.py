@@ -648,6 +648,8 @@ def replay_message_bus(path: str) -> Dict[str, Any]:
         """
         Records the status of a job.
         """
+
+        job_store_id: str
         name: str
         exit_code: int
         annotations: Dict[str, str]
@@ -658,7 +660,7 @@ def replay_message_bus(path: str) -> Dict[str, Any]:
         def toJSON(self):
             return json.dumps(self, default= lambda o: o.__dict__, indent=4)
 
-    job_statuses: Dict[str, JobStatus] = collections.defaultdict(lambda: JobStatus('', -1, {}, -1, '', ''))
+    job_statuses: Dict[str, JobStatus] = collections.defaultdict(lambda: JobStatus('', '', -1, {}, -1, '', ''))
     batch_to_job_id = {}
     with open(path, 'rb') as log_stream:
         # Read all the full, properly-terminated messages about job updates
@@ -671,6 +673,7 @@ def replay_message_bus(path: str) -> Dict[str, Any]:
                 # Apply the latest return code from the job with this ID.
                 job_statuses[event.job_id].exit_code = event.result_status
             elif isinstance(event, JobIssuedMessage):
+                job_statuses[event.job_id].job_store_id = event.job_id
                 job_statuses[event.job_id].name = event.job_type
                 job_statuses[event.job_id].toil_batch_id = event.toil_batch_id
                 job_statuses[event.job_id].exit_code = -1
