@@ -189,7 +189,7 @@ class Config:
         self.writeLogs = None
         self.writeLogsGzip = None
         self.writeLogsFromAllJobs: bool = False
-        self.write_messages: str = None
+        self.write_messages: str = ""
 
         # Misc
         self.environment: Dict[str, str] = {}

@@ -657,7 +657,7 @@ def replay_message_bus(path: str) -> Dict[str, Any]:
         external_batch_id: str
         batch_system: str
 
-        def toJSON(self):
+        def toJSON(self) -> str:
             return json.dumps(self, default= lambda o: o.__dict__, indent=4)
 
     job_statuses: Dict[str, JobStatus] = collections.defaultdict(lambda: JobStatus('', '', -1, {}, -1, '', ''))

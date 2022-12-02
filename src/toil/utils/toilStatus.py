@@ -224,7 +224,7 @@ class ToilStatus:
         return 'RUNNING'
 
 
-    def readBusMessages(self) -> List[str]:
+    def readBusMessages(self) -> None:
         """
         Goes through bus messages, returns a list of tuples which have correspondence between
         PID on assigned batch system and
