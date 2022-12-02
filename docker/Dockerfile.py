@@ -48,6 +48,7 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'libgpgme11-dev',
                          'libseccomp-dev',
                          'pkg-config',
+                         'squashfs-tools',
                          'cryptsetup',
                          'less',
                          'vim',
