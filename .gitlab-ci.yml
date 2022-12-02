@@ -62,7 +62,7 @@ cwl_dependency_is_stand_alone:
   stage: linting_and_dependencies
   script:
     - pwd
-    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[cwl]
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[cwl, server]
     - make test tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testCwlexample
 
 
@@ -70,7 +70,7 @@ wdl_dependency_is_stand_alone:
   stage: linting_and_dependencies
   script:
     - pwd
-    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[wdl]
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[wdl, server]
     - make test tests=src/toil/test/wdl/toilwdlTest.py::ToilWdlIntegrationTest::testMD5sum
 
 quick_test_offline:
