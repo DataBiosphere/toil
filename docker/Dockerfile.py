@@ -48,7 +48,6 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'libgpgme11-dev',
                          'libseccomp-dev',
                          'pkg-config',
-                         'squashfs-tools',
                          'cryptsetup',
                          'less',
                          'vim',
@@ -123,8 +122,28 @@ print(heredoc('''
     # Install a particular old Debian Sid Singularity from somewhere.
     # It's 3.10, which is new enough to use cgroups2, but it needs a newer libc
     # than Ubuntu 20.04 ships. So we need a 22.04+ base.
+    #
+    # But 22.04 ships squashfs-tools 4.4 or 4.5 or so, which is new enough that
+    # errors encountered during extraction produce a nonzero exit code, without
+    # a special option:
+    # <https://github.com/plougher/squashfs-tools/commit/1dd7f32e79b7600d379a4f26fb8d138ebdfc70be>.
+    # If unsquashfs thinks it is root, but it can't change UIDs and GIDs freely, it
+    # will continue but fail the whole command instead of returning success. It complains:
+    #
+    # set_attributes: failed to change uid and gids on /image/rootfs/etc/gshadow, because Invalid argument
+    #
+    # But inside a Kubernetes container we can be root but not actually be
+    # allowed to set UIDs and GIDs arbitrarily. Singularity can't handle this,
+    # and can't pass the flag to ignore these errors, and we can't wrap
+    # unsquashfs with a shell script because of how it gets mounted into the
+    # container under construction along with its libraries (see
+    # <https://github.com/apptainer/singularity/issues/6113#issuecomment-901897566>).
+    #
+    # So we need to make sure to install a downgraded squashfs first.
     ADD extra-debs.tsv /etc/singularity/extra-debs.tsv
-    RUN wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^singularity-container.$TARGETARCH" | cut -f4)" && \
+    RUN wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^squashfs-tools.$TARGETARCH" | cut -f4)" && \
+        dpkg -i squashfs-tools_*.deb && \
+        wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^singularity-container.$TARGETARCH" | cut -f4)" && \
         dpkg -i singularity-container_*.deb && \
         rm singularity-container_*.deb && \
         sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf && \
