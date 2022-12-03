@@ -56,8 +56,8 @@ if [[ "${ARGC}" -ge "2" && "${ARGV[1]}" == "pull" && ! -z "${MIRROR_HOST}" ]] ; 
     HTTP_ARG=""
 
     if [[ "${REPLACED}" == "1" && "${MIRROR_HTTP}" == "1" ]] ; then
-        # We need to use HTTP and not HTTPS for the mirror, so we need to isnert the argument
-        HTTP_ARG="--nohttps"
+        # We need to use HTTP and not HTTPS for the mirror, so we need to insert the argument
+        HTTP_ARG="--no-https"
     fi
 
     # Run the pull with our extra args, and then all the args starting at 2.
