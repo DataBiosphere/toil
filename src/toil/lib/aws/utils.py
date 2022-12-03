@@ -303,7 +303,7 @@ def region_to_bucket_location(region: str) -> str:
 def bucket_location_to_region(location: Optional[str]) -> str:
     return "us-east-1" if location == "" or location is None else location
 
-def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> Object:
+def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "Object":
         """
         Extracts a key (object) from a given parsed s3:// URL.
 
