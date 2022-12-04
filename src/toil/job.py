@@ -1434,6 +1434,18 @@ class Job:
          self.description.cores = val
 
     @property
+    def accelerators(self):
+        """
+        Any accelerators, such as GPUs, that are needed.
+
+       :rtype: list
+        """
+        return self.description.accelerators
+    @accelerators.setter
+    def accelerators(self, val):
+         self.description.accelerators = val
+
+    @property
     def preemptable(self):
         """
         Whether the job can be run on a preemptable node.
