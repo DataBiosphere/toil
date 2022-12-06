@@ -25,7 +25,7 @@ import tempfile
 import threading
 import traceback
 from contextlib import contextmanager
-from typing import Any, Dict, Iterator, Optional
+from typing import Any, Dict, Iterator, Optional, Union, cast
 
 import psutil  # type: ignore
 
@@ -84,7 +84,7 @@ class ExceptionalThread(threading.Thread):
             raise_(exc_type, exc_value, traceback)
 
 
-def cpu_count() -> Any:
+def cpu_count() -> int:
     """
     Get the rounded-up integer number of whole CPUs available.
 
@@ -105,42 +105,77 @@ def cpu_count() -> Any:
     cached = getattr(cpu_count, 'result', None)
     if cached is not None:
         # We already got a CPU count.
-        return cached
+        return cast(int, cached)
 
     # Get the fallback answer of all the CPUs on the machine
-    total_machine_size = psutil.cpu_count(logical=True)
+    total_machine_size = cast(int, psutil.cpu_count(logical=True))
 
     logger.debug('Total machine size: %d cores', total_machine_size)
 
+    # cgroups may limit the size
+    cgroup_size: Union[float, int] = float('inf')
+
     try:
-        with open('/sys/fs/cgroup/cpu/cpu.cfs_quota_us') as stream:
-            # Read the quota
-            quota = int(stream.read())
+        # See if we can fetch these and use them
+        quota: Optional[int] = None
+        period: Optional[int] = None
 
-        logger.debug('CPU quota: %d', quota)
+        # CGroups v1 keeps quota and period separate
+        CGROUP1_QUOTA_FILE = '/sys/fs/cgroup/cpu/cpu.cfs_quota_us'
+        CGROUP1_PERIOD_FILE = '/sys/fs/cgroup/cpu/cpu.cfs_period_us'
+        # CGroups v2 keeps both in one file, space-separated, quota first
+        CGROUP2_COMBINED_FILE = '/sys/fs/cgroup/cpu.max'
 
-        if quota == -1:
-            # Assume we can use the whole machine
-            return total_machine_size
+        if os.path.exists(CGROUP1_QUOTA_FILE) and os.path.exists(CGROUP1_PERIOD_FILE):
+            logger.debug('CPU quota and period available from cgroups v1')
+            with open(CGROUP1_QUOTA_FILE) as stream:
+                # Read the quota
+                quota = int(stream.read())
 
-        with open('/sys/fs/cgroup/cpu/cpu.cfs_period_us') as stream:
-            # Read the period in which we are allowed to burn the quota
-            period = int(stream.read())
+            with open(CGROUP1_PERIOD_FILE) as stream:
+                # Read the period in which we are allowed to burn the quota
+                period = int(stream.read())
+        elif os.path.exists(CGROUP2_COMBINED_FILE):
+            logger.debug('CPU quota and period available from cgroups v2')
+            with open(CGROUP2_COMBINED_FILE) as stream:
+                # Read the quota and the period together
+                quota, period = [int(part) for part in stream.read().split(' ')]
+        else:
+            logger.debug('CPU quota/period not available from cgroups v1 or cgroups v2')
 
-        logger.debug('CPU quota period: %d', period)
+        if quota is not None and period is not None:
+            # We got a quota and a period.
+            logger.debug('CPU quota: %d period: %d', quota, period)
 
-        # The thread count is how many multiples of a wall clcok period we can burn in that period.
-        cgroup_size = int(math.ceil(float(quota)/float(period)))
+            if quota == -1:
+                # But the quota can be -1 for unset.
+                # Assume we can use the whole machine.
+                return total_machine_size
 
-        logger.debug('Cgroup size in cores: %d', cgroup_size)
+            # The thread count is how many multiples of a wall clock period we
+            # can burn in that period.
+            cgroup_size = int(math.ceil(float(quota)/float(period)))
 
+            logger.debug('Control group size in cores: %d', cgroup_size)
     except:
         # We can't actually read these cgroup fields. Maybe we are a mac or something.
         logger.debug('Could not inspect cgroup: %s', traceback.format_exc())
-        cgroup_size = float('inf') # type: ignore
+
+    # CPU affinity may limit the size
+    affinity_size: Union[float, int] = float('inf')
+    if hasattr(os, 'sched_getaffinity'):
+        try:
+            logger.debug('CPU affinity available')
+            affinity_size = len(os.sched_getaffinity(0))
+            logger.debug('CPU affinity is restricted to %d cores', affinity_size)
+        except:
+             # We can't actually read this even though it exists.
+            logger.debug('Could not inspect scheduling affinity: %s', traceback.format_exc())
+    else:
+        logger.debug('CPU affinity not available')
 
     # Return the smaller of the actual thread count and the cgroup's limit, minimum 1.
-    result = max(1, min(cgroup_size, total_machine_size))
+    result = cast(int, max(1, min(min(affinity_size, cgroup_size), total_machine_size)))
     logger.debug('cpu_count: %s', str(result))
     # Make sure to remember it for the next call
     setattr(cpu_count, 'result', result)

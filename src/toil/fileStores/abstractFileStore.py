@@ -213,23 +213,37 @@ class AbstractFileStore(ABC):
         """
         return os.path.abspath(tempfile.mkdtemp(dir=self.localTempDir))
 
-    def getLocalTempFile(self) -> str:
+    def getLocalTempFile(self, suffix: Optional[str] = None, prefix: Optional[str] = None) -> str:
         """
         Get a new local temporary file that will persist for the duration of the job.
+
+        :param suffix: If not None, the file name will end with this string.
+               Otherwise, default value ".tmp" will be used
+
+        :param prefix: If not None, the file name will start with this string.
+               Otherwise, default value "tmp" will be used
 
         :return: The absolute path to a local temporary file. This file will exist
                  for the duration of the job only, and is guaranteed to be deleted
                  once the job terminates.
         """
         handle, tmpFile = tempfile.mkstemp(
-            prefix="tmp", suffix=".tmp", dir=self.localTempDir
+            suffix=".tmp" if suffix is None else suffix,
+            prefix="tmp" if prefix is None else prefix,
+            dir=self.localTempDir
         )
         os.close(handle)
         return os.path.abspath(tmpFile)
 
-    def getLocalTempFileName(self) -> str:
+    def getLocalTempFileName(self, suffix: Optional[str] = None, prefix: Optional[str] = None) -> str:
         """
         Get a valid name for a new local file. Don't actually create a file at the path.
+
+        :param suffix: If not None, the file name will end with this string.
+               Otherwise, default value ".tmp" will be used
+
+        :param prefix: If not None, the file name will start with this string.
+               Otherwise, default value "tmp" will be used
 
         :return: Path to valid file
         """
@@ -237,7 +251,7 @@ class AbstractFileStore(ABC):
         # unused file name. There is a very, very, very low chance that another
         # job will create the same file name in the span of this one being deleted
         # and then being used by the user.
-        tempFile = self.getLocalTempFile()
+        tempFile = self.getLocalTempFile(suffix, prefix)
         os.remove(tempFile)
         return tempFile
 
