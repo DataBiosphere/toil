@@ -186,7 +186,7 @@ class GCEProvisioner(AbstractProvisioner):
         # Wait for the appliance to start and inject credentials.
         leaderNode = Node(publicIP=leader.public_ips[0], privateIP=leader.private_ips[0],
                           name=leader.name, launchTime=leader.created_at, nodeType=leader.size,
-                          preemptable=False, tags=self._tags, self._use_private_ip)
+                          preemptable=False, tags=self._tags, use_private_ip=self._use_private_ip)
         leaderNode.waitForNode('toil_leader', keyName=self._keyName)
         leaderNode.copySshKeys(self._keyName)
         leaderNode.injectFile(self._credentialsPath, GoogleJobStore.nodeServiceAccountJson, 'toil_leader')
@@ -313,7 +313,7 @@ class GCEProvisioner(AbstractProvisioner):
 
                 node = Node(publicIP=instance.public_ips[0], privateIP=instance.private_ips[0],
                             name=instance.name, launchTime=instance.created_at, nodeType=instance.size,
-                            preemptable=False, tags=self._tags, self._use_private_ip)  # FIXME: what should tags be set to?
+                            preemptable=False, tags=self._tags, use_private_ip=self._use_private_ip)  # FIXME: what should tags be set to?
                 try:
                     self._injectWorkerFiles(node, botoExists)
                     logger.debug("Created worker %s" % node.publicIP)
@@ -354,7 +354,8 @@ class GCEProvisioner(AbstractProvisioner):
         logger.debug('All workers found in cluster: %s', workerInstances)
         return [Node(publicIP=i.public_ips[0], privateIP=i.private_ips[0],
                      name=i.name, launchTime=i.created_at, nodeType=i.size,
-                     preemptable=i.extra.get('scheduling', {}).get('preemptible', False), tags=None, self._use_private_ip)
+                     preemptable=i.extra.get('scheduling', {}).get('preemptible', False),
+                     tags=None, use_private_ip=self._use_private_ip)
                 for i in workerInstances]
 
     def getLeader(self):
@@ -366,7 +367,7 @@ class GCEProvisioner(AbstractProvisioner):
             raise NoSuchClusterException(self.clusterName)
         return Node(publicIP=leader.public_ips[0], privateIP=leader.private_ips[0],
                     name=leader.name, launchTime=leader.created_at, nodeType=leader.size,
-                    preemptable=False, tags=None, self._use_private_ip)
+                    preemptable=False, tags=None, use_private_ip=self._use_private_ip)
 
     def _injectWorkerFiles(self, node, botoExists):
         """

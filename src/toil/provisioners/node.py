@@ -34,7 +34,7 @@ class Node:
         self.privateIP = privateIP
         if use_private_ip:
             self.effectiveIP = self.privateIP #or self.publicIP?
-        else:    
+        else:
             self.effectiveIP = self.publicIP or self.privateIP
         self.name = name
         self.launchTime = launchTime

@@ -63,7 +63,7 @@ def main() -> None:
                              "      \"Name\": clusterName,\n"
                              "      \"Owner\": IAM username\n"
                              " }. ")
-    
+
     parser.add_argument("--network",
                         help="cloud network to use. default: 'default'")
     parser.add_argument("--vpcSubnet",
