@@ -26,7 +26,7 @@ from libcloud.compute.types import Provider
 
 from toil.jobStores.googleJobStore import GoogleJobStore
 from toil.lib.conversions import human2bytes
-from toil.lib.util.compatibility import bytes_to_string_recursive
+from toil.lib.util.compatibility import compat_bytes_recursive
 from toil.provisioners import NoSuchClusterException
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.node import Node
@@ -171,10 +171,10 @@ class GCEProvisioner(AbstractProvisioner):
             imageType,
             location=self._zone,
             ex_service_accounts=sa_scopes,
-            ex_metadata=bytes_to_string_recursive(metadata),
+            ex_metadata=compat_bytes_recursive(metadata),
             ex_network=self._network,
             ex_subnetwork=self._vpcSubnet,
-            ex_disks_gce_struct = [ bytes_to_string_recursive(disk) ],
+            ex_disks_gce_struct = [ compat_bytes_recursive(disk) ],
             description=self._tags,
             ex_preemptible=False
         )
