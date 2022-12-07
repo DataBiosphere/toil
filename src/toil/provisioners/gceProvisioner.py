@@ -26,24 +26,13 @@ from libcloud.compute.types import Provider
 
 from toil.jobStores.googleJobStore import GoogleJobStore
 from toil.lib.conversions import human2bytes
+from toil.lib.util.compatibility import bytes_to_string_recursive
 from toil.provisioners import NoSuchClusterException
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.node import Node
 
 logger = logging.getLogger(__name__)
 logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
-
-
-# pulled from stack overflow
-# fix for objects getting passed to a json serializer which dies on bytes
-def convert_bytes(data):
-    if isinstance(data, bytes):  return data.decode('ascii')
-    if isinstance(data, dict):   return dict(map(convert_bytes, data.items()))
-    if isinstance(data, tuple):  return tuple(map(convert_bytes, data))
-    if isinstance(data, list):   return list(map(convert_bytes, data))
-    if isinstance(data, set):    return set(map(convert, data))
-    return data
-                                            
 
 class GCEProvisioner(AbstractProvisioner):
     """
@@ -182,10 +171,10 @@ class GCEProvisioner(AbstractProvisioner):
             imageType,
             location=self._zone,
             ex_service_accounts=sa_scopes,
-            ex_metadata=convert_bytes(metadata),
+            ex_metadata=bytes_to_string_recursive(metadata),
             ex_network=self._network,
             ex_subnetwork=self._vpcSubnet,
-            ex_disks_gce_struct = [ convert_bytes(disk) ],
+            ex_disks_gce_struct = [ bytes_to_string_recursive(disk) ],
             description=self._tags,
             ex_preemptible=False
         )
